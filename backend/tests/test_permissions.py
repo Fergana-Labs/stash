@@ -114,10 +114,12 @@ async def _make_session(pool, workspace_id, created_by, session_id="session-1"):
     return row["id"]
 
 
-async def _make_table(pool, workspace_id, created_by, name="table"):
+async def _make_table(pool, workspace_id, created_by, folder_id=None, name="table"):
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, name, created_by) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO tables (workspace_id, folder_id, name, created_by) "
+        "VALUES ($1, $2, $3, $4) RETURNING id",
         workspace_id,
+        folder_id,
         name,
         created_by,
     )
@@ -259,9 +261,42 @@ async def test_folder_share_cascades_to_children(pool):
     folder = await _make_folder(pool, ws, owner)
     page = await _make_page(pool, ws, owner, folder_id=folder)
     file_id = await _make_file(pool, ws, owner, folder_id=folder)
+    table = await _make_table(pool, ws, owner, folder_id=folder)
     await _share(pool, ws, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
     assert await permission_service.check_access("file", file_id, friend)
+    assert await permission_service.check_access("table", table, friend)
+
+
+@pytest.mark.asyncio
+async def test_table_folder_share_cascades_and_write_inherits(pool):
+    """A table inside a shared folder inherits the folder's grant — read from a
+    read share, write from a write share — just like pages and files. A table
+    at the workspace root is unaffected by the folder share."""
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await _make_folder(pool, ws, owner)
+    table = await _make_table(pool, ws, owner, folder_id=folder)
+    root_table = await _make_table(pool, ws, owner, name="root-table")
+
+    # Before any share the non-member can't see either table.
+    assert not await permission_service.check_access("table", table, friend)
+
+    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    assert await permission_service.check_access("table", table, friend)
+    # Read share is not a write grant, and the root table is outside the folder.
+    assert not await permission_service.check_access("table", table, friend, require_write=True)
+    assert not await permission_service.check_access("table", root_table, friend)
+
+    # Upgrading the folder share to write cascades write to the table.
+    await pool.execute(
+        "UPDATE shares SET permission='write' WHERE object_type='folder' "
+        "AND object_id=$1 AND principal_id=$2",
+        folder,
+        friend,
+    )
+    assert await permission_service.check_access("table", table, friend, require_write=True)
 
 
 @pytest.mark.asyncio
@@ -575,3 +610,52 @@ async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncCli
     rows = after.json()["shares"]
     assert all(not s["pending"] for s in rows)
     assert any(s["email"] == "newcomer@example.com" for s in rows)
+
+
+@pytest.mark.asyncio
+async def test_shared_with_me_lists_incoming_not_outgoing(pool):
+    from backend.services import share_service
+
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await _make_folder(pool, ws, owner, name="Shared Folder")
+    await _share(pool, ws, "folder", folder, friend, "write", by=owner)
+
+    items = await share_service.list_shared_with_user(friend)
+    match = [i for i in items if i["object_id"] == str(folder)]
+    assert len(match) == 1
+    assert match[0]["object_type"] == "folder"
+    assert match[0]["name"] == "Shared Folder"
+    assert match[0]["permission"] == "write"
+    assert match[0]["workspace_id"] == str(ws)
+    # The owner is on the giving end — nothing is shared *with* them.
+    assert await share_service.list_shared_with_user(owner) == []
+
+
+@pytest.mark.asyncio
+async def test_shared_session_folder_sessions_gated_on_share(pool):
+    from fastapi import HTTPException
+
+    from backend.services import share_service
+
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    stranger = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    sf = await pool.fetchval(
+        "INSERT INTO session_folders (workspace_id, owner_user_id, name) "
+        "VALUES ($1, $2, 'SF') RETURNING id",
+        ws,
+        owner,
+    )
+    session_row = await _make_session(pool, ws, owner, session_id="shared-sess-1")
+    await pool.execute("UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, sf)
+    await _share(pool, ws, "session_folder", sf, friend, "read", by=owner)
+
+    rows = await share_service.list_shared_session_folder_sessions(sf, friend)
+    assert [r["id"] for r in rows] == [str(session_row)]
+
+    # A stranger with no share is denied.
+    with pytest.raises(HTTPException):
+        await share_service.list_shared_session_folder_sessions(sf, stranger)

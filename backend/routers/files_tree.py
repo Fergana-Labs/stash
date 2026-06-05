@@ -193,6 +193,7 @@ async def get_folder_contents(
     readable_folder = permission_service.readable_content_condition("folder", "f", 3)
     readable_page = permission_service.readable_content_condition("page", "p", 3)
     readable_file = permission_service.readable_content_condition("file", "fi", 3)
+    readable_table = permission_service.readable_content_condition("table", "t", 3)
     subfolders = await pool.fetch(
         "SELECT id, name, "
         "       ("
@@ -236,9 +237,20 @@ async def get_folder_contents(
         workspace_id,
         current_user["id"],
     )
+    tables = await pool.fetch(
+        "SELECT id, name, "
+        "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
+        "FROM tables t WHERE t.folder_id = $1 AND t.workspace_id = $2 "
+        f"AND {readable_table} "
+        "ORDER BY name",
+        folder_id,
+        workspace_id,
+        current_user["id"],
+    )
     subfolders = [dict(r) for r in subfolders]
     pages = [dict(r) for r in pages]
     files = [dict(r) for r in files]
+    tables = [dict(r) for r in tables]
 
     file_payload = [
         {
@@ -276,6 +288,10 @@ async def get_folder_contents(
             for r in pages
         ],
         "files": file_payload,
+        "tables": [
+            {"id": str(r["id"]), "name": r["name"], "row_count": int(r["row_count"] or 0)}
+            for r in tables
+        ],
     }
 
 
@@ -574,7 +590,6 @@ async def list_comment_threads(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     threads = await comment_service.list_threads(page_id)
@@ -593,7 +608,6 @@ async def create_comment_thread(
     current_user: dict = Depends(get_current_user),
 ):
     # Comments are read-level permission — any workspace member can comment.
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.create_thread(
@@ -619,7 +633,6 @@ async def reply_to_thread(
     req: CommentReplyRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
@@ -639,7 +652,6 @@ async def update_thread_resolved(
     req: CommentResolveRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.set_resolved(
@@ -661,7 +673,6 @@ async def delete_comment_thread(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete an entire thread. Only the thread creator is allowed."""
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     result = await comment_service.delete_thread(thread_id, user_id=current_user["id"])
@@ -685,7 +696,6 @@ async def delete_comment_message(
     response body's `thread` field is null — the frontend should then
     strip the inline anchor from the page content.
     """
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     status, thread = await comment_service.delete_message(message_id, user_id=current_user["id"])

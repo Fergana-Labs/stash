@@ -102,6 +102,39 @@ async def test_callback_exchanges_and_marks_connected(client: AsyncClient, monke
     assert granola["account_email"] == "sam@example.com"
 
 
+@pytest.mark.asyncio
+async def test_integrations_are_unavailable_without_encryption_key(client: AsyncClient, monkeypatch):
+    api_key, _ = await _register(client)
+    monkeypatch.setattr(oauth.settings, "INTEGRATIONS_ENCRYPTION_KEY", None)
+
+    auth = {"Authorization": f"Bearer {api_key}"}
+    response = await client.get("/api/v1/integrations", headers=auth)
+    assert response.status_code == 200
+    github = next(p for p in response.json()["providers"] if p["provider"] == "github")
+    assert github["enabled"] is False
+    assert github["connected"] is False
+    assert "INTEGRATIONS_ENCRYPTION_KEY" in github["disabled_reason"]
+
+    connect = await client.get("/api/v1/integrations/github/connect", headers=auth)
+    assert connect.status_code == 503
+    assert "INTEGRATIONS_ENCRYPTION_KEY" in connect.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_integrations_are_unavailable_with_invalid_encryption_key(
+    client: AsyncClient, monkeypatch
+):
+    api_key, _ = await _register(client)
+    monkeypatch.setattr(oauth.settings, "INTEGRATIONS_ENCRYPTION_KEY", "not-a-fernet-key")
+
+    auth = {"Authorization": f"Bearer {api_key}"}
+    response = await client.get("/api/v1/integrations", headers=auth)
+    assert response.status_code == 200
+    github = next(p for p in response.json()["providers"] if p["provider"] == "github")
+    assert github["enabled"] is False
+    assert github["disabled_reason"] == "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
+
+
 def _fake_session(tool_routes: dict):
     @asynccontextmanager
     async def _factory(access_token):

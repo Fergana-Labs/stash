@@ -20,9 +20,21 @@ TOKEN_URL = "https://slack.com/api/oauth.v2.access"
 AUTH_TEST_URL = "https://slack.com/api/auth.test"
 REVOKE_URL = "https://slack.com/api/auth.revoke"
 
-# User-token scopes: read channel/group history + resolve user names. We index
-# rather than search live, so search:read is not required.
-USER_SCOPES = ["channels:history", "groups:history", "im:history", "users:read"]
+# User-token scopes: list conversations + read their history + resolve user
+# names. The `*:read` scopes are required by conversations.list (the backfill
+# enumerates channels); `*:history` lets us read messages. We index rather than
+# search live, so search:read is not required.
+USER_SCOPES = [
+    "channels:read",
+    "channels:history",
+    "groups:read",
+    "groups:history",
+    "im:read",
+    "im:history",
+    "mpim:read",
+    "mpim:history",
+    "users:read",
+]
 
 
 class SlackIntegration(Integration):

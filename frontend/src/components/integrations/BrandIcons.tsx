@@ -83,6 +83,83 @@ export function NotionIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function SnowflakeIcon({ className, size = defaultSize }: Props) {
+  // Snowflake mark — a six-spoke flake in Snowflake blue.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      stroke="#29B5E8"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      fill="none"
+      aria-hidden
+    >
+      <g>
+        <line x1="12" y1="3" x2="12" y2="21" />
+        <line x1="4.2" y1="7.5" x2="19.8" y2="16.5" />
+        <line x1="4.2" y1="16.5" x2="19.8" y2="7.5" />
+        <path d="M12 6.4l-1.8-1.8M12 6.4l1.8-1.8M12 17.6l-1.8 1.8M12 17.6l1.8 1.8" />
+        <path d="M6.6 9.5l-2.5.1M6.6 9.5l-.7-2.4M17.4 14.5l2.5-.1M17.4 14.5l.7 2.4" />
+        <path d="M6.6 14.5l-.7 2.4M6.6 14.5l-2.5-.1M17.4 9.5l.7-2.4M17.4 9.5l2.5.1" />
+      </g>
+    </svg>
+  );
+}
+
+export function GongIcon({ className, size = defaultSize }: Props) {
+  // Gong mark — a purple ring with a centered dot.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9.2" stroke="#8039DF" strokeWidth="2.2" />
+      <circle cx="12" cy="12" r="3.4" fill="#8039DF" />
+    </svg>
+  );
+}
+
+export function JiraIcon({ className, size = defaultSize }: Props) {
+  // Official Jira mark — interlocking chevrons in Jira blue.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="#2684FF"
+      aria-hidden
+    >
+      <path d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.001 1.001 0 0 0 23.013 0z" />
+    </svg>
+  );
+}
+
+export function AsanaIcon({ className, size = defaultSize }: Props) {
+  // Official Asana mark — three coral dots forming a triangle.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="#F06A6A"
+      aria-hidden
+    >
+      <circle cx="12" cy="16.4" r="4.6" />
+      <circle cx="6.4" cy="7.3" r="4.6" />
+      <circle cx="17.6" cy="7.3" r="4.6" />
+    </svg>
+  );
+}
+
 export function SlackIcon({ className, size = defaultSize }: Props) {
   // Official Slack mark — four rounded shapes in Slack's brand colors.
   return (

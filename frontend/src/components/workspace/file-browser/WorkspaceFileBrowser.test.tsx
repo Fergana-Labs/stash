@@ -6,6 +6,7 @@ import {
   deleteTable,
   getWorkspaceTree,
   listFiles,
+  listSharedWithMe,
   listTables,
 } from "../../../lib/api";
 import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
@@ -27,12 +28,14 @@ vi.mock("../../../lib/api", () => ({
   getFolderContents: vi.fn(),
   getWorkspaceTree: vi.fn(),
   listFiles: vi.fn(),
+  listSharedWithMe: vi.fn(),
   listTables: vi.fn(),
   restoreItem: vi.fn(),
   trashItem: vi.fn(),
   updateFile: vi.fn(),
   updateFolder: vi.fn(),
   updatePage: vi.fn(),
+  updateTable: vi.fn(),
   uploadFileOrPage: vi.fn(),
 }));
 
@@ -59,6 +62,7 @@ function table(id: string, name: string, rowCount = 0) {
   return {
     id,
     workspace_id: "ws-1",
+    folder_id: null,
     name,
     description: "",
     columns: [],
@@ -76,6 +80,7 @@ beforeEach(() => {
   router.push.mockReset();
   vi.mocked(getWorkspaceTree).mockResolvedValue({ folders: [], pages: [] });
   vi.mocked(listFiles).mockResolvedValue([]);
+  vi.mocked(listSharedWithMe).mockResolvedValue([]);
   vi.mocked(listTables).mockResolvedValue({ tables: [] });
   vi.mocked(refreshWorkspaceSidebar).mockResolvedValue({
     sessions: [],

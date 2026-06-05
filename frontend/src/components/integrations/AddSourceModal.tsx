@@ -32,9 +32,9 @@ export default function AddSourceModal({
       >
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="font-display text-[18px] font-bold text-foreground">Add a source</h2>
+            <h2 className="font-display text-[18px] font-bold text-foreground">Connect a source</h2>
             <p className="mt-0.5 text-[12.5px] text-muted">
-              Connect a source and your agent can read across it.
+              Connect an account; add specific projects from its page.
             </p>
           </div>
           <button

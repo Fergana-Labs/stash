@@ -37,7 +37,7 @@ def _schedule_row_embed(row_id: UUID, text: str, text_hash: str) -> None:
 
 
 _TABLE_FIELDS = (
-    "id, workspace_id, name, description, columns, views, "
+    "id, workspace_id, folder_id, name, description, columns, views, "
     "created_by, updated_by, created_at, updated_at"
 )
 
@@ -48,19 +48,25 @@ async def create_table(
     description: str,
     columns: list[dict],
     created_by: UUID,
+    folder_id: UUID | None = None,
 ) -> dict:
     pool = get_pool()
+    if folder_id is not None:
+        folder = await pool.fetchrow("SELECT workspace_id FROM folders WHERE id = $1", folder_id)
+        if not folder or folder["workspace_id"] != workspace_id:
+            raise ValueError("folder_id does not belong to workspace")
     # Assign server-generated IDs and order to columns
     for i, col in enumerate(columns):
         if not col.get("id"):
             col["id"] = f"col_{secrets.token_hex(6)}"
         col["order"] = i
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, name, description, columns, created_by, updated_by) "
-        "VALUES ($1, $2, $3, $4, $5, $5) "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "INSERT INTO tables (workspace_id, folder_id, name, description, columns, created_by, updated_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $6) "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         workspace_id,
+        folder_id,
         name,
         description,
         columns,
@@ -93,6 +99,8 @@ async def update_table(
     updated_by: UUID,
     name: str | None = None,
     description: str | None = None,
+    folder_id: UUID | None = None,
+    move_to_root: bool = False,
 ) -> dict | None:
     pool = get_pool()
     sets = ["updated_at = now()", "updated_by = $1"]
@@ -107,11 +115,17 @@ async def update_table(
         sets.append(f"description = ${idx}")
         args.append(description)
         idx += 1
+    if move_to_root:
+        sets.append("folder_id = NULL")
+    elif folder_id is not None:
+        sets.append(f"folder_id = ${idx}")
+        args.append(folder_id)
+        idx += 1
 
     args.append(table_id)
     row = await pool.fetchrow(
         f"UPDATE tables SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         *args,
     )
@@ -141,7 +155,7 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
             args.append(user_id)
             where += " AND " + permission_service.readable_content_condition("table", "t", 2)
         rows = await pool.fetch(
-            "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
+            "SELECT t.id, t.workspace_id, t.folder_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
             f"FROM tables t WHERE {where} ORDER BY t.updated_at DESC",
@@ -149,7 +163,7 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
         )
     else:
         rows = await pool.fetch(
-            "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
+            "SELECT t.id, t.workspace_id, t.folder_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
             "FROM tables t WHERE t.workspace_id IS NULL AND t.created_by = $1 "
@@ -207,7 +221,7 @@ async def add_column(table_id: UUID, column: dict, updated_by: UUID) -> dict:
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols,
         updated_by,
@@ -239,7 +253,7 @@ async def update_column(
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols,
         updated_by,
@@ -262,7 +276,7 @@ async def delete_column(table_id: UUID, column_id: str, updated_by: UUID) -> dic
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols,
         updated_by,
@@ -289,7 +303,7 @@ async def reorder_columns(table_id: UUID, column_ids: list[str], updated_by: UUI
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         reordered,
         updated_by,
@@ -602,7 +616,7 @@ async def save_view(table_id: UUID, view: dict, updated_by: UUID) -> dict | None
     row = await pool.fetchrow(
         "UPDATE tables SET views = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         views,
         updated_by,
@@ -622,7 +636,7 @@ async def delete_view(table_id: UUID, view_id: str, updated_by: UUID) -> dict | 
     row = await pool.fetchrow(
         "UPDATE tables SET views = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, "
+        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         views,
         updated_by,

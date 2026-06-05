@@ -2,7 +2,7 @@
 
 Covers the user-scoping invariant (a connected source is visible only to its
 owner), idempotent re-sync of the per-integration tables, lazy reads for the
-index-only sources (drive/notion), and the agent tools that span native (files,
+index-only source (drive), and the agent tools that span native (files,
 sessions) + connected sources.
 """
 
@@ -437,14 +437,53 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
 
 
-# --- index-only sources (drive/notion): lazy read ---------------------------
+# --- index-only sources (drive): lazy read ----------------------------------
 
 
 @pytest.mark.asyncio
-async def test_notion_index_only_reads_lazily(client: AsyncClient, monkeypatch):
-    """Notion stores an index row only; reading triggers a lazy provider fetch."""
-    from backend.integrations.notion import indexer
+async def test_drive_index_only_reads_lazily(client: AsyncClient, monkeypatch):
+    """Google Drive stores an index row only; reading triggers a lazy provider fetch.
+    (Notion used to work this way too, but it now copies content for FTS — Drive is
+    the sole remaining index-only source.)"""
+    from backend.integrations.google import indexer
 
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="root",
+        display_name="My Drive",
+    )
+    # Index row: path + provider id, no body stored.
+    await source_service.upsert_index_row(
+        table="drive_index",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="Auth",
+        name="Auth",
+        kind="file",
+        external_ref="file-123",
+    )
+
+    fetched: list[str] = []
+
+    async def fake_fetch(owner, file_id):
+        fetched.append(file_id)
+        return "rotate tokens hourly"
+
+    monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
+
+    doc = await source_service.read_document(src, "Auth")
+    assert doc["content"] == "rotate tokens hourly"
+    assert fetched == ["file-123"]  # lazily fetched the provider file on read
+
+
+@pytest.mark.asyncio
+async def test_notion_is_full_text_searchable(client: AsyncClient):
+    """Notion now copies content, so its docs are served from the table and show
+    up in full-text search — no lazy provider fetch on read."""
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
     src = await source_service.create_source(
@@ -454,28 +493,142 @@ async def test_notion_index_only_reads_lazily(client: AsyncClient, monkeypatch):
         external_ref="page-root",
         display_name="Specs",
     )
-    # Index row: path + provider id, no body stored.
-    await source_service.upsert_index_row(
+    await source_service.upsert_content_document(
         table="notion_index",
         source_id=UUID(src["id"]),
         workspace_id=ws,
         path="Auth",
         name="Auth",
         kind="note",
+        content="rotate tokens hourly",
         external_ref="page-123",
     )
 
-    fetched: list[str] = []
-
-    async def fake_fetch(owner, page_id):
-        fetched.append(page_id)
-        return "rotate tokens hourly"
-
-    monkeypatch.setattr(indexer, "fetch_notion_content", fake_fetch)
-
+    # Read serves the stored body directly (no fetch_notion_content anymore).
     doc = await source_service.read_document(src, "Auth")
     assert doc["content"] == "rotate tokens hourly"
-    assert fetched == ["page-123"]  # lazily fetched the provider page on read
+
+    # And it's full-text searchable, scoped to the Notion source.
+    hits = await source_service.search_all(ws, owner_id, "rotate tokens", source=src["id"])
+    assert any(h["ref"] == "Auth" for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_jira_is_index_only_with_federated_search(client: AsyncClient, monkeypatch):
+    """Jira doesn't copy content: search is federated to the provider live, and
+    the issue body is fetched lazily on read."""
+    from backend.integrations.jira import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="jira_project",
+        external_ref="cloud-1:PROJ",
+        display_name="PROJ",
+    )
+    # Index row only — no body stored; external_ref carries cloudId:key for read.
+    await source_service.upsert_index_row(
+        table="jira_documents",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="PROJ-9",
+        name="PROJ-9: login bug",
+        kind="issue",
+        external_ref="cloud-1:PROJ-9",
+    )
+
+    async def fake_search(source, query, limit):
+        assert source["id"] == src["id"]
+        return [{"ref": "PROJ-9", "name": "PROJ-9: login bug", "snippet": "login is broken"}]
+
+    async def fake_fetch(owner, external_ref):
+        assert external_ref == "cloud-1:PROJ-9"
+        return "full issue body: login is broken"
+
+    monkeypatch.setattr(indexer, "search_jira", fake_search)
+    monkeypatch.setattr(indexer, "fetch_jira_content", fake_fetch)
+
+    # Search is federated (not our FTS — jira_documents holds no content).
+    hits = await source_service.search_all(ws, owner_id, "login", source=src["id"])
+    assert any(h["ref"] == "PROJ-9" for h in hits)
+
+    # Read lazily fetches the body from the provider.
+    doc = await source_service.read_document(src, "PROJ-9")
+    assert "login is broken" in doc["content"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, monkeypatch):
+    """fetch_history reaches the provider for a copied, time-windowed source
+    (Slack), and is rejected for sources that don't support it (GitHub)."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    slack = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="slack",
+        external_ref="T123", display_name="Slack",
+    )
+    github = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="github_repo",
+        external_ref="acme/x", display_name="x",
+    )
+
+    captured = {}
+
+    async def fake_fetch(source, since, until, limit):
+        captured["since"] = since.isoformat()
+        captured["limit"] = limit
+        return {"fetched": 2, "since": since.isoformat(), "results": [{"ref": "general/1"}]}
+
+    monkeypatch.setattr(indexer, "fetch_history", fake_fetch)
+
+    res = await source_service.fetch_history(ws, owner_id, slack["id"], "2026-01-01", until="2026-02-01")
+    assert res["fetched"] == 2
+    assert captured["since"].startswith("2026-01-01")
+
+    # GitHub copies the full tree — no time-window history fetch.
+    bad = await source_service.fetch_history(ws, owner_id, github["id"], "2026-01-01")
+    assert "error" in bad
+
+
+@pytest.mark.asyncio
+async def test_list_sources_carries_status_and_status_endpoint_counts(client: AsyncClient):
+    """The per-integration page needs sync status + item counts: list_sources now
+    carries the status fields, and /status reports the indexed-doc count (None for
+    queryable sources with no table)."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="github_repo",
+        external_ref="acme/widgets", display_name="acme/widgets",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents", source_id=UUID(src["id"]), workspace_id=ws,
+        path="README.md", name="README.md", content="hi",
+    )
+
+    listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(api_key))
+    connected = next(s for s in listing.json()["sources"] if s["source"] == src["id"])
+    assert "sync_status" in connected and "last_synced_at" in connected
+
+    status = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/status", headers=_auth(api_key)
+    )
+    assert status.status_code == 200
+    assert status.json()["item_count"] == 1
+
+    # A queryable source (snowflake) has no document table → count is None.
+    sf = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="snowflake",
+        external_ref="acct", display_name="Snowflake",
+    )
+    sf_status = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{sf['id']}/status", headers=_auth(api_key)
+    )
+    assert sf_status.json()["item_count"] is None
 
 
 @pytest.mark.asyncio
@@ -517,9 +670,9 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
 
 @pytest.mark.asyncio
 async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncClient, monkeypatch):
-    """Adding an index-only (Notion) source doc to a cartridge fetches its body
-    at add time and copies it in as a page, so the bundle is self-contained."""
-    from backend.integrations.notion import indexer
+    """Adding an index-only (Google Drive) source doc to a cartridge fetches its
+    body at add time and copies it in as a page, so the bundle is self-contained."""
+    from backend.integrations.google import indexer
 
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
@@ -527,24 +680,24 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
     src = await source_service.create_source(
         workspace_id=ws,
         owner_user_id=owner_id,
-        source_type="notion",
-        external_ref="page-root",
-        display_name="Specs",
+        source_type="google_drive",
+        external_ref="root",
+        display_name="My Drive",
     )
     await source_service.upsert_index_row(
-        table="notion_index",
+        table="drive_index",
         source_id=UUID(src["id"]),
         workspace_id=ws,
         path="Auth",
         name="Auth",
-        kind="note",
-        external_ref="page-abc",
+        kind="file",
+        external_ref="file-abc",
     )
 
-    async def fake_fetch(owner, page_id):
-        return f"snapshot body for {page_id}"
+    async def fake_fetch(owner, file_id):
+        return f"snapshot body for {file_id}"
 
-    monkeypatch.setattr(indexer, "fetch_notion_content", fake_fetch)
+    monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
 
     cartridge = await client.post(
         f"/api/v1/workspaces/{ws}/cartridges",
@@ -563,7 +716,7 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
     page = snap.json()
     assert page["name"] == "Auth"
     # The body was copied in (a point-in-time snapshot), not left as a live ref.
-    assert "snapshot body for page-abc" in page["content_markdown"]
+    assert "snapshot body for file-abc" in page["content_markdown"]
 
     # And the page is now an item in the cartridge.
     public = await client.get(f"/api/v1/cartridges/{cartridge.json()['slug']}")

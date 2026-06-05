@@ -23,9 +23,9 @@ import {
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 import AddSourceModal from "./integrations/AddSourceModal";
+import { providerForSourceType } from "./integrations/connectors";
 import {
   ActivityIcon,
-  DiscoverIcon,
   FileIcon,
   HelpIcon,
   SessionsIcon,
@@ -236,13 +236,16 @@ export default function AppSidebar({
         active: filesActive,
       },
     ];
-    const connected = (sourceMap[ws] ?? []).map((s) => ({
-      key: s.source,
-      href: "/settings/integrations",
-      label: s.display_name,
-      icon: <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />,
-      active: false,
-    }));
+    const connected = (sourceMap[ws] ?? []).map((s) => {
+      const provider = providerForSourceType[s.type] ?? s.type;
+      return {
+        key: s.source,
+        href: `/workspaces/${ws}/integrations/${provider}?source=${s.source}`,
+        label: s.display_name,
+        icon: <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />,
+        active: pathname.startsWith(`/workspaces/${ws}/integrations/${provider}`),
+      };
+    });
     return [...native, ...connected];
   }, [activeWorkspaceKey, sourceMap, pathname]);
 
@@ -288,12 +291,6 @@ export default function AppSidebar({
             active={pathname.startsWith(`/workspaces/${activeWorkspace.id}/agents`)}
           />
         ) : null}
-        <NavRow
-          href="/discover"
-          icon={<DiscoverIcon />}
-          label="Discover"
-          active={pathname.startsWith("/discover")}
-        />
         <NavRow
           href="/activity"
           icon={<ActivityIcon />}

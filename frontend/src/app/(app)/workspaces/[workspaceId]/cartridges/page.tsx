@@ -6,13 +6,16 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { StashesGridSkeleton } from "../../../../../components/SkeletonStates";
 import { PinIcon, StashIcon } from "../../../../../components/StashIcons";
 import CartridgeCard from "../../../../../components/cartridge/CartridgeCard";
+import ForkCartridgeCardButton from "../../../../../components/cartridge/ForkCartridgeCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useShareModal } from "../../../../../lib/shareModalContext";
 import {
   addExternalCartridge,
+  API_BASE,
   ApiError,
   deleteCartridge,
   listStashes,
+  type PublicCartridgeCard,
   type WorkspaceCartridge,
 } from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
@@ -47,6 +50,7 @@ export default function WorkspaceStashesPage() {
   const pins = usePins("cartridges", workspaceId);
 
   const [cartridges, setStashes] = useState<WorkspaceCartridge[] | null>(null);
+  const [mode, setMode] = useState<"yours" | "discover">("yours");
   const [filter, setFilter] = useState<Filter>("all");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
@@ -163,9 +167,24 @@ export default function WorkspaceStashesPage() {
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="m-0 font-display text-[34px] font-bold tracking-[-0.02em]">
-            Cartridges
-          </h1>
+          {/* One sharing surface: your Cartridges + public ones to discover. */}
+          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
+            {(["yours", "discover"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={
+                  "rounded-md px-3 py-[5px] text-[12.5px] " +
+                  (mode === m
+                    ? "bg-raised font-semibold text-foreground"
+                    : "text-muted hover:text-foreground")
+                }
+              >
+                {m === "yours" ? "Yours" : "Discover"}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => shareModal.open({ workspaceId })}
@@ -175,6 +194,10 @@ export default function WorkspaceStashesPage() {
           </button>
         </div>
 
+        {mode === "discover" ? (
+          <DiscoverSection />
+        ) : (
+        <>
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
             {error}
@@ -269,6 +292,8 @@ export default function WorkspaceStashesPage() {
             onToggleSelect={toggleSelect}
           />
         )}
+        </>
+        )}
       </div>
 
       {selectedStashes.length > 0 && (
@@ -291,6 +316,101 @@ export default function WorkspaceStashesPage() {
               ×
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The Discover tab: public Cartridges from across Stash, addable to your own.
+function DiscoverSection() {
+  const [cartridges, setCartridges] = useState<PublicCartridgeCard[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"trending" | "newest" | "popular">("trending");
+
+  useEffect(() => {
+    let cancelled = false;
+    const qs = new URLSearchParams();
+    if (query) qs.set("q", query);
+    qs.set("sort", sort);
+    setCartridges(null);
+    fetch(`${API_BASE}/api/v1/discover/cartridges?${qs}`)
+      .then((r) => (r.ok ? r.json() : { cartridges: [] }))
+      .then((d) => {
+        if (!cancelled) setCartridges(d.cartridges ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCartridges([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [query, sort]);
+
+  return (
+    <div className="mt-5">
+      <div className="flex items-center gap-3">
+        <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search public Cartridges…"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted focus:outline-none"
+          />
+        </div>
+        <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
+          {(["trending", "newest", "popular"] as const).map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => setSort(o)}
+              className={
+                "rounded-md px-2.5 py-[3px] text-[12px] " +
+                (sort === o
+                  ? "bg-raised font-semibold text-foreground"
+                  : "text-muted hover:text-foreground")
+              }
+            >
+              {o === "popular" ? "Most viewed" : o === "trending" ? "Trending" : "Newest"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {cartridges === null ? (
+        <div className="mt-12 text-center text-[12.5px] text-muted">Loading…</div>
+      ) : cartridges.length === 0 ? (
+        <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
+          No public Cartridges yet.
+        </div>
+      ) : (
+        <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          {cartridges.map((c, i) => (
+            <CartridgeCard
+              key={c.id}
+              stash={{
+                id: c.id,
+                slug: c.slug,
+                title: c.title,
+                description: c.description,
+                cover_image_url: c.cover_image_url,
+                access: "public",
+                item_count: c.item_count,
+                updated_at: c.updated_at,
+              }}
+              cover={COVERS[i % COVERS.length]}
+              cornerAction={
+                <ForkCartridgeCardButton slug={c.slug} sourceWorkspaceId={c.workspace_id} />
+              }
+              footer={
+                <>
+                  <span className="min-w-0 truncate">{c.owner_display_name}</span>
+                  <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground">
+                    Open →
+                  </span>
+                </>
+              }
+            />
+          ))}
         </div>
       )}
     </div>

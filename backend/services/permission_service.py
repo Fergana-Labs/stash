@@ -47,7 +47,7 @@ def _item_target_condition(object_type: str, object_alias: str, item_alias: str)
             f"({item_alias}.object_type = 'folder' "
             f"AND {item_alias}.object_id IN ({folder_chain}))"
         )
-    if object_type in ("page", "file"):
+    if object_type in ("page", "file", "table"):
         folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
         return (
             f"(({item_alias}.object_type = '{object_type}' "
@@ -149,6 +149,21 @@ async def _folder_chain_for_file(file_id: UUID) -> list[UUID]:
     return [row["id"] for row in rows]
 
 
+async def _folder_chain_for_table(table_id: UUID) -> list[UUID]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE chain AS ("
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN tables tb ON tb.folder_id = f.id WHERE tb.id = $1"
+        "  UNION ALL"
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN chain c ON f.id = c.parent_folder_id"
+        ") SELECT id FROM chain",
+        table_id,
+    )
+    return [row["id"] for row in rows]
+
+
 async def _folder_chain_for_folder(folder_id: UUID) -> list[UUID]:
     pool = get_pool()
     rows = await pool.fetch(
@@ -174,6 +189,10 @@ async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, 
     if object_type == "file":
         return [("file", object_id)] + [
             ("folder", fid) for fid in await _folder_chain_for_file(object_id)
+        ]
+    if object_type == "table":
+        return [("table", object_id)] + [
+            ("folder", fid) for fid in await _folder_chain_for_table(object_id)
         ]
     if object_type == "session":
         pool = get_pool()

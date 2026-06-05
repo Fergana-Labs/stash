@@ -50,6 +50,26 @@ async def call_tool_json(
     return json.loads(text) if text else None
 
 
+async def call_tool_data(
+    session: ClientSession, name: str, arguments: dict[str, Any] | None = None
+) -> Any:
+    """Call a tool and return its data, tolerant of result shape: prefer
+    structuredContent, then JSON text, then the raw text. Never raises on a
+    non-JSON body (Granola tools may return markdown) — only on an MCP error."""
+    result = await session.call_tool(name, arguments or {})
+    if result.isError:
+        raise RuntimeError(f"granola tool {name} failed: {_first_text(result.content)}")
+    if result.structuredContent is not None:
+        return result.structuredContent
+    text = _first_text(result.content)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text  # markdown / plain text — caller handles it
+
+
 def _first_text(content: list) -> str:
     for block in content:
         if getattr(block, "type", None) == "text":

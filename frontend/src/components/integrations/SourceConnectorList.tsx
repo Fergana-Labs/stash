@@ -1,46 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 
 import {
-  addWorkspaceSource,
-  deleteWorkspaceSource,
-  listWorkspaceSources,
-  syncWorkspaceSource,
-  type WorkspaceSource,
-} from "@/lib/api";
-import {
-  listGitHubRepos,
   listIntegrations,
-  listNotionPages,
   startConnect,
-  type GitHubRepoSummary,
+  submitCredentials,
   type IntegrationProvider,
   type IntegrationStatus,
-  type NotionPageSummary,
 } from "@/lib/integrations";
 
-import {
-  GitHubIcon,
-  GoogleDriveIcon,
-  GranolaIcon,
-  NotionIcon,
-  ObsidianIcon,
-  SlackIcon,
-} from "./BrandIcons";
+import { ObsidianIcon } from "./BrandIcons";
+import { CONNECTORS, connectorIcon, type Connector } from "./connectors";
+import { CredentialForm, primaryButton, secondaryButton } from "./pickers";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
-
-type ConnectorKind = "github" | "drive" | "notion" | "auto";
-
-type Connector = {
-  provider: IntegrationProvider;
-  label: string;
-  sourceType: string;
-  icon: ReactNode;
-  kind: ConnectorKind;
-  blurb: string;
-};
 
 type Props = {
   workspaceId: string | null;
@@ -50,58 +24,15 @@ type Props = {
   onObsidianUploaded?: () => void;
 };
 
-const CONNECTORS: Connector[] = [
-  {
-    provider: "github",
-    label: "GitHub",
-    sourceType: "github_repo",
-    icon: <GitHubIcon />,
-    kind: "github",
-    blurb: "Pick repos your agent can navigate.",
-  },
-  {
-    provider: "google",
-    label: "Google Drive",
-    sourceType: "google_drive",
-    icon: <GoogleDriveIcon />,
-    kind: "drive",
-    blurb: "Index My Drive and read docs on demand.",
-  },
-  {
-    provider: "notion",
-    label: "Notion",
-    sourceType: "notion",
-    icon: <NotionIcon />,
-    kind: "notion",
-    blurb: "Pick pages or databases shared with Stash.",
-  },
-  {
-    provider: "slack",
-    label: "Slack",
-    sourceType: "slack",
-    icon: <SlackIcon />,
-    kind: "auto",
-    blurb: "Channel history, kept in sync.",
-  },
-  {
-    provider: "granola",
-    label: "Granola",
-    sourceType: "granola",
-    icon: <GranolaIcon />,
-    kind: "auto",
-    blurb: "Meeting notes and transcripts.",
-  },
-];
-
+// Connect-only surface. Connecting an account is done here; adding specific
+// projects/repos/pages happens on each integration's dedicated page.
 export default function SourceConnectorList({
   workspaceId,
   returnTo,
   includeObsidian = true,
-  onSourceCountChange,
   onObsidianUploaded,
 }: Props) {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus>>({});
-  const [sources, setSources] = useState<WorkspaceSource[]>([]);
   const [expanded, setExpanded] = useState<IntegrationProvider | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,13 +45,7 @@ export default function SourceConnectorList({
       nextStatuses[provider.provider] = provider;
     }
     setStatuses(nextStatuses);
-
-    if (!workspaceId) {
-      setSources([]);
-      return;
-    }
-    setSources(await listWorkspaceSources(workspaceId));
-  }, [workspaceId]);
+  }, []);
 
   useEffect(() => {
     refresh().catch((e) => {
@@ -128,53 +53,35 @@ export default function SourceConnectorList({
     });
   }, [refresh]);
 
-  useEffect(() => {
-    onSourceCountChange?.(sources.length);
-  }, [onSourceCountChange, sources.length]);
+  const disabledReasons = useMemo(() => {
+    const reasons = Object.values(statuses)
+      .map((status) => status.disabled_reason)
+      .filter((reason): reason is string => Boolean(reason));
+    return Array.from(new Set(reasons));
+  }, [statuses]);
 
-  async function addSource(connector: Connector, body?: { external_ref?: string; display_name?: string }) {
-    if (!workspaceId) return false;
+  async function connect(connector: Connector) {
     setBusy(connector.provider);
     setError(null);
     try {
-      await addWorkspaceSource(workspaceId, {
-        source_type: connector.sourceType,
-        ...body,
-      });
+      await startConnect(connector.provider, returnTo);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start connection");
+      setBusy(null);
+    }
+  }
+
+  async function submitCreds(connector: Connector, values: Record<string, string>) {
+    setBusy(connector.provider);
+    setError(null);
+    try {
+      await submitCredentials(connector.provider, values);
       setExpanded(null);
       await refresh();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add source");
+      setError(e instanceof Error ? e.message : "Could not connect");
       return false;
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function syncSource(source: WorkspaceSource) {
-    if (!workspaceId) return;
-    setBusy(`sync:${source.source}`);
-    setError(null);
-    try {
-      await syncWorkspaceSource(workspaceId, source.source);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start sync");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function removeSource(source: WorkspaceSource) {
-    if (!workspaceId) return;
-    if (!confirm(`Remove ${source.display_name}?`)) return;
-    setBusy(`delete:${source.source}`);
-    setError(null);
-    try {
-      await deleteWorkspaceSource(workspaceId, source.source);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove source");
     } finally {
       setBusy(null);
     }
@@ -182,95 +89,63 @@ export default function SourceConnectorList({
 
   return (
     <div className="space-y-2">
+      {disabledReasons.length > 0 && (
+        <div className="rounded-md border border-border bg-base px-3 py-2 text-[12px] text-muted">
+          {disabledReasons.length === 1
+            ? disabledReasons[0]
+            : "Some integrations need server configuration before they can be connected."}
+        </div>
+      )}
+
       {CONNECTORS.map((connector) => {
         const status = statuses[connector.provider];
         const connected = !!status?.connected;
-        const count = sources.filter((source) => source.type === connector.sourceType).length;
+        const enabled = status?.enabled ?? true;
         return (
           <div key={connector.provider} className="rounded-lg border border-border bg-surface px-3 py-2.5">
             <div className="flex items-center gap-3">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                {connector.icon}
+                {connectorIcon(connector.provider)}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-medium text-foreground">
-                  {connector.label}
-                  {count > 0 && (
-                    <span className="ml-1.5 text-[11px] font-normal text-muted">
-                      · {count} added
-                    </span>
-                  )}
+                <div className="text-[13.5px] font-medium text-foreground">{connector.label}</div>
+                <div className="truncate text-[11.5px] text-muted">
+                  {connected && (status?.account_email || status?.account_display_name)
+                    ? `Connected as ${status.account_email || status.account_display_name}`
+                    : connector.blurb}
                 </div>
-                <div className="truncate text-[11.5px] text-muted">{connector.blurb}</div>
               </div>
-              <ConnectorAction
-                connector={connector}
-                connected={connected}
-                busy={busy === connector.provider}
-                workspaceReady={!!workspaceId}
-                expanded={expanded === connector.provider}
-                onConnect={() => void startConnect(connector.provider, returnTo)}
-                onExpand={() => setExpanded((value) => value === connector.provider ? null : connector.provider)}
-                onAdd={() => void addSource(connector, connector.kind === "drive" ? {
-                  external_ref: "root",
-                  display_name: "Google Drive",
-                } : undefined)}
-              />
+              <div className="flex shrink-0 items-center gap-2">
+                <ConnectorAction
+                  connector={connector}
+                  connected={connected}
+                  enabled={enabled}
+                  authKind={status?.auth_kind ?? "oauth"}
+                  disabledReason={status?.disabled_reason ?? null}
+                  busy={busy === connector.provider}
+                  workspaceId={workspaceId}
+                  expanded={expanded === connector.provider}
+                  onConnect={() => void connect(connector)}
+                  onExpand={() =>
+                    setExpanded((value) => (value === connector.provider ? null : connector.provider))
+                  }
+                />
+              </div>
             </div>
 
-            {expanded === connector.provider && connector.kind === "github" && workspaceId && (
-              <GitHubRepoPicker
-                busy={busy}
-                onAdd={(repo) => addSource(connector, {
-                  external_ref: repo.full_name,
-                  display_name: repo.full_name,
-                })}
-              />
-            )}
-            {expanded === connector.provider && connector.kind === "notion" && workspaceId && (
-              <NotionPagePicker
-                busy={busy}
-                onAdd={(page) => addSource(connector, {
-                  external_ref: page.id,
-                  display_name: page.title || page.id,
-                })}
-              />
-            )}
+            {expanded === connector.provider &&
+              !connected &&
+              status?.auth_kind === "api_key" &&
+              status.credential_fields && (
+                <CredentialForm
+                  fields={status.credential_fields}
+                  busy={busy === connector.provider}
+                  onSubmit={(values) => submitCreds(connector, values)}
+                />
+              )}
           </div>
         );
       })}
-
-      {sources.length > 0 && (
-        <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
-          <div className="mb-2 text-[12px] font-medium text-foreground">Connected sources</div>
-          <div className="space-y-1">
-            {sources.map((source) => (
-              <div key={source.source} className="flex items-center gap-2 rounded-md bg-base px-2 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] text-foreground">{source.display_name}</div>
-                  <div className="text-[11px] text-muted">{labelForSourceType(source.type)}</div>
-                </div>
-                <button
-                  type="button"
-                  disabled={busy === `sync:${source.source}`}
-                  onClick={() => void syncSource(source)}
-                  className="rounded-md border border-border px-2 py-1 text-[11.5px] text-muted hover:text-foreground disabled:opacity-60"
-                >
-                  {busy === `sync:${source.source}` ? "Syncing..." : "Sync"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy === `delete:${source.source}`}
-                  onClick={() => void removeSource(source)}
-                  className="rounded-md border border-border px-2 py-1 text-[11.5px] text-muted hover:text-error disabled:opacity-60"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {includeObsidian && workspaceId && (
         <ObsidianSourceCard workspaceId={workspaceId} onUploaded={onObsidianUploaded} />
@@ -288,222 +163,57 @@ export default function SourceConnectorList({
 function ConnectorAction({
   connector,
   connected,
+  enabled,
+  authKind,
+  disabledReason,
   busy,
-  workspaceReady,
+  workspaceId,
   expanded,
   onConnect,
   onExpand,
-  onAdd,
 }: {
   connector: Connector;
   connected: boolean;
+  enabled: boolean;
+  authKind: IntegrationStatus["auth_kind"];
+  disabledReason: string | null;
   busy: boolean;
-  workspaceReady: boolean;
+  workspaceId: string | null;
   expanded: boolean;
   onConnect: () => void;
   onExpand: () => void;
-  onAdd: () => void;
 }) {
+  if (!enabled) {
+    return (
+      <button type="button" disabled title={disabledReason ?? undefined} className={secondaryButton()}>
+        Unavailable
+      </button>
+    );
+  }
   if (!connected) {
-    return (
-      <button type="button" onClick={onConnect} className={primaryButton()}>
-        Connect
-      </button>
-    );
-  }
-  if (connector.kind === "github") {
-    return (
-      <button type="button" onClick={onExpand} disabled={!workspaceReady} className={secondaryButton()}>
-        {expanded ? "Hide repos" : "Add repo"}
-      </button>
-    );
-  }
-  if (connector.kind === "notion") {
-    return (
-      <button type="button" onClick={onExpand} disabled={!workspaceReady} className={secondaryButton()}>
-        {expanded ? "Hide pages" : "Add page"}
-      </button>
-    );
-  }
-  if (connector.kind === "drive") {
-    return (
-      <button type="button" onClick={onAdd} disabled={!workspaceReady || busy} className={secondaryButton()}>
-        {busy ? "Adding..." : "Add My Drive"}
-      </button>
-    );
-  }
-  return (
-    <button type="button" onClick={onAdd} disabled={!workspaceReady || busy} className={secondaryButton()}>
-      {busy ? "Adding..." : "Add"}
-    </button>
-  );
-}
-
-function GitHubRepoPicker({
-  busy,
-  onAdd,
-}: {
-  busy: string | null;
-  onAdd: (repo: GitHubRepoSummary) => Promise<boolean>;
-}) {
-  const [repos, setRepos] = useState<GitHubRepoSummary[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    listGitHubRepos()
-      .then((next) => {
-        if (!cancelled) setRepos(next);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load repos");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return repos ?? [];
-    return (repos ?? []).filter((repo) =>
-      repo.full_name.toLowerCase().includes(q) ||
-      (repo.description ?? "").toLowerCase().includes(q)
-    );
-  }, [query, repos]);
-
-  return (
-    <PickerShell
-      error={error}
-      loading={repos === null && !error}
-      query={query}
-      placeholder="Search repositories..."
-      onQuery={setQuery}
-      empty="No repositories found."
-    >
-      {filtered.map((repo) => (
-        <button
-          key={repo.full_name}
-          type="button"
-          disabled={busy === "github"}
-          onClick={() => void onAdd(repo)}
-          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
-        >
-          <GitHubIcon className="mt-0.5 text-muted" size={14} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-medium text-foreground">
-              {repo.full_name}
-            </span>
-            {repo.description && (
-              <span className="block truncate text-[11.5px] text-muted">{repo.description}</span>
-            )}
-          </span>
+    // api_key providers (Gong) reveal an inline credential form instead of
+    // redirecting to an OAuth consent screen.
+    if (authKind === "api_key") {
+      return (
+        <button type="button" onClick={onExpand} disabled={busy} className={primaryButton()}>
+          {expanded ? "Cancel" : "Connect"}
         </button>
-      ))}
-    </PickerShell>
-  );
-}
-
-function NotionPagePicker({
-  busy,
-  onAdd,
-}: {
-  busy: string | null;
-  onAdd: (page: NotionPageSummary) => Promise<boolean>;
-}) {
-  const [pages, setPages] = useState<NotionPageSummary[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    listNotionPages()
-      .then((next) => {
-        if (!cancelled) setPages(next);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load pages");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return pages ?? [];
-    return (pages ?? []).filter((page) => page.title.toLowerCase().includes(q));
-  }, [query, pages]);
-
-  return (
-    <PickerShell
-      error={error}
-      loading={pages === null && !error}
-      query={query}
-      placeholder="Search Notion pages..."
-      onQuery={setQuery}
-      empty="No shared Notion pages found."
-    >
-      {filtered.map((page) => (
-        <button
-          key={page.id}
-          type="button"
-          disabled={busy === "notion"}
-          onClick={() => void onAdd(page)}
-          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
-        >
-          <NotionIcon className="mt-0.5 text-muted" size={14} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-medium text-foreground">
-              {page.title || "Untitled"}
-            </span>
-            <span className="block truncate text-[11.5px] text-muted">{page.url}</span>
-          </span>
-        </button>
-      ))}
-    </PickerShell>
-  );
-}
-
-function PickerShell({
-  error,
-  loading,
-  query,
-  placeholder,
-  empty,
-  onQuery,
-  children,
-}: {
-  error: string;
-  loading: boolean;
-  query: string;
-  placeholder: string;
-  empty: string;
-  onQuery: (value: string) => void;
-  children: ReactNode;
-}) {
-  const hasChildren = Array.isArray(children) ? children.length > 0 : !!children;
-  return (
-    <div className="mt-2.5 rounded-md border border-border bg-base p-2">
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => onQuery(e.target.value)}
-        placeholder={placeholder}
-        className="mb-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
-      />
-      {error ? (
-        <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
-      ) : loading ? (
-        <div className="px-2 py-3 text-[12px] text-muted">Loading...</div>
-      ) : hasChildren ? (
-        <div className="max-h-48 overflow-y-auto">{children}</div>
-      ) : (
-        <div className="px-2 py-3 text-[12px] text-muted">{empty}</div>
-      )}
-    </div>
-  );
+      );
+    }
+    return (
+      <button type="button" onClick={onConnect} disabled={busy} className={primaryButton()}>
+        {busy ? "Connecting..." : "Connect"}
+      </button>
+    );
+  }
+  if (workspaceId) {
+    return (
+      <Link href={`/workspaces/${workspaceId}/integrations/${connector.provider}`} className={secondaryButton()}>
+        Open
+      </Link>
+    );
+  }
+  return <span className="text-[12px] font-medium text-muted">Connected</span>;
 }
 
 function ObsidianSourceCard({
@@ -535,21 +245,4 @@ function ObsidianSourceCard({
       )}
     </div>
   );
-}
-
-function labelForSourceType(type: string): string {
-  if (type === "github_repo") return "GitHub";
-  if (type === "google_drive") return "Google Drive";
-  if (type === "notion") return "Notion";
-  if (type === "slack") return "Slack";
-  if (type === "granola") return "Granola";
-  return type;
-}
-
-function primaryButton(): string {
-  return "shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover";
-}
-
-function secondaryButton(): string {
-  return "shrink-0 rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-raised disabled:opacity-60";
 }

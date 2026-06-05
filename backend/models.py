@@ -492,16 +492,20 @@ class TableCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str = Field("", max_length=1000)
     columns: list[ColumnDefinition] = Field(default_factory=list)
+    folder_id: UUID | None = None
 
 
 class TableUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = Field(None, max_length=1000)
+    folder_id: UUID | None = None
+    move_to_root: bool = False
 
 
 class TableResponse(BaseModel):
     id: UUID
     workspace_id: UUID | None
+    folder_id: UUID | None = None
     name: str
     description: str
     columns: list[ColumnDefinition]

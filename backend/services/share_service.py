@@ -186,3 +186,77 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         for inv in invites
     )
     return shares
+
+
+async def list_shared_with_user(user_id: UUID) -> list[dict]:
+    """Every object shared *with* this user (across workspaces) — the data behind
+    the 'Shared with me' surface. Resolves each share to the object's name, its
+    owning workspace, and who shared it."""
+    rows = await get_pool().fetch(
+        """
+        SELECT s.object_type, s.object_id, s.permission, s.workspace_id,
+               w.name AS workspace_name,
+               COALESCE(u.display_name, u.name) AS shared_by,
+               COALESCE(
+                 (SELECT name FROM folders         WHERE id = s.object_id AND s.object_type = 'folder'),
+                 (SELECT name FROM session_folders WHERE id = s.object_id AND s.object_type = 'session_folder'),
+                 (SELECT name FROM pages           WHERE id = s.object_id AND s.object_type = 'page'),
+                 (SELECT name FROM files           WHERE id = s.object_id AND s.object_type = 'file'),
+                 (SELECT name FROM tables          WHERE id = s.object_id AND s.object_type = 'table'),
+                 (SELECT COALESCE(st.title, sess.session_id)
+                    FROM sessions sess
+                    LEFT JOIN session_titles st
+                      ON st.workspace_id = sess.workspace_id AND st.session_id = sess.session_id
+                    WHERE sess.id = s.object_id AND s.object_type = 'session')
+               ) AS name
+        FROM shares s
+        JOIN workspaces w ON w.id = s.workspace_id
+        LEFT JOIN users u ON u.id = s.created_by
+        WHERE s.principal_type = 'user' AND s.principal_id = $1
+        ORDER BY w.name, s.object_type, name
+        """,
+        user_id,
+    )
+    # Drop rows whose object was deleted out from under the share.
+    return [
+        {
+            "object_type": r["object_type"],
+            "object_id": str(r["object_id"]),
+            "name": r["name"],
+            "workspace_id": str(r["workspace_id"]),
+            "workspace_name": r["workspace_name"],
+            "shared_by": r["shared_by"],
+            "permission": r["permission"],
+        }
+        for r in rows
+        if r["name"] is not None
+    ]
+
+
+async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) -> list[dict]:
+    """Sessions inside a session-folder shared with the user. Gated on the user
+    actually holding a share for that folder."""
+    if not await permission_service.check_access("session_folder", folder_id, user_id):
+        raise HTTPException(status_code=404, detail="Not found")
+    rows = await get_pool().fetch(
+        "SELECT s.id, s.workspace_id, s.session_id, s.agent_name, st.title, "
+        "       s.started_at, s.finished_at "
+        "FROM sessions s "
+        "LEFT JOIN session_titles st "
+        "  ON st.workspace_id = s.workspace_id AND st.session_id = s.session_id "
+        "WHERE s.session_folder_id = $1 AND s.deleted_at IS NULL "
+        "ORDER BY s.started_at DESC",
+        folder_id,
+    )
+    return [
+        {
+            "id": str(r["id"]),
+            "workspace_id": str(r["workspace_id"]),
+            "session_id": r["session_id"],
+            "agent_name": r["agent_name"],
+            "title": r["title"],
+            "started_at": r["started_at"].isoformat() if r["started_at"] else None,
+            "finished_at": r["finished_at"].isoformat() if r["finished_at"] else None,
+        }
+        for r in rows
+    ]

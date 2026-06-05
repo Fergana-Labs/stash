@@ -1,0 +1,147 @@
+import type { ReactNode } from "react";
+
+import type { IntegrationProvider } from "@/lib/integrations";
+
+import {
+  AsanaIcon,
+  GitHubIcon,
+  GongIcon,
+  GoogleDriveIcon,
+  GranolaIcon,
+  JiraIcon,
+  NotionIcon,
+  SlackIcon,
+  SnowflakeIcon,
+} from "./BrandIcons";
+
+export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
+
+export type Connector = {
+  provider: IntegrationProvider;
+  label: string;
+  sourceType: string;
+  kind: ConnectorKind;
+  blurb: string;
+};
+
+export const CONNECTORS: Connector[] = [
+  {
+    provider: "github",
+    label: "GitHub",
+    sourceType: "github_repo",
+    kind: "github",
+    blurb: "Pick repos your agent can navigate.",
+  },
+  {
+    provider: "google",
+    label: "Google Drive",
+    sourceType: "google_drive",
+    kind: "drive",
+    blurb: "Index My Drive and read docs on demand.",
+  },
+  {
+    provider: "notion",
+    label: "Notion",
+    sourceType: "notion",
+    kind: "notion",
+    blurb: "Pick pages or databases shared with Stash.",
+  },
+  {
+    provider: "jira",
+    label: "Jira",
+    sourceType: "jira_project",
+    kind: "jira",
+    blurb: "Search issues from a project.",
+  },
+  {
+    provider: "asana",
+    label: "Asana",
+    sourceType: "asana_project",
+    kind: "asana",
+    blurb: "Navigate tasks from a project.",
+  },
+  {
+    provider: "slack",
+    label: "Slack",
+    sourceType: "slack",
+    kind: "auto",
+    blurb: "Channel history, kept in sync.",
+  },
+  {
+    provider: "granola",
+    label: "Granola",
+    sourceType: "granola",
+    kind: "auto",
+    blurb: "Meeting notes and transcripts.",
+  },
+  {
+    provider: "gong",
+    label: "Gong",
+    sourceType: "gong_calls",
+    kind: "auto",
+    blurb: "Call transcripts, kept in sync.",
+  },
+  {
+    provider: "snowflake",
+    label: "Snowflake",
+    sourceType: "snowflake",
+    kind: "auto",
+    blurb: "Run read-only SQL against your warehouse.",
+  },
+];
+
+// Maps a connected-source row's `type` back to the integration provider that
+// owns it — used by the sidebar and the per-integration page routing.
+export const providerForSourceType: Record<string, string> = {
+  github_repo: "github",
+  google_drive: "google",
+  notion: "notion",
+  jira_project: "jira",
+  asana_project: "asana",
+  slack: "slack",
+  granola: "granola",
+  gong_calls: "gong",
+  snowflake: "snowflake",
+};
+
+export function connectorForProvider(provider: string): Connector | undefined {
+  return CONNECTORS.find((connector) => connector.provider === provider);
+}
+
+export function connectorIcon(provider: string): ReactNode {
+  switch (provider) {
+    case "github":
+      return <GitHubIcon />;
+    case "google":
+      return <GoogleDriveIcon />;
+    case "notion":
+      return <NotionIcon />;
+    case "jira":
+      return <JiraIcon />;
+    case "asana":
+      return <AsanaIcon />;
+    case "slack":
+      return <SlackIcon />;
+    case "granola":
+      return <GranolaIcon />;
+    case "gong":
+      return <GongIcon />;
+    case "snowflake":
+      return <SnowflakeIcon />;
+    default:
+      return null;
+  }
+}
+
+export function labelForSourceType(type: string): string {
+  if (type === "github_repo") return "GitHub";
+  if (type === "google_drive") return "Google Drive";
+  if (type === "notion") return "Notion";
+  if (type === "slack") return "Slack";
+  if (type === "granola") return "Granola";
+  if (type === "jira_project") return "Jira";
+  if (type === "asana_project") return "Asana";
+  if (type === "gong_calls") return "Gong";
+  if (type === "snowflake") return "Snowflake";
+  return type;
+}

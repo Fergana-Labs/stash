@@ -76,7 +76,7 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
     assert resp.status_code == 200
     workspaces = resp.json()["workspaces"]
     assert len(workspaces) == 1
-    assert workspaces[0]["name"] == f"{body['display_name']}'s Workspace"
+    assert workspaces[0]["name"] == "Stash"
     assert workspaces[0]["member_count"] == 1
 
 

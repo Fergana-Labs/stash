@@ -16,6 +16,7 @@ import logging
 from ..celery_app import celery
 from ..database import get_pool
 from ..services import embeddings as embedding_service
+from ..services.source_service import CONTENT_TABLES as _SOURCE_CONTENT_TABLES
 from ..services.table_service import _build_embedding_text
 from ._celery_helpers import run_async
 
@@ -128,9 +129,9 @@ async def _reconcile_files() -> int:
 
 
 # Copied-content source tables get embedded after each sync flips embed_stale
-# TRUE on changed rows. Index-only tables (drive/notion) hold no content here —
-# their bodies are fetched lazily at read time, so they aren't embedded.
-_SOURCE_CONTENT_TABLES = ("github_documents", "slack_messages", "granola_notes")
+# TRUE on changed rows. We embed exactly source_service.CONTENT_TABLES (imported
+# above) so a new content source is picked up automatically; index-only tables
+# (drive) hold no content here — their bodies are fetched lazily at read time.
 
 
 async def _reconcile_source_table(table: str) -> int:

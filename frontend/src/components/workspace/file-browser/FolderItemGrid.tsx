@@ -6,7 +6,10 @@ import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import { type FBDragPayload } from "./WorkspaceFileBrowser";
 import { SelectBox, handleFolderDrop, isFbDrag, startItemDrag } from "./ItemsList";
 
-export type ItemKind = "folder" | "page" | "html" | "table" | "file";
+// "table" = a CSV/spreadsheet *file* linked to a table; "datatable" = a
+// standalone structured-data table (the `tables` entity). Both render with the
+// table icon, but they have different backing rows so move/delete/nav differ.
+export type ItemKind = "folder" | "page" | "html" | "table" | "datatable" | "file";
 
 export interface GridItem {
   kind: ItemKind;

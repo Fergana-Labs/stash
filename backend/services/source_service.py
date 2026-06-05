@@ -9,10 +9,11 @@ owner sees them.
 This module owns:
 - the `workspace_sources` registry (CRUD + sync bookkeeping),
 - the per-integration document store. Each source type has its own table
-  (migration 0084): github/slack/granola COPY content (FTS + embeddings live in
-  the table), drive/notion store an INDEX ONLY and fetch the body lazily from
-  the provider at read time. Every table shares the navigation shape
-  (path/name/kind/deleted_at) so the agent's list/read tools stay uniform.
+  (migration 0084): most COPY content (FTS + embeddings live in the table —
+  github/slack/granola/jira/asana/gong/notion), while drive stores an INDEX ONLY
+  and fetches the body lazily from the provider at read time. Every table shares
+  the navigation shape (path/name/kind/deleted_at) so the agent's list/read tools
+  stay uniform.
 
 This module also owns the unified VFS surface (`source_entries`, `source_document`,
 `search_all`) over BOTH native and connected sources — the single codepath the
@@ -22,10 +23,14 @@ files_tree_service / memory_service (imported lazily to avoid an import cycle).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 from uuid import UUID
 
 from ..database import get_pool
+
+logger = logging.getLogger(__name__)
 
 # Native source handles. Connected sources use their workspace_sources.id (str).
 NATIVE_FILES = "files"
@@ -39,6 +44,9 @@ DEFAULT_SYNC_INTERVAL_S = {
     "notion": 1800,
     "slack": 21600,
     "granola": 21600,
+    "jira_project": 1800,
+    "asana_project": 1800,
+    "gong_calls": 21600,
 }
 
 # Which capability each connected source type exposes.
@@ -48,6 +56,12 @@ SOURCE_CAPABILITY = {
     "notion": "navigable",
     "slack": "searchable",
     "granola": "searchable",
+    "jira_project": "searchable",
+    "asana_project": "navigable",
+    "gong_calls": "searchable",
+    # Queryable sources run live read-only SQL; they have no document table or
+    # indexer (see source_entries / query_source).
+    "snowflake": "queryable",
 }
 
 
@@ -220,11 +234,34 @@ SOURCE_TABLE = {
     "notion": "notion_index",
     "slack": "slack_messages",
     "granola": "granola_notes",
+    "jira_project": "jira_documents",
+    "asana_project": "asana_documents",
+    "gong_calls": "gong_documents",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
 # index-only and fetch their body lazily from the provider at read time.
-CONTENT_TABLES = {"github_documents", "slack_messages", "granola_notes"}
+# Notion copies content too — its crawl already renders each page's text to
+# discover sub-pages, so storing it for FTS is nearly free. Jira/Asana/Drive do
+# NOT copy: they're index-only and search is federated to the provider's own
+# search API (see FEDERATED_SEARCH_TYPES) so we don't duplicate their content.
+CONTENT_TABLES = {
+    "github_documents",
+    "slack_messages",
+    "granola_notes",
+    "gong_documents",
+    "notion_index",
+}
+
+# Index-only source types whose `search` is federated live to the provider's
+# native search instead of our FTS (no copied content). source_type -> the
+# provider search coroutine, resolved lazily to avoid an import cycle.
+FEDERATED_SEARCH_TYPES = {"google_drive", "jira_project", "asana_project"}
+
+# Copied-content sources that only cache a bounded recent window. The agent can
+# pull OLDER data on demand from the provider for an explicit time range — what
+# it fetches is cached (upserted) so it's searchable afterward too.
+HISTORY_FETCH_TYPES = {"slack", "gong_calls"}
 
 
 def _table_for(source_type: str) -> str:
@@ -416,11 +453,62 @@ async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str |
         from ..integrations.google.indexer import fetch_drive_content
 
         return await fetch_drive_content(owner_user_id, external_ref)
-    if source_type == "notion":
-        from ..integrations.notion.indexer import fetch_notion_content
+    if source_type == "jira_project":
+        from ..integrations.jira.indexer import fetch_jira_content
 
-        return await fetch_notion_content(owner_user_id, external_ref)
+        return await fetch_jira_content(owner_user_id, external_ref)
+    if source_type == "asana_project":
+        from ..integrations.asana.indexer import fetch_asana_content
+
+        return await fetch_asana_content(owner_user_id, external_ref)
     return ""
+
+
+async def index_paths_for_refs(
+    table: str, source_id: UUID, external_refs: list[str]
+) -> dict[str, tuple[str, str]]:
+    """Map provider external_refs back to (path, name) for a source's live index
+    rows. Federated search returns provider ids; this resolves them to the paths
+    `read_source` understands (and drops anything not in our index)."""
+    if not external_refs:
+        return {}
+    rows = await get_pool().fetch(
+        f"SELECT external_ref, path, name FROM {table} "
+        f"WHERE source_id = $1 AND external_ref = ANY($2) AND deleted_at IS NULL",
+        source_id,
+        external_refs,
+    )
+    return {r["external_ref"]: (r["path"], r["name"]) for r in rows}
+
+
+async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
+    """Run a federated source's native provider search. Returns unified hits
+    ({source, source_name, ref, name, snippet}); never raises — a provider error
+    (e.g. Asana on a free tier) logs and yields no hits so search stays alive."""
+    source_type = source["source_type"]
+    try:
+        if source_type == "google_drive":
+            from ..integrations.google.indexer import search_drive as fn
+        elif source_type == "jira_project":
+            from ..integrations.jira.indexer import search_jira as fn
+        elif source_type == "asana_project":
+            from ..integrations.asana.indexer import search_asana as fn
+        else:
+            return []
+        hits = await fn(source, query, limit)
+    except Exception:
+        logger.warning("federated search failed for source %s", source["id"], exc_info=True)
+        return []
+    return [
+        {
+            "source": source["id"],
+            "source_name": source["display_name"],
+            "ref": h["ref"],
+            "name": h.get("name", ""),
+            "snippet": h.get("snippet", ""),
+        }
+        for h in hits
+    ]
 
 
 async def search_documents(
@@ -506,9 +594,28 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
                 "type": s["source_type"],
                 "capability": s["capability"],
                 "display_name": s["display_name"],
+                # Sync bookkeeping for the per-integration page (the sidebar
+                # ignores these). Already on the row — no extra query.
+                "external_ref": s["external_ref"],
+                "sync_status": s["sync_status"],
+                "sync_error": s["sync_error"],
+                "last_synced_at": s["last_synced_at"],
             }
         )
     return sources
+
+
+async def source_item_count(source: dict) -> int | None:
+    """How many live documents a source has indexed. None for queryable sources
+    (Snowflake) — they have no document table."""
+    table = SOURCE_TABLE.get(source["source_type"])
+    if table is None:
+        return None
+    row = await get_pool().fetchrow(
+        f"SELECT count(*) AS n FROM {table} WHERE source_id = $1 AND deleted_at IS NULL",
+        UUID(source["id"]),
+    )
+    return int(row["n"]) if row else 0
 
 
 # --- unified VFS over native + connected sources ----------------------------
@@ -549,6 +656,11 @@ async def source_entries(
     connected = await _resolve_connected(source, user_id)
     if connected is None:
         return None
+    if connected["capability"] == "queryable":
+        # A queryable source (Snowflake) has no document table — list its tables.
+        from ..integrations.snowflake.client import list_tables
+
+        return await list_tables(connected)
     return await list_documents(connected, prefix=prefix)
 
 
@@ -583,7 +695,74 @@ async def source_document(
     connected = await _resolve_connected(source, user_id)
     if connected is None:
         return False, None
+    if connected["capability"] == "queryable":
+        # Reading a "document" from a queryable source means describing a table.
+        from ..integrations.snowflake.client import describe_table
+
+        return True, await describe_table(connected, ref)
     return True, await read_document(connected, ref)
+
+
+async def query_source(
+    workspace_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
+) -> dict | None:
+    """Run a read-only SQL query against a queryable source (Snowflake). Returns
+    None when the handle is unknown / not owned, or an error dict when the source
+    isn't queryable or the SQL is rejected."""
+    connected = await _resolve_connected(source, user_id)
+    if connected is None:
+        return None
+    if connected["capability"] != "queryable":
+        return {"error": "source is not queryable"}
+    from ..integrations.snowflake.client import run_query
+
+    try:
+        return await run_query(connected, sql, limit)
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+def _parse_dt(value: str | None):
+    """Parse an ISO-8601 date/datetime (with or without 'Z'). Naive → UTC."""
+    from datetime import UTC, datetime
+
+    if not value or not value.strip():
+        return None
+    dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
+async def fetch_history(
+    workspace_id: UUID,
+    user_id: UUID,
+    source: str,
+    since: str,
+    until: str | None = None,
+    limit: int = 500,
+) -> dict | None:
+    """Pull older provider data for a time range, beyond the cached window, for a
+    copied source that supports it (Slack/Gong). Fetched items are upserted into
+    the local table (so they become searchable) and returned. Returns None when
+    the handle is unknown / not owned; an error dict for unsupported sources or
+    bad input."""
+    connected = await _resolve_connected(source, user_id)
+    if connected is None:
+        return None
+    if connected["source_type"] not in HISTORY_FETCH_TYPES:
+        return {"error": "source does not support history fetch"}
+    try:
+        since_dt = _parse_dt(since)
+        until_dt = _parse_dt(until)
+    except ValueError:
+        return {"error": "since/until must be ISO-8601 dates (e.g. 2026-01-01)"}
+    if since_dt is None:
+        return {"error": "since is required"}
+
+    if connected["source_type"] == "slack":
+        from ..integrations.slack.indexer import fetch_history as fn
+    else:
+        from ..integrations.gong.indexer import fetch_history as fn
+    return await fn(connected, since_dt, until_dt, min(limit, 1000))
 
 
 async def search_all(
@@ -632,6 +811,8 @@ async def search_all(
         if connected is None:
             return None
     if source is None or connected is not None:
+        # Copied-content sources go through our FTS (returns [] for index-only /
+        # federated sources, which have no stored content to match).
         docs = await search_documents(
             workspace_id=workspace_id,
             user_id=user_id,
@@ -649,5 +830,22 @@ async def search_all(
             }
             for d in docs
         ]
+
+        # Federated sources search the provider's native API live. Scoped → the
+        # one source; unscoped → fan out across the user's federated sources
+        # (each call is independent and already swallows its own errors).
+        if connected is not None:
+            if connected["source_type"] in FEDERATED_SEARCH_TYPES:
+                results += await _federated_search(connected, query, limit)
+        else:
+            federated = [
+                s
+                for s in await list_connected_sources(workspace_id, user_id)
+                if s["source_type"] in FEDERATED_SEARCH_TYPES
+            ]
+            for hits in await asyncio.gather(
+                *(_federated_search(s, query, limit) for s in federated)
+            ):
+                results += hits
 
     return results

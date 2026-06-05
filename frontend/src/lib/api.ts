@@ -212,8 +212,24 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
 export interface WorkspaceSource {
   source: string; // native handle ("files"/"sessions") or connected-source id
   type: string; // 'native_files' | 'native_sessions' | 'github_repo' | ...
-  capability: string; // 'navigable' | 'searchable'
+  capability: string; // 'navigable' | 'searchable' | 'queryable'
   display_name: string;
+  // Present for connected sources (the integration page uses these).
+  external_ref?: string | null;
+  sync_status?: string | null; // 'idle' | 'syncing' | 'failed'
+  sync_error?: string | null;
+  last_synced_at?: string | null;
+}
+
+export interface SourceStatus extends WorkspaceSource {
+  item_count: number | null; // null for queryable sources (no document table)
+}
+
+export interface SourceEntry {
+  path?: string;
+  id?: string;
+  name: string;
+  kind: string;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
@@ -254,6 +270,81 @@ export async function deleteWorkspaceSource(
 ): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}`, {
     method: "DELETE",
+  });
+}
+
+// --- per-integration page: status + content browsing ---
+
+export async function getSourceStatus(
+  workspaceId: string,
+  sourceId: string,
+): Promise<SourceStatus> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}/status`);
+}
+
+export async function getSourceEntries(
+  workspaceId: string,
+  source: string,
+  path = "",
+): Promise<SourceEntry[]> {
+  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  const data = await apiFetch<{ entries: SourceEntry[] }>(
+    `/api/v1/workspaces/${workspaceId}/sources/${source}/entries${q}`,
+  );
+  return data.entries;
+}
+
+export async function readSourceDoc(
+  workspaceId: string,
+  source: string,
+  ref: string,
+): Promise<{ name?: string; content?: string }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`,
+  );
+}
+
+export interface SourceSearchHit {
+  source: string;
+  source_name?: string;
+  ref: string;
+  name?: string;
+  snippet?: string;
+}
+
+export async function searchSource(
+  workspaceId: string,
+  query: string,
+  source?: string,
+): Promise<SourceSearchHit[]> {
+  const params = new URLSearchParams({ q: query });
+  if (source) params.set("source", source);
+  const data = await apiFetch<{ results: SourceSearchHit[] }>(
+    `/api/v1/workspaces/${workspaceId}/sources/search?${params.toString()}`,
+  );
+  return data.results;
+}
+
+export async function querySource(
+  workspaceId: string,
+  source: string,
+  sql: string,
+): Promise<{ columns?: string[]; rows?: unknown[][]; error?: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${source}/query`, {
+    method: "POST",
+    body: JSON.stringify({ sql }),
+  });
+}
+
+export async function fetchSourceHistory(
+  workspaceId: string,
+  source: string,
+  since: string,
+  until?: string,
+): Promise<{ fetched: number; since: string; until: string | null }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${source}/history`, {
+    method: "POST",
+    body: JSON.stringify({ since, until }),
   });
 }
 
@@ -591,7 +682,7 @@ export async function getTable(
 export async function updateTable(
   workspaceId: string | null,
   tableId: string,
-  data: { name?: string; description?: string }
+  data: { name?: string; description?: string; folder_id?: string | null; move_to_root?: boolean }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}`, {
     method: "PATCH", body: JSON.stringify(data),
@@ -1792,6 +1883,7 @@ export interface FolderContents {
   subfolders: FolderSubfolder[];
   pages: { id: string; name: string; content_type: "markdown" | "html" }[];
   files: Omit<WorkspaceFile, "folder_id">[];
+  tables: { id: string; name: string; row_count: number }[];
 }
 
 export async function getFolderContents(
@@ -1801,6 +1893,42 @@ export async function getFolderContents(
   return apiFetch(
     `/api/v1/workspaces/${workspaceId}/folders/${folderId}/contents`
   );
+}
+
+// --- Shared with me ---
+
+export type SharedObjectType = "folder" | "session_folder" | "page" | "file" | "table" | "session";
+
+export interface SharedWithMeItem {
+  object_type: SharedObjectType;
+  object_id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  shared_by: string | null;
+  permission: "read" | "write";
+}
+
+export interface SharedSession {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  agent_name: string;
+  title: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export async function listSharedWithMe(): Promise<SharedWithMeItem[]> {
+  const res = await apiFetch<{ items: SharedWithMeItem[] }>("/api/v1/share/with-me");
+  return res.items;
+}
+
+export async function listSharedSessionFolderSessions(folderId: string): Promise<SharedSession[]> {
+  const res = await apiFetch<{ sessions: SharedSession[] }>(
+    `/api/v1/share/session-folders/${folderId}/sessions`
+  );
+  return res.sessions;
 }
 
 // --- Trash ---

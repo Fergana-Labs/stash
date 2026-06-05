@@ -30,6 +30,16 @@ class AccountInfo:
     display_name: str | None
 
 
+@dataclass
+class CredentialField:
+    """One input in an api_key provider's connect form (see below)."""
+
+    name: str
+    label: str
+    secret: bool = False  # render as a password field + never echo back
+    placeholder: str = ""
+
+
 class Integration(Protocol):
     name: str
     """URL segment + provider key. e.g. 'google', 'github'."""
@@ -63,3 +73,23 @@ class Integration(Protocol):
     async def fetch_account(self, access_token: str) -> AccountInfo:
         """Resolve the connected account identity for display."""
         ...
+
+
+# --- api_key providers -------------------------------------------------------
+#
+# Some services (Gong, Snowflake) authenticate with pasted credentials, not an
+# OAuth redirect. Such a provider sets `auth_kind = "api_key"`, declares its
+# `credential_fields`, and implements `connect_with_credentials` instead of the
+# OAuth methods. The router renders a form from the fields and POSTs the values
+# to /credentials. The provider validates them against the upstream and returns
+# the credential bundle as the access token (JSON-encoded, with no expiry) so it
+# rides the same encrypted storage column as OAuth tokens — callers recover it
+# with `json.loads(await get_valid_token(...))`.
+#
+#   class GongIntegration:
+#       name = "gong"
+#       display_name = "Gong"
+#       auth_kind = "api_key"
+#       credential_fields = [CredentialField("access_key", "Access Key", secret=True), ...]
+#       async def connect_with_credentials(self, values: dict[str, str])
+#           -> tuple[TokenSet, AccountInfo]: ...

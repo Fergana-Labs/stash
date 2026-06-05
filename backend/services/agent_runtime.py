@@ -515,8 +515,10 @@ async def _delete_cartridge(args: dict) -> dict:
 @tool(
     "list_sources",
     "List every source this user can read: native 'files' and 'sessions', plus "
-    "their connected sources (GitHub, Drive, Notion, Slack, Granola). Use the "
-    "returned `source` handle with list_source / read_source / search.",
+    "their connected sources (GitHub, Drive, Notion, Slack, Granola, Jira, Asana, "
+    "Gong, Snowflake). Each has a `capability`: 'navigable'/'searchable' sources "
+    "use list_source / read_source / search; a 'queryable' source (Snowflake) uses "
+    "query_source. Use the returned `source` handle with those tools.",
     {"type": "object", "properties": {}},
 )
 async def _list_sources(args: dict) -> dict:
@@ -599,6 +601,67 @@ async def _search(args: dict) -> dict:
     return _text_result(json.dumps(results))
 
 
+@tool(
+    "query_source",
+    "Run a read-only SQL query against a queryable source (e.g. Snowflake). "
+    "`source` is the handle from list_sources; use list_source to see its tables "
+    "and read_source on a table to see its columns first. Only SELECT/WITH/SHOW/"
+    "DESCRIBE/EXPLAIN are allowed and rows are capped.",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "sql": {"type": "string"},
+            "limit": {"type": "integer", "default": 200},
+        },
+        "required": ["source", "sql"],
+    },
+)
+async def _query_source(args: dict) -> dict:
+    result = await source_service.query_source(
+        _current_workspace(),
+        _current_user(),
+        args.get("source", ""),
+        args.get("sql", ""),
+        limit=int(args.get("limit", 200)),
+    )
+    if result is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    return _text_result(json.dumps(result))
+
+
+@tool(
+    "fetch_history",
+    "Pull OLDER data from a source for a time range, beyond what's already "
+    "cached/searchable (Slack messages, Gong calls). Use when the user asks "
+    "about something before the recent window. `since`/`until` are ISO-8601 "
+    "dates (e.g. '2026-01-01'); until defaults to now. Fetched items are cached, "
+    "so afterward you can find them with search/read_source.",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "since": {"type": "string"},
+            "until": {"type": "string"},
+            "limit": {"type": "integer", "default": 500},
+        },
+        "required": ["source", "since"],
+    },
+)
+async def _fetch_history(args: dict) -> dict:
+    result = await source_service.fetch_history(
+        _current_workspace(),
+        _current_user(),
+        args.get("source", ""),
+        args.get("since", ""),
+        until=args.get("until"),
+        limit=int(args.get("limit", 500)),
+    )
+    if result is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    return _text_result(json.dumps(result))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
@@ -616,6 +679,8 @@ _TOOLS_BY_NAME = {
     "list_source": _list_source,
     "read_source": _read_source,
     "search": _search,
+    "query_source": _query_source,
+    "fetch_history": _fetch_history,
 }
 
 

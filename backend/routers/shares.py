@@ -54,6 +54,24 @@ async def delete_share(req: UnshareRequest, current_user: dict = Depends(get_cur
     return {"ok": True}
 
 
+@router.get("/with-me")
+async def list_shared_with_me(current_user: dict = Depends(get_current_user)):
+    """Everything shared with the current user, across workspaces."""
+    return {"items": await share_service.list_shared_with_user(current_user["id"])}
+
+
+@router.get("/session-folders/{folder_id}/sessions")
+async def list_shared_session_folder_sessions(
+    folder_id: UUID, current_user: dict = Depends(get_current_user)
+):
+    """Sessions inside a session-folder shared with the current user."""
+    return {
+        "sessions": await share_service.list_shared_session_folder_sessions(
+            folder_id, current_user["id"]
+        )
+    }
+
+
 @router.get("")
 async def list_shares(
     object_type: str,

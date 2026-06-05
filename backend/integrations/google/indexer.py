@@ -6,8 +6,8 @@ and the Drive file id (`external_ref`). We never store the body; `read_source`
 calls `fetch_drive_content` at read time, exporting the Google Doc to markdown
 with the owner's token. The agent still navigates it like a file system.
 
-Listing a folder requires the `drive.readonly` scope (the connect scope is being
-widened from `drive.file`); a token without it simply sees fewer files.
+Listing a folder + federated `fullText` search use the `drive.readonly` scope,
+so the crawl and search see the user's whole Drive (not just app-picked files).
 """
 
 from __future__ import annotations
@@ -96,6 +96,43 @@ async def index_google_drive(source: dict) -> str | None:
     await source_service.soft_delete_missing("drive_index", source_id, present)
     logger.info("google drive source %s: indexed %d file(s)", root, len(present))
     return None
+
+
+def _drive_q_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("'", "\\'")
+
+
+async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
+    """Federated search via Drive's `fullText contains` — Google full-text-indexes
+    file contents server-side, so we never copy them. Maps the matched file ids
+    back to our index paths (so read_source resolves them) and only returns files
+    we've indexed for this source."""
+    owner_user_id = UUID(source["owner_user_id"])
+    source_id = UUID(source["id"])
+    token = await get_valid_token(owner_user_id, "google")
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        resp = await client.get(
+            DRIVE_LIST_URL,
+            params={
+                "q": f"fullText contains '{_drive_q_escape(query)}' and trashed = false",
+                "fields": "files(id, name)",
+                "pageSize": min(limit, 50),
+            },
+        )
+        resp.raise_for_status()
+        files = resp.json().get("files", [])
+
+    file_ids = [f["id"] for f in files]
+    paths = await source_service.index_paths_for_refs("drive_index", source_id, file_ids)
+    hits = []
+    for f in files:
+        entry = paths.get(f["id"])
+        if entry is None:
+            continue  # outside the indexed scope of this source
+        path, name = entry
+        hits.append({"ref": path, "name": name, "snippet": ""})
+    return hits
 
 
 async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:

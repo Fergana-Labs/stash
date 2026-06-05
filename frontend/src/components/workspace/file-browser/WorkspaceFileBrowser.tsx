@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ApiError,
   createTable,
   createFolder,
   createPage,
-  deleteTable,
   deleteFolder,
+  deleteTable,
   getFolderContents,
   getWorkspaceTree,
   listFiles,
@@ -17,14 +18,13 @@ import {
   updateFile,
   updateFolder,
   updatePage,
+  updateTable,
   uploadFileOrPage,
   type FolderContents,
 } from "../../../lib/api";
 import type {
-  FileInfo,
   FolderTreeNode,
   PageSummary,
-  Table,
   WorkspaceTree,
 } from "../../../lib/types";
 import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
@@ -36,6 +36,7 @@ import EditableTitle from "../EditableTitle";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
 import ItemsList from "./ItemsList";
 import ItemsColumns from "./ItemsColumns";
+import SharedWithMeFiles from "../SharedWithMeFiles";
 import QuickAccess from "./QuickAccess";
 
 interface Props {
@@ -67,8 +68,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [contentsLoaded, setContentsLoaded] = useState(false);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
+  const [rootTables, setRootTables] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
-  const [standaloneTables, setStandaloneTables] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins(workspaceId);
@@ -120,12 +121,16 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     return () => window.clearTimeout(t);
   }, [undo]);
 
-  // Load workspace tree once per workspace; powers the Column view.
+  // Load workspace tree once per workspace; powers the Column view + Quick
+  // Access. It's supplementary — a non-member opening a *shared* folder can't
+  // read the whole tree (403), but the folder's own contents still load below,
+  // so a tree failure must not surface a blocking "Not a workspace member" error.
   const loadTree = useCallback(async () => {
     try {
       const t = await getWorkspaceTree(workspaceId);
       setTree(t);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 403) return;
       setError(e instanceof Error ? e.message : "Failed to load workspace");
     }
   }, [workspaceId]);
@@ -137,15 +142,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     setContentsLoaded(false);
     if (folderId) {
       try {
-        const [c, files, tables] = await Promise.all([
-          getFolderContents(workspaceId, folderId),
-          listFiles(workspaceId),
-          listTables(workspaceId),
-        ]);
+        const c = await getFolderContents(workspaceId, folderId);
         setContents(c);
         setRootFiles([]);
-        setAllFiles(files.map((f) => fileToGridItem(f)));
-        setStandaloneTables(standaloneTableItems(tables.tables, files));
+        setRootTables([]);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load folder");
       } finally {
@@ -153,7 +153,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       }
     } else {
       try {
-        const [t, allFiles, tables] = await Promise.all([
+        const [t, allFiles, tablesResp] = await Promise.all([
           getWorkspaceTree(workspaceId),
           listFiles(workspaceId),
           listTables(workspaceId),
@@ -161,9 +161,18 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         setTree(t);
         setContents(null);
         setAllFiles(allFiles.map((f) => fileToGridItem(f)));
-        setStandaloneTables(standaloneTableItems(tables.tables, allFiles));
         setRootFiles(
           allFiles.filter((f) => !f.folder_id).map((f) => fileToGridItem(f)),
+        );
+        const linkedTableIds = new Set(
+          allFiles
+            .map((file) => file.linked_table_id)
+            .filter((tableId): tableId is string => !!tableId)
+        );
+        setRootTables(
+          tablesResp.tables
+            .filter((t) => !t.folder_id && !linkedTableIds.has(t.id))
+            .map((t) => tableToGridItem(t)),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load root");
@@ -195,10 +204,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         updatedAt: sub.updated_at,
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
-      ...standaloneTables,
       ...rootFiles,
+      ...rootTables,
     ];
-  }, [tree, rootFiles, standaloneTables]);
+  }, [tree, rootFiles, rootTables]);
 
   const items: GridItem[] = useMemo(() => {
     if (folderId) {
@@ -221,6 +230,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             created_at: f.created_at,
           })
         ),
+        ...contents.tables.map((t) => tableToGridItem(t)),
       ];
     }
     if (!tree) return [];
@@ -237,10 +247,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         updatedAt: sub.updated_at,
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
-      ...standaloneTables,
       ...rootFiles,
+      ...rootTables,
     ];
-  }, [folderId, contents, tree, rootFiles, standaloneTables]);
+  }, [folderId, contents, tree, rootFiles, rootTables]);
 
   // Every folder/page/file in the workspace, flattened, so Pinned + Recent can
   // resolve and surface items that live anywhere — not just at the root.
@@ -260,10 +270,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         updatedAt: sub.updated_at,
       })),
       ...pages.map((p) => pageToGridItem(p)),
-      ...standaloneTables,
       ...allFiles,
     ];
-  }, [tree, allFiles, standaloneTables]);
+  }, [tree, allFiles]);
 
   const itemById = useMemo(() => {
     const map = new Map<string, GridItem>();
@@ -298,12 +307,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   // Move a single folder/page/file into the target folder (or root when
   // targetFolderId === null). No refresh — callers batch that.
   async function moveOne(payload: FBDragPayload, targetFolderId: string | null) {
-    if (
-      payload.kind === "table" &&
-      standaloneTables.some((table) => table.id === payload.id)
-    ) {
-      return;
-    }
     if (payload.kind === "folder" && payload.id === targetFolderId) return;
     if (payload.kind === "folder") {
       await updateFolder(
@@ -321,8 +324,18 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           ? { move_to_root: true }
           : { folder_id: targetFolderId }
       );
+    } else if (payload.kind === "datatable") {
+      // Standalone tables live in their own `tables` table.
+      await updateTable(
+        workspaceId,
+        payload.id,
+        targetFolderId === null
+          ? { move_to_root: true }
+          : { folder_id: targetFolderId }
+      );
     } else {
-      // table + file both live in the files table at the data layer.
+      // A "table" item here is a CSV file linked to a table — it lives in the
+      // files table, so it moves like any other file.
       await updateFile(
         workspaceId,
         payload.id,
@@ -360,8 +373,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     if (item.kind === "page" || item.kind === "html") {
       return `/workspaces/${workspaceId}/p/${item.id}`;
     }
-    if (item.kind === "table") {
-      return `/tables/${item.tableId ?? item.linkedTableId ?? item.id}?workspaceId=${workspaceId}`;
+    if (item.kind === "datatable") {
+      return `/tables/${item.id}?workspaceId=${workspaceId}`;
+    }
+    if (item.kind === "table" && item.linkedTableId) {
+      return `/tables/${item.linkedTableId}?workspaceId=${workspaceId}`;
     }
     return `/workspaces/${workspaceId}/f/${item.id}`;
   }
@@ -439,11 +455,12 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       }
       return;
     }
-    if (item.kind === "table" && item.tableBackedBy === "table" && item.tableId) {
-      const yes = window.confirm(`Delete table "${item.name}" and all its data?`);
+    if (item.kind === "datatable") {
+      // Standalone tables have no trash — hard delete behind a confirm.
+      const yes = window.confirm(`Delete table "${item.name}"? This can't be undone.`);
       if (!yes) return;
       try {
-        await deleteTable(workspaceId, item.tableId);
+        await deleteTable(workspaceId, item.id);
         await refreshAll();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Delete failed");
@@ -476,8 +493,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       for (const item of targets) {
         if (item.kind === "folder") {
           await deleteFolder(workspaceId, item.id);
-        } else if (item.kind === "table" && item.tableBackedBy === "table" && item.tableId) {
-          await deleteTable(workspaceId, item.tableId);
+        } else if (item.kind === "datatable") {
+          await deleteTable(workspaceId, item.id);
         } else {
           const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
           await trashItem(workspaceId, kind, item.id);
@@ -505,7 +522,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   // Rename callback used by the folder strip + per-item context menus.
   // Dispatches by kind since each lives in its own table with its own API.
   async function renameItem(
-    kind: "folder" | "page" | "html" | "table" | "file",
+    kind: "folder" | "page" | "html" | "table" | "datatable" | "file",
     id: string,
     next: string
   ): Promise<string> {
@@ -516,6 +533,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
     if (kind === "page" || kind === "html") {
       const updated = await updatePage(workspaceId, id, { name: next });
+      await refreshAll();
+      return updated.name;
+    }
+    if (kind === "datatable") {
+      const updated = await updateTable(workspaceId, id, { name: next });
       await refreshAll();
       return updated.name;
     }
@@ -554,9 +576,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
               />
             </h1>
           ) : (
-            <h1 className="m-0 font-display text-[28px] font-bold tracking-tight text-foreground">
-              Files
-            </h1>
+            // Root: the breadcrumb + sidebar already say "Files"; no redundant title.
+            <div />
           )}
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle view={view} onChange={setViewPersisted} />
@@ -648,6 +669,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             />
           )}
         </div>
+        {!folderId ? <SharedWithMeFiles /> : null}
       </div>
       {selectedItems.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -745,31 +767,20 @@ function fileToGridItem(file: {
     name: file.name,
     subtitle: `${file.content_type || "file"} · ${formatBytes(file.size_bytes)}`,
     sizeBytes: file.size_bytes,
-    tableId: file.linked_table_id ?? undefined,
-    tableBackedBy: isCsvLinked ? "file" : undefined,
+    linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
     updatedAt: file.created_at,
   };
 }
 
-function standaloneTableItems(tables: Table[], files: FileInfo[]): GridItem[] {
-  const linkedTableIds = new Set(
-    files
-      .map((file) => file.linked_table_id)
-      .filter((tableId): tableId is string => !!tableId)
-  );
-  return tables
-    .filter((table) => !linkedTableIds.has(table.id))
-    .map((table) => ({
-      kind: "table" as const,
-      id: table.id,
-      name: table.name,
-      subtitle: table.row_count === 1 ? "1 row" : `${table.row_count ?? 0} rows`,
-      tableId: table.id,
-      tableBackedBy: "table" as const,
-      movable: false,
-      updatedAt: table.updated_at,
-    }));
+function tableToGridItem(table: { id: string; name: string; row_count: number | null }): GridItem {
+  const rows = table.row_count ?? 0;
+  return {
+    kind: "datatable",
+    id: table.id,
+    name: table.name,
+    subtitle: `table · ${rows} row${rows === 1 ? "" : "s"}`,
+  };
 }
 
 function pageToGridItem(page: {

@@ -54,6 +54,23 @@ async def _resolve_granola_source(user_id) -> tuple[str, str]:
     return "granola", "Granola"
 
 
+async def _resolve_gong_source(user_id) -> tuple[str, str]:
+    """Gong is one connection per user (all calls); external_ref is constant.
+    Confirm the credentials exist (raises 401 if not connected)."""
+    await integration_storage.get_valid_token(user_id, "gong")
+    return "calls", "Gong"
+
+
+async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
+    """Snowflake is one connection per user; external_ref is the account.
+    Confirm the credentials exist (raises 401 if not connected)."""
+    import json
+
+    creds = json.loads(await integration_storage.get_valid_token(user_id, "snowflake"))
+    account = creds.get("account", "snowflake")
+    return account, f"Snowflake ({account})"
+
+
 @router.get("")
 async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
@@ -119,6 +136,67 @@ async def read_source_doc(
     return doc
 
 
+@router.get("/{source_id}/status")
+async def source_status(
+    workspace_id: UUID,
+    source_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Sync/index status for one connected source (for the integration page):
+    sync_status, last_synced_at, sync_error, and how many items are indexed."""
+    await _require_member(workspace_id, current_user["id"])
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return {**source, "item_count": await source_service.source_item_count(source)}
+
+
+class QuerySourceRequest(BaseModel):
+    sql: str
+    limit: int = 200
+
+
+@router.post("/{source}/query")
+async def query_source(
+    workspace_id: UUID,
+    source: str,
+    body: QuerySourceRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Run a read-only SQL query against a queryable source (Snowflake)."""
+    await _require_member(workspace_id, current_user["id"])
+    result = await source_service.query_source(
+        workspace_id, current_user["id"], source, body.sql, limit=body.limit
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result
+
+
+class FetchHistoryRequest(BaseModel):
+    since: str  # ISO-8601 date/datetime
+    until: str | None = None
+    limit: int = 500
+
+
+@router.post("/{source}/history")
+async def fetch_source_history(
+    workspace_id: UUID,
+    source: str,
+    body: FetchHistoryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Pull older data for a time range from a copied source that supports it
+    (Slack/Gong), caching it so it becomes searchable."""
+    await _require_member(workspace_id, current_user["id"])
+    result = await source_service.fetch_history(
+        workspace_id, current_user["id"], source, body.since, until=body.until, limit=body.limit
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result
+
+
 @router.post("")
 async def add_source(
     workspace_id: UUID,
@@ -136,6 +214,12 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "granola" and not external_ref:
         external_ref, resolved_name = await _resolve_granola_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "gong_calls" and not external_ref:
+        external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "snowflake" and not external_ref:
+        external_ref, resolved_name = await _resolve_snowflake_source(current_user["id"])
         display_name = display_name or resolved_name
 
     if not external_ref:

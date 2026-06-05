@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..config import settings
 from . import storage
+from .base import AccountInfo
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -83,9 +84,13 @@ class ProviderListItem(BaseModel):
     display_name: str
     scopes: list[str]
     connected: bool
-    # "oauth" (the default redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP
-    # server, e.g. Granola).
+    enabled: bool
+    disabled_reason: str | None = None
+    # "oauth" (the default redirect flow), "mcp_oauth" (DCR+PKCE via an MCP
+    # server, e.g. Granola), or "api_key" (pasted credentials, e.g. Gong).
     auth_kind: str = "oauth"
+    # For api_key providers: the form fields the frontend should render.
+    credential_fields: list[dict] | None = None
     account_email: str | None = None
     account_display_name: str | None = None
     expires_at: str | None = None
@@ -96,6 +101,71 @@ class IntegrationsListResponse(BaseModel):
     providers: list[ProviderListItem]
 
 
+def _provider_disabled_reason(provider: str) -> str | None:
+    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
+        return (
+            "OAuth integrations are not configured for this server. "
+            "Set INTEGRATIONS_ENCRYPTION_KEY to enable them."
+        )
+    try:
+        Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
+    except ValueError:
+        return "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
+
+    required: dict[str, list[str]] = {
+        "github": [
+            "GITHUB_OAUTH_CLIENT_ID",
+            "GITHUB_OAUTH_CLIENT_SECRET",
+            "GITHUB_OAUTH_REDIRECT_URI",
+        ],
+        "google": [
+            "GOOGLE_OAUTH_CLIENT_ID",
+            "GOOGLE_OAUTH_CLIENT_SECRET",
+            "GOOGLE_OAUTH_REDIRECT_URI",
+        ],
+        "notion": [
+            "NOTION_OAUTH_CLIENT_ID",
+            "NOTION_OAUTH_CLIENT_SECRET",
+            "NOTION_OAUTH_REDIRECT_URI",
+        ],
+        "slack": [
+            "SLACK_OAUTH_CLIENT_ID",
+            "SLACK_OAUTH_CLIENT_SECRET",
+            "SLACK_OAUTH_REDIRECT_URI",
+        ],
+        "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
+        "jira": [
+            "JIRA_OAUTH_CLIENT_ID",
+            "JIRA_OAUTH_CLIENT_SECRET",
+            "JIRA_OAUTH_REDIRECT_URI",
+        ],
+        "asana": [
+            "ASANA_OAUTH_CLIENT_ID",
+            "ASANA_OAUTH_CLIENT_SECRET",
+            "ASANA_OAUTH_REDIRECT_URI",
+        ],
+    }
+    missing = [name for name in required.get(provider, []) if not getattr(settings, name)]
+    if missing:
+        display_names = {
+            "github": "GitHub",
+            "google": "Google",
+            "notion": "Notion",
+            "slack": "Slack",
+            "granola": "Granola",
+            "jira": "Jira",
+            "asana": "Asana",
+        }
+        return f"{display_names.get(provider, provider)} OAuth is not configured for this server."
+    return None
+
+
+def _ensure_provider_enabled(provider: str) -> None:
+    disabled_reason = _provider_disabled_reason(provider)
+    if disabled_reason:
+        raise HTTPException(status_code=503, detail=disabled_reason)
+
+
 @router.get("", response_model=IntegrationsListResponse)
 async def list_integrations(current_user: dict = Depends(get_current_user)):
     user_connections = {
@@ -104,13 +174,21 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
     items = []
     for p in list_providers():
         conn = user_connections.get(p.name)
+        disabled_reason = _provider_disabled_reason(p.name)
         items.append(
             ProviderListItem(
                 provider=p.name,
                 display_name=p.display_name,
                 scopes=p.scopes,
                 connected=conn is not None,
+                enabled=disabled_reason is None,
+                disabled_reason=disabled_reason,
                 auth_kind=getattr(p, "auth_kind", "oauth"),
+                credential_fields=[
+                    {"name": f.name, "label": f.label, "secret": f.secret, "placeholder": f.placeholder}
+                    for f in getattr(p, "credential_fields", [])
+                ]
+                or None,
                 account_email=conn["account_email"] if conn else None,
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
@@ -151,6 +229,7 @@ async def integration_connect(
     started (e.g. /onboarding) instead of /settings.
     """
     p = get_provider(provider)
+    _ensure_provider_enabled(provider)
     # MCP OAuth providers (Granola) register a client + carry PKCE through their
     # own state, so they own the connect step end-to-end.
     if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
@@ -167,14 +246,39 @@ async def integration_callback(
     state: str = Query(...),
 ):
     p = get_provider(provider)
-    if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
-        # The provider owns the exchange + storage and returns where to land.
-        return_to = await p.finish_authorization(code, state)
-    else:
-        user_id, return_to = _decode_state(state, expected_provider=provider)
-        token = await p.exchange_code(code)
-        account = await p.fetch_account(token.access_token)
-        await storage.store_token(user_id, provider, token, account)
+    # The token exchange / account fetch talks to the provider — it can fail for
+    # reasons outside our control (bad client secret, provider error, expired
+    # code). Surface those as a clean redirect back to the UI with an error flag
+    # instead of a bare 500, and log the real cause for debugging.
+    try:
+        if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
+            # The provider owns the exchange + storage and returns where to land.
+            return_to = await p.finish_authorization(code, state)
+        else:
+            user_id, return_to = _decode_state(state, expected_provider=provider)
+            token = await p.exchange_code(code)
+            # The account profile is display-only — a failure fetching it must
+            # NOT block the connection (the token is what matters). Degrade to
+            # an empty identity instead.
+            try:
+                account = await p.fetch_account(token.access_token)
+            except Exception:
+                logger.warning(
+                    "fetch_account failed for %s; connecting without profile",
+                    provider,
+                    exc_info=True,
+                )
+                account = AccountInfo(email=None, display_name=None)
+            await storage.store_token(user_id, provider, token, account)
+    except HTTPException:
+        raise  # already a clean client error (e.g. invalid/expired state → 400)
+    except Exception as e:
+        logger.exception("OAuth callback failed for provider %s", provider)
+        base = settings.PUBLIC_URL.rstrip("/")
+        # Surface a short reason in the redirect — this app's logging swallows
+        # tracebacks, so the URL is the only place the operator sees the cause.
+        query = {"integration_error": provider, "reason": str(e)[:200]}
+        return RedirectResponse(url=f"{base}/settings?{urlencode(query)}", status_code=302)
 
     base = settings.PUBLIC_URL.rstrip("/")
     target = _safe_return_to(return_to) or "/settings"
@@ -193,6 +297,38 @@ async def integration_disconnect(
     get_provider(provider)  # 404 if unknown
     await storage.revoke_stored(current_user["id"], provider)
     return {"ok": True}
+
+
+class CredentialConnectResponse(BaseModel):
+    connected: bool
+    account_email: str | None
+    account_display_name: str | None
+
+
+@router.post("/{provider}/credentials", response_model=CredentialConnectResponse)
+async def integration_connect_with_credentials(
+    provider: str,
+    values: dict[str, str],
+    current_user: dict = Depends(get_current_user),
+):
+    """Connect an api_key provider (Gong, Snowflake) from pasted credentials.
+    The provider validates them against the upstream and returns the bundle as
+    the stored token; we never echo the secrets back."""
+    p = get_provider(provider)
+    _ensure_provider_enabled(provider)
+    if getattr(p, "auth_kind", "oauth") != "api_key":
+        raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
+    try:
+        token, account = await p.connect_with_credentials(values)
+    except ValueError as e:
+        # Bad/rejected credentials — a client error, not a server fault.
+        raise HTTPException(status_code=400, detail=str(e))
+    await storage.store_token(current_user["id"], provider, token, account)
+    return CredentialConnectResponse(
+        connected=True,
+        account_email=account.email,
+        account_display_name=account.display_name,
+    )
 
 
 class GooglePickerTokenResponse(BaseModel):
@@ -325,4 +461,89 @@ async def notion_list_pages(
                 last_edited_time=p.get("last_edited_time"),
             )
         )
+    return out
+
+
+class JiraProjectSummary(BaseModel):
+    # external_ref is "{cloudId}:{projectKey}" — carries the site so the indexer
+    # needs no extra lookup.
+    external_ref: str
+    key: str
+    name: str
+    site_name: str
+
+
+@router.get("/jira/projects", response_model=list[JiraProjectSummary])
+async def jira_list_projects(current_user: dict = Depends(get_current_user)):
+    """List projects across every Atlassian site the user granted us, so the
+    frontend can render a picker. Jira REST calls are per-cloudId, so we first
+    resolve the accessible sites, then page each site's projects."""
+    import httpx
+
+    access_token = await storage.get_valid_token(current_user["id"], "jira")
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    out: list[JiraProjectSummary] = []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        sites_resp = await client.get(
+            "https://api.atlassian.com/oauth/token/accessible-resources"
+        )
+        sites_resp.raise_for_status()
+        for site in sites_resp.json():
+            cloud_id = site["id"]
+            site_name = site.get("name") or cloud_id
+            start_at = 0
+            while True:
+                resp = await client.get(
+                    f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/project/search",
+                    params={"startAt": start_at, "maxResults": 50},
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+                for proj in payload.get("values", []):
+                    out.append(
+                        JiraProjectSummary(
+                            external_ref=f"{cloud_id}:{proj['key']}",
+                            key=proj["key"],
+                            name=proj.get("name") or proj["key"],
+                            site_name=site_name,
+                        )
+                    )
+                if payload.get("isLast", True):
+                    break
+                start_at += payload.get("maxResults", 50)
+    return out
+
+
+class AsanaProjectSummary(BaseModel):
+    gid: str
+    name: str
+    workspace_name: str
+
+
+@router.get("/asana/projects", response_model=list[AsanaProjectSummary])
+async def asana_list_projects(current_user: dict = Depends(get_current_user)):
+    """List the user's Asana projects across all their workspaces for the picker.
+    external_ref is the project gid."""
+    import httpx
+
+    access_token = await storage.get_valid_token(current_user["id"], "asana")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    out: list[AsanaProjectSummary] = []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        ws_resp = await client.get("https://app.asana.com/api/1.0/workspaces")
+        ws_resp.raise_for_status()
+        for ws in ws_resp.json().get("data", []):
+            resp = await client.get(
+                "https://app.asana.com/api/1.0/projects",
+                params={"workspace": ws["gid"], "opt_fields": "name", "limit": 100},
+            )
+            resp.raise_for_status()
+            for proj in resp.json().get("data", []):
+                out.append(
+                    AsanaProjectSummary(
+                        gid=proj["gid"],
+                        name=proj.get("name") or proj["gid"],
+                        workspace_name=ws.get("name") or ws["gid"],
+                    )
+                )
     return out
