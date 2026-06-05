@@ -23,6 +23,7 @@ from ..constants import (
     SLIDE_WIDTH_PX,
 )
 from ..html_canvas import build_single_slide_html, count_slides, strip_body_state
+from ..playwright_network import abort_network_request
 from .spec import (
     BBox,
     ChartDataset,
@@ -619,6 +620,7 @@ async def probe(html: str) -> list[SlideSpec]:
                 device_scale_factor=EXPORT_DEVICE_SCALE_FACTOR,
             )
             try:
+                await context.route("**/*", abort_network_request)
                 for i in range(count):
                     page = await context.new_page()
                     try:

@@ -32,7 +32,7 @@ DRIVE_FILE_URL = "https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,
 
 async def _export(user_id: UUID, page_id: UUID) -> dict:
     access_token = await get_valid_token(user_id, "google")
-    stem, pptx_bytes = await build_pptx_bytes_for_page(page_id)
+    stem, pptx_bytes = await build_pptx_bytes_for_page(user_id, page_id)
 
     metadata = {
         "name": stem,

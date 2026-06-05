@@ -115,6 +115,14 @@ def _visibility_for_permissions(workspace_permission: str, public_permission: st
     return "public" if public_permission != "none" else "private"
 
 
+def _is_workspace_or_public(
+    workspace_permission: str,
+    public_permission: str,
+    discoverable: bool,
+) -> bool:
+    return workspace_permission != "none" or public_permission != "none" or discoverable
+
+
 def _validate_general_permissions(
     workspace_permission: str,
     public_permission: str,
@@ -293,6 +301,12 @@ async def create_cartridge(
     icon_url: str | None = None,
 ) -> dict:
     _validate_general_permissions(workspace_permission, public_permission, discoverable)
+    if _is_workspace_or_public(
+        workspace_permission,
+        public_permission,
+        discoverable,
+    ) and not await workspace_service.is_owner(workspace_id, owner_id):
+        raise ValueError("Only workspace owners can create workspace or public Stashes")
     access = _visibility_for_permissions(workspace_permission, public_permission)
 
     pool = get_pool()
@@ -357,7 +371,7 @@ async def update_cartridge(
 ) -> dict | None:
     pool = get_pool()
     stash = await pool.fetchrow(
-        "SELECT id, workspace_id, owner_id, workspace_permission, public_permission "
+        "SELECT id, workspace_id, owner_id, workspace_permission, public_permission, discoverable "
         "FROM cartridges WHERE id = $1",
         cartridge_id,
     )
@@ -369,11 +383,20 @@ async def update_cartridge(
     items = updates.get("items") if "items" in updates else None
     next_workspace_permission = workspace_permission or stash["workspace_permission"]
     next_public_permission = public_permission or stash["public_permission"]
+    next_discoverable = discoverable
+    if next_discoverable is None:
+        next_discoverable = stash["discoverable"]
     _validate_general_permissions(
         next_workspace_permission,
         next_public_permission,
-        bool(discoverable),
+        bool(next_discoverable),
     )
+    if _is_workspace_or_public(
+        next_workspace_permission,
+        next_public_permission,
+        bool(next_discoverable),
+    ) and not await workspace_service.is_owner(stash["workspace_id"], user_id):
+        raise ValueError("Only workspace owners can make a Stash workspace or public")
     next_access = _visibility_for_permissions(next_workspace_permission, next_public_permission)
     if public_permission == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
@@ -1524,7 +1547,7 @@ def items_to_text(title: str, items: list[dict]) -> str:
 
 
 async def user_can_manage(cartridge_id: UUID, user_id: UUID) -> bool:
-    return await user_can_write(cartridge_id, user_id)
+    return await user_can_admin(cartridge_id, user_id)
 
 
 async def user_can_admin(cartridge_id: UUID, user_id: UUID) -> bool:
