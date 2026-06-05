@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE, ApiError, clearToken, getMe, getToken } from "../lib/api";
+import { markManualAuth0Logout } from "../lib/authLogout";
 import { User } from "../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -52,25 +53,25 @@ export function useAuth() {
     return () => window.removeEventListener("storage", onStorage);
   }, [loadUser]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    if (AUTH0_ENABLED) {
+      markManualAuth0Logout();
+    }
+
     // Drop local state first so the UI flips to signed-out the moment the
-    // user clicks — don't make them wait on a server round-trip. Revoke the
-    // key in the background; `keepalive` lets the request survive the
-    // navigation we're about to do.
+    // user clicks. Revoke the active key before navigating so the browser
+    // session cannot be restored by a still-valid local API key.
     const token = getToken();
     clearToken();
     setUser(null);
     if (token) {
-      fetch(`${API_BASE}/api/v1/users/logout`, {
+      await fetch(`${API_BASE}/api/v1/users/logout`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        keepalive: true,
       }).catch(() => {});
     }
-    // Hard navigation so module-level caches reset. `?federated` makes the
-    // Auth0 SDK kill the tenant SSO cookie too — without it, /login silently
-    // re-auths via the surviving SSO cookie and lands the user back on their
-    // workspace page.
+    // Hard navigation so module-level caches reset. `?federated` asks Auth0 to
+    // clear upstream identity-provider state too.
     window.location.href = AUTH0_ENABLED ? "/auth/logout?federated" : "/login";
   }, []);
 

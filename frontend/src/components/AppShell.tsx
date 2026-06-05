@@ -394,6 +394,7 @@ export default function AppShell({
   const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
   const initial = user.display_name[0].toUpperCase();
+  const accountLabel = user.email ?? user.name;
   const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
   const shareInitial = inferShareInitial(pathname);
 
@@ -578,7 +579,7 @@ export default function AppShell({
           {shareAction ?? defaultShareAction}
           <UserMenu
             initial={initial}
-            label={user.display_name}
+            accountLabel={accountLabel}
             onLogout={onLogout}
           />
         </div>
@@ -650,11 +651,11 @@ function sessionShareTitle(session: SessionDetail): string {
 
 function UserMenu({
   initial,
-  label,
+  accountLabel,
   onLogout,
 }: {
   initial: string;
-  label: string;
+  accountLabel: string;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -681,7 +682,7 @@ function UserMenu({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={label}
+        title={accountLabel}
         className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
       >
         {initial}
@@ -689,10 +690,10 @@ function UserMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
+          className="absolute right-0 top-full z-40 mt-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
         >
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
-            Signed in as <span className="text-foreground">{label}</span>
+            Signed in as <span className="break-all text-foreground">{accountLabel}</span>
           </div>
           <Link
             href="/settings"

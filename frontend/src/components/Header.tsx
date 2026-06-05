@@ -33,6 +33,7 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const label = user.display_name;
+  const accountLabel = user.email ?? user.name;
   const initial = label[0].toUpperCase();
 
   useEscapeKey(open, () => setOpen(false));
@@ -58,7 +59,7 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={label}
+        title={accountLabel}
         className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
       >
         {initial}
@@ -66,10 +67,10 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
+          className="absolute right-0 top-full z-40 mt-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
         >
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
-            Signed in as <span className="text-foreground">{label}</span>
+            Signed in as <span className="break-all text-foreground">{accountLabel}</span>
           </div>
           <Link
             href="/settings"

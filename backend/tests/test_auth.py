@@ -85,6 +85,7 @@ async def test_api_key_auth(client: AsyncClient):
         json={
             "name": name,
             "password": "securepassword1",
+            "email": "henry@example.com",
         },
     )
     api_key = reg.json()["api_key"]
@@ -92,6 +93,29 @@ async def test_api_key_auth(client: AsyncClient):
     me = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {api_key}"})
     assert me.status_code == 200
     assert me.json()["name"] == name
+    assert me.json()["email"] == "henry@example.com"
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_current_api_key(client: AsyncClient):
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name(),
+            "password": "securepassword1",
+        },
+    )
+    api_key = reg.json()["api_key"]
+
+    logout = await client.post(
+        "/api/v1/users/logout",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+    assert logout.status_code == 204
+
+    me = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {api_key}"})
+    assert me.status_code == 401
 
 
 @pytest.mark.asyncio

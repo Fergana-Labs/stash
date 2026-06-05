@@ -2,6 +2,7 @@ export interface User {
   id: string;
   name: string;
   display_name: string;
+  email?: string | null;
   description: string;
   created_at: string;
   last_seen: string;

@@ -203,6 +203,29 @@ describe("AppShell sidebar collapse", () => {
     expect(localStorage.getItem("stash_sidebar_width")).toBe("380");
   });
 
+  it("shows the signed-in email and signs out from the account menu", () => {
+    const onLogout = vi.fn();
+
+    render(
+      <ShareModalProvider>
+        <AppShell
+          user={{ ...user, email: "henry@example.com" }}
+          onLogout={onLogout}
+        >
+          <div>Page content</div>
+        </AppShell>
+      </ShareModalProvider>,
+    );
+
+    fireEvent.click(screen.getByTitle("henry@example.com"));
+
+    expect(screen.getByText("henry@example.com")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
   it("opens top-bar search with session scope", () => {
     nav.pathname = "/workspaces/ws-1/sessions/session-123";
     mockWorkspaceCache();

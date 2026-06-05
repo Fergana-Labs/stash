@@ -7,6 +7,7 @@ import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import { API_BASE, getToken, setToken, listMyWorkspaces } from "../../lib/api";
+import { consumeManualAuth0Logout } from "../../lib/authLogout";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
@@ -316,6 +317,11 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
 
   useEffect(() => {
     let cancelled = false;
+    if (consumeManualAuth0Logout()) {
+      setHasSession(false);
+      return;
+    }
+
     (async () => {
       try {
         const res = await fetch("/auth/profile", { credentials: "include" });

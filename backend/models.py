@@ -29,6 +29,7 @@ class UserProfile(BaseModel):
     id: UUID
     name: str
     display_name: str
+    email: str | None = None
     description: str
     created_at: datetime
     last_seen: datetime
