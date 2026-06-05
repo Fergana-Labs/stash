@@ -62,7 +62,12 @@ class JiraIntegration(Integration):
     async def _token_request(self, payload: dict) -> TokenSet:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(TOKEN_URL, json=payload)
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                # Surface Atlassian's reason (invalid_client, redirect_uri_mismatch,
+                # invalid_grant, …) instead of an opaque HTTP error.
+                raise RuntimeError(
+                    f"Atlassian token endpoint returned {resp.status_code}: {resp.text[:300]}"
+                )
             data = resp.json()
         expires_in = data.get("expires_in")
         expires_at = (

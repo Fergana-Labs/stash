@@ -56,7 +56,10 @@ class AsanaIntegration(Integration):
     async def _token_request(self, payload: dict) -> TokenSet:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(TOKEN_URL, data=payload)
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                raise RuntimeError(
+                    f"Asana token endpoint returned {resp.status_code}: {resp.text[:300]}"
+                )
             data = resp.json()
         expires_in = data.get("expires_in")
         expires_at = (

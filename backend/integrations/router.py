@@ -245,14 +245,28 @@ async def integration_callback(
     state: str = Query(...),
 ):
     p = get_provider(provider)
-    if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
-        # The provider owns the exchange + storage and returns where to land.
-        return_to = await p.finish_authorization(code, state)
-    else:
-        user_id, return_to = _decode_state(state, expected_provider=provider)
-        token = await p.exchange_code(code)
-        account = await p.fetch_account(token.access_token)
-        await storage.store_token(user_id, provider, token, account)
+    # The token exchange / account fetch talks to the provider — it can fail for
+    # reasons outside our control (bad client secret, provider error, expired
+    # code). Surface those as a clean redirect back to the UI with an error flag
+    # instead of a bare 500, and log the real cause for debugging.
+    try:
+        if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
+            # The provider owns the exchange + storage and returns where to land.
+            return_to = await p.finish_authorization(code, state)
+        else:
+            user_id, return_to = _decode_state(state, expected_provider=provider)
+            token = await p.exchange_code(code)
+            account = await p.fetch_account(token.access_token)
+            await storage.store_token(user_id, provider, token, account)
+    except HTTPException:
+        raise  # already a clean client error (e.g. invalid/expired state → 400)
+    except Exception:
+        logger.exception("OAuth callback failed for provider %s", provider)
+        base = settings.PUBLIC_URL.rstrip("/")
+        return RedirectResponse(
+            url=f"{base}/settings?{urlencode({'integration_error': provider})}",
+            status_code=302,
+        )
 
     base = settings.PUBLIC_URL.rstrip("/")
     target = _safe_return_to(return_to) or "/settings"
