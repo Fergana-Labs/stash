@@ -14,6 +14,7 @@ import {
   listAsanaProjects,
   listGitHubRepos,
   listIntegrations,
+  disconnectIntegration,
   listJiraProjects,
   listNotionPages,
   startConnect,
@@ -228,6 +229,22 @@ export default function SourceConnectorList({
     }
   }
 
+  async function disconnect(connector: Connector) {
+    if (!confirm(`Disconnect ${connector.label}? You'll need to reconnect to sync its sources again.`)) {
+      return;
+    }
+    setBusy(connector.provider);
+    setError(null);
+    try {
+      await disconnectIntegration(connector.provider);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not disconnect");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function syncSource(source: WorkspaceSource) {
     if (!workspaceId) return;
     setBusy(`sync:${source.source}`);
@@ -286,24 +303,41 @@ export default function SourceConnectorList({
                     </span>
                   )}
                 </div>
-                <div className="truncate text-[11.5px] text-muted">{connector.blurb}</div>
+                <div className="truncate text-[11.5px] text-muted">
+                  {connected && (status?.account_email || status?.account_display_name)
+                    ? `Connected as ${status.account_email || status.account_display_name}`
+                    : connector.blurb}
+                </div>
               </div>
-              <ConnectorAction
-                connector={connector}
-                connected={connected}
-                enabled={enabled}
-                authKind={status?.auth_kind ?? "oauth"}
-                disabledReason={status?.disabled_reason ?? null}
-                busy={busy === connector.provider}
-                workspaceReady={!!workspaceId}
-                expanded={expanded === connector.provider}
-                onConnect={() => void connect(connector)}
-                onExpand={() => setExpanded((value) => value === connector.provider ? null : connector.provider)}
-                onAdd={() => void addSource(connector, connector.kind === "drive" ? {
-                  external_ref: "root",
-                  display_name: "Google Drive",
-                } : undefined)}
-              />
+              <div className="flex shrink-0 items-center gap-2">
+                <ConnectorAction
+                  connector={connector}
+                  connected={connected}
+                  enabled={enabled}
+                  authKind={status?.auth_kind ?? "oauth"}
+                  disabledReason={status?.disabled_reason ?? null}
+                  busy={busy === connector.provider}
+                  workspaceReady={!!workspaceId}
+                  expanded={expanded === connector.provider}
+                  onConnect={() => void connect(connector)}
+                  onExpand={() => setExpanded((value) => value === connector.provider ? null : connector.provider)}
+                  onAdd={() => void addSource(connector, connector.kind === "drive" ? {
+                    external_ref: "root",
+                    display_name: "Google Drive",
+                  } : undefined)}
+                />
+                {connected && (
+                  <button
+                    type="button"
+                    onClick={() => void disconnect(connector)}
+                    disabled={busy === connector.provider}
+                    title="Disconnect"
+                    className="shrink-0 rounded-md border border-border px-2 py-1.5 text-[12px] font-medium text-muted hover:text-error hover:border-error/40 disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
             </div>
 
             {expanded === connector.provider && connector.kind === "github" && workspaceId && (
