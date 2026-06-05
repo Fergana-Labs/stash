@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..config import settings
 from . import storage
+from .base import AccountInfo
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -256,17 +257,28 @@ async def integration_callback(
         else:
             user_id, return_to = _decode_state(state, expected_provider=provider)
             token = await p.exchange_code(code)
-            account = await p.fetch_account(token.access_token)
+            # The account profile is display-only — a failure fetching it must
+            # NOT block the connection (the token is what matters). Degrade to
+            # an empty identity instead.
+            try:
+                account = await p.fetch_account(token.access_token)
+            except Exception:
+                logger.warning(
+                    "fetch_account failed for %s; connecting without profile",
+                    provider,
+                    exc_info=True,
+                )
+                account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
-    except Exception:
+    except Exception as e:
         logger.exception("OAuth callback failed for provider %s", provider)
         base = settings.PUBLIC_URL.rstrip("/")
-        return RedirectResponse(
-            url=f"{base}/settings?{urlencode({'integration_error': provider})}",
-            status_code=302,
-        )
+        # Surface a short reason in the redirect — this app's logging swallows
+        # tracebacks, so the URL is the only place the operator sees the cause.
+        query = {"integration_error": provider, "reason": str(e)[:200]}
+        return RedirectResponse(url=f"{base}/settings?{urlencode(query)}", status_code=302)
 
     base = settings.PUBLIC_URL.rstrip("/")
     target = _safe_return_to(return_to) or "/settings"
