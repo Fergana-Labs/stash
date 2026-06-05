@@ -9,10 +9,11 @@ owner sees them.
 This module owns:
 - the `workspace_sources` registry (CRUD + sync bookkeeping),
 - the per-integration document store. Each source type has its own table
-  (migration 0084): github/slack/granola COPY content (FTS + embeddings live in
-  the table), drive/notion store an INDEX ONLY and fetch the body lazily from
-  the provider at read time. Every table shares the navigation shape
-  (path/name/kind/deleted_at) so the agent's list/read tools stay uniform.
+  (migration 0084): most COPY content (FTS + embeddings live in the table —
+  github/slack/granola/jira/asana/gong/notion), while drive stores an INDEX ONLY
+  and fetches the body lazily from the provider at read time. Every table shares
+  the navigation shape (path/name/kind/deleted_at) so the agent's list/read tools
+  stay uniform.
 
 This module also owns the unified VFS surface (`source_entries`, `source_document`,
 `search_all`) over BOTH native and connected sources — the single codepath the
@@ -236,6 +237,8 @@ SOURCE_TABLE = {
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
 # index-only and fetch their body lazily from the provider at read time.
+# Notion copies content too — its crawl already renders each page's text to
+# discover sub-pages, so storing it for FTS is nearly free.
 CONTENT_TABLES = {
     "github_documents",
     "slack_messages",
@@ -243,6 +246,7 @@ CONTENT_TABLES = {
     "jira_documents",
     "asana_documents",
     "gong_documents",
+    "notion_index",
 }
 
 
@@ -435,10 +439,6 @@ async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str |
         from ..integrations.google.indexer import fetch_drive_content
 
         return await fetch_drive_content(owner_user_id, external_ref)
-    if source_type == "notion":
-        from ..integrations.notion.indexer import fetch_notion_content
-
-        return await fetch_notion_content(owner_user_id, external_ref)
     return ""
 
 

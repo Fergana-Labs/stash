@@ -1,15 +1,11 @@
-"""Notion → notion_index indexer (index only; body fetched lazily).
+"""Notion → notion_index indexer (copied content; FTS-searchable).
 
 A Notion source's `external_ref` is a page or database id (auto-detected). We
-walk the page tree (and database rows) to build the navigable path index — each
-page/row becomes an INDEX ROW storing its title-based path and the Notion id
-(`external_ref`). We never store the body; `read_source` calls
-`fetch_notion_content` at read time, rendering the page's blocks to markdown
-with the owner's token.
-
-The walk still has to read each page's child blocks to discover sub-pages, so a
-traversal hits the API; index-only refers to what we *store*, not how few calls
-the crawl makes.
+walk the page tree (and database rows) and copy each one into notion_index as a
+document keyed by its title-based path. The walk already has to render each
+page's blocks to markdown to discover sub-pages — so we store that rendered text
+as the document body, which makes Notion full-text searchable for nearly free
+(the API calls happen either way). Idempotent re-sync via source_service.
 """
 
 from __future__ import annotations
@@ -66,16 +62,18 @@ async def _index_page(
     if meta_resp.status_code != 200:
         return
     title = _safe(_extract_title(meta_resp.json()))
-    # Read child blocks only to discover sub-pages; the body isn't stored.
-    _, child_ids = await fetch_block_tree(client, page_id)
+    # Render the blocks to markdown — both to discover sub-pages and to store
+    # the body for full-text search.
+    lines, child_ids = await fetch_block_tree(client, page_id)
     path = f"{prefix}{title}"
-    await source_service.upsert_index_row(
+    await source_service.upsert_content_document(
         table="notion_index",
         source_id=source_id,
         workspace_id=workspace_id,
         path=path,
         name=title,
         kind="note",
+        content="\n".join(lines),
         external_ref=page_id,
     )
     present.append(path)
@@ -115,13 +113,17 @@ async def _index_database(
             props = row.get("properties", {}) or {}
             title = _safe(_row_title(props))
             path = f"{db_title}/{title}"
-            await source_service.upsert_index_row(
+            # Database rows are indexed by their title (the property values are
+            # the searchable text); we don't fetch each row's blocks to keep the
+            # crawl cheap.
+            await source_service.upsert_content_document(
                 table="notion_index",
                 source_id=source_id,
                 workspace_id=workspace_id,
                 path=path,
                 name=title,
                 kind="note",
+                content=title,
                 external_ref=row.get("id"),
             )
             present.append(path)
@@ -172,12 +174,3 @@ async def index_notion(source: dict) -> str | None:
     await source_service.soft_delete_missing("notion_index", source_id, present)
     logger.info("notion source %s: indexed %d document(s)", resource_id, len(present))
     return None
-
-
-async def fetch_notion_content(owner_user_id: UUID, page_id: str) -> str:
-    """Lazy read: render a Notion page's blocks to markdown with the owner's
-    token."""
-    token = await get_valid_token(owner_user_id, "notion")
-    async with _notion_client(token) as client:
-        lines, _ = await fetch_block_tree(client, page_id)
-    return "\n".join(lines)

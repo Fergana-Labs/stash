@@ -120,8 +120,16 @@ def test_connected_source_types_are_fully_wired():
         # content tables hold the body; index-only tables fetch it lazily — a
         # table that's in neither set would break read_document.
         is_content = table in source_service.CONTENT_TABLES
-        is_index_only = source_type in ("google_drive", "notion")
+        is_index_only = source_type in ("google_drive",)
         assert is_content or is_index_only, table
+
+
+def test_notion_is_searchable_content_source():
+    # Notion moved from index-only to copied-content so it's full-text searchable;
+    # Drive is now the only remaining lazy-fetch index-only source.
+    assert source_service.SOURCE_TABLE["notion"] == "notion_index"
+    assert "notion_index" in source_service.CONTENT_TABLES
+    assert source_service.SOURCE_CAPABILITY["notion"] == "navigable"
 
 
 def test_jira_and_asana_are_searchable_content_sources():
