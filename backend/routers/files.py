@@ -293,21 +293,17 @@ async def get_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    # No workspace-membership pre-gate: the readable_content_condition below
-    # already grants the owner (member), share grantees, and open-cartridge
-    # readers — and 404s everyone else.
     pool = get_pool()
-    readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files f WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL "
-        f"AND {readable_file}",
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
-        current_user["id"],
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="You don't have access to this file")
     return await _file_to_response(dict(row))
 
 
