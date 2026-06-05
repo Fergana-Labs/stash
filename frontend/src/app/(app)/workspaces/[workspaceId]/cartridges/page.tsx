@@ -6,32 +6,30 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { StashesGridSkeleton } from "../../../../../components/SkeletonStates";
 import { PinIcon, StashIcon } from "../../../../../components/StashIcons";
 import CartridgeCard from "../../../../../components/cartridge/CartridgeCard";
-import ForkCartridgeCardButton from "../../../../../components/cartridge/ForkCartridgeCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useShareModal } from "../../../../../lib/shareModalContext";
 import {
   addExternalCartridge,
-  API_BASE,
   ApiError,
   deleteCartridge,
   listStashes,
-  type PublicCartridgeCard,
   type WorkspaceCartridge,
 } from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
 import { stashSlugFromInput } from "../../../../../lib/cartridgeLinks";
 
-type Filter = "all" | "workspace" | "private" | "public" | "external";
+// Visibility is one axis (who can see a Cartridge). "External" is a different
+// axis entirely — where it came from — so it's a section below, not a filter.
+type Visibility = "all" | "private" | "workspace" | "public";
 type ViewKey = "grid" | "list";
 
 const VIEW_STORAGE_KEY = "stash_stashes_view";
 
-const FILTERS: { key: Filter; label: string }[] = [
+const VISIBILITIES: { key: Visibility; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "workspace", label: "Workspace" },
   { key: "private", label: "Private" },
+  { key: "workspace", label: "Workspace" },
   { key: "public", label: "Public" },
-  { key: "external", label: "External" },
 ];
 
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
@@ -50,8 +48,7 @@ export default function WorkspaceStashesPage() {
   const pins = usePins("cartridges", workspaceId);
 
   const [cartridges, setStashes] = useState<WorkspaceCartridge[] | null>(null);
-  const [mode, setMode] = useState<"yours" | "discover">("yours");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [visibility, setVisibility] = useState<Visibility>("all");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -97,35 +94,29 @@ export default function WorkspaceStashesPage() {
     load();
   }, [load, shareVersion]);
 
-  const counts = useMemo(() => {
-    const list = cartridges ?? [];
-    return {
-      all: list.length,
-      workspace: list.filter((s) => s.access === "workspace" && !s.is_external).length,
-      private: list.filter((s) => s.access === "private").length,
-      public: list.filter((s) => s.access === "public").length,
-      external: list.filter((s) => s.is_external).length,
-    };
-  }, [cartridges]);
-
-  const filtered = useMemo(() => {
+  // Visibility filter applies across both axes; the section split (yours vs
+  // forked) is the origin axis, kept independent of it.
+  const visible = useMemo(() => {
     if (!cartridges) return [];
     const ordered = [...cartridges].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
-    if (filter === "all") return ordered;
-    if (filter === "external") return ordered.filter((s) => s.is_external);
-    return ordered.filter((s) => s.access === filter && !s.is_external);
-  }, [cartridges, filter]);
+    if (visibility === "all") return ordered;
+    return ordered.filter((s) => s.access === visibility);
+  }, [cartridges, visibility]);
 
-  const native = useMemo(
-    () => filtered.filter((s) => !s.forked_from_cartridge_id),
-    [filtered]
-  );
-  const forked = useMemo(
-    () => filtered.filter((s) => !!s.forked_from_cartridge_id),
-    [filtered]
-  );
+  const counts = useMemo(() => {
+    const list = cartridges ?? [];
+    return {
+      all: list.length,
+      private: list.filter((s) => s.access === "private").length,
+      workspace: list.filter((s) => s.access === "workspace").length,
+      public: list.filter((s) => s.access === "public").length,
+    };
+  }, [cartridges]);
+
+  const native = useMemo(() => visible.filter((s) => !s.is_external), [visible]);
+  const forked = useMemo(() => visible.filter((s) => s.is_external), [visible]);
 
   const pinnedStashes = useMemo(
     () => (cartridges ?? []).filter((s) => pins.pinnedSet.has(s.id)),
@@ -163,27 +154,23 @@ export default function WorkspaceStashesPage() {
     return <StashesGridSkeleton />;
   }
 
+  const isPinned = (s: WorkspaceCartridge) => pins.pinnedSet.has(s.id);
+
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
         <div className="flex items-center justify-between gap-4">
-          {/* One sharing surface: your Cartridges + public ones to discover. */}
-          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
-            {(["yours", "discover"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={
-                  "rounded-md px-3 py-[5px] text-[12.5px] " +
-                  (mode === m
-                    ? "bg-raised font-semibold text-foreground"
-                    : "text-muted hover:text-foreground")
-                }
-              >
-                {m === "yours" ? "Yours" : "Discover"}
-              </button>
-            ))}
+          <div>
+            <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
+              Cartridges
+            </h1>
+            <p className="mt-0.5 text-[12.5px] text-muted">
+              Publishable bundles you own. Browse public ones in{" "}
+              <Link href="/discover" className="text-[var(--color-brand-600)] hover:underline">
+                Discover
+              </Link>
+              .
+            </p>
           </div>
           <button
             type="button"
@@ -194,10 +181,6 @@ export default function WorkspaceStashesPage() {
           </button>
         </div>
 
-        {mode === "discover" ? (
-          <DiscoverSection />
-        ) : (
-        <>
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
             {error}
@@ -208,91 +191,69 @@ export default function WorkspaceStashesPage() {
           <CartridgeQuickAccess
             pinned={pinnedStashes}
             recent={recentStashes}
-            isPinned={(s) => pins.pinnedSet.has(s.id)}
+            isPinned={isPinned}
             onTogglePin={(s) => pins.toggle(s.id)}
           />
         )}
 
-        {/* Toolbar */}
+        {/* Toolbar: one visibility axis (who can see) + the view switch. */}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {FILTERS.map((f) => {
-              const active = filter === f.key;
-              const count = counts[f.key];
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setFilter(f.key)}
-                  className={
-                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] " +
-                    (active
-                      ? "bg-raised font-semibold text-foreground"
-                      : "text-muted hover:text-foreground")
-                  }
-                >
-                  {f.key !== "all" && <VisDot vis={f.key} />}
-                  {f.label}
-                  <span className="sys-label" style={{ fontSize: 10 }}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <VisibilityFilter
+            visibility={visibility}
+            counts={counts}
+            onChange={setVisibility}
+          />
           <CartridgeViewToggle view={view} onChange={setViewPersisted} />
         </div>
 
-        <ExternalCartridgeLinkForm
-          workspaceId={workspaceId}
-          onAdded={() => {
-            setFilter("external");
-            void load();
-          }}
-        />
-
-        {/* Grid */}
-        {filtered.length === 0 ? (
+        {cartridges.length === 0 ? (
           <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
-            {cartridges.length === 0
-              ? "No Cartridges yet."
-              : "No Cartridges match this filter."}
+            No Cartridges yet.
           </div>
-        ) : filter === "all" && forked.length > 0 && native.length > 0 ? (
-          <>
-            <CartridgeGroup
-              title="Workspace Cartridges"
-              cartridges={native}
-              startIndex={0}
-              view={view}
-              isPinned={(s) => pins.pinnedSet.has(s.id)}
-              onTogglePin={(s) => pins.toggle(s.id)}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-            />
-            <CartridgeGroup
-              title="Forked Cartridges"
-              cartridges={forked}
-              startIndex={native.length}
-              view={view}
-              isPinned={(s) => pins.pinnedSet.has(s.id)}
-              onTogglePin={(s) => pins.toggle(s.id)}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-            />
-          </>
         ) : (
-          <CartridgeCollection
-            cartridges={filtered}
-            startIndex={0}
-            view={view}
-            isPinned={(s) => pins.pinnedSet.has(s.id)}
-            onTogglePin={(s) => pins.toggle(s.id)}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-          />
-        )}
-        </>
+          <>
+            <CartridgeSection
+              title="Your Cartridges"
+              count={native.length}
+              emptyHint="None match this visibility."
+            >
+              <CartridgeCollection
+                cartridges={native}
+                startIndex={0}
+                view={view}
+                isPinned={isPinned}
+                onTogglePin={(s) => pins.toggle(s.id)}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                embedded
+              />
+            </CartridgeSection>
+
+            {/* Origin axis: Cartridges forked in from other workspaces. Kept a
+                separate section (not a peer filter) and always shown so the
+                add-by-link entry point stays reachable. */}
+            <CartridgeSection
+              title="Forked from others"
+              count={forked.length}
+              emptyHint={visibility === "all" ? null : "None match this visibility."}
+              action={
+                <ExternalCartridgeLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
+              }
+            >
+              {forked.length > 0 && (
+                <CartridgeCollection
+                  cartridges={forked}
+                  startIndex={native.length}
+                  view={view}
+                  isPinned={isPinned}
+                  onTogglePin={(s) => pins.toggle(s.id)}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  embedded
+                />
+              )}
+            </CartridgeSection>
+          </>
         )}
       </div>
 
@@ -316,101 +277,6 @@ export default function WorkspaceStashesPage() {
               ×
             </button>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// The Discover tab: public Cartridges from across Stash, addable to your own.
-function DiscoverSection() {
-  const [cartridges, setCartridges] = useState<PublicCartridgeCard[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"trending" | "newest" | "popular">("trending");
-
-  useEffect(() => {
-    let cancelled = false;
-    const qs = new URLSearchParams();
-    if (query) qs.set("q", query);
-    qs.set("sort", sort);
-    setCartridges(null);
-    fetch(`${API_BASE}/api/v1/discover/cartridges?${qs}`)
-      .then((r) => (r.ok ? r.json() : { cartridges: [] }))
-      .then((d) => {
-        if (!cancelled) setCartridges(d.cartridges ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setCartridges([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [query, sort]);
-
-  return (
-    <div className="mt-5">
-      <div className="flex items-center gap-3">
-        <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search public Cartridges…"
-            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted focus:outline-none"
-          />
-        </div>
-        <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
-          {(["trending", "newest", "popular"] as const).map((o) => (
-            <button
-              key={o}
-              type="button"
-              onClick={() => setSort(o)}
-              className={
-                "rounded-md px-2.5 py-[3px] text-[12px] " +
-                (sort === o
-                  ? "bg-raised font-semibold text-foreground"
-                  : "text-muted hover:text-foreground")
-              }
-            >
-              {o === "popular" ? "Most viewed" : o === "trending" ? "Trending" : "Newest"}
-            </button>
-          ))}
-        </div>
-      </div>
-      {cartridges === null ? (
-        <div className="mt-12 text-center text-[12.5px] text-muted">Loading…</div>
-      ) : cartridges.length === 0 ? (
-        <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
-          No public Cartridges yet.
-        </div>
-      ) : (
-        <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-          {cartridges.map((c, i) => (
-            <CartridgeCard
-              key={c.id}
-              stash={{
-                id: c.id,
-                slug: c.slug,
-                title: c.title,
-                description: c.description,
-                cover_image_url: c.cover_image_url,
-                access: "public",
-                item_count: c.item_count,
-                updated_at: c.updated_at,
-              }}
-              cover={COVERS[i % COVERS.length]}
-              cornerAction={
-                <ForkCartridgeCardButton slug={c.slug} sourceWorkspaceId={c.workspace_id} />
-              }
-              footer={
-                <>
-                  <span className="min-w-0 truncate">{c.owner_display_name}</span>
-                  <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground">
-                    Open →
-                  </span>
-                </>
-              }
-            />
-          ))}
         </div>
       )}
     </div>
@@ -489,19 +355,86 @@ function ExternalCartridgeLinkForm({
   );
 }
 
-function VisDot({ vis }: { vis: string }) {
-  const color =
-    vis === "public" ? "#22C55E" : vis === "private" ? "#9CA3AF" : "var(--color-brand-500)";
+// The single visibility axis as a segmented control. One pill per level plus
+// "All", each with its live count — replaces the old flat filter row that
+// mixed visibility with the unrelated "External" origin flag.
+function VisibilityFilter({
+  visibility,
+  counts,
+  onChange,
+}: {
+  visibility: Visibility;
+  counts: Record<Visibility, number>;
+  onChange: (next: Visibility) => void;
+}) {
   return (
-    <span
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 999,
-        background: color,
-        display: "inline-block",
-      }}
-    />
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-base p-[3px]">
+      {VISIBILITIES.map((v) => {
+        const active = visibility === v.key;
+        return (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => onChange(v.key)}
+            className={
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-[5px] text-[12.5px] " +
+              (active
+                ? "bg-raised font-semibold text-foreground"
+                : "text-muted hover:text-foreground")
+            }
+          >
+            {v.key !== "all" && (
+              <span
+                className="inline-block h-[7px] w-[7px] rounded-full"
+                style={{ background: VIS_COLOR[v.key] }}
+              />
+            )}
+            {v.label}
+            <span className="sys-label" style={{ fontSize: 10 }}>
+              {counts[v.key]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// A titled block of Cartridges (the origin axis: "Your Cartridges" vs "Forked
+// from others"). Renders its header + count, an optional header action, and a
+// muted hint when the section is empty.
+function CartridgeSection({
+  title,
+  count,
+  emptyHint,
+  action,
+  children,
+}: {
+  title: string;
+  count: number;
+  emptyHint: string | null;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section className="mt-6">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-baseline gap-2">
+          <h2 className="m-0 font-display text-[14px] font-semibold">{title}</h2>
+          <span className="sys-label" style={{ fontSize: 10.5 }}>
+            {count}
+          </span>
+        </div>
+        {action}
+      </div>
+      {count === 0
+        ? emptyHint && (
+            <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted">
+              {emptyHint}
+            </p>
+          )
+        : children}
+    </section>
   );
 }
 
@@ -513,47 +446,6 @@ function PlusGlyph() {
   );
 }
 
-
-function CartridgeGroup({
-  title,
-  cartridges,
-  startIndex,
-  view,
-  isPinned,
-  onTogglePin,
-  selectedIds,
-  onToggleSelect,
-}: {
-  title: string;
-  cartridges: WorkspaceCartridge[];
-  startIndex: number;
-  view: ViewKey;
-  isPinned: (stash: WorkspaceCartridge) => boolean;
-  onTogglePin: (stash: WorkspaceCartridge) => void;
-  selectedIds: Set<string>;
-  onToggleSelect: (id: string) => void;
-}) {
-  return (
-    <section className="mt-5">
-      <div className="mb-2 flex items-baseline gap-2">
-        <h2 className="m-0 font-display text-[14px] font-semibold">{title}</h2>
-        <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {cartridges.length}
-        </span>
-      </div>
-      <CartridgeCollection
-        cartridges={cartridges}
-        startIndex={startIndex}
-        view={view}
-        isPinned={isPinned}
-        onTogglePin={onTogglePin}
-        selectedIds={selectedIds}
-        onToggleSelect={onToggleSelect}
-        embedded
-      />
-    </section>
-  );
-}
 
 function CartridgeCollection({
   cartridges,
