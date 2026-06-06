@@ -108,6 +108,10 @@ export function connectorForProvider(provider: string): Connector | undefined {
   return CONNECTORS.find((connector) => connector.provider === provider);
 }
 
+export function labelForProvider(provider: string): string {
+  return connectorForProvider(provider)?.label ?? provider;
+}
+
 export function connectorIcon(provider: string): ReactNode {
   switch (provider) {
     case "github":

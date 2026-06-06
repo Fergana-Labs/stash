@@ -298,7 +298,7 @@ export async function readSourceDoc(
   workspaceId: string,
   source: string,
   ref: string,
-): Promise<{ name?: string; content?: string }> {
+): Promise<{ name?: string; content?: string; url?: string | null }> {
   return apiFetch(
     `/api/v1/workspaces/${workspaceId}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`,
   );

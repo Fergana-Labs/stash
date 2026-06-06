@@ -35,19 +35,6 @@ import {
   secondaryButton,
 } from "../../../../../../components/integrations/pickers";
 
-// One-line "how it's indexed" descriptor per source type.
-const INDEX_DESCRIPTOR: Record<string, string> = {
-  github_repo: "Full repo copied + searchable",
-  google_drive: "Indexed; searched live (Drive full-text)",
-  notion: "Pages copied + full-text search",
-  jira_project: "Searched live via Jira (federated)",
-  asana_project: "Searched live via Asana (federated)",
-  slack: "Messages copied + searchable",
-  granola: "Meeting notes copied + searchable",
-  gong_calls: "Call transcripts copied + searchable",
-  snowflake: "Live read-only SQL",
-};
-
 export default function IntegrationPage() {
   const params = useParams();
   const router = useRouter();
@@ -187,50 +174,59 @@ export default function IntegrationPage() {
   }
 
   const openSource = sources.find((s) => s.source === openSourceId) ?? null;
+  // The mock's uppercase "ADD A <thing>" / "<things>" labels read off the
+  // connector's noun (Project / Repo / Page / …) — derived from the blurb fallback.
+  const itemNoun = ITEM_NOUN[connector.sourceType] ?? "source";
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-12 py-8">
-        {/* Header */}
+      <div className="mx-auto max-w-3xl px-12 py-9">
+        {/* Header: icon + label, connected account + quiet Disconnect top-right. */}
         <div className="flex items-center gap-3">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+          <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-[var(--color-brand-50)] text-[16px]">
             {connectorIcon(connector.provider)}
           </span>
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-[20px] font-semibold text-foreground">{connector.label}</h1>
-            <div className="text-[12.5px] text-muted">
-              {connected && account ? `Connected as ${account}` : connector.blurb}
-            </div>
+          <h1 className="font-display text-[19px] font-semibold tracking-tight text-foreground">
+            {connector.label}
+          </h1>
+          <div className="ml-auto flex items-center gap-3.5">
+            {connected && account && (
+              <span className="text-[12.5px] text-muted">
+                Connected as <b className="font-semibold text-foreground">{account}</b>
+              </span>
+            )}
+            {connected ? (
+              <button
+                type="button"
+                onClick={() => void disconnect()}
+                disabled={busy === "disconnect"}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+              >
+                {busy === "disconnect" ? "Disconnecting..." : "Disconnect"}
+              </button>
+            ) : status?.auth_kind === "api_key" ? (
+              <button
+                type="button"
+                onClick={() => setShowCreds((v) => !v)}
+                disabled={busy === "connect"}
+                className={primaryButton()}
+              >
+                {showCreds ? "Cancel" : "Connect"}
+              </button>
+            ) : (
+              <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={primaryButton()}>
+                {busy === "connect" ? "Connecting..." : "Connect"}
+              </button>
+            )}
           </div>
-          <Link href="/settings" className="shrink-0 text-[12px] text-muted hover:text-foreground hover:underline">
-            Manage in Settings
-          </Link>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
-          {!connected && status?.auth_kind === "api_key" ? (
-            <button
-              type="button"
-              onClick={() => setShowCreds((v) => !v)}
-              disabled={busy === "connect"}
-              className={primaryButton()}
-            >
-              {showCreds ? "Cancel" : "Connect"}
-            </button>
-          ) : !connected ? (
-            <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={primaryButton()}>
-              {busy === "connect" ? "Connecting..." : "Connect"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void disconnect()}
-              disabled={busy === "disconnect"}
-              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-muted hover:border-error/40 hover:text-error disabled:opacity-60"
-            >
-              {busy === "disconnect" ? "Disconnecting..." : "Disconnect"}
-            </button>
-          )}
+        {/* Subtitle: what this integration does + a quiet Settings link. */}
+        <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted">
+          {connector.blurb}{" "}·{" "}
+          <Link href="/settings" className="font-semibold text-brand hover:underline">
+            Manage in Settings
+          </Link>
         </div>
 
         {showCreds && !connected && status?.auth_kind === "api_key" && status.credential_fields && (
@@ -247,30 +243,28 @@ export default function IntegrationPage() {
           </div>
         )}
 
-        {/* Add */}
+        {/* Add a <thing> */}
         {connected && (
           <section className="mt-6">
-            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Add</h2>
-            <div className="rounded-lg border border-border bg-surface px-3 py-3">
-              <AddSourceControls
-                connector={connector}
-                workspaceId={workspaceId}
-                connected={connected}
-                onAdded={() => void refresh()}
-              />
-            </div>
+            <SectionLabel>Add a {itemNoun}</SectionLabel>
+            <AddSourceControls
+              connector={connector}
+              workspaceId={workspaceId}
+              connected={connected}
+              onAdded={() => void refresh()}
+            />
           </section>
         )}
 
-        {/* Added sources */}
-        <section className="mt-6">
-          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Added sources</h2>
+        {/* <Things> */}
+        <section className="mt-7">
+          <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
           {sources.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+            <div className="py-3 text-[12.5px] text-muted">
               {connected ? "Nothing added yet." : "Connect to add sources."}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div>
               {sources.map((source) => (
                 <SourceRow
                   key={source.source}
@@ -289,19 +283,44 @@ export default function IntegrationPage() {
           )}
         </section>
 
-        {/* Browse */}
+        {/* Browse · <name> */}
         {openSource && (
-          <section className="mt-6">
-            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-              Browse · {openSource.display_name}
-            </h2>
-            <BrowsePanel workspaceId={workspaceId} source={openSource} onRefresh={() => void refresh()} />
+          <section className="mt-7">
+            <SectionLabel>Browse · {openSource.display_name}</SectionLabel>
+            <BrowsePanel
+              workspaceId={workspaceId}
+              source={openSource}
+              providerLabel={connector.label}
+              onRefresh={() => void refresh()}
+            />
           </section>
         )}
       </div>
     </div>
   );
 }
+
+// The uppercase section label that runs above each block, per the mock.
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-2.5 text-[10.5px] font-bold uppercase tracking-[0.07em] text-dim">
+      {children}
+    </div>
+  );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// The noun used in the "Add a <thing>" / "<things>" section labels.
+const ITEM_NOUN: Record<string, string> = {
+  github_repo: "repo",
+  google_drive: "folder",
+  notion: "page",
+  jira_project: "project",
+  asana_project: "project",
+};
 
 function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "never synced";
@@ -317,19 +336,30 @@ function relativeTime(iso: string | null | undefined): string {
   return `synced ${new Date(iso).toLocaleDateString()}`;
 }
 
-function SyncPill({ syncStatus }: { syncStatus: string | null | undefined }) {
+// The lead-in to the status line. A healthy source shows a quiet green dot; a
+// syncing/failed source shows a labeled pill (failed is also surfaced in red below).
+function SyncStatusMark({ syncStatus }: { syncStatus: string | null | undefined }) {
   const s = syncStatus ?? "idle";
+  if (s === "idle") {
+    return <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-label="synced" />;
+  }
   const cls =
     s === "syncing"
-      ? "border-blue-300/50 bg-blue-500/10 text-blue-600"
-      : s === "failed"
-      ? "border-error/40 bg-error/10 text-error"
-      : "border-border bg-base text-muted";
+      ? "border-blue-300/60 bg-blue-500/10 text-blue-600"
+      : "border-error/40 bg-error/10 text-error";
   return (
-    <span className={"inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium " + cls}>
+    <span className={"inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold " + cls}>
       {s}
     </span>
   );
+}
+
+// A short, monospace external id for the row (the mock's "KAN" / "owner/repo").
+function shortRef(source: WorkspaceSource): string | null {
+  const ref = source.external_ref;
+  if (!ref) return null;
+  if (source.type === "jira_project") return ref.split(":")[1] ?? ref;
+  return ref;
 }
 
 function SourceRow({
@@ -367,100 +397,122 @@ function SourceRow({
     };
   }, [workspaceId, source.source]);
 
+  const federated = source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project";
+  const ref = shortRef(source);
+
   return (
     <div
       className={
-        "rounded-lg border bg-surface px-3 py-2.5 " +
-        (highlighted ? "border-brand/50 ring-1 ring-brand/30" : "border-border")
+        "group flex items-center gap-3 border-b border-border px-1 py-3 last:border-b-0 " +
+        (highlighted ? "-mx-2 rounded-lg bg-[var(--color-brand-50)] px-3" : "")
       }
     >
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-          <div className="truncate text-[13.5px] font-medium text-foreground">{source.display_name}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-muted">
-            <SyncPill syncStatus={source.sync_status} />
-            <span>{relativeTime(source.last_synced_at)}</span>
-            {itemCount !== null && <span>· {itemCount} items</span>}
-            <span>· {INDEX_DESCRIPTOR[source.type] ?? source.type}</span>
-          </div>
-          {source.sync_error && (
-            <div className="mt-1 truncate text-[11px] text-error">{source.sync_error}</div>
-          )}
-        </button>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpen}
-            className="rounded-md border border-border px-2 py-1 text-[11.5px] text-muted hover:text-foreground"
-          >
-            {open ? "Close" : "Browse"}
-          </button>
-          <button
-            type="button"
-            disabled={busySync}
-            onClick={onSync}
-            className="rounded-md border border-border px-2 py-1 text-[11.5px] text-muted hover:text-foreground disabled:opacity-60"
-          >
-            {busySync ? "Syncing..." : "Sync"}
-          </button>
-          <button
-            type="button"
-            disabled={busyDelete}
-            onClick={onRemove}
-            className="rounded-md border border-border px-2 py-1 text-[11.5px] text-muted hover:text-error disabled:opacity-60"
-          >
-            Remove
-          </button>
+      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
+        <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
+          {source.display_name}
+          {ref && <span className="font-mono text-[12px] font-normal text-muted">{ref}</span>}
         </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+          <SyncStatusMark syncStatus={source.sync_status} />
+          <span>
+            {relativeTime(source.last_synced_at)}
+            {itemCount !== null && ` · ${itemCount} items`}
+            {federated && " · federated"}
+          </span>
+        </div>
+        {source.sync_status === "failed" && source.sync_error && (
+          <div className="mt-1 truncate font-mono text-[11.5px] text-error">{source.sync_error}</div>
+        )}
+      </button>
+      <div className="flex shrink-0 items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
+        <button type="button" onClick={onOpen} className={rowButton()}>
+          {open ? "Close" : "Browse"}
+        </button>
+        <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
+          {busySync ? "Syncing..." : "Sync"}
+        </button>
+        <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
+          Remove
+        </button>
       </div>
     </div>
   );
 }
 
+// The quiet bordered row action (Browse/Sync) and its borderless ghost (Remove).
+function rowButton(): string {
+  return "rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
+}
+function rowButtonGhost(): string {
+  return "rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-error disabled:opacity-60";
+}
+
 function BrowsePanel({
   workspaceId,
   source,
+  providerLabel,
   onRefresh,
 }: {
   workspaceId: string;
   source: WorkspaceSource;
+  providerLabel: string;
   onRefresh: () => void;
 }) {
   if (source.capability === "queryable") {
     return <QueryablePanel workspaceId={workspaceId} source={source} />;
   }
   if (source.capability === "searchable") {
-    return <SearchablePanel workspaceId={workspaceId} source={source} onRefresh={onRefresh} />;
+    return (
+      <SearchablePanel
+        workspaceId={workspaceId}
+        source={source}
+        providerLabel={providerLabel}
+        onRefresh={onRefresh}
+      />
+    );
   }
-  return <NavigablePanel workspaceId={workspaceId} source={source} onRefresh={onRefresh} />;
+  return (
+    <NavigablePanel
+      workspaceId={workspaceId}
+      source={source}
+      providerLabel={providerLabel}
+      onRefresh={onRefresh}
+    />
+  );
 }
 
-// Shows the full content of one document/entry inside a browse panel.
+// Shows the full content of one document/entry inside a browse panel, with a
+// bordered header that deep-links back to the provider when a url is available.
 function DocViewer({
   workspaceId,
   source,
+  providerLabel,
   refValue,
   name,
   onClose,
 }: {
   workspaceId: string;
   source: string;
+  providerLabel: string;
   refValue: string;
   name?: string;
   onClose: () => void;
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState(name ?? "");
+  const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setContent(null);
+    setUrl(null);
     setError("");
     readSourceDoc(workspaceId, source, refValue)
       .then((doc) => {
         if (cancelled) return;
         setContent(doc.content ?? "");
+        setUrl(doc.url ?? null);
         if (doc.name) setTitle(doc.name);
       })
       .catch((e) => {
@@ -472,19 +524,33 @@ function DocViewer({
   }, [workspaceId, source, refValue]);
 
   return (
-    <div className="mt-3 rounded-lg border border-border bg-base p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="min-w-0 truncate text-[12.5px] font-medium text-foreground">{title || refValue}</div>
-        <button type="button" onClick={onClose} className="shrink-0 text-[12px] text-muted hover:text-foreground">
-          Close
-        </button>
+    <div className="mt-3 overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2.5">
+        <div className="min-w-0 truncate font-mono text-[12.5px] font-semibold text-foreground">
+          {title || refValue}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[12px] font-semibold text-brand hover:underline"
+            >
+              Open in {providerLabel} ↗
+            </a>
+          )}
+          <button type="button" onClick={onClose} className="text-[12px] text-muted hover:text-foreground">
+            Close
+          </button>
+        </div>
       </div>
       {error ? (
-        <div className="text-[12px] text-error">{error}</div>
+        <div className="bg-base px-3 py-3 text-[12px] text-error">{error}</div>
       ) : content === null ? (
-        <div className="text-[12px] text-muted">Loading…</div>
+        <div className="bg-base px-3 py-3 text-[12px] text-muted">Loading…</div>
       ) : (
-        <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words text-[12px] text-foreground">
+        <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
           {content}
         </pre>
       )}
@@ -595,10 +661,12 @@ function QueryablePanel({ workspaceId, source }: { workspaceId: string; source: 
 function SearchablePanel({
   workspaceId,
   source,
+  providerLabel,
   onRefresh,
 }: {
   workspaceId: string;
   source: WorkspaceSource;
+  providerLabel: string;
   onRefresh: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -636,20 +704,20 @@ function SearchablePanel({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
+    <div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void search();
         }}
-        className="flex gap-2"
+        className="mb-3 flex gap-2"
       >
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={`Search ${source.display_name}...`}
-          className="flex-1 rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          placeholder={`Search ${source.display_name}…`}
+          className="flex-1 rounded-lg border border-[var(--color-border)] bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
         />
         <button type="submit" disabled={searching || !query.trim()} className={primaryButton()}>
           {searching ? "Searching..." : "Search"}
@@ -657,46 +725,36 @@ function SearchablePanel({
       </form>
 
       {hits !== null && (
-        <div className="mt-3">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Results</div>
+        <div className="mb-2">
           {hits.length === 0 ? (
-            <div className="text-[12px] text-muted">No matches.</div>
+            <div className="px-1.5 py-1 text-[12.5px] text-muted">No matches.</div>
           ) : (
-            <div className="space-y-1">
-              {hits.map((hit) => (
-                <button
-                  key={hit.ref}
-                  type="button"
-                  onClick={() => setOpenDoc({ ref: hit.ref, name: hit.name })}
-                  className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-raised"
-                >
-                  <div className="truncate text-[12.5px] font-medium text-foreground">{hit.name || hit.ref}</div>
-                  {hit.snippet && <div className="truncate text-[11.5px] text-muted">{hit.snippet}</div>}
-                </button>
-              ))}
-            </div>
+            hits.map((hit) => (
+              <HitRow
+                key={hit.ref}
+                hitKey={hit.ref}
+                label={hit.name}
+                snippet={hit.snippet}
+                onOpen={() => setOpenDoc({ ref: hit.ref, name: hit.name })}
+              />
+            ))
           )}
         </div>
       )}
 
-      {recent && recent.length > 0 && (
-        <div className="mt-3">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Recent</div>
-          <div className="space-y-1">
-            {recent.map((entry) => {
-              const ref = entry.id ?? entry.path ?? entry.name;
-              return (
-                <button
-                  key={ref}
-                  type="button"
-                  onClick={() => setOpenDoc({ ref, name: entry.name })}
-                  className="block w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] text-foreground hover:bg-raised"
-                >
-                  {entry.name}
-                </button>
-              );
-            })}
-          </div>
+      {hits === null && recent && recent.length > 0 && (
+        <div className="mb-2">
+          {recent.map((entry) => {
+            const ref = entry.id ?? entry.path ?? entry.name;
+            return (
+              <HitRow
+                key={ref}
+                hitKey={ref}
+                label={entry.name}
+                onOpen={() => setOpenDoc({ ref, name: entry.name })}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -704,6 +762,7 @@ function SearchablePanel({
         <DocViewer
           workspaceId={workspaceId}
           source={source.source}
+          providerLabel={providerLabel}
           refValue={openDoc.ref}
           name={openDoc.name}
           onClose={() => setOpenDoc(null)}
@@ -717,13 +776,44 @@ function SearchablePanel({
   );
 }
 
+// A quiet browse hit row: a monospace key, then the title (the mock's
+// "KAN-2  Task 2"). When the key and label coincide, just shows the label.
+function HitRow({
+  hitKey,
+  label,
+  snippet,
+  onOpen,
+}: {
+  hitKey: string;
+  label?: string;
+  snippet?: string;
+  onOpen: () => void;
+}) {
+  const showKey = !!label && label !== hitKey && !label.startsWith(hitKey);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="block w-full rounded-md px-1.5 py-1.5 text-left hover:bg-raised"
+    >
+      <div className="flex items-baseline gap-2.5">
+        {showKey && <span className="font-mono text-[12px] text-muted">{hitKey}</span>}
+        <span className="min-w-0 truncate text-[13px] text-foreground">{label || hitKey}</span>
+      </div>
+      {snippet && <div className="mt-0.5 truncate text-[11.5px] text-muted">{snippet}</div>}
+    </button>
+  );
+}
+
 function NavigablePanel({
   workspaceId,
   source,
+  providerLabel,
   onRefresh,
 }: {
   workspaceId: string;
   source: WorkspaceSource;
+  providerLabel: string;
   onRefresh: () => void;
 }) {
   const [path, setPath] = useState("");
@@ -775,7 +865,7 @@ function NavigablePanel({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
+    <div>
       <div className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-muted">
         {crumbs.map((c, i) => (
           <span key={c.path + i} className="flex items-center gap-1">
@@ -823,6 +913,7 @@ function NavigablePanel({
         <DocViewer
           workspaceId={workspaceId}
           source={source.source}
+          providerLabel={providerLabel}
           refValue={openDoc.ref}
           name={openDoc.name}
           onClose={() => setOpenDoc(null)}

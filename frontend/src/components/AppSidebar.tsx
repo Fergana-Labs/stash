@@ -23,7 +23,7 @@ import {
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 import AddSourceModal from "./integrations/AddSourceModal";
-import { providerForSourceType } from "./integrations/connectors";
+import { labelForProvider, providerForSourceType } from "./integrations/connectors";
 import {
   ActivityIcon,
   DiscoverIcon,
@@ -49,7 +49,7 @@ interface WorkspaceNode extends Workspace {
 
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
 
-// A colored dot per source type, so the flat Sources list reads as a set of
+// A colored dot per source type, so the grouped Sources list reads as a set of
 // equal peers (matching the mockup). Falls back to neutral.
 const SOURCE_DOT: Record<string, string> = {
   github_repo: "#111111",
@@ -57,6 +57,10 @@ const SOURCE_DOT: Record<string, string> = {
   notion: "#000000",
   slack: "#4a154b",
   granola: "#e0700f",
+  jira_project: "#2563eb",
+  asana_project: "#f06a6a",
+  gong_calls: "#7c3aed",
+  snowflake: "#29b5e8",
 };
 
 function NavRow({
@@ -237,16 +241,23 @@ export default function AppSidebar({
         active: filesActive,
       },
     ];
-    const connected = (sourceMap[ws] ?? []).map((s) => {
+    // One row per INTEGRATION (provider), not per source: collapse the
+    // workspace's connected sources to their distinct providers. The dot color
+    // comes from a representative source type of that provider.
+    const seen = new Set<string>();
+    const connected: SourceRow[] = [];
+    for (const s of sourceMap[ws] ?? []) {
       const provider = providerForSourceType[s.type] ?? s.type;
-      return {
-        key: s.source,
-        href: `/workspaces/${ws}/integrations/${provider}?source=${s.source}`,
-        label: s.display_name,
+      if (seen.has(provider)) continue;
+      seen.add(provider);
+      connected.push({
+        key: provider,
+        href: `/workspaces/${ws}/integrations/${provider}`,
+        label: labelForProvider(provider),
         icon: <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />,
         active: pathname.startsWith(`/workspaces/${ws}/integrations/${provider}`),
-      };
-    });
+      });
+    }
     return [...native, ...connected];
   }, [activeWorkspaceKey, sourceMap, pathname]);
 

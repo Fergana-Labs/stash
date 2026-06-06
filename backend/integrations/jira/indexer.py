@@ -20,6 +20,10 @@ from ..storage import get_valid_token
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3"
+ACCESSIBLE_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
+# cloud_id -> site base url (e.g. https://acme.atlassian.net). Cached because the
+# site url never changes for a cloud and the lookup costs a network round-trip.
+_SITE_URL_CACHE: dict[str, str] = {}
 # Fields rendered for a full read (lazy fetch).
 ISSUE_FIELDS = "summary,status,assignee,updated,description,comment"
 PAGE_SIZE = 100
@@ -152,6 +156,27 @@ async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> li
         summary = (issue.get("fields") or {}).get("summary") or ""
         hits.append({"ref": key, "name": f"{key}: {summary}", "snippet": summary})
     return hits
+
+
+async def site_url(source: dict) -> str | None:
+    """The Jira site base url (e.g. https://acme.atlassian.net) for this source's
+    cloud, used to build issue deep links. Resolves the cloud_id from external_ref
+    ("{cloudId}:{projectKey}") against the owner's accessible Atlassian resources.
+    Cached per cloud_id; returns None if the cloud isn't in the owner's resources."""
+    cloud_id = source["external_ref"].partition(":")[0]
+    if cloud_id in _SITE_URL_CACHE:
+        return _SITE_URL_CACHE[cloud_id]
+
+    token = await get_valid_token(UUID(source["owner_user_id"]), "jira")
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
+        resp = await client.get(ACCESSIBLE_RESOURCES_URL)
+        resp.raise_for_status()
+        resources = resp.json()
+    for resource in resources:
+        if resource.get("id") == cloud_id and resource.get("url"):
+            _SITE_URL_CACHE[cloud_id] = resource["url"]
+            return resource["url"]
+    return None
 
 
 async def fetch_jira_content(owner_user_id: UUID, external_ref: str) -> str:
