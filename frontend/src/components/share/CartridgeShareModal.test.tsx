@@ -62,13 +62,14 @@ describe("CartridgeShareModal session sharing", () => {
       owner_id: "user-1",
       owner_name: "henry",
       owner_display_name: "Henry",
-      access: "workspace",
+      access: "private",
       workspace_permission: "read",
       public_permission: "none",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
       view_count: 0,
+      share_count: 0,
       items: [],
       is_external: false,
       added_to_workspace_id: null,
@@ -151,7 +152,7 @@ describe("CartridgeShareModal session sharing", () => {
             label_override: "Debug auth flow",
           },
         ],
-        { workspace_permission: "none", public_permission: "none" }
+        { workspace_permission: "read", public_permission: "none" }
       )
     );
   });

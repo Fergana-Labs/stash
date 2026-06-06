@@ -163,6 +163,9 @@ class CartridgeResponse(BaseModel):
     cover_image_url: str | None = None
     icon_url: str | None = None
     view_count: int
+    # Count of people invited to the cartridge (cartridge_members). Drives the
+    # "Shared · N" visibility label when the cartridge isn't public.
+    share_count: int = 0
     items: list[CartridgeItem]
     is_external: bool = False
     added_to_workspace_id: UUID | None = None

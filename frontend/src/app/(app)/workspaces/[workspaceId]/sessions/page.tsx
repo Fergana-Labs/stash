@@ -14,12 +14,13 @@ import {
   createSessionFolder,
   deleteSession,
   deleteSessionFolder,
+  displayVisibility,
   listMySessions,
   listSessionFolders,
   listSharedSessionFolderSessions,
   listSharedWithMe,
+  type DisplayVisibility,
   type SessionFolder,
-  type SessionFolderVisibility,
   type SessionSummary,
   type SharedWithMeItem,
 } from "../../../../../lib/api";
@@ -835,20 +836,23 @@ type OpenFolder = {
   folder?: SessionFolder;
 };
 
-const VIS_DOT: Record<SessionFolderVisibility, string> = {
+const VIS_DOT: Record<DisplayVisibility, string> = {
   public: "#22C55E",
+  shared: "var(--color-brand-500)",
   private: "#9CA3AF",
-  workspace: "var(--color-brand-500)",
 };
 
-function FolderAccessBadge({ access }: { access: SessionFolderVisibility }) {
+// Private folders show no badge (the common, quiet case); Shared/Public stand out.
+function FolderAccessBadge({ folder }: { folder: SessionFolder }) {
+  const vis = displayVisibility(folder.access, folder.share_count);
+  if (vis === "private") return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] capitalize text-muted">
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted">
       <span
         className="inline-block h-[7px] w-[7px] rounded-full"
-        style={{ background: VIS_DOT[access] }}
+        style={{ background: VIS_DOT[vis] }}
       />
-      {access}
+      {vis === "shared" ? `Shared · ${folder.share_count}` : "Public"}
     </span>
   );
 }
@@ -939,8 +943,12 @@ function FolderCard({
           <span className="text-[11.5px] text-muted">
             {folder.session_count} session{folder.session_count === 1 ? "" : "s"}
           </span>
-          <span aria-hidden className="text-muted">·</span>
-          <FolderAccessBadge access={folder.access} />
+          {displayVisibility(folder.access, folder.share_count) !== "private" && (
+            <>
+              <span aria-hidden className="text-muted">·</span>
+              <FolderAccessBadge folder={folder} />
+            </>
+          )}
         </span>
       </span>
       <button
@@ -1047,7 +1055,7 @@ function FolderDrill({
         <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
           <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
           {folder.name}
-          {ownFolder && <FolderAccessBadge access={ownFolder.access} />}
+          {ownFolder && <FolderAccessBadge folder={ownFolder} />}
         </h2>
         {ownFolder && (
           <div className="flex items-center gap-1.5">

@@ -13,11 +13,11 @@ import {
   updateSessionFolder,
 } from "../../lib/api";
 
-// Visibility is the same one-axis model as Cartridges, mapped onto the folder's
-// (workspace_permission, public_permission) pair.
+// Two-state visibility: Private (only you, plus anyone you invite below) vs
+// Public (anyone with the link). Inviting people on a private folder surfaces it
+// as "Shared" in the folder list — that's derived, not a third toggle here.
 const VISIBILITIES: { key: SessionFolderVisibility; label: string; hint: string }[] = [
   { key: "private", label: "Private", hint: "Only you and people you invite" },
-  { key: "workspace", label: "Workspace", hint: "Anyone in this workspace" },
   { key: "public", label: "Public", hint: "Anyone with the link" },
 ];
 
@@ -26,8 +26,7 @@ function permissionsFor(v: SessionFolderVisibility): {
   public_permission: GeneralPermission;
 } {
   if (v === "public") return { workspace_permission: "read", public_permission: "read" };
-  if (v === "workspace") return { workspace_permission: "read", public_permission: "none" };
-  return { workspace_permission: "none", public_permission: "none" };
+  return { workspace_permission: "read", public_permission: "none" };
 }
 
 export default function SessionFolderShareModal({

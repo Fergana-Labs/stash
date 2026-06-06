@@ -1057,7 +1057,20 @@ export interface SessionSummary {
 }
 
 export type GeneralPermission = "none" | "read" | "write";
-export type SessionFolderVisibility = "private" | "workspace" | "public";
+// Stored visibility is two-state (the "workspace" tier was dropped after the
+// 1:1 workspace↔user migration). "shared" is a derived display state.
+export type SessionFolderVisibility = "private" | "public";
+export type DisplayVisibility = "private" | "shared" | "public";
+
+// The label to show: public link, else "shared" if anyone's been invited, else
+// private. Folders and cartridges both feed (access, count) in.
+export function displayVisibility(
+  access: "private" | "public",
+  shareCount: number,
+): DisplayVisibility {
+  if (access === "public") return "public";
+  return shareCount > 0 ? "shared" : "private";
+}
 
 export interface SessionFolder {
   id: string;
@@ -1072,6 +1085,7 @@ export interface SessionFolder {
   is_default: boolean;
   view_count: number;
   session_count: number;
+  share_count: number;
 }
 
 export async function listSessionFolders(workspaceId: string): Promise<SessionFolder[]> {
@@ -1293,7 +1307,7 @@ export interface CartridgeItemSpec {
   label_override?: string | null;
 }
 
-export type CartridgeVisibility = "workspace" | "private" | "public";
+export type CartridgeVisibility = "private" | "public";
 export type CartridgeGeneralPermission = "none" | "read" | "write";
 
 export interface CreatedCartridge {
@@ -1312,6 +1326,7 @@ export interface CreatedCartridge {
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
+  share_count: number;
   items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
@@ -1424,6 +1439,7 @@ export interface WorkspaceCartridge {
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
+  share_count: number;
   items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;

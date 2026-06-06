@@ -62,13 +62,10 @@ def _content_hash(content: str) -> str:
 _STASH_COLS = (
     "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "CASE "
-    "WHEN v.public_permission != 'none' THEN 'public' "
-    "WHEN v.workspace_permission != 'none' THEN 'workspace' "
-    "ELSE 'private' "
-    "END AS access, "
+    "CASE WHEN v.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
     "v.workspace_permission, v.public_permission, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_cartridge_id, "
+    "(SELECT COUNT(*) FROM cartridge_members cm WHERE cm.cartridge_id = v.id) AS share_count, "
     "v.created_at, v.updated_at"
 )
 _STASH_FROM = "FROM cartridges v JOIN users owner_user ON owner_user.id = v.owner_id"
@@ -111,12 +108,11 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
+# Two-state visibility (private/public). The old "workspace" tier collapsed into
+# private after the 1:1 workspace↔user migration; "Shared" is derived in the UI
+# from the cartridge's member list (member_count), not stored here.
 def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
-    if public_permission != "none":
-        return "public"
-    if workspace_permission != "none":
-        return "workspace"
-    return "private"
+    return "public" if public_permission != "none" else "private"
 
 
 def _validate_general_permissions(
@@ -190,9 +186,7 @@ async def _validate_item_partition(
         for target_type, target_id in targets:
             target_rows = await conn.fetch(
                 "SELECT s.id, CASE "
-                "WHEN s.public_permission != 'none' THEN 'public' "
-                "WHEN s.workspace_permission != 'none' THEN 'workspace' "
-                "ELSE 'private' "
+                "WHEN s.public_permission != 'none' THEN 'public' ELSE 'private' "
                 "END AS access "
                 "FROM cartridges s "
                 "JOIN cartridge_items si ON si.cartridge_id = s.id "
@@ -513,9 +507,7 @@ async def list_public_stashes(
 
     rows = await pool.fetch(
         f"SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
-        f"CASE WHEN v.public_permission != 'none' THEN 'public' "
-        f"WHEN v.workspace_permission != 'none' THEN 'workspace' "
-        f"ELSE 'private' END AS access, "
+        f"CASE WHEN v.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
         f"v.workspace_permission, v.public_permission, "
         f"v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
         f"v.created_at, v.updated_at, "
