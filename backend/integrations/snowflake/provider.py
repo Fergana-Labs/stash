@@ -24,7 +24,12 @@ class SnowflakeIntegration:
     credential_fields = [
         CredentialField("account", "Account", placeholder="orgname-account_name"),
         CredentialField("user", "User", placeholder="SVC_AGENT"),
-        CredentialField("private_key", "Private Key (PEM)", secret=True, placeholder="-----BEGIN PRIVATE KEY-----"),
+        CredentialField(
+            "private_key",
+            "Private Key (PEM)",
+            secret=True,
+            placeholder="-----BEGIN PRIVATE KEY-----",
+        ),
         CredentialField("private_key_passphrase", "Private Key Passphrase", secret=True),
         CredentialField("warehouse", "Warehouse", placeholder="COMPUTE_WH"),
         CredentialField("role", "Role", placeholder="READ_ONLY"),

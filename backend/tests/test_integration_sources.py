@@ -170,7 +170,9 @@ def test_gong_is_api_key_searchable_source():
 @pytest.mark.asyncio
 async def test_gong_rejects_missing_credentials():
     with pytest.raises(ValueError):
-        await GongIntegration().connect_with_credentials({"access_key": "", "access_key_secret": ""})
+        await GongIntegration().connect_with_credentials(
+            {"access_key": "", "access_key_secret": ""}
+        )
 
 
 # --- Snowflake (queryable source) -------------------------------------------
@@ -178,7 +180,12 @@ async def test_gong_rejects_missing_credentials():
 
 def test_read_only_guard_allows_selects():
     # Allowed leading keywords pass; a trailing semicolon is stripped.
-    for sql in ("SELECT 1", "  with x as (select 1) select * from x  ", "SHOW TABLES;", "DESCRIBE TABLE t"):
+    for sql in (
+        "SELECT 1",
+        "  with x as (select 1) select * from x  ",
+        "SHOW TABLES;",
+        "DESCRIBE TABLE t",
+    ):
         assert _assert_read_only(sql)
 
 

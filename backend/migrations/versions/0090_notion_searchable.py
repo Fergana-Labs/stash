@@ -19,15 +19,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         ALTER TABLE notion_index
             ADD COLUMN content      text,
             ADD COLUMN content_hash text,
             ADD COLUMN embedding    vector(384),
             ADD COLUMN embed_stale  boolean NOT NULL DEFAULT FALSE
-        """
-    )
+        """)
     op.execute(
         "CREATE INDEX notion_index_fts_idx ON notion_index "
         "USING gin (to_tsvector('english', coalesce(content, '')))"

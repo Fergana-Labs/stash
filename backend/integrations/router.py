@@ -185,7 +185,12 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 disabled_reason=disabled_reason,
                 auth_kind=getattr(p, "auth_kind", "oauth"),
                 credential_fields=[
-                    {"name": f.name, "label": f.label, "secret": f.secret, "placeholder": f.placeholder}
+                    {
+                        "name": f.name,
+                        "label": f.label,
+                        "secret": f.secret,
+                        "placeholder": f.placeholder,
+                    }
                     for f in getattr(p, "credential_fields", [])
                 ]
                 or None,
@@ -484,9 +489,7 @@ async def jira_list_projects(current_user: dict = Depends(get_current_user)):
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     out: list[JiraProjectSummary] = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        sites_resp = await client.get(
-            "https://api.atlassian.com/oauth/token/accessible-resources"
-        )
+        sites_resp = await client.get("https://api.atlassian.com/oauth/token/accessible-resources")
         sites_resp.raise_for_status()
         for site in sites_resp.json():
             cloud_id = site["id"]
