@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..celery_app import celery
+from ..services import task_service
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -30,6 +31,8 @@ async def get_task_status(
 ):
     if not task_id:
         raise HTTPException(status_code=400, detail="task_id required")
+    if not await task_service.user_can_read_task(task_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="Task not found")
     async_result = celery.AsyncResult(task_id)
     state = async_result.state
     if state == "SUCCESS":

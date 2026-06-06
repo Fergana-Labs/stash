@@ -96,6 +96,7 @@ async def pool(_db_pool):
 
 
 _TRUNCATE_TABLES = [
+    "task_records",
     "webhook_deliveries",
     "webhooks",
     "shares",
