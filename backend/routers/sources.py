@@ -9,7 +9,7 @@ source type in later phases.
 
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -18,7 +18,7 @@ from ..auth import get_current_user
 from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
-from ..services import permission_service, source_service
+from ..services import permission_service, source_service, task_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
 
@@ -243,11 +243,21 @@ async def sync_source_now(
     await _require_member(workspace_id, current_user["id"])
     if await source_service.get_owned_source(source_id, current_user["id"]) is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    result = celery.send_task(
+    task_id = str(uuid4())
+    await task_service.register_task(
+        task_id=task_id,
+        user_id=current_user["id"],
+        workspace_id=workspace_id,
+        task_type="source_sync",
+        object_type="source",
+        object_id=source_id,
+    )
+    celery.send_task(
         "backend.tasks.sources.sync_source",
         kwargs={"source_id": str(source_id)},
+        task_id=task_id,
     )
-    return {"task_id": result.id}
+    return {"task_id": task_id}
 
 
 @router.delete("/{source_id}")

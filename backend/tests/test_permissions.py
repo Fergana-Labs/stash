@@ -693,7 +693,7 @@ async def test_viewer_cannot_create_or_assign_session_folder(client: AsyncClient
     )
     assign = await client.post(
         f"/api/v1/workspaces/{ws}/session-folders/assign",
-        json={"session_row_id": session.json()["id"], "folder_id": folder_id},
+        json={"session_row_ids": [session.json()["id"]], "folder_id": folder_id},
         headers=_auth(viewer_key),
     )
 
@@ -727,7 +727,7 @@ async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncCl
 
     assign = await client.post(
         f"/api/v1/workspaces/{first_ws}/session-folders/assign",
-        json={"session_row_id": session.json()["id"], "folder_id": second_folder_id},
+        json={"session_row_ids": [session.json()["id"]], "folder_id": second_folder_id},
         headers=_auth(first_key),
     )
 
