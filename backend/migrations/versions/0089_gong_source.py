@@ -44,7 +44,9 @@ def upgrade() -> None:
         "CREATE INDEX gong_documents_fts_idx ON gong_documents "
         "USING gin (to_tsvector('english', coalesce(content, '')))"
     )
-    op.execute("CREATE INDEX gong_documents_embed_stale_idx ON gong_documents (id) WHERE embed_stale")
+    op.execute(
+        "CREATE INDEX gong_documents_embed_stale_idx ON gong_documents (id) WHERE embed_stale"
+    )
 
 
 def downgrade() -> None:

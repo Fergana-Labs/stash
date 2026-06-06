@@ -107,7 +107,12 @@ async def search_asana(source: dict, query: str, limit: int = SEARCH_LIMIT) -> l
         workspace_gid = proj.json()["data"]["workspace"]["gid"]
         resp = await client.get(
             f"{API_BASE}/workspaces/{workspace_gid}/tasks/search",
-            params={"text": query, "projects.any": project_gid, "opt_fields": "name", "limit": min(limit, 100)},
+            params={
+                "text": query,
+                "projects.any": project_gid,
+                "opt_fields": "name",
+                "limit": min(limit, 100),
+            },
         )
         resp.raise_for_status()
         tasks = resp.json().get("data", [])

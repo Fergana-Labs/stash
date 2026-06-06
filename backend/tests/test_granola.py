@@ -100,7 +100,9 @@ async def test_callback_exchanges_and_marks_connected(client: AsyncClient, monke
 
 
 @pytest.mark.asyncio
-async def test_integrations_are_unavailable_without_encryption_key(client: AsyncClient, monkeypatch):
+async def test_integrations_are_unavailable_without_encryption_key(
+    client: AsyncClient, monkeypatch
+):
     api_key, _ = await _register(client)
     monkeypatch.setattr(oauth.settings, "INTEGRATIONS_ENCRYPTION_KEY", None)
 

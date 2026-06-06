@@ -29,7 +29,15 @@ MAX_MEETINGS = 1000
 
 # Granola's MCP tool names aren't a stable public contract, so we discover them
 # at runtime (tools/list) and match by intent rather than hardcoding a guess.
-_LIST_HINTS = ("list_meeting", "list_document", "list_note", "recent", "meeting", "document", "search")
+_LIST_HINTS = (
+    "list_meeting",
+    "list_document",
+    "list_note",
+    "recent",
+    "meeting",
+    "document",
+    "search",
+)
 _TRANSCRIPT_HINTS = ("transcript", "get_meeting", "get_document", "get_note", "detail", "content")
 
 
@@ -100,7 +108,9 @@ def _render_meeting(meeting: dict, transcript) -> str:
         lines += [f"**Participants:** {participants.strip()}", ""]
     else:
         attendees = meeting.get("attendees") or meeting.get("people") or []
-        names = [a.get("name") or a.get("email") if isinstance(a, dict) else str(a) for a in attendees]
+        names = [
+            a.get("name") or a.get("email") if isinstance(a, dict) else str(a) for a in attendees
+        ]
         names = [n for n in names if n]
         if names:
             lines += [f"**Attendees:** {', '.join(names)}", ""]
@@ -165,7 +175,11 @@ async def index_granola(source: dict) -> str | None:
             if transcript_tool:
                 try:
                     td = await call_tool_data(session, transcript_tool, {"meeting_id": meeting_id})
-                    transcript = td if isinstance(td, str) else _as_list(td, "transcript", "segments", "entries")
+                    transcript = (
+                        td
+                        if isinstance(td, str)
+                        else _as_list(td, "transcript", "segments", "entries")
+                    )
                 except Exception:
                     logger.info("granola: transcript fetch failed for %s", meeting_id)
             await source_service.upsert_content_document(

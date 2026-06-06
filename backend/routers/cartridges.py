@@ -30,11 +30,7 @@ _STASH_ITEM_TYPES = {"folder", "page", "table", "file", "session"}
 
 
 def _workspace_or_public_stash(req: CartridgeCreateRequest) -> bool:
-    return (
-        req.workspace_permission != "none"
-        or req.public_permission != "none"
-        or req.discoverable
-    )
+    return req.workspace_permission != "none" or req.public_permission != "none" or req.discoverable
 
 
 async def _require_workspace_owner_for_stash_visibility(
