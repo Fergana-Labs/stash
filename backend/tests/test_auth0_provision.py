@@ -8,7 +8,10 @@ users, new Google-OAuth users silently skip onboarding.
 
 import pytest
 
-from backend.managed.auth0.users import get_or_create_user_from_auth0
+from backend.managed.auth0.users import (
+    get_or_create_user_from_auth0,
+    get_or_create_user_row_from_auth0,
+)
 
 from .conftest import unique_name
 
@@ -60,3 +63,20 @@ async def test_immediate_duplicate_exchange_still_reports_created(pool):
         auth0_sub=sub, email=None, name="Strict Mode Person"
     )
     assert created is True
+
+
+@pytest.mark.asyncio
+async def test_browser_session_provisioning_does_not_mint_api_key(pool):
+    sub = f"google-oauth2|{unique_name()}"
+    user, created = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub,
+        email=None,
+        name="Browser Session Person",
+    )
+    assert created is True
+
+    key_count = await pool.fetchval(
+        "SELECT count(*) FROM user_api_keys WHERE user_id = $1",
+        user["id"],
+    )
+    assert key_count == 0

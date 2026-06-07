@@ -81,3 +81,59 @@ describe("apiFetch", () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe("managed Auth0 token handling", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_AUTH0_ENABLED", "true");
+    localStorage.clear();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("ignores stored API keys and uses the Auth0 access token", async () => {
+    const { getMe, getToken, setToken } = await import("./api");
+    localStorage.setItem("stash_token", "legacy-api-key");
+    setToken("new-api-key");
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: "auth0-access-token" }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "1",
+            name: "sam",
+            display_name: "Sam",
+            description: "",
+            created_at: "2026-01-01T00:00:00Z",
+            last_seen: "2026-01-01T00:00:00Z",
+          }),
+      } as Response);
+
+    await getMe();
+
+    expect(getToken()).toBeNull();
+    expect(localStorage.getItem("stash_token")).toBe("legacy-api-key");
+    expect(fetch).toHaveBeenNthCalledWith(1, "/auth/access-token", {
+      credentials: "include",
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/users/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer auth0-access-token",
+        }),
+      }),
+    );
+  });
+});

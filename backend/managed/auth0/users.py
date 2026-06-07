@@ -29,22 +29,16 @@ async def _unique_name(base: str) -> str:
     return candidate
 
 
-async def get_or_create_user_from_auth0(
+async def get_or_create_user_row_from_auth0(
     auth0_sub: str,
     email: str | None,
     name: str | None,
-    key_name: str = "Auth0 login",
-) -> tuple[dict, str, bool]:
-    """Return (user_row, new_api_key, created). Mints a fresh key per exchange; prior keys stay valid.
+):
+    """Return (user_row, created) for an Auth0 identity.
 
     `created` is True when this exchange inserted the user, or when the user
     was inserted moments ago and the signup callback exchanged twice. The
     frontend uses it to route first-time sign-ins into onboarding.
-
-    Multi-device sign-in must keep both devices working, so we don't touch
-    prior keys here. Users clean up stale sessions from the settings page,
-    and signing out now revokes the calling key server-side so keys don't
-    silently accumulate.
     """
     pool = get_pool()
 
@@ -66,10 +60,9 @@ async def get_or_create_user_from_auth0(
             await share_service.convert_pending_invites(row["id"], email)
         else:
             await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
-        api_key = await create_api_key(row["id"], name=key_name)
         user = dict(row)
         is_new_user = bool(user.pop("is_new_user"))
-        return user, api_key, is_new_user
+        return user, is_new_user
 
     base = _slugify_name((email or "").split("@")[0] or name or "user")
     username = await _unique_name(base)
@@ -85,7 +78,6 @@ async def get_or_create_user_from_auth0(
         email,
     )
     user = dict(row)
-    api_key = await create_api_key(user["id"], name=key_name)
 
     # Named "Stash" — we don't surface "workspace" terminology in the product.
     await workspace_service.create_workspace(
@@ -103,4 +95,22 @@ async def get_or_create_user_from_auth0(
         except Exception:
             logger.exception("Failed to send welcome email to %s", email)
 
-    return user, api_key, True
+    return user, True
+
+
+async def get_or_create_user_from_auth0(
+    auth0_sub: str,
+    email: str | None,
+    name: str | None,
+    key_name: str = "Auth0 login",
+) -> tuple[dict, str, bool]:
+    """Return (user_row, new_api_key, created). Mints a fresh key per exchange; prior keys stay valid.
+
+    Multi-device sign-in must keep both devices working, so we don't touch
+    prior keys here. Users clean up stale sessions from the settings page,
+    and signing out now revokes the calling key server-side so keys don't
+    silently accumulate.
+    """
+    user, created = await get_or_create_user_row_from_auth0(auth0_sub, email, name)
+    api_key = await create_api_key(user["id"], name=key_name)
+    return user, api_key, created

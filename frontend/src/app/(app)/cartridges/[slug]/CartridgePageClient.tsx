@@ -29,12 +29,12 @@ import {
   getActivityTimeline,
   getEmbeddingProjection,
   getPublicCartridge,
-  getToken,
   updateCartridge,
   uploadFile,
   type PublicCartridgeDetail,
   type PublicCartridgeItem,
 } from "../../../../lib/api";
+import { useAuth } from "../../../../hooks/useAuth";
 import type { ActivityTimeline, EmbeddingProjection } from "../../../../lib/types";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 import FileContentRenderer from "../../../../components/workspace/FileContentRenderer";
@@ -157,6 +157,8 @@ function CartridgePageBody({
     null,
   );
   const [insightsLoaded, setInsightsLoaded] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  const canLoadInsights = !authLoading && !!user;
 
   useEffect(() => {
     if (primary) {
@@ -169,7 +171,7 @@ function CartridgePageBody({
     // Insight panels are workspace-member only — both endpoints require
     // auth. Anonymous public-stash viewers should skip the fetch entirely
     // (the panels render their empty-state without it).
-    if (!getToken()) {
+    if (!canLoadInsights) {
       setTimeline(null);
       setProjection(null);
       setInsightsLoaded(true);
@@ -192,7 +194,7 @@ function CartridgePageBody({
     return () => {
       cancelled = true;
     };
-  }, [primary, stash.id]);
+  }, [canLoadInsights, primary, stash.id]);
 
   const cover = stash.cover_image_url
     ? { backgroundImage: `url(${stash.cover_image_url})` }
@@ -363,7 +365,7 @@ function CartridgePageBody({
                 workspace-member features — hide them from anonymous
                 public-stash viewers entirely so they don't see empty
                 "no data" placeholders for tools they can't use. */}
-            {getToken() && (
+            {canLoadInsights && (
               <>
             <section className="mt-8">
               <div className="sys-label mb-1.5">
