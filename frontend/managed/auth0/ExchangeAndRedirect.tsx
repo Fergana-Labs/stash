@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { API_BASE, listMyWorkspaces, setToken } from "@/lib/api";
+import { API_BASE, clearToken, getAuth0AccessToken, listMyWorkspaces } from "@/lib/api";
 
 type Props = {
   cliSession?: string | null;
@@ -15,33 +15,39 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  async function exchange(): Promise<{ apiKey: string; created: boolean }> {
-    const tokenRes = await fetch("/auth/access-token");
-    if (!tokenRes.ok) throw new Error("Auth0 session missing");
-    const { token } = await tokenRes.json();
+  const auth0Token = useCallback(async (): Promise<string> => {
+    const token = await getAuth0AccessToken();
+    if (!token) throw new Error("Auth0 session missing");
+    return token;
+  }, []);
 
-    const res = await fetch(`${API_BASE}/api/v1/auth0/exchange`, {
+  const provisionBrowserSession = useCallback(async (): Promise<{
+    token: string;
+    created: boolean;
+  }> => {
+    const token = await auth0Token();
+    const res = await fetch(`${API_BASE}/api/v1/auth0/session`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || "Token exchange failed");
+      throw new Error(data.detail || "Session provisioning failed");
     }
     const data = await res.json();
-    setToken(data.api_key);
-    return { apiKey: data.api_key, created: !!data.created };
-  }
+    clearToken();
+    return { token, created: !!data.created };
+  }, [auth0Token]);
 
-  // Non-CLI path: exchange silently and redirect. The user is already signed
-  // into Auth0 — getting the mc_ key is a bookkeeping step, not a decision.
+  // Non-CLI path: provision silently and redirect. The user is already signed
+  // into Auth0; this only makes sure their backend user row exists.
   useEffect(() => {
     if (cliSession) return;
     let cancelled = false;
     (async () => {
       let created = false;
       try {
-        ({ created } = await exchange());
+        ({ created } = await provisionBrowserSession());
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Sign-in failed");
         return;
@@ -66,19 +72,19 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     return () => {
       cancelled = true;
     };
-  }, [cliSession, router]);
+  }, [cliSession, provisionBrowserSession, router]);
 
   async function handleAuthorizeCli() {
     if (!cliSession) return;
     setError("");
     setSubmitting(true);
     try {
-      const { apiKey } = await exchange();
+      const { token } = await provisionBrowserSession();
       const approveRes = await fetch(
         `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}` },
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
       if (!approveRes.ok) throw new Error("CLI session expired. Re-run `stash signin`.");

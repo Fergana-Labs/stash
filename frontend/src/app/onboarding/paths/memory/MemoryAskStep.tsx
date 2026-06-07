@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { track } from "@/lib/analytics";
-import { API_BASE, apiFetch, getToken } from "@/lib/api";
+import { API_BASE, apiFetch, getAuthToken } from "@/lib/api";
 import { READ_TOOLS, describeToolCall } from "@/lib/agentChat";
 import type { StepCtx } from "@/lib/onboarding/paths";
 
@@ -88,13 +88,14 @@ export default function MemoryAskStep({
       abortRef.current = controller;
 
       try {
+        const token = await getAuthToken();
         const res = await fetch(
           `${API_BASE}/api/v1/workspaces/${workspaceId}/ask`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${getToken() ?? ""}`,
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({
               messages: [{ role: "user", content: q }],

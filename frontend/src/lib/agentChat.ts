@@ -1,7 +1,7 @@
 // Client for the multi-turn agent chat (/agent-chat). Owns the SSE parsing and
 // the citation labelling so the ChatPanel stays a thin view.
 
-import { API_BASE, apiFetch, getToken } from "@/lib/api";
+import { API_BASE, apiFetch, getAuthToken } from "@/lib/api";
 
 export type Citation = { id: string; tool: string; label: string };
 export type ChatRole = "user" | "assistant";
@@ -69,11 +69,12 @@ export async function streamAgentChat(
     signal?: AbortSignal;
   } & StreamHandlers,
 ): Promise<void> {
+  const token = await getAuthToken();
   const res = await fetch(`${API_BASE}/api/v1/workspaces/${opts.workspaceId}/agent-chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken() ?? ""}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ message: opts.message, session_id: opts.sessionId }),
     signal: opts.signal,

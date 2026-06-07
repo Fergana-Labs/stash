@@ -23,8 +23,8 @@ import CommentMark from "./CommentMark";
 import CommentComposerPopover from "./CommentComposerPopover";
 import { Page } from "../../lib/types";
 import {
+  getAuthToken,
   getCollabUrl,
-  getToken,
   uploadFile,
   workspaceFileDownloadUrl,
 } from "../../lib/api";
@@ -124,35 +124,43 @@ export default function MarkdownEditor({
       return;
     }
     let active = true;
+    let document: Y.Doc | null = null;
+    let provider: HocuspocusProvider | null = null;
     setCollabError("");
     setReadOnly(false);
-    const document = new Y.Doc();
-    const provider = new HocuspocusProvider({
-      url: getCollabUrl(),
-      name: `workspace:${workspaceId}:page:${file.id}`,
-      document,
-      sessionAwareness: true,
-      token: () => getToken() ?? "",
-      onAuthenticated: ({ scope }) => {
-        if (!active) return;
-        setReadOnly(scope === "readonly");
-        setCollabError("");
-      },
-      onAuthenticationFailed: ({ reason }) => {
-        if (!active) return;
-        setCollabError(reason || "Live editing authentication failed");
-      },
-      onClose: ({ event }) => {
-        if (!active) return;
-        if (event.code === 1000) return;
-        setCollabError("Live editing connection closed");
-      },
+    setCollaboration(null);
+
+    void getAuthToken().then((token) => {
+      if (!active) return;
+      document = new Y.Doc();
+      provider = new HocuspocusProvider({
+        url: getCollabUrl(),
+        name: `workspace:${workspaceId}:page:${file.id}`,
+        document,
+        sessionAwareness: true,
+        token: token ?? "",
+        onAuthenticated: ({ scope }) => {
+          if (!active) return;
+          setReadOnly(scope === "readonly");
+          setCollabError("");
+        },
+        onAuthenticationFailed: ({ reason }) => {
+          if (!active) return;
+          setCollabError(reason || "Live editing authentication failed");
+        },
+        onClose: ({ event }) => {
+          if (!active) return;
+          if (event.code === 1000) return;
+          setCollabError("Live editing connection closed");
+        },
+      });
+      setCollaboration({ document, provider });
     });
-    setCollaboration({ document, provider });
+
     return () => {
       active = false;
-      provider.destroy();
-      document.destroy();
+      provider?.destroy();
+      document?.destroy();
     };
   }, [file.id, workspaceId]);
 

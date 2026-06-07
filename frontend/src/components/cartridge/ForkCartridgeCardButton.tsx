@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addExternalCartridge,
   ApiError,
-  getToken,
   listMyWorkspaces,
 } from "../../lib/api";
 import type { Workspace } from "../../lib/types";
@@ -56,11 +55,11 @@ export default function ForkCartridgeCardButton({ slug, sourceWorkspaceId }: Pro
     return phase.workspaces.filter((w) => w.id !== sourceWorkspaceId);
   }, [phase, sourceWorkspaceId]);
 
+  function redirectToLogin() {
+    router.push(`/login?next=${encodeURIComponent(`/cartridges/${slug}?action=add`)}`);
+  }
+
   async function openPicker() {
-    if (!getToken()) {
-      router.push(`/login?next=${encodeURIComponent(`/cartridges/${slug}?action=add`)}`);
-      return;
-    }
     setPhase({ kind: "loading" });
     try {
       const data = await listMyWorkspaces();
@@ -80,6 +79,10 @@ export default function ForkCartridgeCardButton({ slug, sourceWorkspaceId }: Pro
         selectedId: usable[0].id,
       });
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        redirectToLogin();
+        return;
+      }
       const message =
         e instanceof ApiError ? e.message : "Could not load workspaces";
       setPhase({ kind: "error", message });

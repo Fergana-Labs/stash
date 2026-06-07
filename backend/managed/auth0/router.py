@@ -6,10 +6,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.config import settings
 from backend.middleware import limiter
-from backend.models import UserRegisterResponse
+from backend.models import Auth0SessionResponse, UserRegisterResponse
 
 from .jwt import validate_auth0_token
-from .users import get_or_create_user_from_auth0
+from .users import get_or_create_user_from_auth0, get_or_create_user_row_from_auth0
 
 router = APIRouter(prefix="/api/v1/auth0", tags=["auth0"])
 
@@ -46,5 +46,26 @@ async def exchange(
         name=user["name"],
         display_name=user["display_name"],
         api_key=api_key,
+        created=created,
+    )
+
+
+@router.post("/session", response_model=Auth0SessionResponse)
+@limiter.limit("30/minute")
+async def session(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+):
+    claims = await validate_auth0_token(credentials.credentials)
+    profile = await _fetch_userinfo(credentials.credentials)
+    user, created = await get_or_create_user_row_from_auth0(
+        auth0_sub=claims["sub"],
+        email=profile.get("email"),
+        name=profile.get("name"),
+    )
+    return Auth0SessionResponse(
+        id=user["id"],
+        name=user["name"],
+        display_name=user["display_name"],
         created=created,
     )

@@ -19,7 +19,7 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
-    if (!getToken()) {
+    if (!AUTH0_ENABLED && !getToken()) {
       setUser(null);
       setLoading(false);
       return;

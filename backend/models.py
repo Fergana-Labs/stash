@@ -25,6 +25,13 @@ class UserRegisterResponse(BaseModel):
     created: bool = False
 
 
+class Auth0SessionResponse(BaseModel):
+    id: UUID
+    name: str
+    display_name: str
+    created: bool = False
+
+
 class UserProfile(BaseModel):
     id: UUID
     name: str

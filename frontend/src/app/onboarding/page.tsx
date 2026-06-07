@@ -1,12 +1,12 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { getToken, listMyWorkspaces } from "../../lib/api";
+import { listMyWorkspaces } from "../../lib/api";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 
@@ -15,17 +15,6 @@ import MemoryAskStep from "./paths/memory/MemoryAskStep";
 // The linear flow: explain Stash, connect a source, then ask the agent a real
 // question over your data, then launch into the workspace.
 const STEP_NAMES = ["intro", "connect", "ask"] as const;
-
-function useStashToken(): string | null {
-  return useSyncExternalStore(
-    (cb) => {
-      window.addEventListener("storage", cb);
-      return () => window.removeEventListener("storage", cb);
-    },
-    () => getToken(),
-    () => null,
-  );
-}
 
 export default function OnboardingPage() {
   return (
@@ -43,7 +32,6 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const apiKey = useStashToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [sourceCount, setSourceCount] = useState(0);
   const [obsidianAdded, setObsidianAdded] = useState(false);
@@ -56,23 +44,23 @@ function OnboardingInner() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!loading && apiKey === null) router.replace("/login");
-  }, [loading, apiKey, router]);
+    if (!loading && !user) router.replace("/login");
+  }, [loading, user, router]);
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!user) return;
     listMyWorkspaces()
       .then(({ workspaces }) => {
         const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
         if (primary) setWorkspaceId(primary.id);
       })
       .catch(() => {});
-  }, [apiKey]);
+  }, [user]);
 
   useEffect(() => {
-    if (loading || !apiKey) return;
+    if (loading || !user) return;
     track("onboarding.viewed", { has_path: false });
-  }, [loading, apiKey]);
+  }, [loading, user]);
 
   useEffect(() => {
     const name = STEP_NAMES[stepIdx];
@@ -113,7 +101,7 @@ function OnboardingInner() {
     exitToWorkspace();
   }, [exitToWorkspace, stepIdx]);
 
-  if (loading || !apiKey) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>
     );
