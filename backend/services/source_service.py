@@ -9,11 +9,10 @@ owner sees them.
 This module owns:
 - the `workspace_sources` registry (CRUD + sync bookkeeping),
 - the per-integration document store. Each source type has its own table
-  (migration 0084): most COPY content (FTS + embeddings live in the table —
-  github/slack/granola/jira/asana/gong/notion), while drive stores an INDEX ONLY
-  and fetches the body lazily from the provider at read time. Every table shares
-  the navigation shape (path/name/kind/deleted_at) so the agent's list/read tools
-  stay uniform.
+  (migration 0084): some COPY content (FTS + embeddings live in the table),
+  while drive/jira/asana store an INDEX ONLY and fetch the body lazily from the
+  provider at read time. Every table shares the navigation shape
+  (path/name/kind/deleted_at) so the agent's list/read tools stay uniform.
 
 This module also owns the unified VFS surface (`source_entries`, `source_document`,
 `search_all`) over BOTH native and connected sources — the single codepath the
@@ -90,6 +89,16 @@ def normalize_source_settings(source_type: str, settings: dict | None) -> dict:
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
 
+    if source_type == "gong_calls":
+        unsupported = set(settings) - {"allowed_workspace_ids"}
+        if unsupported:
+            raise ValueError(f"unsupported Gong setting: {sorted(unsupported)[0]}")
+        return {
+            "allowed_workspace_ids": _clean_string_list(
+                settings.get("allowed_workspace_ids", []), "allowed_workspace_ids"
+            )
+        }
+
     if source_type != "slack":
         if settings:
             raise ValueError("settings are not supported for this source type")
@@ -113,6 +122,15 @@ def slack_allowed_channel_ids(source: dict) -> list[str]:
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
     return _clean_string_list(settings.get("allowed_channel_ids", []), "allowed_channel_ids")
+
+
+def gong_allowed_workspace_ids(source: dict) -> list[str]:
+    settings = source.get("settings")
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict):
+        raise ValueError("settings must be an object")
+    return _clean_string_list(settings.get("allowed_workspace_ids", []), "allowed_workspace_ids")
 
 
 def _content_hash(content: str | None) -> str:

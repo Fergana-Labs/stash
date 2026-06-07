@@ -19,7 +19,6 @@ S3_ENDPOINT = os.getenv("S3_ENDPOINT", "")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
 S3_REGION = os.getenv("S3_REGION", "us-east-1")
-S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL", "")  # Optional: public base URL for direct access
 
 _client: httpx.AsyncClient | None = None
 
@@ -130,9 +129,6 @@ async def upload_file(
 
 async def get_file_url(key: str, expires_in: int = 3600) -> str:
     """Generate a presigned GET URL for a storage key."""
-    if S3_PUBLIC_URL:
-        return f"{S3_PUBLIC_URL.rstrip('/')}/{quote(key, safe='/')}"
-
     if not is_configured():
         raise RuntimeError("S3 storage is not configured")
 

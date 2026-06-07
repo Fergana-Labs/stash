@@ -263,7 +263,12 @@ export async function listWorkspaceSources(
 
 export async function addWorkspaceSource(
   workspaceId: string,
-  body: { source_type: string; external_ref?: string; display_name?: string },
+  body: {
+    source_type: string;
+    external_ref?: string;
+    display_name?: string;
+    settings?: Record<string, unknown>;
+  },
 ): Promise<{ id: string }> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/sources`, {
     method: "POST",
