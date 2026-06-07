@@ -512,7 +512,7 @@ async def read_document(source: dict, path: str) -> dict | None:
             }
 
         row = await get_pool().fetchrow(
-            f"SELECT path, name, kind, content FROM {table} "
+            f"SELECT path, name, kind, content, external_ref FROM {table} "
             f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
             UUID(source["id"]),
             path,
@@ -524,6 +524,7 @@ async def read_document(source: dict, path: str) -> dict | None:
             "name": row["name"],
             "kind": row["kind"],
             "content": row["content"] or "",
+            "external_ref": row["external_ref"],
         }
 
     row = await get_pool().fetchrow(
@@ -537,7 +538,13 @@ async def read_document(source: dict, path: str) -> dict | None:
     content = await _lazy_fetch(
         source["source_type"], UUID(source["owner_user_id"]), row["external_ref"]
     )
-    return {"path": row["path"], "name": row["name"], "kind": row["kind"], "content": content}
+    return {
+        "path": row["path"],
+        "name": row["name"],
+        "kind": row["kind"],
+        "content": content,
+        "external_ref": row["external_ref"],
+    }
 
 
 async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str | None) -> str:
@@ -784,6 +791,35 @@ async def source_entries(
     return await list_documents(connected, prefix=prefix)
 
 
+def source_document_url(
+    source_type: str,
+    external_ref: str | None,
+    path: str,
+    extra: dict | None = None,
+) -> str | None:
+    """Canonical provider URL for one document, so the UI can deep-link back to
+    the original. `external_ref` is the SOURCE row's ref (e.g. github "owner/repo"),
+    `path` is the document handle, and `extra` carries any stored provider metadata.
+    Returns None when a link can't be derived. Jira is NOT handled here — it needs a
+    network lookup for the site URL, so `source_document` builds it (see site_url)."""
+    extra = extra or {}
+    if source_type == "github_repo" and external_ref:
+        return f"https://github.com/{external_ref}/blob/HEAD/{path}"
+    if source_type == "asana_project":
+        return f"https://app.asana.com/0/0/{path}"
+    if source_type == "notion":
+        if extra.get("url"):
+            return extra["url"]
+        return f"https://www.notion.so/{path.replace('-', '')}"
+    if source_type == "google_drive":
+        link = extra.get("web_view_link") or extra.get("webViewLink")
+        if link:
+            return link
+        return f"https://drive.google.com/file/d/{path}/view"
+    # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
+    return None
+
+
 async def source_document(
     workspace_id: UUID, user_id: UUID, source: str, ref: str
 ) -> tuple[bool, dict | None]:
@@ -820,7 +856,39 @@ async def source_document(
         from ..integrations.snowflake.client import describe_table
 
         return True, await describe_table(connected, ref)
-    return True, await read_document(connected, ref)
+
+    doc = await read_document(connected, ref)
+    if doc is not None:
+        doc["url"] = await _deep_link(connected, doc)
+    return True, doc
+
+
+async def _deep_link(source: dict, doc: dict) -> str | None:
+    """The provider URL for one read document. Jira needs a network lookup for the
+    site URL; everything else derives from stored refs (see source_document_url).
+    Any failure (e.g. Jira lookup) yields no link rather than failing the read."""
+    source_type = source["source_type"]
+    doc_ref = doc.get("external_ref")
+
+    if source_type == "github_repo":
+        return source_document_url("github_repo", source["external_ref"], doc["path"])
+    if source_type == "asana_project":
+        return source_document_url("asana_project", None, doc["path"])
+    if source_type in ("notion", "google_drive"):
+        # The page/file id lives on the document row, not the source row.
+        return source_document_url(source_type, None, doc_ref or doc["path"])
+    if source_type == "jira_project":
+        from ..integrations.jira.indexer import site_url
+
+        try:
+            base = await site_url(source)
+        except Exception:
+            logger.warning("jira site_url lookup failed for source %s", source["id"], exc_info=True)
+            return None
+        if not base:
+            return None
+        return f"{base}/browse/{doc['path']}"
+    return source_document_url(source_type, source.get("external_ref"), doc["path"])
 
 
 async def query_source(

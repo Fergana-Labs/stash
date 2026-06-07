@@ -75,9 +75,15 @@ def _is_agent_enabled(cfg: dict) -> bool:
     return canonical in enabled
 
 
-def _is_stopped(workspace_id: str) -> bool:
+def _is_stopped(scope_id: str) -> bool:
     stopped = _read_user_config().get("stopped_streaming")
-    return isinstance(stopped, list) and workspace_id in stopped
+    return isinstance(stopped, list) and scope_id in stopped
+
+
+def _streaming_scope(cfg: dict, workspace_id: str) -> str:
+    """The on/off key for streaming: the destination folder when the repo pins
+    one, else the workspace (its Default destination)."""
+    return cfg.get("session_folder_id") or workspace_id
 
 
 def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
@@ -108,7 +114,7 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None
     if not workspace_id:
         return True, None
 
-    if _is_stopped(workspace_id):
+    if _is_stopped(_streaming_scope(cfg, workspace_id)):
         return True, None
 
     return False, workspace_id

@@ -4297,6 +4297,18 @@ def leave_cmd():
     console.print(f"  [green]✓[/green] Left workspace {ws_id[:8]}…")
 
 
+def _streaming_scope(manifest: dict) -> str:
+    """The on/off key for streaming: the destination folder the repo pins, else
+    the workspace (its Default destination). Mirrors the plugin's _streaming_scope."""
+    return manifest.get("session_folder_id") or manifest.get("workspace_id", "")
+
+
+def _scope_label(manifest: dict) -> str:
+    if manifest.get("session_folder_id"):
+        return "this repo's session folder"
+    return f"workspace {manifest.get('workspace_id', '')[:8]}… (Default folder)"
+
+
 @app.command("start")
 def start_cmd():
     """Resume streaming transcripts (undoes `stash stop`)."""
@@ -4325,8 +4337,9 @@ def start_cmd():
             else:
                 raise
 
-    set_streaming(workspace_id)
-    console.print(f"  [green]✓[/green] Streaming enabled for workspace {workspace_id[:8]}…")
+    scope = _streaming_scope(manifest)
+    set_streaming(scope)
+    console.print(f"  [green]✓[/green] Streaming enabled for {_scope_label(manifest)}.")
 
 
 @app.command("stop")
@@ -4344,8 +4357,9 @@ def stop_cmd():
         console.print("[red].stash file is missing workspace_id.[/red]")
         raise typer.Exit(1)
 
-    clear_streaming(workspace_id)
-    console.print(f"  [green]✓[/green] Streaming stopped for workspace {workspace_id[:8]}…")
+    scope = _streaming_scope(manifest)
+    clear_streaming(scope)
+    console.print(f"  [green]✓[/green] Streaming stopped for {_scope_label(manifest)}.")
 
 
 # ===========================================================================

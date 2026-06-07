@@ -16,24 +16,18 @@ import CustomSelect from "../CustomSelect";
 
 type RowGroup = "Folders" | "Pages" | "Files" | "Tables";
 type GroupKey = "Sessions" | RowGroup;
-type CartridgeVisibility = "private" | "workspace" | "public";
+// Two-state visibility (the "workspace" tier was dropped after the 1:1
+// workspace↔user migration). "Shared" is derived from invited members.
+type CartridgeVisibility = "private" | "public";
 
 const ROW_GROUP_ORDER: RowGroup[] = ["Folders", "Pages", "Files", "Tables"];
 
 const VISIBILITY_OPTIONS = [
   { value: "private", label: "Private" },
-  { value: "workspace", label: "Workspace" },
   { value: "public", label: "Public" },
 ];
 
-const WORKSPACE_PERMISSION_OPTIONS = [
-  { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
-];
-
 const PUBLIC_PERMISSION_OPTIONS = [
-  { value: "none", label: "No access" },
   { value: "read", label: "Can view" },
   { value: "write", label: "Can edit" },
 ];
@@ -67,33 +61,27 @@ function selectedCount(s: SelectedState): number {
 }
 
 function visibilityForPermissions(
-  workspacePermission: CartridgeGeneralPermission,
+  _workspacePermission: CartridgeGeneralPermission,
   publicPermission: CartridgeGeneralPermission
 ): CartridgeVisibility {
-  if (publicPermission !== "none") return "public";
-  if (workspacePermission !== "none") return "workspace";
-  return "private";
+  return publicPermission !== "none" ? "public" : "private";
 }
 
 function permissionsForVisibility(
   visibility: CartridgeVisibility,
-  workspacePermission: CartridgeGeneralPermission,
+  _workspacePermission: CartridgeGeneralPermission,
   publicPermission: CartridgeGeneralPermission
 ): {
   workspacePermission: CartridgeGeneralPermission;
   publicPermission: CartridgeGeneralPermission;
 } {
+  // workspace_permission stays 'read' (workspace members see your stuff via
+  // membership regardless); only public_permission gates the public link.
   if (visibility === "private") {
-    return { workspacePermission: "none", publicPermission: "none" };
-  }
-  if (visibility === "workspace") {
-    return {
-      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
-      publicPermission: "none",
-    };
+    return { workspacePermission: "read", publicPermission: "none" };
   }
   return {
-    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+    workspacePermission: "read",
     publicPermission: publicPermission === "none" ? "read" : publicPermission,
   };
 }
@@ -363,8 +351,6 @@ export default function CartridgeShareModal() {
           placeholderTitle={defaultTitle}
           visibility={visibility}
           setVisibility={setVisibility}
-          workspacePermission={workspacePermission}
-          setWorkspacePermission={setWorkspacePermission}
           publicPermission={publicPermission}
           setPublicPermission={(next) => {
             setPublicPermission(next);
@@ -401,8 +387,6 @@ function NewShareTab(props: {
   placeholderTitle: string;
   visibility: CartridgeVisibility;
   setVisibility: (v: CartridgeVisibility) => void;
-  workspacePermission: CartridgeGeneralPermission;
-  setWorkspacePermission: (v: CartridgeGeneralPermission) => void;
   publicPermission: CartridgeGeneralPermission;
   setPublicPermission: (v: CartridgeGeneralPermission) => void;
   shareToDiscover: boolean;
@@ -431,8 +415,6 @@ function NewShareTab(props: {
     placeholderTitle,
     visibility,
     setVisibility,
-    workspacePermission,
-    setWorkspacePermission,
     publicPermission,
     setPublicPermission,
     shareToDiscover,
@@ -606,28 +588,19 @@ function NewShareTab(props: {
               menuClassName="text-[12px]"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="font-medium text-foreground">Workspace</span>
-            <CustomSelect
-              value={workspacePermission}
-              options={WORKSPACE_PERMISSION_OPTIONS}
-              onChange={(next) => setWorkspacePermission(next as CartridgeGeneralPermission)}
-              ariaLabel="Workspace access"
-              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
-              menuClassName="text-[12px]"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="font-medium text-foreground">Public</span>
-            <CustomSelect
-              value={publicPermission}
-              options={PUBLIC_PERMISSION_OPTIONS}
-              onChange={(next) => setPublicPermission(next as CartridgeGeneralPermission)}
-              ariaLabel="Public access"
-              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
-              menuClassName="text-[12px]"
-            />
-          </div>
+          {visibility === "public" && (
+            <div className="flex flex-col gap-1">
+              <span className="font-medium text-foreground">Anyone with the link</span>
+              <CustomSelect
+                value={publicPermission}
+                options={PUBLIC_PERMISSION_OPTIONS}
+                onChange={(next) => setPublicPermission(next as CartridgeGeneralPermission)}
+                ariaLabel="Public access"
+                className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
+                menuClassName="text-[12px]"
+              />
+            </div>
+          )}
         </div>
 
         {publicPermission !== "none" && (

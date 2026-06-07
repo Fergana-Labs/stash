@@ -232,29 +232,47 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
 
 
 async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) -> list[dict]:
-    """Sessions inside a session-folder shared with the user. Gated on the user
-    actually holding a share for that folder."""
+    """Sessions inside a session-folder shared with the user, in the same
+    SessionSummary shape as /me/sessions so the viewer renders the full
+    chronological/filter browser (not a bare list). Gated on the share."""
     if not await permission_service.check_access("session_folder", folder_id, user_id):
         raise HTTPException(status_code=404, detail="Not found")
     rows = await get_pool().fetch(
-        "SELECT s.id, s.workspace_id, s.session_id, s.agent_name, st.title, "
-        "       s.started_at, s.finished_at "
+        "SELECT s.id, s.workspace_id, w.name AS workspace_name, s.session_id, s.agent_name, "
+        "       st.title, s.started_at, sf.name AS session_folder_name, "
+        "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at) "
+        "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
+        "       COUNT(he.id)::int AS event_count, "
+        "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
         "FROM sessions s "
+        "LEFT JOIN workspaces w ON w.id = s.workspace_id "
+        "LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
         "LEFT JOIN session_titles st "
         "  ON st.workspace_id = s.workspace_id AND st.session_id = s.session_id "
+        "LEFT JOIN history_events he "
+        "  ON he.workspace_id = s.workspace_id AND he.session_id = s.session_id "
+        "LEFT JOIN users u ON u.id = he.created_by "
         "WHERE s.session_folder_id = $1 AND s.deleted_at IS NULL "
-        "ORDER BY s.started_at DESC",
+        "GROUP BY s.id, s.workspace_id, w.name, s.session_id, s.agent_name, st.title, "
+        "         s.started_at, sf.name "
+        "ORDER BY last_event_at DESC",
         folder_id,
     )
     return [
         {
             "id": str(r["id"]),
-            "workspace_id": str(r["workspace_id"]),
             "session_id": r["session_id"],
+            "title": r["title"] or r["session_id"],
+            "linear_tickets": [],
+            "workspace_id": str(r["workspace_id"]),
+            "workspace_name": r["workspace_name"],
+            "user_name": r["user_name"] or (r["agent_name"] or "agent"),
             "agent_name": r["agent_name"],
-            "title": r["title"],
+            "event_count": int(r["event_count"] or 0),
             "started_at": r["started_at"].isoformat() if r["started_at"] else None,
-            "finished_at": r["finished_at"].isoformat() if r["finished_at"] else None,
+            "last_event_at": r["last_event_at"].isoformat() if r["last_event_at"] else None,
+            "session_folder_id": str(folder_id),
+            "session_folder_name": r["session_folder_name"],
         }
         for r in rows
     ]

@@ -25,16 +25,14 @@ DEFAULT_FOLDER_NAME = "Default"
 _FOLDER_COLS = (
     "sf.id, sf.workspace_id, sf.slug, sf.name, sf.owner_user_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "CASE "
-    "WHEN sf.public_permission != 'none' THEN 'public' "
-    "WHEN sf.workspace_permission != 'none' THEN 'workspace' "
-    "ELSE 'private' "
-    "END AS access, "
+    "CASE WHEN sf.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
     "sf.workspace_permission, sf.public_permission, "
     "sf.discoverable, sf.cover_image_url, sf.view_count, sf.is_default, "
     "sf.created_at, sf.updated_at, "
     "(SELECT COUNT(*) FROM sessions s "
-    " WHERE s.session_folder_id = sf.id AND s.deleted_at IS NULL) AS session_count"
+    " WHERE s.session_folder_id = sf.id AND s.deleted_at IS NULL) AS session_count, "
+    "(SELECT COUNT(*) FROM shares sh WHERE sh.object_type = 'session_folder' "
+    " AND sh.object_id = sf.id AND sh.principal_type = 'user') AS share_count"
 )
 _FOLDER_FROM = "FROM session_folders sf JOIN users owner_user ON owner_user.id = sf.owner_user_id"
 _FOLDER_SELECT = f"SELECT {_FOLDER_COLS} {_FOLDER_FROM}"
@@ -45,12 +43,11 @@ def _slugify(name: str) -> str:
     return f"{base}-{secrets.token_urlsafe(4)[:6].lower()}"
 
 
+# Visibility is a two-state axis now (the old "workspace" tier collapsed into
+# private after the 1:1 workspace↔user migration). "Shared" is derived in the UI
+# from the invite (share_count) list, not stored here.
 def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
-    if public_permission != "none":
-        return "public"
-    if workspace_permission != "none":
-        return "workspace"
-    return "private"
+    return "public" if public_permission != "none" else "private"
 
 
 def _validate_permissions(
@@ -81,6 +78,7 @@ def _row(r) -> dict:
         "view_count": int(r["view_count"]),
         "is_default": r["is_default"],
         "session_count": int(r["session_count"] or 0),
+        "share_count": int(r["share_count"] or 0),
         "created_at": r["created_at"],
         "updated_at": r["updated_at"],
     }

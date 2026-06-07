@@ -12,6 +12,7 @@ import {
   addExternalCartridge,
   ApiError,
   deleteCartridge,
+  displayVisibility,
   listStashes,
   type WorkspaceCartridge,
 } from "../../../../../lib/api";
@@ -20,7 +21,7 @@ import { stashSlugFromInput } from "../../../../../lib/cartridgeLinks";
 
 // Visibility is one axis (who can see a Cartridge). "External" is a different
 // axis entirely — where it came from — so it's a section below, not a filter.
-type Visibility = "all" | "private" | "workspace" | "public";
+type Visibility = "all" | "private" | "shared" | "public";
 type ViewKey = "grid" | "list";
 
 const VIEW_STORAGE_KEY = "stash_stashes_view";
@@ -28,7 +29,7 @@ const VIEW_STORAGE_KEY = "stash_stashes_view";
 const VISIBILITIES: { key: Visibility; label: string }[] = [
   { key: "all", label: "All" },
   { key: "private", label: "Private" },
-  { key: "workspace", label: "Workspace" },
+  { key: "shared", label: "Shared" },
   { key: "public", label: "Public" },
 ];
 
@@ -36,8 +37,8 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 
 const VIS_COLOR: Record<string, string> = {
   public: "#22C55E",
+  shared: "var(--color-brand-500)",
   private: "#9CA3AF",
-  workspace: "var(--color-brand-500)",
 };
 
 export default function WorkspaceStashesPage() {
@@ -102,17 +103,14 @@ export default function WorkspaceStashesPage() {
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
     if (visibility === "all") return ordered;
-    return ordered.filter((s) => s.access === visibility);
+    return ordered.filter((s) => displayVisibility(s.access, s.share_count) === visibility);
   }, [cartridges, visibility]);
 
   const counts = useMemo(() => {
     const list = cartridges ?? [];
-    return {
-      all: list.length,
-      private: list.filter((s) => s.access === "private").length,
-      workspace: list.filter((s) => s.access === "workspace").length,
-      public: list.filter((s) => s.access === "public").length,
-    };
+    const by = (v: Visibility) =>
+      list.filter((s) => displayVisibility(s.access, s.share_count) === v).length;
+    return { all: list.length, private: by("private"), shared: by("shared"), public: by("public") };
   }, [cartridges]);
 
   const native = useMemo(() => visible.filter((s) => !s.is_external), [visible]);
@@ -537,7 +535,7 @@ function CartridgeListRow({
 }) {
   const itemCount = stash.items?.length ?? 0;
   const author = stash.owner_display_name || stash.owner_name || "";
-  const dotColor = stash.access ? VIS_COLOR[stash.access] : null;
+  const dotColor = VIS_COLOR[displayVisibility(stash.access, stash.share_count)];
 
   return (
     <Link
@@ -680,7 +678,7 @@ function CartridgeQuickCard({
   pinned: boolean;
   onTogglePin: (stash: WorkspaceCartridge) => void;
 }) {
-  const dotColor = stash.access ? VIS_COLOR[stash.access] : null;
+  const dotColor = VIS_COLOR[displayVisibility(stash.access, stash.share_count)];
   return (
     <Link
       href={`/cartridges/${stash.slug}`}

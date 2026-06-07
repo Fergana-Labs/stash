@@ -14,14 +14,14 @@ import {
   createSessionFolder,
   deleteSession,
   deleteSessionFolder,
+  displayVisibility,
   listMySessions,
   listSessionFolders,
   listSharedSessionFolderSessions,
   listSharedWithMe,
+  type DisplayVisibility,
   type SessionFolder,
-  type SessionFolderVisibility,
   type SessionSummary,
-  type SharedSession,
   type SharedWithMeItem,
 } from "../../../../../lib/api";
 import SessionFolderShareModal from "../../../../../components/share/SessionFolderShareModal";
@@ -836,20 +836,23 @@ type OpenFolder = {
   folder?: SessionFolder;
 };
 
-const VIS_DOT: Record<SessionFolderVisibility, string> = {
+const VIS_DOT: Record<DisplayVisibility, string> = {
   public: "#22C55E",
+  shared: "var(--color-brand-500)",
   private: "#9CA3AF",
-  workspace: "var(--color-brand-500)",
 };
 
-function FolderAccessBadge({ access }: { access: SessionFolderVisibility }) {
+// Private folders show no badge (the common, quiet case); Shared/Public stand out.
+function FolderAccessBadge({ folder }: { folder: SessionFolder }) {
+  const vis = displayVisibility(folder.access, folder.share_count);
+  if (vis === "private") return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] capitalize text-muted">
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted">
       <span
         className="inline-block h-[7px] w-[7px] rounded-full"
-        style={{ background: VIS_DOT[access] }}
+        style={{ background: VIS_DOT[vis] }}
       />
-      {access}
+      {vis === "shared" ? `Shared · ${folder.share_count}` : "Public"}
     </span>
   );
 }
@@ -940,8 +943,12 @@ function FolderCard({
           <span className="text-[11.5px] text-muted">
             {folder.session_count} session{folder.session_count === 1 ? "" : "s"}
           </span>
-          <span aria-hidden className="text-muted">·</span>
-          <FolderAccessBadge access={folder.access} />
+          {displayVisibility(folder.access, folder.share_count) !== "private" && (
+            <>
+              <span aria-hidden className="text-muted">·</span>
+              <FolderAccessBadge folder={folder} />
+            </>
+          )}
         </span>
       </span>
       <button
@@ -1017,7 +1024,7 @@ function FolderDrill({
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
 }) {
-  const [shared, setShared] = useState<SharedSession[] | null>(null);
+  const [shared, setShared] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1028,10 +1035,12 @@ function FolderDrill({
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load sessions"));
   }, [folder]);
 
-  const ownSessions = folder.shared
-    ? []
-    : sessions.filter((s) => s.session_folder_id === folder.id);
   const ownFolder = folder.folder;
+  // Shared folders are read-only: render the same chronological browser, but
+  // without selection (no move/delete on sessions you don't own).
+  const drillSessions = folder.shared
+    ? sortSessions(shared ?? [], sort)
+    : sessions.filter((s) => s.session_folder_id === folder.id);
 
   return (
     <div>
@@ -1046,7 +1055,7 @@ function FolderDrill({
         <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
           <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
           {folder.name}
-          {ownFolder && <FolderAccessBadge access={ownFolder.access} />}
+          {ownFolder && <FolderAccessBadge folder={ownFolder} />}
         </h2>
         {ownFolder && (
           <div className="flex items-center gap-1.5">
@@ -1070,57 +1079,46 @@ function FolderDrill({
         )}
       </div>
       {error ? <p className="text-[13px] text-rose-500">{error}</p> : null}
-      {!folder.shared && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-          <SegmentedControl
-            label="View"
-            value={view}
-            options={VIEWS}
-            onChange={(v) => onChangeView(v as ViewKey)}
-          />
-          <SegmentedControl
-            label="Sort"
-            value={sort}
-            options={SORTS}
-            onChange={(v) => onChangeSort(v as SortKey)}
-          />
-        </div>
-      )}
-      {folder.shared ? (
-        shared === null ? (
-          <p className="text-[12.5px] text-muted">Loading…</p>
-        ) : shared.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-            No sessions in this folder.
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border border-border bg-surface">
-            {shared.map((s) => (
-              <Link
-                key={s.id}
-                href={`/workspaces/${s.workspace_id}/sessions/${encodeURIComponent(s.session_id)}`}
-                className="flex items-center gap-3 border-b border-border px-3 py-2.5 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)]"
-              >
-                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                  {s.title || s.session_id}
-                </span>
-                <span className="shrink-0 text-[11.5px] text-muted">{s.agent_name}</span>
-              </Link>
-            ))}
-          </div>
-        )
+      <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
+        <SegmentedControl
+          label="View"
+          value={view}
+          options={VIEWS}
+          onChange={(v) => onChangeView(v as ViewKey)}
+        />
+        <SegmentedControl
+          label="Sort"
+          value={sort}
+          options={SORTS}
+          onChange={(v) => onChangeSort(v as SortKey)}
+        />
+      </div>
+      {folder.shared && shared === null ? (
+        <p className="text-[12.5px] text-muted">Loading…</p>
       ) : (
         <SessionsView
           view={view}
-          sessions={ownSessions}
+          sessions={drillSessions}
           folders={folders}
           workspaceId={workspaceId}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
-          selectedIds={selectedIds}
-          onToggleSelect={onToggleSelect}
+          selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
+          onToggleSelect={folder.shared ? noop : onToggleSelect}
         />
       )}
     </div>
   );
+}
+
+const EMPTY_SELECTION: Set<string> = new Set();
+function noop() {}
+
+function sortSessions(list: SessionSummary[], sort: SortKey): SessionSummary[] {
+  const copy = [...list];
+  if (sort === "recent") copy.sort((a, b) => sessionTime(b) - sessionTime(a));
+  else if (sort === "oldest") copy.sort((a, b) => sessionTime(a) - sessionTime(b));
+  else if (sort === "events") copy.sort((a, b) => b.event_count - a.event_count);
+  else copy.sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
+  return copy;
 }

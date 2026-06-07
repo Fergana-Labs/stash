@@ -851,6 +851,34 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
         agent_runtime._workspace_ctx.reset(wtoken)
 
 
+def test_source_document_url_builds_provider_deep_links():
+    """source_document_url derives a canonical provider URL from stored refs, and
+    returns None for sources we can't deep-link yet (Slack/Gong/Granola)."""
+    # GitHub: source external_ref is owner/repo, path is the file.
+    assert (
+        source_service.source_document_url("github_repo", "acme/widgets", "src/app.py")
+        == "https://github.com/acme/widgets/blob/HEAD/src/app.py"
+    )
+    # Asana: the path is the task gid.
+    assert (
+        source_service.source_document_url("asana_project", None, "1209876")
+        == "https://app.asana.com/0/0/1209876"
+    )
+    # Notion: stored `url` in extra wins; otherwise built from the dashless id.
+    assert (
+        source_service.source_document_url(
+            "notion", None, "abc-def", extra={"url": "https://www.notion.so/Page-abcdef"}
+        )
+        == "https://www.notion.so/Page-abcdef"
+    )
+    assert (
+        source_service.source_document_url("notion", None, "abc-def")
+        == "https://www.notion.so/abcdef"
+    )
+    # Slack has no deep link yet → None.
+    assert source_service.source_document_url("slack", "T123", "#eng/1.ts") is None
+
+
 # --- cartridge snapshot-on-add ----------------------------------------------
 
 

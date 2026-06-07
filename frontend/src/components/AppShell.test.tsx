@@ -451,6 +451,7 @@ function publishedCartridgeResult(slug: string) {
       cover_image_url: null,
       icon_url: null,
       view_count: 0,
+      share_count: 0,
       items: [],
       is_external: false,
       added_to_workspace_id: null,

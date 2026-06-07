@@ -298,7 +298,7 @@ export async function readSourceDoc(
   workspaceId: string,
   source: string,
   ref: string,
-): Promise<{ name?: string; content?: string }> {
+): Promise<{ name?: string; content?: string; url?: string | null }> {
   return apiFetch(
     `/api/v1/workspaces/${workspaceId}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`,
   );
@@ -1057,7 +1057,20 @@ export interface SessionSummary {
 }
 
 export type GeneralPermission = "none" | "read" | "write";
-export type SessionFolderVisibility = "private" | "workspace" | "public";
+// Stored visibility is two-state (the "workspace" tier was dropped after the
+// 1:1 workspace↔user migration). "shared" is a derived display state.
+export type SessionFolderVisibility = "private" | "public";
+export type DisplayVisibility = "private" | "shared" | "public";
+
+// The label to show: public link, else "shared" if anyone's been invited, else
+// private. Folders and cartridges both feed (access, count) in.
+export function displayVisibility(
+  access: "private" | "public",
+  shareCount: number,
+): DisplayVisibility {
+  if (access === "public") return "public";
+  return shareCount > 0 ? "shared" : "private";
+}
 
 export interface SessionFolder {
   id: string;
@@ -1072,6 +1085,7 @@ export interface SessionFolder {
   is_default: boolean;
   view_count: number;
   session_count: number;
+  share_count: number;
 }
 
 export async function listSessionFolders(workspaceId: string): Promise<SessionFolder[]> {
@@ -1293,7 +1307,7 @@ export interface CartridgeItemSpec {
   label_override?: string | null;
 }
 
-export type CartridgeVisibility = "workspace" | "private" | "public";
+export type CartridgeVisibility = "private" | "public";
 export type CartridgeGeneralPermission = "none" | "read" | "write";
 
 export interface CreatedCartridge {
@@ -1312,6 +1326,7 @@ export interface CreatedCartridge {
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
+  share_count: number;
   items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
@@ -1424,6 +1439,7 @@ export interface WorkspaceCartridge {
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
+  share_count: number;
   items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
@@ -1962,23 +1978,17 @@ export interface SharedWithMeItem {
   permission: "read" | "write";
 }
 
-export interface SharedSession {
-  id: string;
-  workspace_id: string;
-  session_id: string;
-  agent_name: string;
-  title: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-}
-
 export async function listSharedWithMe(): Promise<SharedWithMeItem[]> {
   const res = await apiFetch<{ items: SharedWithMeItem[] }>("/api/v1/share/with-me");
   return res.items;
 }
 
-export async function listSharedSessionFolderSessions(folderId: string): Promise<SharedSession[]> {
-  const res = await apiFetch<{ sessions: SharedSession[] }>(
+// Sessions inside a folder shared with you, in SessionSummary shape so the
+// shared view renders the same chronological/filter browser as your own.
+export async function listSharedSessionFolderSessions(
+  folderId: string,
+): Promise<SessionSummary[]> {
+  const res = await apiFetch<{ sessions: SessionSummary[] }>(
     `/api/v1/share/session-folders/${folderId}/sessions`
   );
   return res.sessions;

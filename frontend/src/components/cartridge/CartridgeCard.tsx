@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { displayVisibility } from "../../lib/api";
+
 // Minimum shape required by the card — accepts both WorkspaceCartridge and
 // PublicCartridgeCard so /discover and /workspaces/[id]/cartridges can share one
 // component without dragging two type definitions into the union.
@@ -14,7 +16,8 @@ export interface CartridgeCardData {
   cover_image_url: string | null;
   owner_name?: string;
   owner_display_name?: string | null;
-  access?: "workspace" | "private" | "public";
+  access?: "private" | "public";
+  share_count?: number;
   is_external?: boolean;
   updated_at?: string;
   item_count?: number;
@@ -37,8 +40,8 @@ interface CartridgeCardProps {
 
 const VIS_COLOR: Record<string, string> = {
   public: "#22C55E",
+  shared: "var(--color-brand-500)",
   private: "#9CA3AF",
-  workspace: "var(--color-brand-500)",
 };
 
 export default function CartridgeCard({
@@ -50,7 +53,9 @@ export default function CartridgeCard({
   selected,
 }: CartridgeCardProps) {
   const itemCount = stash.item_count ?? stash.items?.length ?? 0;
-  const visibility = stash.access;
+  const visibility = stash.access
+    ? displayVisibility(stash.access, stash.share_count ?? 0)
+    : null;
   const dotColor = visibility ? VIS_COLOR[visibility] : null;
   const author = authorName(stash);
 
@@ -91,7 +96,7 @@ export default function CartridgeCard({
           <span
             className="absolute bottom-2 left-2.5 inline-block h-[8px] w-[8px] rounded-full ring-2 ring-white/80"
             style={{ background: dotColor }}
-            title={visibility}
+            title={visibility ?? undefined}
           />
         )}
       </div>

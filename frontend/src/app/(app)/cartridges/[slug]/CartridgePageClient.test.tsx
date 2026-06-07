@@ -136,6 +136,7 @@ function stashDetail(
       cover_image_url: null,
       icon_url: null,
       view_count: 0,
+      share_count: 0,
       items: [],
       is_external: false,
       added_to_workspace_id: null,
@@ -343,7 +344,7 @@ describe("CartridgePageClient sharing", () => {
   it("keeps add/create flows behind the single Add things button", async () => {
     vi.mocked(getPublicCartridge).mockResolvedValueOnce({
       ...stashDetail({
-        access: "workspace",
+        access: "private",
         workspace_permission: "read",
         public_permission: "none",
       }),
@@ -369,7 +370,7 @@ describe("CartridgePageClient sharing", () => {
   it("does not render stash access as a title badge", async () => {
     vi.mocked(getPublicCartridge).mockResolvedValueOnce(
       stashDetail({
-        access: "workspace",
+        access: "private",
         workspace_permission: "read",
         public_permission: "none",
       }),
