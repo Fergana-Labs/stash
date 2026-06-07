@@ -26,6 +26,10 @@ LOOKBACK_DAYS = 90
 MAX_CALLS = 5000
 
 
+def _call_workspace_id(meta: dict) -> str:
+    return str(meta.get("workspaceId") or meta.get("workspace_id") or "")
+
+
 def _render_call(meta: dict, monologues: list[dict]) -> str:
     title = meta.get("title") or "Untitled call"
     started = meta.get("started") or ""
@@ -87,6 +91,10 @@ async def index_gong(source: dict) -> str | None:
     source_id = UUID(source["id"])
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
+    allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
+    if not allowed_workspace_ids:
+        logger.info("gong source %s: no allowed workspaces configured", source_id)
+        return None
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
     headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
@@ -99,6 +107,8 @@ async def index_gong(source: dict) -> str | None:
 
     present: list[str] = []
     for call_id, meta in meta_by_id.items():
+        if _call_workspace_id(meta) not in allowed_workspace_ids:
+            continue
         await source_service.upsert_content_document(
             table="gong_documents",
             source_id=source_id,
@@ -124,6 +134,15 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     source_id = UUID(source["id"])
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
+    allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
+    if not allowed_workspace_ids:
+        return {
+            "fetched": 0,
+            "since": since.isoformat(),
+            "until": until.isoformat() if until else None,
+            "results": [],
+        }
+
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
     headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
     from_dt = since.isoformat()
@@ -135,6 +154,8 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
 
     refs: list[str] = []
     for call_id, meta in list(meta_by_id.items())[:limit]:
+        if _call_workspace_id(meta) not in allowed_workspace_ids:
+            continue
         await source_service.upsert_content_document(
             table="gong_documents",
             source_id=source_id,

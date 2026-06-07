@@ -653,9 +653,7 @@ async def _ensure_files(
     tables: dict[str, dict],
 ) -> dict[str, dict]:
     if not storage_service.is_configured():
-        log.warning(
-            "Skipping files: S3 config missing. Set S3_* vars or S3_PUBLIC_URL to seed files."
-        )
+        log.warning("Skipping files: S3 config missing. Set S3_* vars to seed files.")
         return {}
 
     out: dict[str, dict] = {}
