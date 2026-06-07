@@ -1,10 +1,10 @@
 """Slack → slack_messages: one-time backfill + per-event ingest.
 
-`index_slack` backfills recent history across the user's channels (also the
-periodic safety re-sync). Live updates arrive via the Events API webhook, which
-enqueues `ingest_slack_message` per message. Each message is a row at
-`{channel}/{ts}` (with native channel_id/channel_name/ts columns) so the agent
-can navigate by channel and search across them.
+`index_slack` backfills recent history for the source's explicit channel
+allowlist. Live updates arrive via the Events API webhook, which enqueues
+`ingest_slack_message` per message. Each message is a row at `{channel}/{ts}`
+(with native channel_id/channel_name/ts columns) so the agent can navigate by
+channel and search across allowed channels.
 """
 
 from __future__ import annotations
@@ -41,6 +41,10 @@ async def index_slack(source: dict) -> str | None:
     source_id = UUID(source["id"])
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
+    allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
+    if not allowed_channel_ids:
+        logger.info("slack source %s: no allowed channels configured", source_id)
+        return None
 
     token = await get_valid_token(owner_user_id, "slack")
     headers = {"Authorization": f"Bearer {token}"}
@@ -53,6 +57,8 @@ async def index_slack(source: dict) -> str | None:
         )
         for channel in channels_payload.get("channels", []):
             channel_id = channel["id"]
+            if channel_id not in allowed_channel_ids:
+                continue
             channel_name = channel.get("name") or channel_id
             # A channel we can't read (not a member, archived, …) must not abort
             # the whole backfill — skip it and continue. conversations.history
@@ -83,12 +89,20 @@ async def index_slack(source: dict) -> str | None:
 
 
 async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
-    """On-demand: pull messages in [since, until] across the user's channels —
-    older than the recent backfill window. Caches them (upsert) so they're
-    searchable afterward, and returns the refs found."""
+    """On-demand: pull messages in [since, until] across allowed channels.
+    Caches them (upsert) so they're searchable afterward, and returns refs."""
     source_id = UUID(source["id"])
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
+    allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
+    if not allowed_channel_ids:
+        return {
+            "fetched": 0,
+            "since": since.isoformat(),
+            "until": until.isoformat() if until else None,
+            "results": [],
+        }
+
     token = await get_valid_token(owner_user_id, "slack")
     headers = {"Authorization": f"Bearer {token}"}
     oldest = f"{since.timestamp():.6f}"
@@ -105,6 +119,8 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
             if len(refs) >= limit:
                 break
             channel_id = channel["id"]
+            if channel_id not in allowed_channel_ids:
+                continue
             channel_name = channel.get("name") or channel_id
             params = {"channel": channel_id, "oldest": oldest, "limit": MAX_MESSAGES_PER_CHANNEL}
             if latest:
@@ -160,23 +176,35 @@ async def _upsert_message(
 
 
 async def ingest_slack_message(team_id: str, event: dict) -> int:
-    """Upsert one Events-API message into every Slack source for this team.
-    Each source is user-scoped, so the same message lands once per owner who
-    connected the team — and stays visible only to them."""
-    if event.get("type") != "message" or event.get("subtype") or not event.get("ts"):
+    """Upsert one Events-API message into matching Slack sources for this team.
+    Each source is user-scoped and channel-scoped, so the same message lands
+    once per owner who explicitly allowed that channel."""
+    channel_id = event.get("channel", "")
+    if (
+        event.get("type") != "message"
+        or event.get("subtype")
+        or not event.get("ts")
+        or not channel_id
+    ):
         return 0
     rows = await get_pool().fetch(
-        "SELECT id, workspace_id FROM workspace_sources "
+        "SELECT id, workspace_id, settings FROM workspace_sources "
         "WHERE source_type = 'slack' AND external_ref = $1",
         team_id,
     )
+    ingested = 0
     for row in rows:
+        if channel_id not in source_service.slack_allowed_channel_ids(
+            {"settings": row["settings"] or {}}
+        ):
+            continue
         await _upsert_message(
             source_id=row["id"],
             workspace_id=row["workspace_id"],
-            channel_id=event.get("channel", ""),
-            channel_name=event.get("channel", ""),
+            channel_id=channel_id,
+            channel_name=channel_id,
             ts=event["ts"],
             text=event.get("text") or "",
         )
-    return len(rows)
+        ingested += 1
+    return ingested

@@ -34,6 +34,7 @@ class AddSourceRequest(BaseModel):
     # the connected token (the user can't easily supply them).
     external_ref: str | None = None
     display_name: str | None = None
+    settings: dict | None = None
 
 
 async def _resolve_slack_source(user_id) -> tuple[str, str]:
@@ -206,6 +207,10 @@ async def add_source(
     await _require_member(workspace_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
+    try:
+        source_settings = source_service.normalize_source_settings(body.source_type, body.settings)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     external_ref = body.external_ref
     display_name = body.display_name
@@ -230,6 +235,7 @@ async def add_source(
         source_type=body.source_type,
         external_ref=external_ref,
         display_name=display_name or external_ref,
+        settings=source_settings,
     )
 
 

@@ -100,6 +100,44 @@ async def test_unknown_source_type_rejected(client: AsyncClient):
     assert resp.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, monkeypatch):
+    from backend.routers import sources as sources_router
+
+    api_key, _ = await _register(client)
+    ws = await _create_workspace(client, api_key)
+
+    async def fake_get_valid_token(user_id, provider):
+        assert provider == "slack"
+        return "slack-token"
+
+    class FakeSlackProvider:
+        async def team_info(self, token):
+            assert token == "slack-token"
+            return {"team_id": "T123", "team_name": "Acme Slack"}
+
+    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(sources_router, "get_provider", lambda provider: FakeSlackProvider())
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "slack",
+            "settings": {"allowed_channel_ids": ["C1", " C2 ", "C1"]},
+        },
+        headers=_auth(api_key),
+    )
+    assert added.status_code == 200
+    assert added.json()["settings"] == {"allowed_channel_ids": ["C1", "C2"]}
+
+    invalid = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={"source_type": "slack", "settings": {"allowed_channel_ids": "C1"}},
+        headers=_auth(api_key),
+    )
+    assert invalid.status_code == 400
+
+
 # --- user-scoping (the access-control invariant) ----------------------------
 
 
@@ -115,6 +153,7 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
         source_type="slack",
         external_ref="T123",
         display_name="Acme Slack",
+        settings={"allowed_channel_ids": ["C1"]},
     )
     source_id = UUID(src["id"])
 
@@ -139,6 +178,7 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
         source_type="slack",
         external_ref="T1",
         display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
     )
     await source_service.upsert_content_document(
         table="slack_messages",
@@ -148,6 +188,7 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
         name="msg",
         kind="message",
         content="the postgres migration is blocked on review",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
 
     owner_hits = await source_service.search_documents(
@@ -401,10 +442,130 @@ async def test_slack_webhook_rejects_bad_signature(client: AsyncClient, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    unconfigured = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(unconfigured["id"]),
+        workspace_id=ws,
+        path="general/1",
+        name="#general",
+        kind="message",
+        content="secret launch plan",
+        external_ref="C1:1",
+        extra={"channel_id": "C1", "channel_name": "general", "ts": "1"},
+    )
+
+    assert await source_service.list_documents(unconfigured) == []
+    assert await source_service.read_document(unconfigured, "general/1") is None
+    assert await source_service.source_item_count(unconfigured) == 0
+    assert (
+        await source_service.search_documents(
+            workspace_id=ws, user_id=owner_id, query="secret launch"
+        )
+        == []
+    )
+
+    configured = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T2",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(configured["id"]),
+        workspace_id=ws,
+        path="general/1",
+        name="#general",
+        kind="message",
+        content="allowed roadmap plan",
+        external_ref="C1:1",
+        extra={"channel_id": "C1", "channel_name": "general", "ts": "1"},
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(configured["id"]),
+        workspace_id=ws,
+        path="exec/1",
+        name="#exec",
+        kind="message",
+        content="blocked board plan",
+        external_ref="C2:1",
+        extra={"channel_id": "C2", "channel_name": "exec", "ts": "1"},
+    )
+
+    docs = await source_service.list_documents(configured)
+    assert [doc["path"] for doc in docs] == ["general/1"]
+    assert await source_service.read_document(configured, "exec/1") is None
+    assert await source_service.source_item_count(configured) == 1
+    allowed_hits = await source_service.search_documents(
+        workspace_id=ws, user_id=owner_id, query="allowed roadmap"
+    )
+    blocked_hits = await source_service.search_documents(
+        workspace_id=ws, user_id=owner_id, query="blocked board"
+    )
+    assert len(allowed_hits) == 1
+    assert blocked_hits == []
+
+
+@pytest.mark.asyncio
+async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient, monkeypatch):
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C_ALLOWED"]},
+    )
+    requested_history: list[str] = []
+
+    async def fake_get_valid_token(user_id, provider):
+        assert provider == "slack"
+        return "slack-token"
+
+    async def fake_slack_get(client, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {
+                "channels": [
+                    {"id": "C_ALLOWED", "name": "general"},
+                    {"id": "C_BLOCKED", "name": "exec"},
+                ]
+            }
+        requested_history.append(params["channel"])
+        return {"messages": [{"type": "message", "ts": "1", "text": "ship safely"}]}
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+
+    assert requested_history == ["C_ALLOWED"]
+    docs = await source_service.list_documents(src)
+    assert [doc["path"] for doc in docs] == ["general/1"]
+
+
+@pytest.mark.asyncio
 async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     from backend.integrations.slack.indexer import ingest_slack_message
 
-    # Two members each connect the same Slack team — each gets their own source.
+    # Two members each connect the same Slack team, but only the source that
+    # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
     owner_b_key, owner_b = await _register(client, "b")
     ws = await _create_workspace(client, owner_a_key)
@@ -414,6 +575,7 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
         source_type="slack",
         external_ref="T_SHARED",
         display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
     )
     src_b = await source_service.create_source(
         workspace_id=ws,
@@ -421,20 +583,25 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
         source_type="slack",
         external_ref="T_SHARED",
         display_name="Acme",
+        settings={"allowed_channel_ids": ["C2"]},
     )
 
     n = await ingest_slack_message(
         "T_SHARED",
         {"type": "message", "channel": "C1", "ts": "1717.0001", "text": "ship the sources PR"},
     )
-    assert n == 2  # both team sources updated
+    assert n == 1
 
-    # Each owner sees the message only in their own source.
+    # Each owner sees only their own source and only if that source allowed the channel.
     a_hits = await source_service.search_documents(
         workspace_id=ws, user_id=owner_a, query="ship sources"
     )
     assert any(h["source_id"] == src_a["id"] for h in a_hits)
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
+    b_hits = await source_service.search_documents(
+        workspace_id=ws, user_id=owner_b, query="ship sources"
+    )
+    assert b_hits == []
 
 
 # --- index-only sources (drive): lazy read ----------------------------------
@@ -573,6 +740,7 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
         source_type="slack",
         external_ref="T123",
         display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
     )
     github = await source_service.create_source(
         workspace_id=ws,
