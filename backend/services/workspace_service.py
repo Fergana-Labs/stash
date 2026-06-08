@@ -219,6 +219,20 @@ async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id:
             user_id,
         )
     )
+    removed_granted_share_count = _deleted_count(
+        await pool.execute(
+            "DELETE FROM shares WHERE workspace_id = $1 AND created_by = $2",
+            workspace_id,
+            user_id,
+        )
+    )
+    removed_share_invite_count = _deleted_count(
+        await pool.execute(
+            "DELETE FROM share_invites WHERE workspace_id = $1 AND created_by = $2",
+            workspace_id,
+            user_id,
+        )
+    )
     removed_cartridge_member_count = _deleted_count(
         await pool.execute(
             "DELETE FROM cartridge_members cm "
@@ -226,6 +240,17 @@ async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id:
             "WHERE c.id = cm.cartridge_id "
             "AND c.workspace_id = $1 "
             "AND cm.user_id = $2",
+            workspace_id,
+            user_id,
+        )
+    )
+    removed_granted_cartridge_member_count = _deleted_count(
+        await pool.execute(
+            "DELETE FROM cartridge_members cm "
+            "USING cartridges c "
+            "WHERE c.id = cm.cartridge_id "
+            "AND c.workspace_id = $1 "
+            "AND cm.granted_by = $2",
             workspace_id,
             user_id,
         )
@@ -241,6 +266,17 @@ async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id:
             user_id,
         )
     )
+    removed_sent_cartridge_invite_count = _deleted_count(
+        await pool.execute(
+            "DELETE FROM cartridge_invites ci "
+            "USING cartridges c "
+            "WHERE c.id = ci.cartridge_id "
+            "AND c.workspace_id = $1 "
+            "AND ci.invited_by_user_id = $2",
+            workspace_id,
+            user_id,
+        )
+    )
     removed_cartridge_count = _deleted_count(
         await pool.execute(
             "DELETE FROM cartridges WHERE workspace_id = $1 AND owner_id = $2",
@@ -250,8 +286,12 @@ async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id:
     )
     return {
         "removed_share_count": removed_share_count,
+        "removed_granted_share_count": removed_granted_share_count,
+        "removed_share_invite_count": removed_share_invite_count,
         "removed_cartridge_member_count": removed_cartridge_member_count,
+        "removed_granted_cartridge_member_count": removed_granted_cartridge_member_count,
         "removed_cartridge_invite_count": removed_cartridge_invite_count,
+        "removed_sent_cartridge_invite_count": removed_sent_cartridge_invite_count,
         "removed_cartridge_count": removed_cartridge_count,
     }
 
