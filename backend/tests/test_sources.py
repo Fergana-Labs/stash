@@ -156,6 +156,23 @@ async def test_unknown_source_type_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_add_jira_source_rejects_unsafe_external_ref(client: AsyncClient):
+    api_key, _ = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "jira_project",
+            "external_ref": 'cloud-1:PROJ" OR project IS NOT EMPTY',
+            "display_name": "unsafe",
+        },
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 400
+    assert "Jira projectKey" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, monkeypatch):
     from backend.routers import sources as sources_router
 

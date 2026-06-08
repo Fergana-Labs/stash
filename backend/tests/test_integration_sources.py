@@ -147,6 +147,21 @@ def test_jira_asana_drive_are_index_only_federated():
         assert source_service.SOURCE_TABLE[st] not in source_service.CONTENT_TABLES, st
 
 
+def test_jira_project_refs_reject_jql_injection_shapes():
+    assert source_service.parse_jira_project_ref("cloud-1:PROJ_1") == ("cloud-1", "PROJ_1")
+
+    for external_ref in (
+        "cloud-1",
+        "cloud-1:",
+        ":PROJ",
+        "cloud 1:PROJ",
+        'cloud-1:PROJ" OR project IS NOT EMPTY',
+        "cloud-1:PROJ-1",
+    ):
+        with pytest.raises(ValueError):
+            source_service.parse_jira_project_ref(external_ref)
+
+
 def test_render_call_labels_speakers_and_keeps_transcript():
     text = _render_call(
         {"title": "Q3 sync", "started": "2026-06-01T10:00:00Z"},

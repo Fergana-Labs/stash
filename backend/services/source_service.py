@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 from uuid import UUID
 
 from ..database import get_pool
@@ -80,6 +81,24 @@ SOURCE_TYPE_PROVIDER = {
     for provider, source_types in PROVIDER_SOURCE_TYPES.items()
     for source_type in source_types
 }
+
+_JIRA_PROJECT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def parse_jira_project_ref(external_ref: str) -> tuple[str, str]:
+    cloud_id, separator, project_key = external_ref.partition(":")
+    if not separator or not cloud_id or not project_key:
+        raise ValueError("Jira external_ref must be {cloudId}:{projectKey}")
+    if ":" in cloud_id or any(ch.isspace() for ch in cloud_id):
+        raise ValueError("Jira cloudId cannot contain whitespace or ':'")
+    if not _JIRA_PROJECT_KEY_RE.fullmatch(project_key):
+        raise ValueError("Jira projectKey must contain only letters, numbers, and underscores")
+    return cloud_id, project_key
+
+
+def validate_source_external_ref(source_type: str, external_ref: str) -> None:
+    if source_type == "jira_project":
+        parse_jira_project_ref(external_ref)
 
 
 def _clean_string_list(value, field_name: str) -> list[str]:
@@ -186,6 +205,7 @@ async def create_source(
 ) -> dict:
     """Register a connected source (idempotent on the natural key). The first
     sync runs immediately because `next_sync_at` defaults to now()."""
+    validate_source_external_ref(source_type, external_ref)
     capability = SOURCE_CAPABILITY.get(source_type, "navigable")
     interval = DEFAULT_SYNC_INTERVAL_S.get(source_type, 3600)
     normalized_settings = normalize_source_settings(source_type, settings)

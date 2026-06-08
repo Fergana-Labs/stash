@@ -328,14 +328,17 @@ async def add_source(
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
-    created = await source_service.create_source(
-        workspace_id=workspace_id,
-        owner_user_id=current_user["id"],
-        source_type=body.source_type,
-        external_ref=external_ref,
-        display_name=display_name or external_ref,
-        settings=source_settings,
-    )
+    try:
+        created = await source_service.create_source(
+            workspace_id=workspace_id,
+            owner_user_id=current_user["id"],
+            source_type=body.source_type,
+            external_ref=external_ref,
+            display_name=display_name or external_ref,
+            settings=source_settings,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     await security_audit_service.record_event(
         action="source.created",
         actor_user_id=current_user["id"],
