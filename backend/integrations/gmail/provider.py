@@ -2,7 +2,8 @@
 
 This is intentionally separate from the Google Drive provider even though both
 use Google OAuth. Gmail gets its own stored token, callback URL, and read-only
-scope so Drive access and mailbox access stay independently revocable.
+scope. Configure it with a separate Google Cloud project from Drive when Google
+revocation must be independent.
 """
 
 from __future__ import annotations
