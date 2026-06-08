@@ -42,6 +42,7 @@ export function AddSourceControls({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [slackChannelIds, setSlackChannelIds] = useState("");
   const [gongWorkspaceIds, setGongWorkspaceIds] = useState("");
 
   async function add(body?: {
@@ -136,6 +137,40 @@ export function AddSourceControls({
     );
   }
 
+  if (connector.sourceType === "slack") {
+    const ids = slackChannelIds
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    return (
+      <div className="space-y-2">
+        {!connected && (
+          <div className="text-[11.5px] text-muted">Connect Slack first to add it.</div>
+        )}
+        <input
+          value={slackChannelIds}
+          onChange={(event) => setSlackChannelIds(event.target.value)}
+          placeholder="Slack channel IDs"
+          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted"
+          disabled={busy || !connected}
+        />
+        <button
+          type="button"
+          onClick={() =>
+            void add({
+              settings: { allowed_channel_ids: ids },
+            })
+          }
+          disabled={busy || !connected || ids.length === 0}
+          className={secondaryButton()}
+        >
+          {busy ? "Adding..." : "Add"}
+        </button>
+        {errorRow}
+      </div>
+    );
+  }
+
   if (connector.sourceType === "gong_calls") {
     const ids = gongWorkspaceIds
       .split(",")
@@ -170,7 +205,7 @@ export function AddSourceControls({
     );
   }
 
-  // kind "auto" — slack/granola/snowflake. The backend resolves the ref.
+  // kind "auto" — granola/snowflake. The backend resolves the ref.
   return (
     <div className="space-y-2">
       {!connected && (

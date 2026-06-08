@@ -416,12 +416,19 @@ async def upsert_content_document(
     channel_id/channel_name/ts)."""
     pool = get_pool()
     new_hash = _content_hash(content)
+    extra = extra or {}
+    existing_cols = ["content_hash", "deleted_at", *extra.keys()]
     existing = await pool.fetchrow(
-        f"SELECT content_hash, deleted_at FROM {table} WHERE source_id = $1 AND path = $2",
+        f"SELECT {', '.join(existing_cols)} FROM {table} WHERE source_id = $1 AND path = $2",
         source_id,
         path,
     )
-    if existing and existing["content_hash"] == new_hash and existing["deleted_at"] is None:
+    if (
+        existing
+        and existing["content_hash"] == new_hash
+        and existing["deleted_at"] is None
+        and all(existing[col] == value for col, value in extra.items())
+    ):
         return "unchanged"
 
     cols = [
@@ -448,7 +455,7 @@ async def upsert_content_document(
         external_updated_at,
         True,
     ]
-    for col, val in (extra or {}).items():
+    for col, val in extra.items():
         cols.append(col)
         vals.append(val)
     placeholders = ", ".join(f"${i + 1}" for i in range(len(vals)))
@@ -539,6 +546,22 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
         )
         return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
 
+    if table == "gong_documents":
+        allowed_workspace_ids = gong_allowed_workspace_ids(source)
+        if not allowed_workspace_ids:
+            return []
+        rows = await get_pool().fetch(
+            f"SELECT path, name, kind FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+            f"AND gong_workspace_id = ANY($4::text[]) "
+            f"ORDER BY path LIMIT $3",
+            UUID(source["id"]),
+            f"{prefix}%",
+            limit,
+            allowed_workspace_ids,
+        )
+        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+
     rows = await get_pool().fetch(
         f"SELECT path, name, kind FROM {table} "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
@@ -575,6 +598,28 @@ async def read_document(source: dict, path: str) -> dict | None:
                 "name": row["name"],
                 "kind": row["kind"],
                 "content": row["content"] or "",
+            }
+
+        if table == "gong_documents":
+            allowed_workspace_ids = gong_allowed_workspace_ids(source)
+            if not allowed_workspace_ids:
+                return None
+            row = await get_pool().fetchrow(
+                f"SELECT path, name, kind, content, external_ref FROM {table} "
+                f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
+                f"AND gong_workspace_id = ANY($3::text[])",
+                UUID(source["id"]),
+                path,
+                allowed_workspace_ids,
+            )
+            if not row:
+                return None
+            return {
+                "path": row["path"],
+                "name": row["name"],
+                "kind": row["kind"],
+                "content": row["content"] or "",
+                "external_ref": row["external_ref"],
             }
 
         row = await get_pool().fetchrow(
@@ -703,14 +748,21 @@ async def search_documents(
         source_id = UUID(source["id"])
 
     def visibility_clause(table: str) -> str:
-        if table != "slack_messages":
-            return ""
-        return (
-            "AND d.channel_id = ANY(ARRAY("
-            "SELECT jsonb_array_elements_text("
-            "COALESCE(s.settings->'allowed_channel_ids', '[]'::jsonb)"
-            ")))"
-        )
+        if table == "slack_messages":
+            return (
+                "AND d.channel_id = ANY(ARRAY("
+                "SELECT jsonb_array_elements_text("
+                "COALESCE(s.settings->'allowed_channel_ids', '[]'::jsonb)"
+                ")))"
+            )
+        if table == "gong_documents":
+            return (
+                "AND d.gong_workspace_id = ANY(ARRAY("
+                "SELECT jsonb_array_elements_text("
+                "COALESCE(s.settings->'allowed_workspace_ids', '[]'::jsonb)"
+                ")))"
+            )
+        return ""
 
     parts = [f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
@@ -801,6 +853,19 @@ async def source_item_count(source: dict) -> int | None:
             f"WHERE source_id = $1 AND deleted_at IS NULL AND channel_id = ANY($2::text[])",
             UUID(source["id"]),
             allowed_channel_ids,
+        )
+        return int(row["n"]) if row else 0
+
+    if table == "gong_documents":
+        allowed_workspace_ids = gong_allowed_workspace_ids(source)
+        if not allowed_workspace_ids:
+            return 0
+        row = await get_pool().fetchrow(
+            f"SELECT count(*) AS n FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL "
+            f"AND gong_workspace_id = ANY($2::text[])",
+            UUID(source["id"]),
+            allowed_workspace_ids,
         )
         return int(row["n"]) if row else 0
 
