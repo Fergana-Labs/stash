@@ -128,7 +128,7 @@ async def index_jira(source: dict) -> str | None:
                 break
             next_page_token = payload["nextPageToken"]
 
-    await source_service.soft_delete_missing("jira_documents", source_id, present)
+    await source_service.remove_missing_documents("jira_documents", source_id, present)
     logger.info("jira source %s: indexed %d issue(s)", source_id, len(present))
     return None
 

@@ -171,6 +171,6 @@ async def index_notion(source: dict) -> str | None:
         else:
             page_probe.raise_for_status()
 
-    await source_service.soft_delete_missing("notion_index", source_id, present)
+    await source_service.remove_missing_documents("notion_index", source_id, present)
     logger.info("notion source %s: indexed %d document(s)", source_id, len(present))
     return None
