@@ -35,6 +35,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
 - Stash creation, item replacement, shared-page creation, and Stash write/admin grants must require workspace editor or owner membership.
 - Non-owner Stash admins must not grant Stash access to users outside the workspace; external Stash read grants require a workspace owner.
+- Agent runtime Stash tools must enforce the same workspace write, workspace owner, active-workspace, and item-write checks as backend Stash routes.
 - Public, discoverable, or non-default workspace-readable session folders must require workspace owner membership; private session-folder management and session assignment must require current workspace write access.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.

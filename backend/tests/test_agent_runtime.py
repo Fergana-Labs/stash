@@ -60,6 +60,48 @@ async def workspace(_db_pool):
     return ws_id
 
 
+async def _create_user(_db_pool, prefix: str) -> UUID:
+    user_id = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
+        user_id,
+        f"{prefix}_{user_id.hex[:6]}",
+    )
+    return user_id
+
+
+async def _add_workspace_member(_db_pool, workspace_id: UUID, user_id: UUID, role: str) -> None:
+    await _db_pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)",
+        workspace_id,
+        user_id,
+        role,
+    )
+
+
+async def _create_folder(_db_pool, workspace_id: UUID, created_by: UUID, name: str) -> UUID:
+    folder_id = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO folders (id, workspace_id, name, created_by) VALUES ($1, $2, $3, $4)",
+        folder_id,
+        workspace_id,
+        name,
+        created_by,
+    )
+    return folder_id
+
+
+async def _run_tool(handler, workspace_id: UUID, user_id: UUID, args: dict) -> dict | list:
+    workspace_token = agent_runtime._workspace_ctx.set(workspace_id)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        result = await handler(args)
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+    return json.loads(result["content"][0]["text"])
+
+
 @pytest.mark.asyncio
 async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
     """Verifies the workspace-context plumbing end-to-end on one tool: the
@@ -134,6 +176,153 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
 
     deleted = json.loads(delete_result["content"][0]["text"])
     assert deleted == {"deleted": True, "cartridge_id": created["id"]}
+
+
+@pytest.mark.asyncio
+async def test_create_cartridge_tool_limits_workspace_visibility_to_owners(
+    workspace: UUID, _db_pool
+):
+    owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    editor_id = await _create_user(_db_pool, "agent_editor")
+    await _add_workspace_member(_db_pool, workspace, editor_id, "editor")
+    folder_id = await _create_folder(_db_pool, workspace, owner_id, "Private launch notes")
+
+    workspace_visible = await _run_tool(
+        agent_runtime._create_cartridge.handler,
+        workspace,
+        editor_id,
+        {
+            "title": "Workspace-visible launch bundle",
+            "items": [{"object_type": "folder", "object_id": str(folder_id)}],
+        },
+    )
+    private = await _run_tool(
+        agent_runtime._create_cartridge.handler,
+        workspace,
+        editor_id,
+        {
+            "title": "Private launch bundle",
+            "workspace_permission": "none",
+            "public_permission": "none",
+            "items": [{"object_type": "folder", "object_id": str(folder_id)}],
+        },
+    )
+
+    assert workspace_visible == {
+        "error": "Only workspace owners can create workspace or public Stashes"
+    }
+    assert private["title"] == "Private launch bundle"
+    assert private["workspace_permission"] == "none"
+    assert private["public_permission"] == "none"
+    assert private["items"][0]["object_type"] == "folder"
+
+
+@pytest.mark.asyncio
+async def test_create_cartridge_tool_rejects_viewers(workspace: UUID, _db_pool):
+    owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    viewer_id = await _create_user(_db_pool, "agent_viewer")
+    await _add_workspace_member(_db_pool, workspace, viewer_id, "viewer")
+    folder_id = await _create_folder(_db_pool, workspace, owner_id, "Viewer-visible notes")
+
+    result = await _run_tool(
+        agent_runtime._create_cartridge.handler,
+        workspace,
+        viewer_id,
+        {
+            "title": "Viewer private bundle",
+            "workspace_permission": "none",
+            "public_permission": "none",
+            "items": [{"object_type": "folder", "object_id": str(folder_id)}],
+        },
+    )
+
+    assert result == {"error": "Viewers can read but not create Stashes"}
+
+
+@pytest.mark.asyncio
+async def test_update_cartridge_tool_limits_public_changes_to_owners(workspace: UUID, _db_pool):
+    owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    editor_id = await _create_user(_db_pool, "agent_stash_admin")
+    await _add_workspace_member(_db_pool, workspace, editor_id, "editor")
+    folder_id = await _create_folder(_db_pool, workspace, owner_id, "Admin-only source")
+    stash = await cartridge_service.create_cartridge(
+        workspace_id=workspace,
+        owner_id=owner_id,
+        title="Private admin-managed Stash",
+        description="",
+        workspace_permission="none",
+        public_permission="none",
+        discoverable=False,
+        cover_image_url=None,
+        items=[CartridgeItem(object_type="folder", object_id=folder_id, position=0)],
+    )
+    await _db_pool.execute(
+        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
+        "VALUES ($1, $2, 'admin', $3)",
+        stash["id"],
+        editor_id,
+        owner_id,
+    )
+
+    result = await _run_tool(
+        agent_runtime._update_cartridge.handler,
+        workspace,
+        editor_id,
+        {"cartridge_id": str(stash["id"]), "public_permission": "read"},
+    )
+
+    public_permission = await _db_pool.fetchval(
+        "SELECT public_permission FROM cartridges WHERE id = $1",
+        stash["id"],
+    )
+    assert result == {"error": "Only workspace owners can make a Stash workspace or public"}
+    assert public_permission == "none"
+
+
+@pytest.mark.asyncio
+async def test_cartridge_mutation_tools_stay_in_active_workspace(workspace: UUID, _db_pool):
+    owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    other_workspace = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
+        other_workspace,
+        f"other_{other_workspace.hex[:6]}",
+        owner_id,
+        other_workspace.hex[:12],
+    )
+    await _add_workspace_member(_db_pool, other_workspace, owner_id, "owner")
+    other_stash = await cartridge_service.create_cartridge(
+        workspace_id=other_workspace,
+        owner_id=owner_id,
+        title="Other workspace Stash",
+        description="",
+        workspace_permission="none",
+        public_permission="none",
+        discoverable=False,
+        cover_image_url=None,
+        items=[],
+    )
+
+    update_result = await _run_tool(
+        agent_runtime._update_cartridge.handler,
+        workspace,
+        owner_id,
+        {"cartridge_id": str(other_stash["id"]), "title": "Mutated from wrong workspace"},
+    )
+    delete_result = await _run_tool(
+        agent_runtime._delete_cartridge.handler,
+        workspace,
+        owner_id,
+        {"cartridge_id": str(other_stash["id"])},
+    )
+
+    title = await _db_pool.fetchval(
+        "SELECT title FROM cartridges WHERE id = $1",
+        other_stash["id"],
+    )
+    assert update_result == {"error": "not found"}
+    assert delete_result == {"error": "not found"}
+    assert title == "Other workspace Stash"
 
 
 @pytest.mark.asyncio
