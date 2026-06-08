@@ -123,6 +123,96 @@ async def test_security_event_reads_are_audited_with_hashed_filters(
 
 
 @pytest.mark.asyncio
+async def test_cartridge_member_changes_are_audited_without_recipient_or_content(
+    client: AsyncClient,
+):
+    owner_key, owner_id = await _register(client, "audit_stash_owner")
+    recipient_name = unique_name("webflow_secret_recipient")
+    recipient_display_name = "Webflow Secret Recipient"
+    recipient_email = f"{recipient_name}@example.com"
+    recipient_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": recipient_name,
+            "display_name": recipient_display_name,
+            "email": recipient_email,
+            "password": "securepassword1",
+        },
+    )
+    assert recipient_resp.status_code == 201
+    recipient_id = UUID(recipient_resp.json()["id"])
+    ws = await _create_workspace(client, owner_key)
+    headers = _auth(owner_key)
+
+    page_name = "Webflow confidential launch notes"
+    page_content = "secret pricing plan for Webflow"
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": page_name, "content": page_content},
+        headers=headers,
+    )
+    assert page_resp.status_code == 201
+
+    stash_title = "Webflow managed product demo"
+    stash_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges",
+        json={
+            "title": stash_title,
+            "workspace_permission": "none",
+            "public_permission": "none",
+            "items": [{"object_type": "page", "object_id": page_resp.json()["id"]}],
+        },
+        headers=headers,
+    )
+    assert stash_resp.status_code == 201
+    stash_id = UUID(stash_resp.json()["id"])
+
+    granted = await client.post(
+        f"/api/v1/cartridges/{stash_id}/members",
+        json={"user_id": str(recipient_id), "permission": "read"},
+        headers=headers,
+    )
+    removed = await client.delete(
+        f"/api/v1/cartridges/{stash_id}/members/{recipient_id}",
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert granted.status_code == 201
+    assert removed.status_code == 204
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    granted_event = next(event for event in events if event["action"] == "cartridge.member_granted")
+    removed_event = next(event for event in events if event["action"] == "cartridge.member_removed")
+    recipient_hash = security_audit_service.hash_value(str(recipient_id))
+
+    assert granted_event["actor_user_id"] == str(owner_id)
+    assert granted_event["target_type"] == "cartridge"
+    assert granted_event["target_id"] == str(stash_id)
+    assert granted_event["metadata"] == {
+        "permission": "read",
+        "recipient_user_hash": recipient_hash,
+    }
+    assert removed_event["actor_user_id"] == str(owner_id)
+    assert removed_event["target_type"] == "cartridge"
+    assert removed_event["target_id"] == str(stash_id)
+    assert removed_event["metadata"] == {"recipient_user_hash": recipient_hash}
+
+    event_json = json.dumps(events)
+    assert str(recipient_id) not in event_json
+    assert recipient_name not in event_json
+    assert recipient_display_name not in event_json
+    assert recipient_email not in event_json
+    assert stash_title not in event_json
+    assert page_name not in event_json
+    assert page_content not in event_json
+
+
+@pytest.mark.asyncio
 async def test_source_access_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, _ = await _register(client)
     ws = await _create_workspace(client, api_key)

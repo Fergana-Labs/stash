@@ -21,7 +21,12 @@ from ..models import (
     PageCreateRequest,
     PageResponse,
 )
-from ..services import cartridge_service, permission_service, workspace_service
+from ..services import (
+    cartridge_service,
+    permission_service,
+    security_audit_service,
+    workspace_service,
+)
 
 ws_router = APIRouter(prefix="/api/v1/workspaces", tags=["cartridges"])
 public_router = APIRouter(prefix="/api/v1/cartridges", tags=["cartridges"])
@@ -258,12 +263,13 @@ async def delete_cartridge(
         raise HTTPException(status_code=404, detail="Stash not found")
 
 
-async def _require_can_manage_cartridge(cartridge_id: UUID, user_id: UUID) -> None:
+async def _require_can_manage_cartridge(cartridge_id: UUID, user_id: UUID) -> dict:
     stash = await cartridge_service.get_cartridge(cartridge_id)
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
     if not await cartridge_service.user_can_admin(cartridge_id, user_id):
         raise HTTPException(status_code=403, detail="Not allowed to manage this cartridge")
+    return stash
 
 
 @public_router.get("/{cartridge_id}/members", response_model=CartridgeMembersResponse)
@@ -286,7 +292,7 @@ async def add_cartridge_member(
     req: CartridgeMemberRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_can_manage_cartridge(cartridge_id, current_user["id"])
+    stash = await _require_can_manage_cartridge(cartridge_id, current_user["id"])
 
     pool = get_pool()
     user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
@@ -304,6 +310,17 @@ async def add_cartridge_member(
         raise HTTPException(status_code=400, detail=str(e))
     if not member:
         raise HTTPException(status_code=404, detail="Stash not found")
+    await security_audit_service.record_event(
+        action="cartridge.member_granted",
+        actor_user_id=current_user["id"],
+        workspace_id=stash["workspace_id"],
+        target_type="cartridge",
+        target_id=str(cartridge_id),
+        metadata={
+            "permission": req.permission,
+            "recipient_user_hash": security_audit_service.hash_value(str(req.user_id)),
+        },
+    )
     return CartridgeMemberResponse(**member)
 
 
@@ -313,8 +330,19 @@ async def remove_cartridge_member(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_can_manage_cartridge(cartridge_id, current_user["id"])
-    await cartridge_service.remove_member(cartridge_id, user_id)
+    stash = await _require_can_manage_cartridge(cartridge_id, current_user["id"])
+    removed = await cartridge_service.remove_member(cartridge_id, user_id)
+    if removed:
+        await security_audit_service.record_event(
+            action="cartridge.member_removed",
+            actor_user_id=current_user["id"],
+            workspace_id=stash["workspace_id"],
+            target_type="cartridge",
+            target_id=str(cartridge_id),
+            metadata={
+                "recipient_user_hash": security_audit_service.hash_value(str(user_id)),
+            },
+        )
 
 
 @public_router.post("/{cartridge_id}/shared-pages", response_model=PageResponse, status_code=201)
