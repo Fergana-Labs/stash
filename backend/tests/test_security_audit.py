@@ -650,6 +650,86 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_query_source_failure_redacts_snowflake_error_and_sql(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.snowflake import client as snowflake_client
+
+    api_key, _ = await _register(client, "audit_query")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    sensitive_sql = "SELECT secret FROM confidential_webflow_pipeline"
+    captured_logs = []
+
+    async def fake_creds(owner_user_id):
+        return {"account": "webflow", "user": "svc", "token": "secret-token"}
+
+    def fail_query(creds, sql, limit):
+        raise RuntimeError(f"account={creds['account']} token={creds['token']} sql={sql}")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(snowflake_client, "_creds", fake_creds)
+    monkeypatch.setattr(snowflake_client, "_run_sync", fail_query)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "snowflake",
+            "external_ref": "webflow-confidential-account",
+            "display_name": "Webflow confidential Snowflake",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = added.json()["id"]
+
+    query = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/query",
+        json={"sql": sensitive_sql, "limit": 10},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert query.status_code == 200
+    assert query.json() == {"error": "Snowflake query failed"}
+    assert captured_logs == [
+        (
+            "query source failed source=%s source_type=%s exception_type=%s",
+            (source_id, "snowflake", "SnowflakeQueryError"),
+        )
+    ]
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert sensitive_sql not in event_json
+    assert "confidential_webflow_pipeline" not in event_json
+    assert "secret-token" not in event_json
+    assert "webflow-confidential-account" not in event_json
+    assert "Webflow confidential Snowflake" not in event_json
+    assert "secret-token" not in str(captured_logs)
+    assert "confidential_webflow_pipeline" not in str(captured_logs)
+
+    query_event = next(event for event in events if event["action"] == "source.queried")
+    assert query_event["target_id"] == source_id
+    assert query_event["provider"] == "snowflake"
+    assert query_event["source_type"] == "snowflake"
+    assert query_event["metadata"] == {
+        "sql_hash": security_audit_service.hash_value(sensitive_sql),
+        "limit": 10,
+        "row_count": None,
+        "error": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, _ = await _register(client, "audit_snapshot")
     ws = await _create_workspace(client, api_key)

@@ -1150,12 +1150,20 @@ async def query_source(
         return None
     if connected["capability"] != "queryable":
         return {"error": "source is not queryable"}
-    from ..integrations.snowflake.client import run_query
+    from ..integrations.snowflake.client import SnowflakeQueryError, run_query
 
     try:
         return await run_query(connected, sql, limit)
     except ValueError as e:
         return {"error": str(e)}
+    except SnowflakeQueryError as e:
+        logger.warning(
+            "query source failed source=%s source_type=%s exception_type=%s",
+            connected["id"],
+            connected["source_type"],
+            type(e).__name__,
+        )
+        return {"error": "Snowflake query failed"}
 
 
 def _parse_dt(value: str | None):

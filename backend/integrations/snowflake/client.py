@@ -27,6 +27,10 @@ ROW_CAP = 200
 _IDENTIFIER_RE = re.compile(r'^[A-Za-z0-9_$."]+$')
 
 
+class SnowflakeQueryError(RuntimeError):
+    pass
+
+
 def _assert_read_only(sql: str) -> str:
     """Return a single read-only statement or raise ValueError."""
     stmt = sql.strip().rstrip(";").strip()
@@ -130,8 +134,12 @@ async def test_connection(creds: dict) -> str:
 async def run_query(source: dict, sql: str, limit: int = ROW_CAP) -> dict:
     """Run one read-only statement on behalf of the source's owner."""
     stmt = _assert_read_only(sql)
-    creds = await _creds(UUID(source["owner_user_id"]))
-    return await asyncio.to_thread(_run_sync, creds, stmt, _query_limit(limit))
+    query_limit = _query_limit(limit)
+    try:
+        creds = await _creds(UUID(source["owner_user_id"]))
+        return await asyncio.to_thread(_run_sync, creds, stmt, query_limit)
+    except Exception as exc:
+        raise SnowflakeQueryError("Snowflake query failed") from exc
 
 
 async def list_tables(source: dict) -> list[dict]:
