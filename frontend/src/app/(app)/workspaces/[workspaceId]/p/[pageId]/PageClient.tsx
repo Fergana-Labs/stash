@@ -105,6 +105,7 @@ export default function StashPageView() {
   const [stashFallback, setStashFallback] = useState<
     { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
+  const [stashAccessDenied, setStashAccessDenied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
   // Save responses can arrive out of order if a fast save fires while a
@@ -171,15 +172,20 @@ export default function StashPageView() {
         (it) => it.object_type === "page" && it.object_id === pageId,
       );
       if (!item) {
-        setError("This page isn't part of the linked Stash.");
-        return false;
+        setStashFallback(null);
+        setStashAccessDenied(true);
+        setError("");
+        return true;
       }
       setStashFallback({ stash: data.cartridge, item });
+      setStashAccessDenied(false);
       setError("");
       return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Stash not found");
-      return false;
+    } catch {
+      setStashFallback(null);
+      setStashAccessDenied(true);
+      setError("");
+      return true;
     }
   }, [stashSlug, pageId]);
 
@@ -207,6 +213,7 @@ export default function StashPageView() {
     // page they were legitimately shared.
     setPage(p);
     setStashFallback(null);
+    setStashAccessDenied(false);
     setError("");
     listObjectStashes(workspaceId, "page", pageId)
       .then(setContainingStashes)
@@ -441,6 +448,9 @@ export default function StashPageView() {
       />
     );
   }
+  if (stashAccessDenied) {
+    return <PageAccessDeniedScreen accountLabel={user?.email ?? user?.name ?? null} />;
+  }
   if (!user) {
     // Login bounce is already firing for the no-stash case.
     if (!stashSlug) return null;
@@ -674,6 +684,68 @@ export default function StashPageView() {
         </div>
       </div>
     </div>
+  );
+}
+
+function PageAccessDeniedScreen({ accountLabel }: { accountLabel: string | null }) {
+  return (
+    <div className="flex min-h-screen flex-col bg-[#f8fafd] text-[#202124]">
+      <header className="flex h-14 items-center border-b border-[#dadce0] bg-white px-5">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[#1a73e8]">
+            <AccessPageGlyph />
+          </span>
+          <span className="text-[18px] text-[#5f6368]">Stash</span>
+        </div>
+      </header>
+      <main className="flex flex-1 items-center justify-center px-6 py-16">
+        <section className="w-full max-w-[520px] text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#e8f0fe] text-[#1a73e8]">
+            <AccessPageGlyph large />
+          </div>
+          <h1 className="mt-6 text-[28px] font-normal leading-tight text-[#202124]">
+            You don&apos;t have access to this page
+          </h1>
+          <p className="mt-3 text-[14px] leading-6 text-[#5f6368]">
+            If someone sent you this link, ask them to share the Stash with your
+            account.
+          </p>
+          {accountLabel ? (
+            <p className="mt-4 text-[13px] leading-5 text-[#5f6368]">
+              You&apos;re signed in as <span className="font-medium text-[#3c4043]">{accountLabel}</span>.
+            </p>
+          ) : null}
+          <div className="mt-8 flex justify-center">
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center justify-center rounded-[4px] bg-[#1a73e8] px-6 text-[14px] font-medium text-white hover:bg-[#1765cc]"
+            >
+              Go to home
+            </Link>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function AccessPageGlyph({ large = false }: { large?: boolean }) {
+  const size = large ? 34 : 24;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V3.5Z"
+        fill="currentColor"
+      />
+      <path d="M14 3.5v4h4" fill="#a8c7fa" />
+      <path d="M9 11h6M9 14h6M9 17h4" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   );
 }
 
