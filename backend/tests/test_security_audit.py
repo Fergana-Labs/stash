@@ -213,6 +213,183 @@ async def test_cartridge_member_changes_are_audited_without_recipient_or_content
 
 
 @pytest.mark.asyncio
+async def test_object_share_changes_are_audited_without_recipient_or_content(
+    client: AsyncClient,
+):
+    owner_key, owner_id = await _register(client, "audit_share_owner")
+    recipient_name = unique_name("webflow_share_recipient")
+    recipient_display_name = "Webflow Share Recipient"
+    recipient_email = f"{recipient_name}@example.com"
+    recipient_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": recipient_name,
+            "display_name": recipient_display_name,
+            "email": recipient_email,
+            "password": "securepassword1",
+        },
+    )
+    assert recipient_resp.status_code == 201
+    recipient_id = UUID(recipient_resp.json()["id"])
+    ws = await _create_workspace(client, owner_key)
+    headers = _auth(owner_key)
+
+    page_name = "Webflow board escalation plan"
+    page_content = "confidential Webflow security escalation notes"
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": page_name, "content": page_content},
+        headers=headers,
+    )
+    assert page_resp.status_code == 201
+    page_id = page_resp.json()["id"]
+
+    granted = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": recipient_email.upper(),
+            "permission": "write",
+        },
+        headers=headers,
+    )
+    revoked = await client.request(
+        "DELETE",
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "principal_type": "user",
+            "principal_id": str(recipient_id),
+        },
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert granted.status_code == 200
+    assert revoked.status_code == 200
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    granted_event = next(event for event in events if event["action"] == "share.granted")
+    revoked_event = next(event for event in events if event["action"] == "share.revoked")
+    recipient_hash = security_audit_service.hash_value(str(recipient_id))
+
+    assert granted_event["actor_user_id"] == str(owner_id)
+    assert granted_event["target_type"] == "page"
+    assert granted_event["target_id"] == page_id
+    assert granted_event["metadata"] == {
+        "permission": "write",
+        "principal_type": "user",
+        "recipient_user_hash": recipient_hash,
+    }
+    assert revoked_event["actor_user_id"] == str(owner_id)
+    assert revoked_event["target_type"] == "page"
+    assert revoked_event["target_id"] == page_id
+    assert revoked_event["metadata"] == {
+        "permission": "write",
+        "principal_type": "user",
+        "recipient_user_hash": recipient_hash,
+    }
+
+    event_json = json.dumps(events)
+    assert str(recipient_id) not in event_json
+    assert recipient_name not in event_json
+    assert recipient_display_name not in event_json
+    assert recipient_email not in event_json
+    assert recipient_email.upper() not in event_json
+    assert page_name not in event_json
+    assert page_content not in event_json
+
+
+@pytest.mark.asyncio
+async def test_pending_share_invite_conversion_is_audited_without_email_or_content(
+    client: AsyncClient,
+):
+    owner_key, owner_id = await _register(client, "audit_pending_share_owner")
+    ws = await _create_workspace(client, owner_key)
+    headers = _auth(owner_key)
+
+    page_name = "Webflow confidential partner plan"
+    page_content = "private Webflow integration launch narrative"
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": page_name, "content": page_content},
+        headers=headers,
+    )
+    assert page_resp.status_code == 201
+    page_id = page_resp.json()["id"]
+
+    recipient_name = unique_name("webflow_pending_recipient")
+    recipient_display_name = "Webflow Pending Recipient"
+    recipient_email = f"{recipient_name}@example.com"
+    invited = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": recipient_email.upper(),
+            "permission": "read",
+        },
+        headers=headers,
+    )
+    recipient_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": recipient_name,
+            "display_name": recipient_display_name,
+            "email": recipient_email,
+            "password": "securepassword1",
+        },
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert invited.status_code == 200
+    assert invited.json() == {"pending": True, "email": recipient_email}
+    assert recipient_resp.status_code == 201
+    assert events_resp.status_code == 200
+
+    recipient_id = UUID(recipient_resp.json()["id"])
+    events = events_resp.json()["events"]
+    invited_event = next(event for event in events if event["action"] == "share.invited")
+    converted_event = next(event for event in events if event["action"] == "share.invite_converted")
+    email_hash = security_audit_service.hash_value(recipient_email)
+    recipient_hash = security_audit_service.hash_value(str(recipient_id))
+
+    assert invited_event["actor_user_id"] == str(owner_id)
+    assert invited_event["target_type"] == "page"
+    assert invited_event["target_id"] == page_id
+    assert invited_event["metadata"] == {
+        "permission": "read",
+        "recipient_email_hash": email_hash,
+    }
+    assert converted_event["actor_user_id"] == str(owner_id)
+    assert converted_event["target_type"] == "page"
+    assert converted_event["target_id"] == page_id
+    assert converted_event["metadata"] == {
+        "permission": "read",
+        "recipient_email_hash": email_hash,
+        "recipient_user_hash": recipient_hash,
+    }
+
+    event_json = json.dumps(events)
+    assert str(recipient_id) not in event_json
+    assert recipient_name not in event_json
+    assert recipient_display_name not in event_json
+    assert recipient_email not in event_json
+    assert recipient_email.upper() not in event_json
+    assert page_name not in event_json
+    assert page_content not in event_json
+
+
+@pytest.mark.asyncio
 async def test_source_access_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, _ = await _register(client)
     ws = await _create_workspace(client, api_key)
