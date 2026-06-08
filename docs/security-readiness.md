@@ -36,6 +36,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
 - Slack and Gong allowlist reductions must physically delete copied rows outside the current allowlist.
 - Slack deleted-message events must remove copied message rows, and Slack changed-message events must update the existing copied row without duplicating old content.
+- Copied source documents that disappear from an upstream crawl must be physically deleted rather than retained as hidden soft-deleted content.
 - Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.

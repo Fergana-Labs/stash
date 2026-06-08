@@ -105,7 +105,7 @@ async def test_github_index_success_logs_internal_source_id_only(monkeypatch):
     )
     monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
     monkeypatch.setattr(github_indexer.source_service, "upsert_content_document", _noop)
-    monkeypatch.setattr(github_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(github_indexer.source_service, "remove_missing_documents", _noop)
 
     await github_indexer.index_github_repo(source)
 
@@ -146,7 +146,7 @@ async def test_google_drive_index_success_logs_internal_source_id_only(monkeypat
     monkeypatch.setattr(google_indexer.httpx, "AsyncClient", lambda *args, **kwargs: DriveClient())
     monkeypatch.setattr(google_indexer, "_list_folder", list_folder)
     monkeypatch.setattr(google_indexer.source_service, "upsert_index_row", _noop)
-    monkeypatch.setattr(google_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(google_indexer.source_service, "remove_missing_documents", _noop)
 
     await google_indexer.index_google_drive(source)
 
@@ -190,7 +190,7 @@ async def test_jira_index_success_logs_internal_source_id_only(monkeypatch):
     monkeypatch.setattr(jira_indexer, "get_valid_token", _token)
     monkeypatch.setattr(jira_indexer.httpx, "AsyncClient", lambda *args, **kwargs: JiraClient())
     monkeypatch.setattr(jira_indexer.source_service, "upsert_index_row", _noop)
-    monkeypatch.setattr(jira_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(jira_indexer.source_service, "remove_missing_documents", _noop)
 
     await jira_indexer.index_jira(source)
 
@@ -248,7 +248,7 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     monkeypatch.setattr(gong_indexer, "_fetch_transcripts", transcripts)
     monkeypatch.setattr(gong_indexer.source_service, "purge_disallowed_copied_documents", _noop)
     monkeypatch.setattr(gong_indexer.source_service, "upsert_content_document", _noop)
-    monkeypatch.setattr(gong_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(gong_indexer.source_service, "remove_missing_documents", _noop)
 
     await gong_indexer.index_gong(source)
 
@@ -298,7 +298,7 @@ async def test_granola_index_logs_only_source_metadata(monkeypatch):
     monkeypatch.setattr(granola_indexer, "granola_session", granola_session)
     monkeypatch.setattr(granola_indexer, "call_tool_data", call_tool_data)
     monkeypatch.setattr(granola_indexer.source_service, "upsert_content_document", _noop)
-    monkeypatch.setattr(granola_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(granola_indexer.source_service, "remove_missing_documents", _noop)
 
     await granola_indexer.index_granola(source)
 

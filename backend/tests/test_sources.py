@@ -601,7 +601,10 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
+async def test_upsert_idempotency_and_missing_copied_content_delete(
+    client: AsyncClient,
+    pool,
+):
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
     src = await source_service.create_source(
@@ -630,11 +633,59 @@ async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
     assert await _upsert("README.md", "README.md", "v2") == "updated"
     await _upsert("docs/old.md", "old.md", "stale")
 
-    # A re-sync that only saw README.md soft-deletes docs/old.md.
-    removed = await source_service.soft_delete_missing("github_documents", sid, ["README.md"])
+    removed = await source_service.remove_missing_documents("github_documents", sid, ["README.md"])
     assert removed == 1
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM github_documents WHERE source_id = $1 AND path = 'docs/old.md'",
+            sid,
+        )
+        == 0
+    )
     live = await source_service.list_documents(src)
     assert {d["path"] for d in live} == {"README.md"}
+
+
+@pytest.mark.asyncio
+async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, pool):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="drive-root",
+        display_name="Drive",
+    )
+    sid = UUID(src["id"])
+    await source_service.upsert_index_row(
+        table="drive_index",
+        source_id=sid,
+        workspace_id=ws,
+        path="old-doc",
+        name="Old Doc",
+        external_ref="provider-doc",
+    )
+
+    removed = await source_service.remove_missing_documents("drive_index", sid, [])
+
+    assert removed == 1
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM drive_index WHERE source_id = $1 AND path = 'old-doc'",
+            sid,
+        )
+        == 1
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM drive_index "
+            "WHERE source_id = $1 AND path = 'old-doc' AND deleted_at IS NOT NULL",
+            sid,
+        )
+        == 1
+    )
+    assert await source_service.list_documents(src) == []
 
 
 # --- source-aware agent tools -----------------------------------------------

@@ -216,7 +216,7 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
     async def fake_purge_disallowed_copied_documents(source):
         return 0
 
-    async def fake_soft_delete_missing(table, source_id, present_paths):
+    async def fake_remove_missing_documents(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
@@ -227,8 +227,8 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
     )
     monkeypatch.setattr(
         gong_indexer.source_service,
-        "soft_delete_missing",
-        fake_soft_delete_missing,
+        "remove_missing_documents",
+        fake_remove_missing_documents,
     )
 
     result = await gong_indexer.index_gong(
@@ -267,7 +267,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
         stored_paths.append(kwargs["path"])
         stored_workspace_ids.append(kwargs["extra"]["gong_workspace_id"])
 
-    async def fake_soft_delete_missing(table, source_id, present_paths):
+    async def fake_remove_missing_documents(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
 
     async def fake_purge_disallowed_copied_documents(source):
@@ -288,8 +288,8 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     )
     monkeypatch.setattr(
         gong_indexer.source_service,
-        "soft_delete_missing",
-        fake_soft_delete_missing,
+        "remove_missing_documents",
+        fake_remove_missing_documents,
     )
 
     await gong_indexer.index_gong(

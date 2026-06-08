@@ -196,6 +196,6 @@ async def index_granola(source: dict) -> str | None:
             )
             present.append(meeting_id)
 
-    await source_service.soft_delete_missing("granola_notes", source_id, present)
+    await source_service.remove_missing_documents("granola_notes", source_id, present)
     logger.info("granola source %s: indexed %d meeting(s)", source_id, len(present))
     return None

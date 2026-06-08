@@ -95,7 +95,7 @@ async def index_gong(source: dict) -> str | None:
     await source_service.purge_disallowed_copied_documents(source)
     if not allowed_workspace_ids:
         logger.info("gong source %s: no allowed workspaces configured", source_id)
-        await source_service.soft_delete_missing("gong_documents", source_id, [])
+        await source_service.remove_missing_documents("gong_documents", source_id, [])
         return None
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
@@ -125,7 +125,7 @@ async def index_gong(source: dict) -> str | None:
         )
         present.append(call_id)
 
-    await source_service.soft_delete_missing("gong_documents", source_id, present)
+    await source_service.remove_missing_documents("gong_documents", source_id, present)
     logger.info("gong source %s: indexed %d call(s)", source_id, len(present))
     return None
 
