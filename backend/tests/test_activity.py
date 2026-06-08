@@ -1,4 +1,6 @@
+import json
 from datetime import UTC, datetime, time, timedelta
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -102,6 +104,90 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
         for contributor in bucket["contributors"].values()
     ]
     assert totals == [1]
+
+
+@pytest.mark.asyncio
+async def test_user_wide_knowledge_density_ignores_stale_cache_without_current_access(
+    client: AsyncClient,
+    pool,
+):
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("stale_density"), "password": "securepassword1"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    user_id = UUID(body["id"])
+
+    await pool.execute(
+        "INSERT INTO knowledge_density_cache "
+        "(user_id, workspace_id, clusters, source_signature, computed_at) "
+        "VALUES ($1, NULL, $2::jsonb, 0, now())",
+        user_id,
+        json.dumps(
+            [
+                {
+                    "label": "Webflow acquisition plan",
+                    "count": 1,
+                    "newest_at": "2026-06-01T00:00:00Z",
+                }
+            ]
+        ),
+    )
+
+    density = await client.get(
+        "/api/v1/me/knowledge-density",
+        headers=_auth(body["api_key"]),
+    )
+
+    assert density.status_code == 200
+    assert density.json()["clusters"] == []
+
+
+@pytest.mark.asyncio
+async def test_user_wide_embedding_projection_ignores_stale_cache_without_current_access(
+    client: AsyncClient,
+    pool,
+):
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("stale_projection"), "password": "securepassword1"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    user_id = UUID(body["id"])
+
+    await pool.execute(
+        "INSERT INTO embedding_projections "
+        "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+        "VALUES ($1, '_all', NULL, $2::jsonb, 0, now())",
+        user_id,
+        json.dumps(
+            [
+                {
+                    "id": "stale-webflow-point",
+                    "x": 0,
+                    "y": 0,
+                    "z": 0,
+                    "source": "history_events",
+                    "label": "Webflow confidential transcript",
+                    "created_at": "2026-06-01T00:00:00Z",
+                }
+            ]
+        ),
+    )
+
+    projection = await client.get(
+        "/api/v1/me/embedding-projection",
+        headers=_auth(body["api_key"]),
+    )
+
+    assert projection.status_code == 200
+    assert projection.json() == {
+        "points": [],
+        "stats": {"total_embeddings": 0, "projected": 0},
+        "cached": False,
+    }
 
 
 @pytest.mark.asyncio
