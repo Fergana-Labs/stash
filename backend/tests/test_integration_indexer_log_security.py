@@ -211,6 +211,7 @@ async def test_jira_index_success_logs_internal_source_id_only(monkeypatch):
 async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     source = {
         **_source("calls"),
+        "source_type": "gong_calls",
         "settings": {"allowed_workspace_ids": ["gong-workspace-secret"]},
     }
     captured_logs = _capture_info(gong_indexer.logger, monkeypatch)
@@ -245,6 +246,7 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     monkeypatch.setattr(gong_indexer.httpx, "AsyncClient", lambda *args, **kwargs: GongClient())
     monkeypatch.setattr(gong_indexer, "_fetch_call_meta", call_meta)
     monkeypatch.setattr(gong_indexer, "_fetch_transcripts", transcripts)
+    monkeypatch.setattr(gong_indexer.source_service, "purge_disallowed_copied_documents", _noop)
     monkeypatch.setattr(gong_indexer.source_service, "upsert_content_document", _noop)
     monkeypatch.setattr(gong_indexer.source_service, "soft_delete_missing", _noop)
 

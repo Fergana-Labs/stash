@@ -42,6 +42,7 @@ async def index_slack(source: dict) -> str | None:
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
+    await source_service.purge_disallowed_copied_documents(source)
     if not allowed_channel_ids:
         logger.info("slack source %s: no allowed channels configured", source_id)
         return None

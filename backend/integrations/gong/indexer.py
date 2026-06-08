@@ -92,6 +92,7 @@ async def index_gong(source: dict) -> str | None:
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
+    await source_service.purge_disallowed_copied_documents(source)
     if not allowed_workspace_ids:
         logger.info("gong source %s: no allowed workspaces configured", source_id)
         await source_service.soft_delete_missing("gong_documents", source_id, [])

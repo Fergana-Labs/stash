@@ -27,6 +27,7 @@ def _source() -> dict:
         "id": str(uuid4()),
         "workspace_id": str(uuid4()),
         "owner_user_id": str(uuid4()),
+        "source_type": "slack",
         "settings": {"allowed_channel_ids": ["C_SECRET"]},
     }
 
@@ -44,6 +45,10 @@ def _capture_info(monkeypatch):
 async def _fake_get_valid_token(user_id, provider):
     assert provider == "slack"
     return "slack-token"
+
+
+async def _noop_purge(source):
+    return 0
 
 
 async def _fake_slack_get_with_sensitive_channel(client, url, params):
@@ -73,6 +78,7 @@ async def test_slack_backfill_skip_logs_only_metadata(monkeypatch):
     source = _source()
     monkeypatch.setattr(indexer, "get_valid_token", _fake_get_valid_token)
     monkeypatch.setattr(indexer, "_slack_get", _fake_slack_get_with_sensitive_channel)
+    monkeypatch.setattr(indexer.source_service, "purge_disallowed_copied_documents", _noop_purge)
 
     await indexer.index_slack(source)
 
