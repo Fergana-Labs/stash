@@ -228,7 +228,9 @@ describe("CartridgePageClient sharing", () => {
         `${window.location.origin}/cartridges/shared-stash`,
       ),
     );
-    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
+    );
   });
 
   it("copies an agent-readable handoff link from the app header", async () => {
@@ -244,9 +246,11 @@ describe("CartridgePageClient sharing", () => {
         `${window.location.origin}/api/v1/cartridges/shared-stash?format=text`,
       ),
     );
-    expect(
-      screen.getByRole("button", { name: "Copy agent handoff link" }),
-    ).toHaveTextContent("Copied");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Copy agent handoff link" }),
+      ).toHaveTextContent("Copied"),
+    );
   });
 
   it("makes private Cartridges public and unlisted before copying an agent link", async () => {
@@ -276,9 +280,11 @@ describe("CartridgePageClient sharing", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       `${window.location.origin}/api/v1/cartridges/shared-stash?format=text`,
     );
-    expect(
-      screen.getByRole("button", { name: "Copy agent handoff link" }),
-    ).toHaveTextContent("Copied");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Copy agent handoff link" }),
+      ).toHaveTextContent("Copied"),
+    );
   });
 
   it("can make the Stash private from the Share dropdown", async () => {
