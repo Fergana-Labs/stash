@@ -1,5 +1,7 @@
 """Tests for user registration, login, and API key authentication."""
 
+from uuid import UUID
+
 import pytest
 from httpx import AsyncClient
 
@@ -160,6 +162,58 @@ async def test_cli_auth_approve_then_poll_returns_usable_device_key(client: Asyn
         headers={"Authorization": f"Bearer {body['api_key']}"},
     )
     assert me.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cli_auth_approve_is_idempotent_and_leaves_no_orphan_key(
+    client: AsyncClient,
+    pool,
+):
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("cli_auth_replay"),
+            "password": "securepassword1",
+        },
+    )
+    api_key = reg.json()["api_key"]
+    user_id = UUID(reg.json()["id"])
+
+    session = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "replayed-laptop"},
+    )
+    assert session.status_code == 200
+    session_id = session.json()["session_id"]
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    first = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session_id}/approve", headers=headers
+    )
+    assert first.status_code == 200
+    minted_key = await pool.fetchval(
+        "SELECT api_key FROM cli_auth_sessions WHERE session_id = $1", session_id
+    )
+
+    # A replayed approve must not mint a second key. The session keeps its one
+    # key, and the count of live keys for this user stays at exactly one.
+    second = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session_id}/approve", headers=headers
+    )
+    assert second.status_code == 200
+    assert (
+        await pool.fetchval(
+            "SELECT api_key FROM cli_auth_sessions WHERE session_id = $1", session_id
+        )
+        == minted_key
+    )
+
+    live_cli_keys = await pool.fetchval(
+        "SELECT COUNT(*) FROM user_api_keys "
+        "WHERE user_id = $1 AND name LIKE 'CLI %' AND revoked_at IS NULL",
+        user_id,
+    )
+    assert live_cli_keys == 1
 
 
 @pytest.mark.asyncio

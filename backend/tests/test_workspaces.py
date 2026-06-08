@@ -467,6 +467,106 @@ async def test_delete_workspace_deletes_stored_files_and_session_artifacts(
 
 
 @pytest.mark.asyncio
+async def test_delete_workspace_keeps_storage_keys_referenced_by_other_workspaces(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    key, user = await _register(client)
+    first = (
+        await client.post("/api/v1/workspaces", json={"name": "First"}, headers=_auth(key))
+    ).json()
+    second = (
+        await client.post("/api/v1/workspaces", json={"name": "Second"}, headers=_auth(key))
+    ).json()
+    first_workspace_id = UUID(first["id"])
+    second_workspace_id = UUID(second["id"])
+    user_id = UUID(user["id"])
+
+    for workspace_id, name, storage_key in [
+        (first_workspace_id, "first-plan.pdf", "shared-file-key"),
+        (first_workspace_id, "first-private.pdf", "first-private-file-key"),
+        (second_workspace_id, "second-plan.pdf", "shared-file-key"),
+    ]:
+        await pool.execute(
+            "INSERT INTO files "
+            "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+            "VALUES ($1, $2, $3, $4, $5, $6)",
+            workspace_id,
+            name,
+            "application/pdf",
+            12,
+            storage_key,
+            user_id,
+        )
+
+    first_session_id = await pool.fetchval(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id",
+        first_workspace_id,
+        "first-session",
+        "codex",
+        user_id,
+    )
+    second_session_id = await pool.fetchval(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id",
+        second_workspace_id,
+        "second-session",
+        "codex",
+        user_id,
+    )
+    for session_id, file_path, storage_key in [
+        (first_session_id, "private.txt", "first-private-artifact-key"),
+        (first_session_id, "shared.txt", "shared-artifact-key"),
+        (second_session_id, "shared.txt", "shared-artifact-key"),
+    ]:
+        await pool.execute(
+            "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+            "VALUES ($1, $2, $3, $4)",
+            session_id,
+            file_path,
+            storage_key,
+            42,
+        )
+
+    deleted_keys: list[str] = []
+
+    async def fake_delete_file(storage_key: str) -> None:
+        deleted_keys.append(storage_key)
+
+    monkeypatch.setattr("backend.routers.workspaces.storage_service.delete_file", fake_delete_file)
+
+    resp = await client.delete(f"/api/v1/workspaces/{first['id']}", headers=_auth(key))
+
+    assert resp.status_code == 204
+    assert deleted_keys == ["first-private-artifact-key", "first-private-file-key"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM files WHERE workspace_id = $1",
+            first_workspace_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM files WHERE workspace_id = $1",
+            second_workspace_id,
+        )
+        == 1
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+            second_session_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
 async def test_non_owner_cannot_delete_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, _ = await _register(client)

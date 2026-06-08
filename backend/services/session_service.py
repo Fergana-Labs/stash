@@ -116,11 +116,21 @@ async def list_trashed_session_artifact_storage_keys(
     workspace_id: UUID,
 ) -> list[str]:
     pool = get_pool()
+    # Forks copy storage_key by reference (cartridge_service._fork_session), so
+    # one S3 object can back artifacts in other sessions or files. Only return
+    # keys nothing else points at; deleting a shared key would 502 those reads.
     rows = await pool.fetch(
         "SELECT sa.storage_key "
         "FROM session_artifacts sa "
         "JOIN sessions s ON s.id = sa.session_id "
         "WHERE s.id = $1 AND s.workspace_id = $2 AND s.deleted_at IS NOT NULL "
+        "AND NOT EXISTS ("
+        "    SELECT 1 FROM files f WHERE f.storage_key = sa.storage_key"
+        ") "
+        "AND NOT EXISTS ("
+        "    SELECT 1 FROM session_artifacts sa2 "
+        "    WHERE sa2.storage_key = sa.storage_key AND sa2.session_id <> $1"
+        ") "
         "ORDER BY sa.created_at, sa.id",
         session_row_id,
         workspace_id,

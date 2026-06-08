@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
-import { securityHeaders, stashEmbedHeaders } from "./src/lib/securityHeaders";
+import {
+  frameGuardHeaders,
+  securityHeaders,
+  stashEmbedHeaders,
+} from "./src/lib/securityHeaders";
 
 // Rewrites are evaluated by the Next.js node server (server-side). Set
 // BACKEND_INTERNAL_URL for same-network backends (Docker/self-host) or
@@ -113,6 +117,12 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        // Anti-clickjacking on every route except published embeds, which the
+        // more specific rule below re-opens with frame-ancestors *.
+        source: "/((?!stashes/[^/]+/embed).*)",
+        headers: frameGuardHeaders,
       },
       {
         // Published Stash embeds must be iframe-able from anywhere.
