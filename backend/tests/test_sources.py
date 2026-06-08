@@ -311,6 +311,79 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_connected_source_handles_are_workspace_scoped(
+    client: AsyncClient,
+    monkeypatch,
+):
+    owner_key, owner_id = await _register(client, "owner")
+    ws_a = await _create_workspace(client, owner_key)
+    ws_b = await _create_workspace(client, owner_key)
+    src = await source_service.create_source(
+        workspace_id=ws_a,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = src["id"]
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(source_id),
+        workspace_id=ws_a,
+        path="eng/1",
+        name="#eng",
+        kind="message",
+        content="workspace A roadmap",
+        external_ref="C1:1",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+
+    same_workspace = await client.get(
+        f"/api/v1/workspaces/{ws_a}/sources/{source_id}/doc",
+        params={"ref": "eng/1"},
+        headers=_auth(owner_key),
+    )
+    sent_tasks: list[dict] = []
+
+    def fake_send_task(*args, **kwargs):
+        sent_tasks.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
+    cross_workspace_doc = await client.get(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/doc",
+        params={"ref": "eng/1"},
+        headers=_auth(owner_key),
+    )
+    cross_workspace_entries = await client.get(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/entries",
+        headers=_auth(owner_key),
+    )
+    cross_workspace_status = await client.get(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/status",
+        headers=_auth(owner_key),
+    )
+    cross_workspace_sync = await client.post(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/sync",
+        headers=_auth(owner_key),
+    )
+    cross_workspace_delete = await client.delete(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}",
+        headers=_auth(owner_key),
+    )
+
+    assert same_workspace.status_code == 200
+    assert same_workspace.json()["content"] == "workspace A roadmap"
+    assert cross_workspace_doc.status_code == 404
+    assert cross_workspace_entries.status_code == 404
+    assert cross_workspace_status.status_code == 404
+    assert cross_workspace_sync.status_code == 404
+    assert cross_workspace_delete.status_code == 404
+    assert sent_tasks == []
+    assert await source_service.get_owned_source(UUID(source_id), owner_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_search_documents_owner_scoped(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     _, other_id = await _register(client, "other")
@@ -1158,6 +1231,54 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
     public = await client.get(f"/api/v1/cartridges/{cartridge.json()['slug']}")
     item_ids = {i["object_id"] for i in public.json()["items"]}
     assert page["id"] in item_ids
+
+
+@pytest.mark.asyncio
+async def test_snapshot_source_into_cartridge_requires_same_workspace(client: AsyncClient, pool):
+    api_key, owner_id = await _register(client)
+    ws_a = await _create_workspace(client, api_key)
+    ws_b = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws_a,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(src["id"]),
+        workspace_id=ws_a,
+        path="eng/1",
+        name="#eng",
+        kind="message",
+        content="workspace A roadmap",
+        external_ref="C1:1",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+    cartridge = await client.post(
+        f"/api/v1/workspaces/{ws_b}/cartridges",
+        json={"title": "Bundle", "workspace_permission": "none", "items": []},
+        headers=_auth(api_key),
+    )
+    assert cartridge.status_code == 201
+    cartridge_id = cartridge.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws_b}/cartridges/{cartridge_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "eng/1"},
+        headers=_auth(api_key),
+    )
+    copied_pages = await pool.fetchval(
+        "SELECT COUNT(*) FROM pages "
+        "WHERE workspace_id = $1 AND metadata->>'shared_in_cartridge_id' = $2",
+        ws_b,
+        cartridge_id,
+    )
+
+    assert snap.status_code == 404
+    assert copied_pages == 0
 
 
 # --- VFS REST endpoints (browse / read / search) ----------------------------
