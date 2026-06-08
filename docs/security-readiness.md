@@ -46,6 +46,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Export image failures must not log raw image sources, signed URLs, storage keys, or provider exception text.
 - Email delivery failures must not log provider response bodies, recipient addresses, subjects, tokens, or customer text.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
+- Integration disconnect must delete Stash's local encrypted credentials even when provider token revocation or decryption fails.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
