@@ -41,6 +41,27 @@ class CreateFolderRequest(BaseModel):
     discoverable: bool = False
 
 
+def _workspace_or_public_folder(body: CreateFolderRequest) -> bool:
+    return (
+        body.workspace_permission != "none" or body.public_permission != "none" or body.discoverable
+    )
+
+
+async def _require_workspace_owner_for_folder_visibility(
+    workspace_id: UUID,
+    user_id: UUID,
+    body: CreateFolderRequest,
+) -> None:
+    if _workspace_or_public_folder(body) and not await workspace_service.is_owner(
+        workspace_id,
+        user_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners can create workspace or public session folders",
+        )
+
+
 class UpdateFolderRequest(BaseModel):
     name: str | None = None
     workspace_permission: GeneralPermission | None = None
@@ -60,6 +81,7 @@ async def create_folder(
 ):
     await _require_member(workspace_id, current_user["id"])
     await _require_write(workspace_id, current_user["id"])
+    await _require_workspace_owner_for_folder_visibility(workspace_id, current_user["id"], body)
     try:
         return await session_folder_service.create_folder(
             workspace_id,
@@ -93,6 +115,8 @@ async def update_folder(
         folder = await session_folder_service.update_folder(
             folder_id, current_user["id"], body.model_dump(exclude_unset=True)
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if not folder:
