@@ -40,6 +40,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
 - Embedding failures must not log provider response bodies, exception messages, tokens, transcript text, copied integration content, or table row content.
 - Export image failures must not log raw image sources, signed URLs, storage keys, or provider exception text.
+- Email delivery failures must not log provider response bodies, recipient addresses, subjects, tokens, or customer text.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.

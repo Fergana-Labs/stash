@@ -19,7 +19,7 @@ FOUNDER_FROM = "Sam at Stash <sam@joinstash.ai>"
 
 def _send(payload: dict) -> None:
     if not settings.POSTMARK_SERVER_TOKEN:
-        logger.info("Skipping email (POSTMARK_SERVER_TOKEN not set): %s", payload.get("Subject"))
+        logger.info("Skipping email because Postmark token is not configured")
         return
 
     payload.setdefault("MessageStream", "outbound")
@@ -34,7 +34,7 @@ def _send(payload: dict) -> None:
         timeout=10.0,
     )
     if res.status_code >= 300:
-        logger.error("Postmark send failed (%s): %s", res.status_code, res.text)
+        logger.error("Postmark send failed status_code=%s", res.status_code)
 
 
 def send_welcome_email(user_email: str, first_name: str | None = None) -> None:

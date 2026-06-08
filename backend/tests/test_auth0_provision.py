@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from jose.exceptions import JWTError
 
 from backend.managed.auth0 import jwt as auth0_jwt
+from backend.managed.auth0 import users as auth0_users
 from backend.managed.auth0.jwt import validate_auth0_token
 from backend.managed.auth0.users import (
     get_or_create_user_from_auth0,
@@ -107,3 +108,28 @@ async def test_auth0_invalid_token_errors_are_redacted(monkeypatch):
     assert exc.value.status_code == 401
     assert exc.value.detail == "Invalid token"
     assert "raw-token-secret" not in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_welcome_email_failure_logs_only_metadata(monkeypatch):
+    captured_logs: list[tuple[str, tuple, dict]] = []
+
+    def fail_welcome_email(email, first_name=None):
+        raise RuntimeError(f"email={email} token=secret-token customer transcript")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args, kwargs))
+
+    monkeypatch.setattr(auth0_users, "send_welcome_email", fail_welcome_email)
+    monkeypatch.setattr(auth0_users.logger, "warning", capture_warning)
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=f"google-oauth2|{unique_name()}",
+        email="user@webflow.com",
+        name="Webflow User",
+    )
+
+    assert captured_logs == [("welcome email failed exception_type=%s", ("RuntimeError",), {})]
+    assert "user@webflow.com" not in str(captured_logs)
+    assert "secret-token" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)
