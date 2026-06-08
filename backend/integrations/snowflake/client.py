@@ -1,9 +1,9 @@
 """Snowflake read-only query client.
 
 Snowflake is a *queryable* source, not a document store: the agent runs SELECTs
-against it live instead of crawling it into FTS. Everything here is read-only —
-we allowlist the leading statement keyword, reject multiple statements, and cap
-returned rows. The driver is blocking, so every call runs in a thread.
+against it live instead of crawling it into FTS. Everything here is read-only:
+we allowlist a small set of statement keywords, reject multiple statements, and
+cap returned rows. The driver is blocking, so every call runs in a thread.
 
 `snowflake.connector` is imported lazily inside `_connect` so the integration
 registers (and the rest of the app imports) even where the driver isn't
@@ -21,7 +21,7 @@ from ..storage import get_valid_token
 
 # Statements we allow. Everything else (INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/
 # ALTER/GRANT/CALL/…) is rejected before it reaches Snowflake.
-READ_ONLY_PREFIXES = ("SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN")
+READ_ONLY_PREFIXES = ("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN")
 ROW_CAP = 200
 # A qualified table identifier: db.schema.table, optionally double-quoted parts.
 _IDENTIFIER_RE = re.compile(r'^[A-Za-z0-9_$."]+$')
@@ -37,7 +37,7 @@ def _assert_read_only(sql: str) -> str:
     keyword = stmt.split(None, 1)[0].upper()
     if keyword not in READ_ONLY_PREFIXES:
         raise ValueError(
-            f"only read-only statements are allowed (SELECT/WITH/SHOW/DESCRIBE/EXPLAIN); got {keyword}"
+            f"only read-only statements are allowed (SELECT/SHOW/DESCRIBE/EXPLAIN); got {keyword}"
         )
     return stmt
 

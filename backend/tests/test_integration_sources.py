@@ -291,7 +291,6 @@ def test_read_only_guard_allows_selects():
     # Allowed leading keywords pass; a trailing semicolon is stripped.
     for sql in (
         "SELECT 1",
-        "  with x as (select 1) select * from x  ",
         "SHOW TABLES;",
         "DESCRIBE TABLE t",
     ):
@@ -307,6 +306,8 @@ def test_read_only_guard_blocks_writes_and_multi_statements():
         "CREATE TABLE t (id int)",
         "GRANT SELECT ON t TO r",
         "SELECT 1; DROP TABLE t",  # piggybacked statement
+        "WITH x AS (SELECT 1) SELECT * FROM x",
+        "WITH x AS (SELECT 1) DELETE FROM t",
         "",
     ):
         with pytest.raises(ValueError):
