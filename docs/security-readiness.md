@@ -20,6 +20,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Managed Auth0 deployments must use HTTPS origins for `PUBLIC_URL`, `CORS_ORIGINS`, and `APP_BASE_URL`.
 - Managed Auth0 deployments must set a valid `INTEGRATIONS_ENCRYPTION_KEY` Fernet keyring and complete HTTPS S3 storage config.
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
+- Managed Auth0 deployments must reject local password registration, login, and profile password-change paths.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange, manual API-key creation, or unauthenticated invite redemption paths; CLI keys require explicit short-lived session approval.
 - Managed Auth0 deployments must reject password-login, manually-created, migrated, and invite-redemption API keys; only explicitly approved CLI device keys may authenticate as Stash API keys.

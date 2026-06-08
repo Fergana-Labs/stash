@@ -120,6 +120,46 @@ async def test_auth0_exchange_endpoint_does_not_mint_api_keys():
 
 
 @pytest.mark.asyncio
+async def test_managed_auth0_disables_password_registration_and_login(client, monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "AUTH0_ENABLED", True)
+
+    registered = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("managed_password_register"),
+            "display_name": "Managed Password Register",
+            "password": "securepassword1",
+        },
+    )
+    logged_in = await client.post(
+        "/api/v1/users/login",
+        json={"name": unique_name("managed_password_login"), "password": "securepassword1"},
+    )
+
+    assert registered.status_code == 403
+    assert registered.json()["detail"] == "Password auth is disabled; use Auth0"
+    assert logged_in.status_code == 403
+    assert logged_in.json()["detail"] == "Password auth is disabled; use Auth0"
+
+
+@pytest.mark.asyncio
+async def test_managed_auth0_disables_profile_password_updates(client, pool, monkeypatch):
+    user, headers = await _managed_auth0_headers(monkeypatch, name="Managed Password Update")
+
+    updated = await client.patch(
+        "/api/v1/users/me",
+        json={"password": "newsecurepassword1", "current_password": "oldsecurepassword1"},
+        headers=headers,
+    )
+
+    assert updated.status_code == 403
+    assert updated.json()["detail"] == "Password auth is disabled; use Auth0"
+    assert await pool.fetchval("SELECT password_hash FROM users WHERE id = $1", user["id"]) is None
+
+
+@pytest.mark.asyncio
 async def test_managed_auth0_disables_manual_api_key_creation(client, monkeypatch):
     _user, headers = await _managed_auth0_headers(monkeypatch, name="Managed Key User")
 
