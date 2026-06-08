@@ -34,6 +34,13 @@ Out of scope:
 - Issues only reproducible on unsupported or non-default configurations
 - Social engineering
 
+## Managed Product Readiness
+
+The managed-product security checklist lives in
+[`docs/security-readiness.md`](docs/security-readiness.md). Keep it current when
+changing authentication, authorization, integrations, exports, storage, secrets,
+or customer-data retention behavior.
+
 ## Disclosure Policy
 
 We follow a coordinated disclosure model. Please allow us reasonable time to
