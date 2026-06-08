@@ -7,16 +7,15 @@ users, new Google-OAuth users silently skip onboarding.
 """
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from httpx import ASGITransport, AsyncClient
 from jose.exceptions import JWTError
 
 from backend.managed.auth0 import jwt as auth0_jwt
+from backend.managed.auth0 import router as auth0_router
 from backend.managed.auth0 import users as auth0_users
 from backend.managed.auth0.jwt import validate_auth0_token
-from backend.managed.auth0.users import (
-    get_or_create_user_from_auth0,
-    get_or_create_user_row_from_auth0,
-)
+from backend.managed.auth0.users import get_or_create_user_row_from_auth0
 
 from .conftest import unique_name
 
@@ -29,13 +28,12 @@ async def _managed_auth0_schema(pool):
 
 
 @pytest.mark.asyncio
-async def test_first_exchange_reports_created(pool):
+async def test_first_session_provision_reports_created(pool):
     sub = f"google-oauth2|{unique_name()}"
-    user, api_key, created = await get_or_create_user_from_auth0(
+    user, created = await get_or_create_user_row_from_auth0(
         auth0_sub=sub, email=None, name="New Person"
     )
     assert created is True
-    assert api_key.startswith("mc_")
     # First sign-in provisions a workspace, so a workspace lookup alone can't
     # tell new from returning — only `created` can.
     ws_count = await pool.fetchval(
@@ -45,26 +43,26 @@ async def test_first_exchange_reports_created(pool):
 
 
 @pytest.mark.asyncio
-async def test_repeat_exchange_reports_not_created(pool):
+async def test_repeat_session_provision_reports_not_created(pool):
     sub = f"google-oauth2|{unique_name()}"
-    first_user, _api_key, _created = await get_or_create_user_from_auth0(
+    first_user, _created = await get_or_create_user_row_from_auth0(
         auth0_sub=sub, email=None, name="Returning Person"
     )
     await pool.execute(
         "UPDATE users SET created_at = now() - interval '1 hour' WHERE id = $1",
         first_user["id"],
     )
-    _user, _api_key, created = await get_or_create_user_from_auth0(
+    _user, created = await get_or_create_user_row_from_auth0(
         auth0_sub=sub, email=None, name="Returning Person"
     )
     assert created is False
 
 
 @pytest.mark.asyncio
-async def test_immediate_duplicate_exchange_still_reports_created(pool):
+async def test_immediate_duplicate_session_provision_still_reports_created(pool):
     sub = f"google-oauth2|{unique_name()}"
-    await get_or_create_user_from_auth0(auth0_sub=sub, email=None, name="Strict Mode Person")
-    _user, _api_key, created = await get_or_create_user_from_auth0(
+    await get_or_create_user_row_from_auth0(auth0_sub=sub, email=None, name="Strict Mode Person")
+    _user, created = await get_or_create_user_row_from_auth0(
         auth0_sub=sub, email=None, name="Strict Mode Person"
     )
     assert created is True
@@ -85,6 +83,48 @@ async def test_browser_session_provisioning_does_not_mint_api_key(pool):
         user["id"],
     )
     assert key_count == 0
+
+
+@pytest.mark.asyncio
+async def test_auth0_exchange_endpoint_does_not_mint_api_keys():
+    app = FastAPI()
+    app.include_router(auth0_router)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/auth0/exchange",
+            headers={"Authorization": "Bearer auth0-token"},
+        )
+
+    assert resp.status_code == 410
+    assert "API key exchange is disabled" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_managed_auth0_disables_manual_api_key_creation(client, monkeypatch):
+    registered = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("managed_key"),
+            "display_name": "Managed Key User",
+            "password": "securepassword1",
+        },
+    )
+    assert registered.status_code == 201
+    api_key = registered.json()["api_key"]
+
+    from backend.routers import users as users_router
+
+    monkeypatch.setattr(users_router.settings, "AUTH0_ENABLED", True)
+
+    created = await client.post(
+        "/api/v1/users/me/keys",
+        json={"name": "browser-visible key"},
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+    assert created.status_code == 403
+    assert created.json()["detail"] == "Manual API key creation is disabled; use CLI sign-in"
 
 
 @pytest.mark.asyncio

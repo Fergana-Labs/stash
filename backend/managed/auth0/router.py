@@ -1,15 +1,15 @@
-"""POST /api/v1/auth0/exchange — swap an Auth0 access token for an octopus api_key."""
+"""Auth0 managed-session endpoints."""
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.config import settings
 from backend.middleware import limiter
-from backend.models import Auth0SessionResponse, UserRegisterResponse
+from backend.models import Auth0SessionResponse
 
 from .jwt import validate_auth0_token
-from .users import get_or_create_user_from_auth0, get_or_create_user_row_from_auth0
+from .users import get_or_create_user_row_from_auth0
 
 router = APIRouter(prefix="/api/v1/auth0", tags=["auth0"])
 
@@ -25,28 +25,18 @@ async def _fetch_userinfo(access_token: str) -> dict:
     return resp.json()
 
 
-@router.post("/exchange", response_model=UserRegisterResponse)
+@router.post("/exchange", status_code=status.HTTP_410_GONE)
 @limiter.limit("30/minute")
 async def exchange(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(_security),
+    _credentials: HTTPAuthorizationCredentials = Depends(_security),
 ):
-    claims = await validate_auth0_token(credentials.credentials)
-    profile = await _fetch_userinfo(credentials.credentials)
-    device = request.query_params.get("device", "").strip()[:96]
-    key_name = f"CLI ({device})" if device else "Auth0 login"
-    user, api_key, created = await get_or_create_user_from_auth0(
-        auth0_sub=claims["sub"],
-        email=profile.get("email"),
-        name=profile.get("name"),
-        key_name=key_name,
-    )
-    return UserRegisterResponse(
-        id=user["id"],
-        name=user["name"],
-        display_name=user["display_name"],
-        api_key=api_key,
-        created=created,
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Auth0 API key exchange is disabled. Use /api/v1/auth0/session "
+            "and explicit CLI session approval."
+        ),
     )
 
 
