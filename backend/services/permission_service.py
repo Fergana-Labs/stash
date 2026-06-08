@@ -274,6 +274,11 @@ async def _session_folder_open(
         return True
     if user_id is None:
         return False
+    if (
+        require_write
+        and await get_workspace_role(folder["workspace_id"], user_id) not in _ROLES_CAN_WRITE
+    ):
+        return False
     if folder["owner_user_id"] == user_id:
         return True
     return await _user_share_grants("session_folder", folder_id, user_id, require_write)
@@ -313,7 +318,7 @@ async def check_access(
     if object_type == "session_folder":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT owner_user_id, public_permission, workspace_permission "
+            "SELECT workspace_id, owner_user_id, public_permission, workspace_permission "
             "FROM session_folders WHERE id = $1",
             object_id,
         )

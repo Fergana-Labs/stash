@@ -15,7 +15,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import permission_service
+from . import permission_service, workspace_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
@@ -48,6 +48,14 @@ def _slugify(name: str) -> str:
 # from the invite (share_count) list, not stored here.
 def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
     return "public" if public_permission != "none" else "private"
+
+
+def _is_workspace_or_public(
+    workspace_permission: str,
+    public_permission: str,
+    discoverable: bool,
+) -> bool:
+    return workspace_permission != "none" or public_permission != "none" or discoverable
 
 
 def _validate_permissions(
@@ -169,15 +177,18 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
     )
     if not row:
         return False
+    if not await workspace_service.can_write(row["workspace_id"], user_id):
+        return False
     if row["owner_user_id"] == user_id:
         return True
-    return await permission_service.get_workspace_role(row["workspace_id"], user_id) == "owner"
+    return await workspace_service.is_owner(row["workspace_id"], user_id)
 
 
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT workspace_permission, public_permission FROM session_folders WHERE id = $1",
+        "SELECT workspace_id, workspace_permission, public_permission, discoverable "
+        "FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or not await user_can_manage(folder_id, user_id):
@@ -187,9 +198,20 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
         updates.get("workspace_permission") or folder["workspace_permission"]
     )
     next_public_permission = updates.get("public_permission") or folder["public_permission"]
-    _validate_permissions(
-        next_workspace_permission, next_public_permission, bool(updates.get("discoverable"))
+    next_discoverable = (
+        updates["discoverable"] if "discoverable" in updates else folder["discoverable"]
     )
+    _validate_permissions(
+        next_workspace_permission,
+        next_public_permission,
+        bool(next_discoverable),
+    )
+    if _is_workspace_or_public(
+        next_workspace_permission,
+        next_public_permission,
+        bool(next_discoverable),
+    ) and not await workspace_service.is_owner(folder["workspace_id"], user_id):
+        raise PermissionError("Only workspace owners can make a session folder workspace or public")
     if updates.get("public_permission") == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
 
