@@ -31,6 +31,7 @@ page (CLI sign-in flow for Claude Code-driven setup) needs Auth0:
 | `NEXT_PUBLIC_AUTH0_ENABLED`  | `"true"` to mount Auth0 middleware + enable the page   |
 | `NEXT_PUBLIC_API_URL`        | Stash backend (defaults to `https://api.joinstash.ai`) |
 | `AUTH0_DOMAIN`               | e.g. `stash-prod.us.auth0.com`                         |
+| `AUTH0_AUDIENCE`             | Auth0 API audience validated by the Stash backend      |
 | `AUTH0_CLIENT_ID`            | Auth0 application client id                            |
 | `AUTH0_CLIENT_SECRET`        | Auth0 application client secret                        |
 | `AUTH0_SECRET`               | Cookie-encryption secret (`openssl rand -hex 32`)      |
