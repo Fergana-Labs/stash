@@ -20,6 +20,7 @@ from ..services import (
     linear_ticket_service,
     memory_service,
     permission_service,
+    security_audit_service,
     session_folder_service,
     session_service,
     session_title_service,
@@ -315,6 +316,13 @@ async def delete_workspace_session(
     deleted = await session_service.delete_session(session_row_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="deleted",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="session",
+        target_id=session_row_id,
+    )
 
 
 @router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/restore", status_code=204)
@@ -327,6 +335,13 @@ async def restore_workspace_session(
     restored = await session_service.restore_session(session_row_id, workspace_id)
     if not restored:
         raise HTTPException(status_code=404, detail="Session not in trash")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="restored",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="session",
+        target_id=session_row_id,
+    )
 
 
 @router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}/purge", status_code=204)
@@ -346,6 +361,14 @@ async def purge_workspace_session(
     purged = await session_service.purge_session(session_row_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Session not in trash")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="purged",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="session",
+        target_id=session_row_id,
+        metadata={"storage_key_count": len(storage_keys)},
+    )
 
 
 @router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts", status_code=201)
