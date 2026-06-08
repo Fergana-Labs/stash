@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth import create_api_key, get_current_user
+from ..auth import create_api_key, get_current_user, hash_api_key
 from ..config import settings
 from ..database import get_pool
 from ..middleware import limiter
@@ -25,6 +25,24 @@ from ..services import invite_token_service, user_service, workspace_service
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 _CLI_AUTH_TTL_INTERVAL = "10 minutes"
+
+
+async def _cleanup_expired_cli_auth_sessions(pool) -> None:
+    expired = await pool.fetch(
+        "SELECT api_key FROM cli_auth_sessions "
+        f"WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}' "
+        "AND api_key IS NOT NULL"
+    )
+    for row in expired:
+        await pool.execute(
+            "UPDATE user_api_keys SET revoked_at = now() "
+            "WHERE key_hash = $1 AND revoked_at IS NULL",
+            hash_api_key(row["api_key"]),
+        )
+
+    await pool.execute(
+        f"DELETE FROM cli_auth_sessions WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}'"
+    )
 
 
 def _require_password_auth() -> None:
@@ -237,13 +255,11 @@ async def create_cli_auth_session(request: Request):
         device_name = str(body.get("device_name") or "")[:128]
     except Exception:
         pass
+    await _cleanup_expired_cli_auth_sessions(pool)
     await pool.execute(
         "INSERT INTO cli_auth_sessions (session_id, device_name) VALUES ($1, $2)",
         session_id,
         device_name,
-    )
-    await pool.execute(
-        f"DELETE FROM cli_auth_sessions WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}'"
     )
     return {"session_id": session_id, "device_name": device_name}
 
@@ -253,6 +269,7 @@ async def create_cli_auth_session(request: Request):
 async def poll_cli_auth_session(request: Request, session_id: str):
     """Poll for CLI auth result. Returns pending or complete with api_key."""
     pool = get_pool()
+    await _cleanup_expired_cli_auth_sessions(pool)
     row = await pool.fetchrow(
         "SELECT api_key, username FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
@@ -302,6 +319,7 @@ async def approve_cli_auth_session(
     device, so each CLI install has its own revocable identity.
     """
     pool = get_pool()
+    await _cleanup_expired_cli_auth_sessions(pool)
     row = await pool.fetchrow(
         "SELECT device_name FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
