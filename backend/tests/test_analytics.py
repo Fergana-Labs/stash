@@ -11,7 +11,7 @@ from httpx import AsyncClient
 
 from .conftest import unique_name
 
-ADMIN_TOKEN = "test-admin-token"
+ADMIN_TOKEN = "test-admin-token-with-32-plus-chars"
 
 
 @pytest.fixture(autouse=True)
@@ -164,6 +164,7 @@ async def test_admin_endpoints_require_token(client: AsyncClient):
     for path in [
         "/api/v1/admin/analytics/summary",
         "/api/v1/admin/analytics/onboarding-funnel",
+        "/api/v1/admin/analytics/path-mix",
         "/api/v1/admin/analytics/surface-mix",
         "/api/v1/admin/analytics/top-events",
     ]:
@@ -210,6 +211,93 @@ async def test_funnel_reflects_recorded_events(client: AsyncClient):
     assert by_stage["viewed"] == 1
     assert by_stage["step_viewed"] == 1
     assert by_stage["completed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_funnel_filters_by_onboarding_path(client: AsyncClient):
+    key = await _register(client)
+    await client.post(
+        "/api/v1/analytics/events",
+        json={
+            "events": [
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"path": "memory"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.step_viewed",
+                    "properties": {"path": "memory", "step_idx": 0},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.completed",
+                    "properties": {"path": "memory"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"path": "migrant"},
+                },
+            ]
+        },
+        headers=_auth(key),
+    )
+
+    resp = await client.get(
+        "/api/v1/admin/analytics/onboarding-funnel?path=memory",
+        headers=_admin(),
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["path"] == "memory"
+    by_stage = {s["stage"]: s["users"] for s in body["stages"]}
+    assert by_stage == {"viewed": 1, "step_viewed": 1, "completed": 1}
+
+
+@pytest.mark.asyncio
+async def test_path_mix_counts_onboarding_starts_by_path(client: AsyncClient):
+    key = await _register(client)
+    await client.post(
+        "/api/v1/analytics/events",
+        json={
+            "events": [
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"path": "memory"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"path": "migrant"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"has_path": False},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.step_viewed",
+                    "properties": {"path": "memory", "step_idx": 0},
+                },
+            ]
+        },
+        headers=_auth(key),
+    )
+
+    resp = await client.get(
+        "/api/v1/admin/analytics/path-mix?days=30",
+        headers=_admin(),
+    )
+
+    assert resp.status_code == 200, resp.text
+    rows = resp.json()["rows"]
+    counts = {row["path"]: row["count"] for row in rows}
+    assert counts == {"linear": 1, "memory": 1, "migrant": 1}
 
 
 @pytest.mark.asyncio

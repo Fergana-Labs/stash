@@ -4,7 +4,6 @@ This is the lightweight, structured-properties log. Separate from history_events
 which is the agent-transcript log (content-heavy, embedded).
 """
 
-import json
 import logging
 from collections.abc import Iterable
 from uuid import UUID
@@ -59,7 +58,7 @@ async def record_event(
         user_id,
         surface,
         event_name,
-        json.dumps(properties or {}),
+        properties or {},
         session_anon,
     )
 
@@ -71,7 +70,7 @@ async def record_events_batch(rows: Iterable[dict]) -> int:
             r.get("user_id"),
             r["surface"],
             r["event_name"],
-            json.dumps(r.get("properties") or {}),
+            r.get("properties") or {},
             r.get("session_anon"),
         )
         for r in rows
