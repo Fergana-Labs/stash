@@ -33,6 +33,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
 - Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
 - Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
+- Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
