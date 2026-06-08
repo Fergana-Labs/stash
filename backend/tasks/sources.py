@@ -57,8 +57,13 @@ async def _sync_source(source_id: UUID) -> dict:
     await source_service.mark_sync_started(source_id)
     try:
         cursor = await indexer(source)
-    except Exception:
-        logger.exception("source %s sync failed", source_id)
+    except Exception as exc:
+        logger.error(
+            "source sync failed source=%s source_type=%s exception_type=%s",
+            source_id,
+            source["source_type"],
+            type(exc).__name__,
+        )
         await source_service.mark_sync_failed(source_id, SYNC_FAILED_MESSAGE)
         return {"status": "failed"}
     await source_service.mark_sync_done(source_id, cursor)
