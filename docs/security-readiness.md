@@ -4,6 +4,8 @@ This document records the security controls that must be true before Stash is us
 
 It is intentionally operational: do not use this as marketing copy. Use it to verify what is enforced in code, what CI checks continuously, and what still needs evidence from production operations.
 
+Operational evidence collection lives in [security-operations.md](security-operations.md).
+
 ## Customer Data We Must Treat As Confidential
 
 - Session transcripts and agent messages.
@@ -105,7 +107,7 @@ These items cannot be proven by code alone. They need production configuration, 
 - Subprocessors and infrastructure vendors are listed with the data categories they process.
 - Production observability redacts secrets and customer content from logs by default.
 - The customer can disconnect Slack, Jira, Gong, and other integrations without leaving copied documents or stored files behind.
-- A security contact and vulnerability reporting path are published and monitored.
+- A security contact and vulnerability reporting path are published at `/security` and `/.well-known/security.txt`, and the contact path is monitored.
 
 ## Demo Stance
 
