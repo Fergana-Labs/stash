@@ -1662,6 +1662,70 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
+async def test_lazy_source_read_failure_logs_only_failure_metadata(
+    client: AsyncClient, monkeypatch
+):
+    from backend.integrations.jira import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="jira_project",
+        external_ref="cloud-1:PROJ",
+        display_name="PROJ",
+    )
+    await source_service.upsert_index_row(
+        table="jira_documents",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="PROJ-9",
+        name="PROJ-9: confidential login bug",
+        kind="issue",
+        external_ref="cloud-1:PROJ-9",
+    )
+    captured_logs: list[tuple[str, tuple]] = []
+    site_url_called = False
+
+    async def fail_fetch(owner, external_ref):
+        raise RuntimeError(f"token=secret-token external_ref={external_ref} customer transcript")
+
+    async def site_url(source):
+        nonlocal site_url_called
+        site_url_called = True
+        return None
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(indexer, "fetch_jira_content", fail_fetch)
+    monkeypatch.setattr(indexer, "site_url", site_url)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    source_ok, doc = await source_service.source_document(ws, owner_id, src["id"], "PROJ-9")
+
+    assert source_ok is True
+    assert doc == {
+        "path": "PROJ-9",
+        "name": "PROJ-9: confidential login bug",
+        "kind": "issue",
+        "content": "",
+        "error": "source document fetch failed",
+    }
+    assert site_url_called is False
+    assert captured_logs == [
+        (
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            (src["id"], "jira_project", "RuntimeError"),
+        )
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert "cloud-1:PROJ-9" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
 async def test_jira_deep_link_logs_only_failure_metadata(client: AsyncClient, monkeypatch):
     from backend.integrations.jira import indexer
 

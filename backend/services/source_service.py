@@ -685,8 +685,7 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
 
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
-    tables (drive/notion) fetch it lazily from the provider with the owner's
-    token."""
+    tables fetch it lazily from the provider with the owner's token."""
     table = _table_for(source["source_type"])
     if table in CONTENT_TABLES:
         if table == "slack_messages":
@@ -756,9 +755,24 @@ async def read_document(source: dict, path: str) -> dict | None:
     )
     if not row:
         return None
-    content = await _lazy_fetch(
-        source["source_type"], UUID(source["owner_user_id"]), row["external_ref"]
-    )
+    try:
+        content = await _lazy_fetch(
+            source["source_type"], UUID(source["owner_user_id"]), row["external_ref"]
+        )
+    except Exception as exc:
+        logger.warning(
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            source["id"],
+            source["source_type"],
+            type(exc).__name__,
+        )
+        return {
+            "path": row["path"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "content": "",
+            "error": "source document fetch failed",
+        }
     return {
         "path": row["path"],
         "name": row["name"],
@@ -1122,7 +1136,7 @@ async def source_document(
             return True, {"error": "Snowflake metadata fetch failed"}
 
     doc = await read_document(connected, ref)
-    if doc is not None:
+    if doc is not None and "error" not in doc:
         doc["url"] = await _deep_link(connected, doc)
     return True, doc
 

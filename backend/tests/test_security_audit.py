@@ -650,6 +650,101 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.jira import indexer
+
+    api_key, _ = await _register(client, "audit_lazy_read")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    ref = "PROJ-9"
+    external_ref = "cloud-1:PROJ-9"
+    captured_logs = []
+
+    async def fail_fetch(owner_user_id, provider_ref):
+        raise RuntimeError(
+            f"token=secret-token external_ref={provider_ref} customer transcript body"
+        )
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(indexer, "fetch_jira_content", fail_fetch)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "jira_project",
+            "external_ref": "cloud-1:PROJ",
+            "display_name": "Webflow confidential Jira",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = UUID(added.json()["id"])
+    await source_service.upsert_index_row(
+        table="jira_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path=ref,
+        name="PROJ-9: confidential launch bug",
+        kind="issue",
+        external_ref=external_ref,
+    )
+
+    doc = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/doc",
+        params={"ref": ref},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert doc.status_code == 200
+    assert doc.json() == {
+        "path": ref,
+        "name": "PROJ-9: confidential launch bug",
+        "kind": "issue",
+        "content": "",
+        "error": "source document fetch failed",
+    }
+    response_json = json.dumps(doc.json())
+    assert "secret-token" not in response_json
+    assert external_ref not in response_json
+    assert "customer transcript body" not in response_json
+    assert captured_logs == [
+        (
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            (str(source_id), "jira_project", "RuntimeError"),
+        )
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert external_ref not in str(captured_logs)
+    assert "customer transcript body" not in str(captured_logs)
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert ref not in event_json
+    assert external_ref not in event_json
+    assert "secret-token" not in event_json
+    assert "customer transcript body" not in event_json
+    assert "Webflow confidential Jira" not in event_json
+    assert "confidential launch bug" not in event_json
+
+    read_event = next(event for event in events if event["action"] == "source.document_read")
+    assert read_event["target_id"] == str(source_id)
+    assert read_event["provider"] == "jira"
+    assert read_event["source_type"] == "jira_project"
+    assert read_event["metadata"] == {"ref_hash": security_audit_service.hash_value(ref)}
+
+
+@pytest.mark.asyncio
 async def test_query_source_failure_redacts_snowflake_error_and_sql(
     client: AsyncClient,
     monkeypatch,
