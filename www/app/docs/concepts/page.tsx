@@ -44,7 +44,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
       <>
         Anything an agent can read, exposed as a virtual file system. Two native sources —{" "}
         <Code>files</Code> and <Code>sessions</Code> — are always present; connected sources
-        (GitHub, Google Drive, Notion, Slack, Granola) are added per member and indexed on a
+        (GitHub, Google Drive, Gmail, Notion, Slack, Granola) are added per member and indexed on a
         schedule. Pick a source like a drive, browse it by path, read a document, or search one
         source — or everything at once.
       </>

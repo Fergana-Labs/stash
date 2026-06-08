@@ -110,6 +110,11 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GOOGLE_OAUTH_CLIENT_SECRET",
             "GOOGLE_OAUTH_REDIRECT_URI",
         ],
+        "gmail": [
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REDIRECT_URI",
+        ],
         "notion": [
             "NOTION_OAUTH_CLIENT_ID",
             "NOTION_OAUTH_CLIENT_SECRET",
@@ -137,6 +142,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
         display_names = {
             "github": "GitHub",
             "google": "Google",
+            "gmail": "Gmail",
             "notion": "Notion",
             "slack": "Slack",
             "granola": "Granola",

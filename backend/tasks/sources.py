@@ -19,6 +19,7 @@ from uuid import UUID
 from ..celery_app import celery
 from ..integrations.asana.indexer import index_asana
 from ..integrations.github.indexer import index_github_repo
+from ..integrations.gmail.indexer import index_gmail
 from ..integrations.gong.indexer import index_gong
 from ..integrations.google.indexer import index_google_drive
 from ..integrations.granola.indexer import index_granola
@@ -35,6 +36,7 @@ SYNC_FAILED_MESSAGE = "Source sync failed; check server logs"
 # source_type -> indexer. Each returns the new sync cursor (or None).
 INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "github_repo": index_github_repo,
+    "gmail": index_gmail,
     "google_drive": index_google_drive,
     "notion": index_notion,
     "slack": index_slack,

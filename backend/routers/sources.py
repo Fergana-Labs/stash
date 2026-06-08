@@ -113,6 +113,14 @@ async def _resolve_granola_source(user_id) -> tuple[str, str]:
     return "granola", "Granola"
 
 
+async def _resolve_gmail_source(user_id) -> tuple[str, str]:
+    """Gmail is one mailbox source per connected user."""
+    await integration_storage.get_valid_token(user_id, "gmail")
+    status = await integration_storage.status(user_id, "gmail")
+    email = status.get("account_email")
+    return "me", f"Gmail ({email})" if email else "Gmail"
+
+
 async def _resolve_gong_source(user_id) -> tuple[str, str]:
     """Gong is one connection per user (all calls); external_ref is constant.
     Confirm the credentials exist (raises 401 if not connected)."""
@@ -334,6 +342,9 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "granola" and not external_ref:
         external_ref, resolved_name = await _resolve_granola_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "gmail" and not external_ref:
+        external_ref, resolved_name = await _resolve_gmail_source(current_user["id"])
         display_name = display_name or resolved_name
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])

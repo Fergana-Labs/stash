@@ -205,7 +205,7 @@ export function AddSourceControls({
     );
   }
 
-  // kind "auto" — granola/snowflake. The backend resolves the ref.
+  // kind "auto" — gmail/granola/snowflake. The backend resolves the ref.
   return (
     <div className="space-y-2">
       {!connected && (
