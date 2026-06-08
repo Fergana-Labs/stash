@@ -37,7 +37,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
 - Source sync must require the source owner to still be a workspace member; leaving a workspace must remove member-owned connected sources and copied integration documents.
-- Leaving or removing a workspace member must remove that user's direct shares, Stash memberships, Stash invites, and member-owned Stashes in that workspace.
+- Leaving or removing a workspace member must remove direct shares, share invites, Stash memberships, Stash invites, and member-owned Stashes that user received or granted in that workspace.
 - OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.

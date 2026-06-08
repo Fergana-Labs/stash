@@ -624,6 +624,8 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     assert member_resp.status_code == 201
     member_key = member_resp.json()["api_key"]
     member_id = UUID(member_resp.json()["id"])
+    recipient_key, recipient = await _register(client, "offboarding_recipient")
+    recipient_id = UUID(recipient["id"])
 
     ws = (
         await client.post(
@@ -673,8 +675,13 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     ).json()
     granted = await client.post(
         f"/api/v1/cartridges/{owner_stash['id']}/members",
-        json={"user_id": str(member_id), "permission": "read"},
+        json={"user_id": str(member_id), "permission": "admin"},
         headers=_auth(owner_key),
+    )
+    member_granted = await client.post(
+        f"/api/v1/cartridges/{owner_stash['id']}/members",
+        json={"user_id": str(recipient_id), "permission": "read"},
+        headers=_auth(member_key),
     )
     shared = await client.post(
         "/api/v1/share",
@@ -687,7 +694,26 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         headers=_auth(owner_key),
     )
     assert granted.status_code == 201
+    assert member_granted.status_code == 201
     assert shared.status_code == 200
+    await pool.execute(
+        "INSERT INTO shares "
+        "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
+        "VALUES ($1, 'page', $2, 'user', $3, 'read', $4)",
+        workspace_id,
+        UUID(page_id),
+        recipient_id,
+        member_id,
+    )
+    await pool.execute(
+        "INSERT INTO share_invites "
+        "(workspace_id, object_type, object_id, email, permission, created_by) "
+        "VALUES ($1, 'page', $2, $3, 'read', $4)",
+        workspace_id,
+        UUID(page_id),
+        "future-webflow-user@example.com",
+        member_id,
+    )
     assert (
         await client.get(
             f"/api/v1/cartridges/{owner_stash['slug']}",
@@ -698,6 +724,12 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         await client.get(
             f"/api/v1/cartridges/{member_stash['slug']}",
             headers=_auth(member_key),
+        )
+    ).status_code == 200
+    assert (
+        await client.get(
+            f"/api/v1/cartridges/{owner_stash['slug']}",
+            headers=_auth(recipient_key),
         )
     ).status_code == 200
 
@@ -720,9 +752,31 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         )
     ).status_code == 404
     assert (
+        await client.get(
+            f"/api/v1/cartridges/{owner_stash['slug']}",
+            headers=_auth(recipient_key),
+        )
+    ).status_code == 404
+    assert (
         await pool.fetchval(
             "SELECT COUNT(*) FROM shares "
             "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM shares WHERE workspace_id = $1 AND created_by = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM share_invites WHERE workspace_id = $1 AND created_by = $2",
             workspace_id,
             member_id,
         )
@@ -740,9 +794,29 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await pool.fetchval(
+            "SELECT COUNT(*) FROM cartridge_members cm "
+            "JOIN cartridges c ON c.id = cm.cartridge_id "
+            "WHERE c.workspace_id = $1 AND cm.granted_by = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
             "SELECT COUNT(*) FROM cartridge_invites ci "
             "JOIN cartridges c ON c.id = ci.cartridge_id "
             "WHERE c.workspace_id = $1 AND ci.recipient_user_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cartridge_invites ci "
+            "JOIN cartridges c ON c.id = ci.cartridge_id "
+            "WHERE c.workspace_id = $1 AND ci.invited_by_user_id = $2",
             workspace_id,
             member_id,
         )
