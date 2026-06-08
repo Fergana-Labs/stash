@@ -1,11 +1,15 @@
 import pytest
+from cryptography.fernet import Fernet
 
 from backend.config import (
     parse_auth0_domain,
     parse_cors_origins,
+    parse_integration_encryption_key,
     parse_optional_secret,
     parse_public_url,
     parse_required_when_enabled,
+    parse_s3_endpoint,
+    parse_s3_setting,
 )
 
 
@@ -71,6 +75,55 @@ def test_parse_required_when_enabled_allows_unset_when_disabled(monkeypatch):
     monkeypatch.delenv("AUTH0_AUDIENCE", raising=False)
 
     assert parse_required_when_enabled("AUTH0_AUDIENCE", False, "AUTH0_ENABLED") is None
+
+
+def test_parse_integration_encryption_key_requires_key_for_managed_auth(monkeypatch):
+    monkeypatch.delenv("INTEGRATIONS_ENCRYPTION_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="INTEGRATIONS_ENCRYPTION_KEY must be set"):
+        parse_integration_encryption_key(True)
+
+
+def test_parse_integration_encryption_key_rejects_invalid_configured_key(monkeypatch):
+    monkeypatch.setenv("INTEGRATIONS_ENCRYPTION_KEY", "not-a-fernet-key")
+
+    with pytest.raises(RuntimeError, match="INTEGRATIONS_ENCRYPTION_KEY must be one or more"):
+        parse_integration_encryption_key(False)
+
+
+def test_parse_integration_encryption_key_normalizes_valid_keyring(monkeypatch):
+    old_key = Fernet.generate_key().decode()
+    new_key = Fernet.generate_key().decode()
+    monkeypatch.setenv("INTEGRATIONS_ENCRYPTION_KEY", f" {new_key}, {old_key} ")
+
+    assert parse_integration_encryption_key(True) == f"{new_key},{old_key}"
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"],
+)
+def test_parse_s3_settings_require_complete_storage_for_managed_auth(monkeypatch, name):
+    monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(RuntimeError, match=f"{name} must be set"):
+        if name == "S3_ENDPOINT":
+            parse_s3_endpoint(True)
+        else:
+            parse_s3_setting(name, True)
+
+
+def test_parse_s3_endpoint_requires_https_origin_for_managed_auth(monkeypatch):
+    monkeypatch.setenv("S3_ENDPOINT", "http://minio:9000")
+
+    with pytest.raises(RuntimeError, match="S3_ENDPOINT must be an HTTPS origin"):
+        parse_s3_endpoint(True)
+
+
+def test_parse_s3_endpoint_allows_local_http_when_managed_auth_is_disabled(monkeypatch):
+    monkeypatch.setenv("S3_ENDPOINT", "http://minio:9000")
+
+    assert parse_s3_endpoint(False) == "http://minio:9000"
 
 
 @pytest.mark.parametrize(

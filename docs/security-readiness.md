@@ -18,6 +18,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 
 - Managed Auth0 must fail closed. `AUTH0_ENABLED=true` requires `AUTH0_DOMAIN` and `AUTH0_AUDIENCE`, and Auth0 domains must be hostnames only.
 - Managed Auth0 deployments must use HTTPS origins for `PUBLIC_URL`, `CORS_ORIGINS`, and `APP_BASE_URL`.
+- Managed Auth0 deployments must set a valid `INTEGRATIONS_ENCRYPTION_KEY` Fernet keyring and complete HTTPS S3 storage config.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
@@ -28,7 +29,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Source handles must be scoped to the route workspace and source owner.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, and profile calls must be redacted before reaching API responses.
-- Integration token encryption must support key rotation through the Fernet keyring.
+- Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
 - Credentialed CORS must reject wildcard origins.
