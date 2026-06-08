@@ -58,6 +58,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - File download and table ingest failures must not log storage keys, bucket names, tokens, parser exception text, or workbook-derived content.
 - Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
 - Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
+- Agent Stash tool validation failures must return generic errors without echoing raw tool inputs, object IDs, labels, or customer content.
 - Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
 - Integration indexer logs must not include external source references, provider resource identifiers, tool response text, customer document names, meeting IDs, or query text.
 - Embedding failures must not log provider response bodies, exception messages, tokens, transcript text, copied integration content, or table row content.

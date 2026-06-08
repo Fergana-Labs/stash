@@ -179,6 +179,60 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
 
 
 @pytest.mark.asyncio
+async def test_cartridge_tool_item_validation_redacts_raw_inputs(workspace: UUID, _db_pool):
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    sensitive_ref = "token=secret-token Webflow confidential page id"
+    sensitive_label = "Webflow board transcript"
+
+    result = await _run_tool(
+        agent_runtime._create_cartridge.handler,
+        workspace,
+        user_id,
+        {
+            "title": "Sensitive bundle",
+            "items": [
+                {
+                    "object_type": "page",
+                    "object_id": sensitive_ref,
+                    "label_override": sensitive_label,
+                }
+            ],
+        },
+    )
+
+    assert result == {"error": "Invalid Stash item list"}
+    result_json = json.dumps(result)
+    assert "secret-token" not in result_json
+    assert "Webflow confidential page id" not in result_json
+    assert sensitive_label not in result_json
+
+
+@pytest.mark.asyncio
+async def test_cartridge_tool_id_validation_redacts_raw_inputs(workspace: UUID, _db_pool):
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    sensitive_id = "token=secret-token Webflow confidential Stash id"
+
+    updated = await _run_tool(
+        agent_runtime._update_cartridge.handler,
+        workspace,
+        user_id,
+        {"cartridge_id": sensitive_id, "title": "ignored"},
+    )
+    deleted = await _run_tool(
+        agent_runtime._delete_cartridge.handler,
+        workspace,
+        user_id,
+        {"cartridge_id": sensitive_id},
+    )
+
+    assert updated == {"error": "invalid cartridge id"}
+    assert deleted == {"error": "invalid cartridge id"}
+    result_json = json.dumps([updated, deleted])
+    assert "secret-token" not in result_json
+    assert "Webflow confidential Stash id" not in result_json
+
+
+@pytest.mark.asyncio
 async def test_create_cartridge_tool_limits_workspace_visibility_to_owners(
     workspace: UUID, _db_pool
 ):

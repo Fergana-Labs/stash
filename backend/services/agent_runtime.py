@@ -104,7 +104,12 @@ async def _parse_cartridge_items(
     workspace_id: UUID,
     user_id: UUID,
 ) -> list[CartridgeItem]:
-    items = [CartridgeItem(**item) for item in raw_items]
+    items = []
+    for item in raw_items:
+        try:
+            items.append(CartridgeItem(**item))
+        except (TypeError, ValueError):
+            raise ValueError("Invalid Stash item list") from None
     for item in items:
         item_workspace_id = await permission_service.resolve_workspace_id(
             item.object_type, item.object_id
@@ -129,6 +134,13 @@ def _workspace_or_public_stash(
     discoverable: bool,
 ) -> bool:
     return workspace_permission != "none" or public_permission != "none" or discoverable
+
+
+def _cartridge_id_arg(value) -> UUID | None:
+    try:
+        return UUID(value)
+    except (TypeError, ValueError):
+        return None
 
 
 # --- Tool implementations --------------------------------------------------
@@ -498,7 +510,9 @@ async def _create_cartridge(args: dict) -> dict:
 async def _update_cartridge(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    cartridge_id = UUID(args["cartridge_id"])
+    cartridge_id = _cartridge_id_arg(args.get("cartridge_id"))
+    if cartridge_id is None:
+        return _text_result(json.dumps({"error": "invalid cartridge id"}))
     current_stash = await cartridge_service.get_cartridge(cartridge_id)
     if not current_stash or current_stash["workspace_id"] != workspace_id:
         return _text_result(json.dumps({"error": "not found"}))
@@ -550,7 +564,9 @@ async def _update_cartridge(args: dict) -> dict:
 async def _delete_cartridge(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    cartridge_id = UUID(args["cartridge_id"])
+    cartridge_id = _cartridge_id_arg(args.get("cartridge_id"))
+    if cartridge_id is None:
+        return _text_result(json.dumps({"error": "invalid cartridge id"}))
     stash = await cartridge_service.get_cartridge(cartridge_id)
     if not stash or stash["workspace_id"] != workspace_id:
         return _text_result(json.dumps({"error": "not found"}))
