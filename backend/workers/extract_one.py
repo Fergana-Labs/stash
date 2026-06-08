@@ -31,11 +31,15 @@ from uuid import UUID
 # headroom on Render Starter's 512 MB dyno while giving pypdf room for
 # large arxiv-style documents.
 _MEM_LIMIT_BYTES = int(os.getenv("EXTRACTION_MEMORY_LIMIT_MB", "350")) * 1024 * 1024
-try:
-    resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT_BYTES, _MEM_LIMIT_BYTES))
-except (ValueError, OSError):
-    # Some platforms (e.g. macOS for dev) reject RLIMIT_AS — ignore.
-    pass
+
+
+def _apply_memory_limit() -> None:
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT_BYTES, _MEM_LIMIT_BYTES))
+    except (ValueError, OSError):
+        # Some platforms (e.g. macOS for dev) reject RLIMIT_AS — ignore.
+        pass
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s extract_one %(message)s")
 logger = logging.getLogger(__name__)
@@ -128,6 +132,7 @@ def main() -> None:
     except ValueError:
         print("invalid uuid", file=sys.stderr)
         sys.exit(2)
+    _apply_memory_limit()
     sys.exit(asyncio.run(_run(file_id)))
 
 
