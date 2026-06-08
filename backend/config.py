@@ -31,6 +31,19 @@ def parse_https_origin(name: str, value: str) -> str:
     return value.rstrip("/")
 
 
+def parse_https_url(name: str, value: str) -> str:
+    parsed = urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError(f"{name} must be an HTTPS URL without params, query, or fragment")
+    return value
+
+
 def parse_public_url(raw: str, managed_auth_enabled: bool) -> str:
     if managed_auth_enabled:
         return parse_https_origin("PUBLIC_URL", raw)
@@ -109,6 +122,15 @@ def parse_s3_endpoint(managed_auth_enabled: bool) -> str | None:
     return endpoint
 
 
+def parse_oauth_redirect_uri(name: str, managed_auth_enabled: bool) -> str | None:
+    value = os.getenv(name)
+    if not value:
+        return None
+    if managed_auth_enabled:
+        return parse_https_url(name, value)
+    return value
+
+
 class Settings:
     # --- Server ---
     PORT: int = int(os.getenv("PORT", "3456"))
@@ -182,27 +204,39 @@ class Settings:
 
     GOOGLE_OAUTH_CLIENT_ID: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
     GOOGLE_OAUTH_CLIENT_SECRET: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-    GOOGLE_OAUTH_REDIRECT_URI: str | None = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
+    GOOGLE_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "GOOGLE_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     GITHUB_OAUTH_CLIENT_ID: str | None = os.getenv("GITHUB_OAUTH_CLIENT_ID")
     GITHUB_OAUTH_CLIENT_SECRET: str | None = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
-    GITHUB_OAUTH_REDIRECT_URI: str | None = os.getenv("GITHUB_OAUTH_REDIRECT_URI")
+    GITHUB_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "GITHUB_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     NOTION_OAUTH_CLIENT_ID: str | None = os.getenv("NOTION_OAUTH_CLIENT_ID")
     NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
-    NOTION_OAUTH_REDIRECT_URI: str | None = os.getenv("NOTION_OAUTH_REDIRECT_URI")
+    NOTION_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "NOTION_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     JIRA_OAUTH_CLIENT_ID: str | None = os.getenv("JIRA_OAUTH_CLIENT_ID")
     JIRA_OAUTH_CLIENT_SECRET: str | None = os.getenv("JIRA_OAUTH_CLIENT_SECRET")
-    JIRA_OAUTH_REDIRECT_URI: str | None = os.getenv("JIRA_OAUTH_REDIRECT_URI")
+    JIRA_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "JIRA_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     ASANA_OAUTH_CLIENT_ID: str | None = os.getenv("ASANA_OAUTH_CLIENT_ID")
     ASANA_OAUTH_CLIENT_SECRET: str | None = os.getenv("ASANA_OAUTH_CLIENT_SECRET")
-    ASANA_OAUTH_REDIRECT_URI: str | None = os.getenv("ASANA_OAUTH_REDIRECT_URI")
+    ASANA_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "ASANA_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     SLACK_OAUTH_CLIENT_ID: str | None = os.getenv("SLACK_OAUTH_CLIENT_ID")
     SLACK_OAUTH_CLIENT_SECRET: str | None = os.getenv("SLACK_OAUTH_CLIENT_SECRET")
-    SLACK_OAUTH_REDIRECT_URI: str | None = os.getenv("SLACK_OAUTH_REDIRECT_URI")
+    SLACK_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "SLACK_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
     # Verifies inbound Events API webhook signatures (X-Slack-Signature).
     SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET")
 
@@ -211,7 +245,9 @@ class Settings:
     # only need the MCP endpoint and the backend callback URL we register as the
     # redirect_uri (must be publicly reachable so Granola can redirect back).
     GRANOLA_MCP_URL: str = os.getenv("GRANOLA_MCP_URL", "https://mcp.granola.ai/mcp")
-    GRANOLA_OAUTH_REDIRECT_URI: str | None = os.getenv("GRANOLA_OAUTH_REDIRECT_URI")
+    GRANOLA_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "GRANOLA_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     # Google Drive Picker requires TWO things distinct from the OAuth
     # client: a browser API key (`PICKER_API_KEY`) and the GCP project

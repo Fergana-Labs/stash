@@ -5,6 +5,7 @@ from backend.config import (
     parse_auth0_domain,
     parse_cors_origins,
     parse_integration_encryption_key,
+    parse_oauth_redirect_uri,
     parse_optional_secret,
     parse_public_url,
     parse_required_when_enabled,
@@ -124,6 +125,45 @@ def test_parse_s3_endpoint_allows_local_http_when_managed_auth_is_disabled(monke
     monkeypatch.setenv("S3_ENDPOINT", "http://minio:9000")
 
     assert parse_s3_endpoint(False) == "http://minio:9000"
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "http://localhost:3456/api/v1/integrations/jira/callback",
+        "https://api.example.com/api/v1/integrations/jira/callback;param",
+        "https://api.example.com/api/v1/integrations/jira/callback?code=bad",
+        "https://api.example.com/api/v1/integrations/jira/callback#fragment",
+        "not-a-url",
+    ],
+)
+def test_parse_oauth_redirect_uri_requires_https_callback_for_managed_auth(
+    monkeypatch, redirect_uri
+):
+    monkeypatch.setenv("JIRA_OAUTH_REDIRECT_URI", redirect_uri)
+
+    with pytest.raises(RuntimeError, match="JIRA_OAUTH_REDIRECT_URI must be an HTTPS URL"):
+        parse_oauth_redirect_uri("JIRA_OAUTH_REDIRECT_URI", True)
+
+
+def test_parse_oauth_redirect_uri_allows_https_callback_path_for_managed_auth(monkeypatch):
+    redirect_uri = "https://api.example.com/api/v1/integrations/jira/callback"
+    monkeypatch.setenv("JIRA_OAUTH_REDIRECT_URI", redirect_uri)
+
+    assert parse_oauth_redirect_uri("JIRA_OAUTH_REDIRECT_URI", True) == redirect_uri
+
+
+def test_parse_oauth_redirect_uri_allows_local_http_when_managed_auth_is_disabled(monkeypatch):
+    redirect_uri = "http://localhost:3456/api/v1/integrations/jira/callback"
+    monkeypatch.setenv("JIRA_OAUTH_REDIRECT_URI", redirect_uri)
+
+    assert parse_oauth_redirect_uri("JIRA_OAUTH_REDIRECT_URI", False) == redirect_uri
+
+
+def test_parse_oauth_redirect_uri_allows_unset_provider_for_managed_auth(monkeypatch):
+    monkeypatch.delenv("JIRA_OAUTH_REDIRECT_URI", raising=False)
+
+    assert parse_oauth_redirect_uri("JIRA_OAUTH_REDIRECT_URI", True) is None
 
 
 @pytest.mark.parametrize(

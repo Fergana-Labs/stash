@@ -52,6 +52,8 @@ When `AUTH0_ENABLED=true`, the backend rejects non-HTTPS `PUBLIC_URL` and
 non-HTTPS `APP_BASE_URL` values. Use HTTPS origins without paths, queries, or
 fragments. Managed backend startup also rejects missing or invalid
 `INTEGRATIONS_ENCRYPTION_KEY`, incomplete S3 config, and non-HTTPS
-`S3_ENDPOINT`.
+`S3_ENDPOINT`. Any configured `*_OAUTH_REDIRECT_URI` must be an HTTPS callback
+URL without path params, query strings, or fragments. Localhost redirect URIs
+are only for non-managed local development.
 
 `start.sh` runs the managed alembic chain (`backend/managed/alembic.ini`) automatically when `AUTH0_ENABLED=true`.
