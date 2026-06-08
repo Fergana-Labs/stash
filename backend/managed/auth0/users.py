@@ -3,7 +3,6 @@
 import logging
 import re
 
-from backend.auth import create_api_key
 from backend.database import get_pool
 from backend.services import share_service, workspace_service
 from backend.services.email_service import send_welcome_email
@@ -96,21 +95,3 @@ async def get_or_create_user_row_from_auth0(
             logger.warning("welcome email failed exception_type=%s", type(exc).__name__)
 
     return user, True
-
-
-async def get_or_create_user_from_auth0(
-    auth0_sub: str,
-    email: str | None,
-    name: str | None,
-    key_name: str = "Auth0 login",
-) -> tuple[dict, str, bool]:
-    """Return (user_row, new_api_key, created). Mints a fresh key per exchange; prior keys stay valid.
-
-    Multi-device sign-in must keep both devices working, so we don't touch
-    prior keys here. Users clean up stale sessions from the settings page,
-    and signing out now revokes the calling key server-side so keys don't
-    silently accumulate.
-    """
-    user, created = await get_or_create_user_row_from_auth0(auth0_sub, email, name)
-    api_key = await create_api_key(user["id"], name=key_name)
-    return user, api_key, created

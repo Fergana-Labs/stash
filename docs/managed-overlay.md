@@ -13,9 +13,9 @@ Next.js/Turbopack refuses to resolve imports that walk outside the project root,
 
 ## Currently inside
 
-- `backend/managed/auth0/` — Auth0 JWT validation and `/api/v1/auth0/exchange` endpoint that swaps an Auth0 access token for a stash API key.
+- `backend/managed/auth0/` — Auth0 JWT validation and `/api/v1/auth0/session` provisioning for managed browser and CLI approval flows.
 - `backend/managed/migrations/` — separate alembic environment (`alembic_version_managed`) holding `m0001_add_auth0_sub.py`.
-- `frontend/managed/auth0/` — Next.js-side Auth0 login button and post-login exchange component.
+- `frontend/managed/auth0/` — Next.js-side Auth0 login button and post-login session provisioning component.
 
 ## Running with Auth0
 

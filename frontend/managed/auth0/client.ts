@@ -6,9 +6,9 @@ import { requireManagedAuth0Config } from "./config";
 // APP_BASE_URL from env. Never imported when NEXT_PUBLIC_AUTH0_ENABLED !== "true".
 //
 // AUTH0_AUDIENCE is passed explicitly so the access token Auth0 issues is
-// scoped to the Stash backend API (whose `/auth0/exchange` endpoint validates
-// the audience claim). Without it, the SDK requests a token only valid at the
-// userinfo endpoint — exchange would 401 with "Missing kid".
+// scoped to the Stash backend API. Without it, the SDK requests a token only
+// valid at the userinfo endpoint, and backend session/CLI approval calls would
+// fail JWT validation.
 const { audience } = requireManagedAuth0Config();
 
 export const auth0 = new Auth0Client({

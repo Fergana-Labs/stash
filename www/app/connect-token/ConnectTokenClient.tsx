@@ -10,11 +10,11 @@ type Props = {
   accessToken: string;
 };
 
-// Client-side "Authorize CLI" confirmation. Explicit click triggers the Auth0
-// → backend token exchange + CLI approve. Without this gate, the CLI would
-// silently receive a token any time a user with an active Auth0 session loaded
-// this URL.
-export default function ConnectTokenClient({ apiUrl, sessionId, device, userName, accessToken }: Props) {
+// Client-side "Authorize CLI" confirmation. Explicit click provisions the
+// backend Auth0 user row, then approves the CLI session with the Auth0 access
+// token. Without this gate, the CLI would silently receive a token any time a
+// user with an active Auth0 session loaded this URL.
+export default function ConnectTokenClient({ apiUrl, sessionId, userName, accessToken }: Props) {
   const [state, setState] = useState<
     | { kind: "idle" }
     | { kind: "submitting" }
@@ -25,25 +25,22 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
   async function authorize() {
     setState({ kind: "submitting" });
     try {
-      const exchangeUrl = new URL(`${apiUrl}/api/v1/auth0/exchange`);
-      if (device) exchangeUrl.searchParams.set("device", device);
-      const exchangeRes = await fetch(exchangeUrl.toString(), {
+      const sessionRes = await fetch(`${apiUrl}/api/v1/auth0/session`, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!exchangeRes.ok) {
-        const detail = await exchangeRes.text().catch(() => "");
+      if (!sessionRes.ok) {
+        const detail = await sessionRes.text().catch(() => "");
         throw Object.assign(new Error("The Stash backend rejected your Auth0 token."), {
           detail: detail.slice(0, 500),
         });
       }
-      const data = (await exchangeRes.json()) as { api_key: string };
 
       const approveRes = await fetch(
         `${apiUrl}/api/v1/users/cli-auth/sessions/${encodeURIComponent(sessionId)}/approve`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${data.api_key}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         },
       );
       if (!approveRes.ok) {
