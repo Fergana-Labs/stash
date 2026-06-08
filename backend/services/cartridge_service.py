@@ -1569,6 +1569,8 @@ async def user_can_admin(cartridge_id: UUID, user_id: UUID) -> bool:
     )
     if not row:
         return False
+    if not await workspace_service.can_write(row["workspace_id"], user_id):
+        return False
     if row["owner_id"] == user_id:
         return True
     member = await pool.fetchrow(
@@ -1664,6 +1666,8 @@ async def user_can_write(cartridge_id: UUID, user_id: UUID) -> bool:
         cartridge_id,
     )
     if not row:
+        return False
+    if not await workspace_service.can_write(row["workspace_id"], user_id):
         return False
     if row["owner_id"] == user_id:
         return True
