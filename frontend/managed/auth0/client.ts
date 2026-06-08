@@ -7,8 +7,14 @@ import { Auth0Client } from "@auth0/nextjs-auth0/server";
 // scoped to the Stash backend API (whose `/auth0/exchange` endpoint validates
 // the audience claim). Without it, the SDK requests a token only valid at the
 // userinfo endpoint — exchange would 401 with "Missing kid".
-const audience = process.env.AUTH0_AUDIENCE;
+function requireAudience(): string {
+  const audience = process.env.AUTH0_AUDIENCE;
+  if (!audience) {
+    throw new Error("AUTH0_AUDIENCE must be set when managed Auth0 is enabled");
+  }
+  return audience;
+}
 
-export const auth0 = new Auth0Client(
-  audience ? { authorizationParameters: { audience } } : undefined,
-);
+export const auth0 = new Auth0Client({
+  authorizationParameters: { audience: requireAudience() },
+});

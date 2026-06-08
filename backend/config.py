@@ -30,6 +30,24 @@ def parse_optional_secret(name: str, min_length: int = MIN_ADMIN_SECRET_LENGTH) 
     return value
 
 
+def parse_required_when_enabled(name: str, enabled: bool, enabled_name: str) -> str | None:
+    value = os.getenv(name)
+    if not enabled:
+        return value or None
+    if not value:
+        raise RuntimeError(f"{name} must be set when {enabled_name}=true")
+    return value
+
+
+def parse_auth0_domain(enabled: bool) -> str | None:
+    value = parse_required_when_enabled("AUTH0_DOMAIN", enabled, "AUTH0_ENABLED")
+    if not value:
+        return None
+    if "://" in value or "/" in value or any(ch.isspace() for ch in value):
+        raise RuntimeError("AUTH0_DOMAIN must be a hostname without scheme, path, or spaces")
+    return value
+
+
 class Settings:
     # --- Server ---
     PORT: int = int(os.getenv("PORT", "3456"))
@@ -69,8 +87,10 @@ class Settings:
     # managed auth0 router is mounted at /api/v1/auth0/. Requires the
     # managed/ directory to be present in the deployment.
     AUTH0_ENABLED: bool = os.getenv("AUTH0_ENABLED", "false").lower() == "true"
-    AUTH0_DOMAIN: str | None = os.getenv("AUTH0_DOMAIN")
-    AUTH0_AUDIENCE: str | None = os.getenv("AUTH0_AUDIENCE")
+    AUTH0_DOMAIN: str | None = parse_auth0_domain(AUTH0_ENABLED)
+    AUTH0_AUDIENCE: str | None = parse_required_when_enabled(
+        "AUTH0_AUDIENCE", AUTH0_ENABLED, "AUTH0_ENABLED"
+    )
 
     # --- Email (Postmark) ---
     POSTMARK_SERVER_TOKEN: str | None = os.getenv("POSTMARK_SERVER_TOKEN")
