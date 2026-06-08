@@ -23,6 +23,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
 - User search must be scoped to a workspace where the requester is already a member; it must not enumerate users across tenants.
+- Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.

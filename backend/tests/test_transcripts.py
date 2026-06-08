@@ -161,6 +161,63 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_me_sessions_requires_current_workspace_access_for_authored_session(
+    client: AsyncClient,
+    pool,
+):
+    owner_key = await _register(client)
+    member_key, member_id = await _register_user(client)
+    ws = await _workspace(client, owner_key)
+    member_headers = {"Authorization": f"Bearer {member_key}"}
+
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
+        UUID(ws),
+        UUID(member_id),
+    )
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "Webflow launch plan",
+            "session_id": "former-member-session",
+        },
+        headers=member_headers,
+    )
+    before = await client.get(
+        "/api/v1/me/sessions",
+        params={"workspace_id": ws},
+        headers=member_headers,
+    )
+    left = await client.post(f"/api/v1/workspaces/{ws}/leave", headers=member_headers)
+    after_scoped = await client.get(
+        "/api/v1/me/sessions",
+        params={"workspace_id": ws},
+        headers=member_headers,
+    )
+    after_all = await client.get("/api/v1/me/sessions", headers=member_headers)
+    detail = await client.get(
+        f"/api/v1/workspaces/{ws}/sessions/former-member-session",
+        headers=member_headers,
+    )
+
+    assert pushed.status_code == 201
+    assert before.status_code == 200
+    assert [session["session_id"] for session in before.json()["sessions"]] == [
+        "former-member-session"
+    ]
+    assert left.status_code == 204
+    assert after_scoped.status_code == 200
+    assert after_scoped.json()["sessions"] == []
+    assert after_all.status_code == 200
+    assert "former-member-session" not in {
+        session["session_id"] for session in after_all.json()["sessions"]
+    }
+    assert detail.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_replace_reimports_existing_session(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
