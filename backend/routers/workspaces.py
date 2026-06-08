@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user, get_current_user_optional
+from ..config import settings
 from ..models import (
     InviteTokenCreateRequest,
     InviteTokenCreateResponse,
@@ -21,6 +22,18 @@ from ..services import invite_token_service, storage_service, workspace_service
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
 
+def _workspace_response(workspace: dict) -> WorkspaceResponse:
+    data = dict(workspace)
+    if settings.AUTH0_ENABLED:
+        data["invite_code"] = ""
+    return WorkspaceResponse(**data)
+
+
+def _require_legacy_invite_codes_enabled() -> None:
+    if settings.AUTH0_ENABLED:
+        raise HTTPException(status_code=404, detail="Legacy invite codes are disabled")
+
+
 async def _serialize_workspace_for_viewer(
     workspace: dict, viewer_id: UUID | None
 ) -> WorkspaceResponse:
@@ -28,8 +41,7 @@ async def _serialize_workspace_for_viewer(
     if not is_member:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    data = dict(workspace)
-    return WorkspaceResponse(**data)
+    return _workspace_response(workspace)
 
 
 @router.post("", response_model=WorkspaceResponse, status_code=201)
@@ -42,13 +54,13 @@ async def create_workspace(
         description=req.description,
         creator_id=current_user["id"],
     )
-    return WorkspaceResponse(**ws)
+    return _workspace_response(ws)
 
 
 @router.get("/mine", response_model=WorkspaceListResponse)
 async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
     workspaces = await workspace_service.list_user_workspaces(current_user["id"])
-    return WorkspaceListResponse(workspaces=[WorkspaceResponse(**w) for w in workspaces])
+    return WorkspaceListResponse(workspaces=[_workspace_response(w) for w in workspaces])
 
 
 @router.post("/redeem-invite", response_model=WorkspaceResponse)
@@ -62,7 +74,7 @@ async def redeem_invite_authed(
         raise HTTPException(
             status_code=404, detail="Invite token is invalid, expired, or exhausted"
         )
-    return WorkspaceResponse(**ws)
+    return _workspace_response(ws)
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
@@ -98,7 +110,7 @@ async def update_workspace(
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    return WorkspaceResponse(**ws)
+    return _workspace_response(ws)
 
 
 @router.delete("/{workspace_id}", status_code=204)
@@ -126,10 +138,11 @@ async def join_workspace(
     invite_code: str,
     current_user: dict = Depends(get_current_user),
 ):
+    _require_legacy_invite_codes_enabled()
     ws = await workspace_service.join_by_invite(invite_code, current_user["id"])
     if not ws:
         raise HTTPException(status_code=404, detail="Invalid invite code")
-    return WorkspaceResponse(**ws)
+    return _workspace_response(ws)
 
 
 @router.post("/{workspace_id}/invite-code/rotate", response_model=WorkspaceResponse)
@@ -137,10 +150,11 @@ async def rotate_invite_code(
     workspace_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    _require_legacy_invite_codes_enabled()
     ws = await workspace_service.rotate_invite_code(workspace_id, current_user["id"])
     if not ws:
         raise HTTPException(status_code=403, detail="Only workspace admins can rotate invite code")
-    return WorkspaceResponse(**ws)
+    return _workspace_response(ws)
 
 
 @router.post("/{workspace_id}/leave", status_code=204)

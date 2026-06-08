@@ -54,6 +54,8 @@ fragments. Managed backend startup also rejects missing or invalid
 `INTEGRATIONS_ENCRYPTION_KEY`, incomplete S3 config, and non-HTTPS
 `S3_ENDPOINT`. Any configured `*_OAUTH_REDIRECT_URI` must be an HTTPS callback
 URL without path params, query strings, or fragments. Localhost redirect URIs
-are only for non-managed local development.
+are only for non-managed local development. Managed mode also hides and disables
+legacy permanent workspace invite codes; use `/invite-tokens` magic links for
+TTL-bounded workspace onboarding.
 
 `start.sh` runs the managed alembic chain (`backend/managed/alembic.ini`) automatically when `AUTH0_ENABLED=true`.
