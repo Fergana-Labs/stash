@@ -12,3 +12,34 @@ async def test_api_responses_include_security_headers(client: AsyncClient):
     assert resp.headers["Permissions-Policy"] == (
         "camera=(), microphone=(), geolocation=(), payment=()"
     )
+
+
+@pytest.mark.asyncio
+async def test_unhandled_errors_are_redacted_and_keep_security_headers(
+    client: AsyncClient, monkeypatch
+):
+    from backend import main
+
+    captured_logs: list[tuple[str, tuple]] = []
+
+    def capture_error(message: str, *args, **kwargs) -> None:
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(main.logger, "error", capture_error)
+
+    @main.app.get("/__test_unhandled_error_redaction")
+    async def _raise_secret_error():
+        raise RuntimeError("token=secret-token and customer transcript")
+
+    resp = await client.get("/__test_unhandled_error_redaction")
+
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "Internal server error"}
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert "secret-token" not in resp.text
+    assert "customer transcript" not in resp.text
+    assert captured_logs == [
+        ("Unhandled request failed method=%s exception_type=%s", ("GET", "RuntimeError"))
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)
