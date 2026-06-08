@@ -40,6 +40,7 @@ from . import (
     skill_service,
     source_service,
     table_service,
+    workspace_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,12 @@ def _cartridge_to_dict(stash: dict) -> dict:
     }
 
 
-async def _parse_cartridge_items(raw_items: list[dict], workspace_id: UUID) -> list[CartridgeItem]:
+async def _parse_cartridge_items(
+    raw_items: list[dict],
+    *,
+    workspace_id: UUID,
+    user_id: UUID,
+) -> list[CartridgeItem]:
     items = [CartridgeItem(**item) for item in raw_items]
     for item in items:
         item_workspace_id = await permission_service.resolve_workspace_id(
@@ -105,7 +111,24 @@ async def _parse_cartridge_items(raw_items: list[dict], workspace_id: UUID) -> l
         )
         if item_workspace_id != workspace_id:
             raise ValueError("Stash items must be in the active workspace")
+        can_share = await permission_service.check_access(
+            item.object_type,
+            item.object_id,
+            user_id,
+            workspace_id=workspace_id,
+            require_write=True,
+        )
+        if not can_share:
+            raise ValueError("Not allowed to share one or more items")
     return items
+
+
+def _workspace_or_public_stash(
+    workspace_permission: str,
+    public_permission: str,
+    discoverable: bool,
+) -> bool:
+    return workspace_permission != "none" or public_permission != "none" or discoverable
 
 
 # --- Tool implementations --------------------------------------------------
@@ -369,7 +392,7 @@ async def _list_stashes(args: dict) -> dict:
             },
             "public_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "read"],
                 "default": "none",
             },
             "discoverable": {"type": "boolean", "default": False},
@@ -400,20 +423,37 @@ async def _create_cartridge(args: dict) -> dict:
     workspace_permission = args.get("workspace_permission") or "read"
     public_permission = args.get("public_permission") or "none"
     discoverable = bool(args.get("discoverable", False))
+    if not await workspace_service.can_write(workspace_id, user_id):
+        return _text_result(json.dumps({"error": "Viewers can read but not create Stashes"}))
+    if _workspace_or_public_stash(
+        workspace_permission,
+        public_permission,
+        discoverable,
+    ) and not await workspace_service.is_owner(workspace_id, user_id):
+        return _text_result(
+            json.dumps({"error": "Only workspace owners can create workspace or public Stashes"})
+        )
     if discoverable and public_permission == "none":
         return _text_result(json.dumps({"error": "Discover Cartridges must be public"}))
-    items = await _parse_cartridge_items(args.get("items") or [], workspace_id)
-    stash = await cartridge_service.create_cartridge(
-        workspace_id=workspace_id,
-        owner_id=user_id,
-        title=args["title"],
-        description=args.get("description") or "",
-        workspace_permission=workspace_permission,
-        public_permission=public_permission,
-        discoverable=discoverable,
-        cover_image_url=None,
-        items=items,
-    )
+    try:
+        items = await _parse_cartridge_items(
+            args.get("items") or [],
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        stash = await cartridge_service.create_cartridge(
+            workspace_id=workspace_id,
+            owner_id=user_id,
+            title=args["title"],
+            description=args.get("description") or "",
+            workspace_permission=workspace_permission,
+            public_permission=public_permission,
+            discoverable=discoverable,
+            cover_image_url=None,
+            items=items,
+        )
+    except ValueError as exc:
+        return _text_result(json.dumps({"error": str(exc)}))
     return _text_result(json.dumps(_cartridge_to_dict(stash)))
 
 
@@ -432,7 +472,7 @@ async def _create_cartridge(args: dict) -> dict:
             },
             "public_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "read"],
             },
             "discoverable": {"type": "boolean"},
             "items": {
@@ -459,6 +499,9 @@ async def _update_cartridge(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
     cartridge_id = UUID(args["cartridge_id"])
+    current_stash = await cartridge_service.get_cartridge(cartridge_id)
+    if not current_stash or current_stash["workspace_id"] != workspace_id:
+        return _text_result(json.dumps({"error": "not found"}))
     if not await cartridge_service.user_can_manage(cartridge_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
@@ -474,12 +517,22 @@ async def _update_cartridge(args: dict) -> dict:
         if key in args
     }
     if "items" in args:
-        updates["items"] = await _parse_cartridge_items(args.get("items") or [], workspace_id)
-    stash = await cartridge_service.update_cartridge(
-        cartridge_id,
-        user_id,
-        updates,
-    )
+        try:
+            updates["items"] = await _parse_cartridge_items(
+                args.get("items") or [],
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+        except ValueError as exc:
+            return _text_result(json.dumps({"error": str(exc)}))
+    try:
+        stash = await cartridge_service.update_cartridge(
+            cartridge_id,
+            user_id,
+            updates,
+        )
+    except ValueError as exc:
+        return _text_result(json.dumps({"error": str(exc)}))
     if not stash:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps(_cartridge_to_dict(stash)))
@@ -495,8 +548,12 @@ async def _update_cartridge(args: dict) -> dict:
     },
 )
 async def _delete_cartridge(args: dict) -> dict:
+    workspace_id = _current_workspace()
     user_id = _current_user()
     cartridge_id = UUID(args["cartridge_id"])
+    stash = await cartridge_service.get_cartridge(cartridge_id)
+    if not stash or stash["workspace_id"] != workspace_id:
+        return _text_result(json.dumps({"error": "not found"}))
     if not await cartridge_service.user_can_manage(cartridge_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
     deleted = await cartridge_service.delete_cartridge(cartridge_id, user_id)
