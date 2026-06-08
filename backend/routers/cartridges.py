@@ -25,6 +25,7 @@ from ..services import (
     cartridge_service,
     permission_service,
     security_audit_service,
+    source_service,
     workspace_service,
 )
 
@@ -198,6 +199,13 @@ async def snapshot_source(
     stash = await cartridge_service.get_cartridge(cartridge_id)
     if not stash or stash["workspace_id"] != workspace_id:
         raise HTTPException(status_code=404, detail="Stash not found")
+    source = await source_service.get_owned_source_in_workspace(
+        req.source_id,
+        current_user["id"],
+        workspace_id,
+    )
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source document not found")
     try:
         page = await cartridge_service.snapshot_source_into_cartridge(
             cartridge_id, current_user["id"], source_id=req.source_id, path=req.path
@@ -206,6 +214,19 @@ async def snapshot_source(
         raise HTTPException(status_code=403, detail="Not allowed to edit this cartridge")
     if page is None:
         raise HTTPException(status_code=404, detail="Source document not found")
+    await security_audit_service.record_event(
+        action="source.document_snapshotted",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="source",
+        target_id=source["id"],
+        provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),
+        source_type=source["source_type"],
+        metadata={
+            "ref_hash": security_audit_service.hash_value(req.path),
+            "cartridge_id": str(cartridge_id),
+        },
+    )
     return PageResponse(**page)
 
 

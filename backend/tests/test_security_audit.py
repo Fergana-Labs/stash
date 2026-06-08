@@ -650,6 +650,71 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
+    api_key, _ = await _register(client, "audit_snapshot")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "github_repo",
+            "external_ref": "webflow/confidential-sales",
+            "display_name": "webflow/confidential-sales",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = UUID(added.json()["id"])
+    ref = "docs/private-webflow-pricing.md"
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path=ref,
+        name="private-webflow-pricing.md",
+        content="Webflow confidential pricing notes",
+    )
+    stash = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges",
+        json={"title": "Snapshot bundle", "workspace_permission": "none", "items": []},
+        headers=headers,
+    )
+    assert stash.status_code == 201
+    cartridge_id = stash.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges/{cartridge_id}/snapshot-source",
+        json={"source_id": str(source_id), "path": ref},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert snap.status_code == 201
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert "webflow/confidential-sales" not in event_json
+    assert ref not in event_json
+    assert "private-webflow-pricing.md" not in event_json
+    assert "Webflow confidential pricing notes" not in event_json
+
+    snapshot_event = next(
+        event for event in events if event["action"] == "source.document_snapshotted"
+    )
+    assert snapshot_event["target_id"] == str(source_id)
+    assert snapshot_event["provider"] == "github"
+    assert snapshot_event["source_type"] == "github_repo"
+    assert snapshot_event["metadata"] == {
+        "ref_hash": security_audit_service.hash_value(ref),
+        "cartridge_id": cartridge_id,
+    }
+
+
+@pytest.mark.asyncio
 async def test_integration_disconnect_audits_workspace_source_purge(
     client: AsyncClient,
     monkeypatch,
