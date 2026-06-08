@@ -1277,6 +1277,105 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     assert b_hits == []
 
 
+@pytest.mark.asyncio
+async def test_slack_event_ingest_deletes_removed_messages(client: AsyncClient, pool):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_delete")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_DELETE",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="general/1717.0001",
+        name="#general",
+        kind="message",
+        content="delete this confidential Slack message",
+        external_ref="C1:1717.0001",
+        extra={"channel_id": "C1", "channel_name": "general", "ts": "1717.0001"},
+    )
+
+    deleted = await ingest_slack_message(
+        "T_DELETE",
+        {
+            "type": "message",
+            "subtype": "message_deleted",
+            "channel": "C1",
+            "deleted_ts": "1717.0001",
+        },
+    )
+
+    assert deleted == 1
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
+    client: AsyncClient,
+    pool,
+):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_change")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_CHANGE",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="general/1717.0001",
+        name="#general",
+        kind="message",
+        content="old confidential Slack message",
+        external_ref="C1:1717.0001",
+        extra={"channel_id": "C1", "channel_name": "general", "ts": "1717.0001"},
+    )
+
+    updated = await ingest_slack_message(
+        "T_CHANGE",
+        {
+            "type": "message",
+            "subtype": "message_changed",
+            "channel": "C1",
+            "message": {
+                "type": "message",
+                "ts": "1717.0001",
+                "text": "updated confidential Slack message",
+            },
+        },
+    )
+
+    rows = await pool.fetch(
+        "SELECT path, name, content FROM slack_messages WHERE source_id = $1",
+        source_id,
+    )
+    assert updated == 1
+    assert len(rows) == 1
+    assert rows[0]["path"] == "general/1717.0001"
+    assert rows[0]["name"] == "#general"
+    assert rows[0]["content"] == "updated confidential Slack message"
+
+
 # --- index-only sources (drive): lazy read ----------------------------------
 
 

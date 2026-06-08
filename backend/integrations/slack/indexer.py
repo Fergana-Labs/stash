@@ -171,12 +171,21 @@ async def _upsert_message(
     ts: str,
     text: str,
 ) -> None:
+    existing = await get_pool().fetchrow(
+        "SELECT path, name FROM slack_messages "
+        "WHERE source_id = $1 AND channel_id = $2 AND ts = $3",
+        source_id,
+        channel_id,
+        ts,
+    )
+    path = existing["path"] if existing else f"{channel_name}/{ts}"
+    name = existing["name"] if existing else f"#{channel_name}"
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
         workspace_id=workspace_id,
-        path=f"{channel_name}/{ts}",
-        name=f"#{channel_name}",
+        path=path,
+        name=name,
         kind="message",
         content=text,
         external_ref=f"{channel_id}:{ts}",
@@ -189,13 +198,38 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
     Each source is user-scoped and channel-scoped, so the same message lands
     once per owner who explicitly allowed that channel."""
     channel_id = event.get("channel", "")
-    if (
-        event.get("type") != "message"
-        or event.get("subtype")
-        or not event.get("ts")
-        or not channel_id
-    ):
+    if event.get("type") != "message" or not channel_id:
         return 0
+
+    subtype = event.get("subtype")
+    if subtype == "message_deleted":
+        deleted_ts = event.get("deleted_ts")
+        if not deleted_ts:
+            return 0
+        result = await get_pool().execute(
+            "DELETE FROM slack_messages d USING workspace_sources s "
+            "WHERE d.source_id = s.id "
+            "AND s.source_type = 'slack' "
+            "AND s.external_ref = $1 "
+            "AND d.channel_id = $2 "
+            "AND d.ts = $3",
+            team_id,
+            channel_id,
+            deleted_ts,
+        )
+        return int(result.rsplit(" ", 1)[-1])
+
+    if subtype == "message_changed":
+        message = event.get("message") or {}
+        if message.get("type") != "message" or not message.get("ts"):
+            return 0
+        event = {**message, "channel": channel_id, "type": "message"}
+    elif subtype:
+        return 0
+
+    if not event.get("ts"):
+        return 0
+
     rows = await get_pool().fetch(
         "SELECT id, workspace_id, settings FROM workspace_sources "
         "WHERE source_type = 'slack' AND external_ref = $1",
