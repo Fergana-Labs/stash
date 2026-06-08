@@ -31,6 +31,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Source handles must be scoped to the route workspace and source owner.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
+- Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
