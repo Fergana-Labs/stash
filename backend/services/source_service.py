@@ -1029,9 +1029,18 @@ async def source_entries(
         return None
     if connected["capability"] == "queryable":
         # A queryable source (Snowflake) has no document table — list its tables.
-        from ..integrations.snowflake.client import list_tables
+        from ..integrations.snowflake.client import SnowflakeMetadataError, list_tables
 
-        return await list_tables(connected)
+        try:
+            return await list_tables(connected)
+        except SnowflakeMetadataError as e:
+            logger.warning(
+                "source entries failed source=%s source_type=%s exception_type=%s",
+                connected["id"],
+                connected["source_type"],
+                type(e).__name__,
+            )
+            return []
     return await list_documents(connected, prefix=prefix)
 
 
@@ -1097,9 +1106,20 @@ async def source_document(
         return False, None
     if connected["capability"] == "queryable":
         # Reading a "document" from a queryable source means describing a table.
-        from ..integrations.snowflake.client import describe_table
+        from ..integrations.snowflake.client import SnowflakeMetadataError, describe_table
 
-        return True, await describe_table(connected, ref)
+        try:
+            return True, await describe_table(connected, ref)
+        except ValueError as e:
+            return True, {"error": str(e)}
+        except SnowflakeMetadataError as e:
+            logger.warning(
+                "source document failed source=%s source_type=%s exception_type=%s",
+                connected["id"],
+                connected["source_type"],
+                type(e).__name__,
+            )
+            return True, {"error": "Snowflake metadata fetch failed"}
 
     doc = await read_document(connected, ref)
     if doc is not None:

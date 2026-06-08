@@ -343,8 +343,10 @@ def test_read_only_guard_blocks_writes_and_multi_statements():
 def test_validate_identifier_rejects_injection():
     assert _validate_identifier("DB.SCHEMA.TABLE") == "DB.SCHEMA.TABLE"
     for bad in ("t; drop table u", "t where 1=1", "t--", "t)"):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as exc:
             _validate_identifier(bad)
+        assert str(exc.value) == "invalid table identifier"
+        assert bad not in str(exc.value)
 
 
 def test_snowflake_query_limit_rejects_non_positive_values():
@@ -425,6 +427,33 @@ async def test_snowflake_query_runtime_errors_are_redacted(monkeypatch):
     assert str(exc.value) == "Snowflake query failed"
     assert "secret-token" not in str(exc.value)
     assert "confidential_customer_data" not in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_snowflake_metadata_runtime_errors_are_redacted(monkeypatch):
+    async def fake_creds(owner_user_id):
+        return {"account": "webflow", "user": "svc", "token": "secret-token"}
+
+    def fail_metadata(creds, sql, limit):
+        raise ValueError(f"account={creds['account']} token={creds['token']} sql={sql}")
+
+    monkeypatch.setattr(snowflake_client, "_creds", fake_creds)
+    monkeypatch.setattr(snowflake_client, "_run_sync", fail_metadata)
+
+    with pytest.raises(snowflake_client.SnowflakeMetadataError) as list_exc:
+        await snowflake_client.list_tables({"owner_user_id": str(uuid4())})
+
+    with pytest.raises(snowflake_client.SnowflakeMetadataError) as describe_exc:
+        await snowflake_client.describe_table(
+            {"owner_user_id": str(uuid4())},
+            "DB.SCHEMA.confidential_customer_data",
+        )
+
+    assert str(list_exc.value) == "Snowflake metadata fetch failed"
+    assert str(describe_exc.value) == "Snowflake metadata fetch failed"
+    assert "secret-token" not in str(list_exc.value)
+    assert "secret-token" not in str(describe_exc.value)
+    assert "confidential_customer_data" not in str(describe_exc.value)
 
 
 def test_query_source_tool_is_registered_and_in_tool_sets():

@@ -52,7 +52,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Source sync must require the source owner to still be a workspace member; leaving a workspace must remove member-owned connected sources and copied integration documents.
 - Leaving or removing a workspace member must remove direct shares, share invites, Stash memberships, Stash invites, and member-owned Stashes that user received or granted in that workspace.
 - OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
-- Snowflake execution must reject multi-statement or CTE-prefixed SQL, clamp row limits before execution, and return a generic error for live query failures.
+- Snowflake execution must reject multi-statement or CTE-prefixed SQL, clamp row limits before execution, and return generic errors for live query, table listing, and table description failures.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
 - Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
 - File download and table ingest failures must not log storage keys, bucket names, tokens, parser exception text, or workbook-derived content.

@@ -31,6 +31,10 @@ class SnowflakeQueryError(RuntimeError):
     pass
 
 
+class SnowflakeMetadataError(RuntimeError):
+    pass
+
+
 def _assert_read_only(sql: str) -> str:
     """Return a single read-only statement or raise ValueError."""
     stmt = sql.strip().rstrip(";").strip()
@@ -48,7 +52,7 @@ def _assert_read_only(sql: str) -> str:
 
 def _validate_identifier(ref: str) -> str:
     if not ref or not _IDENTIFIER_RE.match(ref):
-        raise ValueError(f"invalid table identifier: {ref!r}")
+        raise ValueError("invalid table identifier")
     return ref
 
 
@@ -144,39 +148,47 @@ async def run_query(source: dict, sql: str, limit: int = ROW_CAP) -> dict:
 
 async def list_tables(source: dict) -> list[dict]:
     """List tables as navigation entries: path = fully-qualified name."""
-    creds = await _creds(UUID(source["owner_user_id"]))
-    result = await asyncio.to_thread(_run_sync, creds, "SHOW TERSE TABLES IN ACCOUNT", 500)
-    name_i = result["columns"].index("name") if "name" in result["columns"] else 1
-    db_i = (
-        result["columns"].index("database_name") if "database_name" in result["columns"] else None
-    )
-    schema_i = (
-        result["columns"].index("schema_name") if "schema_name" in result["columns"] else None
-    )
-    entries = []
-    for row in result["rows"]:
-        name = row[name_i]
-        parts = [
-            row[db_i] if db_i is not None else None,
-            row[schema_i] if schema_i is not None else None,
-            name,
-        ]
-        full = ".".join(str(p) for p in parts if p)
-        entries.append({"path": full, "name": name, "kind": "table"})
-    return entries
+    try:
+        creds = await _creds(UUID(source["owner_user_id"]))
+        result = await asyncio.to_thread(_run_sync, creds, "SHOW TERSE TABLES IN ACCOUNT", 500)
+        name_i = result["columns"].index("name") if "name" in result["columns"] else 1
+        db_i = (
+            result["columns"].index("database_name")
+            if "database_name" in result["columns"]
+            else None
+        )
+        schema_i = (
+            result["columns"].index("schema_name") if "schema_name" in result["columns"] else None
+        )
+        entries = []
+        for row in result["rows"]:
+            name = row[name_i]
+            parts = [
+                row[db_i] if db_i is not None else None,
+                row[schema_i] if schema_i is not None else None,
+                name,
+            ]
+            full = ".".join(str(p) for p in parts if p)
+            entries.append({"path": full, "name": name, "kind": "table"})
+        return entries
+    except Exception as exc:
+        raise SnowflakeMetadataError("Snowflake metadata fetch failed") from exc
 
 
 async def describe_table(source: dict, ref: str) -> dict:
     """Return a table's columns (name + type) so the agent can write a query."""
     table = _validate_identifier(ref)
-    creds = await _creds(UUID(source["owner_user_id"]))
-    result = await asyncio.to_thread(_run_sync, creds, f"DESCRIBE TABLE {table}", ROW_CAP)
-    name_i = result["columns"].index("name") if "name" in result["columns"] else 0
-    type_i = result["columns"].index("type") if "type" in result["columns"] else 1
-    cols = [f"{row[name_i]} {row[type_i]}" for row in result["rows"]]
-    return {
-        "path": ref,
-        "name": ref,
-        "kind": "table",
-        "content": f"Table {ref}\nColumns:\n" + "\n".join(cols),
-    }
+    try:
+        creds = await _creds(UUID(source["owner_user_id"]))
+        result = await asyncio.to_thread(_run_sync, creds, f"DESCRIBE TABLE {table}", ROW_CAP)
+        name_i = result["columns"].index("name") if "name" in result["columns"] else 0
+        type_i = result["columns"].index("type") if "type" in result["columns"] else 1
+        cols = [f"{row[name_i]} {row[type_i]}" for row in result["rows"]]
+        return {
+            "path": ref,
+            "name": ref,
+            "kind": "table",
+            "content": f"Table {ref}\nColumns:\n" + "\n".join(cols),
+        }
+    except Exception as exc:
+        raise SnowflakeMetadataError("Snowflake metadata fetch failed") from exc
