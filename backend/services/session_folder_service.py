@@ -253,6 +253,29 @@ async def delete_folder(folder_id: UUID, user_id: UUID) -> bool:
     return True
 
 
+async def can_add_session_to_folder(
+    *,
+    workspace_id: UUID,
+    user_id: UUID,
+    folder_id: UUID,
+) -> bool:
+    folder = await get_pool().fetchrow(
+        "SELECT id, workspace_id, workspace_permission, public_permission, discoverable, is_default "
+        "FROM session_folders WHERE id = $1",
+        folder_id,
+    )
+    if not folder or folder["workspace_id"] != workspace_id:
+        return False
+    broad_visibility = _is_workspace_or_public(
+        folder["workspace_permission"],
+        folder["public_permission"],
+        bool(folder["discoverable"]),
+    )
+    if broad_visibility and not folder["is_default"]:
+        return await workspace_service.is_owner(workspace_id, user_id)
+    return await user_can_manage(folder_id, user_id)
+
+
 async def assign_session(
     workspace_id: UUID,
     user_id: UUID,
@@ -279,21 +302,11 @@ async def assign_session(
         return False
 
     if folder_id is not None:
-        folder = await pool.fetchrow(
-            "SELECT id FROM session_folders WHERE id = $1 AND workspace_id = $2",
-            folder_id,
-            workspace_id,
-        )
-        if not folder:
-            return False
-        can_write_folder = await permission_service.check_access(
-            "session_folder",
-            folder_id,
-            user_id,
+        if not await can_add_session_to_folder(
             workspace_id=workspace_id,
-            require_write=True,
-        )
-        if not can_write_folder:
+            user_id=user_id,
+            folder_id=folder_id,
+        ):
             return False
 
     result = await pool.execute(

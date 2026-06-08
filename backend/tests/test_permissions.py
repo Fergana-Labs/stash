@@ -1136,6 +1136,59 @@ async def test_session_folder_write_access_cannot_manage_folder(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_editor_cannot_add_sessions_to_public_session_folder(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    editor_key, editor = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
+    public_folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Published transcripts", "public_permission": "read"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    direct_upsert = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={
+            "session_id": "editor-public-direct",
+            "agent_name": "codex",
+            "session_folder_id": public_folder_id,
+        },
+        headers=_auth(editor_key),
+    )
+    session = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "editor-private-session", "agent_name": "codex"},
+        headers=_auth(editor_key),
+    )
+    assign = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        json={"session_row_ids": [session.json()["id"]], "folder_id": public_folder_id},
+        headers=_auth(editor_key),
+    )
+
+    assert direct_upsert.status_code == 404
+    assert session.status_code == 201
+    assert assign.status_code == 404
+    assert not await pool.fetchval(
+        "SELECT 1 FROM sessions WHERE workspace_id = $1 AND session_id = $2",
+        uuid.UUID(ws),
+        "editor-public-direct",
+    )
+    assert await pool.fetchval(
+        "SELECT session_folder_id FROM sessions WHERE id = $1",
+        uuid.UUID(session.json()["id"]),
+    ) != uuid.UUID(public_folder_id)
+
+
+@pytest.mark.asyncio
 async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncClient):
     first_key, _ = await _register(client)
     second_key, _ = await _register(client)
@@ -1152,6 +1205,15 @@ async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncCl
             headers=_auth(second_key),
         )
     ).json()["id"]
+    direct_upsert = await client.post(
+        f"/api/v1/workspaces/{first_ws}/sessions",
+        json={
+            "session_id": "cross-workspace-direct",
+            "agent_name": "codex",
+            "session_folder_id": second_folder_id,
+        },
+        headers=_auth(first_key),
+    )
     session = await client.post(
         f"/api/v1/workspaces/{first_ws}/sessions",
         json={"session_id": "cross-workspace-1", "agent_name": "codex"},
@@ -1165,6 +1227,7 @@ async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncCl
         headers=_auth(first_key),
     )
 
+    assert direct_upsert.status_code == 404
     assert assign.status_code == 404
 
 

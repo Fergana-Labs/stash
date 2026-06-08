@@ -200,6 +200,12 @@ async def upsert_workspace_session(
             workspace_id, current_user["id"]
         )
         folder_id = UUID(default_folder["id"])
+    elif not await session_folder_service.can_add_session_to_folder(
+        workspace_id=workspace_id,
+        user_id=current_user["id"],
+        folder_id=folder_id,
+    ):
+        raise HTTPException(status_code=404, detail="Session folder not found")
 
     row = await session_service.upsert_session(
         workspace_id=workspace_id,
