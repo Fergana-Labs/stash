@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -63,6 +64,28 @@ def parse_required_when_enabled(name: str, enabled: bool, enabled_name: str) -> 
     return value
 
 
+def parse_integration_encryption_key(enabled: bool) -> str | None:
+    raw = os.getenv("INTEGRATIONS_ENCRYPTION_KEY")
+    if not raw:
+        if enabled:
+            raise RuntimeError("INTEGRATIONS_ENCRYPTION_KEY must be set when AUTH0_ENABLED=true")
+        return None
+
+    keys = [key.strip() for key in raw.split(",") if key.strip()]
+    if not keys:
+        if enabled:
+            raise RuntimeError("INTEGRATIONS_ENCRYPTION_KEY must be set when AUTH0_ENABLED=true")
+        return None
+
+    try:
+        for key in keys:
+            Fernet(key.encode())
+    except ValueError:
+        raise RuntimeError("INTEGRATIONS_ENCRYPTION_KEY must be one or more valid Fernet keys")
+
+    return ",".join(keys)
+
+
 def parse_auth0_domain(enabled: bool) -> str | None:
     value = parse_required_when_enabled("AUTH0_DOMAIN", enabled, "AUTH0_ENABLED")
     if not value:
@@ -70,6 +93,20 @@ def parse_auth0_domain(enabled: bool) -> str | None:
     if "://" in value or "/" in value or any(ch.isspace() for ch in value):
         raise RuntimeError("AUTH0_DOMAIN must be a hostname without scheme, path, or spaces")
     return value
+
+
+def parse_s3_setting(name: str, managed_auth_enabled: bool) -> str | None:
+    value = os.getenv(name)
+    if managed_auth_enabled and not value:
+        raise RuntimeError(f"{name} must be set when AUTH0_ENABLED=true")
+    return value or None
+
+
+def parse_s3_endpoint(managed_auth_enabled: bool) -> str | None:
+    endpoint = parse_s3_setting("S3_ENDPOINT", managed_auth_enabled)
+    if managed_auth_enabled and endpoint:
+        return parse_https_origin("S3_ENDPOINT", endpoint)
+    return endpoint
 
 
 class Settings:
@@ -109,10 +146,10 @@ class Settings:
     EMBEDDING_DIMS: int = int(os.getenv("EMBEDDING_DIMS", "384"))
 
     # --- File storage (S3-compatible, e.g. Cloudflare R2) ---
-    S3_ENDPOINT: str | None = os.getenv("S3_ENDPOINT")
-    S3_BUCKET: str | None = os.getenv("S3_BUCKET")
-    S3_ACCESS_KEY: str | None = os.getenv("S3_ACCESS_KEY")
-    S3_SECRET_KEY: str | None = os.getenv("S3_SECRET_KEY")
+    S3_ENDPOINT: str | None = parse_s3_endpoint(AUTH0_ENABLED)
+    S3_BUCKET: str | None = parse_s3_setting("S3_BUCKET", AUTH0_ENABLED)
+    S3_ACCESS_KEY: str | None = parse_s3_setting("S3_ACCESS_KEY", AUTH0_ENABLED)
+    S3_SECRET_KEY: str | None = parse_s3_setting("S3_SECRET_KEY", AUTH0_ENABLED)
     S3_REGION: str = os.getenv("S3_REGION", "auto")
 
     AUTH0_DOMAIN: str | None = parse_auth0_domain(AUTH0_ENABLED)
@@ -141,7 +178,7 @@ class Settings:
     # rest. The first key encrypts new values; later keys decrypt during
     # rotation.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    INTEGRATIONS_ENCRYPTION_KEY: str | None = os.getenv("INTEGRATIONS_ENCRYPTION_KEY")
+    INTEGRATIONS_ENCRYPTION_KEY: str | None = parse_integration_encryption_key(AUTH0_ENABLED)
 
     GOOGLE_OAUTH_CLIENT_ID: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
     GOOGLE_OAUTH_CLIENT_SECRET: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
