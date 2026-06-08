@@ -140,9 +140,12 @@ describe("CartridgeSettingsPageClient", () => {
   it("saves title changes only", async () => {
     render(<CartridgeSettingsPageClient slug="shared-stash" />);
 
-    fireEvent.change(await screen.findByLabelText("Title"), {
+    const titleInput = await screen.findByLabelText("Title");
+    fireEvent.change(titleInput, {
       target: { value: "Better Stash" },
     });
+    await waitFor(() => expect(titleInput).toHaveValue("Better Stash"));
+
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() =>
