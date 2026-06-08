@@ -29,6 +29,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
+- OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
 - Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
