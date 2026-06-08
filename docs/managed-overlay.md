@@ -36,4 +36,9 @@ NEXT_PUBLIC_AUTH0_ENABLED=true
 NEXT_PUBLIC_API_URL=https://api.joinstash.ai
 ```
 
+When `AUTH0_ENABLED=true`, the backend rejects non-HTTPS `PUBLIC_URL` and
+`CORS_ORIGINS` values. The Next.js managed Auth0 client also rejects
+non-HTTPS `APP_BASE_URL` values. Use HTTPS origins without paths, queries, or
+fragments.
+
 `start.sh` runs the managed alembic chain (`backend/managed/alembic.ini`) automatically when `AUTH0_ENABLED=true`.

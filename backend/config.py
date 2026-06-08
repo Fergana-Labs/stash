@@ -6,6 +6,7 @@ Defaults are chosen for local development with the bundled docker-compose.yml.
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -14,10 +15,33 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 MIN_ADMIN_SECRET_LENGTH = 32
 
 
-def parse_cors_origins(raw: str) -> list[str]:
+def parse_https_origin(name: str, value: str) -> str:
+    parsed = urlparse(value)
+    has_path = parsed.path not in ("", "/")
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or has_path
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError(f"{name} must be an HTTPS origin without path, query, or fragment")
+    return value.rstrip("/")
+
+
+def parse_public_url(raw: str, managed_auth_enabled: bool) -> str:
+    if managed_auth_enabled:
+        return parse_https_origin("PUBLIC_URL", raw)
+    return raw
+
+
+def parse_cors_origins(raw: str, managed_auth_enabled: bool = False) -> list[str]:
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
     if "*" in origins:
         raise RuntimeError("CORS_ORIGINS cannot include '*' when credentialed CORS is enabled")
+    if managed_auth_enabled:
+        return [parse_https_origin("CORS_ORIGINS", origin) for origin in origins]
     return origins
 
 
@@ -52,17 +76,26 @@ class Settings:
     # --- Server ---
     PORT: int = int(os.getenv("PORT", "3456"))
 
+    # --- Auth0 (managed deployment only) ---
+    # When AUTH0_ENABLED=true, password login/register is disabled and the
+    # managed auth0 router is mounted at /api/v1/auth0/. Requires the
+    # managed/ directory to be present in the deployment.
+    AUTH0_ENABLED: bool = os.getenv("AUTH0_ENABLED", "false").lower() == "true"
+
     # --- Database ---
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://stash:stash@localhost:5432/stash")
     DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "2"))
     DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "20"))
 
     # --- URLs & CORS ---
-    PUBLIC_URL: str = os.getenv("PUBLIC_URL", "http://localhost:3457")
+    PUBLIC_URL: str = parse_public_url(
+        os.getenv("PUBLIC_URL", "http://localhost:3457"), AUTH0_ENABLED
+    )
     CORS_ORIGINS: list[str] = parse_cors_origins(
         os.getenv(
             "CORS_ORIGINS", "http://localhost:3457,http://localhost:3456,http://localhost:3000"
-        )
+        ),
+        AUTH0_ENABLED,
     )
 
     # --- Embeddings ---
@@ -82,11 +115,6 @@ class Settings:
     S3_SECRET_KEY: str | None = os.getenv("S3_SECRET_KEY")
     S3_REGION: str = os.getenv("S3_REGION", "auto")
 
-    # --- Auth0 (managed deployment only) ---
-    # When AUTH0_ENABLED=true, password login/register is disabled and the
-    # managed auth0 router is mounted at /api/v1/auth0/. Requires the
-    # managed/ directory to be present in the deployment.
-    AUTH0_ENABLED: bool = os.getenv("AUTH0_ENABLED", "false").lower() == "true"
     AUTH0_DOMAIN: str | None = parse_auth0_domain(AUTH0_ENABLED)
     AUTH0_AUDIENCE: str | None = parse_required_when_enabled(
         "AUTH0_AUDIENCE", AUTH0_ENABLED, "AUTH0_ENABLED"

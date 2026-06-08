@@ -17,6 +17,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 ## Code Controls Required For Managed Access
 
 - Managed Auth0 must fail closed. `AUTH0_ENABLED=true` requires `AUTH0_DOMAIN` and `AUTH0_AUDIENCE`, and Auth0 domains must be hostnames only.
+- Managed Auth0 deployments must use HTTPS origins for `PUBLIC_URL`, `CORS_ORIGINS`, and `APP_BASE_URL`.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
