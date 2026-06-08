@@ -609,6 +609,36 @@ async def test_sync_source_unknown_type_is_noop(client: AsyncClient, monkeypatch
     assert result["status"] == "no_indexer"
 
 
+@pytest.mark.asyncio
+async def test_sync_source_status_redacts_provider_exception(client: AsyncClient, monkeypatch):
+    from backend.tasks import sources as sources_task
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/private",
+        display_name="private",
+    )
+
+    async def fail_with_secret(source):
+        raise RuntimeError("upstream failed with token=secret-token and customer transcript")
+
+    monkeypatch.setattr(sources_task, "INDEXERS", {"github_repo": fail_with_secret})
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+    assert result["status"] == "failed"
+
+    status = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/status",
+        headers=_auth(api_key),
+    )
+    assert status.status_code == 200
+    assert status.json()["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
+
+
 # --- slack webhook + event ingest -------------------------------------------
 
 
