@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.models import CartridgeItem
-from backend.services import cartridge_service, permission_service
+from backend.services import cartridge_service, permission_service, session_folder_service
 
 from .conftest import unique_name
 
@@ -324,6 +324,29 @@ async def test_public_cartridge_grants_read_only(pool):
 
 
 @pytest.mark.asyncio
+async def test_public_session_folder_grants_read_only(pool):
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await session_folder_service.create_folder(
+        ws,
+        owner,
+        "Public Sessions",
+        public_permission="read",
+    )
+    folder_id = uuid.UUID(folder["id"])
+
+    assert await permission_service.check_access("session_folder", folder_id, stranger)
+    assert await permission_service.check_access("session_folder", folder_id, None)
+    assert not await permission_service.check_access(
+        "session_folder", folder_id, stranger, require_write=True
+    )
+    assert not await permission_service.check_access(
+        "session_folder", folder_id, None, require_write=True
+    )
+
+
+@pytest.mark.asyncio
 async def test_private_cartridge_member_reads_contents_not_write(pool):
     owner = await _make_user(pool)
     member = await _make_user(pool)
@@ -607,6 +630,65 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
 
 
 @pytest.mark.asyncio
+async def test_public_write_stash_requests_are_rejected(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "confidential"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    item = {"object_type": "page", "object_id": page_id}
+
+    create = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges",
+        json={"title": "Editable link", "public_permission": "write", "items": [item]},
+        headers=_auth(owner_key),
+    )
+    publish = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges/publish",
+        json={"title": "Editable link", "public_permission": "write", "items": [item]},
+        headers=_auth(owner_key),
+    )
+    stash = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/cartridges",
+            json={"title": "Read-only link", "public_permission": "read", "items": [item]},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    update = await client.patch(
+        f"/api/v1/cartridges/{stash['id']}",
+        json={"public_permission": "write"},
+        headers=_auth(owner_key),
+    )
+
+    assert create.status_code == 422
+    assert publish.status_code == 422
+    assert update.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_public_write_session_folder_requests_are_rejected(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+
+    create = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders",
+        json={"name": "Editable sessions", "public_permission": "write"},
+        headers=_auth(owner_key),
+    )
+
+    assert create.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncClient):
     owner_key, _ = await _register(client)
     ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
@@ -712,7 +794,7 @@ async def test_session_folder_write_access_cannot_manage_folder(client: AsyncCli
     public_folder_id = (
         await client.post(
             f"/api/v1/workspaces/{ws}/session-folders",
-            json={"name": "Public Write", "public_permission": "write"},
+            json={"name": "Public Read", "public_permission": "read"},
             headers=_auth(owner_key),
         )
     ).json()["id"]

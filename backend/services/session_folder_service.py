@@ -57,6 +57,8 @@ def _validate_permissions(
         raise ValueError("Unsupported workspace folder permission")
     if public_permission not in _GENERAL_PERMISSION_VALUES:
         raise ValueError("Unsupported public folder permission")
+    if public_permission == "write":
+        raise ValueError("Public write folder links are not supported")
     if discoverable and public_permission == "none":
         raise ValueError("Discoverable folders must be public")
 

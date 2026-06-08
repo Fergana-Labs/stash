@@ -132,7 +132,7 @@ class CartridgeCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
     workspace_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: CartridgeGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
+    public_permission: CartridgeGeneralPermission = Field("none", pattern=r"^(none|read)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -145,9 +145,7 @@ class CartridgeUpdateRequest(BaseModel):
     workspace_permission: CartridgeGeneralPermission | None = Field(
         None, pattern=r"^(none|read|write)$"
     )
-    public_permission: CartridgeGeneralPermission | None = Field(
-        None, pattern=r"^(none|read|write)$"
-    )
+    public_permission: CartridgeGeneralPermission | None = Field(None, pattern=r"^(none|read)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -666,7 +664,7 @@ class PublishRequest(BaseModel):
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
     workspace_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read)$")
     folder_id: UUID | None = None
 
 

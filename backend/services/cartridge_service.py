@@ -132,6 +132,8 @@ def _validate_general_permissions(
         raise ValueError("Unsupported workspace Stash permission")
     if public_permission not in _GENERAL_PERMISSION_VALUES:
         raise ValueError("Unsupported public Stash permission")
+    if public_permission == "write":
+        raise ValueError("Public write Stash links are not supported")
     if discoverable and public_permission == "none":
         raise ValueError("Discover Cartridges must be public")
 
@@ -1644,7 +1646,7 @@ async def remove_member(cartridge_id: UUID, user_id: UUID) -> bool:
 
 
 async def user_can_write(cartridge_id: UUID, user_id: UUID) -> bool:
-    """Stash writes require owner/admin, explicit write, or general edit access."""
+    """Stash writes require owner/admin, explicit write, or workspace edit access."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT workspace_id, owner_id, workspace_permission, public_permission "
@@ -1665,7 +1667,7 @@ async def user_can_write(cartridge_id: UUID, user_id: UUID) -> bool:
     role = await workspace_service.get_member_role(row["workspace_id"], user_id)
     if role is not None and row["workspace_permission"] == "write":
         return True
-    return row["public_permission"] == "write"
+    return False
 
 
 async def user_can_read(cartridge_id: UUID, user_id: UUID | None) -> bool:
