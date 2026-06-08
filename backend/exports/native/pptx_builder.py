@@ -24,7 +24,7 @@ from ..constants import (
     SLIDE_WIDTH_PX,
 )
 from .hybrid_raster import rasterize_targets
-from .image_fetch import ImageFetcher
+from .image_fetch import ImageFetcher, image_source_kind
 from .spec import BBox, Paragraph, ShapeSpec, SlideSpec
 
 logger = logging.getLogger(__name__)
@@ -149,8 +149,12 @@ async def _emit_shape(slide, sh: ShapeSpec, rasters, fetcher: ImageFetcher, slid
         left, top, w, h = _bbox_emu(sh.bbox)
         try:
             slide.shapes.add_picture(io.BytesIO(data), left, top, w, h)
-        except Exception:
-            logger.exception("add_picture failed for %s", sh.src[:120] if sh.src else "?")
+        except Exception as exc:
+            logger.error(
+                "add_picture failed src_type=%s exception_type=%s",
+                image_source_kind(sh.src),
+                type(exc).__name__,
+            )
         return
 
     if sh.kind == "table":
