@@ -5,9 +5,30 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import skill_seeds
+from . import security_audit_service, skill_seeds
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_member_event(
+    *,
+    action: str,
+    actor_user_id: UUID,
+    workspace_id: UUID,
+    member_user_id: UUID,
+    metadata: dict | None = None,
+) -> None:
+    await security_audit_service.record_event(
+        action=action,
+        actor_user_id=actor_user_id,
+        workspace_id=workspace_id,
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={
+            "member_user_hash": security_audit_service.hash_value(str(member_user_id)),
+            **(metadata or {}),
+        },
+    )
 
 
 async def create_workspace(
@@ -184,6 +205,13 @@ async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
         workspace_id,
         user_id,
     )
+    await _record_member_event(
+        action="workspace.member_joined",
+        actor_user_id=user_id,
+        workspace_id=workspace_id,
+        member_user_id=user_id,
+        metadata={"role": "editor", "method": "legacy_invite"},
+    )
     return await get_workspace(workspace_id)
 
 
@@ -233,6 +261,12 @@ async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
             "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
             workspace_id,
             user_id,
+        )
+        await _record_member_event(
+            action="workspace.member_left",
+            actor_user_id=user_id,
+            workspace_id=workspace_id,
+            member_user_id=user_id,
         )
         return True
     return False

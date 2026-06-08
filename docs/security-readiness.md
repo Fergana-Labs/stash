@@ -48,6 +48,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
 - Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
+- Workspace invite token creation/revocation and member join/leave events must emit workspace security audit events without storing raw invite tokens, member names, emails, or workspace names in event metadata.
 - Explicit Stash member grants and removals must emit workspace security audit events without storing recipient names, emails, or customer content in event metadata.
 - Explicit object share grants, email invites, invite conversions, and revocations must emit workspace security audit events without storing recipient names, emails, or customer content in event metadata.
 - Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.

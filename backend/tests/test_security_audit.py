@@ -390,6 +390,125 @@ async def test_pending_share_invite_conversion_is_audited_without_email_or_conte
 
 
 @pytest.mark.asyncio
+async def test_workspace_invite_and_membership_changes_are_audited_without_tokens_or_names(
+    client: AsyncClient,
+):
+    owner_key, owner_id = await _register(client, "audit_workspace_owner")
+    joiner_name = unique_name("webflow_workspace_joiner")
+    joiner_display_name = "Webflow Workspace Joiner"
+    joiner_email = f"{joiner_name}@example.com"
+    joiner_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": joiner_name,
+            "display_name": joiner_display_name,
+            "email": joiner_email,
+            "password": "securepassword1",
+        },
+    )
+    assert joiner_resp.status_code == 201
+    joiner_key = joiner_resp.json()["api_key"]
+    joiner_id = UUID(joiner_resp.json()["id"])
+    workspace_name = "Webflow confidential access hub"
+    workspace_resp = await client.post(
+        "/api/v1/workspaces",
+        json={"name": workspace_name},
+        headers=_auth(owner_key),
+    )
+    assert workspace_resp.status_code == 201
+    workspace_id = UUID(workspace_resp.json()["id"])
+    owner_headers = _auth(owner_key)
+
+    first_invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invite-tokens",
+        json={"max_uses": 1, "ttl_days": 3},
+        headers=owner_headers,
+    )
+    assert first_invite.status_code == 201
+    first_invite_body = first_invite.json()
+    redeemed = await client.post(
+        "/api/v1/workspaces/redeem-invite",
+        json={"token": first_invite_body["token"]},
+        headers=_auth(joiner_key),
+    )
+    left = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/leave",
+        headers=_auth(joiner_key),
+    )
+    second_invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invite-tokens",
+        json={"max_uses": 2, "ttl_days": 5},
+        headers=owner_headers,
+    )
+    assert second_invite.status_code == 201
+    second_invite_body = second_invite.json()
+    revoked = await client.delete(
+        f"/api/v1/workspaces/{workspace_id}/invite-tokens/{second_invite_body['id']}",
+        headers=owner_headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/security-events",
+        headers=owner_headers,
+    )
+
+    assert redeemed.status_code == 200
+    assert left.status_code == 204
+    assert revoked.status_code == 204
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    first_invite_hash = security_audit_service.hash_value(first_invite_body["id"])
+    second_invite_hash = security_audit_service.hash_value(second_invite_body["id"])
+    joiner_hash = security_audit_service.hash_value(str(joiner_id))
+    created_events = {
+        event["metadata"]["invite_token_id_hash"]: event
+        for event in events
+        if event["action"] == "workspace.invite_token_created"
+    }
+    joined_event = next(event for event in events if event["action"] == "workspace.member_joined")
+    left_event = next(event for event in events if event["action"] == "workspace.member_left")
+    revoked_event = next(
+        event for event in events if event["action"] == "workspace.invite_token_revoked"
+    )
+
+    assert created_events[first_invite_hash]["actor_user_id"] == str(owner_id)
+    assert created_events[first_invite_hash]["target_type"] == "workspace"
+    assert created_events[first_invite_hash]["target_id"] == str(workspace_id)
+    assert created_events[first_invite_hash]["metadata"] == {
+        "invite_token_id_hash": first_invite_hash,
+        "max_uses": 1,
+        "ttl_days": 3,
+    }
+    assert created_events[second_invite_hash]["metadata"] == {
+        "invite_token_id_hash": second_invite_hash,
+        "max_uses": 2,
+        "ttl_days": 5,
+    }
+    assert joined_event["actor_user_id"] == str(joiner_id)
+    assert joined_event["target_type"] == "workspace"
+    assert joined_event["target_id"] == str(workspace_id)
+    assert joined_event["metadata"] == {
+        "member_user_hash": joiner_hash,
+        "role": "editor",
+        "method": "invite_token",
+    }
+    assert left_event["actor_user_id"] == str(joiner_id)
+    assert left_event["metadata"] == {"member_user_hash": joiner_hash}
+    assert revoked_event["actor_user_id"] == str(owner_id)
+    assert revoked_event["metadata"] == {"invite_token_id_hash": second_invite_hash}
+
+    event_json = json.dumps(events)
+    assert first_invite_body["token"] not in event_json
+    assert first_invite_body["id"] not in event_json
+    assert second_invite_body["token"] not in event_json
+    assert second_invite_body["id"] not in event_json
+    assert joiner_name not in event_json
+    assert joiner_display_name not in event_json
+    assert joiner_email not in event_json
+    assert workspace_name not in event_json
+
+
+@pytest.mark.asyncio
 async def test_source_access_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, _ = await _register(client)
     ws = await _create_workspace(client, api_key)
