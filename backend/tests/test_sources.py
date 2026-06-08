@@ -1759,6 +1759,47 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
 
 
 @pytest.mark.asyncio
+async def test_fetch_history_provider_failures_are_redacted(client, monkeypatch):
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    slack = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T123",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    captured_logs: list[tuple[str, tuple]] = []
+
+    async def fail_fetch(source, since, until, limit):
+        raise RuntimeError("token=secret-token channel=#board customer transcript")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(indexer, "fetch_history", fail_fetch)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    result = await source_service.fetch_history(
+        ws, owner_id, slack["id"], "2026-01-01", until="2026-02-01"
+    )
+
+    assert result == {"error": "source history fetch failed"}
+    assert captured_logs == [
+        (
+            "source history fetch failed source=%s source_type=%s exception_type=%s",
+            (slack["id"], "slack", "RuntimeError"),
+        )
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)
+    assert "#board" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
 async def test_list_sources_carries_status_and_status_endpoint_counts(client: AsyncClient):
     """The per-integration page needs sync status + item counts: list_sources now
     carries the status fields, and /status reports the indexed-doc count (None for

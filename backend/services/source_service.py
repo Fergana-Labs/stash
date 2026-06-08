@@ -1206,7 +1206,16 @@ async def fetch_history(
         from ..integrations.slack.indexer import fetch_history as fn
     else:
         from ..integrations.gong.indexer import fetch_history as fn
-    return await fn(connected, since_dt, until_dt, min(limit, 1000))
+    try:
+        return await fn(connected, since_dt, until_dt, min(limit, 1000))
+    except Exception as exc:
+        logger.warning(
+            "source history fetch failed source=%s source_type=%s exception_type=%s",
+            connected["id"],
+            connected["source_type"],
+            type(exc).__name__,
+        )
+        return {"error": "source history fetch failed"}
 
 
 async def search_all(

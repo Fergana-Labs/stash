@@ -730,6 +730,84 @@ async def test_query_source_failure_redacts_snowflake_error_and_sql(
 
 
 @pytest.mark.asyncio
+async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.slack import indexer as slack_indexer
+
+    api_key, owner_id = await _register(client, "audit_history")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    sensitive_since = "2026-01-01T00:00:00Z"
+    sensitive_until = "2026-02-01T00:00:00Z"
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_SECRET",
+        display_name="Webflow confidential Slack",
+        settings={"allowed_channel_ids": ["C_SECRET"]},
+    )
+    captured_logs = []
+
+    async def fail_fetch(source, since, until, limit):
+        raise RuntimeError(
+            f"token=secret-token channel=C_SECRET Webflow transcript {sensitive_since}"
+        )
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(slack_indexer, "fetch_history", fail_fetch)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    fetched = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source['id']}/history",
+        json={"since": sensitive_since, "until": sensitive_until, "limit": 77},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert fetched.status_code == 200
+    assert fetched.json() == {"error": "source history fetch failed"}
+    assert captured_logs == [
+        (
+            "source history fetch failed source=%s source_type=%s exception_type=%s",
+            (source["id"], "slack", "RuntimeError"),
+        )
+    ]
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert sensitive_since not in event_json
+    assert sensitive_until not in event_json
+    assert "secret-token" not in event_json
+    assert "C_SECRET" not in event_json
+    assert "T_SECRET" not in event_json
+    assert "Webflow confidential Slack" not in event_json
+    assert "Webflow transcript" not in event_json
+    assert "secret-token" not in str(captured_logs)
+    assert "C_SECRET" not in str(captured_logs)
+
+    history_event = next(event for event in events if event["action"] == "source.history_fetched")
+    assert history_event["target_id"] == source["id"]
+    assert history_event["provider"] == "slack"
+    assert history_event["source_type"] == "slack"
+    assert history_event["metadata"] == {
+        "since_hash": security_audit_service.hash_value(sensitive_since),
+        "until_hash": security_audit_service.hash_value(sensitive_until),
+        "limit": 77,
+        "fetched": None,
+        "error": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, _ = await _register(client, "audit_snapshot")
     ws = await _create_workspace(client, api_key)

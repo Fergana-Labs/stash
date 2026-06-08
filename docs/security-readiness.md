@@ -46,6 +46,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Slack push-event ingestion must only copy new or changed messages into enabled sources whose owners are still workspace members.
 - Copied source documents that disappear from an upstream crawl must be physically deleted rather than retained as hidden soft-deleted content.
 - Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
+- On-demand source history fetch failures must return generic errors, preserve a hashed security audit event, and log only source metadata plus exception class.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
 - Source sync must require the source owner to still be a workspace member; leaving a workspace must remove member-owned connected sources and copied integration documents.
