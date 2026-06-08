@@ -60,6 +60,69 @@ async def test_security_events_are_workspace_admin_only(
 
 
 @pytest.mark.asyncio
+async def test_security_event_reads_are_audited_with_hashed_filters(
+    client: AsyncClient,
+    _db_pool,
+):
+    owner_key, owner_id = await _register(client, "audit_reader_owner")
+    editor_key, editor_id = await _register(client, "audit_reader_editor")
+    ws = await _create_workspace(client, owner_key)
+    await _db_pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
+        ws,
+        editor_id,
+    )
+    sensitive_filter = "source.document_read token=secret-token customer transcript"
+
+    denied = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        params={"action": sensitive_filter, "limit": 5},
+        headers=_auth(editor_key),
+    )
+    filtered_read = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        params={"action": sensitive_filter, "limit": 5},
+        headers=_auth(owner_key),
+    )
+    unfiltered_read = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=_auth(owner_key),
+    )
+
+    assert denied.status_code == 403
+    assert filtered_read.status_code == 200
+    assert unfiltered_read.status_code == 200
+
+    events = unfiltered_read.json()["events"]
+    event_json = json.dumps(events)
+    assert sensitive_filter not in event_json
+    assert "secret-token" not in event_json
+    assert "customer transcript" not in event_json
+
+    filter_hash = security_audit_service.hash_value(sensitive_filter)
+    read_event = next(
+        event
+        for event in events
+        if event["action"] == "security_audit.read"
+        and event["metadata"]["action_filter_hash"] == filter_hash
+    )
+    denied_event = next(
+        event for event in events if event["action"] == "security_audit.read_denied"
+    )
+
+    assert read_event["actor_user_id"] == str(owner_id)
+    assert read_event["target_type"] == "security_audit_log"
+    assert read_event["metadata"] == {"action_filter_hash": filter_hash, "limit": 5}
+    assert denied_event["actor_user_id"] == str(editor_id)
+    assert denied_event["target_type"] == "security_audit_log"
+    assert denied_event["metadata"] == {
+        "action_filter_hash": filter_hash,
+        "limit": 5,
+        "role": "editor",
+    }
+
+
+@pytest.mark.asyncio
 async def test_source_access_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, _ = await _register(client)
     ws = await _create_workspace(client, api_key)
