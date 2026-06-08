@@ -60,7 +60,7 @@ class SnowflakeIntegration:
             raise
         except Exception as e:
             # Connection / auth failure → a client error, surfaced as 400.
-            raise ValueError(f"Could not connect to Snowflake: {e}")
+            raise ValueError("Could not connect to Snowflake; check credentials") from e
 
         token = TokenSet(
             access_token=json.dumps(creds),

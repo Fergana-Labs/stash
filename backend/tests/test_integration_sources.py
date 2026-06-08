@@ -352,6 +352,24 @@ async def test_snowflake_rejects_incomplete_credentials():
         await SnowflakeIntegration().connect_with_credentials({"account": "a", "user": "u"})
 
 
+@pytest.mark.asyncio
+async def test_snowflake_connection_errors_are_redacted(monkeypatch):
+    from backend.integrations.snowflake import provider as snowflake_provider
+
+    async def fail_connection(creds):
+        raise RuntimeError(f"account={creds['account']} token={creds['token']}")
+
+    monkeypatch.setattr(snowflake_provider, "test_connection", fail_connection)
+
+    with pytest.raises(ValueError) as exc:
+        await SnowflakeIntegration().connect_with_credentials(
+            {"account": "acme", "user": "svc", "token": "secret-token"}
+        )
+
+    assert str(exc.value) == "Could not connect to Snowflake; check credentials"
+    assert "secret-token" not in str(exc.value)
+
+
 def test_query_source_tool_is_registered_and_in_tool_sets():
     # The catalog and the advertised tool sets must agree, or the agent would
     # be offered a tool that doesn't exist (or vice-versa).
