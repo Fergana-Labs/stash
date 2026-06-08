@@ -38,6 +38,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
 - Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
 - Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
+- Integration indexer logs must not include external source references, provider resource identifiers, tool response text, customer document names, meeting IDs, or query text.
 - Embedding failures must not log provider response bodies, exception messages, tokens, transcript text, copied integration content, or table row content.
 - Export image failures must not log raw image sources, signed URLs, storage keys, or provider exception text.
 - Email delivery failures must not log provider response bodies, recipient addresses, subjects, tokens, or customer text.

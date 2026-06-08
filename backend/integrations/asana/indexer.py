@@ -88,7 +88,7 @@ async def index_asana(source: dict) -> str | None:
             offset = next_page["offset"]
 
     await source_service.soft_delete_missing("asana_documents", source_id, present)
-    logger.info("asana source %s: indexed %d task(s)", project_gid, len(present))
+    logger.info("asana source %s: indexed %d task(s)", source_id, len(present))
     return None
 
 
