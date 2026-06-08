@@ -66,6 +66,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Permanent delete paths must delete a storage object only when no surviving file or session artifact still references its storage key.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
+- Connected-source document reads, searches, history fetches, queries, and Stash snapshots must audit hashed refs or filters rather than storing source names, provider refs, queries, or customer content.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
 - Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
 - Workspace invite token creation/revocation and member join/leave events must emit workspace security audit events without storing raw invite tokens, member names, emails, or workspace names in event metadata.
