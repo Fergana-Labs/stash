@@ -93,11 +93,11 @@ async def index_jira(source: dict) -> str | None:
     source_id = UUID(source["id"])
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
-    cloud_id, _, project_key = source["external_ref"].partition(":")
+    cloud_id, project_key = source_service.parse_jira_project_ref(source["external_ref"])
 
     token = await get_valid_token(owner_user_id, "jira")
     base = API_BASE.format(cloud_id=cloud_id)
-    jql = f"project = {project_key} ORDER BY updated DESC"
+    jql = f'project = "{_jql_escape(project_key)}" ORDER BY updated DESC'
 
     present: list[str] = []
     next_page_token: str | None = None
@@ -137,10 +137,13 @@ async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> li
     """Federated search: run JQL `text ~` against the project, live. Returns hits
     keyed by issue key (which is the index path, so read_source resolves them)."""
     owner_user_id = UUID(source["owner_user_id"])
-    cloud_id, _, project_key = source["external_ref"].partition(":")
+    cloud_id, project_key = source_service.parse_jira_project_ref(source["external_ref"])
     token = await get_valid_token(owner_user_id, "jira")
     base = API_BASE.format(cloud_id=cloud_id)
-    jql = f'project = "{project_key}" AND text ~ "{_jql_escape(query)}" ORDER BY updated DESC'
+    jql = (
+        f'project = "{_jql_escape(project_key)}" '
+        f'AND text ~ "{_jql_escape(query)}" ORDER BY updated DESC'
+    )
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
         resp = await client.get(
             f"{base}/search/jql",
@@ -163,7 +166,7 @@ async def site_url(source: dict) -> str | None:
     cloud, used to build issue deep links. Resolves the cloud_id from external_ref
     ("{cloudId}:{projectKey}") against the owner's accessible Atlassian resources.
     Cached per cloud_id; returns None if the cloud isn't in the owner's resources."""
-    cloud_id = source["external_ref"].partition(":")[0]
+    cloud_id, _project_key = source_service.parse_jira_project_ref(source["external_ref"])
     if cloud_id in _SITE_URL_CACHE:
         return _SITE_URL_CACHE[cloud_id]
 
