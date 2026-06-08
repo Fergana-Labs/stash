@@ -390,6 +390,76 @@ async def test_pending_share_invite_conversion_is_audited_without_email_or_conte
 
 
 @pytest.mark.asyncio
+async def test_pending_share_invite_revocation_is_audited_without_email_or_content(
+    client: AsyncClient,
+):
+    owner_key, owner_id = await _register(client, "audit_pending_share_revoke_owner")
+    ws = await _create_workspace(client, owner_key)
+    headers = _auth(owner_key)
+
+    page_name = "Webflow revoked partner plan"
+    page_content = "private Webflow revocation launch narrative"
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": page_name, "content": page_content},
+        headers=headers,
+    )
+    assert page_resp.status_code == 201
+    page_id = page_resp.json()["id"]
+
+    recipient_name = unique_name("webflow_revoked_recipient")
+    recipient_email = f"{recipient_name}@example.com"
+    invited = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": recipient_email.upper(),
+            "permission": "write",
+        },
+        headers=headers,
+    )
+    revoked = await client.request(
+        "DELETE",
+        "/api/v1/share/invite",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": recipient_email,
+        },
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert invited.status_code == 200
+    assert invited.json() == {"pending": True, "email": recipient_email}
+    assert revoked.status_code == 200
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    revoked_event = next(event for event in events if event["action"] == "share.invite_revoked")
+    email_hash = security_audit_service.hash_value(recipient_email)
+
+    assert revoked_event["actor_user_id"] == str(owner_id)
+    assert revoked_event["target_type"] == "page"
+    assert revoked_event["target_id"] == page_id
+    assert revoked_event["metadata"] == {
+        "permission": "write",
+        "recipient_email_hash": email_hash,
+    }
+
+    event_json = json.dumps(events)
+    assert recipient_name not in event_json
+    assert recipient_email not in event_json
+    assert recipient_email.upper() not in event_json
+    assert page_name not in event_json
+    assert page_content not in event_json
+
+
+@pytest.mark.asyncio
 async def test_workspace_invite_and_membership_changes_are_audited_without_tokens_or_names(
     client: AsyncClient,
 ):

@@ -211,6 +211,37 @@ async def unshare(
         )
 
 
+async def revoke_pending_invite_by_email(
+    *,
+    object_type: str,
+    object_id: UUID,
+    email: str,
+    owner_id: UUID,
+) -> None:
+    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    normalized_email = email.strip().lower()
+    removed = await get_pool().fetchrow(
+        "DELETE FROM share_invites "
+        "WHERE object_type = $1 AND object_id = $2 AND lower(email) = $3 "
+        "RETURNING permission",
+        object_type,
+        object_id,
+        normalized_email,
+    )
+    if removed:
+        await _record_share_event(
+            action="share.invite_revoked",
+            actor_user_id=owner_id,
+            workspace_id=workspace_id,
+            object_type=object_type,
+            object_id=object_id,
+            metadata={
+                "permission": removed["permission"],
+                "recipient_email_hash": security_audit_service.hash_value(normalized_email),
+            },
+        )
+
+
 async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) -> list[dict]:
     await _require_owner(object_type, object_id, owner_id)
     rows = await get_pool().fetch(

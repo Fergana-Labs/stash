@@ -2065,6 +2065,21 @@ export async function unshareObject(
   });
 }
 
+export async function revokePendingShareInvite(
+  objectType: SharedObjectType,
+  objectId: string,
+  email: string,
+): Promise<void> {
+  await apiFetch("/api/v1/share/invite", {
+    method: "DELETE",
+    body: JSON.stringify({
+      object_type: objectType,
+      object_id: objectId,
+      email,
+    }),
+  });
+}
+
 // --- Trash ---
 
 // All three flavors share the same URL shape (`/{kind}s/{id}`), so a single

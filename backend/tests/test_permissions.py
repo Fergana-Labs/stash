@@ -970,6 +970,62 @@ async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_revoked_pending_share_invite_does_not_convert_on_signup(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "secret spec"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "revoked-newcomer@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    revoked = await client.request(
+        "DELETE",
+        "/api/v1/share/invite",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "REVOKED-NEWCOMER@example.com",
+        },
+        headers=_auth(owner_key),
+    )
+    listing = await client.get(
+        f"/api/v1/share?object_type=page&object_id={page_id}",
+        headers=_auth(owner_key),
+    )
+    newcomer_key, _ = await _register_with_email(
+        client,
+        "revoked-newcomer@example.com",
+    )
+
+    assert share.status_code == 200
+    assert share.json()["pending"] is True
+    assert revoked.status_code == 200
+    assert listing.status_code == 200
+    assert listing.json()["shares"] == []
+    assert (
+        await client.get(
+            f"/api/v1/workspaces/{ws}/pages/{page_id}",
+            headers=_auth(newcomer_key),
+        )
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_shared_with_me_lists_incoming_not_outgoing(pool):
     from backend.services import share_service
 
