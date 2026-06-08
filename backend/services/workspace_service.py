@@ -141,6 +141,35 @@ async def delete_workspace(workspace_id: UUID, user_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+async def list_workspace_storage_keys_for_delete(
+    workspace_id: UUID,
+    user_id: UUID,
+) -> list[str] | None:
+    role = await get_member_role(workspace_id, user_id)
+    if role != "owner":
+        return None
+
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT storage_key
+        FROM files
+        WHERE workspace_id = $1
+
+        UNION
+
+        SELECT sa.storage_key
+        FROM session_artifacts sa
+        JOIN sessions s ON s.id = sa.session_id
+        WHERE s.workspace_id = $1
+
+        ORDER BY storage_key
+        """,
+        workspace_id,
+    )
+    return [row["storage_key"] for row in rows]
+
+
 async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
     pool = get_pool()
     exists = await pool.fetchval(

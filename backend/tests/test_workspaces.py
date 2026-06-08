@@ -1,5 +1,7 @@
 """Tests for workspace CRUD, invite codes, membership, and role enforcement."""
 
+from uuid import UUID
+
 import pytest
 from httpx import AsyncClient
 
@@ -270,6 +272,65 @@ async def test_delete_workspace(client: AsyncClient):
 
     resp = await client.get(f"/api/v1/workspaces/{ws['id']}", headers=_auth(key))
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_workspace_deletes_stored_files_and_session_artifacts(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    key, user = await _register(client)
+    ws = (await client.post("/api/v1/workspaces", json={"name": "Temp"}, headers=_auth(key))).json()
+    workspace_id = UUID(ws["id"])
+    user_id = UUID(user["id"])
+
+    await pool.execute(
+        "INSERT INTO files "
+        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6)",
+        workspace_id,
+        "plans.pdf",
+        "application/pdf",
+        12,
+        "file-key",
+        user_id,
+    )
+    session_row_id = await pool.fetchval(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id",
+        workspace_id,
+        "sess-workspace-delete",
+        "codex",
+        user_id,
+    )
+    await pool.execute(
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+        "VALUES ($1, $2, $3, $4)",
+        session_row_id,
+        "artifact.txt",
+        "artifact-key",
+        42,
+    )
+
+    deleted_keys: list[str] = []
+
+    async def fake_delete_file(storage_key: str) -> None:
+        deleted_keys.append(storage_key)
+
+    monkeypatch.setattr("backend.routers.workspaces.storage_service.delete_file", fake_delete_file)
+
+    resp = await client.delete(f"/api/v1/workspaces/{ws['id']}", headers=_auth(key))
+    assert resp.status_code == 204
+    assert deleted_keys == ["artifact-key", "file-key"]
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM files WHERE workspace_id = $1", workspace_id) == 0
+    )
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM sessions WHERE workspace_id = $1", workspace_id)
+        == 0
+    )
 
 
 @pytest.mark.asyncio
