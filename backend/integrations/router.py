@@ -341,9 +341,16 @@ async def integration_connect_with_credentials(
         raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
     try:
         token, account = await p.connect_with_credentials(values)
-    except ValueError as e:
-        # Bad/rejected credentials — a client error, not a server fault.
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.warning(
+            "Credential connection failed for provider %s (%s)",
+            provider,
+            type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not connect {p.display_name}; check credentials",
+        )
     await storage.store_token(current_user["id"], provider, token, account)
     await security_audit_service.record_event(
         action="integration.connected",
