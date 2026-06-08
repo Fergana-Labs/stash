@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import { securityHeaders, stashEmbedHeaders } from "./src/lib/securityHeaders";
+
 // Rewrites are evaluated by the Next.js node server (server-side). Set
 // BACKEND_INTERNAL_URL for same-network backends (Docker/self-host) or
 // NEXT_PUBLIC_API_URL for managed deployments with a separate API host.
@@ -109,11 +111,13 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/:path*",
+        headers: securityHeaders,
+      },
+      {
         // Published Stash embeds must be iframe-able from anywhere.
         source: "/stashes/:slug/embed",
-        headers: [
-          { key: "Content-Security-Policy", value: "frame-ancestors *" },
-        ],
+        headers: stashEmbedHeaders,
       },
     ];
   },
