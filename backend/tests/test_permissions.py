@@ -702,6 +702,54 @@ async def test_viewer_cannot_create_or_assign_session_folder(client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_session_folder_write_access_cannot_manage_folder(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    stranger_key, _ = await _register(client)
+    writer_key, _ = await _register_with_email(client, "session-folder-writer@example.com")
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    public_folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Public Write", "public_permission": "write"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    shared_folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Shared Write"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "session_folder",
+            "object_id": shared_folder_id,
+            "email": "session-folder-writer@example.com",
+            "permission": "write",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+
+    public_update = await client.patch(
+        f"/api/v1/workspaces/{ws}/session-folders/{public_folder_id}",
+        json={"name": "Renamed"},
+        headers=_auth(stranger_key),
+    )
+    shared_delete = await client.delete(
+        f"/api/v1/workspaces/{ws}/session-folders/{shared_folder_id}",
+        headers=_auth(writer_key),
+    )
+
+    assert public_update.status_code == 404
+    assert shared_delete.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncClient):
     first_key, _ = await _register(client)
     second_key, _ = await _register(client)

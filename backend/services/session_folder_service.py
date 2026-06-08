@@ -162,18 +162,14 @@ async def get_folder(folder_id: UUID) -> dict | None:
 
 async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
     row = await get_pool().fetchrow(
-        "SELECT workspace_id FROM session_folders WHERE id = $1",
+        "SELECT workspace_id, owner_user_id FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not row:
         return False
-    return await permission_service.check_access(
-        "session_folder",
-        folder_id,
-        user_id,
-        workspace_id=row["workspace_id"],
-        require_write=True,
-    )
+    if row["owner_user_id"] == user_id:
+        return True
+    return await permission_service.get_workspace_role(row["workspace_id"], user_id) == "owner"
 
 
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:

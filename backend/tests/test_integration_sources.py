@@ -188,10 +188,20 @@ async def test_gong_rejects_missing_credentials():
 
 @pytest.mark.asyncio
 async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
+    soft_deleted: list[str] = []
+
     async def fail_get_valid_token(user_id, provider):
         raise AssertionError("Gong credentials should not be touched without an allowlist")
 
+    async def fake_soft_delete_missing(table, source_id, present_paths):
+        soft_deleted.extend(present_paths)
+
     monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "soft_delete_missing",
+        fake_soft_delete_missing,
+    )
 
     result = await gong_indexer.index_gong(
         {
@@ -203,11 +213,13 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
     )
 
     assert result is None
+    assert soft_deleted == []
 
 
 @pytest.mark.asyncio
 async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     stored_paths: list[str] = []
+    stored_workspace_ids: list[str] = []
     soft_deleted: list[str] = []
 
     async def fake_get_valid_token(user_id, provider):
@@ -224,6 +236,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
 
     async def fake_upsert_content_document(**kwargs):
         stored_paths.append(kwargs["path"])
+        stored_workspace_ids.append(kwargs["extra"]["gong_workspace_id"])
 
     async def fake_soft_delete_missing(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
@@ -252,6 +265,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     )
 
     assert stored_paths == ["allowed-call"]
+    assert stored_workspace_ids == ["W_ALLOWED"]
     assert soft_deleted == ["allowed-call"]
 
 

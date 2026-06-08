@@ -94,6 +94,7 @@ async def index_gong(source: dict) -> str | None:
     allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
     if not allowed_workspace_ids:
         logger.info("gong source %s: no allowed workspaces configured", source_id)
+        await source_service.soft_delete_missing("gong_documents", source_id, [])
         return None
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
@@ -107,7 +108,8 @@ async def index_gong(source: dict) -> str | None:
 
     present: list[str] = []
     for call_id, meta in meta_by_id.items():
-        if _call_workspace_id(meta) not in allowed_workspace_ids:
+        call_workspace_id = _call_workspace_id(meta)
+        if call_workspace_id not in allowed_workspace_ids:
             continue
         await source_service.upsert_content_document(
             table="gong_documents",
@@ -118,6 +120,7 @@ async def index_gong(source: dict) -> str | None:
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
+            extra={"gong_workspace_id": call_workspace_id},
         )
         present.append(call_id)
 
@@ -154,7 +157,8 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
 
     refs: list[str] = []
     for call_id, meta in list(meta_by_id.items())[:limit]:
-        if _call_workspace_id(meta) not in allowed_workspace_ids:
+        call_workspace_id = _call_workspace_id(meta)
+        if call_workspace_id not in allowed_workspace_ids:
             continue
         await source_service.upsert_content_document(
             table="gong_documents",
@@ -165,6 +169,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
+            extra={"gong_workspace_id": call_workspace_id},
         )
         refs.append(call_id)
 
