@@ -262,11 +262,18 @@ async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
             workspace_id,
             user_id,
         )
+        from . import source_service
+
+        removed_sources = await source_service.delete_sources_for_workspace_member(
+            workspace_id,
+            user_id,
+        )
         await _record_member_event(
             action="workspace.member_left",
             actor_user_id=user_id,
             workspace_id=workspace_id,
             member_user_id=user_id,
+            metadata={"removed_source_count": removed_sources},
         )
         return True
     return False
@@ -316,6 +323,12 @@ async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID)
     if result == "DELETE 1":
         await pool.execute(
             "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id,
+            target_user_id,
+        )
+        from . import source_service
+
+        await source_service.delete_sources_for_workspace_member(
             workspace_id,
             target_user_id,
         )
