@@ -188,6 +188,9 @@ async def snapshot_source(
     cartridge as a page, so the bundle stays self-contained and curl-able."""
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+    stash = await cartridge_service.get_cartridge(cartridge_id)
+    if not stash or stash["workspace_id"] != workspace_id:
+        raise HTTPException(status_code=404, detail="Stash not found")
     try:
         page = await cartridge_service.snapshot_source_into_cartridge(
             cartridge_id, current_user["id"], source_id=req.source_id, path=req.path

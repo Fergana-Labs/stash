@@ -1100,7 +1100,17 @@ async def snapshot_source_into_cartridge(
     lazily at this moment; Slack/Granola/GitHub are copied from our tables.
 
     Returns None if the user doesn't own the source or the document is gone."""
-    source = await source_service.get_owned_source(source_id, user_id)
+    stash = await get_cartridge(cartridge_id)
+    if not stash:
+        return None
+    if not await user_can_write(cartridge_id, user_id):
+        raise PermissionError("Not allowed to edit this stash")
+
+    source = await source_service.get_owned_source_in_workspace(
+        source_id,
+        user_id,
+        stash["workspace_id"],
+    )
     if source is None:
         return None
     doc = await source_service.read_document(source, path)
