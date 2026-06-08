@@ -27,6 +27,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
 - Stored file access must use signed URLs. Raw storage URLs must not be returned to clients.
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
+- Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
 - OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.

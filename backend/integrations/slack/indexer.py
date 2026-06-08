@@ -33,7 +33,7 @@ async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
     resp.raise_for_status()
     payload = resp.json()
     if not payload.get("ok"):
-        raise RuntimeError(f"Slack API error ({url}): {payload.get('error')}")
+        raise RuntimeError("Slack API returned ok=false")
     return payload
 
 
@@ -70,7 +70,11 @@ async def index_slack(source: dict) -> str | None:
                     {"channel": channel_id, "limit": MAX_MESSAGES_PER_CHANNEL},
                 )
             except RuntimeError as e:
-                logger.info("slack: skipping channel %s (%s)", channel_name, e)
+                logger.info(
+                    "slack: skipping unreadable channel source=%s exception_type=%s",
+                    source_id,
+                    type(e).__name__,
+                )
                 continue
             for msg in history.get("messages", []):
                 if msg.get("type") != "message" or not msg.get("ts"):
@@ -128,7 +132,11 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
             try:
                 history = await _slack_get(client, CONVERSATIONS_HISTORY_URL, params)
             except RuntimeError as e:
-                logger.info("slack history: skipping channel %s (%s)", channel_name, e)
+                logger.info(
+                    "slack history: skipping unreadable channel source=%s exception_type=%s",
+                    source_id,
+                    type(e).__name__,
+                )
                 continue
             for msg in history.get("messages", []):
                 if msg.get("type") != "message" or not msg.get("ts"):
