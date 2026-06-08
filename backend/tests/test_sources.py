@@ -1038,7 +1038,143 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient, monkeypatch):
+async def test_slack_allowlist_update_purges_disallowed_copied_messages(
+    client: AsyncClient,
+    pool,
+):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C_OLD", "C_KEEP"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="old/1",
+        name="#old",
+        kind="message",
+        content="old confidential launch thread",
+        external_ref="C_OLD:1",
+        extra={"channel_id": "C_OLD", "channel_name": "old", "ts": "1"},
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="keep/1",
+        name="#keep",
+        kind="message",
+        content="kept confidential launch thread",
+        external_ref="C_KEEP:1",
+        extra={"channel_id": "C_KEEP", "channel_name": "keep", "ts": "1"},
+    )
+
+    updated = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C_KEEP"]},
+    )
+
+    assert updated["id"] == source["id"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND channel_id = 'C_OLD'",
+            source_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND channel_id = 'C_KEEP'",
+            source_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_gong_allowlist_update_purges_disallowed_copied_calls(
+    client: AsyncClient,
+    pool,
+):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="gong_calls",
+        external_ref="calls",
+        display_name="Gong",
+        settings={"allowed_workspace_ids": ["W_OLD", "W_KEEP"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path="old-call",
+        name="Old Call",
+        kind="call",
+        content="old confidential sales call",
+        external_ref="old-call",
+        extra={"gong_workspace_id": "W_OLD"},
+    )
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path="keep-call",
+        name="Keep Call",
+        kind="call",
+        content="kept confidential sales call",
+        external_ref="keep-call",
+        extra={"gong_workspace_id": "W_KEEP"},
+    )
+
+    updated = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="gong_calls",
+        external_ref="calls",
+        display_name="Gong",
+        settings={"allowed_workspace_ids": ["W_KEEP"]},
+    )
+
+    assert updated["id"] == source["id"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM gong_documents "
+            "WHERE source_id = $1 AND gong_workspace_id = 'W_OLD'",
+            source_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM gong_documents "
+            "WHERE source_id = $1 AND gong_workspace_id = 'W_KEEP'",
+            source_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_slack_indexer_backfills_only_allowed_channels(
+    client: AsyncClient,
+    monkeypatch,
+    pool,
+):
     from backend.integrations.slack import indexer
 
     api_key, owner_id = await _register(client)
@@ -1050,6 +1186,18 @@ async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient
         external_ref="T1",
         display_name="Slack",
         settings={"allowed_channel_ids": ["C_ALLOWED"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="exec/1",
+        name="#exec",
+        kind="message",
+        content="blocked copied board thread",
+        external_ref="C_BLOCKED:1",
+        extra={"channel_id": "C_BLOCKED", "channel_name": "exec", "ts": "1"},
     )
     requested_history: list[str] = []
 
@@ -1074,6 +1222,13 @@ async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient
     await indexer.index_slack(src)
 
     assert requested_history == ["C_ALLOWED"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND channel_id = 'C_BLOCKED'",
+            source_id,
+        )
+        == 0
+    )
     docs = await source_service.list_documents(src)
     assert [doc["path"] for doc in docs] == ["general/1"]
 

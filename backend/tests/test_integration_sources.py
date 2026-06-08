@@ -213,10 +213,18 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
     async def fail_get_valid_token(user_id, provider):
         raise AssertionError("Gong credentials should not be touched without an allowlist")
 
+    async def fake_purge_disallowed_copied_documents(source):
+        return 0
+
     async def fake_soft_delete_missing(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "purge_disallowed_copied_documents",
+        fake_purge_disallowed_copied_documents,
+    )
     monkeypatch.setattr(
         gong_indexer.source_service,
         "soft_delete_missing",
@@ -228,6 +236,7 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
             "id": "00000000-0000-0000-0000-000000000001",
             "workspace_id": "00000000-0000-0000-0000-000000000002",
             "owner_user_id": "00000000-0000-0000-0000-000000000003",
+            "source_type": "gong_calls",
             "settings": {},
         }
     )
@@ -261,9 +270,17 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     async def fake_soft_delete_missing(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
 
+    async def fake_purge_disallowed_copied_documents(source):
+        return 0
+
     monkeypatch.setattr(gong_indexer, "get_valid_token", fake_get_valid_token)
     monkeypatch.setattr(gong_indexer, "_fetch_call_meta", fake_fetch_call_meta)
     monkeypatch.setattr(gong_indexer, "_fetch_transcripts", fake_fetch_transcripts)
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "purge_disallowed_copied_documents",
+        fake_purge_disallowed_copied_documents,
+    )
     monkeypatch.setattr(
         gong_indexer.source_service,
         "upsert_content_document",
@@ -280,6 +297,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
             "id": "00000000-0000-0000-0000-000000000001",
             "workspace_id": "00000000-0000-0000-0000-000000000002",
             "owner_user_id": "00000000-0000-0000-0000-000000000003",
+            "source_type": "gong_calls",
             "settings": {"allowed_workspace_ids": ["W_ALLOWED"]},
         }
     )
