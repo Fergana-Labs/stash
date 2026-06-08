@@ -12,6 +12,7 @@ security = HTTPBearer(auto_error=False)
 
 _LAST_SEEN_DEBOUNCE_SECONDS = 60
 _LAST_SEEN_CACHE_SIZE = 4096
+API_KEY_TYPES = {"password", "manual", "cli", "invite"}
 
 
 class _LastSeenCache:
@@ -51,15 +52,19 @@ def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-async def create_api_key(user_id, name: str = "default") -> str:
+async def create_api_key(user_id, name: str = "default", key_type: str = "manual") -> str:
     """Mint a new API key for the user and persist its hash. Returns the raw key."""
+    if key_type not in API_KEY_TYPES:
+        raise ValueError(f"unknown API key type: {key_type}")
+
     pool = get_pool()
     api_key = generate_api_key()
     await pool.execute(
-        "INSERT INTO user_api_keys (user_id, key_hash, name) VALUES ($1, $2, $3)",
+        "INSERT INTO user_api_keys (user_id, key_hash, name, key_type) " "VALUES ($1, $2, $3, $4)",
         user_id,
         hash_api_key(api_key),
         name[:128],
+        key_type,
     )
     return api_key
 
@@ -77,12 +82,12 @@ def verify_password(password: str, password_hash: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _get_user_from_api_key(token: str) -> dict:
+async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> dict:
     key_hash = hash_api_key(token)
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT u.id, u.name, u.display_name, u.email, u.description, "
-        "       u.created_at, u.last_seen, k.id AS key_id "
+        "       u.created_at, u.last_seen, k.id AS key_id, k.key_type "
         "FROM user_api_keys k JOIN users u ON u.id = k.user_id "
         "WHERE k.key_hash = $1 AND k.revoked_at IS NULL",
         key_hash,
@@ -90,6 +95,11 @@ async def _get_user_from_api_key(token: str) -> dict:
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     user = dict(row)
+    if managed_auth_enabled and user["key_type"] != "cli":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key is not allowed for managed auth",
+        )
 
     uid = str(user["id"])
     now = time.monotonic()
@@ -135,11 +145,10 @@ async def get_current_user(
         )
 
     token: str = credentials.credentials
+    from .config import settings
 
     if token.startswith("mc_"):
-        return await _get_user_from_api_key(token)
-
-    from .config import settings
+        return await _get_user_from_api_key(token, managed_auth_enabled=settings.AUTH0_ENABLED)
 
     if settings.AUTH0_ENABLED:
         return await _get_user_from_jwt(token)

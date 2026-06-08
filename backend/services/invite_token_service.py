@@ -171,7 +171,7 @@ async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
             "method": "invite_token",
         },
     )
-    api_key = await create_api_key(user_row["id"], name="invite redeem")
+    api_key = await create_api_key(user_row["id"], name="invite redeem", key_type="invite")
 
     ws = await workspace_service.get_workspace(token_row["workspace_id"])
     return {
