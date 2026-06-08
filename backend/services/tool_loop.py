@@ -183,10 +183,9 @@ async def stream_tool_loop(
                 break
 
             # Execute each tool, build tool_result blocks for the next turn.
-            # Errors get a generic message in the wire payload — real
-            # exception detail (and stack) goes to the server log only.
-            # Leaking SQL / table names / stack frames into the model
-            # context risks them ending up in the user-visible response.
+            # Errors get a generic message in the wire payload and only
+            # non-sensitive metadata in logs. Tool inputs can contain customer
+            # queries, source handles, or transcript text.
             tool_results: list[dict] = []
             for use in tool_uses:
                 executor = _TOOLS_BY_NAME.get(use["name"])
@@ -213,9 +212,13 @@ async def stream_tool_loop(
                                 "content": text or "(empty)",
                             }
                         )
-                    except Exception:
+                    except Exception as exc:
                         ok = False
-                        logger.exception("tool %s failed (args=%r)", use["name"], use["input"])
+                        logger.error(
+                            "tool %s failed exception_type=%s",
+                            use["name"],
+                            type(exc).__name__,
+                        )
                         tool_results.append(
                             {
                                 "type": "tool_result",
