@@ -662,6 +662,11 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         headers=_auth(member_key),
     )
     assert joined.status_code == 200
+    recipient_joined = await client.post(
+        f"/api/v1/workspaces/join/{ws['invite_code']}",
+        headers=_auth(recipient_key),
+    )
+    assert recipient_joined.status_code == 200
 
     page = (
         await client.post(

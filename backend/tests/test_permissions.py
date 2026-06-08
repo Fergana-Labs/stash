@@ -599,6 +599,39 @@ async def test_non_owner_workspace_member_cannot_share_page_over_http(
 
 
 @pytest.mark.asyncio
+async def test_viewer_cannot_create_private_stash_with_workspace_content(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    viewer_key, viewer = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(viewer["id"]), role="viewer")
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "confidential"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    create = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges",
+        json={
+            "title": "Private export",
+            "workspace_permission": "none",
+            "public_permission": "none",
+            "items": [{"object_type": "page", "object_id": page_id}],
+        },
+        headers=_auth(viewer_key),
+    )
+
+    assert create.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
     client: AsyncClient,
     pool,
@@ -724,6 +757,126 @@ async def test_workspace_write_stash_does_not_let_viewers_create_pages(
     assert viewer_create.status_code == 403
     assert created_by_viewer == 0
     assert editor_create.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_stash_write_membership_requires_workspace_write_role(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    viewer_key, viewer = await _register(client)
+    external_key, external = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(viewer["id"]), role="viewer")
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "confidential"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    stash = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/cartridges",
+            json={
+                "title": "Private Stash",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [{"object_type": "page", "object_id": page_id}],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+
+    viewer_grant = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/members",
+        json={"user_id": viewer["id"], "permission": "write"},
+        headers=_auth(owner_key),
+    )
+    external_grant = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/members",
+        json={"user_id": external["id"], "permission": "write"},
+        headers=_auth(owner_key),
+    )
+    await pool.execute(
+        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
+        "VALUES ($1, $2, 'write', $3), ($1, $4, 'write', $3)",
+        uuid.UUID(stash["id"]),
+        uuid.UUID(viewer["id"]),
+        uuid.UUID(external["id"]),
+        uuid.UUID(external["id"]),
+    )
+
+    viewer_create = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/shared-pages",
+        json={"name": "Viewer Draft", "content": "viewer should not write"},
+        headers=_auth(viewer_key),
+    )
+    external_create = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/shared-pages",
+        json={"name": "External Draft", "content": "external should not write"},
+        headers=_auth(external_key),
+    )
+
+    assert viewer_grant.status_code == 403
+    assert external_grant.status_code == 403
+    assert viewer_create.status_code == 403
+    assert external_create.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_non_owner_stash_admin_cannot_grant_external_member(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    editor_key, editor = await _register(client)
+    external_key, external = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "confidential"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    stash = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/cartridges",
+            json={
+                "title": "Private Stash",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [{"object_type": "page", "object_id": page_id}],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+    admin_grant = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/members",
+        json={"user_id": editor["id"], "permission": "admin"},
+        headers=_auth(owner_key),
+    )
+
+    external_grant = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/members",
+        json={"user_id": external["id"], "permission": "read"},
+        headers=_auth(editor_key),
+    )
+    external_read = await client.get(
+        f"/api/v1/cartridges/{stash['slug']}",
+        headers=_auth(external_key),
+    )
+
+    assert admin_grant.status_code == 201
+    assert external_grant.status_code == 403
+    assert external_read.status_code == 404
 
 
 @pytest.mark.asyncio

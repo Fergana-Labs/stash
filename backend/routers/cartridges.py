@@ -60,14 +60,14 @@ async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> No
     if item_workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Stash items must be in the workspace")
 
-    can_read = await permission_service.check_access(
+    can_share = await permission_service.check_access(
         item.object_type,
         item.object_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=False,
+        require_write=True,
     )
-    if not can_read:
+    if not can_share:
         raise HTTPException(status_code=403, detail="Not allowed to share one or more items")
 
 
@@ -79,6 +79,8 @@ async def create_cartridge(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not create Stashes")
     await _require_workspace_owner_for_stash_visibility(workspace_id, current_user["id"], req)
     if req.discoverable and req.public_permission == "none":
         raise HTTPException(status_code=400, detail="Discover Cartridges must be public")
@@ -238,6 +240,12 @@ async def update_cartridge(
 ):
     if not await cartridge_service.user_can_manage(cartridge_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not allowed to manage this cartridge")
+    stash = await cartridge_service.get_cartridge(cartridge_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    if req.items is not None:
+        for item in req.items:
+            await _require_can_share_item(stash["workspace_id"], item, current_user["id"])
     try:
         stash = await cartridge_service.update_cartridge(
             cartridge_id,
@@ -298,6 +306,22 @@ async def add_cartridge_member(
     user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    target_role = await workspace_service.get_member_role(stash["workspace_id"], req.user_id)
+    if target_role is None and not await workspace_service.is_owner(
+        stash["workspace_id"], current_user["id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners can share Stashes outside the workspace",
+        )
+    if (
+        req.permission in ("write", "admin")
+        and target_role not in workspace_service.ROLES_CAN_WRITE
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Stash write access requires a workspace editor or owner",
+        )
 
     try:
         member = await cartridge_service.add_member(
