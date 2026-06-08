@@ -33,6 +33,11 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
+async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(status_code=403, detail="Viewers can read but not write sessions")
+
+
 # ===== Workspace event endpoints =====
 
 
@@ -42,7 +47,7 @@ async def push_ws_event(
     req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
         workspace_id,
@@ -77,7 +82,7 @@ async def push_ws_events_batch(
     req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(workspace_id, current_user["id"], events_data)
     if req.default_cartridge_id:

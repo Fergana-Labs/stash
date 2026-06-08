@@ -188,8 +188,8 @@ async def upsert_workspace_session(
     req: SessionUpsertRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not create sessions")
 
     # A session always lands in a folder: the one it was pushed to, or the
     # workspace's Default folder (chat-UI + un-targeted CLI sessions).
@@ -356,19 +356,17 @@ async def upload_session_artifact(
     file_path: str = Form(...),
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-
     session = await session_service.get_session_by_id(session_row_id)
     if not session or session["workspace_id"] != workspace_id:
         raise HTTPException(status_code=404, detail="Session not found")
-    can_read = await permission_service.check_access(
+    can_write = await permission_service.check_access(
         "session",
         session_row_id,
         current_user["id"],
         workspace_id=workspace_id,
+        require_write=True,
     )
-    if not can_read:
+    if not can_write:
         raise HTTPException(status_code=404, detail="Session not found")
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
@@ -434,8 +432,8 @@ async def materialize_session(
     Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather
     than spawning duplicates."""
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
     if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="No events for that session in this workspace")
 
