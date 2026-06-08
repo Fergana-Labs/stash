@@ -22,6 +22,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange or manual API-key creation paths; CLI keys require explicit short-lived session approval.
+- Replayed CLI auth approvals must not mint orphaned device API keys.
 - Expired CLI auth sessions must purge raw pending API keys and revoke approved-but-unclaimed CLI keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
 - User search must be scoped to a workspace where the requester is already a member; it must not enumerate users across tenants.
@@ -51,6 +52,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Integration disconnect must delete Stash's local encrypted credentials even when provider token revocation or decryption fails.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
+- Permanent delete paths must delete a storage object only when no surviving file or session artifact still references its storage key.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
 - Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
@@ -60,6 +62,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.
 - Credentialed CORS must reject wildcard origins.
 - API and Next.js responses must include baseline security headers.
+- Next.js routes must deny framing except for explicit published Stash embed routes.
 - Admin secrets and cookie secrets must be at least 32 characters.
 
 ## Continuous Checks

@@ -321,18 +321,33 @@ async def approve_cli_auth_session(
     pool = get_pool()
     await _cleanup_expired_cli_auth_sessions(pool)
     row = await pool.fetchrow(
-        "SELECT device_name FROM cli_auth_sessions "
+        "SELECT device_name, api_key FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
         session_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="Session not found or expired")
+    # Approve exactly once. A replayed approve must not mint a second key: the
+    # first key's hash would stay active while its plaintext is overwritten,
+    # leaving an orphan that the session-based cleanup can never revoke.
+    if row["api_key"] is not None:
+        return {"status": "approved"}
+
     device_name = row["device_name"] or "CLI"
     api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
-    await pool.execute(
-        "UPDATE cli_auth_sessions SET api_key = $1, username = $2 WHERE session_id = $3",
+    result = await pool.execute(
+        "UPDATE cli_auth_sessions SET api_key = $1, username = $2 "
+        "WHERE session_id = $3 AND api_key IS NULL",
         api_key,
         current_user["name"],
         session_id,
     )
+    if result != "UPDATE 1":
+        # Lost a concurrent approve race; revoke the key we just minted so it
+        # cannot linger unreferenced.
+        await pool.execute(
+            "UPDATE user_api_keys SET revoked_at = now() "
+            "WHERE key_hash = $1 AND revoked_at IS NULL",
+            hash_api_key(api_key),
+        )
     return {"status": "approved"}

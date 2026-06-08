@@ -8,6 +8,13 @@ export const securityHeaders = [
   },
 ];
 
+// Anti-clickjacking. Applied to every route except published Stash embeds,
+// which must stay iframe-able from anywhere (stashEmbedHeaders below).
+export const frameGuardHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+];
+
 export const stashEmbedHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors *" },
 ];

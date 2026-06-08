@@ -171,20 +171,35 @@ async def list_workspace_storage_keys_for_delete(
         return None
 
     pool = get_pool()
+    # Forks copy storage_key by reference (cartridge_service._fork_file /
+    # _fork_session), so one S3 object can back rows in several workspaces.
+    # Only return keys referenced solely by this workspace; deleting a key that
+    # a surviving workspace still points at would 502 their downloads.
     rows = await pool.fetch(
         """
-        SELECT storage_key
-        FROM files
-        WHERE workspace_id = $1
+        SELECT k.storage_key
+        FROM (
+            SELECT storage_key
+            FROM files
+            WHERE workspace_id = $1
 
-        UNION
+            UNION
 
-        SELECT sa.storage_key
-        FROM session_artifacts sa
-        JOIN sessions s ON s.id = sa.session_id
-        WHERE s.workspace_id = $1
-
-        ORDER BY storage_key
+            SELECT sa.storage_key
+            FROM session_artifacts sa
+            JOIN sessions s ON s.id = sa.session_id
+            WHERE s.workspace_id = $1
+        ) k
+        WHERE NOT EXISTS (
+            SELECT 1 FROM files f
+            WHERE f.storage_key = k.storage_key AND f.workspace_id <> $1
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM session_artifacts sa2
+            JOIN sessions s2 ON s2.id = sa2.session_id
+            WHERE sa2.storage_key = k.storage_key AND s2.workspace_id <> $1
+        )
+        ORDER BY k.storage_key
         """,
         workspace_id,
     )
