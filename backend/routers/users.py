@@ -135,6 +135,8 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
 @router.patch("/me", response_model=UserProfile)
 async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_current_user)):
+    if req.password is not None:
+        _require_password_auth()
     try:
         updated = await user_service.update_user(
             user_id=current_user["id"],
