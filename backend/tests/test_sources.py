@@ -51,6 +51,68 @@ def _tool_json(result: dict):
     return json.loads(result["content"][0]["text"])
 
 
+def _external_ref_for_source_type(source_type: str) -> str:
+    refs = {
+        "github_repo": "acme/widgets",
+        "google_drive": "drive-root",
+        "notion": "notion-root",
+        "slack": "T123",
+        "granola": "granola",
+        "jira_project": "cloud-1:PROJ_1",
+        "asana_project": "asana-project-1",
+        "gong_calls": "gong-source",
+        "snowflake": "account/database/schema",
+    }
+    return refs[source_type]
+
+
+def _settings_for_source_type(source_type: str) -> dict:
+    if source_type == "slack":
+        return {"allowed_channel_ids": ["C123"]}
+    if source_type == "gong_calls":
+        return {"allowed_workspace_ids": ["GONG_WS"]}
+    return {}
+
+
+async def _insert_representative_source_document(
+    *,
+    workspace_id: UUID,
+    source: dict,
+) -> None:
+    table = source_service.SOURCE_TABLE.get(source["source_type"])
+    if table is None:
+        return
+
+    source_id = UUID(source["id"])
+    if table not in source_service.CONTENT_TABLES:
+        await source_service.upsert_index_row(
+            table=table,
+            source_id=source_id,
+            workspace_id=workspace_id,
+            path="record-1",
+            name="Record 1",
+            external_ref="provider-record-1",
+        )
+        return
+
+    extra = {}
+    if table == "slack_messages":
+        extra = {"channel_id": "C123", "channel_name": "eng", "ts": "1720000000.000100"}
+    elif table == "gong_documents":
+        extra = {"gong_workspace_id": "GONG_WS"}
+
+    await source_service.upsert_content_document(
+        table=table,
+        source_id=source_id,
+        workspace_id=workspace_id,
+        path="record-1",
+        name="Record 1",
+        content="confidential customer content",
+        external_ref="provider-record-1",
+        extra=extra,
+    )
+
+
 # --- registry endpoints -----------------------------------------------------
 
 
@@ -213,6 +275,46 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
         slack_id,
     )
     assert copied_rows == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "source_type"),
+    [
+        (provider, source_type)
+        for provider, source_types in source_service.PROVIDER_SOURCE_TYPES.items()
+        for source_type in source_types
+    ],
+)
+async def test_provider_cleanup_removes_source_and_retained_rows(
+    client: AsyncClient,
+    _db_pool,
+    provider: str,
+    source_type: str,
+):
+    api_key, owner_id = await _register(client, "src_cleanup")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type=source_type,
+        external_ref=_external_ref_for_source_type(source_type),
+        display_name=f"{source_type} source",
+        settings=_settings_for_source_type(source_type),
+    )
+    source_id = UUID(source["id"])
+    await _insert_representative_source_document(workspace_id=ws, source=source)
+
+    removed_sources = await source_service.delete_sources_for_provider(owner_id, provider)
+
+    assert removed_sources == 1
+    assert await source_service.get_owned_source(source_id, owner_id) is None
+    table = source_service.SOURCE_TABLE.get(source_type)
+    if table is not None:
+        assert (
+            await _db_pool.fetchval(f"SELECT COUNT(*) FROM {table} WHERE source_id = $1", source_id)
+            == 0
+        )
 
 
 @pytest.mark.asyncio
