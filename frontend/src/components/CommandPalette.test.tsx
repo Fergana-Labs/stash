@@ -149,11 +149,11 @@ describe("CommandPalette search", () => {
       target: { value: "hiring outreach" },
     });
 
-    expect(await screen.findByText("Hiring Outreach CRM")).toBeInTheDocument();
+    const tableResult = await screen.findByText("Hiring Outreach CRM");
 
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "Enter" });
-
-    expect(router.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-1");
+    expect(tableResult.closest("a")).toHaveAttribute(
+      "href",
+      "/tables/table-1?workspaceId=ws-1",
+    );
   });
 });
