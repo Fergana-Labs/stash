@@ -24,6 +24,8 @@ export type CredentialField = {
   label: string;
   secret: boolean;
   placeholder: string;
+  optional?: boolean;
+  help?: string;
 };
 
 export type IntegrationStatus = {

@@ -177,6 +177,8 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                         "label": f.label,
                         "secret": f.secret,
                         "placeholder": f.placeholder,
+                        "optional": f.optional,
+                        "help": f.help,
                     }
                     for f in getattr(p, "credential_fields", [])
                 ]

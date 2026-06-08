@@ -481,7 +481,11 @@ export function CredentialForm({
   onSubmit: (values: Record<string, string>) => Promise<boolean>;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const complete = fields.every((f) => (values[f.name] ?? "").trim().length > 0);
+  // Only the required (non-optional) fields gate submission; "one of" auth
+  // choices are marked optional and validated server-side.
+  const complete = fields
+    .filter((f) => !f.optional)
+    .every((f) => (values[f.name] ?? "").trim().length > 0);
 
   return (
     <form
@@ -493,7 +497,10 @@ export function CredentialForm({
     >
       {fields.map((field) => (
         <label key={field.name} className="block">
-          <span className="mb-1 block text-[11.5px] text-muted">{field.label}</span>
+          <span className="mb-1 block text-[11.5px] text-muted">
+            {field.label}
+            {field.optional && <span className="ml-1 text-dim">(optional)</span>}
+          </span>
           <input
             type={field.secret ? "password" : "text"}
             value={values[field.name] ?? ""}
@@ -502,6 +509,7 @@ export function CredentialForm({
             onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))}
             className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
           />
+          {field.help && <span className="mt-1 block text-[11px] text-dim">{field.help}</span>}
         </label>
       ))}
       <button type="submit" disabled={!complete || busy} className={primaryButton()}>

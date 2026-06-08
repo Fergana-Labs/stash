@@ -38,6 +38,8 @@ class CredentialField:
     label: str
     secret: bool = False  # render as a password field + never echo back
     placeholder: str = ""
+    optional: bool = False  # not required to submit the form
+    help: str = ""  # one-line hint shown under the field
 
 
 class Integration(Protocol):

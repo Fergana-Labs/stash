@@ -330,10 +330,25 @@ def test_snowflake_is_queryable_api_key_source():
     assert "snowflake" not in source_tasks.INDEXERS
 
 
+def test_snowflake_offers_pat_token_with_optional_alternatives():
+    # PAT (a single token) is the easy auth path; key-pair is the optional
+    # alternative. Only account + user are required so the form doesn't force
+    # users to fill the optional warehouse/role/database/passphrase.
+    fields = {f.name: f for f in SnowflakeIntegration().credential_fields}
+    assert fields["token"].optional and fields["token"].secret
+    assert fields["private_key"].optional
+    assert not fields["account"].optional and not fields["user"].optional
+    for opt in ("warehouse", "role", "database", "private_key_passphrase"):
+        assert fields[opt].optional, opt
+
+
 @pytest.mark.asyncio
 async def test_snowflake_rejects_incomplete_credentials():
     with pytest.raises(ValueError):
         await SnowflakeIntegration().connect_with_credentials({"account": "a"})  # no user/key
+    # account + user but no auth method (token/key/password) is also rejected.
+    with pytest.raises(ValueError):
+        await SnowflakeIntegration().connect_with_credentials({"account": "a", "user": "u"})
 
 
 def test_query_source_tool_is_registered_and_in_tool_sets():

@@ -65,7 +65,10 @@ def _connect(creds: dict):
             kwargs[key] = creds[key]
 
     private_key = creds.get("private_key")
-    if private_key:
+    if creds.get("token"):
+        # A Programmatic Access Token authenticates in place of a password.
+        kwargs["password"] = creds["token"]
+    elif private_key:
         from cryptography.hazmat.primitives import serialization
 
         passphrase = creds.get("private_key_passphrase") or None
@@ -81,7 +84,7 @@ def _connect(creds: dict):
     elif creds.get("password"):
         kwargs["password"] = creds["password"]
     else:
-        raise ValueError("Snowflake credentials need a private key or password")
+        raise ValueError("Snowflake credentials need a token, private key, or password")
 
     return snowflake.connector.connect(**kwargs)
 
