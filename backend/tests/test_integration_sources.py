@@ -19,7 +19,12 @@ from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.integrations.registry import list_providers
-from backend.integrations.snowflake.client import _assert_read_only, _validate_identifier
+from backend.integrations.snowflake.client import (
+    ROW_CAP,
+    _assert_read_only,
+    _query_limit,
+    _validate_identifier,
+)
 from backend.integrations.snowflake.provider import SnowflakeIntegration
 from backend.services import agent_runtime, prompts, source_service
 from backend.tasks import sources as source_tasks
@@ -319,6 +324,14 @@ def test_validate_identifier_rejects_injection():
     for bad in ("t; drop table u", "t where 1=1", "t--", "t)"):
         with pytest.raises(ValueError):
             _validate_identifier(bad)
+
+
+def test_snowflake_query_limit_rejects_non_positive_values():
+    assert _query_limit(1) == 1
+    assert _query_limit(ROW_CAP + 1) == ROW_CAP
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="limit must be at least 1"):
+            _query_limit(bad)
 
 
 def test_snowflake_is_queryable_api_key_source():
