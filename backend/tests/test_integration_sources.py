@@ -18,6 +18,7 @@ from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
+from backend.integrations.registry import list_providers
 from backend.integrations.snowflake.client import _assert_read_only, _validate_identifier
 from backend.integrations.snowflake.provider import SnowflakeIntegration
 from backend.services import agent_runtime, prompts, source_service
@@ -123,6 +124,11 @@ def test_connected_source_types_are_fully_wired():
         is_content = table in source_service.CONTENT_TABLES
         is_index_only = source_type in source_service.FEDERATED_SEARCH_TYPES
         assert is_content or is_index_only, table
+
+
+def test_provider_disconnect_cleanup_mapping_covers_registered_providers():
+    provider_names = {provider.name for provider in list_providers()}
+    assert set(source_service.PROVIDER_SOURCE_TYPES) == provider_names
 
 
 def test_notion_is_searchable_content_source():

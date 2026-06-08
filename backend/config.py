@@ -73,7 +73,9 @@ class Settings:
     LINEAR_API_URL: str = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
 
     # --- Integrations (OAuth + per-user token storage) ---
-    # Fernet key for encrypting access/refresh tokens at rest.
+    # Comma-separated Fernet keyring for encrypting access/refresh tokens at
+    # rest. The first key encrypts new values; later keys decrypt during
+    # rotation.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     INTEGRATIONS_ENCRYPTION_KEY: str | None = os.getenv("INTEGRATIONS_ENCRYPTION_KEY")
 

@@ -135,7 +135,10 @@ async def test_integrations_are_unavailable_with_invalid_encryption_key(
     assert response.status_code == 200
     github = next(p for p in response.json()["providers"] if p["provider"] == "github")
     assert github["enabled"] is False
-    assert github["disabled_reason"] == "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
+    assert (
+        github["disabled_reason"]
+        == "INTEGRATIONS_ENCRYPTION_KEY must be one or more valid Fernet keys."
+    )
 
 
 def _fake_session(tool_routes: dict):
