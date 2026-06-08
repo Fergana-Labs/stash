@@ -17,7 +17,12 @@ from ..models import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import invite_token_service, storage_service, workspace_service
+from ..services import (
+    invite_token_service,
+    security_audit_service,
+    storage_service,
+    workspace_service,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
@@ -230,3 +235,13 @@ async def revoke_invite_token(
     ok = await invite_token_service.revoke_token(token_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Token not found or already revoked")
+    await security_audit_service.record_event(
+        action="workspace.invite_token_revoked",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={
+            "invite_token_id_hash": security_audit_service.hash_value(str(token_id)),
+        },
+    )

@@ -12,7 +12,7 @@ from uuid import UUID
 
 from ..auth import create_api_key
 from ..database import get_pool
-from . import workspace_service
+from . import security_audit_service, workspace_service
 
 TOKEN_PREFIX = "stash_inv_"
 
@@ -45,6 +45,18 @@ async def create_token(
         max_uses,
         expires_at,
         creator_id,
+    )
+    await security_audit_service.record_event(
+        action="workspace.invite_token_created",
+        actor_user_id=creator_id,
+        workspace_id=workspace_id,
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={
+            "invite_token_id_hash": security_audit_service.hash_value(str(row["id"])),
+            "max_uses": max_uses,
+            "ttl_days": ttl_days,
+        },
     )
     return dict(row), raw
 
@@ -147,6 +159,18 @@ async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
                 token_row["workspace_id"],
                 user_row["id"],
             )
+    await security_audit_service.record_event(
+        action="workspace.member_joined",
+        actor_user_id=user_row["id"],
+        workspace_id=token_row["workspace_id"],
+        target_type="workspace",
+        target_id=str(token_row["workspace_id"]),
+        metadata={
+            "member_user_hash": security_audit_service.hash_value(str(user_row["id"])),
+            "role": "editor",
+            "method": "invite_token",
+        },
+    )
     api_key = await create_api_key(user_row["id"], name="invite redeem")
 
     ws = await workspace_service.get_workspace(token_row["workspace_id"])
@@ -171,6 +195,7 @@ async def redeem_as_existing_user(raw_token: str, user_id: UUID) -> dict | None:
         return None
 
     pool = get_pool()
+    joined = False
     async with pool.acquire() as conn:
         async with conn.transaction():
             consumed = await conn.execute(
@@ -182,12 +207,26 @@ async def redeem_as_existing_user(raw_token: str, user_id: UUID) -> dict | None:
             if not consumed.endswith(" 1"):
                 raise RuntimeError("invite token was consumed concurrently")
             # Idempotent membership insert.
-            await conn.execute(
+            inserted = await conn.execute(
                 "INSERT INTO workspace_members (workspace_id, user_id, role) "
                 "VALUES ($1, $2, 'editor') "
                 "ON CONFLICT (workspace_id, user_id) DO NOTHING",
                 token_row["workspace_id"],
                 user_id,
             )
+            joined = inserted.endswith(" 1")
 
+    if joined:
+        await security_audit_service.record_event(
+            action="workspace.member_joined",
+            actor_user_id=user_id,
+            workspace_id=token_row["workspace_id"],
+            target_type="workspace",
+            target_id=str(token_row["workspace_id"]),
+            metadata={
+                "member_user_hash": security_audit_service.hash_value(str(user_id)),
+                "role": "editor",
+                "method": "invite_token",
+            },
+        )
     return await workspace_service.get_workspace(token_row["workspace_id"])
