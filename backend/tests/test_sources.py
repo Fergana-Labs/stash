@@ -216,6 +216,83 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
 
 
 @pytest.mark.asyncio
+async def test_workspace_leave_removes_member_sources_and_copied_documents(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _owner_id = await _register(client, "src_leave_owner")
+    member_key, member_id = await _register(client, "src_leave_member")
+    ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Source offboarding"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    joined = await client.post(
+        f"/api/v1/workspaces/join/{ws['invite_code']}",
+        headers=_auth(member_key),
+    )
+    assert joined.status_code == 200
+
+    source = await source_service.create_source(
+        workspace_id=UUID(ws["id"]),
+        owner_user_id=member_id,
+        source_type="slack",
+        external_ref="TWEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["CWEBFLOW"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=UUID(ws["id"]),
+        path="CWEBFLOW/1720000000.000100",
+        name="confidential-launch",
+        content="Webflow confidential launch plan",
+    )
+
+    left = await client.post(
+        f"/api/v1/workspaces/{ws['id']}/leave",
+        headers=_auth(member_key),
+    )
+
+    assert left.status_code == 204
+    assert await source_service.get_owned_source(source_id, member_id) is None
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_source_sync_requires_current_workspace_membership(client: AsyncClient, pool):
+    owner_key, owner_id = await _register(client, "src_sync_owner")
+    ws = await _create_workspace(client, owner_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="TWEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["CWEBFLOW"]},
+    )
+    source_id = UUID(source["id"])
+
+    await pool.execute(
+        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        ws,
+        owner_id,
+    )
+
+    due_ids = {UUID(source["id"]) for source in await source_service.due_sources(limit=20)}
+
+    assert source_id not in due_ids
+    assert await source_service.get_source_for_sync(source_id) is None
+
+
+@pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
     ws = await _create_workspace(client, api_key)
