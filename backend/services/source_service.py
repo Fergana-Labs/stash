@@ -75,6 +75,12 @@ PROVIDER_SOURCE_TYPES = {
     "snowflake": ("snowflake",),
 }
 
+SOURCE_TYPE_PROVIDER = {
+    source_type: provider
+    for provider, source_types in PROVIDER_SOURCE_TYPES.items()
+    for source_type in source_types
+}
+
 
 def _clean_string_list(value, field_name: str) -> list[str]:
     if value is None:
@@ -256,6 +262,21 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> int:
         list(source_types),
     )
     return int(result.rsplit(" ", 1)[-1])
+
+
+async def list_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    source_types = PROVIDER_SOURCE_TYPES.get(provider)
+    if source_types is None:
+        raise ValueError(f"unknown provider source mapping: {provider}")
+
+    rows = await get_pool().fetch(
+        "SELECT * FROM workspace_sources "
+        "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
+        "ORDER BY workspace_id, source_type, display_name",
+        user_id,
+        list(source_types),
+    )
+    return [_source_row(row) for row in rows]
 
 
 async def get_source_for_sync(source_id: UUID) -> dict | None:
