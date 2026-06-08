@@ -1,4 +1,5 @@
 import secrets
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -19,7 +20,7 @@ from ..models import (
     UserSearchResult,
     UserUpdateRequest,
 )
-from ..services import invite_token_service, user_service
+from ..services import invite_token_service, user_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -117,16 +118,26 @@ async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_cur
 @router.get("/search", response_model=list[UserSearchResult])
 async def search_users(
     q: str = Query(..., min_length=1, max_length=64),
+    workspace_id: UUID = Query(...),
     current_user: dict = Depends(get_current_user),
 ):
-    """Search for users by name or display name."""
+    """Search workspace members by name or display name."""
     from ..database import get_pool
+
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, name, display_name FROM users "
-        "WHERE (name ILIKE $1 OR display_name ILIKE $1) AND id != $2 "
+        "SELECT u.id, u.name, u.display_name "
+        "FROM workspace_members wm "
+        "JOIN users u ON u.id = wm.user_id "
+        "WHERE wm.workspace_id = $1 "
+        "AND (u.name ILIKE $2 OR u.display_name ILIKE $2) "
+        "AND u.id != $3 "
+        "ORDER BY u.display_name, u.name "
         "LIMIT 20",
+        workspace_id,
         f"%{q}%",
         current_user["id"],
     )

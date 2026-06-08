@@ -342,6 +342,7 @@ describe("CartridgePageClient sharing", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Search" }));
     fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
 
+    expect(searchUsers).toHaveBeenCalledWith("alex", "workspace-1");
     await waitFor(() =>
       expect(addCartridgeMember).toHaveBeenCalledWith("stash-1", "user-3", "read"),
     );

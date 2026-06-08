@@ -83,6 +83,48 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
 
 
 @pytest.mark.asyncio
+async def test_user_search_is_scoped_to_request_workspace(client: AsyncClient, pool):
+    owner_key, _ = await _register(client, "webflow_search_owner")
+    teammate_key, teammate = await _register(client, "webflow_search_teammate")
+    stranger_key, stranger = await _register(client, "webflow_search_stranger")
+    workspace = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Webflow Team"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+        UUID(workspace["id"]),
+        UUID(teammate["id"]),
+    )
+
+    search = await client.get(
+        "/api/v1/users/search",
+        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        headers=_auth(owner_key),
+    )
+    stranger_search = await client.get(
+        "/api/v1/users/search",
+        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        headers=_auth(stranger_key),
+    )
+    teammate_search = await client.get(
+        "/api/v1/users/search",
+        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        headers=_auth(teammate_key),
+    )
+
+    assert search.status_code == 200
+    assert {row["id"] for row in search.json()} == {teammate["id"]}
+    assert stranger["id"] not in {row["id"] for row in search.json()}
+    assert stranger_search.status_code == 404
+    assert teammate_search.status_code == 200
+    assert {row["id"] for row in teammate_search.json()} == {workspace["creator_id"]}
+
+
+@pytest.mark.asyncio
 async def test_get_workspace_does_not_auto_join_non_member(client: AsyncClient, pool):
     owner_key, _ = await _register(client)
     stranger_key, stranger = await _register(client)

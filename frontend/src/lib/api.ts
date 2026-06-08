@@ -201,8 +201,10 @@ export async function createMyKey(name: string): Promise<ApiKeyCreated> {
   });
 }
 
-export async function searchUsers(query: string): Promise<UserSearchResult[]> {
-  return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
+export async function searchUsers(query: string, workspaceId: string): Promise<UserSearchResult[]> {
+  return apiFetch(
+    `/api/v1/users/search?q=${encodeURIComponent(query)}&workspace_id=${workspaceId}`
+  );
 }
 
 // --- Workspaces ---
