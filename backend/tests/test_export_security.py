@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 
+from backend.exports.native import image_fetch
 from backend.exports.native.image_fetch import ImageFetcher
 from backend.services import storage_service
 
@@ -86,3 +87,27 @@ async def test_image_fetcher_rejects_cross_workspace_stash_file(pool, monkeypatc
 @pytest.mark.asyncio
 async def test_image_fetcher_rejects_remote_http_urls():
     assert await ImageFetcher().fetch("https://example.com/image.png") is None
+
+
+@pytest.mark.asyncio
+async def test_image_fetcher_failure_logs_only_metadata(monkeypatch):
+    captured_logs: list[tuple[str, tuple]] = []
+    src = "https://cdn.example.test/customer/webflow/logo.png?token=secret-token"
+
+    async def fail_fetch(self, received_src):
+        assert received_src == src
+        raise RuntimeError("storage key customer/webflow/logo.png and customer transcript")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(ImageFetcher, "_fetch_uncached", fail_fetch)
+    monkeypatch.setattr(image_fetch.logger, "warning", capture_warning)
+
+    assert await ImageFetcher().fetch(src) is None
+    assert captured_logs == [
+        ("image fetch failed src_type=%s exception_type=%s", ("remote_url", "RuntimeError"))
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert "customer/webflow/logo.png" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)

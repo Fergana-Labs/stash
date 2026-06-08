@@ -36,6 +36,18 @@ class ImageFetchError(Exception):
     pass
 
 
+def image_source_kind(src: str | None) -> str:
+    if not src:
+        return "empty"
+    if src.startswith("data:"):
+        return "data_uri"
+    if _STASH_FILE_RE.match(src):
+        return "stash_file"
+    if src.startswith("http://") or src.startswith("https://"):
+        return "remote_url"
+    return "unknown"
+
+
 class ImageFetcher:
     """Per-run cache so the same URL is fetched at most once per export."""
 
@@ -51,8 +63,12 @@ class ImageFetcher:
             return self._cache[src]
         try:
             data = await self._fetch_uncached(src)
-        except Exception as e:
-            logger.warning("image fetch failed for %s: %s", src[:120], e)
+        except Exception as exc:
+            logger.warning(
+                "image fetch failed src_type=%s exception_type=%s",
+                image_source_kind(src),
+                type(exc).__name__,
+            )
             data = None
         self._cache[src] = data
         return data
@@ -71,10 +87,10 @@ class ImageFetcher:
             )
 
         if src.startswith("http://") or src.startswith("https://"):
-            logger.info("skipping remote image src during export: %s", src[:120])
+            logger.info("skipping remote image during export src_type=remote_url")
             return None
 
-        logger.info("skipping unrecognised image src: %s", src[:120])
+        logger.info("skipping unrecognised image during export src_type=unknown")
         return None
 
 

@@ -35,6 +35,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
 - Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
 - Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
+- Export image failures must not log raw image sources, signed URLs, storage keys, or provider exception text.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
