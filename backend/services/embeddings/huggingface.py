@@ -55,7 +55,7 @@ class HuggingFaceEmbedder(BaseEmbedder):
                 json={"inputs": texts},
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            raise TransientEmbeddingError(f"network error: {exc}") from exc
+            raise TransientEmbeddingError("network error from HF API") from exc
 
         if resp.status_code == 429 or 500 <= resp.status_code < 600:
             retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
@@ -64,9 +64,7 @@ class HuggingFaceEmbedder(BaseEmbedder):
                 retry_after=retry_after,
             )
         if resp.status_code >= 400:
-            logger.warning(
-                "HuggingFace embedding rejected: %s %s", resp.status_code, resp.text[:200]
-            )
+            logger.warning("HuggingFace embedding rejected status_code=%s", resp.status_code)
             return None
 
         data = resp.json()

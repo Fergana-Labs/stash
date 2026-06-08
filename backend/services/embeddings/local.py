@@ -58,8 +58,8 @@ class LocalEmbedder(BaseEmbedder):
             return [np.array(e, dtype=np.float32) for e in embeddings]
         except ImportError:
             raise
-        except Exception:
-            logger.warning("Local embedding failed", exc_info=True)
+        except Exception as exc:
+            logger.warning("Local embedding failed exception_type=%s", type(exc).__name__)
             return None
 
     async def close(self) -> None:
