@@ -1329,6 +1329,81 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_slack_event_ingest_requires_active_member_and_enabled_source(
+    client: AsyncClient,
+    pool,
+):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    active_key, active_owner = await _register(client, "active_slack")
+    stale_key, stale_owner = await _register(client, "stale_slack")
+    disabled_key, disabled_owner = await _register(client, "disabled_slack")
+    active_ws = await _create_workspace(client, active_key)
+    stale_ws = await _create_workspace(client, stale_key)
+    disabled_ws = await _create_workspace(client, disabled_key)
+    active_source = await source_service.create_source(
+        workspace_id=active_ws,
+        owner_user_id=active_owner,
+        source_type="slack",
+        external_ref="T_WEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
+    )
+    stale_source = await source_service.create_source(
+        workspace_id=stale_ws,
+        owner_user_id=stale_owner,
+        source_type="slack",
+        external_ref="T_WEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
+    )
+    disabled_source = await source_service.create_source(
+        workspace_id=disabled_ws,
+        owner_user_id=disabled_owner,
+        source_type="slack",
+        external_ref="T_WEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
+    )
+    await pool.execute(
+        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        stale_ws,
+        stale_owner,
+    )
+    await pool.execute(
+        "UPDATE workspace_sources SET sync_enabled = false WHERE id = $1",
+        UUID(disabled_source["id"]),
+    )
+
+    ingested = await ingest_slack_message(
+        "T_WEBFLOW",
+        {
+            "type": "message",
+            "channel": "C_CONFIDENTIAL",
+            "ts": "1717.0002",
+            "text": "Webflow confidential Slack event",
+        },
+    )
+
+    counts = {
+        "active": await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
+            UUID(active_source["id"]),
+        ),
+        "stale": await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
+            UUID(stale_source["id"]),
+        ),
+        "disabled": await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
+            UUID(disabled_source["id"]),
+        ),
+    }
+    assert ingested == 1
+    assert counts == {"active": 1, "stale": 0, "disabled": 0}
+
+
+@pytest.mark.asyncio
 async def test_slack_event_ingest_deletes_removed_messages(client: AsyncClient, pool):
     from backend.integrations.slack.indexer import ingest_slack_message
 
