@@ -104,5 +104,5 @@ async def index_github_repo(source: dict) -> str | None:
 
     present = await _crawl_archive(resolved.archive_url, resolved.headers, _on_text_file)
     await source_service.soft_delete_missing("github_documents", source_id, present)
-    logger.info("github source %s: indexed %d file(s)", external_ref, len(present))
+    logger.info("github source %s: indexed %d file(s)", source_id, len(present))
     return None

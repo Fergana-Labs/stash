@@ -42,8 +42,7 @@ async def call_tool_json(
     """
     result = await session.call_tool(name, arguments or {})
     if result.isError:
-        text = _first_text(result.content)
-        raise RuntimeError(f"granola tool {name} failed: {text}")
+        raise RuntimeError("Granola tool failed")
     if result.structuredContent is not None:
         return result.structuredContent
     text = _first_text(result.content)
@@ -58,7 +57,7 @@ async def call_tool_data(
     non-JSON body (Granola tools may return markdown) — only on an MCP error."""
     result = await session.call_tool(name, arguments or {})
     if result.isError:
-        raise RuntimeError(f"granola tool {name} failed: {_first_text(result.content)}")
+        raise RuntimeError("Granola tool failed")
     if result.structuredContent is not None:
         return result.structuredContent
     text = _first_text(result.content)
