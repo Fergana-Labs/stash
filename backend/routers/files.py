@@ -131,9 +131,13 @@ async def _file_to_response(row: dict) -> FileResponse:
 async def _download_storage_file_or_502(storage_key: str, operation: str) -> bytes:
     try:
         return await storage_service.download_file(storage_key)
-    except Exception as e:
-        logger.warning("file storage download failed during %s", operation, exc_info=True)
-        raise HTTPException(status_code=502, detail="File storage download failed") from e
+    except Exception as exc:
+        logger.warning(
+            "file storage download failed operation=%s exception_type=%s",
+            operation,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=502, detail="File storage download failed") from exc
 
 
 # ===== Workspace file endpoints =====
@@ -653,9 +657,13 @@ async def ingest_xlsx_file(
             base_name=base_name,
             description_template=(f"Imported from {row['name']} (sheet: {{sheet}})"),
         )
-    except Exception as e:
-        logger.warning("xlsx ingest failed for file %s", file_id, exc_info=True)
-        raise HTTPException(status_code=400, detail="Could not read workbook") from e
+    except Exception as exc:
+        logger.warning(
+            "xlsx ingest failed file_id=%s exception_type=%s",
+            file_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=400, detail="Could not read workbook") from exc
 
     if not created:
         raise HTTPException(status_code=400, detail="Workbook had no visible sheets with data")

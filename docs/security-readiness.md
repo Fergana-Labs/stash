@@ -32,6 +32,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
 - Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
+- File download and table ingest failures must not log storage keys, bucket names, tokens, parser exception text, or workbook-derived content.
 - Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
 - Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
 - Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
