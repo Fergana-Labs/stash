@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..auth import get_current_user
 from ..config import settings
 from ..models import CartridgeItem, PublishRequest, PublishResponse
-from ..services import cartridge_service, files_tree_service, workspace_service
+from ..services import cartridge_service, files_tree_service, permission_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -29,9 +29,28 @@ async def publish(
         if not await workspace_service.is_member(workspace_id, current_user["id"]):
             raise HTTPException(status_code=403, detail="Not a workspace member")
 
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not publish")
+
+    if (
+        req.workspace_permission != "none" or req.public_permission != "none"
+    ) and not await workspace_service.is_owner(workspace_id, current_user["id"]):
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners can create workspace or public Stashes",
+        )
+
     if req.folder_id is not None:
         folder = await files_tree_service.get_folder(req.folder_id)
         if not folder or folder["workspace_id"] != workspace_id:
+            raise HTTPException(status_code=404, detail="Folder not found in this workspace")
+        if not await permission_service.check_access(
+            "folder",
+            req.folder_id,
+            current_user["id"],
+            workspace_id=workspace_id,
+            require_write=True,
+        ):
             raise HTTPException(status_code=404, detail="Folder not found in this workspace")
         target_folder = folder
     else:
