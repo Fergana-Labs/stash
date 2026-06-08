@@ -61,6 +61,14 @@ def _require_manual_api_key_creation_enabled() -> None:
         )
 
 
+def _require_unauthenticated_invite_redemption_enabled() -> None:
+    if settings.AUTH0_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invite signup is disabled; use Auth0",
+        )
+
+
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
 @limiter.limit("5/minute")
 async def register(request: Request, req: UserRegisterRequest):
@@ -292,6 +300,7 @@ async def redeem_invite_unauthenticated(request: Request, req: RedeemInviteReque
     the path used by `stash connect --invite` for people who don't yet have a
     stash account.
     """
+    _require_unauthenticated_invite_redemption_enabled()
     result = await invite_token_service.redeem_as_new_user(
         raw_token=req.token,
         display_name=req.display_name,
