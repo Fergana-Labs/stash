@@ -89,6 +89,78 @@ async def test_add_list_remove_source(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_viewer_cannot_mutate_sources(client: AsyncClient, pool, monkeypatch):
+    owner_key, _owner_id = await _register(client, "src_owner")
+    viewer_key, viewer_id = await _register(client, "src_viewer")
+    ws = await _create_workspace(client, owner_key)
+    viewer_headers = _auth(viewer_key)
+
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+        ws,
+        viewer_id,
+    )
+
+    add = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "github_repo",
+            "external_ref": "acme/viewer",
+            "display_name": "Viewer source",
+        },
+        headers=viewer_headers,
+    )
+    assert add.status_code == 403
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM workspace_sources WHERE workspace_id = $1 AND owner_user_id = $2",
+            ws,
+            viewer_id,
+        )
+        == 0
+    )
+
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=viewer_id,
+        source_type="slack",
+        external_ref="T_VIEWER",
+        display_name="Viewer Slack",
+        settings={"allowed_channel_ids": ["C_VIEWER"]},
+    )
+    source_id = source["id"]
+
+    sent_tasks: list[dict] = []
+
+    def fake_send_task(*args, **kwargs):
+        sent_tasks.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
+
+    history = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/history",
+        json={"since": "2026-01-01"},
+        headers=viewer_headers,
+    )
+    assert history.status_code == 403
+
+    sync = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/sync",
+        headers=viewer_headers,
+    )
+    assert sync.status_code == 403
+    assert sent_tasks == []
+    assert await pool.fetchval("SELECT COUNT(*) FROM task_records WHERE workspace_id = $1", ws) == 0
+
+    deleted = await client.delete(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}",
+        headers=viewer_headers,
+    )
+    assert deleted.status_code == 403
+    assert await source_service.get_owned_source(UUID(source_id), viewer_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_disconnect_provider_removes_sources_and_copied_documents(
     client: AsyncClient,
     monkeypatch,
