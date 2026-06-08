@@ -3,11 +3,14 @@
 
 export const ADMIN_COOKIE_NAME = "__stash_admin";
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const MIN_ADMIN_SECRET_LENGTH = 32;
 
 function getSecret(): string {
   const secret = process.env.ADMIN_COOKIE_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error("ADMIN_COOKIE_SECRET must be set (32+ chars recommended)");
+  if (!secret || secret.length < MIN_ADMIN_SECRET_LENGTH) {
+    throw new Error(
+      `ADMIN_COOKIE_SECRET must be at least ${MIN_ADMIN_SECRET_LENGTH} characters`,
+    );
   }
   return secret;
 }
@@ -68,6 +71,11 @@ export async function verifySession(value: string | undefined): Promise<boolean>
 export function checkPassword(submitted: string): boolean {
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) return false;
+  if (expected.length < MIN_ADMIN_SECRET_LENGTH) {
+    throw new Error(
+      `ADMIN_PASSWORD must be at least ${MIN_ADMIN_SECRET_LENGTH} characters`,
+    );
+  }
   if (submitted.length !== expected.length) return false;
   // Constant-time compare in JS is best-effort; same-length XOR loop.
   let diff = 0;

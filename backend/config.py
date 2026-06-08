@@ -11,12 +11,23 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
+MIN_ADMIN_SECRET_LENGTH = 32
+
 
 def parse_cors_origins(raw: str) -> list[str]:
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
     if "*" in origins:
         raise RuntimeError("CORS_ORIGINS cannot include '*' when credentialed CORS is enabled")
     return origins
+
+
+def parse_optional_secret(name: str, min_length: int = MIN_ADMIN_SECRET_LENGTH) -> str | None:
+    value = os.getenv(name)
+    if not value:
+        return None
+    if len(value) < min_length:
+        raise RuntimeError(f"{name} must be at least {min_length} characters")
+    return value
 
 
 class Settings:
@@ -68,7 +79,7 @@ class Settings:
     # Shared secret for /api/v1/admin/* endpoints. The www admin page sends
     # this in X-Admin-Token from server-side fetches; never exposed to the
     # browser. Leave unset to disable admin endpoints entirely.
-    ADMIN_PASSWORD: str | None = os.getenv("ADMIN_PASSWORD")
+    ADMIN_PASSWORD: str | None = parse_optional_secret("ADMIN_PASSWORD")
 
     # --- Background tasks (Celery + Redis) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
