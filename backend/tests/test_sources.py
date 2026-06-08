@@ -89,6 +89,61 @@ async def test_add_list_remove_source(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_disconnect_provider_removes_sources_and_copied_documents(
+    client: AsyncClient,
+    monkeypatch,
+    _db_pool,
+):
+    from backend.integrations import router as integrations_router
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    slack = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T123",
+        display_name="Acme Slack",
+        settings={"allowed_channel_ids": ["C123"]},
+    )
+    github = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    slack_id = UUID(slack["id"])
+    github_id = UUID(github["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=slack_id,
+        workspace_id=ws,
+        path="C123/1720000000.000100",
+        name="launch-discussion",
+        content="confidential launch plan",
+    )
+
+    async def fake_revoke_stored(user_id, provider):
+        assert user_id == owner_id
+        assert provider == "slack"
+
+    monkeypatch.setattr(integrations_router.storage, "revoke_stored", fake_revoke_stored)
+
+    resp = await client.post("/api/v1/integrations/slack/disconnect", headers=_auth(api_key))
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "removed_sources": 1}
+
+    assert await source_service.get_owned_source(slack_id, owner_id) is None
+    assert await source_service.get_owned_source(github_id, owner_id) is not None
+    copied_rows = await _db_pool.fetchval(
+        "SELECT count(*) FROM slack_messages WHERE source_id = $1",
+        slack_id,
+    )
+    assert copied_rows == 0
+
+
+@pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
     ws = await _create_workspace(client, api_key)

@@ -63,6 +63,18 @@ SOURCE_CAPABILITY = {
     "snowflake": "queryable",
 }
 
+PROVIDER_SOURCE_TYPES = {
+    "github": ("github_repo",),
+    "google": ("google_drive",),
+    "notion": ("notion",),
+    "slack": ("slack",),
+    "granola": ("granola",),
+    "jira": ("jira_project",),
+    "asana": ("asana_project",),
+    "gong": ("gong_calls",),
+    "snowflake": ("snowflake",),
+}
+
 
 def _clean_string_list(value, field_name: str) -> list[str]:
     if value is None:
@@ -229,6 +241,21 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
         user_id,
     )
     return result.endswith("1")
+
+
+async def delete_sources_for_provider(user_id: UUID, provider: str) -> int:
+    """Remove all connected sources backed by one disconnected provider."""
+    source_types = PROVIDER_SOURCE_TYPES.get(provider)
+    if source_types is None:
+        raise ValueError(f"unknown provider source mapping: {provider}")
+
+    result = await get_pool().execute(
+        "DELETE FROM workspace_sources "
+        "WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
+        user_id,
+        list(source_types),
+    )
+    return int(result.rsplit(" ", 1)[-1])
 
 
 async def get_source_for_sync(source_id: UUID) -> dict | None:

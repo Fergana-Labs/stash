@@ -20,15 +20,17 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from uuid import UUID
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..config import settings
+from ..services import source_service
 from . import storage
 from .base import AccountInfo
+from .crypto import integration_fernet, integration_keyring_error
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -37,15 +39,6 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 # How long a `state` blob is valid between /connect and /callback.
 STATE_TTL = timedelta(minutes=10)
-
-
-def _get_state_fernet() -> Fernet:
-    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="INTEGRATIONS_ENCRYPTION_KEY is not set",
-        )
-    return Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
 
 
 def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) -> str:
@@ -58,12 +51,12 @@ def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) ->
             "r": return_to,
         }
     )
-    return _get_state_fernet().encrypt(payload.encode()).decode()
+    return integration_fernet().encrypt(payload.encode()).decode()
 
 
 def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]:
     try:
-        raw = _get_state_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
+        raw = integration_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
     except InvalidToken:
         raise HTTPException(status_code=400, detail="invalid or expired state")
     payload = json.loads(raw)
@@ -102,15 +95,9 @@ class IntegrationsListResponse(BaseModel):
 
 
 def _provider_disabled_reason(provider: str) -> str | None:
-    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
-        return (
-            "OAuth integrations are not configured for this server. "
-            "Set INTEGRATIONS_ENCRYPTION_KEY to enable them."
-        )
-    try:
-        Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
-    except ValueError:
-        return "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
+    keyring_error = integration_keyring_error()
+    if keyring_error:
+        return keyring_error
 
     required: dict[str, list[str]] = {
         "github": [
@@ -302,8 +289,9 @@ async def integration_disconnect(
     current_user: dict = Depends(get_current_user),
 ):
     get_provider(provider)  # 404 if unknown
+    removed_sources = await source_service.delete_sources_for_provider(current_user["id"], provider)
     await storage.revoke_stored(current_user["id"], provider)
-    return {"ok": True}
+    return {"ok": True, "removed_sources": removed_sources}
 
 
 class CredentialConnectResponse(BaseModel):

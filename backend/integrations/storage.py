@@ -1,9 +1,9 @@
 """Token storage for user_integrations.
 
-All access/refresh tokens are encrypted at rest with Fernet. The key
-comes from `INTEGRATIONS_ENCRYPTION_KEY` (generate once, never rotate
-without forcing all users to re-auth). Providers never touch the DB;
-they only return TokenSet/AccountInfo from their methods.
+All access/refresh tokens are encrypted at rest with Fernet. The keyring comes
+from `INTEGRATIONS_ENCRYPTION_KEY`: the first comma-separated key encrypts new
+tokens, and any later keys can decrypt rows during a planned rotation. Providers
+never touch the DB; they only return TokenSet/AccountInfo from their methods.
 
 Refresh-on-use: `get_valid_token` checks `expires_at` and refreshes if
 the token expires in less than 60s, writing the new token back before
@@ -15,40 +15,24 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
-from ..config import settings
 from ..database import get_pool
 from .base import AccountInfo, TokenSet
+from .crypto import integration_fernet
 from .registry import get_provider
-
-_fernet: Fernet | None = None
-
-
-def _get_fernet() -> Fernet:
-    global _fernet
-    if _fernet is not None:
-        return _fernet
-    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="INTEGRATIONS_ENCRYPTION_KEY is not set",
-        )
-    _fernet = Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
-    return _fernet
 
 
 def _encrypt(plaintext: str | None) -> bytes | None:
     if plaintext is None:
         return None
-    return _get_fernet().encrypt(plaintext.encode())
+    return integration_fernet().encrypt(plaintext.encode())
 
 
 def _decrypt(ciphertext: bytes | None) -> str | None:
     if ciphertext is None:
         return None
-    return _get_fernet().decrypt(bytes(ciphertext)).decode()
+    return integration_fernet().decrypt(bytes(ciphertext)).decode()
 
 
 async def store_token(

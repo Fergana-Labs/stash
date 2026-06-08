@@ -27,11 +27,12 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from fastapi import HTTPException
 
 from ...config import settings
 from ...database import get_pool
+from ..crypto import integration_fernet
 
 # Canonical resource for RFC 8707 — the token is bound to this MCP server.
 RESOURCE = "https://mcp.granola.ai/mcp"
@@ -43,12 +44,6 @@ STATE_TTL = timedelta(minutes=10)
 
 # The auth-server endpoints are static; discover once per process.
 _metadata: dict | None = None
-
-
-def _fernet() -> Fernet:
-    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
-        raise HTTPException(status_code=500, detail="INTEGRATIONS_ENCRYPTION_KEY is not set")
-    return Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
 
 
 def _redirect_uri() -> str:
@@ -129,12 +124,12 @@ def _encode_state(user_id: UUID, return_to: str | None, code_verifier: str, clie
         "c": client,
         "t": datetime.now(UTC).isoformat(),
     }
-    return _fernet().encrypt(json.dumps(payload).encode()).decode()
+    return integration_fernet().encrypt(json.dumps(payload).encode()).decode()
 
 
 def _decode_state(state: str) -> dict:
     try:
-        raw = _fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
+        raw = integration_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
     except InvalidToken:
         raise HTTPException(status_code=400, detail="invalid or expired state")
     return json.loads(raw)
@@ -214,7 +209,7 @@ async def _fetch_account(access_token: str) -> dict:
 
 
 async def _store_connection(user_id: UUID, token: dict, client: dict, account: dict) -> None:
-    f = _fernet()
+    f = integration_fernet()
     pool = get_pool()
     scopes = (token.get("scope") or SCOPES).split()
     await pool.execute(
@@ -260,7 +255,7 @@ async def get_valid_access_token(user_id: UUID) -> str:
     if row is None:
         raise HTTPException(status_code=401, detail="not connected to granola")
 
-    f = _fernet()
+    f = integration_fernet()
     expires_at = row["expires_at"]
     fresh = expires_at is None or expires_at > datetime.now(UTC) + timedelta(seconds=60)
     if fresh:
