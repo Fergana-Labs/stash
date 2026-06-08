@@ -673,6 +673,60 @@ async def test_public_write_stash_requests_are_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_workspace_write_stash_does_not_let_viewers_create_pages(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    viewer_key, viewer = await _register(client)
+    editor_key, editor = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(viewer["id"]), role="viewer")
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "confidential"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    stash = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/cartridges",
+            json={
+                "title": "Workspace Write",
+                "workspace_permission": "write",
+                "items": [{"object_type": "page", "object_id": page_id}],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+
+    viewer_create = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/shared-pages",
+        json={"name": "Viewer Draft", "content": "viewer should not write"},
+        headers=_auth(viewer_key),
+    )
+    created_by_viewer = await pool.fetchval(
+        "SELECT COUNT(*) FROM pages "
+        "WHERE workspace_id = $1 AND metadata->>'shared_in_cartridge_id' = $2",
+        uuid.UUID(ws),
+        stash["id"],
+    )
+    editor_create = await client.post(
+        f"/api/v1/cartridges/{stash['id']}/shared-pages",
+        json={"name": "Editor Draft", "content": "editor can write"},
+        headers=_auth(editor_key),
+    )
+
+    assert viewer_create.status_code == 403
+    assert created_by_viewer == 0
+    assert editor_create.status_code == 201
+
+
+@pytest.mark.asyncio
 async def test_public_write_session_folder_requests_are_rejected(client: AsyncClient):
     owner_key, _ = await _register(client)
     ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[

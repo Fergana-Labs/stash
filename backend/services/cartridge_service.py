@@ -1664,8 +1664,10 @@ async def user_can_write(cartridge_id: UUID, user_id: UUID) -> bool:
     )
     if member and member["permission"] in ("write", "admin"):
         return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    if role is not None and row["workspace_permission"] == "write":
+    if row["workspace_permission"] == "write" and await workspace_service.can_write(
+        row["workspace_id"],
+        user_id,
+    ):
         return True
     return False
 
