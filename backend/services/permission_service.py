@@ -267,13 +267,10 @@ async def _cartridge_open(cartridge: dict, user_id: UUID | None) -> bool:
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require_write: bool
 ) -> bool:
-    """Can the user access this session folder? Mirrors _cartridge_open: public
-    link, owner, or an explicit user share. Workspace members are granted earlier
-    in check_access (the workspace is the trust boundary)."""
+    """Can the user access this session folder? Public links are read-only.
+    Workspace members are granted earlier in check_access."""
     public = folder["public_permission"]
     if not require_write and public != "none":
-        return True
-    if require_write and public == "write":
         return True
     if user_id is None:
         return False

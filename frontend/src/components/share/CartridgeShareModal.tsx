@@ -29,7 +29,6 @@ const VISIBILITY_OPTIONS = [
 
 const PUBLIC_PERMISSION_OPTIONS = [
   { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
 ];
 
 interface SelectableRow {
@@ -60,18 +59,11 @@ function selectedCount(s: SelectedState): number {
   return s.rows.size + s.sessions.size;
 }
 
-function visibilityForPermissions(
-  _workspacePermission: CartridgeGeneralPermission,
-  publicPermission: CartridgeGeneralPermission
-): CartridgeVisibility {
+function visibilityForPermissions(publicPermission: CartridgeGeneralPermission): CartridgeVisibility {
   return publicPermission !== "none" ? "public" : "private";
 }
 
-function permissionsForVisibility(
-  visibility: CartridgeVisibility,
-  _workspacePermission: CartridgeGeneralPermission,
-  publicPermission: CartridgeGeneralPermission
-): {
+function permissionsForVisibility(visibility: CartridgeVisibility): {
   workspacePermission: CartridgeGeneralPermission;
   publicPermission: CartridgeGeneralPermission;
 } {
@@ -82,7 +74,7 @@ function permissionsForVisibility(
   }
   return {
     workspacePermission: "read",
-    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+    publicPermission: "read",
   };
 }
 
@@ -159,14 +151,10 @@ export default function CartridgeShareModal() {
     () => filterByLabel(sessions, search),
     [sessions, search]
   );
-  const visibility = visibilityForPermissions(workspacePermission, publicPermission);
+  const visibility = visibilityForPermissions(publicPermission);
 
   function setVisibility(nextVisibility: CartridgeVisibility) {
-    const next = permissionsForVisibility(
-      nextVisibility,
-      workspacePermission,
-      publicPermission
-    );
+    const next = permissionsForVisibility(nextVisibility);
     setWorkspacePermission(next.workspacePermission);
     setPublicPermission(next.publicPermission);
     if (next.publicPermission === "none") setShareToDiscover(false);

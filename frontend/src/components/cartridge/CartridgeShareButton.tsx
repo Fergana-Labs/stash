@@ -42,7 +42,6 @@ const WORKSPACE_PERMISSION_OPTIONS: { value: CartridgeGeneralPermission; label: 
 const PUBLIC_PERMISSION_OPTIONS: { value: CartridgeGeneralPermission; label: string }[] = [
   { value: "none", label: "No access" },
   { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
 ];
 
 const PALETTE = [
@@ -65,8 +64,7 @@ function visibilityForPermissions(
 
 function permissionsForVisibility(
   visibility: CartridgeVisibility,
-  workspacePermission: CartridgeGeneralPermission,
-  publicPermission: CartridgeGeneralPermission
+  workspacePermission: CartridgeGeneralPermission
 ): {
   workspacePermission: CartridgeGeneralPermission;
   publicPermission: CartridgeGeneralPermission;
@@ -82,7 +80,7 @@ function permissionsForVisibility(
   }
   return {
     workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
-    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+    publicPermission: "read",
   };
 }
 
@@ -334,11 +332,7 @@ export default function CartridgeShareButton({
   const visibility = visibilityForPermissions(workspacePermission, publicPermission);
 
   function applyVisibility(nextVisibility: CartridgeVisibility) {
-    const next = permissionsForVisibility(
-      nextVisibility,
-      workspacePermission,
-      publicPermission
-    );
+    const next = permissionsForVisibility(nextVisibility, workspacePermission);
     void applyGeneralAccess(next.workspacePermission, next.publicPermission);
   }
 
