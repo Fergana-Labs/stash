@@ -606,6 +606,159 @@ async def test_member_can_leave(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_member_leave_removes_workspace_shares_and_stash_access(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _owner = await _register(client, "offboarding_owner")
+    member_name = unique_name("offboarding_member")
+    member_email = f"{member_name}@example.com"
+    member_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": member_name,
+            "email": member_email,
+            "password": "securepassword1",
+        },
+    )
+    assert member_resp.status_code == 201
+    member_key = member_resp.json()["api_key"]
+    member_id = UUID(member_resp.json()["id"])
+
+    ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Offboarding Team"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    workspace_id = UUID(ws["id"])
+    joined = await client.post(
+        f"/api/v1/workspaces/join/{ws['invite_code']}",
+        headers=_auth(member_key),
+    )
+    assert joined.status_code == 200
+
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/pages/new",
+            json={"name": "Confidential", "content": "Webflow confidential plan"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    page_id = page["id"]
+    owner_stash = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/cartridges",
+            json={
+                "title": "Owner private Stash",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [{"object_type": "page", "object_id": page_id}],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+    member_stash = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/cartridges",
+            json={
+                "title": "Member private Stash",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [{"object_type": "page", "object_id": page_id}],
+            },
+            headers=_auth(member_key),
+        )
+    ).json()
+    granted = await client.post(
+        f"/api/v1/cartridges/{owner_stash['id']}/members",
+        json={"user_id": str(member_id), "permission": "read"},
+        headers=_auth(owner_key),
+    )
+    shared = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": member_email,
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert granted.status_code == 201
+    assert shared.status_code == 200
+    assert (
+        await client.get(
+            f"/api/v1/cartridges/{owner_stash['slug']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 200
+    assert (
+        await client.get(
+            f"/api/v1/cartridges/{member_stash['slug']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 200
+
+    left = await client.post(
+        f"/api/v1/workspaces/{ws['id']}/leave",
+        headers=_auth(member_key),
+    )
+
+    assert left.status_code == 204
+    assert (
+        await client.get(
+            f"/api/v1/cartridges/{owner_stash['slug']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 404
+    assert (
+        await client.get(
+            f"/api/v1/cartridges/{member_stash['slug']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 404
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM shares "
+            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cartridge_members cm "
+            "JOIN cartridges c ON c.id = cm.cartridge_id "
+            "WHERE c.workspace_id = $1 AND cm.user_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cartridge_invites ci "
+            "JOIN cartridges c ON c.id = ci.cartridge_id "
+            "WHERE c.workspace_id = $1 AND ci.recipient_user_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cartridges WHERE workspace_id = $1 AND owner_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
 async def test_owner_cannot_leave(client: AsyncClient):
     key, _ = await _register(client)
     ws = (await client.post("/api/v1/workspaces", json={"name": "Mine"}, headers=_auth(key))).json()

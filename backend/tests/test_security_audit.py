@@ -566,6 +566,10 @@ async def test_workspace_invite_and_membership_changes_are_audited_without_token
     assert left_event["metadata"] == {
         "member_user_hash": joiner_hash,
         "removed_source_count": 0,
+        "removed_share_count": 0,
+        "removed_cartridge_member_count": 0,
+        "removed_cartridge_invite_count": 0,
+        "removed_cartridge_count": 0,
     }
     assert revoked_event["actor_user_id"] == str(owner_id)
     assert revoked_event["metadata"] == {"invite_token_id_hash": second_invite_hash}
