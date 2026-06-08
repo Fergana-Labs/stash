@@ -8,6 +8,7 @@ import {
   type SessionFolder,
   type SessionFolderVisibility,
   listObjectShares,
+  revokePendingShareInvite,
   shareObjectByEmail,
   unshareObject,
   updateSessionFolder,
@@ -94,8 +95,18 @@ export default function SessionFolderShareModal({
   }
 
   async function removePerson(share: ObjectShare) {
+    if (share.pending && share.email) {
+      await revokePendingShareInvite("session_folder", folder.id, share.email);
+      await loadShares();
+      return;
+    }
     if (!share.principal_id) return;
-    await unshareObject("session_folder", folder.id, share.principal_type, share.principal_id);
+    await unshareObject(
+      "session_folder",
+      folder.id,
+      share.principal_type,
+      share.principal_id,
+    );
     await loadShares();
   }
 
@@ -215,15 +226,13 @@ export default function SessionFolderShareModal({
                     <span className="text-[11.5px] text-muted">
                       {s.permission === "write" ? "Can edit" : "Can view"}
                     </span>
-                    {!s.pending && (
-                      <button
-                        type="button"
-                        onClick={() => void removePerson(s)}
-                        className="text-[11.5px] text-rose-500 hover:underline"
-                      >
-                        Remove
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => void removePerson(s)}
+                      className="text-[11.5px] text-rose-500 hover:underline"
+                    >
+                      Remove
+                    </button>
                   </span>
                 </li>
               ))}

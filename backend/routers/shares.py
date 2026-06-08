@@ -31,6 +31,12 @@ class UnshareRequest(BaseModel):
     principal_id: UUID
 
 
+class PendingInviteRevokeRequest(BaseModel):
+    object_type: str
+    object_id: UUID
+    email: str
+
+
 @router.post("")
 async def create_share(req: ShareRequest, current_user: dict = Depends(get_current_user)):
     return await share_service.share_with_user_by_email(
@@ -49,6 +55,20 @@ async def delete_share(req: UnshareRequest, current_user: dict = Depends(get_cur
         object_id=req.object_id,
         principal_type=req.principal_type,
         principal_id=req.principal_id,
+        owner_id=current_user["id"],
+    )
+    return {"ok": True}
+
+
+@router.delete("/invite")
+async def delete_pending_invite(
+    req: PendingInviteRevokeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await share_service.revoke_pending_invite_by_email(
+        object_type=req.object_type,
+        object_id=req.object_id,
+        email=req.email,
         owner_id=current_user["id"],
     )
     return {"ok": True}
