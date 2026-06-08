@@ -25,7 +25,6 @@ import logging
 import os
 import resource
 import sys
-import traceback
 from uuid import UUID
 
 # Cap address space BEFORE importing any extraction libs. 350 MB leaves
@@ -97,8 +96,11 @@ async def _run(file_id: UUID) -> int:
     except Exception as e:
         # The dispatcher's parent-side fallback mark_failed will catch us
         # if we can't update the row ourselves (e.g. DB unreachable).
-        error = f"{type(e).__name__}: {e}"
-        logger.error("extract failed: %s\n%s", error, traceback.format_exc())
+        logger.error(
+            "extract failed file=%s exception_type=%s",
+            file_id,
+            type(e).__name__,
+        )
         try:
             await conn.execute(
                 "UPDATE files SET "
@@ -107,7 +109,7 @@ async def _run(file_id: UUID) -> int:
                 "locked_at = NULL "
                 "WHERE id = $1",
                 file_id,
-                error[:2000],
+                "Extraction failed",
             )
         except Exception:
             pass
