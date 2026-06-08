@@ -32,6 +32,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
+- Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.
 - Credentialed CORS must reject wildcard origins.
 - API and Next.js responses must include baseline security headers.
 - Admin secrets and cookie secrets must be at least 32 characters.

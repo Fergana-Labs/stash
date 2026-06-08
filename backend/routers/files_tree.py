@@ -29,6 +29,7 @@ from ..services import (
     comment_service,
     files_tree_service,
     permission_service,
+    security_audit_service,
     workspace_service,
 )
 from ..services.files_tree_service import (
@@ -536,6 +537,13 @@ async def delete_page(
     deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="deleted",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="page",
+        target_id=page_id,
+    )
 
 
 @router.post("/pages/{page_id}/restore", status_code=204)
@@ -550,6 +558,13 @@ async def restore_page(
     restored = await files_tree_service.restore_page(page_id, workspace_id)
     if not restored:
         raise HTTPException(status_code=404, detail="Page not in trash")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="restored",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="page",
+        target_id=page_id,
+    )
 
 
 @router.delete("/pages/{page_id}/purge", status_code=204)
@@ -565,6 +580,13 @@ async def purge_page(
     purged = await files_tree_service.purge_page(page_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Page not in trash")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="purged",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="page",
+        target_id=page_id,
+    )
 
 
 # --- Page comments ---
