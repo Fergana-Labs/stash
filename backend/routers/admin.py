@@ -2,22 +2,72 @@
 
 import hmac
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from ..config import settings
-from ..services import admin_analytics_service, cohort_service
+from ..services import admin_analytics_service, cohort_service, security_audit_service
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
-def require_admin_token(x_admin_token: str | None = Header(default=None)) -> None:
+def _admin_target_id(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    return route_path or request.url.path
+
+
+async def _record_admin_access(
+    request: Request,
+    *,
+    action: str,
+    status_code: int,
+    token_present: bool,
+) -> None:
+    client_host = request.client.host if request.client else None
+    query_string = request.url.query or None
+    await security_audit_service.record_event(
+        action=action,
+        actor_user_id=None,
+        workspace_id=None,
+        target_type="admin_endpoint",
+        target_id=_admin_target_id(request),
+        metadata={
+            "client_host_hash": security_audit_service.hash_value(client_host),
+            "query_hash": security_audit_service.hash_value(query_string),
+            "status_code": status_code,
+            "token_present": token_present,
+        },
+    )
+
+
+async def require_admin_token(
+    request: Request, x_admin_token: str | None = Header(default=None)
+) -> None:
     expected = settings.ADMIN_PASSWORD
     if not expected:
+        await _record_admin_access(
+            request,
+            action="admin.access_disabled",
+            status_code=503,
+            token_present=bool(x_admin_token),
+        )
         raise HTTPException(
             status_code=503, detail="Admin endpoints disabled (ADMIN_PASSWORD unset)"
         )
     if not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
+        await _record_admin_access(
+            request,
+            action="admin.access_denied",
+            status_code=401,
+            token_present=bool(x_admin_token),
+        )
         raise HTTPException(status_code=401, detail="Invalid admin token")
+    await _record_admin_access(
+        request,
+        action="admin.access_granted",
+        status_code=200,
+        token_present=True,
+    )
 
 
 @router.get("/cohorts/engagement", dependencies=[Depends(require_admin_token)])

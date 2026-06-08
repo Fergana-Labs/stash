@@ -6,8 +6,12 @@ Covers:
 - Admin endpoints reflect inserted rows (summary, funnel, top events).
 """
 
+import json
+
 import pytest
 from httpx import AsyncClient
+
+from backend.services import security_audit_service
 
 from .conftest import unique_name
 
@@ -170,6 +174,58 @@ async def test_admin_endpoints_require_token(client: AsyncClient):
     ]:
         resp = await client.get(path)
         assert resp.status_code == 401, f"{path} should require admin token"
+
+
+@pytest.mark.asyncio
+async def test_admin_endpoint_access_is_audited_without_sensitive_values(
+    client: AsyncClient,
+    _db_pool,
+):
+    sensitive_query = "days=7&customer=webflow&token=secret-token"
+
+    denied = await client.get(
+        f"/api/v1/admin/analytics/summary?{sensitive_query}",
+        headers={"X-Admin-Token": "wrong-admin-token"},
+    )
+    granted = await client.get(
+        f"/api/v1/admin/analytics/summary?{sensitive_query}",
+        headers=_admin(),
+    )
+
+    assert denied.status_code == 401
+    assert granted.status_code == 200
+
+    rows = await _db_pool.fetch(
+        "SELECT action, target_type, target_id, metadata "
+        "FROM security_audit_events "
+        "WHERE target_type = 'admin_endpoint' "
+        "ORDER BY created_at"
+    )
+    events = []
+    for row in rows:
+        event = dict(row)
+        event["metadata"] = json.loads(event["metadata"])
+        events.append(event)
+    event_text = str(events)
+
+    assert [event["action"] for event in events] == [
+        "admin.access_denied",
+        "admin.access_granted",
+    ]
+    assert all(event["target_id"] == "/api/v1/admin/analytics/summary" for event in events)
+    assert all(
+        event["metadata"]["query_hash"] == security_audit_service.hash_value(sensitive_query)
+        for event in events
+    )
+    assert events[0]["metadata"]["status_code"] == 401
+    assert events[0]["metadata"]["token_present"] is True
+    assert events[1]["metadata"]["status_code"] == 200
+    assert events[1]["metadata"]["token_present"] is True
+    assert "wrong-admin-token" not in event_text
+    assert ADMIN_TOKEN not in event_text
+    assert "secret-token" not in event_text
+    assert "webflow" not in event_text
+    assert "127.0.0.1" not in event_text
 
 
 @pytest.mark.asyncio
