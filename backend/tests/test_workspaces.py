@@ -82,6 +82,31 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
     assert workspaces[0]["member_count"] == 1
 
 
+@pytest.mark.asyncio
+async def test_get_workspace_does_not_auto_join_non_member(client: AsyncClient, pool):
+    owner_key, _ = await _register(client)
+    stranger_key, stranger = await _register(client)
+    workspace = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Private Team"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+
+    response = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}",
+        headers=_auth(stranger_key),
+    )
+
+    assert response.status_code == 404
+    assert not await pool.fetchval(
+        "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        UUID(workspace["id"]),
+        UUID(stranger["id"]),
+    )
+
+
 # --- Invite flow ---
 
 
