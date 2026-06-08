@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { securityHeaders } from "./lib/security-headers";
+
 const MANAGED_APP_URL =
   process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
@@ -27,6 +29,14 @@ const nextConfig: NextConfig = {
         source: "/login",
         destination: `${MANAGED_APP_URL}/login`,
         permanent: false,
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders,
       },
     ];
   },
