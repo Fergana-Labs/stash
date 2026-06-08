@@ -48,6 +48,12 @@ def _validate_identifier(ref: str) -> str:
     return ref
 
 
+def _query_limit(limit: int) -> int:
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    return min(limit, ROW_CAP)
+
+
 def _cell(value):
     """Coerce a Snowflake cell to something JSON-serializable (Decimal, datetime,
     bytes, etc. become strings)."""
@@ -125,7 +131,7 @@ async def run_query(source: dict, sql: str, limit: int = ROW_CAP) -> dict:
     """Run one read-only statement on behalf of the source's owner."""
     stmt = _assert_read_only(sql)
     creds = await _creds(UUID(source["owner_user_id"]))
-    return await asyncio.to_thread(_run_sync, creds, stmt, min(limit, ROW_CAP))
+    return await asyncio.to_thread(_run_sync, creds, stmt, _query_limit(limit))
 
 
 async def list_tables(source: dict) -> list[dict]:
