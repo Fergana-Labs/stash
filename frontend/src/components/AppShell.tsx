@@ -473,8 +473,10 @@ export default function AppShell({
 
     setShareStatus("creating");
     setShareMessage("");
+
+    let result: Awaited<ReturnType<typeof publishCartridge>>;
     try {
-      const result =
+      result =
         target.kind === "page"
           ? await publishCartridge(
               target.workspaceId,
@@ -494,6 +496,17 @@ export default function AppShell({
         workspace_id: target.workspaceId,
         cartridge_id: result.cartridge_id,
       });
+    } catch (e) {
+      setShareStatus("error");
+      setShareMessage(e instanceof Error ? e.message : "Share failed");
+      window.setTimeout(() => {
+        setShareStatus("idle");
+        setShareMessage("");
+      }, 3000);
+      return;
+    }
+
+    try {
       await navigator.clipboard.writeText(result.url);
       setShareStatus("copied");
       setShareMessage("Link copied");
@@ -501,9 +514,9 @@ export default function AppShell({
         setShareStatus("idle");
         setShareMessage("");
       }, 1600);
-    } catch (e) {
+    } catch {
       setShareStatus("error");
-      setShareMessage(e instanceof Error ? e.message : "Share failed");
+      setShareMessage("Link created. Copy blocked.");
       window.setTimeout(() => {
         setShareStatus("idle");
         setShareMessage("");

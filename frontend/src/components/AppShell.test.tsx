@@ -281,6 +281,28 @@ describe("AppShell sidebar collapse", () => {
     );
   });
 
+  it("shows a readable error when the browser blocks copying a created share link", async () => {
+    nav.pathname = "/workspaces/ws-1/p/page-1";
+    mockWorkspaceCache();
+    const blockedMessage = "The request is not allowed by the user agent.";
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(
+      new Error(blockedMessage),
+    );
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Page content</div>
+        </AppShell>
+      </ShareModalProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+
+    expect(await screen.findByText("Link created. Copy blocked.")).toBeInTheDocument();
+    expect(screen.queryByText(blockedMessage)).not.toBeInTheDocument();
+  });
+
   it("creates and copies a one-session Stash link from a session route", async () => {
     nav.pathname = "/workspaces/ws-1/sessions/session-route-id";
     mockWorkspaceCache();
