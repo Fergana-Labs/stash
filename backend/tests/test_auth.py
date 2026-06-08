@@ -119,6 +119,106 @@ async def test_logout_revokes_current_api_key(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_cli_auth_approve_then_poll_returns_usable_device_key(client: AsyncClient, pool):
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("cli_auth"),
+            "password": "securepassword1",
+        },
+    )
+    api_key = reg.json()["api_key"]
+
+    session = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "demo-laptop"},
+    )
+    assert session.status_code == 200
+    session_id = session.json()["session_id"]
+
+    approved = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session_id}/approve",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert approved.status_code == 200
+
+    polled = await client.get(f"/api/v1/users/cli-auth/sessions/{session_id}")
+    assert polled.status_code == 200
+    body = polled.json()
+    assert body["status"] == "complete"
+    assert body["api_key"].startswith("mc_")
+
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cli_auth_sessions WHERE session_id = $1",
+            session_id,
+        )
+        == 0
+    )
+    me = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {body['api_key']}"},
+    )
+    assert me.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_expired_cli_auth_approval_revokes_unclaimed_device_key(
+    client: AsyncClient,
+    pool,
+):
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("cli_auth_expired"),
+            "password": "securepassword1",
+        },
+    )
+    api_key = reg.json()["api_key"]
+
+    session = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "abandoned-terminal"},
+    )
+    assert session.status_code == 200
+    session_id = session.json()["session_id"]
+
+    approved = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session_id}/approve",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert approved.status_code == 200
+    unclaimed_key = await pool.fetchval(
+        "SELECT api_key FROM cli_auth_sessions WHERE session_id = $1",
+        session_id,
+    )
+    assert unclaimed_key.startswith("mc_")
+
+    await pool.execute(
+        "UPDATE cli_auth_sessions "
+        "SET created_at = now() - interval '11 minutes' "
+        "WHERE session_id = $1",
+        session_id,
+    )
+
+    polled = await client.get(f"/api/v1/users/cli-auth/sessions/{session_id}")
+    assert polled.status_code == 404
+
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cli_auth_sessions WHERE session_id = $1",
+            session_id,
+        )
+        == 0
+    )
+    me = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {unclaimed_key}"},
+    )
+    assert me.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_invalid_api_key_rejected(client: AsyncClient):
     resp = await client.get("/api/v1/users/me", headers={"Authorization": "Bearer mc_fakekeyxxxx"})
     assert resp.status_code == 401

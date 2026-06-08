@@ -22,6 +22,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange or manual API-key creation paths; CLI keys require explicit short-lived session approval.
+- Expired CLI auth sessions must purge raw pending API keys and revoke approved-but-unclaimed CLI keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
 - User search must be scoped to a workspace where the requester is already a member; it must not enumerate users across tenants.
 - Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
