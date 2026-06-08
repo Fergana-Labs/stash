@@ -269,7 +269,7 @@ export default function CartridgeShareButton({
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      setUserResults(await searchUsers(query));
+      setUserResults(await searchUsers(query, stash.workspace_id));
     } catch (e) {
       setMemberMessage(e instanceof Error ? e.message : "Could not search users.");
     } finally {
