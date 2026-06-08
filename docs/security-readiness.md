@@ -22,6 +22,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange, manual API-key creation, or unauthenticated invite redemption paths; CLI keys require explicit short-lived session approval.
+- Managed Auth0 deployments must reject password-login, manually-created, migrated, and invite-redemption API keys; only explicitly approved CLI device keys may authenticate as Stash API keys.
 - Replayed CLI auth approvals must not mint orphaned device API keys.
 - Expired CLI auth sessions must purge raw pending API keys and revoke approved-but-unclaimed CLI keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.

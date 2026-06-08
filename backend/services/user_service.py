@@ -32,7 +32,7 @@ async def register_user(
             raise ValueError(f"Username '{name}' is already taken")
         raise
     user = dict(row)
-    api_key = await create_api_key(user["id"], name="password register")
+    api_key = await create_api_key(user["id"], name="password register", key_type="password")
 
     # Auto-provision a default space for new users. Named "Stash" — we don't
     # surface "workspace" terminology in the product anymore.
@@ -146,7 +146,7 @@ async def authenticate_by_password(name: str, password: str) -> tuple[dict, str]
         raise ValueError("Invalid username or password")
     # Each login mints a fresh key — prior keys keep working so other devices
     # don't get logged out.
-    api_key = await create_api_key(row["id"], name="password login")
+    api_key = await create_api_key(row["id"], name="password login", key_type="password")
     await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
     user = {k: v for k, v in dict(row).items() if k != "password_hash"}
     return user, api_key

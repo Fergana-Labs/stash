@@ -210,7 +210,7 @@ async def create_my_key(
     _require_manual_api_key_creation_enabled()
     from ..database import get_pool
 
-    api_key = await create_api_key(current_user["id"], name=req.name)
+    api_key = await create_api_key(current_user["id"], name=req.name, key_type="manual")
     pool = get_pool()
     from ..auth import hash_api_key
 
@@ -343,7 +343,7 @@ async def approve_cli_auth_session(
         return {"status": "approved"}
 
     device_name = row["device_name"] or "CLI"
-    api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
+    api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})", key_type="cli")
     result = await pool.execute(
         "UPDATE cli_auth_sessions SET api_key = $1, username = $2 "
         "WHERE session_id = $3 AND api_key IS NULL",
