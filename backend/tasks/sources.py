@@ -26,6 +26,7 @@ from ..integrations.granola.indexer import index_granola
 from ..integrations.jira.indexer import index_jira
 from ..integrations.notion.indexer import index_notion
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
+from ..integrations.twitter.indexer import index_twitter
 from ..services import source_service
 from ._celery_helpers import run_async
 
@@ -42,6 +43,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "jira_project": index_jira,
     "asana_project": index_asana,
     "gong_calls": index_gong,
+    "twitter": index_twitter,
 }
 
 

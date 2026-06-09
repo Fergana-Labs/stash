@@ -49,6 +49,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "jira_project": 1800,
     "asana_project": 1800,
     "gong_calls": 21600,
+    "twitter": 3600,
 }
 
 # Which capability each connected source type exposes.
@@ -62,6 +63,7 @@ SOURCE_CAPABILITY = {
     "jira_project": "searchable",
     "asana_project": "navigable",
     "gong_calls": "searchable",
+    "twitter": "searchable",
     # Queryable sources run live read-only SQL; they have no document table or
     # indexer (see source_entries / query_source).
     "snowflake": "queryable",
@@ -241,6 +243,7 @@ SOURCE_TABLE = {
     "jira_project": "jira_documents",
     "asana_project": "asana_documents",
     "gong_calls": "gong_documents",
+    "twitter": "twitter_posts",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -261,7 +264,7 @@ CONTENT_TABLES = {
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
 # provider search coroutine, resolved lazily to avoid an import cycle.
-FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project"}
+FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project", "twitter"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
@@ -477,6 +480,10 @@ async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
         from ..integrations.asana.indexer import fetch_asana_content
 
         return await fetch_asana_content(owner_user_id, external_ref)
+    if source_type == "twitter":
+        from ..integrations.twitter.indexer import fetch_twitter_content
+
+        return await fetch_twitter_content(owner_user_id, external_ref)
     return ""
 
 
@@ -511,6 +518,8 @@ async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
             from ..integrations.jira.indexer import search_jira as fn
         elif source_type == "asana_project":
             from ..integrations.asana.indexer import search_asana as fn
+        elif source_type == "twitter":
+            from ..integrations.twitter.indexer import search_twitter as fn
         else:
             return []
         hits = await fn(source, query, limit)
@@ -710,6 +719,8 @@ def source_document_url(
     if source_type == "gmail":
         mailbox = quote(external_ref or "0", safe="")
         return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
+    if source_type == "twitter":
+        return f"https://x.com/i/web/status/{path}"
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
     return None
 

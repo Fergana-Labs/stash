@@ -100,6 +100,16 @@ async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
     return account, f"Snowflake ({account})"
 
 
+async def _resolve_twitter_source(user_id) -> tuple[str, str]:
+    """Twitter source external_ref is a sentinel; search terms are supplied live
+    through search_source, so one source can answer arbitrary recent-search
+    queries."""
+    from ..integrations.twitter.indexer import DEFAULT_SOURCE_REF
+
+    await integration_storage.get_valid_token(user_id, "twitter")
+    return DEFAULT_SOURCE_REF, "Twitter / X"
+
+
 @router.get("")
 async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
@@ -252,6 +262,9 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "snowflake" and not external_ref:
         external_ref, resolved_name = await _resolve_snowflake_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "twitter" and not external_ref:
+        external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
         display_name = display_name or resolved_name
 
     if not external_ref:

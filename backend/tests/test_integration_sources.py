@@ -21,6 +21,8 @@ from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.integrations.snowflake.client import _assert_read_only, _validate_identifier
 from backend.integrations.snowflake.provider import SnowflakeIntegration
+from backend.integrations.twitter.indexer import _render_tweet
+from backend.integrations.twitter.provider import TwitterIntegration
 from backend.services import agent_runtime, prompts, source_service
 from backend.tasks import sources as source_tasks
 
@@ -277,6 +279,45 @@ def test_snowflake_offers_pat_token_with_optional_alternatives():
     assert not fields["account"].optional and not fields["user"].optional
     for opt in ("warehouse", "role", "database", "private_key_passphrase"):
         assert fields[opt].optional, opt
+
+
+def test_twitter_is_api_key_searchable_source():
+    twitter = TwitterIntegration()
+    assert twitter.auth_kind == "api_key"
+    assert [f.name for f in twitter.credential_fields] == ["bearer_token"]
+    assert twitter.credential_fields[0].secret
+    assert source_service.SOURCE_CAPABILITY["twitter"] == "searchable"
+    assert source_service.SOURCE_TABLE["twitter"] == "twitter_posts"
+    assert "twitter_posts" not in source_service.CONTENT_TABLES
+    assert "twitter" in source_service.FEDERATED_SEARCH_TYPES
+    assert "twitter" in source_tasks.INDEXERS
+    assert (
+        source_service.source_document_url("twitter", "recent", "123")
+        == "https://x.com/i/web/status/123"
+    )
+
+
+def test_twitter_post_rendering_keeps_author_metrics_and_text():
+    text = _render_tweet(
+        {
+            "id": "123",
+            "text": "shipping source search",
+            "created_at": "2026-06-08T12:00:00Z",
+            "public_metrics": {"like_count": 2, "retweet_count": 1, "reply_count": 3},
+        },
+        {"username": "stash", "name": "Stash"},
+    )
+
+    assert "# @stash" in text
+    assert "Created: 2026-06-08T12:00:00Z" in text
+    assert "2 likes, 1 reposts, 3 replies" in text
+    assert "shipping source search" in text
+
+
+@pytest.mark.asyncio
+async def test_twitter_rejects_missing_bearer_token():
+    with pytest.raises(ValueError):
+        await TwitterIntegration().connect_with_credentials({"bearer_token": ""})
 
 
 @pytest.mark.asyncio

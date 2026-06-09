@@ -106,6 +106,7 @@ _TRUNCATE_TABLES = [
     "granola_notes",
     "drive_index",
     "notion_index",
+    "twitter_posts",
     "workspace_sources",
     "documents",
     "files",

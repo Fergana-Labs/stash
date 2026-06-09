@@ -13,6 +13,7 @@ import {
   NotionIcon,
   SlackIcon,
   SnowflakeIcon,
+  TwitterIcon,
 } from "./BrandIcons";
 
 export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
@@ -96,6 +97,13 @@ export const CONNECTORS: Connector[] = [
     kind: "auto",
     blurb: "Run read-only SQL against your warehouse.",
   },
+  {
+    provider: "twitter",
+    label: "Twitter / X",
+    sourceType: "twitter",
+    kind: "auto",
+    blurb: "Search recent public posts from X.",
+  },
 ];
 
 // Maps a connected-source row's `type` back to the integration provider that
@@ -111,6 +119,7 @@ export const providerForSourceType: Record<string, string> = {
   granola: "granola",
   gong_calls: "gong",
   snowflake: "snowflake",
+  twitter: "twitter",
 };
 
 export function connectorForProvider(provider: string): Connector | undefined {
@@ -143,6 +152,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <GongIcon />;
     case "snowflake":
       return <SnowflakeIcon />;
+    case "twitter":
+      return <TwitterIcon />;
     default:
       return null;
   }
@@ -159,5 +170,6 @@ export function labelForSourceType(type: string): string {
   if (type === "asana_project") return "Asana";
   if (type === "gong_calls") return "Gong";
   if (type === "snowflake") return "Snowflake";
+  if (type === "twitter") return "Twitter / X";
   return type;
 }

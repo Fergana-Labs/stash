@@ -36,7 +36,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola. Your agent reads across everything you connect.</li>
+      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola, Twitter / X. Your agent reads across everything you connect.</li>
       <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; add them to your Stash.</li>
       <li><strong>Invite a teammate</strong>${
         inviteLink
@@ -54,7 +54,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
       <li><strong>Sources</strong> — everything your agents produce or consume, all searchable:
         <ul>
           <li><strong>Agent Sessions</strong> — the history of your agent conversations, automatically pushed in from Claude Code, Codex, and friends.</li>
-          <li><strong>Files</strong> — a file system for documents (markdown, HTML, images, PDF, CSV, tables), plus connected sources like Notion, Google Drive, Slack, and GitHub. Built so agents can use it natively.</li>
+          <li><strong>Files</strong> — a file system for documents (markdown, HTML, images, PDF, CSV, tables), plus connected sources like Notion, Google Drive, Slack, Twitter / X, and GitHub. Built so agents can use it natively.</li>
         </ul>
       </li>
       <li><strong>Cartridges</strong> — curated bundles you share on top of your sources: pick any subset and publish it, or share it with specific people. The go-to surface for a team, workstream, or project.</li>
