@@ -26,7 +26,6 @@ import AddSourceModal from "./integrations/AddSourceModal";
 import { labelForProvider, providerForSourceType } from "./integrations/connectors";
 import {
   ActivityIcon,
-  DiscoverIcon,
   FileIcon,
   HelpIcon,
   SessionsIcon,
@@ -295,13 +294,14 @@ export default function AppSidebar({
               : pathname === "/"
           }
         />
-        {/* Discover is global (not workspace-scoped) — the front door to public
-            Cartridges across Stash, so it sits up top next to Home. */}
+        {/* "Your brain" is the revamped activity view — your accumulated
+            knowledge, status, and newsfeed. Global (workspace-resolved within
+            the page), so it sits up top next to Home. */}
         <NavRow
-          href="/discover"
-          icon={<DiscoverIcon />}
-          label="Discover"
-          active={pathname.startsWith("/discover")}
+          href="/activity"
+          icon={<ActivityIcon />}
+          label="Your brain"
+          active={pathname.startsWith("/activity")}
         />
         {activeWorkspace ? (
           <NavRow
@@ -311,12 +311,6 @@ export default function AppSidebar({
             active={pathname.startsWith(`/workspaces/${activeWorkspace.id}/agents`)}
           />
         ) : null}
-        <NavRow
-          href="/activity"
-          icon={<ActivityIcon />}
-          label="Activity"
-          active={pathname.startsWith("/activity")}
-        />
         {activeWorkspace ? (
           <NavRow
             href={`/workspaces/${activeWorkspace.id}/cartridges`}
