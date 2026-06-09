@@ -2870,9 +2870,11 @@ def sources_ls(
 @sources_app.command("add")
 def sources_add(
     source_type: str = typer.Argument(
-        ..., help="github_repo | google_drive | notion | slack | granola"
+        ..., help="github_repo | google_drive | gmail | notion | slack | granola"
     ),
-    ref: str = typer.Option("", "--ref", help="external_ref, e.g. a repo 'owner/name'."),
+    ref: str = typer.Option(
+        "", "--ref", help="external_ref, e.g. a repo 'owner/name' or Gmail address."
+    ),
     name: str = typer.Option("", "--name", help="Display name."),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),

@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+from urllib.parse import quote
 from uuid import UUID
 
 from ..database import get_pool
@@ -443,9 +444,7 @@ async def read_document(source: dict, path: str) -> dict | None:
     )
     if not row:
         return None
-    content = await _lazy_fetch(
-        source["source_type"], UUID(source["owner_user_id"]), row["external_ref"]
-    )
+    content = await _lazy_fetch(source, row["external_ref"])
     return {
         "path": row["path"],
         "name": row["name"],
@@ -455,11 +454,13 @@ async def read_document(source: dict, path: str) -> dict | None:
     }
 
 
-async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str | None) -> str:
+async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
     """Fetch an index-only document's body from the provider. Local import keeps
     the integration indexers (which import this module) free of a cycle."""
     if not external_ref:
         return ""
+    source_type = source["source_type"]
+    owner_user_id = UUID(source["owner_user_id"])
     if source_type == "google_drive":
         from ..integrations.google.indexer import fetch_drive_content
 
@@ -467,7 +468,7 @@ async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str |
     if source_type == "gmail":
         from ..integrations.gmail.indexer import fetch_gmail_content
 
-        return await fetch_gmail_content(owner_user_id, external_ref)
+        return await fetch_gmail_content(owner_user_id, source["external_ref"], external_ref)
     if source_type == "jira_project":
         from ..integrations.jira.indexer import fetch_jira_content
 
@@ -707,7 +708,8 @@ def source_document_url(
             return link
         return f"https://drive.google.com/file/d/{path}/view"
     if source_type == "gmail":
-        return f"https://mail.google.com/mail/u/0/#all/{path}"
+        mailbox = quote(external_ref or "0", safe="")
+        return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
     return None
 
@@ -766,9 +768,11 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
         return source_document_url("github_repo", source["external_ref"], doc["path"])
     if source_type == "asana_project":
         return source_document_url("asana_project", None, doc["path"])
-    if source_type in ("notion", "google_drive", "gmail"):
+    if source_type in ("notion", "google_drive"):
         # The page/file id lives on the document row, not the source row.
         return source_document_url(source_type, None, doc_ref or doc["path"])
+    if source_type == "gmail":
+        return source_document_url(source_type, source["external_ref"], doc_ref or doc["path"])
     if source_type == "jira_project":
         from ..integrations.jira.indexer import site_url
 
