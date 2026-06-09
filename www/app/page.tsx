@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import AppRedirectForSignedInUsers from "./_components/AppRedirectForSignedInUsers";
 import LiveDemo from "./_components/LiveDemo";
 import ScrollLink from "./_components/ScrollLink";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
@@ -10,6 +11,7 @@ const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 export default function Page() {
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <AppRedirectForSignedInUsers appUrl={APP_URL} />
       <Nav />
       <Hero />
       <Logos />
