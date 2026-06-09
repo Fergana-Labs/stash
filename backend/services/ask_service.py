@@ -106,7 +106,7 @@ async def stream_chat(
         history=history,
         workspace_id=workspace_id,
         user_id=user_id,
-        tool_set=prompts.ASK_TOOL_SET,
+        tool_set=prompts.STASH_TOOL_SET,
     ):
         if event.get("type") == "text":
             answer.append(event.get("delta") or "")

@@ -736,11 +736,307 @@ async def _update_page(args: dict) -> dict:
     return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
 
 
+@tool(
+    "edit_page",
+    "Make a surgical edit to a page body instead of rewriting it whole. In "
+    "'replace' mode `old_string` must appear exactly once in the page (it is "
+    "replaced with `new_string`); in 'append' mode `new_string` is added to the "
+    "end. Edits the active content (markdown or html) of the page.",
+    {
+        "type": "object",
+        "properties": {
+            "page_id": {"type": "string"},
+            "old_string": {"type": "string", "default": ""},
+            "new_string": {"type": "string"},
+            "mode": {"type": "string", "enum": ["replace", "append"], "default": "replace"},
+        },
+        "required": ["page_id", "new_string"],
+    },
+)
+async def _edit_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    try:
+        page = await files_tree_service.edit_page(
+            page_id=UUID(args["page_id"]),
+            workspace_id=workspace_id,
+            updated_by=user_id,
+            old_string=args.get("old_string") or "",
+            new_string=args["new_string"],
+            mode=args.get("mode") or "replace",
+        )
+    except files_tree_service.EditMatchError as e:
+        return _text_result(
+            json.dumps(
+                {
+                    "error": "no-unique-match",
+                    "detail": f"old_string matched {e.count} times; it must match exactly once",
+                }
+            )
+        )
+    except files_tree_service.ConcurrentEditError:
+        return _text_result(json.dumps({"error": "page changed during edit, read it and retry"}))
+    if page is None:
+        return _text_result(json.dumps({"error": "page not found"}))
+    return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
+
+
+# --- Tree mutation tools (folders, pages, tables) --------------------------
+#
+# These wrap the same service functions the REST/MCP layer uses, so the in-app
+# agent can organize the workspace, not just write page bodies. Operations on an
+# existing object by id are workspace-scoped by the service WHERE clause (pages)
+# or by an explicit guard (tables, which the service does not scope).
+
+
+async def _table_in_workspace(table_id: UUID, workspace_id: UUID) -> bool:
+    meta = await table_service.get_table_metadata(table_id)
+    return bool(meta and meta["workspace_id"] == workspace_id)
+
+
+@tool(
+    "create_folder",
+    "Create a folder in the workspace. Pass parent_folder_id to nest it.",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "parent_folder_id": {"type": "string"},
+        },
+        "required": ["name"],
+    },
+)
+async def _create_folder(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    parent_folder_id = UUID(args["parent_folder_id"]) if args.get("parent_folder_id") else None
+    try:
+        folder = await files_tree_service.create_folder(
+            workspace_id, args["name"], user_id, parent_folder_id=parent_folder_id
+        )
+    except files_tree_service.DuplicateFolderName:
+        return _text_result(json.dumps({"error": "a folder with that name already exists here"}))
+    except ValueError as e:
+        return _text_result(json.dumps({"error": str(e)}))
+    return _text_result(json.dumps({"id": str(folder["id"]), "name": folder["name"]}))
+
+
+@tool(
+    "move_page",
+    "Move a page into a folder, or to the workspace root with move_to_root.",
+    {
+        "type": "object",
+        "properties": {
+            "page_id": {"type": "string"},
+            "folder_id": {"type": "string"},
+            "move_to_root": {"type": "boolean", "default": False},
+        },
+        "required": ["page_id"],
+    },
+)
+async def _move_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
+    try:
+        page = await files_tree_service.update_page(
+            page_id=UUID(args["page_id"]),
+            workspace_id=workspace_id,
+            updated_by=user_id,
+            folder_id=folder_id,
+            move_to_root=bool(args.get("move_to_root", False)),
+        )
+    except ValueError as e:
+        return _text_result(json.dumps({"error": str(e)}))
+    if page is None:
+        return _text_result(json.dumps({"error": "page not found"}))
+    return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
+
+
+@tool(
+    "rename_page",
+    "Rename a page by id.",
+    {
+        "type": "object",
+        "properties": {"page_id": {"type": "string"}, "name": {"type": "string"}},
+        "required": ["page_id", "name"],
+    },
+)
+async def _rename_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    try:
+        page = await files_tree_service.update_page(
+            page_id=UUID(args["page_id"]),
+            workspace_id=workspace_id,
+            updated_by=user_id,
+            name=args["name"],
+        )
+    except files_tree_service.DuplicatePageName:
+        return _text_result(json.dumps({"error": "a page with that name already exists here"}))
+    if page is None:
+        return _text_result(json.dumps({"error": "page not found"}))
+    return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
+
+
+@tool(
+    "delete_page",
+    "Move a page to the trash (soft delete) by id.",
+    {
+        "type": "object",
+        "properties": {"page_id": {"type": "string"}},
+        "required": ["page_id"],
+    },
+)
+async def _delete_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    deleted = await files_tree_service.delete_page(UUID(args["page_id"]), workspace_id, user_id)
+    if not deleted:
+        return _text_result(json.dumps({"error": "page not found"}))
+    return _text_result(json.dumps({"deleted": True, "page_id": args["page_id"]}))
+
+
+@tool(
+    "create_table",
+    "Create a table. `columns` is a list of {name, type} column definitions "
+    "(type one of text, number, boolean, date, datetime, url, email, select, "
+    "multiselect, json). Pass folder_id to place it in a folder.",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "description": {"type": "string", "default": ""},
+            "columns": {"type": "array", "items": {"type": "object"}, "default": []},
+            "folder_id": {"type": "string"},
+        },
+        "required": ["name"],
+    },
+)
+async def _create_table(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
+    try:
+        table = await table_service.create_table(
+            workspace_id,
+            args["name"],
+            args.get("description") or "",
+            args.get("columns") or [],
+            user_id,
+            folder_id=folder_id,
+        )
+    except ValueError as e:
+        return _text_result(json.dumps({"error": str(e)}))
+    return _text_result(json.dumps({"id": str(table["id"]), "name": table["name"]}))
+
+
+@tool(
+    "insert_row",
+    "Insert a row into a table. `data` maps column id/name to value.",
+    {
+        "type": "object",
+        "properties": {
+            "table_id": {"type": "string"},
+            "data": {"type": "object"},
+        },
+        "required": ["table_id", "data"],
+    },
+)
+async def _insert_row(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    table_id = UUID(args["table_id"])
+    if not await _table_in_workspace(table_id, workspace_id):
+        return _text_result(json.dumps({"error": "table not found"}))
+    row = await table_service.create_row(table_id, args.get("data") or {}, _current_user())
+    return _text_result(json.dumps({"id": str(row["id"])}))
+
+
+@tool(
+    "update_row",
+    "Update a table row (partial merge — only the keys you pass change).",
+    {
+        "type": "object",
+        "properties": {
+            "table_id": {"type": "string"},
+            "row_id": {"type": "string"},
+            "data": {"type": "object"},
+        },
+        "required": ["table_id", "row_id", "data"],
+    },
+)
+async def _update_row(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    table_id = UUID(args["table_id"])
+    if not await _table_in_workspace(table_id, workspace_id):
+        return _text_result(json.dumps({"error": "table not found"}))
+    row = await table_service.update_row(
+        UUID(args["row_id"]), args.get("data") or {}, _current_user(), table_id=table_id
+    )
+    if row is None:
+        return _text_result(json.dumps({"error": "row not found"}))
+    return _text_result(json.dumps({"id": str(row["id"])}))
+
+
+@tool(
+    "add_column",
+    "Add a column to a table. `column` is a {name, type} definition.",
+    {
+        "type": "object",
+        "properties": {
+            "table_id": {"type": "string"},
+            "column": {"type": "object"},
+        },
+        "required": ["table_id", "column"],
+    },
+)
+async def _add_column(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    table_id = UUID(args["table_id"])
+    if not await _table_in_workspace(table_id, workspace_id):
+        return _text_result(json.dumps({"error": "table not found"}))
+    table = await table_service.add_column(table_id, args.get("column") or {}, _current_user())
+    return _text_result(json.dumps({"id": str(table["id"]), "name": table["name"]}))
+
+
+@tool(
+    "delete_row",
+    "Delete a row from a table by id.",
+    {
+        "type": "object",
+        "properties": {
+            "table_id": {"type": "string"},
+            "row_id": {"type": "string"},
+        },
+        "required": ["table_id", "row_id"],
+    },
+)
+async def _delete_row(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    table_id = UUID(args["table_id"])
+    if not await _table_in_workspace(table_id, workspace_id):
+        return _text_result(json.dumps({"error": "table not found"}))
+    deleted = await table_service.delete_row(UUID(args["row_id"]), table_id=table_id)
+    if not deleted:
+        return _text_result(json.dumps({"error": "row not found"}))
+    return _text_result(json.dumps({"deleted": True, "row_id": args["row_id"]}))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
     "create_page": _create_page,
     "update_page": _update_page,
+    "edit_page": _edit_page,
+    "create_folder": _create_folder,
+    "move_page": _move_page,
+    "rename_page": _rename_page,
+    "delete_page": _delete_page,
+    "create_table": _create_table,
+    "insert_row": _insert_row,
+    "update_row": _update_row,
+    "add_column": _add_column,
+    "delete_row": _delete_row,
     "grep_pages": _grep_pages,
     "list_files": _list_files,
     "read_file": _read_file,

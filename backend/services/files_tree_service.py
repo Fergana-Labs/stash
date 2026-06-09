@@ -12,11 +12,59 @@ from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 import asyncpg
+import nh3
 
 from ..database import get_pool
 from . import permission_service
 
 logger = logging.getLogger(__name__)
+
+# HTML pages render in a sandboxed iframe with allow-scripts, and are served on
+# public cartridge URLs. We strip author-supplied scripts / event handlers /
+# javascript: + data:text/html URLs on write so an agent- or attacker-authored
+# page can't run hostile JS for a public viewer. The trusted resize/slide
+# bootstrap is injected at render time (not stored), so this never touches it.
+_SANITIZE_TAGS = nh3.ALLOWED_TAGS | {
+    "section", "style", "div", "span", "header", "footer", "main", "article",
+    "aside", "nav", "figure", "figcaption", "video", "audio", "source",
+    "picture", "details", "summary", "mark",
+    "svg", "path", "g", "circle", "rect", "line", "polyline", "polygon", "text",
+}
+_SANITIZE_ATTRS = {
+    "*": {"class", "id", "style", "title", "lang", "dir", "role", "width", "height"},
+    "span": {"data-comment-id"},  # inline comment anchors depend on this
+    "img": {"src", "alt", "loading", "srcset"},
+    "a": {"href", "target", "name"},
+    "video": {"src", "controls", "poster", "autoplay", "loop", "muted"},
+    "audio": {"src", "controls"},
+    "source": {"src", "srcset", "type", "media"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan", "scope"},
+    "section": {"data-slide"},
+}
+_SANITIZE_URL_SCHEMES = {"http", "https", "mailto", "tel", "data"}
+
+
+def _drop_unsafe_data_uri(tag: str, attr: str, value: str) -> str | None:
+    """data: URLs are useful for inline images but a phishing/exfil vector
+    elsewhere (e.g. <a href="data:text/html,…">). Keep them only on <img src>."""
+    if value.strip().lower().startswith("data:") and not (tag == "img" and attr == "src"):
+        return None
+    return value
+
+
+def _sanitize_html(html: str) -> str:
+    if not html:
+        return html
+    return nh3.clean(
+        html,
+        tags=_SANITIZE_TAGS,
+        attributes=_SANITIZE_ATTRS,
+        url_schemes=_SANITIZE_URL_SCHEMES,
+        link_rel=None,
+        clean_content_tags={"script"},
+        attribute_filter=_drop_unsafe_data_uri,
+    )
 
 # Workspace-owned page (excludes the read-only stash mirror rows).
 _OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_cartridge_id', '') = ''"
@@ -258,6 +306,7 @@ async def create_page(
         folder = await pool.fetchrow("SELECT workspace_id FROM folders WHERE id = $1", folder_id)
         if not folder or folder["workspace_id"] != workspace_id:
             raise ValueError("folder_id does not belong to workspace")
+    content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
     meta = metadata or {}
@@ -350,6 +399,8 @@ async def update_page(
 ) -> dict | None:
     """Update a page with optimistic concurrency on content_hash."""
     pool = get_pool()
+    if content_html is not None:
+        content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
 
     if folder_id is not None and not move_to_root:
@@ -484,6 +535,61 @@ async def update_page(
     if fresh is None:
         return None
     raise ConcurrentEditError(dict(fresh))
+
+
+class EditMatchError(Exception):
+    """`old_string` did not match exactly once in the page body."""
+
+    def __init__(self, count: int):
+        self.count = count
+        super().__init__(f"old_string matched {count} times; it must match exactly once")
+
+
+def _apply_edit(text: str, old_string: str, new_string: str, mode: str) -> str:
+    if mode == "append":
+        return text + new_string
+    count = text.count(old_string)
+    if count != 1:
+        raise EditMatchError(count)
+    return text.replace(old_string, new_string)
+
+
+async def edit_page(
+    page_id: UUID,
+    workspace_id: UUID,
+    updated_by: UUID,
+    *,
+    old_string: str,
+    new_string: str,
+    mode: str = "replace",
+) -> dict | None:
+    """Surgical edit of a page body: replace a unique `old_string`, or append.
+
+    Operates on the active content field (markdown or html). `replace` mode
+    fails loud — no fuzzy matching — when `old_string` matches zero or many
+    times, writing nothing. Concurrent edits that leave the anchor intact are
+    re-applied to the fresh body and retried; if a collaborator removes or
+    duplicates the anchor, the retry raises EditMatchError rather than guessing.
+    """
+    for _ in range(MAX_UPDATE_RETRIES):
+        page = await get_page(page_id, workspace_id)
+        if page is None:
+            return None
+        is_html = page["content_type"] == "html"
+        field = (page["content_html"] if is_html else page["content_markdown"]) or ""
+        new_text = _apply_edit(field, old_string, new_string, mode)
+        edited = {"content_html": new_text} if is_html else {"content": new_text}
+        try:
+            result = await update_page(
+                page_id=page_id,
+                workspace_id=workspace_id,
+                updated_by=updated_by,
+                **edited,
+            )
+        except ConcurrentEditError:
+            continue
+        return result
+    raise ConcurrentEditError(page)
 
 
 async def delete_page(page_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bool:

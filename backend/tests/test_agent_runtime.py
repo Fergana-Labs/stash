@@ -184,6 +184,232 @@ async def test_create_and_update_page_round_trip(workspace: UUID, _db_pool):
     assert "Hello again" in json.loads(read_back["content"][0]["text"])["content"]
 
 
+def test_destructive_tools_withheld_from_untrusted_surfaces():
+    """The Slack surface is untrusted (prompt-injectable), so destructive tools
+    must never reach it; the ask surface must stay read-only."""
+    for name in prompts.SLACK_DESTRUCTIVE_TOOLS:
+        assert name in prompts.STASH_TOOL_SET
+        assert name not in prompts.SLACK_TOOL_SET
+    write_tools = (
+        "create_page",
+        "update_page",
+        "create_folder",
+        "move_page",
+        "rename_page",
+        "delete_page",
+        "create_table",
+        "insert_row",
+        "update_row",
+        "add_column",
+        "delete_row",
+    )
+    for name in write_tools:
+        assert name not in prompts.ASK_TOOL_SET
+
+
+@pytest.mark.asyncio
+async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
+    """edit_page does a unique str-replace / append on the active body, and fails
+    loud (writing nothing) when the anchor isn't unique."""
+    from backend.services import files_tree_service
+
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+
+    md = await files_tree_service.create_page(
+        workspace_id=workspace, name="Doc", created_by=user_id, content="alpha beta gamma"
+    )
+    html = await files_tree_service.create_page(
+        workspace_id=workspace,
+        name="Page",
+        created_by=user_id,
+        content_type="html",
+        content_html="<p>one</p>",
+    )
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        # Unique replace on markdown.
+        await agent_runtime._edit_page.handler(
+            {"page_id": str(md["id"]), "old_string": "beta", "new_string": "BETA"}
+        )
+        # Append on markdown.
+        await agent_runtime._edit_page.handler(
+            {"page_id": str(md["id"]), "new_string": " delta", "mode": "append"}
+        )
+        # Unique replace on the html body.
+        await agent_runtime._edit_page.handler(
+            {"page_id": str(html["id"]), "old_string": "<p>one</p>", "new_string": "<p>two</p>"}
+        )
+        # Zero matches → fail loud, no write.
+        zero = json.loads(
+            (
+                await agent_runtime._edit_page.handler(
+                    {"page_id": str(md["id"]), "old_string": "nope", "new_string": "x"}
+                )
+            )["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    md_body = await _db_pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE id = $1", md["id"]
+    )
+    html_body = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", html["id"])
+    assert md_body == "alpha BETA gamma delta"
+    assert html_body == "<p>two</p>"
+    assert zero["error"] == "no-unique-match"
+
+
+@pytest.mark.asyncio
+async def test_edit_page_multi_match_writes_nothing(workspace: UUID, _db_pool):
+    """A >1 match must not partially write — the body is untouched."""
+    from backend.services import files_tree_service
+
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    page = await files_tree_service.create_page(
+        workspace_id=workspace, name="Dup", created_by=user_id, content="x x x"
+    )
+
+    with pytest.raises(files_tree_service.EditMatchError):
+        await files_tree_service.edit_page(
+            page["id"], workspace, user_id, old_string="x", new_string="y"
+        )
+    body = await _db_pool.fetchval("SELECT content_markdown FROM pages WHERE id = $1", page["id"])
+    assert body == "x x x"
+
+
+@pytest.mark.asyncio
+async def test_tree_mutation_tools_round_trip(workspace: UUID, _db_pool):
+    """create_folder + the page move/rename/delete tools let the agent organize
+    the workspace, all bound to the active workspace context."""
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        folder = json.loads(
+            (await agent_runtime._create_folder.handler({"name": "Specs"}))["content"][0]["text"]
+        )
+        page = json.loads(
+            (
+                await agent_runtime._create_page.handler(
+                    {"name": "Draft", "content": "# Draft", "folder_id": folder["id"]}
+                )
+            )["content"][0]["text"]
+        )
+        await agent_runtime._rename_page.handler({"page_id": page["id"], "name": "Final"})
+        await agent_runtime._move_page.handler({"page_id": page["id"], "move_to_root": True})
+        deleted = json.loads(
+            (await agent_runtime._delete_page.handler({"page_id": page["id"]}))["content"][0][
+                "text"
+            ]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    assert deleted == {"deleted": True, "page_id": page["id"]}
+    stored = await _db_pool.fetchrow(
+        "SELECT name, folder_id, deleted_at FROM pages WHERE id = $1", UUID(page["id"])
+    )
+    assert stored["name"] == "Final"  # rename took
+    assert stored["folder_id"] is None  # moved to root
+    assert stored["deleted_at"] is not None  # soft-deleted
+
+
+@pytest.mark.asyncio
+async def test_table_mutation_tools_round_trip(workspace: UUID, _db_pool):
+    """create_table + row/column tools wrap table_service, guarded so an agent
+    can only touch tables in its own workspace."""
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        table = json.loads(
+            (
+                await agent_runtime._create_table.handler(
+                    {"name": "Leads", "columns": [{"name": "Company", "type": "text"}]}
+                )
+            )["content"][0]["text"]
+        )
+        row = json.loads(
+            (
+                await agent_runtime._insert_row.handler(
+                    {"table_id": table["id"], "data": {"Company": "Acme"}}
+                )
+            )["content"][0]["text"]
+        )
+        await agent_runtime._add_column.handler(
+            {"table_id": table["id"], "column": {"name": "Stage", "type": "text"}}
+        )
+        await agent_runtime._update_row.handler(
+            {"table_id": table["id"], "row_id": row["id"], "data": {"Stage": "Won"}}
+        )
+        stored_data = await _db_pool.fetchval(
+            "SELECT data FROM table_rows WHERE id = $1", UUID(row["id"])
+        )
+        deleted = json.loads(
+            (
+                await agent_runtime._delete_row.handler(
+                    {"table_id": table["id"], "row_id": row["id"]}
+                )
+            )["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    assert "Acme" in json.dumps(stored_data)
+    assert "Won" in json.dumps(stored_data)
+    assert deleted == {"deleted": True, "row_id": row["id"]}
+    remaining = await _db_pool.fetchval(
+        "SELECT count(*) FROM table_rows WHERE id = $1", UUID(row["id"])
+    )
+    assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
+    """A table id from another workspace must be invisible to the agent's
+    write tools — the workspace guard returns 'table not found'."""
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    other_ws = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
+        other_ws,
+        f"ws_{other_ws.hex[:6]}",
+        user_id,
+        other_ws.hex[:12],
+    )
+    other_table = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO tables (id, workspace_id, name, description, columns, created_by, updated_by) "
+        "VALUES ($1, $2, 'Secret', '', '[]'::jsonb, $3, $3)",
+        other_table,
+        other_ws,
+        user_id,
+    )
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        result = json.loads(
+            (
+                await agent_runtime._insert_row.handler(
+                    {"table_id": str(other_table), "data": {}}
+                )
+            )["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    assert result == {"error": "table not found"}
+
+
 @pytest.mark.asyncio
 async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)

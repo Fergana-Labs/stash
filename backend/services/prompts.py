@@ -43,6 +43,16 @@ STASH_TOOL_SET = (
     "read_page",
     "create_page",
     "update_page",
+    "edit_page",
+    "create_folder",
+    "move_page",
+    "rename_page",
+    "delete_page",
+    "create_table",
+    "insert_row",
+    "update_row",
+    "add_column",
+    "delete_row",
     "grep_pages",
     "list_files",
     "read_file",
@@ -61,10 +71,11 @@ STASH_TOOL_SET = (
     "fetch_history",
 )
 
-# Slack agent (talk-to-Stash bot): can create + update cartridges (artifacts),
-# but NOT delete. Slack is an untrusted surface, so the destructive
-# `delete_cartridge` is held back to limit what a prompt-injected message can do.
-SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t != "delete_cartridge")
+# Slack agent (talk-to-Stash bot): can create + update artifacts, but NOT
+# destroy them. Slack is an untrusted surface, so destructive tools are held
+# back to limit what a prompt-injected message can do.
+SLACK_DESTRUCTIVE_TOOLS = frozenset({"delete_cartridge", "delete_page", "delete_row"})
+SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t not in SLACK_DESTRUCTIVE_TOOLS)
 
 # Read-only subset for ask-the-workspace and other Q&A surfaces. Drops
 # the write tools so a prompt-injected request can't trigger mutations
