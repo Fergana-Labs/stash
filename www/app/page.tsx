@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 
 import AppRedirectForSignedInUsers from "./_components/AppRedirectForSignedInUsers";
 import LiveDemo from "./_components/LiveDemo";
+import Logo from "./_components/Logo";
 import ScrollLink from "./_components/ScrollLink";
+import SiteHeader from "./_components/SiteHeader";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
@@ -12,7 +14,7 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <AppRedirectForSignedInUsers appUrl={APP_URL} />
-      <Nav />
+      <SiteHeader />
       <Hero />
       <Logos />
       <Problem />
@@ -29,111 +31,12 @@ export default function Page() {
   );
 }
 
-function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 64 72"
-      width={size}
-      height={(size * 72) / 64}
-      aria-hidden="true"
-    >
-      <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316" />
-      <circle cx="25" cy="22" r="4" fill="#fff" />
-      <circle cx="39" cy="22" r="4" fill="#fff" />
-      <circle cx="26" cy="22" r="2" fill="#0F172A" />
-      <circle cx="40" cy="22" r="2" fill="#0F172A" />
-      <path d="M12 38 Q8 52 4 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M20 40 Q18 54 14 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M32 42 Q32 56 32 64" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M44 40 Q46 54 50 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M52 38 Q56 52 60 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-    </svg>
-  );
-}
-
 function EyebrowDot({ children }: { children: ReactNode }) {
   return (
     <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
       <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
       {children}
     </p>
-  );
-}
-
-function Nav() {
-  return (
-    <header className="sticky top-0 z-50 border-b border-border-subtle bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7 sm:px-7">
-        <Link
-          href="/"
-          className="flex items-center gap-2.5 font-display text-[20px] font-black tracking-[-0.03em] text-ink"
-        >
-          <Logo size={28} />
-          stash
-        </Link>
-        <nav className="flex items-center gap-2 text-[14px] text-dim">
-          <ScrollLink
-            to="#how"
-            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
-          >
-            How it works
-          </ScrollLink>
-          <ScrollLink
-            to="#features"
-            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
-          >
-            Features
-          </ScrollLink>
-          <Link
-            href="/discover"
-            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
-          >
-            Discover
-          </Link>
-          <Link
-            href="/docs"
-            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
-          >
-            Docs
-          </Link>
-          <Link
-            href="/blog"
-            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
-          >
-            Blog
-          </Link>
-          <Link
-            href="/contact-sales"
-            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
-          >
-            Contact sales
-          </Link>
-          <Link
-            href="https://github.com/Fergana-Labs/stash"
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
-            aria-label="Stash on GitHub"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
-            </svg>
-            <span className="hidden sm:inline">GitHub</span>
-          </Link>
-          <Link
-            href="/login"
-            className="hidden h-10 items-center rounded-lg border border-border bg-background px-[18px] text-[14px] font-medium text-ink transition hover:border-ink sm:inline-flex"
-          >
-            Sign in
-          </Link>
-          <Link
-            href={APP_URL}
-            className="hidden h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover sm:inline-flex"
-          >
-            Start free
-          </Link>
-        </nav>
-      </div>
-    </header>
   );
 }
 
@@ -239,9 +142,9 @@ function Hero() {
             </h1>
 
             <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-              Built for the era where your agents write more than your team does.
-              Files, sessions, and Stashes. A company brain agents and humans
-              both write into.
+              The one place your agents connect to all your data — GitHub, Drive,
+              Gmail, Notion, Slack and more. Plus an agent-native Drive in Markdown
+              and HTML to write the work back into.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -333,10 +236,10 @@ function Problem() {
             evaporates the moment the session closes.
           </p>
           <p>
-            Stash is the company brain built for that flow. Sessions stream in as they happen. Files give
-            your team and your agents a real filesystem to write into. Stashes
-            turn any slice of that work into a link you can publish or fork
-            into another workspace.
+            Stash is built for that flow. It&rsquo;s the one place your agents
+            connect to all your data — GitHub, Drive, Gmail, Notion, Slack — and
+            an agent-native Drive in Markdown and HTML where sessions, files, and
+            pages all land. Bundle any slice into a link you can publish or fork.
           </p>
         </div>
       </div>
@@ -1000,9 +903,10 @@ function ClosingCTA() {
           <br />
           <span className="text-brand">to put their work.</span>
         </h2>
-        <p className="mx-auto mt-6 max-w-[540px] text-[17px] text-dim">
-          Start free in the managed app, or run the whole thing on your own
-          Postgres. Open source, MIT licensed.
+        <p className="mx-auto mt-6 max-w-[560px] text-[17px] text-dim">
+          Connect your agents to all your data, and give them an agent-native
+          Drive to write it back into. Start free in the managed app, or run the
+          whole thing on your own Postgres. Open source, MIT licensed.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
           <Link
@@ -1031,7 +935,8 @@ function Footer() {
     {
       h: "Product",
       links: [
-        ["How it works", "#how"],
+        ["Connect your data", "/connect-your-data"],
+        ["Agent-native Drive", "/agent-native-drive"],
         ["Discover", "/discover"],
         ["Docs", "/docs"],
       ],
@@ -1070,7 +975,8 @@ function Footer() {
             stash
           </div>
           <p className="mt-3 max-w-[320px] text-[13.5px] leading-[1.55] text-dim">
-            The knowledge base for the agent era. Open source, MIT licensed,
+            The one place your agents connect to all your data — plus an
+            agent-native Drive in Markdown and HTML. Open source, MIT licensed,
             self-hostable.
           </p>
         </div>

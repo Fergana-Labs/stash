@@ -6,9 +6,9 @@
 <h3 align="center">Knowledge bases for the agent era.</h3>
 
 <p align="center">
-  Built for the era where your agents write more than your team does. <br>
-  Sessions, files, and Stashes — a company brain humans and agents both <br>
-  write into, query semantically, and publish from.
+  The one place your agents connect to all your data — GitHub, Drive, Gmail, <br>
+  Notion, Slack and more — plus an agent-native Drive in Markdown and HTML <br>
+  where their sessions, files, and pages all land.
 </p>
 
 
@@ -57,7 +57,7 @@ With Stash, every agent on the repo has context about every session created from
 >
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
-**Stash is that product.** A company brain humans and agents both write into — not a stack of shell scripts wrapped around a folder of markdown.
+**Stash is that product.** The one place your agents connect to all your data, with an agent-native Drive they write it back into — not a stack of shell scripts wrapped around a folder of markdown.
 
 Built for —
 

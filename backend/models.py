@@ -33,6 +33,9 @@ class UserProfile(BaseModel):
     description: str
     created_at: datetime
     last_seen: datetime
+    role: str | None = None
+    referral_source: str | None = None
+    use_case: str | None = None
 
 
 class UserUpdateRequest(BaseModel):
@@ -42,6 +45,10 @@ class UserUpdateRequest(BaseModel):
     # Required whenever `password` is set — stops a stolen session key from
     # being enough to permanently take over the account.
     current_password: str | None = Field(None, max_length=128)
+    # Captured during onboarding's first step.
+    role: str | None = Field(None, max_length=128)
+    referral_source: str | None = Field(None, max_length=128)
+    use_case: str | None = Field(None, max_length=2000)
 
 
 class LoginRequest(BaseModel):
