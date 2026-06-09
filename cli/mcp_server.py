@@ -303,6 +303,42 @@ def stash_copy_file(file_id: str, target_folder_id: str = "", workspace_id: str 
     return _json(client.copy_ws_file(ws, file_id, target_folder_id=target_folder_id or None))
 
 
+@mcp.tool()
+def stash_batch_move(
+    items: list[dict],
+    target_folder_id: str = "",
+    move_to_root: bool = False,
+    workspace_id: str = "",
+) -> str:
+    """Move many items at once. `items` is a list of {object_type, object_id}
+    (object_type: page | file | folder | table). Best-effort: returns which
+    moved and which failed."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.batch_move(
+            ws, items, target_folder_id=target_folder_id or None, move_to_root=move_to_root
+        )
+    )
+
+
+@mcp.tool()
+def stash_batch_delete(items: list[dict], workspace_id: str = "") -> str:
+    """Move many pages/files to the trash at once. `items` is a list of
+    {object_type, object_id}. Best-effort."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.batch_delete(ws, items))
+
+
+@mcp.tool()
+def stash_batch_restore(items: list[dict], workspace_id: str = "") -> str:
+    """Restore many pages/files from the trash at once. Best-effort."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.batch_restore(ws, items))
+
+
 # ── Tables ────────────────────────────────────────────────────────
 
 

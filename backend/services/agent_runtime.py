@@ -1097,6 +1097,89 @@ async def _copy_folder(args: dict) -> dict:
     return _text_result(json.dumps({"id": str(folder["id"]), "name": folder["name"]}))
 
 
+_BATCH_ITEMS_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "object_type": {
+                "type": "string",
+                "enum": ["page", "file", "folder", "table"],
+            },
+            "object_id": {"type": "string"},
+        },
+        "required": ["object_type", "object_id"],
+    },
+}
+
+
+@tool(
+    "batch_move",
+    "Move many items at once into a folder (or to the root with move_to_root). "
+    "Best-effort: returns which items moved and which failed. Items: pages, "
+    "files, folders, tables.",
+    {
+        "type": "object",
+        "properties": {
+            "items": _BATCH_ITEMS_SCHEMA,
+            "target_folder_id": {"type": "string"},
+            "move_to_root": {"type": "boolean", "default": False},
+        },
+        "required": ["items"],
+    },
+)
+async def _batch_move(args: dict) -> dict:
+    from . import batch_service
+
+    target = UUID(args["target_folder_id"]) if args.get("target_folder_id") else None
+    result = await batch_service.batch_move(
+        _current_workspace(),
+        _current_user(),
+        args.get("items") or [],
+        target_folder_id=target,
+        move_to_root=bool(args.get("move_to_root", False)),
+    )
+    return _text_result(json.dumps(result))
+
+
+@tool(
+    "batch_delete",
+    "Move many pages/files to the trash at once (soft delete). Best-effort: "
+    "returns which items were trashed and which failed.",
+    {
+        "type": "object",
+        "properties": {"items": _BATCH_ITEMS_SCHEMA},
+        "required": ["items"],
+    },
+)
+async def _batch_delete(args: dict) -> dict:
+    from . import batch_service
+
+    result = await batch_service.batch_delete(
+        _current_workspace(), _current_user(), args.get("items") or []
+    )
+    return _text_result(json.dumps(result))
+
+
+@tool(
+    "batch_restore",
+    "Restore many pages/files from the trash at once. Best-effort: returns "
+    "which items were restored and which failed.",
+    {
+        "type": "object",
+        "properties": {"items": _BATCH_ITEMS_SCHEMA},
+        "required": ["items"],
+    },
+)
+async def _batch_restore(args: dict) -> dict:
+    from . import batch_service
+
+    result = await batch_service.batch_restore(
+        _current_workspace(), _current_user(), args.get("items") or []
+    )
+    return _text_result(json.dumps(result))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
@@ -1114,6 +1197,9 @@ _TOOLS_BY_NAME = {
     "delete_row": _delete_row,
     "copy_page": _copy_page,
     "copy_folder": _copy_folder,
+    "batch_move": _batch_move,
+    "batch_delete": _batch_delete,
+    "batch_restore": _batch_restore,
     "grep_pages": _grep_pages,
     "list_files": _list_files,
     "read_file": _read_file,

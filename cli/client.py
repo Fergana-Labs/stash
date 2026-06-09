@@ -597,6 +597,28 @@ class CartridgeClient:
             f"/api/v1/workspaces/{workspace_id}/files/{file_id}/copy", json=body
         )
 
+    # --- Batch ops (best-effort move/delete/restore over many items) ---
+
+    def batch_move(
+        self,
+        workspace_id: str,
+        items: list[dict],
+        target_folder_id: str | None = None,
+        move_to_root: bool = False,
+    ) -> dict:
+        body: dict = {"items": items, "move_to_root": move_to_root}
+        if target_folder_id:
+            body["target_folder_id"] = target_folder_id
+        return self._post(f"/api/v1/workspaces/{workspace_id}/batch/move", json=body)
+
+    def batch_delete(self, workspace_id: str, items: list[dict]) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/batch/delete", json={"items": items})
+
+    def batch_restore(self, workspace_id: str, items: list[dict]) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/batch/restore", json={"items": items}
+        )
+
     def restore_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._post(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/restore")
 

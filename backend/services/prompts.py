@@ -55,6 +55,9 @@ STASH_TOOL_SET = (
     "delete_row",
     "copy_page",
     "copy_folder",
+    "batch_move",
+    "batch_delete",
+    "batch_restore",
     "grep_pages",
     "list_files",
     "read_file",
@@ -76,7 +79,9 @@ STASH_TOOL_SET = (
 # Slack agent (talk-to-Stash bot): can create + update artifacts, but NOT
 # destroy them. Slack is an untrusted surface, so destructive tools are held
 # back to limit what a prompt-injected message can do.
-SLACK_DESTRUCTIVE_TOOLS = frozenset({"delete_cartridge", "delete_page", "delete_row"})
+SLACK_DESTRUCTIVE_TOOLS = frozenset(
+    {"delete_cartridge", "delete_page", "delete_row", "batch_delete", "batch_restore"}
+)
 SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t not in SLACK_DESTRUCTIVE_TOOLS)
 
 # Read-only subset for ask-the-workspace and other Q&A surfaces. Drops

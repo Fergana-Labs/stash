@@ -3063,6 +3063,74 @@ def shares_rm(
 
 
 # ===========================================================================
+# Batch ops
+# ===========================================================================
+
+batch_app = typer.Typer(help="Batch — move/delete/restore many items at once.")
+app.add_typer(batch_app, name="batch")
+
+
+def _parse_batch_items(refs: list[str]) -> list[dict]:
+    """Parse `type:id` tokens (e.g. page:abc file:def) into batch items."""
+    items = []
+    for ref in refs:
+        if ":" not in ref:
+            _err(f"Invalid item '{ref}' — use type:id, e.g. page:<id>")
+        object_type, object_id = ref.split(":", 1)
+        items.append({"object_type": object_type, "object_id": object_id})
+    return items
+
+
+@batch_app.command("move")
+def batch_move(
+    refs: list[str] = typer.Argument(..., help="Items as type:id, e.g. page:<id> file:<id>"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
+    to_root: bool = typer.Option(False, "--to-root", help="Move to the workspace root"),
+):
+    """Move many items (pages, files, folders, tables) at once."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            result = c.batch_move(
+                ws, _parse_batch_items(refs), target_folder_id=to_folder or None, move_to_root=to_root
+            )
+        except CartridgeError as e:
+            _err(e)
+    output_json(result)
+
+
+@batch_app.command("delete")
+def batch_delete(
+    refs: list[str] = typer.Argument(..., help="Items as type:id (pages/files)"),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Move many pages/files to the trash at once."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            result = c.batch_delete(ws, _parse_batch_items(refs))
+        except CartridgeError as e:
+            _err(e)
+    output_json(result)
+
+
+@batch_app.command("restore")
+def batch_restore(
+    refs: list[str] = typer.Argument(..., help="Items as type:id (pages/files)"),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Restore many pages/files from the trash at once."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            result = c.batch_restore(ws, _parse_batch_items(refs))
+        except CartridgeError as e:
+            _err(e)
+    output_json(result)
+
+
+# ===========================================================================
 # Trash
 # ===========================================================================
 

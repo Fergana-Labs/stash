@@ -363,6 +363,21 @@ class CopyRequest(BaseModel):
     target_folder_id: UUID | None = None
 
 
+class BatchItem(BaseModel):
+    object_type: str
+    object_id: UUID
+
+
+class BatchMoveRequest(BaseModel):
+    items: list[BatchItem]
+    target_folder_id: UUID | None = None
+    move_to_root: bool = False
+
+
+class BatchRequest(BaseModel):
+    items: list[BatchItem]
+
+
 class PageResponse(BaseModel):
     id: UUID
     workspace_id: UUID
