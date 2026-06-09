@@ -57,8 +57,12 @@ async def test_read_share_cannot_comment_but_comment_share_can(client: AsyncClie
     # Read-only share: friend can read threads, but commenting 404s.
     await client.post(
         "/api/v1/share",
-        json={"object_type": "page", "object_id": page_id, "email": friend_email,
-              "permission": "read"},
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": friend_email,
+            "permission": "read",
+        },
         headers=owner,
     )
     list_resp = await client.get(
@@ -75,8 +79,12 @@ async def test_read_share_cannot_comment_but_comment_share_can(client: AsyncClie
     # Upgrade to a comment share: now the post succeeds.
     await client.post(
         "/api/v1/share",
-        json={"object_type": "page", "object_id": page_id, "email": friend_email,
-              "permission": "comment"},
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": friend_email,
+            "permission": "comment",
+        },
         headers=owner,
     )
     allowed = await client.post(

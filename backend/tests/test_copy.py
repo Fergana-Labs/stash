@@ -81,9 +81,7 @@ async def test_copy_folder_is_deep(workspace, _db_pool):
         "SELECT id, name FROM folders WHERE parent_folder_id = $1", copy["id"]
     )
     assert new_sub["name"] == "Sub"
-    nested = await _db_pool.fetchval(
-        "SELECT name FROM pages WHERE folder_id = $1", new_sub["id"]
-    )
+    nested = await _db_pool.fetchval("SELECT name FROM pages WHERE folder_id = $1", new_sub["id"])
     assert nested == "Nested page"
     new_table = await _db_pool.fetchrow(
         "SELECT id, name FROM tables WHERE folder_id = $1", copy["id"]

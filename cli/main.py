@@ -3093,7 +3093,10 @@ def batch_move(
     with _client() as c:
         try:
             result = c.batch_move(
-                ws, _parse_batch_items(refs), target_folder_id=to_folder or None, move_to_root=to_root
+                ws,
+                _parse_batch_items(refs),
+                target_folder_id=to_folder or None,
+                move_to_root=to_root,
             )
         except CartridgeError as e:
             _err(e)

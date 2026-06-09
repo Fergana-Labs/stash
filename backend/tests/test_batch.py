@@ -134,7 +134,10 @@ async def test_batch_move_rejects_cross_workspace_item(workspace, _db_pool):
         workspace_id=other_ws, name="Other", created_by=user_id
     )
     result = await batch_service.batch_move(
-        ws_id, user_id, [{"object_type": "page", "object_id": str(other_page["id"])}], move_to_root=True
+        ws_id,
+        user_id,
+        [{"object_type": "page", "object_id": str(other_page["id"])}],
+        move_to_root=True,
     )
     assert not result["succeeded"]
     assert result["errors"][0]["reason"] == "not found"

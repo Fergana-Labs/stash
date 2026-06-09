@@ -235,9 +235,9 @@ async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: U
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         created = json.loads(
-            (
-                await agent_runtime._create_page.handler({"name": "Agent doc", "content": "a b"})
-            )["content"][0]["text"]
+            (await agent_runtime._create_page.handler({"name": "Agent doc", "content": "a b"}))[
+                "content"
+            ][0]["text"]
         )
         await agent_runtime._edit_page.handler(
             {"page_id": created["id"], "old_string": "a b", "new_string": "a c"}
@@ -309,9 +309,7 @@ async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)
 
-    md_body = await _db_pool.fetchval(
-        "SELECT content_markdown FROM pages WHERE id = $1", md["id"]
-    )
+    md_body = await _db_pool.fetchval("SELECT content_markdown FROM pages WHERE id = $1", md["id"])
     html_body = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", html["id"])
     assert md_body == "alpha BETA gamma delta"
     assert html_body == "<p>two</p>"
@@ -453,11 +451,9 @@ async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         result = json.loads(
-            (
-                await agent_runtime._insert_row.handler(
-                    {"table_id": str(other_table), "data": {}}
-                )
-            )["content"][0]["text"]
+            (await agent_runtime._insert_row.handler({"table_id": str(other_table), "data": {}}))[
+                "content"
+            ][0]["text"]
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)

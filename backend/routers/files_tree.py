@@ -635,9 +635,7 @@ async def restore_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require="write"
-    )
+    await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
     restored = await files_tree_service.restore_page(page_id, workspace_id)
     if not restored:
         raise HTTPException(status_code=404, detail="Page not in trash")
@@ -650,9 +648,7 @@ async def purge_page(
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a page already in trash."""
-    await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require="write"
-    )
+    await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
     purged = await files_tree_service.purge_page(page_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Page not in trash")
@@ -822,8 +818,6 @@ async def reconcile_comment_anchors(
     Resolved threads are left alone.
     """
     await _check_ws_write(workspace_id, current_user["id"])
-    await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require="write"
-    )
+    await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
     await _check_page_in_workspace(workspace_id, page_id)
     await comment_service.reconcile_orphans(page_id, req.present_ids)

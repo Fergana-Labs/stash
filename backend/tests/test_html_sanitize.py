@@ -57,9 +57,7 @@ async def test_create_page_strips_scripts_keeps_structure(workspace, _db_pool):
         content_type="html",
         content_html=hostile,
     )
-    stored = await _db_pool.fetchval(
-        "SELECT content_html FROM pages WHERE id = $1", page["id"]
-    )
+    stored = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", page["id"])
     # Hostile bits gone.
     assert "<script" not in stored and "fetch(" not in stored
     assert "javascript:" not in stored
@@ -105,8 +103,6 @@ async def test_update_page_sanitizes_html(workspace, _db_pool):
         updated_by=user_id,
         content_html="<p>updated</p><script>evil()</script>",
     )
-    stored = await _db_pool.fetchval(
-        "SELECT content_html FROM pages WHERE id = $1", page["id"]
-    )
+    stored = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", page["id"])
     assert "updated" in stored
     assert "<script" not in stored and "evil()" not in stored

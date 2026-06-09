@@ -334,9 +334,7 @@ async def check_access(
         return False
 
     # Direct or inherited user share.
-    if user_id is not None and await _user_share_grants(
-        object_type, object_id, user_id, require
-    ):
+    if user_id is not None and await _user_share_grants(object_type, object_id, user_id, require):
         return True
 
     # Read-only access via a public / shared session folder that contains it.

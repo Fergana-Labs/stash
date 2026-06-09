@@ -25,10 +25,34 @@ logger = logging.getLogger(__name__)
 # page can't run hostile JS for a public viewer. The trusted resize/slide
 # bootstrap is injected at render time (not stored), so this never touches it.
 _SANITIZE_TAGS = nh3.ALLOWED_TAGS | {
-    "section", "style", "div", "span", "header", "footer", "main", "article",
-    "aside", "nav", "figure", "figcaption", "video", "audio", "source",
-    "picture", "details", "summary", "mark",
-    "svg", "path", "g", "circle", "rect", "line", "polyline", "polygon", "text",
+    "section",
+    "style",
+    "div",
+    "span",
+    "header",
+    "footer",
+    "main",
+    "article",
+    "aside",
+    "nav",
+    "figure",
+    "figcaption",
+    "video",
+    "audio",
+    "source",
+    "picture",
+    "details",
+    "summary",
+    "mark",
+    "svg",
+    "path",
+    "g",
+    "circle",
+    "rect",
+    "line",
+    "polyline",
+    "polygon",
+    "text",
 }
 _SANITIZE_ATTRS = {
     "*": {"class", "id", "style", "title", "lang", "dir", "role", "width", "height"},
@@ -65,6 +89,7 @@ def _sanitize_html(html: str) -> str:
         clean_content_tags={"script"},
         attribute_filter=_drop_unsafe_data_uri,
     )
+
 
 # Workspace-owned page (excludes the read-only stash mirror rows).
 _OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_cartridge_id', '') = ''"
@@ -728,9 +753,7 @@ async def _create_page_unique(
     n = 2
     while True:
         try:
-            return await create_page(
-                workspace_id, name, created_by, folder_id=folder_id, **content
-            )
+            return await create_page(workspace_id, name, created_by, folder_id=folder_id, **content)
         except DuplicatePageName:
             name = f"{base_name} ({n})"
             n += 1
@@ -837,9 +860,7 @@ async def _copy_table_into(
         "SELECT data FROM table_rows WHERE table_id = $1 ORDER BY row_order", table_id
     )
     if rows:
-        await table_service.create_rows_batch(
-            new_table["id"], [r["data"] for r in rows], copied_by
-        )
+        await table_service.create_rows_batch(new_table["id"], [r["data"] for r in rows], copied_by)
     return new_table
 
 
@@ -856,7 +877,10 @@ async def _copy_folder_contents(
         src = await get_page(p["id"], workspace_id)
         if src:
             await create_page(
-                workspace_id, src["name"], copied_by, folder_id=dst_folder_id,
+                workspace_id,
+                src["name"],
+                copied_by,
+                folder_id=dst_folder_id,
                 **_page_content_kwargs(src),
             )
 
@@ -882,7 +906,9 @@ async def _copy_folder_contents(
         src_folder_id,
     )
     for s in sub_rows:
-        child = await create_folder(workspace_id, s["name"], copied_by, parent_folder_id=dst_folder_id)
+        child = await create_folder(
+            workspace_id, s["name"], copied_by, parent_folder_id=dst_folder_id
+        )
         await _copy_folder_contents(s["id"], child["id"], workspace_id, copied_by)
 
 
