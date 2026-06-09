@@ -53,6 +53,8 @@ STASH_TOOL_SET = (
     "update_row",
     "add_column",
     "delete_row",
+    "copy_page",
+    "copy_folder",
     "grep_pages",
     "list_files",
     "read_file",

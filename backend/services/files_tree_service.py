@@ -651,6 +651,201 @@ async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# --- Copy / duplicate ---
+#
+# A duplicate is just a fresh create from a source's content, so copies inherit
+# uniqueness, sanitization, and embedding for free. The top-level object copied
+# directly gets a "Copy of …" name; descendants of a copied folder keep their
+# names (the new folder is empty, so they can't collide).
+
+
+async def _create_page_unique(
+    workspace_id: UUID, base_name: str, created_by: UUID, folder_id: UUID | None, **content
+) -> dict:
+    name = base_name
+    n = 2
+    while True:
+        try:
+            return await create_page(
+                workspace_id, name, created_by, folder_id=folder_id, **content
+            )
+        except DuplicatePageName:
+            name = f"{base_name} ({n})"
+            n += 1
+
+
+async def _create_folder_unique(
+    workspace_id: UUID, base_name: str, created_by: UUID, parent_folder_id: UUID | None
+) -> dict:
+    name = base_name
+    n = 2
+    while True:
+        try:
+            return await create_folder(
+                workspace_id, name, created_by, parent_folder_id=parent_folder_id
+            )
+        except DuplicateFolderName:
+            name = f"{base_name} ({n})"
+            n += 1
+
+
+def _page_content_kwargs(src: dict) -> dict:
+    return {
+        "content": src["content_markdown"] or "",
+        "content_type": src["content_type"],
+        "content_html": src["content_html"] or "",
+        "html_layout": src["html_layout"],
+        "metadata": src["metadata"],
+    }
+
+
+async def copy_page(
+    page_id: UUID,
+    workspace_id: UUID,
+    copied_by: UUID,
+    target_folder_id: UUID | None = None,
+) -> dict | None:
+    """Duplicate a page as 'Copy of <name>'. Lands in the source's folder unless
+    target_folder_id is given."""
+    src = await get_page(page_id, workspace_id)
+    if src is None:
+        return None
+    folder_id = target_folder_id if target_folder_id is not None else src["folder_id"]
+    return await _create_page_unique(
+        workspace_id, f"Copy of {src['name']}", copied_by, folder_id, **_page_content_kwargs(src)
+    )
+
+
+async def copy_file(
+    file_id: UUID,
+    workspace_id: UUID,
+    copied_by: UUID,
+    target_folder_id: UUID | None = None,
+    name: str | None = None,
+) -> dict | None:
+    """Duplicate an uploaded file, copying its S3 blob to a fresh key. Files have
+    no name-uniqueness constraint, so the name is used as-is."""
+    from . import storage_service
+
+    pool = get_pool()
+    src = await pool.fetchrow(
+        "SELECT name, content_type, storage_key, folder_id, extracted_text, extraction_status "
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        file_id,
+        workspace_id,
+    )
+    if not src:
+        return None
+    data = await storage_service.download_file(src["storage_key"])
+    new_name = name or f"Copy of {src['name']}"
+    new_key = await storage_service.upload_file(
+        str(workspace_id), new_name, data, src["content_type"]
+    )
+    folder_id = target_folder_id if target_folder_id is not None else src["folder_id"]
+    row = await pool.fetchrow(
+        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, "
+        "uploaded_by, folder_id, extracted_text, extraction_status) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, name",
+        workspace_id,
+        new_name,
+        src["content_type"],
+        len(data),
+        new_key,
+        copied_by,
+        folder_id,
+        src["extracted_text"],
+        src["extraction_status"],
+    )
+    return dict(row)
+
+
+async def _copy_table_into(
+    table_id: UUID, workspace_id: UUID, copied_by: UUID, folder_id: UUID | None, name: str
+) -> dict:
+    """Clone a table's schema + rows into folder_id under `name`. Column ids are
+    preserved by create_table, so existing row payloads stay valid."""
+    from . import table_service
+
+    meta = await table_service.get_table_metadata(table_id)
+    new_table = await table_service.create_table(
+        workspace_id, name, meta["description"], meta["columns"], copied_by, folder_id=folder_id
+    )
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT data FROM table_rows WHERE table_id = $1 ORDER BY row_order", table_id
+    )
+    if rows:
+        await table_service.create_rows_batch(
+            new_table["id"], [r["data"] for r in rows], copied_by
+        )
+    return new_table
+
+
+async def _copy_folder_contents(
+    src_folder_id: UUID, dst_folder_id: UUID, workspace_id: UUID, copied_by: UUID
+) -> None:
+    pool = get_pool()
+    page_rows = await pool.fetch(
+        f"SELECT id FROM pages WHERE workspace_id = $1 AND folder_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+        workspace_id,
+        src_folder_id,
+    )
+    for p in page_rows:
+        src = await get_page(p["id"], workspace_id)
+        if src:
+            await create_page(
+                workspace_id, src["name"], copied_by, folder_id=dst_folder_id,
+                **_page_content_kwargs(src),
+            )
+
+    table_rows = await pool.fetch(
+        "SELECT id, name FROM tables WHERE workspace_id = $1 AND folder_id = $2",
+        workspace_id,
+        src_folder_id,
+    )
+    for t in table_rows:
+        await _copy_table_into(t["id"], workspace_id, copied_by, dst_folder_id, t["name"])
+
+    file_rows = await pool.fetch(
+        "SELECT id FROM files WHERE workspace_id = $1 AND folder_id = $2 AND deleted_at IS NULL",
+        workspace_id,
+        src_folder_id,
+    )
+    for f in file_rows:
+        await copy_file(f["id"], workspace_id, copied_by, target_folder_id=dst_folder_id, name=None)
+
+    sub_rows = await pool.fetch(
+        "SELECT id, name FROM folders WHERE workspace_id = $1 AND parent_folder_id = $2",
+        workspace_id,
+        src_folder_id,
+    )
+    for s in sub_rows:
+        child = await create_folder(workspace_id, s["name"], copied_by, parent_folder_id=dst_folder_id)
+        await _copy_folder_contents(s["id"], child["id"], workspace_id, copied_by)
+
+
+async def copy_folder(
+    folder_id: UUID,
+    workspace_id: UUID,
+    copied_by: UUID,
+    target_parent_id: UUID | None = None,
+) -> dict | None:
+    """Deep-copy a folder (subfolders, pages, tables, files) as 'Copy of <name>'.
+    Inside the copy, descendants keep their original names — only the top folder
+    is renamed. Copying files requires S3 storage to be configured."""
+    src = await get_folder(folder_id)
+    if not src or src["workspace_id"] != workspace_id:
+        return None
+    parent = target_parent_id if target_parent_id is not None else src["parent_folder_id"]
+    if parent is not None:
+        await _assert_no_cycle(folder_id, parent)
+    new_root = await _create_folder_unique(
+        workspace_id, f"Copy of {src['name']}", copied_by, parent
+    )
+    await _copy_folder_contents(folder_id, new_root["id"], workspace_id, copied_by)
+    return new_root
+
+
 # --- Listings ---
 
 

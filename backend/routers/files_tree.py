@@ -14,6 +14,7 @@ from ..models import (
     CommentThread,
     CommentThreadCreateRequest,
     CommentThreadListResponse,
+    CopyRequest,
     FolderCreateRequest,
     FolderListResponse,
     FolderResponse,
@@ -355,6 +356,33 @@ async def delete_folder(
         raise HTTPException(status_code=404, detail="Folder not found")
 
 
+@router.post("/folders/{folder_id}/copy", response_model=FolderResponse, status_code=201)
+async def copy_folder(
+    workspace_id: UUID,
+    folder_id: UUID,
+    req: CopyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_owns_folder(workspace_id, folder_id)
+    await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
+    if req.target_folder_id is not None:
+        await _check_ws_owns_folder(workspace_id, req.target_folder_id)
+        await _check_content_access(
+            "folder", req.target_folder_id, workspace_id, current_user["id"], require_write=True
+        )
+    else:
+        await _check_ws_write(workspace_id, current_user["id"])
+    try:
+        folder = await files_tree_service.copy_folder(
+            folder_id, workspace_id, current_user["id"], target_parent_id=req.target_folder_id
+        )
+    except FolderCycle as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return FolderResponse(**folder)
+
+
 # --- Pages ---
 
 
@@ -388,6 +416,29 @@ async def create_page(
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
+    return PageResponse(**page)
+
+
+@router.post("/pages/{page_id}/copy", response_model=PageResponse, status_code=201)
+async def copy_page(
+    workspace_id: UUID,
+    page_id: UUID,
+    req: CopyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    if req.target_folder_id is not None:
+        await _check_ws_owns_folder(workspace_id, req.target_folder_id)
+        await _check_content_access(
+            "folder", req.target_folder_id, workspace_id, current_user["id"], require_write=True
+        )
+    else:
+        await _check_ws_write(workspace_id, current_user["id"])
+    page = await files_tree_service.copy_page(
+        page_id, workspace_id, current_user["id"], target_folder_id=req.target_folder_id
+    )
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)
 
 

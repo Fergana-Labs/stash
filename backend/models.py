@@ -356,6 +356,13 @@ class PageUpdateRequest(BaseModel):
     move_to_root: bool = False
 
 
+class CopyRequest(BaseModel):
+    """Duplicate a page/folder/file into target_folder_id (defaults to the
+    source's own folder when omitted)."""
+
+    target_folder_id: UUID | None = None
+
+
 class PageResponse(BaseModel):
     id: UUID
     workspace_id: UUID

@@ -1022,6 +1022,59 @@ async def _delete_row(args: dict) -> dict:
     return _text_result(json.dumps({"deleted": True, "row_id": args["row_id"]}))
 
 
+@tool(
+    "copy_page",
+    "Duplicate a page as 'Copy of <name>'. Pass target_folder_id to place the "
+    "copy in a specific folder (defaults to the source's folder).",
+    {
+        "type": "object",
+        "properties": {
+            "page_id": {"type": "string"},
+            "target_folder_id": {"type": "string"},
+        },
+        "required": ["page_id"],
+    },
+)
+async def _copy_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    target = UUID(args["target_folder_id"]) if args.get("target_folder_id") else None
+    page = await files_tree_service.copy_page(
+        UUID(args["page_id"]), workspace_id, user_id, target_folder_id=target
+    )
+    if page is None:
+        return _text_result(json.dumps({"error": "page not found"}))
+    return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
+
+
+@tool(
+    "copy_folder",
+    "Deep-duplicate a folder (its subfolders, pages, and tables) as "
+    "'Copy of <name>'. Pass target_parent_id to nest the copy under another folder.",
+    {
+        "type": "object",
+        "properties": {
+            "folder_id": {"type": "string"},
+            "target_parent_id": {"type": "string"},
+        },
+        "required": ["folder_id"],
+    },
+)
+async def _copy_folder(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    target = UUID(args["target_parent_id"]) if args.get("target_parent_id") else None
+    try:
+        folder = await files_tree_service.copy_folder(
+            UUID(args["folder_id"]), workspace_id, user_id, target_parent_id=target
+        )
+    except files_tree_service.FolderCycle as e:
+        return _text_result(json.dumps({"error": str(e)}))
+    if folder is None:
+        return _text_result(json.dumps({"error": "folder not found"}))
+    return _text_result(json.dumps({"id": str(folder["id"]), "name": folder["name"]}))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
@@ -1037,6 +1090,8 @@ _TOOLS_BY_NAME = {
     "update_row": _update_row,
     "add_column": _add_column,
     "delete_row": _delete_row,
+    "copy_page": _copy_page,
+    "copy_folder": _copy_folder,
     "grep_pages": _grep_pages,
     "list_files": _list_files,
     "read_file": _read_file,

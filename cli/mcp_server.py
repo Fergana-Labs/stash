@@ -279,6 +279,30 @@ def stash_delete_page(page_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": page_id})
 
 
+@mcp.tool()
+def stash_copy_page(page_id: str, target_folder_id: str = "", workspace_id: str = "") -> str:
+    """Duplicate a page as 'Copy of <name>'. Optionally place it in target_folder_id."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.copy_page(ws, page_id, target_folder_id=target_folder_id or None))
+
+
+@mcp.tool()
+def stash_copy_folder(folder_id: str, target_folder_id: str = "", workspace_id: str = "") -> str:
+    """Deep-duplicate a folder (subfolders, pages, tables, files) as 'Copy of <name>'."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.copy_folder(ws, folder_id, target_folder_id=target_folder_id or None))
+
+
+@mcp.tool()
+def stash_copy_file(file_id: str, target_folder_id: str = "", workspace_id: str = "") -> str:
+    """Duplicate an uploaded file (and its blob) as 'Copy of <name>'."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.copy_ws_file(ws, file_id, target_folder_id=target_folder_id or None))
+
+
 # ── Tables ────────────────────────────────────────────────────────
 
 

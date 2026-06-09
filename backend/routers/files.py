@@ -19,6 +19,7 @@ from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..database import get_pool
 from ..models import (
+    CopyRequest,
     FileListResponse,
     FileResponse,
     FileUpdateRequest,
@@ -452,6 +453,43 @@ async def delete_ws_file(
     trashed = await files_service.delete_file(file_id, workspace_id, current_user["id"])
     if not trashed:
         raise HTTPException(status_code=404, detail="File not found")
+
+
+@ws_router.post("/{file_id}/copy", response_model=FileResponse, status_code=201)
+async def copy_ws_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    req: CopyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Duplicate a file (and its S3 blob) as 'Copy of <name>'."""
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="File not found")
+    if req.target_folder_id is not None:
+        can_write_folder = await permission_service.check_access(
+            "folder",
+            req.target_folder_id,
+            current_user["id"],
+            workspace_id=workspace_id,
+            require_write=True,
+        )
+        if not can_write_folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
+    else:
+        await _check_write(workspace_id, current_user["id"])
+    if not storage_service.is_configured():
+        raise HTTPException(status_code=503, detail="File storage is not configured")
+    copied = await files_tree_service.copy_file(
+        file_id, workspace_id, current_user["id"], target_folder_id=req.target_folder_id
+    )
+    if not copied:
+        raise HTTPException(status_code=404, detail="File not found")
+    row = await get_pool().fetchrow(
+        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, "
+        "uploaded_by, created_at, linked_table_id FROM files WHERE id = $1",
+        copied["id"],
+    )
+    return await _file_to_response(dict(row))
 
 
 @ws_router.post("/{file_id}/restore", status_code=204)

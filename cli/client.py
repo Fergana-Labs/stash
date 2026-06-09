@@ -360,6 +360,14 @@ class CartridgeClient:
     def delete_folder(self, workspace_id: str, folder_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}")
 
+    def copy_folder(
+        self, workspace_id: str, folder_id: str, target_folder_id: str | None = None
+    ) -> dict:
+        body = {"target_folder_id": target_folder_id} if target_folder_id else {}
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}/copy", json=body
+        )
+
     def update_folder(
         self,
         workspace_id: str,
@@ -431,6 +439,14 @@ class CartridgeClient:
 
     def purge_page(self, workspace_id: str, page_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}/purge")
+
+    def copy_page(
+        self, workspace_id: str, page_id: str, target_folder_id: str | None = None
+    ) -> dict:
+        body = {"target_folder_id": target_folder_id} if target_folder_id else {}
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/pages/{page_id}/copy", json=body
+        )
 
     # --- Session events ---
 
@@ -567,6 +583,14 @@ class CartridgeClient:
 
     def delete_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    def copy_ws_file(
+        self, workspace_id: str, file_id: str, target_folder_id: str | None = None
+    ) -> dict:
+        body = {"target_folder_id": target_folder_id} if target_folder_id else {}
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}/copy", json=body
+        )
 
     def restore_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._post(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/restore")

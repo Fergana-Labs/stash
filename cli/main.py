@@ -3824,6 +3824,54 @@ def files_purge_page(
     console.print("[green]Page permanently deleted.[/green]")
 
 
+@files_app.command("copy-page")
+def files_copy_page(
+    page_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
+):
+    """Duplicate a page as 'Copy of <name>'."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            page = c.copy_page(ws, page_id, target_folder_id=to_folder or None)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Copied to[/green] {page['name']} ({page['id']})")
+
+
+@files_app.command("copy-folder")
+def files_copy_folder(
+    folder_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target parent folder id"),
+):
+    """Deep-duplicate a folder as 'Copy of <name>'."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            folder = c.copy_folder(ws, folder_id, target_folder_id=to_folder or None)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Copied to[/green] {folder['name']} ({folder['id']})")
+
+
+@files_app.command("copy-file")
+def files_copy_file(
+    file_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
+):
+    """Duplicate an uploaded file as 'Copy of <name>'."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            f = c.copy_ws_file(ws, file_id, target_folder_id=to_folder or None)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Copied to[/green] {f['name']} ({f['id']})")
+
+
 @files_app.command("text")
 def files_text(
     file_id: str = typer.Argument(...),
