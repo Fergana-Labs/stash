@@ -62,6 +62,18 @@ async def get_user_by_id(user_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_user_by_email(email: str) -> dict | None:
+    """Case-insensitive lookup. Used by the Slack agent to map a Slack user's
+    email to their Stash account."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name, email, description, created_at, last_seen "
+        "FROM users WHERE lower(email) = lower($1)",
+        email,
+    )
+    return dict(row) if row else None
+
+
 async def update_user(
     user_id: UUID,
     display_name: str | None = None,

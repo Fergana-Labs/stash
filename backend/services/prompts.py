@@ -59,6 +59,11 @@ STASH_TOOL_SET = (
     "fetch_history",
 )
 
+# Slack agent (talk-to-Stash bot): can create + update cartridges (artifacts),
+# but NOT delete. Slack is an untrusted surface, so the destructive
+# `delete_cartridge` is held back to limit what a prompt-injected message can do.
+SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t != "delete_cartridge")
+
 # Read-only subset for ask-the-workspace and other Q&A surfaces. Drops
 # the write tools so a prompt-injected request can't trigger mutations
 # even if the model decides to play along. Service-layer permission

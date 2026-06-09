@@ -93,3 +93,14 @@ def reconcile_due() -> int:
 def ingest_slack_event(team_id: str, event: dict) -> int:
     """Upsert a single Slack Events-API message (enqueued by the webhook)."""
     return run_async(ingest_slack_message(team_id, event))
+
+
+# --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+@celery.task(name="backend.tasks.sources.respond_to_slack_mention")
+def respond_to_slack_mention(team_id: str, event: dict) -> None:
+    """Run the agent for a Slack @mention / DM and post the reply (enqueued by
+    the webhook). Imported lazily so the agent surface stays self-contained."""
+    from ..integrations.slack.agent import respond_to_mention
+
+    run_async(respond_to_mention(team_id, event))
+# --- END Slack agent ---
