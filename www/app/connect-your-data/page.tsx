@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { INTEGRATIONS, integrationIcon } from "../_components/BrandIcons";
 import SiteHeader from "../_components/SiteHeader";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
@@ -10,19 +11,6 @@ export const metadata: Metadata = {
   description:
     "The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack, and more. Read and search across everything from day one.",
 };
-
-const SOURCES = [
-  ["GitHub", "Pick repos your agent can navigate like a filesystem."],
-  ["Google Drive", "Index My Drive and read docs on demand."],
-  ["Gmail", "Search messages and read email on demand."],
-  ["Notion", "Pages and databases you share with Stash."],
-  ["Slack", "Channel history, kept in sync."],
-  ["Granola", "Meeting notes and transcripts."],
-  ["Jira", "Search issues across a project."],
-  ["Asana", "Navigate tasks from a project."],
-  ["Gong", "Call transcripts, kept in sync."],
-  ["Snowflake", "Run read-only SQL against your warehouse."],
-];
 
 export default function ConnectYourDataPage() {
   return (
@@ -67,15 +55,20 @@ export default function ConnectYourDataPage() {
             Connect once. Your agent reads it all.
           </h2>
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {SOURCES.map(([name, blurb]) => (
+            {INTEGRATIONS.map((it) => (
               <div
-                key={name}
+                key={it.provider}
                 className="rounded-[12px] border border-border bg-background p-5 transition-colors hover:border-brand"
               >
-                <div className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">
-                  {name}
+                <div className="flex items-center gap-2.5">
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center">
+                    {integrationIcon(it.provider, 24)}
+                  </span>
+                  <div className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">
+                    {it.name}
+                  </div>
                 </div>
-                <p className="mt-1.5 text-[14px] leading-[1.55] text-dim">{blurb}</p>
+                <p className="mt-2 text-[14px] leading-[1.55] text-dim">{it.blurb}</p>
               </div>
             ))}
           </div>

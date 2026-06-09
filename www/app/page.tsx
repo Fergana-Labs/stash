@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import AppRedirectForSignedInUsers from "./_components/AppRedirectForSignedInUsers";
-import LiveDemo from "./_components/LiveDemo";
+import { INTEGRATIONS, integrationIcon } from "./_components/BrandIcons";
 import Logo from "./_components/Logo";
 import ScrollLink from "./_components/ScrollLink";
 import SiteHeader from "./_components/SiteHeader";
@@ -143,8 +143,8 @@ function Hero() {
 
             <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
               The one place your agents connect to all your data — GitHub, Drive,
-              Gmail, Notion, Slack and more. Plus an agent-native Drive in Markdown
-              and HTML to write the work back into.
+              Gmail, Notion, Slack and more. Plus an agent-native Drive to store
+              your agent-generated docs and data in.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -173,10 +173,6 @@ function Hero() {
           </div>
           <HeroFunnel />
         </div>
-
-        <div className="mt-14 flex justify-center lg:mt-20">
-          <LiveDemo />
-        </div>
       </div>
     </section>
   );
@@ -192,26 +188,47 @@ function Logos() {
   ];
   return (
     <div className="border-y border-border-subtle bg-surface">
-      <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-8 px-7 py-6">
-        <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-          Plugs into
-        </span>
-        <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-dim">
-          {tools.map((t) => (
-            <span
-              key={t.name}
-              className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] text-ink"
-              title={t.name}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={t.src}
-                alt={t.name}
-                className="h-6 w-6 shrink-0 object-contain"
-              />
-              <span>{t.name}</span>
-            </span>
-          ))}
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-7 py-7">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+          <span className="w-[88px] shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            Plugs into
+          </span>
+          <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-dim">
+            {tools.map((t) => (
+              <span
+                key={t.name}
+                className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] text-ink"
+                title={t.name}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={t.src}
+                  alt={t.name}
+                  className="h-6 w-6 shrink-0 object-contain"
+                />
+                <span>{t.name}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-4 border-t border-border-subtle pt-5">
+          <span className="w-[88px] shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            Connects to
+          </span>
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4 text-dim">
+            {INTEGRATIONS.map((it) => (
+              <span
+                key={it.provider}
+                className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[16px] font-bold tracking-[-0.02em] text-ink"
+                title={it.name}
+              >
+                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center">
+                  {integrationIcon(it.provider, 22)}
+                </span>
+                <span>{it.name}</span>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </div>

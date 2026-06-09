@@ -97,6 +97,37 @@ export default function AgentNativeDrivePage() {
         </div>
       </section>
 
+      <section className="border-b border-border-subtle py-20 md:py-28">
+        <div className="mx-auto max-w-[1200px] px-7">
+          <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
+            Sharing
+          </p>
+          <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+            Sharing is built in, not bolted on.
+          </h2>
+          <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-foreground">
+            Everything in your Drive is one step away from being shared — with a
+            teammate, a client, or the public. The people you share with bring
+            their own agents, and everyone works from the same source.
+          </p>
+          <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
+            <Point title="Publish a Cartridge">
+              Bundle any set of pages, files, and sessions into a Cartridge and
+              share it as a link — public on Discover, or private to a few people.
+            </Point>
+            <Point title="Share a folder">
+              Give specific people read or write access to a folder. Their agents
+              get the same access, so context is shared, not copy-pasted.
+            </Point>
+            <Point title="Fork and stay in sync">
+              Anyone can fork a published Cartridge into their own workspace, and
+              it stays live with the source as it changes.
+            </Point>
+          </div>
+        </div>
+      </section>
+
       <section className="bg-surface py-28 text-center">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
@@ -119,5 +150,14 @@ export default function AgentNativeDrivePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function Point({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="font-display text-[19px] font-bold tracking-[-0.01em] text-ink">{title}</h3>
+      <p className="mt-2.5 text-[15px] leading-[1.6] text-dim">{children}</p>
+    </div>
   );
 }
