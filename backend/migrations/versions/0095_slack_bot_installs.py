@@ -4,21 +4,20 @@ The Slack agent (talk-to-Stash bot) posts replies with a team-scoped bot
 token, captured during OAuth alongside the existing user token. One row per
 Slack team. This whole table belongs to the removable Slack-agent feature.
 
-Revision ID: 0094
-Revises: 0093
+Revision ID: 0095
+Revises: 0094
 """
 
 from alembic import op
 
-revision = "0094"
-down_revision = "0093"
+revision = "0095"
+down_revision = "0094"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE slack_bot_installs (
             team_id              text PRIMARY KEY,
             bot_token_encrypted  bytea NOT NULL,
@@ -26,8 +25,7 @@ def upgrade() -> None:
             installed_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
             updated_at           timestamptz NOT NULL DEFAULT now()
         )
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

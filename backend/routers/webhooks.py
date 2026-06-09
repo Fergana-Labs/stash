@@ -55,6 +55,8 @@ def _is_agent_trigger(event: dict) -> bool:
     if event.get("type") == "app_mention":
         return True
     return event.get("type") == "message" and event.get("channel_type") == "im"
+
+
 # --- END Slack agent ---
 
 

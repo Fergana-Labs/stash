@@ -103,4 +103,6 @@ def respond_to_slack_mention(team_id: str, event: dict) -> None:
     from ..integrations.slack.agent import respond_to_mention
 
     run_async(respond_to_mention(team_id, event))
+
+
 # --- END Slack agent ---

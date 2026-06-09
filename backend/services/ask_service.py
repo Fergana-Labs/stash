@@ -171,4 +171,6 @@ async def run_chat(
             workspace_id, AGENT_NAME, "assistant_message", final, user_id, session_id=session_id
         )
     return final
+
+
 # --- END Slack agent ---
