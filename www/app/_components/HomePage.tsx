@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import VariantSurvey from "../m/_components/VariantSurvey";
 import AppRedirectForSignedInUsers from "./AppRedirectForSignedInUsers";
 import { INTEGRATIONS, integrationIcon } from "./BrandIcons";
 import Logo from "./Logo";
@@ -11,23 +10,12 @@ import VisualizationsShowcase from "./VisualizationsShowcase";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
-export type HeroCopy = { headline: string; subhead?: string };
-
-// The full landing page. Message-test variant pages (`/m/[variant]`) reuse it
-// with overridden hero copy and every signup CTA routed to the lead survey.
-export default function HomePage({
-  heroOverride,
-  surveyVariant,
-}: {
-  heroOverride?: HeroCopy;
-  surveyVariant?: string;
-}) {
-  const ctaHref = surveyVariant ? "#survey" : APP_URL;
+export default function HomePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <AppRedirectForSignedInUsers appUrl={APP_URL} />
-      <SiteHeader ctaHref={ctaHref} />
-      <Hero override={heroOverride} ctaHref={ctaHref} />
+      <SiteHeader />
+      <Hero />
       <Logos />
       <Problem />
       <HowItWorks />
@@ -37,34 +25,9 @@ export default function HomePage({
       <Features />
       <DiscoverGrid />
       <CliAndPlugin />
-      <ClosingCTA ctaHref={ctaHref} />
-      {surveyVariant ? <VariantSurvey variant={surveyVariant} appUrl={APP_URL} /> : null}
+      <ClosingCTA />
       <Footer />
     </main>
-  );
-}
-
-// Signup CTAs become in-page anchors to the survey on variant pages.
-function CtaLink({
-  href,
-  className,
-  children,
-}: {
-  href: string;
-  className: string;
-  children: ReactNode;
-}) {
-  if (href.startsWith("#")) {
-    return (
-      <ScrollLink to={href} className={className}>
-        {children}
-      </ScrollLink>
-    );
-  }
-  return (
-    <Link href={href} className={className}>
-      {children}
-    </Link>
   );
 }
 
@@ -158,7 +121,7 @@ function HeroFunnel() {
   );
 }
 
-function Hero({ override, ctaHref }: { override?: HeroCopy; ctaHref: string }) {
+function Hero() {
   return (
     <section className="relative overflow-hidden">
       <div
@@ -172,39 +135,25 @@ function Hero({ override, ctaHref }: { override?: HeroCopy; ctaHref: string }) {
       <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-12 pt-20 lg:pb-20 lg:pt-28">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
           <div>
-            {override ? (
-              <h1 className="text-balance font-display text-[clamp(38px,5vw,64px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-                {override.headline}
-              </h1>
-            ) : (
-              <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-                Knowledge bases for
-                <br />
-                the <span className="text-brand">agent era.</span>
-              </h1>
-            )}
+            <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
+              Knowledge bases for
+              <br />
+              the <span className="text-brand">agent era.</span>
+            </h1>
 
-            {override ? (
-              override.subhead ? (
-                <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-                  {override.subhead}
-                </p>
-              ) : null
-            ) : (
-              <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-                The one place your agents connect to all your data — GitHub, Drive,
-                Gmail, Notion, Slack and more. Plus an agent-native Drive to store
-                your agent-generated docs and data in.
-              </p>
-            )}
+            <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
+              The one place your agents connect to all your data — GitHub, Drive,
+              Gmail, Notion, Slack and more. Plus an agent-native Drive to store
+              your agent-generated docs and data in.
+            </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <CtaLink
-                href={ctaHref}
+              <Link
+                href={APP_URL}
                 className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
               >
                 Start free →
-              </CtaLink>
+              </Link>
               <Link
                 href="/contact-sales"
                 className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
@@ -962,7 +911,7 @@ function CliAndPlugin() {
   );
 }
 
-function ClosingCTA({ ctaHref }: { ctaHref: string }) {
+function ClosingCTA() {
   return (
     <section className="border-b border-border-subtle bg-surface py-32 text-center">
       <div className="mx-auto max-w-[1200px] px-7">
@@ -977,12 +926,12 @@ function ClosingCTA({ ctaHref }: { ctaHref: string }) {
           whole thing on your own Postgres. Open source, MIT licensed.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
-          <CtaLink
-            href={ctaHref}
+          <Link
+            href={APP_URL}
             className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
           >
             Start free →
-          </CtaLink>
+          </Link>
           <Link
             href="/contact-sales"
             className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
