@@ -219,6 +219,29 @@ describe("TableEditorPage row creation", () => {
     expect(api.getTable).not.toHaveBeenCalled();
   });
 
+  it("recovers stale workspace links with the canonical table workspace", async () => {
+    route.search = "workspaceId=stale-ws";
+    const canonicalTable = { ...table, workspace_id: "ws-2" };
+    api.getTable.mockImplementation(async (workspaceId: string | null) => {
+      if (workspaceId === "stale-ws") throw new Error("Table not found");
+      if (workspaceId === "ws-2") return canonicalTable;
+      throw new Error("Table not found");
+    });
+    api.listAllTables.mockResolvedValue({
+      tables: [{ ...canonicalTable, workspace_name: "Henry's Workspace" }],
+    });
+
+    render(<TableEditorPage />);
+
+    expect(await screen.findByText("Alice")).toBeInTheDocument();
+    expect(route.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-2");
+    expect(api.listTableRows).toHaveBeenCalledWith(
+      "ws-2",
+      "table-1",
+      expect.objectContaining({ offset: 0 }),
+    );
+  });
+
   it("undoes a committed cell edit with command-z", async () => {
     const editedRow = {
       ...existingRows[0],

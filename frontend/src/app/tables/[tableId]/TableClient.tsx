@@ -423,8 +423,21 @@ function TableEditorPageInner() {
         return;
       }
       if (resolvedWorkspaceId) {
-        setTable(await getTable(resolvedWorkspaceId, tableId));
-        return;
+        try {
+          setTable(await getTable(resolvedWorkspaceId, tableId));
+          return;
+        } catch {
+          const all = await listAllTables();
+          const match = all?.tables?.find((t) => t.id === tableId);
+          if (match?.workspace_id && match.workspace_id !== resolvedWorkspaceId) {
+            setResolvedWorkspaceId(match.workspace_id);
+            router.push(`/tables/${tableId}?workspaceId=${match.workspace_id}`);
+            setTable(await getTable(match.workspace_id, tableId));
+            return;
+          }
+          setError("Table not found");
+          return;
+        }
       }
       try {
         setTable(await getTable(null, tableId));
@@ -439,7 +452,7 @@ function TableEditorPageInner() {
         }
       }
     } catch { setError("Table not found"); }
-  }, [tableId, resolvedWorkspaceId, stashSlug]);
+  }, [tableId, resolvedWorkspaceId, stashSlug, router]);
 
   const buildRowParams = useCallback((pageOffset: number) => {
     const p: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] } = {
