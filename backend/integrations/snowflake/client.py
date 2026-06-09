@@ -131,18 +131,22 @@ async def run_query(source: dict, sql: str, limit: int = ROW_CAP) -> dict:
 async def list_tables(source: dict) -> list[dict]:
     """List tables as navigation entries: path = fully-qualified name."""
     creds = await _creds(UUID(source["owner_user_id"]))
-    result = await asyncio.to_thread(
-        _run_sync, creds, "SHOW TERSE TABLES IN ACCOUNT", 500
-    )
+    result = await asyncio.to_thread(_run_sync, creds, "SHOW TERSE TABLES IN ACCOUNT", 500)
     name_i = result["columns"].index("name") if "name" in result["columns"] else 1
-    db_i = result["columns"].index("database_name") if "database_name" in result["columns"] else None
+    db_i = (
+        result["columns"].index("database_name") if "database_name" in result["columns"] else None
+    )
     schema_i = (
         result["columns"].index("schema_name") if "schema_name" in result["columns"] else None
     )
     entries = []
     for row in result["rows"]:
         name = row[name_i]
-        parts = [row[db_i] if db_i is not None else None, row[schema_i] if schema_i is not None else None, name]
+        parts = [
+            row[db_i] if db_i is not None else None,
+            row[schema_i] if schema_i is not None else None,
+            name,
+        ]
         full = ".".join(str(p) for p in parts if p)
         entries.append({"path": full, "name": name, "kind": "table"})
     return entries

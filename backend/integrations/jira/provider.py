@@ -70,9 +70,7 @@ class JiraIntegration(Integration):
                 )
             data = resp.json()
         expires_in = data.get("expires_in")
-        expires_at = (
-            datetime.now(UTC) + timedelta(seconds=expires_in) if expires_in else None
-        )
+        expires_at = datetime.now(UTC) + timedelta(seconds=expires_in) if expires_in else None
         return TokenSet(
             access_token=data["access_token"],
             refresh_token=data.get("refresh_token"),
