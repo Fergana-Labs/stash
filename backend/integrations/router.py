@@ -294,6 +294,19 @@ async def integration_callback(
                 )
                 account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
+
+            # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+            # Capture the connecting user's Slack identity so the bot can map
+            # inbound mentions to this Stash user without relying on email.
+            # Best-effort: a failure here must not break the connection.
+            if provider == "slack":
+                from .slack import links
+
+                try:
+                    await links.capture_from_user_token(user_id, token.access_token)
+                except Exception:
+                    logger.warning("slack: failed to capture user link", exc_info=True)
+            # --- END Slack agent ---
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:

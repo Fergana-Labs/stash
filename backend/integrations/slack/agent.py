@@ -5,9 +5,10 @@ the Slack user to a Stash account, runs the workspace agent in that user's
 single continuous Slack session, and posts the reply back. Everything agent-
 side (tool_loop, tools, memory, scoping) is reused unchanged.
 
-REMOVAL: this module + installs.py + client.py + the provider bot-token
-capture + the webhook agent branch + the respond_to_slack_mention Celery task
-+ the slack_bot_installs table are the whole feature. Delete them to drop it.
+REMOVAL: this module + installs.py + client.py + links.py + the provider
+bot-token capture + the router link capture + the webhook agent branch + the
+respond_to_slack_mention Celery task + the slack_bot_installs / slack_user_links
+tables are the whole feature. Delete them to drop it.
 """
 
 from __future__ import annotations
@@ -15,22 +16,43 @@ from __future__ import annotations
 import logging
 import re
 
+from ...config import settings
 from ...services import ask_service, user_service, workspace_service
-from . import client, installs
+from . import client, installs, links
 
 logger = logging.getLogger(__name__)
 
 # Slack renders mentions as <@U123>; strip the bot's own token from the prompt.
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 
-_NO_ACCOUNT_MSG = (
-    "I couldn't match your Slack email to a Stash account. "
-    "Make sure your Stash account uses the same email as Slack."
-)
-
 
 def _strip_mentions(text: str) -> str:
     return _MENTION_RE.sub("", text).strip()
+
+
+def _connect_prompt() -> str:
+    """Shown when we can't map the Slack user to a Stash account — points them
+    at the in-product Slack connect, which captures the link (and wires up their
+    Slack source)."""
+    url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
+    return (
+        "I don't know who you are in Stash yet. Connect Slack from your Stash "
+        f"settings and I'll link you automatically: {url}"
+    )
+
+
+async def _resolve_stash_user(team_id: str, slack_user_id: str, bot_token: str) -> dict | None:
+    """Map a Slack user to a Stash account. Primary: the link captured at connect
+    time. Fallback: email match, which then self-heals by writing the link."""
+    user_id = await links.get_linked_user_id(team_id, slack_user_id)
+    if user_id is not None:
+        return await user_service.get_user_by_id(user_id)
+
+    email = await client.get_user_email(bot_token, slack_user_id)
+    user = await user_service.get_user_by_email(email) if email else None
+    if user is not None:
+        await links.store_link(team_id, slack_user_id, user["id"])
+    return user
 
 
 async def respond_to_mention(team_id: str, event: dict) -> None:
@@ -48,10 +70,9 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     if not slack_user_id or not channel or not text:
         return
 
-    email = await client.get_user_email(bot_token, slack_user_id)
-    user = await user_service.get_user_by_email(email) if email else None
+    user = await _resolve_stash_user(team_id, slack_user_id, bot_token)
     if user is None:
-        await client.post_message(bot_token, channel, _NO_ACCOUNT_MSG, thread_ts)
+        await client.post_message(bot_token, channel, _connect_prompt(), thread_ts)
         return
 
     workspace_id = await workspace_service.get_primary_for_user(user["id"])
