@@ -30,14 +30,26 @@ _SITE_URL_CACHE: dict[str, str] = {}
 ISSUE_FIELDS = ",".join(
     [
         # core
-        "summary", "status", "priority", "issuetype",
-        "assignee", "reporter", "created", "updated", "duedate",
+        "summary",
+        "status",
+        "priority",
+        "issuetype",
+        "assignee",
+        "reporter",
+        "created",
+        "updated",
+        "duedate",
         # body + activity
-        "description", "comment",
+        "description",
+        "comment",
         # taxonomy
-        "labels", "components", "fixVersions",
+        "labels",
+        "components",
+        "fixVersions",
         # graph (links + hierarchy)
-        "issuelinks", "subtasks", "parent",
+        "issuelinks",
+        "subtasks",
+        "parent",
         # files
         "attachment",
     ]
