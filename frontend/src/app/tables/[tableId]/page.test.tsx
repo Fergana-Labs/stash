@@ -36,10 +36,15 @@ const api = vi.hoisted(() => ({
   backfillTableEmbeddings: vi.fn(),
 }));
 
+const route = vi.hoisted(() => ({
+  search: "workspaceId=ws-1",
+  push: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ tableId: "table-1" }),
-  useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams("workspaceId=ws-1"),
+  useRouter: () => ({ push: route.push }),
+  useSearchParams: () => new URLSearchParams(route.search),
 }));
 
 vi.mock("../../../hooks/useAuth", () => ({
@@ -58,7 +63,9 @@ vi.mock("../../../hooks/useAuth", () => ({
 }));
 
 vi.mock("../../../components/AppShell", () => ({
-  default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  default: ({ children }: { children: ReactNode }) => (
+    <div data-testid="app-shell">{children}</div>
+  ),
 }));
 
 vi.mock("../../../components/workspace/FileViewerHeader", () => ({
@@ -132,6 +139,8 @@ const createdRow = {
 describe("TableEditorPage row creation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    route.search = "workspaceId=ws-1";
+    route.push.mockClear();
     api.getTable.mockResolvedValue(table);
     api.createTableRow.mockResolvedValue(createdRow);
     api.summarizeTableRows.mockResolvedValue({ total_rows: 2, columns: {} });
@@ -179,6 +188,35 @@ describe("TableEditorPage row creation", () => {
       "table-1",
       expect.objectContaining({ offset: 2 }),
     );
+  });
+
+  it("renders stash-mode tables without the app shell for signed-in users", async () => {
+    route.search = "workspaceId=ws-1&stash=shared-stash";
+    api.getPublicCartridge.mockResolvedValue({
+      cartridge: {
+        id: "stash-1",
+        title: "Shared Stash",
+        workspace_id: "ws-1",
+      },
+      items: [
+        {
+          object_type: "table",
+          object_id: "table-1",
+          label: "Prospects",
+          inline: {
+            description: "",
+            columns: table.columns,
+            rows: [{ data: { name: "Alice" }, row_order: 0 }],
+          },
+        },
+      ],
+    });
+
+    render(<TableEditorPage />);
+
+    expect(await screen.findByText("Alice")).toBeInTheDocument();
+    expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
+    expect(api.getTable).not.toHaveBeenCalled();
   });
 
   it("undoes a committed cell edit with command-z", async () => {
