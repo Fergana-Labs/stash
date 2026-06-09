@@ -4248,7 +4248,7 @@ def connect_cmd():
 @app.command("join")
 def join_cmd():
     """Request to join this repo's workspace."""
-    cfg = _require_auth()
+    _require_auth()
 
     repo_root = _git_toplevel()
     if not repo_root:
@@ -4262,9 +4262,7 @@ def join_cmd():
 
     manifest = json.loads(manifest_path.read_text())
     ws_id = manifest.get("workspace_id", "")
-
-    with CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-        _handle_not_member(ws_id, c)
+    _handle_not_member(ws_id)
 
 
 @app.command("leave")

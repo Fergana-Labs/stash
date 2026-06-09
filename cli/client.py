@@ -59,8 +59,10 @@ class CartridgeClient:
             raise CartridgeError(resp.status_code, detail)
         return resp
 
-    def _get(self, path: str, **params) -> dict | list:
-        return self._request("GET", path, params=params).json()
+    # The URL argument is named `url`, not `path`, so callers can pass a query
+    # param literally named "path" (the source VFS does) without a kwarg clash.
+    def _get(self, url: str, **params) -> dict | list:
+        return self._request("GET", url, params=params).json()
 
     def _post(self, path: str, json=None) -> dict:
         resp = self._request("POST", path, json=json)
@@ -75,8 +77,8 @@ class CartridgeClient:
     def _delete(self, path: str) -> None:
         self._request("DELETE", path)
 
-    def _list(self, path: str, key: str, **params) -> list:
-        data = self._get(path, **params)
+    def _list(self, url: str, key: str, **params) -> list:
+        data = self._get(url, **params)
         return data.get(key, data) if isinstance(data, dict) else data
 
     def _upload(self, path: str, file_path: str) -> dict:
