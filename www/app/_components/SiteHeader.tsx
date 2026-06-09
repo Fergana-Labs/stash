@@ -1,12 +1,17 @@
 import Link from "next/link";
 
 import Logo from "./Logo";
+import ScrollLink from "./ScrollLink";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 // Shared top nav for the landing page and the use-case pages, so the two
 // primary use-case links stay identical everywhere they appear.
-export default function SiteHeader() {
+// Message-test variant pages pass ctaHref="#survey" to route signups
+// into the lead survey instead of the app.
+export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) {
+  const ctaClassName =
+    "hidden h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover sm:inline-flex";
   return (
     <header className="sticky top-0 z-50 border-b border-border-subtle bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7 sm:px-7">
@@ -64,12 +69,15 @@ export default function SiteHeader() {
           >
             Sign in
           </Link>
-          <Link
-            href={APP_URL}
-            className="hidden h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover sm:inline-flex"
-          >
-            Start free
-          </Link>
+          {ctaHref.startsWith("#") ? (
+            <ScrollLink to={ctaHref} className={ctaClassName}>
+              Start free
+            </ScrollLink>
+          ) : (
+            <Link href={ctaHref} className={ctaClassName}>
+              Start free
+            </Link>
+          )}
         </nav>
       </div>
     </header>
