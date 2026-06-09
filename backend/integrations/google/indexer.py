@@ -24,10 +24,16 @@ from ..storage import get_valid_token
 logger = logging.getLogger(__name__)
 
 DRIVE_LIST_URL = "https://www.googleapis.com/drive/v3/files"
+DRIVE_FILE_URL = "https://www.googleapis.com/drive/v3/files/{file_id}"
 DRIVE_EXPORT_URL = "https://www.googleapis.com/drive/v3/files/{file_id}/export"
 MIME_FOLDER = "application/vnd.google-apps.folder"
 MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
+MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
+MIME_GOOGLE_SLIDE = "application/vnd.google-apps.presentation"
 MAX_FOLDER_DEPTH = 8
+# Native (non-Google) files can be massive (terabyte videos). Cap downloads so
+# a stray click doesn't drag a huge file into the agent's response.
+MAX_NATIVE_DOWNLOAD_BYTES = 25 * 1024 * 1024
 
 
 def _parse_time(value: str | None) -> datetime | None:
@@ -136,13 +142,95 @@ async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
 
 
 async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
-    """Lazy read: export a Drive file to markdown with the owner's token.
-    Non-Doc files have no markdown export and come back empty."""
+    """Lazy read: route by Drive MIME type.
+
+    - Google Doc       → markdown export
+    - Google Sheet     → CSV export, rendered as a markdown table (first sheet)
+    - Google Slides    → text/plain export
+    - PDF              → bytes + pypdf extraction
+    - Office formats (docx/pptx/xlsx) and text/* → bytes + file_extraction
+    - Anything else    → empty string
+
+    The metadata lookup costs one extra round-trip per read but avoids storing
+    mime types on every index row (and avoids drift if a file is converted).
+    """
     token = await get_valid_token(owner_user_id, "google")
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
-        export = await client.get(
-            DRIVE_EXPORT_URL.format(file_id=file_id),
-            params={"mimeType": "text/markdown"},
+        meta = await client.get(
+            DRIVE_FILE_URL.format(file_id=file_id),
+            params={"fields": "mimeType,name,size"},
         )
-        return export.text if export.status_code == 200 else ""
+        if meta.status_code != 200:
+            return ""
+        info = meta.json()
+        mime = info.get("mimeType") or ""
+
+        if mime == MIME_GOOGLE_DOC:
+            return await _export(client, file_id, "text/markdown")
+        if mime == MIME_GOOGLE_SHEET:
+            csv = await _export(client, file_id, "text/csv")
+            return _csv_to_markdown_table(csv) if csv else ""
+        if mime == MIME_GOOGLE_SLIDE:
+            return await _export(client, file_id, "text/plain")
+
+        # Native files: cap by size, download bytes, route by mime to a text
+        # extractor.
+        size = int(info.get("size") or 0)
+        if size and size > MAX_NATIVE_DOWNLOAD_BYTES:
+            return f"_(file too large to inline: {size // (1024 * 1024)} MB)_"
+
+        media = await client.get(
+            DRIVE_FILE_URL.format(file_id=file_id),
+            params={"alt": "media"},
+        )
+        if media.status_code != 200:
+            return ""
+        content = media.content
+        if len(content) > MAX_NATIVE_DOWNLOAD_BYTES:
+            return f"_(file too large to inline: {len(content) // (1024 * 1024)} MB)_"
+
+        # Defer to the file-extraction service so docx/pptx/xlsx/pdf/text/*
+        # share the same handler set as the direct-upload extraction queue.
+        from ...services.file_extraction import extract_text
+
+        text = extract_text(content, mime)
+        return text or ""
+
+
+async def _export(client: httpx.AsyncClient, file_id: str, mime: str) -> str:
+    resp = await client.get(
+        DRIVE_EXPORT_URL.format(file_id=file_id), params={"mimeType": mime}
+    )
+    return resp.text if resp.status_code == 200 else ""
+
+
+def _csv_to_markdown_table(csv_text: str) -> str:
+    """First-sheet CSV → a markdown table (header row + body).
+
+    Cap is the row count, not byte count — the Sheet might have 100k rows
+    that the agent can't reasonably scan; the federated search step has
+    already narrowed to a specific sheet, so the agent expects a summary.
+    """
+    import csv as csv_mod
+    import io
+
+    rows = list(csv_mod.reader(io.StringIO(csv_text)))
+    if not rows:
+        return ""
+    max_rows = 200
+    truncated = len(rows) > max_rows + 1  # +1 for header
+    rows = rows[: max_rows + 1]
+    cols = max(len(r) for r in rows)
+    rows = [r + [""] * (cols - len(r)) for r in rows]
+    header = rows[0]
+    body = rows[1:]
+    out = [
+        "| " + " | ".join(c.replace("|", "\\|") for c in header) + " |",
+        "| " + " | ".join(["---"] * cols) + " |",
+    ]
+    for row in body:
+        out.append("| " + " | ".join(c.replace("|", "\\|") for c in row) + " |")
+    if truncated:
+        out.append(f"_(showing first {max_rows} rows of {len(rows) + max_rows - 1}+)_")
+    return "\n".join(out)
