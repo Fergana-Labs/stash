@@ -80,7 +80,7 @@ async def _check_table_access(
         table_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=require_write,
+        require="write" if require_write else "read",
     )
     if allowed:
         return

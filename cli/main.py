@@ -3023,13 +3023,18 @@ def shares_add(
     object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
     object_id: str = typer.Argument(...),
     email: str = typer.Argument(..., help="Recipient email (pending until they sign up)."),
-    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
+    permission: str = typer.Option("read", "--permission", help="read | comment | write"),
+    expires: str = typer.Option(
+        None, "--expires", help="ISO-8601 expiry, e.g. 2026-12-31T00:00:00Z (omit = never)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Share an object with a person by email."""
     with _client() as c:
         try:
-            data = c.share_object(object_type, object_id, email, permission=permission)
+            data = c.share_object(
+                object_type, object_id, email, permission=permission, expires_at=expires or None
+            )
         except CartridgeError as e:
             _err(e)
     if _use_json(as_json):

@@ -72,7 +72,7 @@ async def _can_access_file(
         file_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=require_write,
+        require="write" if require_write else "read",
     ):
         return True
     return False
@@ -471,7 +471,7 @@ async def copy_ws_file(
             req.target_folder_id,
             current_user["id"],
             workspace_id=workspace_id,
-            require_write=True,
+            require="write",
         )
         if not can_write_folder:
             raise HTTPException(status_code=404, detail="Folder not found")

@@ -256,17 +256,22 @@ class CartridgeClient:
     # --- Object sharing (grant a person access to a folder/file/session by email) ---
 
     def share_object(
-        self, object_type: str, object_id: str, email: str, permission: str = "read"
+        self,
+        object_type: str,
+        object_id: str,
+        email: str,
+        permission: str = "read",
+        expires_at: str | None = None,
     ) -> dict:
-        return self._post(
-            "/api/v1/share",
-            json={
-                "object_type": object_type,
-                "object_id": object_id,
-                "email": email,
-                "permission": permission,
-            },
-        )
+        body = {
+            "object_type": object_type,
+            "object_id": object_id,
+            "email": email,
+            "permission": permission,
+        }
+        if expires_at:
+            body["expires_at"] = expires_at
+        return self._post("/api/v1/share", json=body)
 
     def unshare_object(
         self, object_type: str, object_id: str, principal_type: str, principal_id: str

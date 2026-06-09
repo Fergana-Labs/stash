@@ -894,13 +894,22 @@ def stash_purge(kind: str, id: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_share_object(
-    object_type: str, object_id: str, email: str, permission: str = "read"
+    object_type: str,
+    object_id: str,
+    email: str,
+    permission: str = "read",
+    expires_at: str = "",
 ) -> str:
     """Share a folder/page/file/session/table with a person by email. If they
     don't have an account yet the share is recorded as pending and converts when
-    they sign up. permission: read | write | admin."""
+    they sign up. permission: read | comment | write. expires_at: optional
+    ISO-8601 timestamp after which the share lapses (omit = never)."""
     client, _ = _client()
-    return _json(client.share_object(object_type, object_id, email, permission=permission))
+    return _json(
+        client.share_object(
+            object_type, object_id, email, permission=permission, expires_at=expires_at or None
+        )
+    )
 
 
 @mcp.tool()

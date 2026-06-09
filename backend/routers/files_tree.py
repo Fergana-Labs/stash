@@ -69,14 +69,14 @@ async def _check_content_access(
     workspace_id: UUID,
     user_id: UUID,
     *,
-    require_write: bool = False,
+    require: str = "read",
 ) -> None:
     allowed = await permission_service.check_access(
         object_type,
         object_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=require_write,
+        require=require,
     )
     if allowed:
         return
@@ -137,7 +137,7 @@ async def create_folder(
             req.parent_folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
     try:
         folder = await files_tree_service.create_folder(
@@ -309,7 +309,7 @@ async def update_folder(
         folder_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     if req.parent_folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
@@ -318,7 +318,7 @@ async def update_folder(
             req.parent_folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
     try:
         folder = await files_tree_service.update_folder(
@@ -349,7 +349,7 @@ async def delete_folder(
         folder_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     deleted = await files_tree_service.delete_folder(folder_id, workspace_id)
     if not deleted:
@@ -368,7 +368,7 @@ async def copy_folder(
     if req.target_folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.target_folder_id)
         await _check_content_access(
-            "folder", req.target_folder_id, workspace_id, current_user["id"], require_write=True
+            "folder", req.target_folder_id, workspace_id, current_user["id"], require="write"
         )
     else:
         await _check_ws_write(workspace_id, current_user["id"])
@@ -401,7 +401,7 @@ async def create_page(
             req.folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
     try:
         page = await files_tree_service.create_page(
@@ -430,7 +430,7 @@ async def copy_page(
     if req.target_folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.target_folder_id)
         await _check_content_access(
-            "folder", req.target_folder_id, workspace_id, current_user["id"], require_write=True
+            "folder", req.target_folder_id, workspace_id, current_user["id"], require="write"
         )
     else:
         await _check_ws_write(workspace_id, current_user["id"])
@@ -536,7 +536,7 @@ async def update_page(
         page_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     if req.folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
@@ -545,7 +545,7 @@ async def update_page(
             req.folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
 
     try:
@@ -582,7 +582,7 @@ async def delete_page(
         page_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
@@ -596,7 +596,7 @@ async def restore_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require_write=True
+        "page", page_id, workspace_id, current_user["id"], require="write"
     )
     restored = await files_tree_service.restore_page(page_id, workspace_id)
     if not restored:
@@ -611,7 +611,7 @@ async def purge_page(
 ):
     """Permanent delete — only callable on a page already in trash."""
     await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require_write=True
+        "page", page_id, workspace_id, current_user["id"], require="write"
     )
     purged = await files_tree_service.purge_page(page_id, workspace_id)
     if not purged:
@@ -658,8 +658,11 @@ async def create_comment_thread(
     req: CommentThreadCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    # Comments are read-level permission — any workspace member can comment.
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    # Commenting needs at least the 'comment' share level (workspace members
+    # always qualify); a plain read-only share can view but not comment.
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require="comment"
+    )
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.create_thread(
         page_id,
@@ -684,7 +687,9 @@ async def reply_to_thread(
     req: CommentReplyRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require="comment"
+    )
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
     if thread is None:
@@ -778,7 +783,7 @@ async def reconcile_comment_anchors(
     """
     await _check_ws_write(workspace_id, current_user["id"])
     await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require_write=True
+        "page", page_id, workspace_id, current_user["id"], require="write"
     )
     await _check_page_in_workspace(workspace_id, page_id)
     await comment_service.reconcile_orphans(page_id, req.present_ids)
