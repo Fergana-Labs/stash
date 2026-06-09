@@ -4,6 +4,7 @@ import type { IntegrationProvider } from "@/lib/integrations";
 
 import {
   AsanaIcon,
+  GmailIcon,
   GitHubIcon,
   GongIcon,
   GoogleDriveIcon,
@@ -38,6 +39,13 @@ export const CONNECTORS: Connector[] = [
     sourceType: "google_drive",
     kind: "drive",
     blurb: "Index My Drive and read docs on demand.",
+  },
+  {
+    provider: "gmail",
+    label: "Gmail",
+    sourceType: "gmail",
+    kind: "auto",
+    blurb: "Search messages and read email on demand.",
   },
   {
     provider: "notion",
@@ -94,6 +102,7 @@ export const CONNECTORS: Connector[] = [
 // owns it — used by the sidebar and the per-integration page routing.
 export const providerForSourceType: Record<string, string> = {
   github_repo: "github",
+  gmail: "gmail",
   google_drive: "google",
   notion: "notion",
   jira_project: "jira",
@@ -118,6 +127,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <GitHubIcon />;
     case "google":
       return <GoogleDriveIcon />;
+    case "gmail":
+      return <GmailIcon />;
     case "notion":
       return <NotionIcon />;
     case "jira":
@@ -139,6 +150,7 @@ export function connectorIcon(provider: string): ReactNode {
 
 export function labelForSourceType(type: string): string {
   if (type === "github_repo") return "GitHub";
+  if (type === "gmail") return "Gmail";
   if (type === "google_drive") return "Google Drive";
   if (type === "notion") return "Notion";
   if (type === "slack") return "Slack";

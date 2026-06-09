@@ -568,12 +568,18 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
     slack = await source_service.create_source(
-        workspace_id=ws, owner_user_id=owner_id, source_type="slack",
-        external_ref="T123", display_name="Slack",
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T123",
+        display_name="Slack",
     )
     github = await source_service.create_source(
-        workspace_id=ws, owner_user_id=owner_id, source_type="github_repo",
-        external_ref="acme/x", display_name="x",
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/x",
+        display_name="x",
     )
 
     captured = {}
@@ -585,7 +591,9 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
 
     monkeypatch.setattr(indexer, "fetch_history", fake_fetch)
 
-    res = await source_service.fetch_history(ws, owner_id, slack["id"], "2026-01-01", until="2026-02-01")
+    res = await source_service.fetch_history(
+        ws, owner_id, slack["id"], "2026-01-01", until="2026-02-01"
+    )
     assert res["fetched"] == 2
     assert captured["since"].startswith("2026-01-01")
 
@@ -602,12 +610,19 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws, owner_user_id=owner_id, source_type="github_repo",
-        external_ref="acme/widgets", display_name="acme/widgets",
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
     )
     await source_service.upsert_content_document(
-        table="github_documents", source_id=UUID(src["id"]), workspace_id=ws,
-        path="README.md", name="README.md", content="hi",
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="README.md",
+        name="README.md",
+        content="hi",
     )
 
     listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(api_key))
@@ -622,8 +637,11 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
 
     # A queryable source (snowflake) has no document table → count is None.
     sf = await source_service.create_source(
-        workspace_id=ws, owner_user_id=owner_id, source_type="snowflake",
-        external_ref="acct", display_name="Snowflake",
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="snowflake",
+        external_ref="acct",
+        display_name="Snowflake",
     )
     sf_status = await client.get(
         f"/api/v1/workspaces/{ws}/sources/{sf['id']}/status", headers=_auth(api_key)

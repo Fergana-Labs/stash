@@ -316,6 +316,7 @@ function capitalize(s: string): string {
 // The noun used in the "Add a <thing>" / "<things>" section labels.
 const ITEM_NOUN: Record<string, string> = {
   github_repo: "repo",
+  gmail: "mailbox",
   google_drive: "folder",
   notion: "page",
   jira_project: "project",
@@ -359,6 +360,7 @@ function shortRef(source: WorkspaceSource): string | null {
   const ref = source.external_ref;
   if (!ref) return null;
   if (source.type === "jira_project") return ref.split(":")[1] ?? ref;
+  if (source.type === "gmail") return null;
   return ref;
 }
 
@@ -397,7 +399,7 @@ function SourceRow({
     };
   }, [workspaceId, source.source]);
 
-  const federated = source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project";
+  const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project";
   const ref = shortRef(source);
 
   return (

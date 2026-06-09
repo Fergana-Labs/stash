@@ -175,7 +175,7 @@ function IntroStep() {
       </div>
       <ul className="space-y-3">
         <IntroPoint title="Connect any data source">
-          GitHub, Google Drive, Notion, Slack, Granola, an Obsidian vault. Your
+          GitHub, Google Drive, Gmail, Notion, Slack, Granola, an Obsidian vault. Your
           agent navigates each like a file system and searches across all of them.
         </IntroPoint>
         <IntroPoint title="A workspace built for agents">

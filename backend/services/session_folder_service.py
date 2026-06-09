@@ -49,7 +49,9 @@ def _visibility_for_permissions(workspace_permission: str, public_permission: st
     return "public" if public_permission != "none" else "private"
 
 
-def _validate_permissions(workspace_permission: str, public_permission: str, discoverable: bool) -> None:
+def _validate_permissions(
+    workspace_permission: str, public_permission: str, discoverable: bool
+) -> None:
     if workspace_permission not in _GENERAL_PERMISSION_VALUES:
         raise ValueError("Unsupported workspace folder permission")
     if public_permission not in _GENERAL_PERMISSION_VALUES:
@@ -183,7 +185,9 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
     if not folder or not await user_can_manage(folder_id, user_id):
         return None
 
-    next_workspace_permission = updates.get("workspace_permission") or folder["workspace_permission"]
+    next_workspace_permission = (
+        updates.get("workspace_permission") or folder["workspace_permission"]
+    )
     next_public_permission = updates.get("public_permission") or folder["public_permission"]
     _validate_permissions(
         next_workspace_permission, next_public_permission, bool(updates.get("discoverable"))
@@ -211,9 +215,7 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
     if sets:
         sets.append("updated_at = now()")
         args.append(folder_id)
-        await pool.execute(
-            f"UPDATE session_folders SET {', '.join(sets)} WHERE id = ${idx}", *args
-        )
+        await pool.execute(f"UPDATE session_folders SET {', '.join(sets)} WHERE id = ${idx}", *args)
     return await get_folder(folder_id)
 
 
@@ -222,7 +224,9 @@ async def delete_folder(folder_id: UUID, user_id: UUID) -> bool:
     deleted folder fall back to unfiled (ON DELETE SET NULL)."""
     if not await user_can_manage(folder_id, user_id):
         return False
-    row = await get_pool().fetchrow("SELECT is_default FROM session_folders WHERE id = $1", folder_id)
+    row = await get_pool().fetchrow(
+        "SELECT is_default FROM session_folders WHERE id = $1", folder_id
+    )
     if not row or row["is_default"]:
         return False
     await get_pool().execute("DELETE FROM session_folders WHERE id = $1", folder_id)
@@ -253,7 +257,9 @@ async def get_public_folder(slug: str, viewer_id: UUID | None = None) -> dict | 
         "session_folder", UUID(folder["id"]), viewer_id, workspace_id=UUID(folder["workspace_id"])
     ):
         return None
-    await pool.execute("UPDATE session_folders SET view_count = view_count + 1 WHERE id = $1", row["id"])
+    await pool.execute(
+        "UPDATE session_folders SET view_count = view_count + 1 WHERE id = $1", row["id"]
+    )
     return folder
 
 

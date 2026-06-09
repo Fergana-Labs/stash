@@ -14,6 +14,8 @@ Two things worth pinning that don't need a DB or live OAuth:
 import pytest
 
 from backend.integrations.asana.indexer import _render_task
+from backend.integrations.gmail import indexer as gmail_indexer
+from backend.integrations.gmail.provider import GmailIntegration
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
@@ -132,12 +134,56 @@ def test_notion_is_searchable_content_source():
     assert "notion" not in source_service.FEDERATED_SEARCH_TYPES
 
 
-def test_jira_asana_drive_are_index_only_federated():
-    # Jira/Asana/Drive don't copy content — search is federated to the provider's
-    # own search API and bodies are fetched lazily on read.
-    for st in ("jira_project", "asana_project", "google_drive"):
+def test_gmail_jira_asana_drive_are_index_only_federated():
+    # Gmail/Jira/Asana/Drive don't copy content — search is federated to the
+    # provider's own search API and bodies are fetched lazily on read.
+    for st in ("gmail", "jira_project", "asana_project", "google_drive"):
         assert st in source_service.FEDERATED_SEARCH_TYPES, st
         assert source_service.SOURCE_TABLE[st] not in source_service.CONTENT_TABLES, st
+
+
+def test_gmail_is_readonly_searchable_source():
+    gmail = GmailIntegration()
+    assert "https://www.googleapis.com/auth/gmail.readonly" in gmail.scopes
+    assert "https://www.googleapis.com/auth/gmail.modify" not in gmail.scopes
+    assert source_service.SOURCE_CAPABILITY["gmail"] == "searchable"
+    assert source_service.SOURCE_TABLE["gmail"] == "gmail_index"
+    assert "gmail" in source_tasks.INDEXERS
+    assert (
+        source_service.source_document_url("gmail", None, "msg-123")
+        == "https://mail.google.com/mail/u/0/#all/msg-123"
+    )
+
+
+def test_gmail_message_rendering_prefers_plain_text_body():
+    import base64
+
+    body = base64.urlsafe_b64encode(b"Your invoice is past due.").decode().rstrip("=")
+    message = {
+        "id": "msg-1",
+        "snippet": "invoice snippet",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Past due invoice"},
+                {"name": "From", "value": "billing@example.com"},
+                {"name": "To", "value": "henry@example.com"},
+                {"name": "Date", "value": "Mon, 08 Jun 2026 12:00:00 -0700"},
+            ],
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": body},
+                }
+            ],
+        },
+    }
+
+    rendered = gmail_indexer._render_message(message)
+
+    assert "# Past due invoice" in rendered
+    assert "From: billing@example.com" in rendered
+    assert "Snippet: invoice snippet" in rendered
+    assert "Your invoice is past due." in rendered
 
 
 def test_render_call_labels_speakers_and_keeps_transcript():
@@ -170,7 +216,9 @@ def test_gong_is_api_key_searchable_source():
 @pytest.mark.asyncio
 async def test_gong_rejects_missing_credentials():
     with pytest.raises(ValueError):
-        await GongIntegration().connect_with_credentials({"access_key": "", "access_key_secret": ""})
+        await GongIntegration().connect_with_credentials(
+            {"access_key": "", "access_key_secret": ""}
+        )
 
 
 # --- Snowflake (queryable source) -------------------------------------------
@@ -178,7 +226,12 @@ async def test_gong_rejects_missing_credentials():
 
 def test_read_only_guard_allows_selects():
     # Allowed leading keywords pass; a trailing semicolon is stripped.
-    for sql in ("SELECT 1", "  with x as (select 1) select * from x  ", "SHOW TABLES;", "DESCRIBE TABLE t"):
+    for sql in (
+        "SELECT 1",
+        "  with x as (select 1) select * from x  ",
+        "SHOW TABLES;",
+        "DESCRIBE TABLE t",
+    ):
         assert _assert_read_only(sql)
 
 
