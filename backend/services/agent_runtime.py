@@ -507,7 +507,7 @@ async def _delete_cartridge(args: dict) -> dict:
 #
 # One surface over every source: the two native sources (files, session
 # transcripts — workspace-scoped) and the user's own connected sources
-# (GitHub/Drive/Notion/Slack/Granola — user-scoped). Connected-source access
+# (GitHub/Drive/Gmail/Notion/Slack/Granola — user-scoped). Connected-source access
 # always goes through source_service.get_owned_source, which is the single
 # user-scoping guard.
 

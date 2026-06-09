@@ -35,7 +35,7 @@ def _json(obj: object) -> str:
 @mcp.tool()
 def stash_search(query: str, source: str = "", limit: int = 20, workspace_id: str = "") -> str:
     """Search across all your sources — native files + session transcripts +
-    connected sources (GitHub/Drive/Notion/Slack/Granola).
+    connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola).
 
     Pass `source` to scope to one (a handle from stash_list_sources: 'files',
     'sessions', or a connected-source id); omit it to search everything.
@@ -80,9 +80,9 @@ def stash_add_source(
     display_name: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Connect a source. source_type: github_repo | google_drive | notion |
-    slack | granola. Slack/Granola resolve external_ref from your connected
-    token; the rest need an external_ref (e.g. a repo 'owner/name')."""
+    """Connect a source. source_type: github_repo | google_drive | gmail |
+    notion | slack | granola. Slack/Granola resolve external_ref from your
+    connected token; Gmail uses the mailbox email as external_ref."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(

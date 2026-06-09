@@ -156,7 +156,7 @@ export default function AppSidebar({
   const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
     readCachedSidebars()
   );
-  // Connected sources (GitHub/Drive/Notion/Slack/Granola) for the active
+  // Connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) for the active
   // workspace, keyed by workspace id. User-scoped — only the viewer's own.
   const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
 

@@ -100,7 +100,8 @@ export default function IntegrationPage() {
   }
 
   const connected = !!status?.connected;
-  const account = status?.account_email || status?.account_display_name;
+  const account = connectedAccountLabel(status);
+  const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
 
   async function connect() {
     setBusy("connect");
@@ -192,18 +193,29 @@ export default function IntegrationPage() {
           <div className="ml-auto flex items-center gap-3.5">
             {connected && account && (
               <span className="text-[12.5px] text-muted">
-                Connected as <b className="font-semibold text-foreground">{account}</b>
+                {account}
               </span>
             )}
             {connected ? (
-              <button
-                type="button"
-                onClick={() => void disconnect()}
-                disabled={busy === "disconnect"}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
-              >
-                {busy === "disconnect" ? "Disconnecting..." : "Disconnect"}
-              </button>
+              <>
+                {canConnectAnother && (
+                  <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={secondaryButton()}>
+                    {busy === "connect" ? "Connecting..." : "Connect another"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void disconnect()}
+                  disabled={busy === "disconnect"}
+                  className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+                >
+                  {busy === "disconnect"
+                    ? "Disconnecting..."
+                    : connector.provider === "gmail" && (status?.accounts.length ?? 0) > 1
+                    ? "Disconnect all"
+                    : "Disconnect"}
+                </button>
+              </>
             ) : status?.auth_kind === "api_key" ? (
               <button
                 type="button"
@@ -251,6 +263,8 @@ export default function IntegrationPage() {
               connector={connector}
               workspaceId={workspaceId}
               connected={connected}
+              accounts={status?.accounts ?? []}
+              existingRefs={sources.map((source) => source.external_ref).filter((ref): ref is string => Boolean(ref))}
               onAdded={() => void refresh()}
             />
           </section>
@@ -298,6 +312,13 @@ export default function IntegrationPage() {
       </div>
     </div>
   );
+}
+
+function connectedAccountLabel(status: IntegrationStatus | null): string | null {
+  if (!status?.connected) return null;
+  if (status.accounts.length > 1) return `${status.accounts.length} accounts connected`;
+  const account = status.account_email || status.account_display_name;
+  return account ? `Connected as ${account}` : "Connected";
 }
 
 // The uppercase section label that runs above each block, per the mock.

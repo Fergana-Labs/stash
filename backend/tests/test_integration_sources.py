@@ -150,8 +150,8 @@ def test_gmail_is_readonly_searchable_source():
     assert source_service.SOURCE_TABLE["gmail"] == "gmail_index"
     assert "gmail" in source_tasks.INDEXERS
     assert (
-        source_service.source_document_url("gmail", None, "msg-123")
-        == "https://mail.google.com/mail/u/0/#all/msg-123"
+        source_service.source_document_url("gmail", "henry@joinstash.ai", "msg-123")
+        == "https://mail.google.com/mail/u/henry%40joinstash.ai/#all/msg-123"
     )
 
 
