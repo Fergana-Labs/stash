@@ -662,9 +662,85 @@ async def _fetch_history(args: dict) -> dict:
     return _text_result(json.dumps(result))
 
 
+@tool(
+    "create_page",
+    "Create a new page in the workspace. Use content_type 'markdown' with `content`, "
+    "or 'html' with `content_html`. Returns the new page id.",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "content_type": {
+                "type": "string",
+                "enum": ["markdown", "html"],
+                "default": "markdown",
+            },
+            "content": {"type": "string", "default": ""},
+            "content_html": {"type": "string", "default": ""},
+            "folder_id": {"type": "string"},
+        },
+        "required": ["name"],
+    },
+)
+async def _create_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
+    try:
+        page = await files_tree_service.create_page(
+            workspace_id=workspace_id,
+            name=args["name"],
+            created_by=user_id,
+            folder_id=folder_id,
+            content=args.get("content") or "",
+            content_type=args.get("content_type") or "markdown",
+            content_html=args.get("content_html") or "",
+        )
+    except files_tree_service.DuplicatePageName:
+        return _text_result(json.dumps({"error": "a page with that name already exists here"}))
+    except ValueError as e:
+        return _text_result(json.dumps({"error": str(e)}))
+    return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
+
+
+@tool(
+    "update_page",
+    "Update an existing page's content or name by id. Pass content_type 'markdown' with "
+    "`content`, or 'html' with `content_html`. Omit a field to leave it unchanged.",
+    {
+        "type": "object",
+        "properties": {
+            "page_id": {"type": "string"},
+            "name": {"type": "string"},
+            "content_type": {"type": "string", "enum": ["markdown", "html"]},
+            "content": {"type": "string"},
+            "content_html": {"type": "string"},
+        },
+        "required": ["page_id"],
+    },
+)
+async def _update_page(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    page = await files_tree_service.update_page(
+        page_id=UUID(args["page_id"]),
+        workspace_id=workspace_id,
+        updated_by=user_id,
+        name=args.get("name"),
+        content=args.get("content"),
+        content_type=args.get("content_type"),
+        content_html=args.get("content_html"),
+    )
+    if page is None:
+        return _text_result(json.dumps({"error": "page not found"}))
+    return _text_result(json.dumps({"id": str(page["id"]), "name": page["name"]}))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
+    "create_page": _create_page,
+    "update_page": _update_page,
     "grep_pages": _grep_pages,
     "list_files": _list_files,
     "read_file": _read_file,

@@ -41,6 +41,8 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
 STASH_TOOL_SET = (
     "search_history",
     "read_page",
+    "create_page",
+    "update_page",
     "grep_pages",
     "list_files",
     "read_file",

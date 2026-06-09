@@ -136,6 +136,54 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
     assert deleted == {"deleted": True, "cartridge_id": created["id"]}
 
 
+def test_page_tools_are_writable_surfaces_only():
+    """create_page/update_page are mutations: offered to the agent + Slack
+    surfaces (STASH_TOOL_SET), but withheld from the read-only ask surface so a
+    prompt-injected ask can't author pages."""
+    for name in ("create_page", "update_page"):
+        assert name in agent_runtime._TOOLS_BY_NAME
+        assert name in prompts.STASH_TOOL_SET
+        assert name in prompts.SLACK_TOOL_SET
+        assert name not in prompts.ASK_TOOL_SET
+
+
+@pytest.mark.asyncio
+async def test_create_and_update_page_round_trip(workspace: UUID, _db_pool):
+    """create_page persists markdown + html; update_page edits an existing page
+    by id. Both must bind to the active workspace context."""
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        md = await agent_runtime._create_page.handler(
+            {"name": "Notes", "content_type": "markdown", "content": "# Hello"}
+        )
+        html = await agent_runtime._create_page.handler(
+            {"name": "Dashboard", "content_type": "html", "content_html": "<h1>Live</h1>"}
+        )
+        md_page = json.loads(md["content"][0]["text"])
+        await agent_runtime._update_page.handler(
+            {"page_id": md_page["id"], "content": "# Hello again"}
+        )
+        read_back = await agent_runtime._read_page.handler({"page_id": md_page["id"]})
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    html_page = json.loads(html["content"][0]["text"])
+    assert md_page["name"] == "Notes" and "id" in md_page
+    assert html_page["name"] == "Dashboard"
+    # Persisted to this workspace, scoped by context.
+    stored = await _db_pool.fetchrow(
+        "SELECT workspace_id, content_html FROM pages WHERE id = $1", UUID(html_page["id"])
+    )
+    assert stored["workspace_id"] == workspace
+    assert "<h1>Live</h1>" in (stored["content_html"] or "")
+    # update_page edited the markdown body in place.
+    assert "Hello again" in json.loads(read_back["content"][0]["text"])["content"]
+
+
 @pytest.mark.asyncio
 async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
