@@ -188,9 +188,7 @@ def _cell_to_md(cell: list[dict]) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-async def _render_table_block(
-    client: httpx.AsyncClient, block: dict, depth: int
-) -> list[str]:
+async def _render_table_block(client: httpx.AsyncClient, block: dict, depth: int) -> list[str]:
     """Render a Notion `table` block as a markdown table.
 
     Notion's `table` block has `table_width` + `has_column_header`. The rows

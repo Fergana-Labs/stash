@@ -207,16 +207,10 @@ async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
 
 
 async def _export(client: httpx.AsyncClient, file_id: str, mime: str) -> str:
-    resp = await client.get(
-        DRIVE_EXPORT_URL.format(file_id=file_id), params={"mimeType": mime}
-    )
+    resp = await client.get(DRIVE_EXPORT_URL.format(file_id=file_id), params={"mimeType": mime})
     return resp.text if resp.status_code == 200 else ""
 
 
 async def _export_bytes(client: httpx.AsyncClient, file_id: str, mime: str) -> bytes:
-    resp = await client.get(
-        DRIVE_EXPORT_URL.format(file_id=file_id), params={"mimeType": mime}
-    )
+    resp = await client.get(DRIVE_EXPORT_URL.format(file_id=file_id), params={"mimeType": mime})
     return resp.content if resp.status_code == 200 else b""
-
-
