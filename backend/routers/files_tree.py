@@ -1,9 +1,12 @@
 """Files router: workspace-scoped folders (nested) and pages."""
 
+import asyncio
+import json
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -29,6 +32,7 @@ from ..models import (
 from ..services import (
     comment_service,
     files_tree_service,
+    page_events,
     permission_service,
     workspace_service,
 )
@@ -94,6 +98,43 @@ async def list_workspace_pages(
     await _check_ws_access(workspace_id, current_user["id"])
     rows = await files_tree_service.list_workspace_pages(workspace_id, current_user["id"])
     return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
+
+
+# Heartbeat keeps the SSE connection (and intermediaries) alive between edits.
+_PAGE_EVENTS_HEARTBEAT_S = 25
+
+
+@router.get("/pages/events")
+async def page_events_stream(
+    workspace_id: UUID,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """SSE stream of page-update events for the workspace. Open viewers subscribe
+    and refetch the affected page so an agent (or another user) editing it shows
+    up live."""
+    await _check_ws_access(workspace_id, current_user["id"])
+
+    async def event_stream():
+        queue = page_events.subscribe(workspace_id)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=_PAGE_EVENTS_HEARTBEAT_S)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            page_events.unsubscribe(workspace_id, queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # --- Tree (nested folders + pages) ---
@@ -561,13 +602,12 @@ async def update_page(
             html_layout=req.html_layout,
             move_to_root=req.move_to_root,
             guard_content_hash=not (req.collab_projection and req.content is not None),
+            notify=not req.collab_projection,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
-    if req.content is not None and not req.collab_projection:
-        await files_tree_service.delete_page_collab_state(page_id, workspace_id)
     return PageResponse(**page)
 
 

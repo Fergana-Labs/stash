@@ -15,7 +15,7 @@ import asyncpg
 import nh3
 
 from ..database import get_pool
-from . import permission_service
+from . import page_events, permission_service
 
 logger = logging.getLogger(__name__)
 
@@ -429,8 +429,14 @@ async def update_page(
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
     edit_op: str = "update",
+    notify: bool = True,
 ) -> dict | None:
-    """Update a page with optimistic concurrency on content_hash."""
+    """Update a page with optimistic concurrency on content_hash.
+
+    When `notify` (the default for agent/REST writes, but False for the live
+    editor's own Yjs->DB projection), a content change broadcasts a page-update
+    event to open viewers and invalidates any persisted collab doc so a reopened
+    editor reloads the fresh content instead of stale Yjs state."""
     pool = get_pool()
     if content_html is not None:
         content_html = _sanitize_html(content_html)
@@ -540,6 +546,13 @@ async def update_page(
                         page["content_type"], page["content_markdown"], page["content_html"]
                     )
                     _schedule_embed(page["id"], active)
+                if notify:
+                    # An external (non-editor) write: drop stale collab state so a
+                    # reopened editor reloads fresh, and tell open viewers.
+                    await delete_page_collab_state(page["id"], workspace_id)
+                    page_events.publish_page_update(
+                        workspace_id, page["id"], page["content_hash"], edit_agent_name
+                    )
             return page
 
         if expected_hash is None or not guard_content_hash:

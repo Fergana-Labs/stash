@@ -47,6 +47,7 @@ import {
   type WorkspaceCartridge,
 } from "../../../../../../lib/api";
 import type { CommentThread, Page } from "../../../../../../lib/types";
+import { subscribePageEvents } from "../../../../../../lib/pageEvents";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -143,7 +144,31 @@ export default function StashPageView() {
 
   useEffect(() => {
     setCommentAnchorTops({});
+    setExternalEdit(null);
   }, [workspaceId, pageId]);
+
+  // Live updates: when an agent or another user edits this page on the backend,
+  // refresh a passive view in place (HTML / read-only), or — when the user is
+  // actively editing — surface a non-destructive "reload" banner rather than
+  // clobber their buffer.
+  const [contentVersion, setContentVersion] = useState(0);
+  const [externalEdit, setExternalEdit] = useState<{ agentName: string | null } | null>(null);
+  const liveViewRef = useRef({ isHtml: false, htmlEditMode: false });
+  const loadRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    if (!user || stashSlug) return;
+    return subscribePageEvents(workspaceId, (evt) => {
+      if (evt.page_id !== pageId) return;
+      const { isHtml, htmlEditMode } = liveViewRef.current;
+      if (isHtml && !htmlEditMode) {
+        loadRef.current();
+        setContentVersion((v) => v + 1);
+      } else {
+        setExternalEdit({ agentName: evt.agent_name });
+      }
+    });
+  }, [workspaceId, pageId, user, stashSlug]);
 
   useBreadcrumbs(
     [
@@ -467,6 +492,9 @@ export default function StashPageView() {
   if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
+  // Keep the live-update handler reading current view state without resubscribing.
+  liveViewRef.current = { isHtml, htmlEditMode };
+  loadRef.current = load;
   const updatedAt = page?.updated_at
     ? new Date(page.updated_at).toLocaleString(undefined, {
         month: "short",
@@ -606,6 +634,31 @@ export default function StashPageView() {
         className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]"
       >
         <main className="min-w-0">
+          {externalEdit && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-brand-600)]/40 bg-[var(--color-brand-600)]/10 px-4 py-2 text-[13px]">
+              <span>
+                This page was edited{" "}
+                {externalEdit.agentName ? `by ${externalEdit.agentName}` : "externally"} — reload to
+                see the latest.
+              </span>
+              <span className="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="font-medium text-[var(--color-brand-600)] hover:underline"
+                >
+                  Reload
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExternalEdit(null)}
+                  className="text-[var(--text-muted)] hover:text-foreground"
+                >
+                  Dismiss
+                </button>
+              </span>
+            </div>
+          )}
           {error && (
             <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
               {error}
@@ -617,7 +670,7 @@ export default function StashPageView() {
               isHtml ? (
                 <div ref={iframeBoxRef} className="relative">
                   <HtmlPageView
-                    key={page.id}
+                    key={`${page.id}:${contentVersion}`}
                     html={page.content_html || ""}
                     title={page.name}
                     layout={page.html_layout}
