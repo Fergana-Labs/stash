@@ -689,36 +689,36 @@ export default function StashPageView() {
 
 function PageAccessDeniedScreen({ accountLabel }: { accountLabel: string | null }) {
   return (
-    <div className="flex min-h-screen flex-col bg-[#f8fafd] text-[#202124]">
-      <header className="flex h-14 items-center border-b border-[#dadce0] bg-white px-5">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <header className="flex h-14 items-center border-b border-border bg-surface px-5">
         <div className="flex items-center gap-2.5">
-          <span className="text-[#1a73e8]">
+          <span className="text-[var(--color-brand-600)]">
             <AccessPageGlyph />
           </span>
-          <span className="text-[18px] text-[#5f6368]">Stash</span>
+          <span className="font-display text-[18px] font-semibold text-foreground">Stash</span>
         </div>
       </header>
       <main className="flex flex-1 items-center justify-center px-6 py-16">
         <section className="w-full max-w-[520px] text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#e8f0fe] text-[#1a73e8]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-brand-100 text-[var(--color-brand-700)] shadow-sm">
             <AccessPageGlyph large />
           </div>
-          <h1 className="mt-6 text-[28px] font-normal leading-tight text-[#202124]">
+          <h1 className="mt-6 font-display text-[28px] font-semibold leading-tight tracking-tight text-foreground">
             You don&apos;t have access to this page
           </h1>
-          <p className="mt-3 text-[14px] leading-6 text-[#5f6368]">
+          <p className="mt-3 text-[14px] leading-6 text-dim">
             If someone sent you this link, ask them to share the Stash with your
             account.
           </p>
           {accountLabel ? (
-            <p className="mt-4 text-[13px] leading-5 text-[#5f6368]">
-              You&apos;re signed in as <span className="font-medium text-[#3c4043]">{accountLabel}</span>.
+            <p className="mt-4 text-[13px] leading-5 text-muted">
+              You&apos;re signed in as <span className="font-medium text-foreground">{accountLabel}</span>.
             </p>
           ) : null}
           <div className="mt-8 flex justify-center">
             <Link
               href="/"
-              className="inline-flex h-9 items-center justify-center rounded-[4px] bg-[#1a73e8] px-6 text-[14px] font-medium text-white hover:bg-[#1765cc]"
+              className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--color-brand-600)] px-6 text-[14px] font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Go to home
             </Link>
@@ -737,14 +737,15 @@ function AccessPageGlyph({ large = false }: { large?: boolean }) {
       width={size}
       height={size}
       fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path
-        d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V3.5Z"
-        fill="currentColor"
-      />
-      <path d="M14 3.5v4h4" fill="#a8c7fa" />
-      <path d="M9 11h6M9 14h6M9 17h4" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h4" />
     </svg>
   );
 }
