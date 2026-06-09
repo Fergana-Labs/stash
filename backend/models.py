@@ -374,6 +374,8 @@ class PageResponse(BaseModel):
     html_layout: str = "responsive"
     content_hash: str | None = None
     metadata: dict = {}
+    last_edit_session_id: str | None = None
+    last_edit_agent_name: str | None = None
     created_by: UUID
     updated_by: UUID | None
     created_at: datetime

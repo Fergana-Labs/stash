@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { PageBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
 import {
@@ -477,6 +478,24 @@ export default function StashPageView() {
 
   const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
   const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
+
+  // Provenance: when an agent made the last content edit, link the page back to
+  // the chat session that produced it.
+  const metaItems: ReactNode[] = [];
+  if (updatedAt) metaItems.push(`Last edited ${updatedAt}`);
+  if (page?.last_edit_agent_name && page.last_edit_session_id) {
+    metaItems.push(
+      <Link
+        key="provenance"
+        href={`/workspaces/${workspaceId}/sessions?session=${encodeURIComponent(
+          page.last_edit_session_id,
+        )}`}
+        className="underline decoration-dotted underline-offset-2 hover:text-[var(--text)]"
+      >
+        Edited by {page.last_edit_agent_name}
+      </Link>,
+    );
+  }
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <FileViewerHeader
@@ -497,7 +516,7 @@ export default function StashPageView() {
             : undefined
         }
         tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
-        meta={updatedAt ? [`Last edited ${updatedAt}`] : undefined}
+        meta={metaItems.length ? metaItems : undefined}
         saveStatus={page && !isHtml ? saveStatus : null}
         rightExtras={
           isHtml ? (

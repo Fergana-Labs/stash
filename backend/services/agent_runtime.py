@@ -50,6 +50,22 @@ _workspace_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
 _user_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
     "stash_user_id", default=None
 )
+# Best-effort edit provenance: which agent / session a tool call belongs to.
+# Unset for surfaces that don't run inside a session (e.g. one-shot ask).
+_session_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "stash_session_id", default=None
+)
+_agent_name_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "stash_agent_name", default=None
+)
+
+
+def _current_session() -> str | None:
+    return _session_ctx.get()
+
+
+def _current_agent_name() -> str | None:
+    return _agent_name_ctx.get()
 
 
 def _current_workspace() -> UUID:
@@ -695,6 +711,8 @@ async def _create_page(args: dict) -> dict:
             content=args.get("content") or "",
             content_type=args.get("content_type") or "markdown",
             content_html=args.get("content_html") or "",
+            edit_session_id=_current_session(),
+            edit_agent_name=_current_agent_name(),
         )
     except files_tree_service.DuplicatePageName:
         return _text_result(json.dumps({"error": "a page with that name already exists here"}))
@@ -730,6 +748,8 @@ async def _update_page(args: dict) -> dict:
         content=args.get("content"),
         content_type=args.get("content_type"),
         content_html=args.get("content_html"),
+        edit_session_id=_current_session(),
+        edit_agent_name=_current_agent_name(),
     )
     if page is None:
         return _text_result(json.dumps({"error": "page not found"}))
@@ -764,6 +784,8 @@ async def _edit_page(args: dict) -> dict:
             old_string=args.get("old_string") or "",
             new_string=args["new_string"],
             mode=args.get("mode") or "replace",
+            edit_session_id=_current_session(),
+            edit_agent_name=_current_agent_name(),
         )
     except files_tree_service.EditMatchError as e:
         return _text_result(

@@ -208,6 +208,62 @@ def test_destructive_tools_withheld_from_untrusted_surfaces():
 
 
 @pytest.mark.asyncio
+async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: UUID, _db_pool):
+    """Agent writes stamp the page + log who/which session; a plain service
+    (human/REST) write logs an edit row but leaves the agent/session NULL."""
+    from backend.services import files_tree_service
+
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+
+    # Human/REST path: no agent context → NULL stamp, but still logged.
+    human = await files_tree_service.create_page(
+        workspace_id=workspace, name="Human", created_by=user_id, content="hi"
+    )
+    h_cols = await _db_pool.fetchrow(
+        "SELECT last_edit_session_id, last_edit_agent_name FROM pages WHERE id = $1", human["id"]
+    )
+    assert h_cols["last_edit_agent_name"] is None and h_cols["last_edit_session_id"] is None
+    h_log = await _db_pool.fetchrow(
+        "SELECT op, agent_name FROM page_edits WHERE page_id = $1", human["id"]
+    )
+    assert h_log["op"] == "create" and h_log["agent_name"] is None
+
+    # Agent path: session + agent name bound in context → stamped + logged.
+    session_token = agent_runtime._session_ctx.set("chat-123")
+    agent_token = agent_runtime._agent_name_ctx.set("Stash Agent")
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        created = json.loads(
+            (
+                await agent_runtime._create_page.handler({"name": "Agent doc", "content": "a b"})
+            )["content"][0]["text"]
+        )
+        await agent_runtime._edit_page.handler(
+            {"page_id": created["id"], "old_string": "a b", "new_string": "a c"}
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._agent_name_ctx.reset(agent_token)
+        agent_runtime._session_ctx.reset(session_token)
+
+    page_id = UUID(created["id"])
+    cols = await _db_pool.fetchrow(
+        "SELECT last_edit_session_id, last_edit_agent_name FROM pages WHERE id = $1", page_id
+    )
+    assert cols["last_edit_session_id"] == "chat-123"
+    assert cols["last_edit_agent_name"] == "Stash Agent"
+    ops = [
+        r["op"]
+        for r in await _db_pool.fetch(
+            "SELECT op FROM page_edits WHERE page_id = $1 ORDER BY created_at", page_id
+        )
+    ]
+    assert ops == ["create", "edit"]  # the edit_page call logged op='edit'
+
+
+@pytest.mark.asyncio
 async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
     """edit_page does a unique str-replace / append on the active body, and fails
     loud (writing nothing) when the anchor isn't unique."""

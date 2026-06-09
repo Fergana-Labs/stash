@@ -107,6 +107,8 @@ async def stream_chat(
         workspace_id=workspace_id,
         user_id=user_id,
         tool_set=prompts.STASH_TOOL_SET,
+        session_id=session_id,
+        agent_name=AGENT_NAME,
     ):
         if event.get("type") == "text":
             answer.append(event.get("delta") or "")
@@ -161,6 +163,8 @@ async def run_chat(
         workspace_id=workspace_id,
         user_id=user_id,
         tool_set=prompts.SLACK_TOOL_SET,
+        session_id=session_id,
+        agent_name=AGENT_NAME,
     ):
         if event.get("type") == "text":
             answer.append(event.get("delta") or "")

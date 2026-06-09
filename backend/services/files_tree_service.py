@@ -290,6 +290,27 @@ async def _assert_no_cycle(folder_id: UUID, new_parent_id: UUID | None) -> None:
 # --- Page CRUD ---
 
 
+async def _log_page_edit(
+    page_id: UUID,
+    workspace_id: UUID,
+    edited_by: UUID,
+    agent_name: str | None,
+    session_id: str | None,
+    op: str,
+) -> None:
+    await get_pool().execute(
+        "INSERT INTO page_edits "
+        "(page_id, workspace_id, edited_by, agent_name, session_id, op) "
+        "VALUES ($1, $2, $3, $4, $5, $6)",
+        page_id,
+        workspace_id,
+        edited_by,
+        agent_name,
+        session_id,
+        op,
+    )
+
+
 async def create_page(
     workspace_id: UUID,
     name: str,
@@ -300,6 +321,8 @@ async def create_page(
     content_type: str = "markdown",
     content_html: str = "",
     html_layout: str = "responsive",
+    edit_session_id: str | None = None,
+    edit_agent_name: str | None = None,
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
@@ -314,11 +337,12 @@ async def create_page(
         row = await pool.fetchrow(
             "INSERT INTO pages "
             "(workspace_id, folder_id, name, content_markdown, content_html, content_type, "
-            "html_layout, content_hash, metadata, created_by, updated_by) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10) "
+            "html_layout, content_hash, metadata, created_by, updated_by, "
+            "last_edit_session_id, last_edit_agent_name) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12) "
             "RETURNING id, workspace_id, folder_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, created_by, updated_by, "
-            "created_at, updated_at",
+            "last_edit_session_id, last_edit_agent_name, created_at, updated_at",
             workspace_id,
             folder_id,
             name,
@@ -329,10 +353,15 @@ async def create_page(
             ch,
             meta,
             created_by,
+            edit_session_id,
+            edit_agent_name,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicatePageName(workspace_id, folder_id, name) from e
     page = dict(row)
+    await _log_page_edit(
+        page["id"], workspace_id, created_by, edit_agent_name, edit_session_id, "create"
+    )
     if active:
         _schedule_embed(page["id"], active)
     return page
@@ -347,6 +376,7 @@ async def get_page(
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, "
+        "last_edit_session_id, last_edit_agent_name, "
         "created_by, updated_by, created_at, updated_at "
         f"FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
         page_id,
@@ -396,6 +426,9 @@ async def update_page(
     metadata: dict | None = None,
     guard_content_hash: bool = True,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
+    edit_session_id: str | None = None,
+    edit_agent_name: str | None = None,
+    edit_op: str = "update",
 ) -> dict | None:
     """Update a page with optimistic concurrency on content_hash."""
     pool = get_pool()
@@ -467,6 +500,12 @@ async def update_page(
             sets.append(f"content_hash = ${idx}")
             args.append(_content_hash(new_active))
             idx += 1
+            sets.append(f"last_edit_session_id = ${idx}")
+            args.append(edit_session_id)
+            idx += 1
+            sets.append(f"last_edit_agent_name = ${idx}")
+            args.append(edit_agent_name)
+            idx += 1
         if metadata is not None:
             sets.append(f"metadata = ${idx}::jsonb")
             args.append(metadata)
@@ -484,6 +523,7 @@ async def update_page(
                 f"UPDATE pages SET {', '.join(sets)} WHERE {where} "
                 "RETURNING id, workspace_id, folder_id, name, content_markdown, content_html, "
                 "content_type, html_layout, content_hash, metadata, "
+                "last_edit_session_id, last_edit_agent_name, "
                 "created_by, updated_by, created_at, updated_at",
                 *args,
             )
@@ -491,11 +531,15 @@ async def update_page(
             raise DuplicatePageName(workspace_id, folder_id, name or "") from e
         if row:
             page = dict(row)
-            if content_changed and page["content_hash"] != expected_hash:
-                active = _active_content(
-                    page["content_type"], page["content_markdown"], page["content_html"]
+            if content_changed:
+                await _log_page_edit(
+                    page["id"], workspace_id, updated_by, edit_agent_name, edit_session_id, edit_op
                 )
-                _schedule_embed(page["id"], active)
+                if page["content_hash"] != expected_hash:
+                    active = _active_content(
+                        page["content_type"], page["content_markdown"], page["content_html"]
+                    )
+                    _schedule_embed(page["id"], active)
             return page
 
         if expected_hash is None or not guard_content_hash:
@@ -562,6 +606,8 @@ async def edit_page(
     old_string: str,
     new_string: str,
     mode: str = "replace",
+    edit_session_id: str | None = None,
+    edit_agent_name: str | None = None,
 ) -> dict | None:
     """Surgical edit of a page body: replace a unique `old_string`, or append.
 
@@ -584,6 +630,9 @@ async def edit_page(
                 page_id=page_id,
                 workspace_id=workspace_id,
                 updated_by=updated_by,
+                edit_session_id=edit_session_id,
+                edit_agent_name=edit_agent_name,
+                edit_op="edit",
                 **edited,
             )
         except ConcurrentEditError:
