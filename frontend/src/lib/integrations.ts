@@ -10,6 +10,7 @@ import { apiFetch } from "./api";
 
 export type IntegrationProvider =
   | "google"
+  | "gmail"
   | "github"
   | "notion"
   | "slack"

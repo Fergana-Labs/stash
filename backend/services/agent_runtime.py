@@ -588,7 +588,7 @@ async def _delete_cartridge(args: dict) -> dict:
 @tool(
     "list_sources",
     "List every source this user can read: native 'files' and 'sessions', plus "
-    "their connected sources (GitHub, Drive, Notion, Slack, Granola, Jira, Asana, "
+    "their connected sources (GitHub, Drive, Gmail, Notion, Slack, Granola, Jira, Asana, "
     "Gong, Snowflake). Each has a `capability`: 'navigable'/'searchable' sources "
     "use list_source / read_source / search; a 'queryable' source (Snowflake) uses "
     "query_source. Use the returned `source` handle with those tools.",

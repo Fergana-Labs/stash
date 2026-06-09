@@ -208,6 +208,12 @@ class Settings:
         "GOOGLE_OAUTH_REDIRECT_URI", AUTH0_ENABLED
     )
 
+    GMAIL_OAUTH_CLIENT_ID: str | None = os.getenv("GMAIL_OAUTH_CLIENT_ID")
+    GMAIL_OAUTH_CLIENT_SECRET: str | None = os.getenv("GMAIL_OAUTH_CLIENT_SECRET")
+    GMAIL_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "GMAIL_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
+
     GITHUB_OAUTH_CLIENT_ID: str | None = os.getenv("GITHUB_OAUTH_CLIENT_ID")
     GITHUB_OAUTH_CLIENT_SECRET: str | None = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
     GITHUB_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
