@@ -30,6 +30,7 @@ MIME_FOLDER = "application/vnd.google-apps.folder"
 MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
 MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
 MIME_GOOGLE_SLIDE = "application/vnd.google-apps.presentation"
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MAX_FOLDER_DEPTH = 8
 # Native (non-Google) files can be massive (terabyte videos). Cap downloads so
 # a stray click doesn't drag a huge file into the agent's response.
@@ -169,8 +170,15 @@ async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
         if mime == MIME_GOOGLE_DOC:
             return await _export(client, file_id, "text/markdown")
         if mime == MIME_GOOGLE_SHEET:
-            csv = await _export(client, file_id, "text/csv")
-            return _csv_to_markdown_table(csv) if csv else ""
+            # XLSX export keeps every visible sheet (Drive's CSV export drops
+            # everything except the first). file_extraction renders one TSV
+            # block per sheet.
+            xlsx = await _export_bytes(client, file_id, _XLSX_MIME)
+            if not xlsx:
+                return ""
+            from ...services.file_extraction import extract_text
+
+            return extract_text(xlsx, _XLSX_MIME) or ""
         if mime == MIME_GOOGLE_SLIDE:
             return await _export(client, file_id, "text/plain")
 
@@ -205,32 +213,10 @@ async def _export(client: httpx.AsyncClient, file_id: str, mime: str) -> str:
     return resp.text if resp.status_code == 200 else ""
 
 
-def _csv_to_markdown_table(csv_text: str) -> str:
-    """First-sheet CSV → a markdown table (header row + body).
+async def _export_bytes(client: httpx.AsyncClient, file_id: str, mime: str) -> bytes:
+    resp = await client.get(
+        DRIVE_EXPORT_URL.format(file_id=file_id), params={"mimeType": mime}
+    )
+    return resp.content if resp.status_code == 200 else b""
 
-    Cap is the row count, not byte count — the Sheet might have 100k rows
-    that the agent can't reasonably scan; the federated search step has
-    already narrowed to a specific sheet, so the agent expects a summary.
-    """
-    import csv as csv_mod
-    import io
 
-    rows = list(csv_mod.reader(io.StringIO(csv_text)))
-    if not rows:
-        return ""
-    max_rows = 200
-    truncated = len(rows) > max_rows + 1  # +1 for header
-    rows = rows[: max_rows + 1]
-    cols = max(len(r) for r in rows)
-    rows = [r + [""] * (cols - len(r)) for r in rows]
-    header = rows[0]
-    body = rows[1:]
-    out = [
-        "| " + " | ".join(c.replace("|", "\\|") for c in header) + " |",
-        "| " + " | ".join(["---"] * cols) + " |",
-    ]
-    for row in body:
-        out.append("| " + " | ".join(c.replace("|", "\\|") for c in row) + " |")
-    if truncated:
-        out.append(f"_(showing first {max_rows} rows of {len(rows) + max_rows - 1}+)_")
-    return "\n".join(out)
