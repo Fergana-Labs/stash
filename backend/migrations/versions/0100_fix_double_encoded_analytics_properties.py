@@ -19,13 +19,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         UPDATE analytics_events
         SET properties = (properties #>> '{}')::jsonb
         WHERE jsonb_typeof(properties) = 'string'
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
