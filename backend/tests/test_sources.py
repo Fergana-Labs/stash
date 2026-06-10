@@ -205,42 +205,48 @@ async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
 
 
 async def _create_twitter_source(ws: UUID, owner_id: UUID) -> dict:
+    # external_ref is the connected X account's numeric user id (see
+    # _resolve_twitter_source) — reads address personal feeds with it directly.
     return await source_service.create_source(
         workspace_id=ws,
         owner_user_id=owner_id,
         source_type="twitter",
-        external_ref="recent",
+        external_ref="111",
         display_name="Twitter / X (@stash)",
     )
 
 
 @pytest.mark.asyncio
-async def test_twitter_source_uses_connected_handle(monkeypatch):
+async def test_twitter_source_stores_account_id_and_handle(monkeypatch):
+    from backend.integrations.twitter import indexer as twitter_indexer
+
     async def fake_token(user_id, provider):
         return "tok"
 
-    async def fake_status(user_id, provider):
-        return {"account_display_name": "@henry_dowling"}
+    async def fake_me(token):
+        return {"id": "111", "username": "henry_dowling"}
 
     monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
-    monkeypatch.setattr(sources_router.integration_storage, "status", fake_status)
+    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
 
     external_ref, display_name = await sources_router._resolve_twitter_source(uuid4())
 
-    assert external_ref == "recent"
+    assert external_ref == "111"
     assert display_name == "Twitter / X (@henry_dowling)"
 
 
 @pytest.mark.asyncio
 async def test_twitter_source_requires_connected_handle(monkeypatch):
+    from backend.integrations.twitter import indexer as twitter_indexer
+
     async def fake_token(user_id, provider):
         return "tok"
 
-    async def fake_status(user_id, provider):
-        return {"account_display_name": None}
+    async def fake_me(token):
+        return {"id": "111"}
 
     monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
-    monkeypatch.setattr(sources_router.integration_storage, "status", fake_status)
+    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
 
     with pytest.raises(sources_router.HTTPException, match="Reconnect Twitter"):
         await sources_router._resolve_twitter_source(uuid4())
@@ -366,10 +372,10 @@ async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
     ws = await _create_workspace(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
-    fetched: list[str] = []
+    fetched: list[tuple[str, str]] = []
 
-    async def fake_fetch(owner, ref):
-        fetched.append(ref)
+    async def fake_fetch(owner, account_id, ref):
+        fetched.append((account_id, ref))
         return "# Bookmarks\n\n> saved post"
 
     monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fake_fetch)
@@ -379,7 +385,8 @@ async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
     assert doc["path"] == "bookmarks"
     assert doc["name"] == "Bookmarks"
     assert "> saved post" in doc["content"]
-    assert fetched == ["bookmarks"]
+    # The stored account id rides along so the read never re-resolves /users/me.
+    assert fetched == [("111", "bookmarks")]
 
 
 @pytest.mark.asyncio

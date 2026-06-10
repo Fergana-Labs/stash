@@ -28,7 +28,6 @@ DM_EVENTS_URL = f"{API_BASE}/2/dm_events"
 LIKING_USERS_URL = f"{API_BASE}/2/tweets/{{tweet_id}}/liking_users"
 RETWEETED_BY_URL = f"{API_BASE}/2/tweets/{{tweet_id}}/retweeted_by"
 
-DEFAULT_SOURCE_REF = "recent"
 SEARCH_LIMIT = 25
 READ_LIMIT = 25
 IDENTITY_LIMIT = 100
@@ -254,8 +253,13 @@ def _read_error_text(status_code: int, label: str) -> str | None:
     return None
 
 
-async def _fetch_me(client: httpx.AsyncClient) -> dict:
-    resp = await client.get(ME_URL, params={"user.fields": USER_FIELDS})
+async def fetch_me(token: str) -> dict:
+    """Resolve the connected X account (id, username). Called once when the
+    source is added: /users/me is X's most rate-limited endpoint (~25/day on
+    the free tier), so reads must never depend on it — the id is stored as the
+    source's external_ref instead."""
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
+        resp = await client.get(ME_URL, params={"user.fields": USER_FIELDS})
     resp.raise_for_status()
     user = resp.json().get("data") or {}
     if not user.get("id"):
@@ -342,7 +346,11 @@ async def search_twitter(source: dict, query: str, limit: int = SEARCH_LIMIT) ->
     return hits
 
 
-async def fetch_twitter_content(owner_user_id: UUID, ref: str) -> str:
+async def fetch_twitter_content(owner_user_id: UUID, account_id: str, ref: str) -> str:
+    """Read one live ref. `account_id` is the connected X user id stored as the
+    source's external_ref — personal feeds are addressed by id, and resolving
+    it per-read via /users/me would hit that endpoint's own (much tighter)
+    rate limit."""
     if not is_twitter_live_ref(ref):
         raise ValueError(f"invalid twitter ref {ref!r}")
     try:
@@ -351,32 +359,28 @@ async def fetch_twitter_content(owner_user_id: UUID, ref: str) -> str:
         return "The Twitter / X connection is gone - reconnect it in Settings to read posts."
 
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
-        me: dict | None = None
-        if ref in {"home", "my-posts", "bookmarks", "likes"}:
-            me = await _fetch_me(client)
-
         if ref == "home":
             return await _fetch_tweets_page(
                 client,
-                HOME_TIMELINE_URL.format(user_id=me["id"]),
+                HOME_TIMELINE_URL.format(user_id=account_id),
                 "Home timeline",
             )
         if ref == "my-posts":
             return await _fetch_tweets_page(
                 client,
-                USER_TWEETS_URL.format(user_id=me["id"]),
-                f"My posts (@{me.get('username')})" if me.get("username") else "My posts",
+                USER_TWEETS_URL.format(user_id=account_id),
+                "My posts",
             )
         if ref == "bookmarks":
             return await _fetch_tweets_page(
                 client,
-                BOOKMARKS_URL.format(user_id=me["id"]),
+                BOOKMARKS_URL.format(user_id=account_id),
                 "Bookmarks",
             )
         if ref == "likes":
             return await _fetch_tweets_page(
                 client,
-                LIKED_TWEETS_URL.format(user_id=me["id"]),
+                LIKED_TWEETS_URL.format(user_id=account_id),
                 "Liked posts",
             )
         if ref == "dms":

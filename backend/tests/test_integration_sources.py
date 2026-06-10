@@ -375,14 +375,14 @@ def test_twitter_is_oauth_searchable_source():
     assert "twitter" not in source_tasks.INDEXERS
     assert "twitter" not in source_service.DEFAULT_SYNC_INTERVAL_S
     assert (
-        source_service.source_document_url("twitter", "recent", "123")
+        source_service.source_document_url("twitter", "111", "123")
         == "https://x.com/i/web/status/123"
     )
     assert (
-        source_service.source_document_url("twitter", "recent", "post:123")
+        source_service.source_document_url("twitter", "111", "post:123")
         == "https://x.com/i/web/status/123"
     )
-    assert source_service.source_document_url("twitter", "recent", "bookmarks") is None
+    assert source_service.source_document_url("twitter", "111", "bookmarks") is None
 
 
 def test_twitter_authorize_url_uses_pkce(monkeypatch):
@@ -567,7 +567,7 @@ async def test_fetch_twitter_content_handles_unavailable_post(monkeypatch):
     # X answers 200 + an errors array (no data) for deleted/protected posts.
     gone = _FakeClient({"errors": [{"title": "Not Found Error"}]})
     monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", gone)
-    text = await twitter_indexer.fetch_twitter_content(uuid4(), "123")
+    text = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "123")
     assert "no longer available" in text
 
     # The happy path resolves the author from the same response (one request).
@@ -578,7 +578,7 @@ async def test_fetch_twitter_content_handles_unavailable_post(monkeypatch):
         }
     )
     monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", live)
-    text = await twitter_indexer.fetch_twitter_content(uuid4(), "123")
+    text = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "123")
     assert "# @stash" in text
     assert "> hello" in text
     assert len(live.requests) == 1
@@ -586,36 +586,36 @@ async def test_fetch_twitter_content_handles_unavailable_post(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_twitter_content_reads_personal_refs(monkeypatch):
+    """Personal-feed reads address the stored account id directly — they must
+    never call /users/me, whose rate limit (~25/day on the free tier) is far
+    tighter than the feed endpoints themselves."""
     from uuid import uuid4
 
     async def fake_token(owner, provider):
         return "tok"
 
     client = _FakeClient(
-        [
-            {"data": {"id": "u1", "username": "stash"}},
-            {
-                "data": [
-                    {
-                        "id": "123",
-                        "text": "saved post",
-                        "author_id": "u2",
-                        "created_at": "2026-06-08T12:00:00Z",
-                    }
-                ],
-                "includes": {"users": [{"id": "u2", "username": "ada"}]},
-            },
-        ]
+        {
+            "data": [
+                {
+                    "id": "123",
+                    "text": "saved post",
+                    "author_id": "u2",
+                    "created_at": "2026-06-08T12:00:00Z",
+                }
+            ],
+            "includes": {"users": [{"id": "u2", "username": "ada"}]},
+        }
     )
     monkeypatch.setattr(twitter_indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", client)
 
-    text = await twitter_indexer.fetch_twitter_content(uuid4(), "bookmarks")
+    text = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "bookmarks")
 
     assert "# Bookmarks" in text
     assert "> saved post" in text
-    assert client.requests[0][0] == twitter_indexer.ME_URL
-    assert "/bookmarks" in client.requests[1][0]
+    assert len(client.requests) == 1
+    assert "/users/u1/bookmarks" in client.requests[0][0]
 
 
 @pytest.mark.asyncio
@@ -647,14 +647,14 @@ async def test_fetch_twitter_content_reads_dms_and_identity_refs(monkeypatch):
     )
     monkeypatch.setattr(twitter_indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", dm_client)
-    dms = await twitter_indexer.fetch_twitter_content(uuid4(), "dms")
+    dms = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "dms")
     assert "Direct messages" in dms
     assert "Sender: @stash" in dms
     assert "> private note" in dms
 
     likers_client = _FakeClient({"data": [{"id": "u2", "username": "ada", "name": "Ada"}]})
     monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", likers_client)
-    likers = await twitter_indexer.fetch_twitter_content(uuid4(), "likers:123")
+    likers = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "likers:123")
     assert "People who liked 123" in likers
     assert "@ada - Ada" in likers
     assert likers_client.requests[0][1]["max_results"] == twitter_indexer.IDENTITY_LIMIT
@@ -674,8 +674,13 @@ async def test_fetch_twitter_content_degrades_x_errors_to_readable_text(monkeypa
 
     for status, expected in ((429, "rate limit"), (401, "reconnect"), (404, "no longer")):
         monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", _FakeClient({}, status))
-        text = await twitter_indexer.fetch_twitter_content(uuid4(), "123")
+        text = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "123")
         assert expected in text, status
+
+    # Personal feeds hit the same volatility and must degrade the same way.
+    monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", _FakeClient({}, 429))
+    text = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "bookmarks")
+    assert "rate limit" in text
 
     # A disconnected integration reads as prose too, not as a 401 the frontend
     # mistakes for session expiry.
@@ -683,16 +688,16 @@ async def test_fetch_twitter_content_degrades_x_errors_to_readable_text(monkeypa
         raise HTTPException(status_code=401, detail="not connected to twitter")
 
     monkeypatch.setattr(twitter_indexer, "get_valid_token", no_token)
-    text = await twitter_indexer.fetch_twitter_content(uuid4(), "123")
+    text = await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "123")
     assert "reconnect" in text
 
     # Refs only ever come from rows populated with X's own numeric ids; anything
     # else is a broken invariant, not a fetchable post. Unicode digits don't
     # count — str.isdigit() alone would accept them.
     with pytest.raises(ValueError):
-        await twitter_indexer.fetch_twitter_content(uuid4(), "../2/users/me")
+        await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "../2/users/me")
     with pytest.raises(ValueError):
-        await twitter_indexer.fetch_twitter_content(uuid4(), "٤٢")
+        await twitter_indexer.fetch_twitter_content(uuid4(), "u1", "٤٢")
 
 
 @pytest.mark.asyncio

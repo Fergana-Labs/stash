@@ -483,7 +483,7 @@ async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
         "path": ref,
         "name": twitter_ref_name(ref),
         "kind": "post" if is_post else "feed",
-        "content": await fetch_twitter_content(owner_user_id, ref),
+        "content": await fetch_twitter_content(owner_user_id, source["external_ref"], ref),
         "external_ref": ref,
     }
 
@@ -557,10 +557,8 @@ async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
         from ..integrations.asana.indexer import fetch_asana_content
 
         return await fetch_asana_content(owner_user_id, external_ref)
-    if source_type == "twitter":
-        from ..integrations.twitter.indexer import fetch_twitter_content
-
-        return await fetch_twitter_content(owner_user_id, external_ref)
+    # twitter never reaches here: every cached path is a numeric post id, which
+    # read_document already routes through the live-ref path.
     return ""
 
 

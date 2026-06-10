@@ -101,21 +101,21 @@ async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
 
 
 async def _resolve_twitter_source(user_id) -> tuple[str, str]:
-    """Twitter source external_ref is always the sentinel; one connected account
-    exposes live personal refs plus scoped recent-search. Caller-supplied refs
-    are ignored — there are no saved-query sources (they would burn the owner's
-    X quota on a schedule)."""
-    from ..integrations.twitter.indexer import DEFAULT_SOURCE_REF
+    """Twitter source external_ref is the connected X account's numeric user
+    id, resolved once here so reads never depend on /users/me (X's most
+    rate-limited endpoint). Caller-supplied refs are ignored — there are no
+    saved-query sources (they would burn the owner's X quota on a schedule)."""
+    from ..integrations.twitter.indexer import fetch_me
 
-    await integration_storage.get_valid_token(user_id, "twitter")
-    status = await integration_storage.status(user_id, "twitter")
-    handle = status.get("account_display_name")
-    if not handle:
+    token = await integration_storage.get_valid_token(user_id, "twitter")
+    me = await fetch_me(token)
+    username = me.get("username")
+    if not username:
         raise HTTPException(
             status_code=400,
             detail="Reconnect Twitter / X before adding it as a source.",
         )
-    return DEFAULT_SOURCE_REF, f"Twitter / X ({handle})"
+    return me["id"], f"Twitter / X (@{username})"
 
 
 @router.get("")
