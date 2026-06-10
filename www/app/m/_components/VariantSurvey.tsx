@@ -46,14 +46,14 @@ export default function VariantSurvey({
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-brand">
-              Request received
+              You&apos;re signed up
             </p>
             <h2 className="mt-3 font-display text-[28px] font-bold tracking-[-0.02em] text-ink">
-              You&apos;re on the list.
+              Welcome to Stash.
             </h2>
             <p className="mt-3 text-[15px] leading-[1.6] text-dim">
-              Stash is in private beta — we&apos;ll reach out within a day. You can
-              also jump straight in:
+              We&apos;ll reach out within a day to get you set up. You can also
+              jump straight in:
             </p>
             <a
               href={appUrl}
@@ -66,13 +66,13 @@ export default function VariantSurvey({
           <>
             <p className="flex items-center justify-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-              Private beta
+              Sign up
             </p>
             <h2 className="mt-4 text-center font-display text-[clamp(28px,3.4vw,42px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-              Get early access.
+              Sign up for Stash.
             </h2>
             <p className="mx-auto mt-4 max-w-[460px] text-center text-[16px] leading-[1.6] text-dim">
-              Tell us a bit about you and we&apos;ll reach out within a day.
+              Tell us a bit about you and we&apos;ll get your workspace set up.
             </p>
 
             <form
@@ -183,7 +183,7 @@ function SubmitButton() {
       disabled={pending}
       className="inline-flex h-11 items-center justify-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? "Sending…" : "Request access"}
+      {pending ? "Signing up…" : "Sign up"}
     </button>
   );
 }

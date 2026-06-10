@@ -93,7 +93,7 @@ function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
   );
 }
 
-function HeroFunnel() {
+export function HeroFunnel() {
   return (
     <div className="relative w-full max-w-[565px]">
       <div
@@ -178,7 +178,7 @@ function Hero() {
   );
 }
 
-function Logos() {
+export function Logos() {
   const tools = [
     { name: "Claude Code", src: "/logos/anthropic.svg" },
     { name: "Cursor", src: "/logos/cursor.png" },
@@ -306,7 +306,7 @@ const COMPARISONS: Comparison[] = [
   },
 ];
 
-function Comparisons() {
+export function Comparisons() {
   return (
     <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
@@ -347,7 +347,7 @@ function Comparisons() {
   );
 }
 
-function StreamViz() {
+export function StreamViz() {
   const lines: { r: "agent" | "human"; t: string; a: string; l: string; new?: boolean }[] = [
     { r: "agent", t: "14:02", a: "tool_call", l: "read_file(auth.py)" },
     { r: "agent", t: "14:02", a: "wrote", l: "plan.md" },
@@ -374,7 +374,7 @@ function StreamViz() {
   );
 }
 
-function FilesViz() {
+export function FilesViz() {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
@@ -402,7 +402,7 @@ function FilesViz() {
   );
 }
 
-function StashViz() {
+export function StashViz() {
   const items: [StashItem["kind"], string][] = [
     ["page", "session-refresh.md"],
     ["page", "rate-limits.html"],
@@ -440,39 +440,58 @@ function StashViz() {
   );
 }
 
-function HowItWorks() {
-  const steps = [
-    {
-      n: "01",
-      pill: "Sessions",
-      title: "The unstructured stream.",
-      body: "Every agent run flows in automatically — prompts, tool calls, artifacts, plan files. Nothing to remember to save.",
-      viz: <StreamViz />,
-    },
-    {
-      n: "02",
-      pill: "Files",
-      title: "The structured layer.",
-      body: "Markdown, HTML, tables, folders. Humans and agents both write here. Agents navigate it as a real filesystem through the CLI and MCP.",
-      viz: <FilesViz />,
-    },
-    {
-      n: "03",
-      pill: "Stashes",
-      title: "The shareable slice.",
-      body: "Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.",
-      viz: <StashViz />,
-    },
-  ];
+export type HowItWorksStep = {
+  n: string;
+  pill: string;
+  title: string;
+  body: string;
+  viz: ReactNode;
+};
+
+const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
+  {
+    n: "01",
+    pill: "Sessions",
+    title: "The unstructured stream.",
+    body: "Every agent run flows in automatically — prompts, tool calls, artifacts, plan files. Nothing to remember to save.",
+    viz: <StreamViz />,
+  },
+  {
+    n: "02",
+    pill: "Files",
+    title: "The structured layer.",
+    body: "Markdown, HTML, tables, folders. Humans and agents both write here. Agents navigate it as a real filesystem through the CLI and MCP.",
+    viz: <FilesViz />,
+  },
+  {
+    n: "03",
+    pill: "Stashes",
+    title: "The shareable slice.",
+    body: "Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.",
+    viz: <StashViz />,
+  },
+];
+
+// The message-test variant pages pass their own title/steps so the section
+// tells the story of the message under test.
+export function HowItWorks({
+  title = "Sessions. Files. Stashes.",
+  subtitle = "One workspace, two kinds of writer.",
+  steps = DEFAULT_HOW_STEPS,
+}: {
+  title?: string;
+  subtitle?: string;
+  steps?: HowItWorksStep[];
+}) {
   return (
     <section id="how" className="border-b border-border-subtle bg-surface py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>How it works</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Sessions. Files. Stashes.
+            {title}
             <br />
-            <span className="font-medium text-dim">One workspace, two kinds of writer.</span>
+            <span className="font-medium text-dim">{subtitle}</span>
           </h2>
         </div>
         <div className="mt-16 grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -630,7 +649,7 @@ const FEATURES: Feature[] = [
   },
 ];
 
-function Features() {
+export function Features() {
   return (
     <section id="features" className="border-b border-border-subtle py-24 md:py-32">
       <div className="mx-auto max-w-[920px] px-7">
@@ -911,7 +930,10 @@ function CliAndPlugin() {
   );
 }
 
-function ClosingCTA() {
+// Variant pages pass ctaHref="#survey" so the signup button leads to the form.
+export function ClosingCTA({ ctaHref = APP_URL }: { ctaHref?: string }) {
+  const ctaClassName =
+    "inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover";
   return (
     <section className="border-b border-border-subtle bg-surface py-32 text-center">
       <div className="mx-auto max-w-[1200px] px-7">
@@ -926,12 +948,15 @@ function ClosingCTA() {
           whole thing on your own Postgres. Open source, MIT licensed.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
-          <Link
-            href={APP_URL}
-            className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-          >
-            Start free →
-          </Link>
+          {ctaHref.startsWith("#") ? (
+            <ScrollLink to={ctaHref} className={ctaClassName}>
+              Start free →
+            </ScrollLink>
+          ) : (
+            <Link href={ctaHref} className={ctaClassName}>
+              Start free →
+            </Link>
+          )}
           <Link
             href="/contact-sales"
             className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
@@ -947,7 +972,7 @@ function ClosingCTA() {
   );
 }
 
-function Footer() {
+export function Footer() {
   const columns = [
     {
       h: "Product",
