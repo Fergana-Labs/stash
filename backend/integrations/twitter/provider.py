@@ -41,12 +41,17 @@ class TwitterIntegration:
         if not token:
             raise ValueError("Bearer token is required")
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(
-                VALIDATION_URL,
-                params={"query": "hello", "max_results": 10},
-                headers={"Authorization": f"Bearer {token}"},
-            )
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    VALIDATION_URL,
+                    params={"query": "hello", "max_results": 10},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+        except httpx.HTTPError as e:
+            # Transport failure, not a bad token — the router maps ValueError
+            # to a 400 with a message instead of an opaque 500.
+            raise ValueError(f"Could not reach X to validate the token — try again ({e})")
         if resp.status_code == 429:
             raise ValueError(
                 "X rate limit hit while validating the token — wait a few minutes and try again"

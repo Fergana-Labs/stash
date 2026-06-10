@@ -200,6 +200,103 @@ async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
     assert {d["path"] for d in live} == {"README.md"}
 
 
+# --- search-driven sources (twitter) -----------------------------------------
+
+
+async def _create_twitter_source(ws: UUID, owner_id: UUID) -> dict:
+    return await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="twitter",
+        external_ref="recent",
+        display_name="Twitter / X",
+    )
+
+
+@pytest.mark.asyncio
+async def test_prune_index_rows_removes_only_stale_rows(client: AsyncClient):
+    from backend.database import get_pool
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+    sid = UUID(src["id"])
+
+    for path in ("1", "2"):
+        await source_service.upsert_index_row(
+            table="twitter_posts",
+            source_id=sid,
+            workspace_id=ws,
+            path=path,
+            name=f"@stash - post {path}",
+            kind="post",
+            external_ref=path,
+        )
+    await get_pool().execute(
+        "UPDATE twitter_posts SET updated_at = now() - interval '31 days' "
+        "WHERE source_id = $1 AND path = '2'",
+        sid,
+    )
+
+    removed = await source_service.prune_index_rows("twitter_posts", sid, max_age_days=30)
+    assert removed == 1
+    live = await source_service.list_documents(src)
+    assert {d["path"] for d in live} == {"1"}
+
+
+@pytest.mark.asyncio
+async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient):
+    """A source type with no indexer must not enroll in the sync schedule: the
+    reconciler skips it WITHOUT advancing next_sync_at, so an enabled row would
+    sit "due" forever at the front of the due_sources window and starve every
+    real sync behind it."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    assert src["sync_enabled"] is False
+    assert src["id"] not in {s["id"] for s in await source_service.due_sources()}
+
+    # Manual sync-now is refused too — the queued task would silently no-op.
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/sync", headers=_auth(api_key)
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_unscoped_search_skips_scoped_only_federated_sources(client, monkeypatch):
+    """Unscoped fan-out must not ship the query text to X or spend its metered
+    quota; an explicitly scoped search does — and surfaces provider errors
+    instead of swallowing them into a misleading "no results"."""
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    queries: list[str] = []
+
+    async def fake_search(source, query, limit):
+        queries.append(query)
+        return [{"ref": "1", "name": "@stash - 2026-06-08", "snippet": "hello"}]
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", fake_search)
+    await source_service.search_all(ws, owner_id, "internal roadmap secret")
+    assert queries == []
+
+    scoped = await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+    assert queries == ["hello"]
+    assert any(h.get("ref") == "1" for h in scoped)
+
+    async def dead_connection(source, query, limit):
+        raise RuntimeError("X said 401")
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", dead_connection)
+    with pytest.raises(RuntimeError):
+        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+
+
 # --- source-aware agent tools -----------------------------------------------
 
 

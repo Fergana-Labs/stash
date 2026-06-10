@@ -34,6 +34,11 @@ def upgrade() -> None:
     # No extra (source_id, path) index: the UNIQUE constraint already provides
     # the btree the upsert's ON CONFLICT and lookups use.
     op.execute(f"CREATE TABLE twitter_posts ({_BASE_COLUMNS})")
+    # Sources with no indexer must not sit in the sync queue: the reconciler
+    # skips them without advancing next_sync_at, so an enabled row stays "due"
+    # forever and starves real syncs out of the due_sources window. Snowflake
+    # rows predate this fix (create_source now disables sync for such types).
+    op.execute("UPDATE workspace_sources SET sync_enabled = false WHERE source_type = 'snowflake'")
 
 
 def downgrade() -> None:

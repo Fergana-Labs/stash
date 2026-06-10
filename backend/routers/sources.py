@@ -287,8 +287,13 @@ async def sync_source_now(
 ):
     """Trigger an immediate re-index of an owned source."""
     await _require_member(workspace_id, current_user["id"])
-    if await source_service.get_owned_source(source_id, current_user["id"]) is None:
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
+    if source["source_type"] not in source_service.DEFAULT_SYNC_INTERVAL_S:
+        # Search-driven / queryable sources have no indexer; the queued task
+        # would no-op, so a 200 here would be a lie.
+        raise HTTPException(status_code=400, detail="This source type does not sync")
     result = celery.send_task(
         "backend.tasks.sources.sync_source",
         kwargs={"source_id": str(source_id)},

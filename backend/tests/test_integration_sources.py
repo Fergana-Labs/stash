@@ -11,7 +11,9 @@ Two things worth pinning that don't need a DB or live OAuth:
    them — the exact bug that makes a source silently un-syncable.
 """
 
+import httpx
 import pytest
+from fastapi import HTTPException
 
 from backend.integrations.asana.indexer import _render_task
 from backend.integrations.gmail import indexer as gmail_indexer
@@ -299,7 +301,11 @@ class _FakeResponse:
         self.status_code = status_code
 
     def raise_for_status(self):
-        pass
+        # Mirror real httpx so error-path tests can't silently pass as 200s.
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError(
+                f"HTTP {self.status_code}", request=None, response=None
+            )
 
     def json(self):
         return self._payload
@@ -336,6 +342,8 @@ def test_twitter_is_api_key_searchable_source():
     assert source_service.SOURCE_TABLE["twitter"] == "twitter_posts"
     assert "twitter_posts" not in source_service.CONTENT_TABLES
     assert "twitter" in source_service.FEDERATED_SEARCH_TYPES
+    # Unscoped fan-out must not ship query text to X or spend metered quota.
+    assert "twitter" in source_service.SCOPED_ONLY_SEARCH_TYPES
     # Search-driven, no background sync: search results land in the cache live,
     # so a scheduled indexer would only burn the owner's X rate limit.
     assert "twitter" not in source_tasks.INDEXERS
@@ -480,6 +488,83 @@ async def test_fetch_twitter_content_handles_unavailable_post(monkeypatch):
     assert "# @stash" in text
     assert "> hello" in text
     assert len(live.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_twitter_content_degrades_x_errors_to_readable_text(monkeypatch):
+    """Cached posts hit routine X volatility (rate limits, revoked tokens,
+    vanished posts). Reads must degrade to text the agent can act on — never a
+    raw 500 through read_source."""
+    from uuid import uuid4
+
+    async def fake_token(owner, provider):
+        return "tok"
+
+    monkeypatch.setattr(twitter_indexer, "get_valid_token", fake_token)
+
+    for status, expected in ((429, "rate limit"), (401, "reconnect"), (404, "no longer")):
+        monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", _FakeClient({}, status))
+        text = await twitter_indexer.fetch_twitter_content(uuid4(), "123")
+        assert expected in text, status
+
+    # A disconnected integration reads as prose too, not as a 401 the frontend
+    # mistakes for session expiry.
+    async def no_token(owner, provider):
+        raise HTTPException(status_code=401, detail="not connected to twitter")
+
+    monkeypatch.setattr(twitter_indexer, "get_valid_token", no_token)
+    text = await twitter_indexer.fetch_twitter_content(uuid4(), "123")
+    assert "reconnect" in text
+
+    # Refs only ever come from rows populated with X's own numeric ids; anything
+    # else is a broken invariant, not a fetchable post.
+    with pytest.raises(ValueError):
+        await twitter_indexer.fetch_twitter_content(uuid4(), "../2/users/me")
+
+
+@pytest.mark.asyncio
+async def test_search_twitter_clamps_limit_and_names_dateless_posts(monkeypatch):
+    from uuid import uuid4
+
+    client = _FakeClient(
+        {
+            "data": [{"id": "9", "text": "no timestamp", "author_id": "u1"}],
+            "includes": {"users": [{"id": "u1", "username": "stash"}]},
+        }
+    )
+
+    async def fake_token(owner, provider):
+        return "tok"
+
+    async def fake_upsert(**kwargs):
+        return "inserted"
+
+    async def fake_prune(table, source_id, *, max_age_days):
+        return 0
+
+    monkeypatch.setattr(twitter_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", client)
+    monkeypatch.setattr(twitter_indexer.source_service, "upsert_index_row", fake_upsert)
+    monkeypatch.setattr(twitter_indexer.source_service, "prune_index_rows", fake_prune)
+
+    source = {"id": str(uuid4()), "workspace_id": str(uuid4()), "owner_user_id": str(uuid4())}
+    hits = await twitter_indexer.search_twitter(source, "hello", limit=250)
+
+    # X rejects max_results above 100; oversized limits clamp.
+    assert client.requests[0][1]["max_results"] == 100
+    # A post X returns without created_at still gets a usable name.
+    assert hits[0]["name"] == "@stash"
+
+
+@pytest.mark.asyncio
+async def test_twitter_connect_maps_transport_failure_to_friendly_error(monkeypatch):
+    class _ExplodingClient(_FakeClient):
+        async def get(self, url, params=None, headers=None):
+            raise httpx.ConnectError("boom")
+
+    monkeypatch.setattr(twitter_provider.httpx, "AsyncClient", _ExplodingClient({}))
+    with pytest.raises(ValueError, match="reach X"):
+        await TwitterIntegration().connect_with_credentials({"bearer_token": "tok"})
 
 
 @pytest.mark.asyncio

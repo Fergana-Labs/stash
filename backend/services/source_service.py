@@ -100,17 +100,22 @@ async def create_source(
     external_ref: str,
     display_name: str,
 ) -> dict:
-    """Register a connected source (idempotent on the natural key). The first
-    sync runs immediately because `next_sync_at` defaults to now()."""
+    """Register a connected source (idempotent on the natural key). For synced
+    types the first sync runs immediately because `next_sync_at` defaults to
+    now(). Types without a scheduled-sync interval (search-driven / queryable)
+    have no indexer and must NOT enroll in the sync queue: the reconciler skips
+    them without advancing next_sync_at, so an enabled row would sit "due"
+    forever at the front of the due_sources window and starve real syncs."""
     capability = SOURCE_CAPABILITY.get(source_type, "navigable")
     interval = DEFAULT_SYNC_INTERVAL_S.get(source_type, 3600)
+    sync_enabled = source_type in DEFAULT_SYNC_INTERVAL_S
     row = await get_pool().fetchrow(
         """
         INSERT INTO workspace_sources (
             workspace_id, owner_user_id, source_type, external_ref,
-            display_name, capability, sync_interval_s
+            display_name, capability, sync_interval_s, sync_enabled
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (workspace_id, owner_user_id, source_type, external_ref)
         DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = now()
         RETURNING *
@@ -122,6 +127,7 @@ async def create_source(
         display_name,
         capability,
         interval,
+        sync_enabled,
     )
     return _source_row(row)
 
@@ -265,6 +271,13 @@ CONTENT_TABLES = {
 # provider search coroutine, resolved lazily to avoid an import cycle.
 FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project", "twitter"}
 
+# Federated types excluded from UNSCOPED search fan-out. An unscoped search
+# would ship the raw query text to the provider (X has no business seeing a
+# workspace's internal search terms) and spend the owner's metered API quota
+# (X free tier: one recent-search per 15 minutes). Agents search these only by
+# explicitly scoping to the source handle.
+SCOPED_ONLY_SEARCH_TYPES = {"twitter"}
+
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
 # it fetches is cached (upserted) so it's searchable afterward too.
@@ -359,7 +372,7 @@ async def upsert_index_row(
     the path/name + the provider's external_ref; the body is fetched lazily."""
     pool = get_pool()
     existing = await pool.fetchrow(
-        f"SELECT external_ref, external_updated_at, deleted_at FROM {table} "
+        f"SELECT name, external_ref, external_updated_at, deleted_at FROM {table} "
         f"WHERE source_id = $1 AND path = $2",
         source_id,
         path,
@@ -367,6 +380,7 @@ async def upsert_index_row(
     if (
         existing
         and existing["deleted_at"] is None
+        and existing["name"] == name
         and existing["external_ref"] == external_ref
         and existing["external_updated_at"] == external_updated_at
     ):
@@ -402,10 +416,12 @@ async def soft_delete_missing(table: str, source_id: UUID, present_paths: list[s
 
 
 async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) -> int:
-    """Hard-delete cache rows not refreshed recently. Search-backed caches
-    (twitter) grow per-query and have no re-sync pass to reconcile them, so age
-    is the only retention signal; a pruned post simply reappears the next time
-    a search returns it. Returns the number removed."""
+    """Hard-delete cache rows whose last write is older than the window.
+    Search-backed caches (twitter) grow per-query and have no re-sync pass to
+    reconcile them, so age is the only retention signal. Immutable rows never
+    bump updated_at when re-seen, so this is age-since-first-cached — fine,
+    because a pruned post simply reappears the next time a search returns it.
+    Returns the number removed."""
     result = await get_pool().execute(
         f"DELETE FROM {table} "
         f"WHERE source_id = $1 AND updated_at < now() - make_interval(days => $2)",
@@ -517,10 +533,15 @@ async def index_paths_for_refs(
     return {r["external_ref"]: (r["path"], r["name"]) for r in rows}
 
 
-async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
+async def _federated_search(
+    source: dict, query: str, limit: int, *, swallow_errors: bool = True
+) -> list[dict]:
     """Run a federated source's native provider search. Returns unified hits
-    ({source, source_name, ref, name, snippet}); never raises — a provider error
-    (e.g. Asana on a free tier) logs and yields no hits so search stays alive."""
+    ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
+    provider error (e.g. Asana on a free tier) logs and yields no hits so
+    search stays alive; a SCOPED search raises instead — when the user asked
+    for this one source, an empty result must mean "no matches", never a
+    silently dead connection (revoked token, rate limit, bad query)."""
     source_type = source["source_type"]
     try:
         if source_type == "google_drive":
@@ -537,6 +558,8 @@ async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
             return []
         hits = await fn(source, query, limit)
     except Exception:
+        if not swallow_errors:
+            raise
         logger.warning("federated search failed for source %s", source["id"], exc_info=True)
         return []
     return [
@@ -940,16 +963,21 @@ async def search_all(
         ]
 
         # Federated sources search the provider's native API live. Scoped → the
-        # one source; unscoped → fan out across the user's federated sources
-        # (each call is independent and already swallows its own errors).
+        # one source, raising on provider errors so a dead connection is never
+        # mistaken for "no matches"; unscoped → fan out across the user's
+        # federated sources (each call swallows its own errors, and scoped-only
+        # types are skipped — see SCOPED_ONLY_SEARCH_TYPES).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                results += await _federated_search(connected, query, limit)
+                results += await _federated_search(
+                    connected, query, limit, swallow_errors=False
+                )
         else:
             federated = [
                 s
                 for s in await list_connected_sources(workspace_id, user_id)
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
+                and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]
             for hits in await asyncio.gather(
                 *(_federated_search(s, query, limit) for s in federated)

@@ -593,7 +593,8 @@ async def _read_source(args: dict) -> dict:
     "search",
     "Search across sources. Omit `source` to search everything the user can see "
     "(native files + sessions + their connected sources), or pass a source handle "
-    "to scope to one.",
+    "to scope to one. Twitter / X is only searched when explicitly scoped — its "
+    "API quota is metered, so unscoped searches skip it.",
     {
         "type": "object",
         "properties": {
