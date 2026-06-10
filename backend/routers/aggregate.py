@@ -59,11 +59,22 @@ async def list_activity(
     pool = get_pool()
     events = await pool.fetch(
         """
-        WITH accessible_workspaces AS (
+        WITH member_workspaces AS (
           SELECT w.id, w.name
           FROM workspaces w
           JOIN workspace_members wm ON wm.workspace_id = w.id
           WHERE wm.user_id = $1
+          AND ($3::uuid IS NULL OR w.id = $3)
+        ),
+        -- Member workspaces plus any workspace that has shared content with the
+        -- user. Page/file rows still pass readable_content_condition, so a share
+        -- only surfaces the specific shared rows — never the whole workspace.
+        accessible_workspaces AS (
+          SELECT w.id, w.name
+          FROM workspaces w
+          WHERE w.id IN """
+        + permission_service.accessible_workspace_ids_sql(1)
+        + """
           AND ($3::uuid IS NULL OR w.id = $3)
         )
         (
@@ -81,7 +92,7 @@ async def list_activity(
                  aw.id AS workspace_id,
                  aw.name AS workspace_name
           FROM history_events he
-          JOIN accessible_workspaces aw ON aw.id = he.workspace_id
+          JOIN member_workspaces aw ON aw.id = he.workspace_id
           WHERE he.session_id IS NOT NULL
             AND """
         + memory_service.readable_session_event_condition("he", 1)
@@ -131,7 +142,7 @@ async def list_activity(
                  aw.id AS workspace_id,
                  aw.name AS workspace_name
           FROM workspace_members wm
-          JOIN accessible_workspaces aw ON aw.id = wm.workspace_id
+          JOIN member_workspaces aw ON aw.id = wm.workspace_id
         )
         ORDER BY ts DESC LIMIT $2
         """,
@@ -167,6 +178,13 @@ async def list_all_tables(current_user: dict = Depends(get_current_user)):
     """All tables from workspaces + personal."""
     tables = await table_service.list_all_user_tables(current_user["id"])
     return {"tables": tables}
+
+
+@router.get("/overview")
+async def overview_counts(current_user: dict = Depends(get_current_user)):
+    """Page / file / session counts for the 'Your brain' vitals, spanning the
+    user's own content plus everything shared with them."""
+    return await analytics_service.get_overview_counts(current_user["id"])
 
 
 async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
