@@ -353,9 +353,7 @@ async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
     )
     assert resp.status_code == 200
 
-    events = [
-        event for event in resp.json()["events"] if event["kind"] == "session.uploaded"
-    ]
+    events = [event for event in resp.json()["events"] if event["kind"] == "session.uploaded"]
     assert {event["target_id"] for event in events} == {"first-session"}
     assert {event["workspace_id"] for event in events} == {first_workspace["id"]}
 
@@ -388,9 +386,7 @@ async def test_user_activity_paginates_with_before_cursor(client: AsyncClient):
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["events"]) == 1
-        seen.extend(
-            (event["kind"], event["target_id"], event["ts"]) for event in body["events"]
-        )
+        seen.extend((event["kind"], event["target_id"], event["ts"]) for event in body["events"])
         before = body["events"][-1]["ts"]
         has_more = body["has_more"]
         assert len(seen) <= 10, "cursor failed to advance"
