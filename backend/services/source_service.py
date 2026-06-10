@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 from urllib.parse import quote
 from uuid import UUID
 
@@ -35,6 +36,7 @@ from fastapi import HTTPException
 from ..database import get_pool
 
 logger = logging.getLogger(__name__)
+TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
 
 # Native source handles. Connected sources use their workspace_sources.id (str).
 NATIVE_FILES = "files"
@@ -90,6 +92,20 @@ def _source_row(row) -> dict:
         "sync_error": row["sync_error"],
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
     }
+
+
+def _source_search_hint(source: dict) -> str | None:
+    if source["source_type"] != "twitter":
+        return None
+
+    match = TWITTER_HANDLE_RE.search(source["display_name"] or "")
+    if not match:
+        return "Twitter / X recent-search source. Scope search to this source before querying X."
+    username = match.group(1)
+    return (
+        "Twitter / X recent-search source. To look through this user's recent "
+        f"public posts, scope search to this source and add `from:{username}` to the query."
+    )
 
 
 # --- workspace_sources registry --------------------------------------------
@@ -681,21 +697,23 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
         },
     ]
     for s in await list_connected_sources(workspace_id, user_id):
-        sources.append(
-            {
-                "source": s["id"],
-                "type": s["source_type"],
-                "capability": s["capability"],
-                "display_name": s["display_name"],
-                # Sync bookkeeping for the per-integration page (the sidebar
-                # ignores these). Already on the row — no extra query.
-                "external_ref": s["external_ref"],
-                "sync_enabled": s["sync_enabled"],
-                "sync_status": s["sync_status"],
-                "sync_error": s["sync_error"],
-                "last_synced_at": s["last_synced_at"],
-            }
-        )
+        item = {
+            "source": s["id"],
+            "type": s["source_type"],
+            "capability": s["capability"],
+            "display_name": s["display_name"],
+            # Sync bookkeeping for the per-integration page (the sidebar
+            # ignores these). Already on the row — no extra query.
+            "external_ref": s["external_ref"],
+            "sync_enabled": s["sync_enabled"],
+            "sync_status": s["sync_status"],
+            "sync_error": s["sync_error"],
+            "last_synced_at": s["last_synced_at"],
+        }
+        hint = _source_search_hint(s)
+        if hint:
+            item["search_hint"] = hint
+        sources.append(item)
     return sources
 
 

@@ -13,11 +13,12 @@ import json
 import time
 import zipfile
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
 
+from backend.routers import sources as sources_router
 from backend.services import agent_runtime, source_service
 
 from .conftest import unique_name
@@ -209,8 +210,40 @@ async def _create_twitter_source(ws: UUID, owner_id: UUID) -> dict:
         owner_user_id=owner_id,
         source_type="twitter",
         external_ref="recent",
-        display_name="Twitter / X",
+        display_name="Twitter / X (@stash)",
     )
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_uses_connected_handle(monkeypatch):
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    async def fake_status(user_id, provider):
+        return {"account_display_name": "@henry_dowling"}
+
+    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
+    monkeypatch.setattr(sources_router.integration_storage, "status", fake_status)
+
+    external_ref, display_name = await sources_router._resolve_twitter_source(uuid4())
+
+    assert external_ref == "recent"
+    assert display_name == "Twitter / X (@henry_dowling)"
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_requires_connected_handle(monkeypatch):
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    async def fake_status(user_id, provider):
+        return {"account_display_name": None}
+
+    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
+    monkeypatch.setattr(sources_router.integration_storage, "status", fake_status)
+
+    with pytest.raises(sources_router.HTTPException, match="username"):
+        await sources_router._resolve_twitter_source(uuid4())
 
 
 @pytest.mark.asyncio
@@ -295,6 +328,19 @@ async def test_unscoped_search_skips_scoped_only_federated_sources(client, monke
     monkeypatch.setattr(twitter_indexer, "search_twitter", dead_connection)
     with pytest.raises(RuntimeError):
         await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+
+
+@pytest.mark.asyncio
+async def test_twitter_list_sources_exposes_my_posts_search_hint(client):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    sources = await source_service.list_sources(ws, owner_id)
+    twitter = next(s for s in sources if s["source"] == src["id"])
+
+    assert twitter["display_name"] == "Twitter / X (@stash)"
+    assert "from:stash" in twitter["search_hint"]
 
 
 @pytest.mark.asyncio

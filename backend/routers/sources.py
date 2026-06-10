@@ -108,7 +108,14 @@ async def _resolve_twitter_source(user_id) -> tuple[str, str]:
     from ..integrations.twitter.indexer import DEFAULT_SOURCE_REF
 
     await integration_storage.get_valid_token(user_id, "twitter")
-    return DEFAULT_SOURCE_REF, "Twitter / X"
+    status = await integration_storage.status(user_id, "twitter")
+    handle = status.get("account_display_name")
+    if not handle:
+        raise HTTPException(
+            status_code=400,
+            detail="Reconnect Twitter / X with your username before adding it as a source.",
+        )
+    return DEFAULT_SOURCE_REF, f"Twitter / X ({handle})"
 
 
 @router.get("")
@@ -266,7 +273,7 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "twitter":
         external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
-        display_name = display_name or resolved_name
+        display_name = resolved_name
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")

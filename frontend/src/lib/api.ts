@@ -223,6 +223,7 @@ export interface WorkspaceSource {
   sync_status?: string | null; // 'idle' | 'syncing' | 'failed'
   sync_error?: string | null;
   last_synced_at?: string | null;
+  search_hint?: string | null;
 }
 
 export interface SourceStatus extends WorkspaceSource {
