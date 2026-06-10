@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommandPalette from "./CommandPalette";
@@ -150,6 +150,11 @@ describe("CommandPalette search", () => {
     });
 
     expect(await screen.findByText("Hiring Outreach CRM")).toBeInTheDocument();
+
+    // The window keydown listener re-subscribes in a passive effect after the
+    // table result lands; on a loaded runner findByText can resolve before that
+    // effect flushes, leaving ArrowDown bound to the stale one-result list.
+    await act(async () => {});
 
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });

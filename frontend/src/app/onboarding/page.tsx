@@ -6,16 +6,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { createPage, getToken, listMyWorkspaces, updateMe } from "../../lib/api";
+import { createPage, getToken, listMyWorkspaces, updateMe, updatePage } from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
-// The linear flow: a few questions about the user, explain Stash, connect a
-// source, then ask the agent a real question over your data, then launch.
-const STEP_NAMES = ["about", "intro", "connect", "ask"] as const;
+// The linear flow: a few questions about the user, explain Stash, try one of
+// the three entry points, then ask the agent a real question, then launch.
+const STEP_NAMES = ["about", "intro", "try", "ask"] as const;
+
+const CLI_INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 
 const ROLE_OPTIONS = [
   "Engineer",
@@ -69,7 +71,9 @@ function OnboardingInner() {
   const [obsidianAdded, setObsidianAdded] = useState(false);
   const [answered, setAnswered] = useState(false);
   const [role, setRole] = useState("");
+  const [roleOther, setRoleOther] = useState("");
   const [referralSource, setReferralSource] = useState("");
+  const [referralOther, setReferralOther] = useState("");
   const [useCase, setUseCase] = useState("");
 
   const stepIdx = useMemo(() => {
@@ -142,8 +146,15 @@ function OnboardingInner() {
   const finishToCollabDoc = useCallback(async () => {
     if (!workspaceId) return;
     track("onboarding.collab_path_chosen", {});
-    const content = generateCollabIntroMarkdown(user?.display_name || user?.name || "");
-    const page = await createPage(workspaceId, "Welcome to your Drive", undefined, content);
+    // The starter page embeds its own id and the user's API key in a
+    // copy-paste agent prompt, so we create it empty and fill it in after.
+    const page = await createPage(workspaceId, "Welcome to your Drive");
+    const content = generateCollabIntroMarkdown({
+      displayName: user?.display_name || user?.name || "",
+      pageId: page.id,
+      apiKey: getToken() ?? "",
+    });
+    await updatePage(workspaceId, page.id, { content });
     router.push(`/p/${page.id}`);
   }, [workspaceId, user, router]);
 
@@ -153,10 +164,10 @@ function OnboardingInner() {
     );
   }
 
-  // 0 = about, 1 = intro, 2 = connect, 3 = ask.
+  // 0 = about, 1 = intro, 2 = try it out, 3 = ask.
   const isAbout = stepIdx <= 0;
   const isIntro = stepIdx === 1;
-  const isConnect = stepIdx === 2;
+  const isTryItOut = stepIdx === 2;
   const isAsk = stepIdx >= 3;
 
   const continueLabel = isIntro
@@ -164,23 +175,28 @@ function OnboardingInner() {
     : isAsk
       ? "Launch workspace"
       : "Continue";
-  // About: role + referral are required (use-case is optional). Ask: only let
-  // them launch once the agent has actually replied.
-  const canContinue = isAbout
-    ? Boolean(role && referralSource)
-    : isIntro || (isAsk ? answered : sourceCount > 0 || obsidianAdded);
+  const roleAnswer = role === "Other" ? roleOther.trim() && `Other: ${roleOther.trim()}` : role;
+  const referralAnswer =
+    referralSource === "Other"
+      ? referralOther.trim() && `Other: ${referralOther.trim()}`
+      : referralSource;
+  // About: role + referral are required, and "Other" needs to be spelled out
+  // (use-case is optional). Try it out: Continue lives inside the Connect
+  // option and is gated on a connected source. Ask: only let them launch once
+  // the agent has actually replied.
+  const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : !isAsk || answered;
   const onContinue = async () => {
     if (isAbout) {
       try {
         await updateMe({
-          role,
-          referral_source: referralSource,
+          role: roleAnswer,
+          referral_source: referralAnswer,
           use_case: useCase || undefined,
         });
       } catch {
         // Best-effort — don't block onboarding on a profile write.
       }
-      track("onboarding.about_submitted", { role, referral_source: referralSource });
+      track("onboarding.about_submitted", { role: roleAnswer, referral_source: referralAnswer });
       return goToStep(stepIdx + 1);
     }
     if (isAsk) return void finishAndExit();
@@ -196,20 +212,26 @@ function OnboardingInner() {
           {isAbout && (
             <AboutStep
               role={role}
+              roleOther={roleOther}
               referralSource={referralSource}
+              referralOther={referralOther}
               useCase={useCase}
               onRole={setRole}
+              onRoleOther={setRoleOther}
               onReferral={setReferralSource}
+              onReferralOther={setReferralOther}
               onUseCase={setUseCase}
             />
           )}
           {isIntro && <IntroStep />}
-          {isConnect && (
-            <ConnectStep
+          {isTryItOut && (
+            <TryItOutStep
               workspaceId={workspaceId}
+              onCollabDoc={finishToCollabDoc}
               onSourceCountChange={setSourceCount}
               onObsidianAdded={() => setObsidianAdded(true)}
-              onCollabDoc={finishToCollabDoc}
+              canContinue={sourceCount > 0 || obsidianAdded}
+              onContinue={() => goToStep(stepIdx + 1)}
             />
           )}
           {isAsk && (
@@ -220,6 +242,7 @@ function OnboardingInner() {
             onSkip={skip}
             continueLabel={continueLabel}
             canContinue={canContinue}
+            hideContinue={isTryItOut}
           />
         </div>
       </main>
@@ -229,17 +252,25 @@ function OnboardingInner() {
 
 function AboutStep({
   role,
+  roleOther,
   referralSource,
+  referralOther,
   useCase,
   onRole,
+  onRoleOther,
   onReferral,
+  onReferralOther,
   onUseCase,
 }: {
   role: string;
+  roleOther: string;
   referralSource: string;
+  referralOther: string;
   useCase: string;
   onRole: (v: string) => void;
+  onRoleOther: (v: string) => void;
   onReferral: (v: string) => void;
+  onReferralOther: (v: string) => void;
   onUseCase: (v: string) => void;
 }) {
   return (
@@ -254,9 +285,19 @@ function AboutStep({
       </div>
       <Field label="What's your role?">
         <PillGroup options={ROLE_OPTIONS} value={role} onChange={onRole} />
+        {role === "Other" && (
+          <OtherInput value={roleOther} onChange={onRoleOther} placeholder="What's your role?" />
+        )}
       </Field>
       <Field label="How did you hear about us?">
         <PillGroup options={REFERRAL_OPTIONS} value={referralSource} onChange={onReferral} />
+        {referralSource === "Other" && (
+          <OtherInput
+            value={referralOther}
+            onChange={onReferralOther}
+            placeholder="Where did you hear about us?"
+          />
+        )}
       </Field>
       <Field label="What do you want to use Stash for?" optional>
         <textarea
@@ -324,6 +365,28 @@ function PillGroup({
   );
 }
 
+function OtherInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      maxLength={200}
+      autoFocus
+      placeholder={placeholder}
+      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted/70 focus:border-brand focus:outline-none"
+    />
+  );
+}
+
 function IntroStep() {
   return (
     <div className="space-y-5">
@@ -338,24 +401,19 @@ function IntroStep() {
       </div>
       <ul className="space-y-3">
         <IntroPoint title="Connect any data source">
-          GitHub, Google Drive, Gmail, Notion, Slack, Granola, an Obsidian vault. Your
-          agent navigates each like a file system and searches across all of them.
+          GitHub, Drive, Gmail, Notion, Slack and more — one connection per source,
+          and every agent you run can read all of them.
         </IntroPoint>
-        <IntroPoint title="A workspace built for agents">
-          Pages in HTML and markdown, files, and your agent session transcripts —
-          stored the way agents read and write, not buried in a UI.
+        <IntroPoint title="Capture every agent session">
+          Transcripts stream in automatically — prompts, tool calls, artifacts — so
+          your knowledge base accumulates with every run instead of evaporating when
+          the session closes.
         </IntroPoint>
-        <IntroPoint title="Share when you need to">
-          Bundle anything into a Cartridge with a shareable link, or give specific
-          people access to a folder — so teammates and their agents work from the
-          same context.
+        <IntroPoint title="An agent-native Drive">
+          HTML docs, Markdown, dashboards, decks — your agents&rsquo; work lands as
+          real files. Edit visually, and share any folder or file as a link.
         </IntroPoint>
       </ul>
-      <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted">
-        Two quick steps: <span className="text-foreground">connect a source</span>,
-        then <span className="text-foreground">ask your agent a question</span> over
-        it. You can skip and do this later anytime.
-      </div>
     </div>
   );
 }
@@ -372,50 +430,117 @@ function IntroPoint({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function ConnectStep({
+function TryItOutStep({
   workspaceId,
+  onCollabDoc,
   onSourceCountChange,
   onObsidianAdded,
-  onCollabDoc,
+  canContinue,
+  onContinue,
 }: {
   workspaceId: string | null;
+  onCollabDoc: () => void;
   onSourceCountChange: (n: number) => void;
   onObsidianAdded: () => void;
-  onCollabDoc: () => void;
+  canContinue: boolean;
+  onContinue: () => void;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Connect a data source
+          Try it out
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Connect a source and your agent can read it — navigate it like a file system
-          and search across everything you connect.
+          Three ways to start — pick whichever fits.
         </p>
       </div>
-      <SourceConnectorList
-        workspaceId={workspaceId}
-        returnTo="/onboarding?step=3"
-        onSourceCountChange={onSourceCountChange}
-        onObsidianUploaded={onObsidianAdded}
-      />
-      <button
-        type="button"
-        onClick={onCollabDoc}
-        className="group flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
+      <TryOption
+        badge="Create"
+        lead="Just want a place to write with your agent?"
       >
-        <div>
-          <div className="text-[13.5px] font-medium text-foreground">
-            Just want a place to write with your agent?
+        <button
+          type="button"
+          onClick={onCollabDoc}
+          className="group flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
+        >
+          <div>
+            <div className="text-[13.5px] font-medium text-foreground">
+              Start a collaborative doc
+            </div>
+            <div className="text-[12px] text-muted">
+              You and your agent edit the same page — two cursors at once.
+            </div>
           </div>
-          <div className="text-[12px] text-muted">
-            Skip connecting sources — start a collaborative doc instead.
+          <span className="text-muted transition-colors group-hover:text-brand">&rarr;</span>
+        </button>
+      </TryOption>
+      <TryOption
+        badge="Connect"
+        lead="Connect a data source and your agent can navigate it like a file system."
+      >
+        <div className="space-y-3">
+          <SourceConnectorList
+            workspaceId={workspaceId}
+            returnTo="/onboarding?step=3"
+            onSourceCountChange={onSourceCountChange}
+            onObsidianUploaded={onObsidianAdded}
+          />
+          <div className="flex items-center justify-end gap-3">
+            {!canContinue && (
+              <span className="text-[12px] text-muted">Connect a source to continue</span>
+            )}
+            <button
+              type="button"
+              onClick={onContinue}
+              disabled={!canContinue}
+              className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Continue
+            </button>
           </div>
         </div>
-        <span className="text-muted transition-colors group-hover:text-brand">&rarr;</span>
-      </button>
+      </TryOption>
+      <TryOption
+        badge="Capture"
+        lead="Run this in your terminal — every Claude Code / Codex session streams into Stash automatically."
+      >
+        <div className="space-y-2">
+          <CommandBlock command={CLI_INSTALL_COMMAND} />
+          <CommandBlock command="stash signin" />
+        </div>
+      </TryOption>
     </div>
+  );
+}
+
+function TryOption({
+  badge,
+  lead,
+  children,
+}: {
+  badge: string;
+  lead: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="rounded bg-brand/10 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+          {badge}
+        </span>
+        <span className="text-[13px] text-dim">{lead}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CommandBlock({ command }: { command: string }) {
+  return (
+    <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
+      {command}
+    </pre>
   );
 }
 
@@ -442,7 +567,7 @@ function AskStep({
 }
 
 function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["About you", "Welcome", "Connect", "Ask"];
+  const labels = ["About you", "Welcome", "Try it out", "Ask"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, i) => {
@@ -473,11 +598,13 @@ function StepControls({
   onSkip,
   continueLabel,
   canContinue,
+  hideContinue,
 }: {
   onContinue: () => void;
   onSkip: () => void;
   continueLabel: string;
   canContinue: boolean;
+  hideContinue?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
@@ -488,14 +615,16 @@ function StepControls({
       >
         Skip onboarding
       </button>
-      <button
-        type="button"
-        onClick={onContinue}
-        disabled={!canContinue}
-        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {continueLabel}
-      </button>
+      {!hideContinue && (
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!canContinue}
+          className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {continueLabel}
+        </button>
+      )}
     </div>
   );
 }
