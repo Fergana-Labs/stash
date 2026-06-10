@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import AppShell from "../../components/AppShell";
 import {
   ActivitySkeleton,
@@ -28,14 +35,7 @@ import {
 } from "../../lib/api";
 import type { ActivityTimeline, EmbeddingProjection } from "../../lib/types";
 
-type FilterKey = "all" | "sessions" | "pages" | "cartridges";
-
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "Everything" },
-  { key: "sessions", label: "Sessions" },
-  { key: "pages", label: "Pages" },
-  { key: "cartridges", label: "Cartridges" },
-];
+const PAGE_SIZE = 50;
 
 const AVATAR_CLASSES = [
   "av-rose",
@@ -70,7 +70,9 @@ export default function ActivityPage() {
   const { user, loading, logout } = useAuth();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [overview, setOverview] = useState<MeOverview | null>(null);
@@ -81,9 +83,11 @@ export default function ActivityPage() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    listActivity(200)
-      .then((nextEvents) => {
-        if (!cancelled) setEvents(nextEvents);
+    listActivity({ limit: PAGE_SIZE })
+      .then((feed) => {
+        if (cancelled) return;
+        setEvents(feed.events);
+        setHasMore(feed.has_more);
       })
       .catch(() => {})
       .finally(() => {
@@ -93,6 +97,33 @@ export default function ActivityPage() {
       cancelled = true;
     };
   }, [user]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || events.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const feed = await listActivity({
+        limit: PAGE_SIZE,
+        before: events[events.length - 1].ts,
+      });
+      setEvents((prev) => [...prev, ...feed.events]);
+      setHasMore(feed.has_more);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [events, hasMore, loadingMore]);
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) loadMore();
+      },
+      { rootMargin: "200px" }
+    );
+    obs.observe(sentinelRef.current);
+    return () => obs.disconnect();
+  }, [loadMore]);
 
   // The brain's vitals + visualizations. All span the user's own content plus
   // everything shared with them (the /me/* aggregates, called without a
@@ -128,19 +159,6 @@ export default function ActivityPage() {
   }, [events, nowMs]);
 
   const knowledgePoints = projection?.stats.total_embeddings ?? 0;
-
-  const filtered = useMemo(() => {
-    if (filter === "all") return events;
-    if (filter === "sessions")
-      return events.filter((e) => e.kind === "session.uploaded");
-    if (filter === "pages")
-      return events.filter(
-        (e) => e.kind === "page.updated" || e.kind === "file.uploaded"
-      );
-    if (filter === "cartridges")
-      return events.filter((e) => e.kind === "stash.published");
-    return events;
-  }, [events, filter]);
 
   if (loading) return <BasicPageSkeleton />;
   if (!user) return null;
@@ -201,38 +219,18 @@ export default function ActivityPage() {
         </VizCard>
 
         {/* Newsfeed — what the brain has been learning lately. */}
-        <div className="mt-8 flex items-center justify-between border-b border-border pb-2">
-          <div className="flex gap-1">
-            {FILTERS.map((f) => {
-              const active = filter === f.key;
-              return (
-                <button
-                  key={f.key}
-                  onClick={() => setFilter(f.key)}
-                  className={
-                    "rounded-md px-2.5 py-1 text-[12.5px] " +
-                    (active
-                      ? "bg-raised font-semibold text-foreground"
-                      : "text-muted hover:text-foreground")
-                  }
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-          <span className="sys-label">Recent learnings · recent</span>
+        <div className="mt-8 border-b border-border pb-2">
+          <span className="sys-label">Recent learnings</span>
         </div>
 
         <div className="mt-3.5 flex flex-col gap-2.5">
-          {filtered.length === 0 ? (
+          {events.length === 0 ? (
             <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted">
-              {events.length === 0
-                ? "Nothing learned yet. Push a transcript, edit a page, or upload a file."
-                : `No ${filter === "all" ? "" : filter + " "}activity matches this filter.`}
+              Nothing learned yet. Push a transcript, edit a page, or upload a
+              file.
             </div>
           ) : (
-            filtered.map((event, i) => (
+            events.map((event, i) => (
               <FeedCard
                 key={`${event.kind}-${event.target_id}-${i}`}
                 event={event}
@@ -240,6 +238,12 @@ export default function ActivityPage() {
               />
             ))
           )}
+          {loadingMore && (
+            <div className="py-2 text-center text-[12.5px] text-muted">
+              Loading more…
+            </div>
+          )}
+          {hasMore && <div ref={sentinelRef} />}
         </div>
       </div>
     </AppShell>
