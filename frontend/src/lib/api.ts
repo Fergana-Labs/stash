@@ -625,6 +625,18 @@ export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }>
 
 // --- Dashboard Visualizations ---
 
+export interface MeOverview {
+  pages: number;
+  files: number;
+  sessions: number;
+}
+
+// Counts for the "Your brain" vitals, spanning the user's own content plus
+// everything shared with them.
+export async function getMeOverview(): Promise<MeOverview> {
+  return apiFetch(`/api/v1/me/overview`);
+}
+
 export async function getActivityTimeline(
   days = 30,
   bucket = "day",
