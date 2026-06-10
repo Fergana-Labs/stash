@@ -152,8 +152,7 @@ async def fetch_twitter_content(owner_user_id: UUID, tweet_id: str) -> str:
             return "X rate limit reached while fetching this post — try again in a few minutes."
         if resp.status_code in (401, 403):
             return (
-                "X rejected the Twitter / X connection for this post — "
-                "reconnect it in Settings."
+                "X rejected the Twitter / X connection for this post — " "reconnect it in Settings."
             )
         if resp.status_code == 404:
             return "This post is no longer available on X (deleted or protected)."

@@ -396,7 +396,9 @@ async def test_twitter_rejects_missing_bearer_token():
     with pytest.raises(ValueError, match="username"):
         await TwitterIntegration().connect_with_credentials({"bearer_token": "tok"})
     with pytest.raises(ValueError):
-        await TwitterIntegration().connect_with_credentials({"username": "stash", "bearer_token": ""})
+        await TwitterIntegration().connect_with_credentials(
+            {"username": "stash", "bearer_token": ""}
+        )
 
 
 @pytest.mark.asyncio
@@ -420,7 +422,9 @@ async def test_twitter_connection_stores_username_for_my_posts(monkeypatch):
 async def test_twitter_connect_distinguishes_bad_token_from_rate_limit(monkeypatch):
     monkeypatch.setattr(twitter_provider.httpx, "AsyncClient", _FakeClient({}, status_code=401))
     with pytest.raises(ValueError, match="401"):
-        await TwitterIntegration().connect_with_credentials({"username": "stash", "bearer_token": "bad"})
+        await TwitterIntegration().connect_with_credentials(
+            {"username": "stash", "bearer_token": "bad"}
+        )
 
     # A 429 means X authenticated the token, then rate-limited it. Rejecting
     # would lock out legitimate (re)connects for the whole free-tier window.
@@ -611,7 +615,9 @@ async def test_twitter_connect_maps_transport_failure_to_friendly_error(monkeypa
 
     monkeypatch.setattr(twitter_provider.httpx, "AsyncClient", _ExplodingClient({}))
     with pytest.raises(ValueError, match="reach X"):
-        await TwitterIntegration().connect_with_credentials({"username": "stash", "bearer_token": "tok"})
+        await TwitterIntegration().connect_with_credentials(
+            {"username": "stash", "bearer_token": "tok"}
+        )
 
 
 @pytest.mark.asyncio

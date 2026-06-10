@@ -53,19 +53,15 @@ async def record_marketing_event(request: Request, event: MarketingEvent) -> Non
 async def marketing_summary(request: Request) -> dict:
     """Views and signups per variant — aggregate counts only."""
     pool = get_pool()
-    rows = await pool.fetch(
-        """
+    rows = await pool.fetch("""
         SELECT properties->>'variant' AS variant,
                event_name,
                count(*) AS n
         FROM analytics_events
         WHERE surface = 'marketing'
         GROUP BY 1, 2
-        """
-    )
-    summary: dict[str, dict[str, int]] = {
-        v: {"views": 0, "signups": 0} for v in sorted(_VARIANTS)
-    }
+        """)
+    summary: dict[str, dict[str, int]] = {v: {"views": 0, "signups": 0} for v in sorted(_VARIANTS)}
     for r in rows:
         variant = r["variant"]
         if variant not in summary:

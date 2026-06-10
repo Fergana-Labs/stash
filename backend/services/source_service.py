@@ -1018,9 +1018,7 @@ async def search_all(
         # types are skipped — see SCOPED_ONLY_SEARCH_TYPES).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                results += await _federated_search(
-                    connected, query, limit, swallow_errors=False
-                )
+                results += await _federated_search(connected, query, limit, swallow_errors=False)
         else:
             federated = [
                 s
