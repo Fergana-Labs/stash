@@ -159,6 +159,15 @@ docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health
 ```
 
+`docker-compose.prod.yml` pins the image versions it was tested with. To
+upgrade, pull the latest compose file and restart:
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml pull
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+```
+
 Then install the CLI:
 
 ```bash
