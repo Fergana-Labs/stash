@@ -23,8 +23,8 @@ const LABEL: Record<string, string> = {
 
 function hrefFor(item: SharedWithMeItem): string {
   const ws = item.workspace_id;
-  if (item.object_type === "page") return `/workspaces/${ws}/p/${item.object_id}`;
-  if (item.object_type === "file") return `/workspaces/${ws}/f/${item.object_id}`;
+  if (item.object_type === "page") return `/p/${item.object_id}`;
+  if (item.object_type === "file") return `/f/${item.object_id}`;
   if (item.object_type === "table") return `/tables/${item.object_id}`;
   return `/workspaces/${ws}/folders/${item.object_id}`;
 }

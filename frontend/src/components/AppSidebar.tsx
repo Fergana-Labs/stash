@@ -220,10 +220,15 @@ export default function AppSidebar({
   const sourceRows = useMemo<SourceRow[]>(() => {
     if (!activeWorkspaceKey) return [];
     const ws = activeWorkspaceKey;
-    const filesActive = !!pathname.match(
-      new RegExp(`^/workspaces/${ws}/(files|folders|p|f)(?:/|$)`),
-    );
-    const sessionsActive = pathname.startsWith(`/workspaces/${ws}/sessions`);
+    // Canonical item paths (/p, /f, /sessions) carry no workspace; they
+    // count as active because the sidebar only renders them for the
+    // workspace the open item resolved to.
+    const filesActive =
+      !!pathname.match(new RegExp(`^/workspaces/${ws}/(files|folders)(?:/|$)`)) ||
+      !!pathname.match(/^\/(p|f)\//);
+    const sessionsActive =
+      pathname.startsWith(`/workspaces/${ws}/sessions`) ||
+      pathname.startsWith("/sessions/");
     const native: SourceRow[] = [
       {
         key: "sessions",
