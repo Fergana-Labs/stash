@@ -188,37 +188,29 @@ export function Logos() {
   return (
     <div className="border-y border-border-subtle bg-surface">
       <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-7 py-7">
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-          <span className="w-[88px] shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Plugs into
-          </span>
-          <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-dim">
-            {tools.map((t) => (
-              <span
-                key={t.name}
-                className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] text-ink"
-                title={t.name}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={t.src}
-                  alt={t.name}
-                  className="h-6 w-6 shrink-0 object-contain"
-                />
-                <span>{t.name}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-4 border-t border-border-subtle pt-5">
-          <span className="w-[88px] shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Connects to
-          </span>
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-4 text-dim">
+        <LogoRow label="Plugs into">
+          {tools.map((t) => (
+            <span
+              key={t.name}
+              className="inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] text-ink"
+              title={t.name}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={t.src}
+                alt={t.name}
+                className="h-6 w-6 shrink-0 object-contain"
+              />
+              <span>{t.name}</span>
+            </span>
+          ))}
+        </LogoRow>
+        <div className="border-t border-border-subtle pt-5">
+          <LogoRow label="Connects to" trailer="and many more">
             {INTEGRATIONS.map((it) => (
               <span
                 key={it.provider}
-                className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[16px] font-bold tracking-[-0.02em] text-ink"
+                className="inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap font-display text-[16px] font-bold tracking-[-0.02em] text-ink"
                 title={it.name}
               >
                 <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center">
@@ -227,12 +219,43 @@ export function Logos() {
                 <span>{it.name}</span>
               </span>
             ))}
-            <span className="whitespace-nowrap font-display text-[16px] font-bold tracking-[-0.02em] text-dim">
-              and many more
-            </span>
-          </div>
+          </LogoRow>
         </div>
       </div>
+    </div>
+  );
+}
+
+// One-line logo strip: the list scrolls horizontally instead of wrapping,
+// and the optional trailer ("and many more") stays pinned and visible.
+function LogoRow({
+  label,
+  trailer,
+  children,
+}: {
+  label: string;
+  trailer?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-x-6">
+      <span className="w-[96px] shrink-0 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+        {label}
+      </span>
+      <div
+        className="flex min-w-0 flex-1 items-center gap-x-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{
+          maskImage:
+            "linear-gradient(to right, black calc(100% - 32px), transparent)",
+        }}
+      >
+        {children}
+      </div>
+      {trailer ? (
+        <span className="shrink-0 whitespace-nowrap font-display text-[15px] font-bold tracking-[-0.02em] text-dim">
+          {trailer}
+        </span>
+      ) : null}
     </div>
   );
 }
