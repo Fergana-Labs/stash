@@ -23,7 +23,6 @@ export default function HomePage() {
       <Comparisons />
       <VisualizationsShowcase />
       <Features />
-      <DiscoverGrid />
       <CliAndPlugin />
       <ClosingCTA />
       <Footer />
@@ -228,6 +227,9 @@ export function Logos() {
                 <span>{it.name}</span>
               </span>
             ))}
+            <span className="whitespace-nowrap font-display text-[16px] font-bold tracking-[-0.02em] text-dim">
+              and many more
+            </span>
           </div>
         </div>
       </div>
@@ -448,34 +450,63 @@ export type HowItWorksStep = {
   viz: ReactNode;
 };
 
+export function SourcesViz() {
+  const rows = [
+    { provider: "github", name: "GitHub" },
+    { provider: "slack", name: "Slack" },
+    { provider: "gong", name: "Gong" },
+    { provider: "notion", name: "Notion" },
+  ];
+  return (
+    <div className="flex flex-col gap-1.5">
+      {rows.map((r) => (
+        <div
+          key={r.provider}
+          className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink"
+        >
+          <span className="flex items-center gap-2">
+            <span className="inline-flex h-4 w-4 items-center justify-center">
+              {integrationIcon(r.provider, 14)}
+            </span>
+            {r.name}
+          </span>
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[#22C55E]">
+            synced
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
   {
     n: "01",
-    pill: "Sessions",
-    title: "The unstructured stream.",
-    body: "Every agent run flows in automatically — prompts, tool calls, artifacts, plan files. Nothing to remember to save.",
-    viz: <StreamViz />,
+    pill: "Connect",
+    title: "Connect any data source.",
+    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong, Snowflake and more — one easy connection per source, through any integration, and every agent you run can read all of them.",
+    viz: <SourcesViz />,
   },
   {
     n: "02",
-    pill: "Files",
-    title: "The structured layer.",
-    body: "Markdown, HTML, tables, folders. Humans and agents both write here. Agents navigate it as a real filesystem through the CLI and MCP.",
-    viz: <FilesViz />,
+    pill: "Capture",
+    title: "Capture every agent session.",
+    body: "Transcripts stream in automatically — prompts, tool calls, artifacts — so your knowledge base accumulates with every run instead of evaporating when the session closes.",
+    viz: <StreamViz />,
   },
   {
     n: "03",
-    pill: "Stashes",
-    title: "The shareable slice.",
-    body: "Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.",
-    viz: <StashViz />,
+    pill: "Drive",
+    title: "An agent-native Drive.",
+    body: "HTML docs, Markdown, dashboards, decks — your agents' work lands as real files. Edit HTML visually in a WYSIWYG editor, and share any slice as a link.",
+    viz: <FilesViz />,
   },
 ];
 
 // The message-test variant pages pass their own title/steps so the section
 // tells the story of the message under test.
 export function HowItWorks({
-  title = "Sessions. Files. Stashes.",
+  title = "Connect. Capture. Create.",
   subtitle = "One workspace, two kinds of writer.",
   steps = DEFAULT_HOW_STEPS,
 }: {
@@ -677,145 +708,6 @@ export function Features() {
   );
 }
 
-type DiscoverMock = {
-  title: string;
-  workspace: string;
-  blurb: string;
-  pages: number;
-  sessions: number;
-  views: string;
-  accent: string;
-};
-const DISCOVER_MOCKS: DiscoverMock[] = [
-  {
-    title: "RAG over a million PDFs",
-    workspace: "indexlab",
-    blurb:
-      "End-to-end notes from a month of agentic experiments on long-context retrieval. Includes chunking ablations and the evaluator harness.",
-    pages: 12,
-    sessions: 31,
-    views: "4.2k",
-    accent: "rgba(249,115,22,0.22)",
-  },
-  {
-    title: "Auth patterns · Q2",
-    workspace: "fergana",
-    blurb:
-      "How we converged on per-tenant rate limits, refresh-token rotation, and the worker-pool pattern after three debugging sessions.",
-    pages: 6,
-    sessions: 9,
-    views: "1.8k",
-    accent: "rgba(139,92,246,0.22)",
-  },
-  {
-    title: "Voice-agent onboarding playbook",
-    workspace: "mockingbird",
-    blurb:
-      "Live playbook the design + eng team uses when shipping a new voice flow. Updated weekly by the agents that run the user tests.",
-    pages: 18,
-    sessions: 14,
-    views: "3.1k",
-    accent: "rgba(59,130,246,0.22)",
-  },
-  {
-    title: "Claude vs Opus on long-context",
-    workspace: "stash-research",
-    blurb:
-      "Benchmarks, transcripts, and the table of results from a head-to-head on 100k+ token documents. Forked by 47 workspaces.",
-    pages: 9,
-    sessions: 22,
-    views: "5.6k",
-    accent: "rgba(34,197,94,0.22)",
-  },
-  {
-    title: "Open-source release runbook",
-    workspace: "fergana",
-    blurb:
-      "The exact Stash we follow every Friday — changelog drafting, blog post, social, the whole flow. Fork and adapt for your team.",
-    pages: 7,
-    sessions: 4,
-    views: "920",
-    accent: "rgba(234,179,8,0.22)",
-  },
-  {
-    title: "Customer support deflection memory",
-    workspace: "kindred",
-    blurb:
-      "Live customer-support knowledge base our triage agent reads on every ticket. Adds three new pages a day on average.",
-    pages: 84,
-    sessions: 210,
-    views: "2.4k",
-    accent: "rgba(239,68,68,0.22)",
-  },
-];
-
-function DiscoverCard({ s }: { s: DiscoverMock }) {
-  return (
-    <div className="group flex h-full flex-col rounded-[14px] border border-border bg-background transition-colors hover:border-brand">
-      <div
-        aria-hidden
-        className="h-[88px] rounded-t-[14px] border-b border-border-subtle"
-        style={{
-          background: `linear-gradient(135deg, ${s.accent}, transparent 70%), var(--surface)`,
-        }}
-      />
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
-            {s.workspace}
-          </span>
-          <span className="font-mono text-[10.5px] text-muted">{s.views} views</span>
-        </div>
-        <h3 className="mt-2 font-display text-[18px] font-bold leading-[1.25] tracking-[-0.015em] text-ink">
-          {s.title}
-        </h3>
-        <p className="mt-2 text-[13.5px] leading-[1.55] text-dim">{s.blurb}</p>
-        <div className="mt-auto flex items-center gap-3 pt-4 font-mono text-[10.5px] uppercase tracking-[0.1em] text-muted">
-          <span>{s.pages} pages</span>
-          <span className="h-1 w-1 rounded-full bg-border" />
-          <span>{s.sessions} sessions</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DiscoverGrid() {
-  return (
-    <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
-      <div className="mx-auto max-w-[1200px] px-7">
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <div className="max-w-[680px]">
-            <EyebrowDot>From the Discover feed</EyebrowDot>
-            <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-              Some Stashes
-              <br />
-              <span className="font-medium text-dim">teams are publishing.</span>
-            </h2>
-            <p className="mt-5 max-w-[560px] text-[16.5px] leading-[1.6] text-foreground">
-              A published Stash is a focused slice of a workspace — sessions,
-              pages, and tables — anyone can open. Fork one into your own
-              workspace and it stays live with the source.
-            </p>
-          </div>
-          <Link
-            href="/discover"
-            className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-          >
-            Browse all →
-          </Link>
-        </div>
-
-        <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {DISCOVER_MOCKS.map((s) => (
-            <DiscoverCard key={s.title} s={s} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function CliAndPlugin() {
   return (
     <section className="border-b border-border-subtle py-24 md:py-32">
@@ -829,7 +721,7 @@ function CliAndPlugin() {
             <p className="mt-5 max-w-[500px] text-[16px] leading-[1.6] text-foreground">
               Pages are real Markdown, HTML, CSV, PDF — formats your agent
               already reads and writes. The whole workspace mounts as a
-              virtual filesystem an agent can <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">ls</code>,{" "}
+              virtual file system (VFS) an agent can <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">ls</code>,{" "}
               <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">find</code>, and{" "}
               <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">rg</code>{" "}
               through the CLI and MCP server.
