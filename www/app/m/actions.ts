@@ -4,6 +4,20 @@ import { escapeHtml, sendPostmark } from "../_lib/postmark";
 
 const LEADS_EMAIL = "sam@joinstash.ai";
 const FROM_ADDRESS = "Stash <notifications@joinstash.ai>";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
+
+// Tracking is best-effort: a down backend must never break a signup.
+async function recordSignupEvent(variant: string, ref: string) {
+  try {
+    await fetch(`${API_URL}/api/v1/marketing/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "signup", variant, url: ref, referrer: "" }),
+    });
+  } catch (err) {
+    console.error("marketing signup event failed", err);
+  }
+}
 
 export type VariantSignupState = {
   status: "idle" | "ok" | "error";
@@ -69,5 +83,6 @@ export async function submitVariantSignup(
     };
   }
 
+  await recordSignupEvent(variant, ref);
   return { status: "ok" };
 }

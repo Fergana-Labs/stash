@@ -26,7 +26,7 @@ export default function VariantLanding({
   const signupHref = `/m/${variant}/signup`;
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <CaptureLanding />
+      <CaptureLanding variant={variant} />
       <SiteHeader ctaHref={signupHref} />
       <VariantHero copy={copy} signupHref={signupHref} />
       <Logos />

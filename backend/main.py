@@ -28,6 +28,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    marketing,
     memory,
     pins,
     publish,
@@ -117,6 +118,7 @@ app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
+app.include_router(marketing.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
