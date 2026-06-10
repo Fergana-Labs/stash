@@ -257,7 +257,7 @@ def _read_error_text(status_code: int, label: str) -> str | None:
 async def _fetch_me(client: httpx.AsyncClient) -> dict:
     resp = await client.get(ME_URL, params={"user.fields": USER_FIELDS})
     resp.raise_for_status()
-    user = (resp.json().get("data") or {})
+    user = resp.json().get("data") or {}
     if not user.get("id"):
         raise RuntimeError("X did not return the connected user id")
     return user
