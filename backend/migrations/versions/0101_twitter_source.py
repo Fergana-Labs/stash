@@ -1,7 +1,8 @@
 """Add Twitter / X source table.
 
 Twitter stores recent-search result metadata in `twitter_posts`. Search runs
-live against X, and post bodies are fetched lazily when a result is opened.
+live against X, personal refs are fetched live through OAuth user context, and
+post bodies are fetched lazily when a result is opened.
 
 Revision ID: 0101
 Revises: 0100

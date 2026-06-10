@@ -594,10 +594,11 @@ async def _read_source(args: dict) -> dict:
     "Search across sources. Omit `source` to search everything the user can see "
     "(native files + sessions + their connected sources), or pass a source handle "
     "to scope to one. Twitter / X is only searched when explicitly scoped — its "
-    "API quota is metered, so unscoped searches skip it. For a Twitter source "
-    "whose list_sources metadata names an @handle, answer requests about the "
-    "user's own recent posts by scoping to that source and adding `from:handle` "
-    "to the query.",
+    "API quota is metered, so unscoped searches skip it. For a Twitter source, "
+    "use list_source/read_source for personal refs (home, my-posts, bookmarks, "
+    "likes, dms) and post expansion refs (thread:<id>, likers:<id>, "
+    "reposters:<id>). Use scoped search with `from:handle` for recent public "
+    "post search.",
     {
         "type": "object",
         "properties": {

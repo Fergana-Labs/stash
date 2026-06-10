@@ -242,7 +242,7 @@ async def test_twitter_source_requires_connected_handle(monkeypatch):
     monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
     monkeypatch.setattr(sources_router.integration_storage, "status", fake_status)
 
-    with pytest.raises(sources_router.HTTPException, match="username"):
+    with pytest.raises(sources_router.HTTPException, match="Reconnect Twitter"):
         await sources_router._resolve_twitter_source(uuid4())
 
 
@@ -341,6 +341,45 @@ async def test_twitter_list_sources_exposes_my_posts_search_hint(client):
 
     assert twitter["display_name"] == "Twitter / X (@stash)"
     assert "from:stash" in twitter["search_hint"]
+    assert "bookmarks" in twitter["search_hint"]
+    assert "dms" in twitter["search_hint"]
+    assert "For You is not exposed" in twitter["search_hint"]
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_lists_live_personal_refs(client):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    entries = await source_service.source_entries(ws, owner_id, src["id"])
+    paths = {entry["path"] for entry in entries}
+
+    assert {"home", "my-posts", "bookmarks", "likes", "dms"} <= paths
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    fetched: list[str] = []
+
+    async def fake_fetch(owner, ref):
+        fetched.append(ref)
+        return "# Bookmarks\n\n> saved post"
+
+    monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fake_fetch)
+
+    doc = await source_service.read_document(src, "bookmarks")
+
+    assert doc["path"] == "bookmarks"
+    assert doc["name"] == "Bookmarks"
+    assert "> saved post" in doc["content"]
+    assert fetched == ["bookmarks"]
 
 
 @pytest.mark.asyncio

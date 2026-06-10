@@ -98,13 +98,18 @@ def _source_search_hint(source: dict) -> str | None:
     if source["source_type"] != "twitter":
         return None
 
+    personal = (
+        "Use list_source on this source to read home, my-posts, bookmarks, likes, and dms. "
+        "Post reads also advertise thread:<id>, likers:<id>, and reposters:<id> refs. "
+        "For You is not exposed by the official X API."
+    )
     match = TWITTER_HANDLE_RE.search(source["display_name"] or "")
     if not match:
-        return "Twitter / X recent-search source. Scope search to this source before querying X."
+        return f"Twitter / X source. Scope search to this source before querying X. {personal}"
     username = match.group(1)
     return (
-        "Twitter / X recent-search source. To look through this user's recent "
-        f"public posts, scope search to this source and add `from:{username}` to the query."
+        "Twitter / X source. To search this user's recent public posts, scope search "
+        f"to this source and add `from:{username}` to the query. {personal}"
     )
 
 
@@ -469,10 +474,30 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
     return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
 
 
+async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
+    from ..integrations.twitter.indexer import fetch_twitter_content, twitter_ref_name
+
+    owner_user_id = UUID(source["owner_user_id"])
+    is_post = (ref.isascii() and ref.isdigit()) or ref.startswith("post:")
+    return {
+        "path": ref,
+        "name": twitter_ref_name(ref),
+        "kind": "post" if is_post else "feed",
+        "content": await fetch_twitter_content(owner_user_id, ref),
+        "external_ref": ref,
+    }
+
+
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables (drive/notion) fetch it lazily from the provider with the owner's
     token."""
+    if source["source_type"] == "twitter":
+        from ..integrations.twitter.indexer import is_twitter_live_ref
+
+        if is_twitter_live_ref(path):
+            return await _read_twitter_live_ref(source, path)
+
     table = _table_for(source["source_type"])
     if table in CONTENT_TABLES:
         row = await get_pool().fetchrow(
@@ -773,6 +798,10 @@ async def source_entries(
         from ..integrations.snowflake.client import list_tables
 
         return await list_tables(connected)
+    if connected["source_type"] == "twitter":
+        from ..integrations.twitter.indexer import twitter_live_entries
+
+        return twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
     return await list_documents(connected, prefix=prefix)
 
 
@@ -805,7 +834,10 @@ def source_document_url(
         mailbox = quote(external_ref or "0", safe="")
         return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
     if source_type == "twitter":
-        return f"https://x.com/i/web/status/{path}"
+        post_id = path.removeprefix("post:")
+        if post_id.isascii() and post_id.isdigit():
+            return f"https://x.com/i/web/status/{post_id}"
+        return None
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
     return None
 

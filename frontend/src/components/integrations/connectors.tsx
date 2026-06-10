@@ -102,7 +102,7 @@ export const CONNECTORS: Connector[] = [
     label: "Twitter / X",
     sourceType: "twitter",
     kind: "auto",
-    blurb: "Search recent public X posts, including yours by handle.",
+    blurb: "OAuth access to X search, posts, bookmarks, likes, timelines, and DMs.",
   },
 ];
 

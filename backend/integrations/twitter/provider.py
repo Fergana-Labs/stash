@@ -1,91 +1,147 @@
-"""Twitter / X api_key provider.
+"""Twitter / X OAuth provider.
 
-X's OAuth 2.0 user flow requires PKCE. Stash's simple credential-provider path
-is a better first fit here: users paste an X API bearer token, and agents use it
-read-only for public v2 endpoints.
+X's OAuth 2.0 user flow requires PKCE. The router stores the code verifier in
+our encrypted state blob, then passes it back for the token exchange.
 """
 
 from __future__ import annotations
 
-import re
+import base64
+import hashlib
+import secrets
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode
 
 import httpx
 
-from ..base import AccountInfo, CredentialField, TokenSet
+from ...config import settings
+from ..base import AccountInfo, Integration, TokenSet
 
 API_BASE = "https://api.x.com"
-# Validate against recent search — the capability the source actually uses.
-# A token can pass cheaper endpoints (user lookup) yet lack search access on
-# some X plans, which would connect fine and then silently return no results.
-VALIDATION_URL = f"{API_BASE}/2/tweets/search/recent"
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")
+AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize"
+TOKEN_URL = f"{API_BASE}/2/oauth2/token"
+REVOKE_URL = f"{API_BASE}/2/oauth2/revoke"
+ME_URL = f"{API_BASE}/2/users/me"
 
 
-def _normalize_username(value: str | None) -> str:
-    username = (value or "").strip()
-    if username.startswith("@"):
-        username = username[1:]
-    if not USERNAME_RE.fullmatch(username):
-        raise ValueError("X username must be 1-15 letters, numbers, or underscores")
-    return username
-
-
-class TwitterIntegration:
+class TwitterIntegration(Integration):
     name = "twitter"
     display_name = "Twitter / X"
-    scopes: list[str] = []
-    supports_refresh = False
-    auth_kind = "api_key"
-    credential_fields = [
-        CredentialField(
-            "username",
-            "X username",
-            placeholder="your_handle",
-            help="Used when agents search your recent public posts.",
-        ),
-        CredentialField(
-            "bearer_token",
-            "Bearer token",
-            secret=True,
-            placeholder="X API bearer token",
-            help="Read-only token from the X Developer Portal.",
-        ),
+    scopes = [
+        "tweet.read",
+        "users.read",
+        "bookmark.read",
+        "like.read",
+        "dm.read",
+        "offline.access",
     ]
+    supports_refresh = True
+    uses_pkce = True
 
-    async def connect_with_credentials(
-        self, values: dict[str, str]
-    ) -> tuple[TokenSet, AccountInfo]:
-        username = _normalize_username(values.get("username"))
-        token = (values.get("bearer_token") or "").strip()
-        if not token:
-            raise ValueError("Bearer token is required")
+    def _client_id(self) -> str:
+        if not settings.TWITTER_OAUTH_CLIENT_ID:
+            raise RuntimeError("TWITTER_OAUTH_CLIENT_ID is not set")
+        return settings.TWITTER_OAUTH_CLIENT_ID
 
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(
-                    VALIDATION_URL,
-                    params={"query": "hello", "max_results": 10},
-                    headers={"Authorization": f"Bearer {token}"},
-                )
-        except httpx.HTTPError as e:
-            # Transport failure, not a bad token — the router maps ValueError
-            # to a 400 with a message instead of an opaque 500.
-            raise ValueError(f"Could not reach X to validate the token — try again ({e})")
-        if resp.status_code == 429:
-            # A 429 means X authenticated the token and then rate-limited it
-            # (invalid tokens get 401). Accept it: the free tier allows one
-            # recent-search per 15 minutes, so rejecting here would lock out
-            # legitimate (re)connects for the whole window.
-            pass
-        elif resp.status_code != 200:
-            raise ValueError(
-                f"X rejected this bearer token for recent search (HTTP {resp.status_code})"
+    def _client_secret(self) -> str | None:
+        return settings.TWITTER_OAUTH_CLIENT_SECRET
+
+    def _redirect_uri(self) -> str:
+        if not settings.TWITTER_OAUTH_REDIRECT_URI:
+            raise RuntimeError("TWITTER_OAUTH_REDIRECT_URI is not set")
+        return settings.TWITTER_OAUTH_REDIRECT_URI
+
+    def new_code_verifier(self) -> str:
+        return secrets.token_urlsafe(64)
+
+    def authorize_url(self, state: str, code_verifier: str) -> str:
+        digest = hashlib.sha256(code_verifier.encode()).digest()
+        challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+        params = {
+            "response_type": "code",
+            "client_id": self._client_id(),
+            "redirect_uri": self._redirect_uri(),
+            "scope": " ".join(self.scopes),
+            "state": state,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        }
+        return f"{AUTHORIZE_URL}?{urlencode(params)}"
+
+    async def exchange_code(self, code: str, code_verifier: str) -> TokenSet:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                TOKEN_URL,
+                auth=self._token_auth(),
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": self._redirect_uri(),
+                    "client_id": self._client_id(),
+                    "code_verifier": code_verifier,
+                },
             )
+            resp.raise_for_status()
+            payload = resp.json()
+        return _payload_to_tokenset(payload)
 
-        token_set = TokenSet(
-            access_token=token,
-            refresh_token=None,
-            expires_at=None,
-            scopes=[],
-        )
-        return token_set, AccountInfo(email=None, display_name=f"@{username}")
+    async def refresh(self, refresh_token: str) -> TokenSet:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                TOKEN_URL,
+                auth=self._token_auth(),
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": self._client_id(),
+                },
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        token = _payload_to_tokenset(payload)
+        if token.refresh_token is None:
+            token.refresh_token = refresh_token
+        return token
+
+    async def revoke(self, access_token: str) -> None:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                REVOKE_URL,
+                auth=self._token_auth(),
+                data={
+                    "token": access_token,
+                    "client_id": self._client_id(),
+                    "token_type_hint": "access_token",
+                },
+            )
+            if resp.status_code not in (200, 400):
+                resp.raise_for_status()
+
+    async def fetch_account(self, access_token: str) -> AccountInfo:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+            resp = await client.get(ME_URL, params={"user.fields": "username,name"})
+            resp.raise_for_status()
+            payload = resp.json()
+        user = payload.get("data") or {}
+        username = user.get("username")
+        display_name = f"@{username}" if username else user.get("name")
+        return AccountInfo(email=None, display_name=display_name)
+
+    def _token_auth(self) -> tuple[str, str] | None:
+        secret = self._client_secret()
+        if not secret:
+            return None
+        return (self._client_id(), secret)
+
+
+def _payload_to_tokenset(payload: dict) -> TokenSet:
+    expires_in = payload.get("expires_in")
+    expires_at = datetime.now(UTC) + timedelta(seconds=int(expires_in)) if expires_in else None
+    scopes_raw = payload.get("scope") or ""
+    return TokenSet(
+        access_token=payload["access_token"],
+        refresh_token=payload.get("refresh_token"),
+        expires_at=expires_at,
+        scopes=[s for s in scopes_raw.split() if s],
+    )
