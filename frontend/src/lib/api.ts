@@ -149,6 +149,9 @@ export async function updateMe(data: {
   description?: string;
   password?: string;
   current_password?: string;
+  role?: string;
+  referral_source?: string;
+  use_case?: string;
 }): Promise<User> {
   return apiFetch("/api/v1/users/me", {
     method: "PATCH",

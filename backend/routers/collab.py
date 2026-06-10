@@ -56,7 +56,7 @@ async def authorize_collab_document(
         page_id,
         current_user["id"],
         workspace_id=workspace_id,
-        require_write=True,
+        require="write",
     )
     return CollabAuthorizeResponse(
         user=CollabUser(
