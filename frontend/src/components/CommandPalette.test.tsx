@@ -154,6 +154,6 @@ describe("CommandPalette search", () => {
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(router.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-1");
+    expect(router.push).toHaveBeenCalledWith("/tables/table-1");
   });
 });

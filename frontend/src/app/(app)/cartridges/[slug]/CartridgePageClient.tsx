@@ -839,7 +839,7 @@ function hrefForItem(
     return `/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionRow.session_id)}?stash=${stash}`;
   }
   if (item.object_type === "table") {
-    return `/tables/${item.object_id}?stash=${stash}&workspaceId=${workspaceId}`;
+    return `/tables/${item.object_id}?stash=${stash}`;
   }
   return null;
 }

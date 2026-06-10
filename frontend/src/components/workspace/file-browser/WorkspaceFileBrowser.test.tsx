@@ -107,7 +107,7 @@ describe("WorkspaceFileBrowser table creation", () => {
       expect(createTable).toHaveBeenCalledWith("ws-1", "Untitled table")
     );
     expect(refreshWorkspaceSidebar).toHaveBeenCalledWith("ws-1");
-    expect(router.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-1");
+    expect(router.push).toHaveBeenCalledWith("/tables/table-1");
   });
 
   it("shows standalone workspace tables at the root without duplicating CSV-backed tables", async () => {
@@ -140,7 +140,7 @@ describe("WorkspaceFileBrowser table creation", () => {
     expect(screen.getByText("contacts.csv")).toBeInTheDocument();
     expect(screen.queryByText("Contacts from CSV")).not.toBeInTheDocument();
     expect(router.push).toHaveBeenCalledWith(
-      "/tables/table-standalone?workspaceId=ws-1"
+      "/tables/table-standalone"
     );
   });
 

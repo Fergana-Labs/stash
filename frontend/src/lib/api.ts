@@ -675,11 +675,8 @@ export async function listTables(
   return apiFetch(`${scope(workspaceId)}/tables`);
 }
 
-export async function getTable(
-  workspaceId: string | null,
-  tableId: string
-): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}`);
+export async function getTable(tableId: string): Promise<Table> {
+  return apiFetch(`/api/v1/tables/${tableId}`);
 }
 
 export async function updateTable(
