@@ -7,8 +7,8 @@ import {
   type FBDragPayload,
 } from "./WorkspaceFileBrowser";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { FileIcon, FolderIcon, PageIcon, PinIcon, TableIcon } from "../../StashIcons";
-import type { GridItem, ItemKind } from "./FolderItemGrid";
+import { PinIcon } from "../../StashIcons";
+import { KindIcon, tintFor, typeFor, type GridItem, type ItemKind } from "./kind";
 
 // Shared drag setup so single rows/tiles and multi-selections behave the same.
 // When dragging an item that's part of a 2+ selection, carry the whole
@@ -380,36 +380,6 @@ export function SelectBox({
       </svg>
     </span>
   );
-}
-
-export function KindIcon({ kind }: { kind: ItemKind }) {
-  if (kind === "folder") return <FolderIcon />;
-  if (kind === "page" || kind === "html") return <PageIcon />;
-  if (kind === "table" || kind === "datatable") return <TableIcon />;
-  return <FileIcon />;
-}
-
-export function tintFor(item: GridItem): string {
-  if (item.kind === "folder") return "text-muted";
-  if (item.kind === "html") return "text-[#D97706]";
-  if (item.kind === "table" || item.kind === "datatable") return "text-emerald-600";
-  if (item.contentType?.includes("pdf")) return "text-rose-500";
-  if (item.contentType?.startsWith("image/")) return "text-[var(--color-brand-600)]";
-  if (item.kind === "page") return "text-[var(--color-brand-600)]";
-  return "text-muted";
-}
-
-export function typeFor(item: GridItem): string {
-  if (item.kind === "folder") return "Folder";
-  if (item.kind === "table" || item.kind === "datatable") return "Table";
-  if (item.kind === "html") return "HTML";
-  if (item.kind === "page") return "Markdown";
-  if (item.contentType?.includes("pdf")) return "PDF";
-  if (item.contentType?.includes("csv")) return "CSV";
-  if (item.contentType?.startsWith("image/")) {
-    return item.contentType.replace("image/", "").toUpperCase();
-  }
-  return item.contentType || "File";
 }
 
 function formatRelative(iso: string | undefined): string {
