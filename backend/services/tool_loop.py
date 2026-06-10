@@ -28,7 +28,13 @@ from uuid import UUID
 from anthropic import AsyncAnthropic
 
 from ..config import settings
-from .agent_runtime import _TOOLS_BY_NAME, _user_ctx, _workspace_ctx
+from .agent_runtime import (
+    _TOOLS_BY_NAME,
+    _agent_name_ctx,
+    _session_ctx,
+    _user_ctx,
+    _workspace_ctx,
+)
 from .llm import ModelTier, _model_for
 
 logger = logging.getLogger(__name__)
@@ -81,6 +87,8 @@ async def stream_tool_loop(
     user_id: UUID | None = None,
     tool_set: tuple[str, ...],
     max_turns: int = 8,
+    session_id: str | None = None,
+    agent_name: str | None = None,
 ) -> AsyncIterator[dict]:
     """Run an Anthropic tool-use loop, yielding structured events (dicts):
     `text` / `tool` / `tool_result` / `end`. The caller is responsible for
@@ -106,6 +114,8 @@ async def stream_tool_loop(
 
     workspace_token = _workspace_ctx.set(workspace_id)
     user_token = _user_ctx.set(user_id)
+    session_token = _session_ctx.set(session_id)
+    agent_name_token = _agent_name_ctx.set(agent_name)
     try:
         for turn_idx in range(max_turns):
             assistant_blocks: list[dict] = []
@@ -233,6 +243,8 @@ async def stream_tool_loop(
 
             messages.append({"role": "user", "content": tool_results})
     finally:
+        _agent_name_ctx.reset(agent_name_token)
+        _session_ctx.reset(session_token)
         _user_ctx.reset(user_token)
         _workspace_ctx.reset(workspace_token)
 

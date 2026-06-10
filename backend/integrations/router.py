@@ -23,7 +23,7 @@ from uuid import UUID
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
@@ -79,6 +79,15 @@ def _safe_return_to(return_to: str | None) -> str | None:
     return return_to
 
 
+class IntegrationAccountItem(BaseModel):
+    account_key: str
+    account_email: str | None = None
+    account_display_name: str | None = None
+    scopes: list[str]
+    expires_at: str | None = None
+    connected_at: str | None = None
+
+
 class ProviderListItem(BaseModel):
     provider: str
     display_name: str
@@ -95,6 +104,7 @@ class ProviderListItem(BaseModel):
     account_display_name: str | None = None
     expires_at: str | None = None
     connected_at: str | None = None
+    accounts: list[IntegrationAccountItem] = Field(default_factory=list)
 
 
 class IntegrationsListResponse(BaseModel):
@@ -123,6 +133,11 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GOOGLE_OAUTH_CLIENT_SECRET",
             "GOOGLE_OAUTH_REDIRECT_URI",
         ],
+        "gmail": [
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REDIRECT_URI",
+        ],
         "notion": [
             "NOTION_OAUTH_CLIENT_ID",
             "NOTION_OAUTH_CLIENT_SECRET",
@@ -150,6 +165,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
         display_names = {
             "github": "GitHub",
             "google": "Google",
+            "gmail": "Gmail",
             "notion": "Notion",
             "slack": "Slack",
             "granola": "Granola",
@@ -200,6 +216,7 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
                 connected_at=conn["connected_at"] if conn else None,
+                accounts=conn["accounts"] if conn else [],
             )
         )
     return IntegrationsListResponse(providers=items)
@@ -277,6 +294,19 @@ async def integration_callback(
                 )
                 account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
+
+            # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+            # Capture the connecting user's Slack identity so the bot can map
+            # inbound mentions to this Stash user without relying on email.
+            # Best-effort: a failure here must not break the connection.
+            if provider == "slack":
+                from .slack import links
+
+                try:
+                    await links.capture_from_user_token(user_id, token.access_token)
+                except Exception:
+                    logger.warning("slack: failed to capture user link", exc_info=True)
+            # --- END Slack agent ---
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:
@@ -491,9 +521,7 @@ async def jira_list_projects(current_user: dict = Depends(get_current_user)):
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     out: list[JiraProjectSummary] = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        sites_resp = await client.get(
-            "https://api.atlassian.com/oauth/token/accessible-resources"
-        )
+        sites_resp = await client.get("https://api.atlassian.com/oauth/token/accessible-resources")
         sites_resp.raise_for_status()
         for site in sites_resp.json():
             cloud_id = site["id"]

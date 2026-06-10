@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { PageBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
 import {
@@ -46,6 +47,7 @@ import {
   type WorkspaceCartridge,
 } from "../../../../../../lib/api";
 import type { CommentThread, Page } from "../../../../../../lib/types";
+import { subscribePageEvents } from "../../../../../../lib/pageEvents";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -105,6 +107,7 @@ export default function StashPageView() {
   const [stashFallback, setStashFallback] = useState<
     { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
+  const [stashAccessDenied, setStashAccessDenied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
   // Save responses can arrive out of order if a fast save fires while a
@@ -141,7 +144,31 @@ export default function StashPageView() {
 
   useEffect(() => {
     setCommentAnchorTops({});
+    setExternalEdit(null);
   }, [workspaceId, pageId]);
+
+  // Live updates: when an agent or another user edits this page on the backend,
+  // refresh a passive view in place (HTML / read-only), or — when the user is
+  // actively editing — surface a non-destructive "reload" banner rather than
+  // clobber their buffer.
+  const [contentVersion, setContentVersion] = useState(0);
+  const [externalEdit, setExternalEdit] = useState<{ agentName: string | null } | null>(null);
+  const liveViewRef = useRef({ isHtml: false, htmlEditMode: false });
+  const loadRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    if (!user || stashSlug) return;
+    return subscribePageEvents(workspaceId, (evt) => {
+      if (evt.page_id !== pageId) return;
+      const { isHtml, htmlEditMode } = liveViewRef.current;
+      if (isHtml && !htmlEditMode) {
+        loadRef.current();
+        setContentVersion((v) => v + 1);
+      } else {
+        setExternalEdit({ agentName: evt.agent_name });
+      }
+    });
+  }, [workspaceId, pageId, user, stashSlug]);
 
   useBreadcrumbs(
     [
@@ -171,15 +198,20 @@ export default function StashPageView() {
         (it) => it.object_type === "page" && it.object_id === pageId,
       );
       if (!item) {
-        setError("This page isn't part of the linked Stash.");
-        return false;
+        setStashFallback(null);
+        setStashAccessDenied(true);
+        setError("");
+        return true;
       }
       setStashFallback({ stash: data.cartridge, item });
+      setStashAccessDenied(false);
       setError("");
       return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Stash not found");
-      return false;
+    } catch {
+      setStashFallback(null);
+      setStashAccessDenied(true);
+      setError("");
+      return true;
     }
   }, [stashSlug, pageId]);
 
@@ -207,6 +239,7 @@ export default function StashPageView() {
     // page they were legitimately shared.
     setPage(p);
     setStashFallback(null);
+    setStashAccessDenied(false);
     setError("");
     listObjectStashes(workspaceId, "page", pageId)
       .then(setContainingStashes)
@@ -441,6 +474,9 @@ export default function StashPageView() {
       />
     );
   }
+  if (stashAccessDenied) {
+    return <PageAccessDeniedScreen accountLabel={user?.email ?? user?.name ?? null} />;
+  }
   if (!user) {
     // Login bounce is already firing for the no-stash case.
     if (!stashSlug) return null;
@@ -456,6 +492,9 @@ export default function StashPageView() {
   if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
+  // Keep the live-update handler reading current view state without resubscribing.
+  liveViewRef.current = { isHtml, htmlEditMode };
+  loadRef.current = load;
   const updatedAt = page?.updated_at
     ? new Date(page.updated_at).toLocaleString(undefined, {
         month: "short",
@@ -467,6 +506,24 @@ export default function StashPageView() {
 
   const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
   const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
+
+  // Provenance: when an agent made the last content edit, link the page back to
+  // the chat session that produced it.
+  const metaItems: ReactNode[] = [];
+  if (updatedAt) metaItems.push(`Last edited ${updatedAt}`);
+  if (page?.last_edit_agent_name && page.last_edit_session_id) {
+    metaItems.push(
+      <Link
+        key="provenance"
+        href={`/workspaces/${workspaceId}/sessions?session=${encodeURIComponent(
+          page.last_edit_session_id,
+        )}`}
+        className="underline decoration-dotted underline-offset-2 hover:text-[var(--text)]"
+      >
+        Edited by {page.last_edit_agent_name}
+      </Link>,
+    );
+  }
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <FileViewerHeader
@@ -487,7 +544,7 @@ export default function StashPageView() {
             : undefined
         }
         tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
-        meta={updatedAt ? [`Last edited ${updatedAt}`] : undefined}
+        meta={metaItems.length ? metaItems : undefined}
         saveStatus={page && !isHtml ? saveStatus : null}
         rightExtras={
           isHtml ? (
@@ -577,6 +634,31 @@ export default function StashPageView() {
         className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]"
       >
         <main className="min-w-0">
+          {externalEdit && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-brand-600)]/40 bg-[var(--color-brand-600)]/10 px-4 py-2 text-[13px]">
+              <span>
+                This page was edited{" "}
+                {externalEdit.agentName ? `by ${externalEdit.agentName}` : "externally"} — reload to
+                see the latest.
+              </span>
+              <span className="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="font-medium text-[var(--color-brand-600)] hover:underline"
+                >
+                  Reload
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExternalEdit(null)}
+                  className="text-[var(--text-muted)] hover:text-foreground"
+                >
+                  Dismiss
+                </button>
+              </span>
+            </div>
+          )}
           {error && (
             <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
               {error}
@@ -588,7 +670,7 @@ export default function StashPageView() {
               isHtml ? (
                 <div ref={iframeBoxRef} className="relative">
                   <HtmlPageView
-                    key={page.id}
+                    key={`${page.id}:${contentVersion}`}
                     html={page.content_html || ""}
                     title={page.name}
                     layout={page.html_layout}
@@ -674,6 +756,69 @@ export default function StashPageView() {
         </div>
       </div>
     </div>
+  );
+}
+
+function PageAccessDeniedScreen({ accountLabel }: { accountLabel: string | null }) {
+  return (
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <header className="flex h-14 items-center border-b border-border bg-surface px-5">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[var(--color-brand-600)]">
+            <AccessPageGlyph />
+          </span>
+          <span className="font-display text-[18px] font-semibold text-foreground">Stash</span>
+        </div>
+      </header>
+      <main className="flex flex-1 items-center justify-center px-6 py-16">
+        <section className="w-full max-w-[520px] text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-brand-100 text-[var(--color-brand-700)] shadow-sm">
+            <AccessPageGlyph large />
+          </div>
+          <h1 className="mt-6 font-display text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+            You don&apos;t have access to this page
+          </h1>
+          <p className="mt-3 text-[14px] leading-6 text-dim">
+            If someone sent you this link, ask them to share the Stash with your
+            account.
+          </p>
+          {accountLabel ? (
+            <p className="mt-4 text-[13px] leading-5 text-muted">
+              You&apos;re signed in as <span className="font-medium text-foreground">{accountLabel}</span>.
+            </p>
+          ) : null}
+          <div className="mt-8 flex justify-center">
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--color-brand-600)] px-6 text-[14px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            >
+              Go to home
+            </Link>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function AccessPageGlyph({ large = false }: { large?: boolean }) {
+  const size = large ? 34 : 24;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h4" />
+    </svg>
   );
 }
 

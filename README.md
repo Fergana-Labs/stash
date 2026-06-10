@@ -6,9 +6,9 @@
 <h3 align="center">Knowledge bases for the agent era.</h3>
 
 <p align="center">
-  Built for the era where your agents write more than your team does. <br>
-  Sessions, files, and Stashes — a company brain humans and agents both <br>
-  write into, query semantically, and publish from.
+  The one place your agents connect to all your data — GitHub, Drive, Gmail, <br>
+  Notion, Slack and more — plus an agent-native Drive in Markdown and HTML <br>
+  where their sessions, files, and pages all land.
 </p>
 
 
@@ -57,7 +57,7 @@ With Stash, every agent on the repo has context about every session created from
 >
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
-**Stash is that product.** A company brain humans and agents both write into — not a stack of shell scripts wrapped around a folder of markdown.
+**Stash is that product.** The one place your agents connect to all your data, with an agent-native Drive they write it back into — not a stack of shell scripts wrapped around a folder of markdown.
 
 Built for —
 
@@ -157,6 +157,15 @@ For a public domain with Caddy and HTTPS:
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health
+```
+
+`docker-compose.prod.yml` pins the image versions it was tested with. To
+upgrade, pull the latest compose file and restart:
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml pull
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 ```
 
 Then install the CLI:

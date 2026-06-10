@@ -36,6 +36,23 @@ USER_SCOPES = [
     "users:read",
 ]
 
+# --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+# Bot scopes requested in the same install so we also receive a team bot
+# token. They power the conversational agent (mentions/DMs → reply), separate
+# from the user-token ingest above. To drop the Slack agent: remove these
+# scopes, the `scope=` param in authorize_url, and the install capture in
+# exchange_code (plus integrations/slack/{installs,client,agent}.py).
+BOT_SCOPES = [
+    "app_mentions:read",  # receive @mentions
+    "chat:write",  # post replies
+    "im:history",  # read DMs to the bot
+    "im:read",
+    "im:write",  # open/post DMs
+    "users:read",
+    "users:read.email",  # resolve Slack user → email → Stash account
+]
+# --- END Slack agent ---
+
 
 class SlackIntegration(Integration):
     name = "slack"
@@ -62,6 +79,8 @@ class SlackIntegration(Integration):
         params = {
             "client_id": self._client_id(),
             "user_scope": " ".join(self.scopes),
+            # Slack agent: `scope` requests bot scopes → install yields a bot token too.
+            "scope": " ".join(BOT_SCOPES),
             "redirect_uri": self._redirect_uri(),
             "state": state,
         }
@@ -82,6 +101,23 @@ class SlackIntegration(Integration):
             payload = resp.json()
         if not payload.get("ok"):
             raise RuntimeError(f"Slack OAuth error: {payload.get('error')}")
+
+        # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+        # The same install yields a team bot token at top-level `access_token`
+        # (present only because we request bot `scope`). Store it so the agent
+        # can post replies. Failure here must not block the user-token connect.
+        from . import installs
+
+        bot_token = payload.get("access_token")
+        team_id = (payload.get("team") or {}).get("id")
+        if bot_token and team_id:
+            await installs.store_install(
+                team_id=team_id,
+                bot_token=bot_token,
+                bot_user_id=payload.get("bot_user_id"),
+            )
+        # --- END Slack agent ---
+
         authed_user = payload.get("authed_user") or {}
         user_token = authed_user.get("access_token")
         if not user_token:
