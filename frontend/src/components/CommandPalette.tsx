@@ -130,7 +130,7 @@ export default function CommandPalette({
             kind: "file",
             label: f.name,
             href: f.linked_table_id
-              ? `/tables/${f.linked_table_id}?workspaceId=${workspaceId}`
+              ? `/tables/${f.linked_table_id}`
               : `/workspaces/${workspaceId}/f/${f.id}`,
             detail: f.content_type,
           });
@@ -304,8 +304,7 @@ function tableMatchesQuery(table: TableWithWorkspace, query: string): boolean {
 }
 
 function tableHref(table: TableWithWorkspace): string {
-  if (!table.workspace_id) return `/tables/${table.id}`;
-  return `/tables/${table.id}?workspaceId=${table.workspace_id}`;
+  return `/tables/${table.id}`;
 }
 
 function tableDetail(table: TableWithWorkspace): string {

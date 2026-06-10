@@ -374,10 +374,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       return `/workspaces/${workspaceId}/p/${item.id}`;
     }
     if (item.kind === "datatable") {
-      return `/tables/${item.id}?workspaceId=${workspaceId}`;
+      return `/tables/${item.id}`;
     }
     if (item.kind === "table" && item.linkedTableId) {
-      return `/tables/${item.linkedTableId}?workspaceId=${workspaceId}`;
+      return `/tables/${item.linkedTableId}`;
     }
     return `/workspaces/${workspaceId}/f/${item.id}`;
   }
@@ -425,7 +425,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     try {
       const table = await createTable(workspaceId, "Untitled table");
       refreshWorkspaceSidebar(workspaceId).catch(() => {});
-      router.push(`/tables/${table.id}?workspaceId=${workspaceId}`);
+      router.push(`/tables/${table.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create table");
     }

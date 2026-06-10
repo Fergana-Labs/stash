@@ -790,8 +790,7 @@ function searchTables(tables: TableWithWorkspace[], query: string): SearchResult
 }
 
 function tableSearchHref(table: TableWithWorkspace): string {
-  if (!table.workspace_id) return `/tables/${table.id}`;
-  return `/tables/${table.id}?workspaceId=${table.workspace_id}`;
+  return `/tables/${table.id}`;
 }
 
 function tableSearchDetail(table: TableWithWorkspace): string {

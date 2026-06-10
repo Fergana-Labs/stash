@@ -149,11 +149,11 @@ function FileViewerPageInner() {
       // Otherwise ingest and then redirect — user never sees this route for CSVs.
       if (isCsv(f.content_type)) {
         if (f.linked_table_id) {
-          router.replace(`/tables/${f.linked_table_id}?workspaceId=${workspaceId}`);
+          router.replace(`/tables/${f.linked_table_id}`);
         } else {
           try {
             const table = await ingestCsvFile(workspaceId, fileId);
-            router.replace(`/tables/${table.id}?workspaceId=${workspaceId}`);
+            router.replace(`/tables/${table.id}`);
           } catch (e) {
             setError(e instanceof Error ? e.message : "CSV ingest failed");
           }
@@ -164,14 +164,14 @@ function FileViewerPageInner() {
       // sheet's table; the others appear in the workspace sidebar.
       if (isXlsx(f.content_type, f.name)) {
         if (f.linked_table_id) {
-          router.replace(`/tables/${f.linked_table_id}?workspaceId=${workspaceId}`);
+          router.replace(`/tables/${f.linked_table_id}`);
         } else {
           try {
             const { tables } = await ingestXlsxFile(workspaceId, fileId);
             if (tables.length === 0) {
               setError("Workbook had no readable sheets");
             } else {
-              router.replace(`/tables/${tables[0].id}?workspaceId=${workspaceId}`);
+              router.replace(`/tables/${tables[0].id}`);
             }
           } catch (e) {
             setError(e instanceof Error ? e.message : "XLSX ingest failed");
