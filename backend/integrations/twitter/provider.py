@@ -53,10 +53,12 @@ class TwitterIntegration:
             # to a 400 with a message instead of an opaque 500.
             raise ValueError(f"Could not reach X to validate the token — try again ({e})")
         if resp.status_code == 429:
-            raise ValueError(
-                "X rate limit hit while validating the token — wait a few minutes and try again"
-            )
-        if resp.status_code != 200:
+            # A 429 means X authenticated the token and then rate-limited it
+            # (invalid tokens get 401). Accept it: the free tier allows one
+            # recent-search per 15 minutes, so rejecting here would lock out
+            # legitimate (re)connects for the whole window.
+            pass
+        elif resp.status_code != 200:
             raise ValueError(
                 f"X rejected this bearer token for recent search (HTTP {resp.status_code})"
             )

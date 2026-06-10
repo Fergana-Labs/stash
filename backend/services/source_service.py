@@ -29,6 +29,9 @@ import logging
 from urllib.parse import quote
 from uuid import UUID
 
+import httpx
+from fastapi import HTTPException
+
 from ..database import get_pool
 
 logger = logging.getLogger(__name__)
@@ -380,6 +383,10 @@ async def upsert_index_row(
     if (
         existing
         and existing["deleted_at"] is None
+        # name is part of the freshness check: some providers' names derive
+        # from mutable fields (a tweet's name embeds the author's username)
+        # without external_updated_at changing, and stale names would surface
+        # in list/search results forever.
         and existing["name"] == name
         and existing["external_ref"] == external_ref
         and existing["external_updated_at"] == external_updated_at
@@ -533,6 +540,29 @@ async def index_paths_for_refs(
     return {r["external_ref"]: (r["path"], r["name"]) for r in rows}
 
 
+def _scoped_search_error(source: dict, e: Exception) -> Exception:
+    """Map a scoped-search provider failure to an HTTP error the API can serve.
+    A provider 401 must not surface as OUR 401 (clients read that as Stash
+    session expiry), and provider HTTP errors must not escape as raw 500s."""
+    name = source["display_name"] or source["source_type"]
+    if isinstance(e, HTTPException) and e.status_code == 401:
+        return HTTPException(status_code=409, detail=e.detail)
+    if isinstance(e, httpx.HTTPStatusError):
+        status = e.response.status_code
+        if status == 429:
+            return HTTPException(
+                status_code=429,
+                detail=f"{name} rate limit reached — try again in a few minutes",
+            )
+        if status in (401, 403):
+            return HTTPException(
+                status_code=409,
+                detail=f"{name} rejected the connection — reconnect it in Settings",
+            )
+        return HTTPException(status_code=502, detail=f"{name} search failed (HTTP {status})")
+    return e
+
+
 async def _federated_search(
     source: dict, query: str, limit: int, *, swallow_errors: bool = True
 ) -> list[dict]:
@@ -557,9 +587,9 @@ async def _federated_search(
         else:
             return []
         hits = await fn(source, query, limit)
-    except Exception:
+    except Exception as e:
         if not swallow_errors:
-            raise
+            raise _scoped_search_error(source, e) from e
         logger.warning("federated search failed for source %s", source["id"], exc_info=True)
         return []
     return [
@@ -660,6 +690,7 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
                 # Sync bookkeeping for the per-integration page (the sidebar
                 # ignores these). Already on the row — no extra query.
                 "external_ref": s["external_ref"],
+                "sync_enabled": s["sync_enabled"],
                 "sync_status": s["sync_status"],
                 "sync_error": s["sync_error"],
                 "last_synced_at": s["last_synced_at"],

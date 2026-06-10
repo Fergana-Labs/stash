@@ -3,14 +3,14 @@
 Twitter stores recent-search result metadata in `twitter_posts`. Search runs
 live against X, and post bodies are fetched lazily when a result is opened.
 
-Revision ID: 0100
-Revises: 0099
+Revision ID: 0101
+Revises: 0100
 """
 
 from alembic import op
 
-revision = "0100"
-down_revision = "0099"
+revision = "0101"
+down_revision = "0100"
 branch_labels = None
 depends_on = None
 
@@ -42,4 +42,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The snowflake sync_enabled flip is deliberately not reverted: restoring
+    # true would re-introduce the queue starvation, and per-row prior state
+    # (default vs user-disabled) was never recorded.
     op.execute("DROP TABLE IF EXISTS twitter_posts")

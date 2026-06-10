@@ -302,9 +302,12 @@ class _FakeResponse:
 
     def raise_for_status(self):
         # Mirror real httpx so error-path tests can't silently pass as 200s.
+        # The response carries the status so _scoped_search_error can map it.
         if self.status_code >= 400:
             raise httpx.HTTPStatusError(
-                f"HTTP {self.status_code}", request=None, response=None
+                f"HTTP {self.status_code}",
+                request=None,
+                response=httpx.Response(self.status_code),
             )
 
     def json(self):
@@ -399,9 +402,28 @@ async def test_twitter_connect_distinguishes_bad_token_from_rate_limit(monkeypat
     with pytest.raises(ValueError, match="401"):
         await TwitterIntegration().connect_with_credentials({"bearer_token": "bad"})
 
+    # A 429 means X authenticated the token, then rate-limited it. Rejecting
+    # would lock out legitimate (re)connects for the whole free-tier window.
     monkeypatch.setattr(twitter_provider.httpx, "AsyncClient", _FakeClient({}, status_code=429))
-    with pytest.raises(ValueError, match="rate limit"):
-        await TwitterIntegration().connect_with_credentials({"bearer_token": "fine"})
+    token_set, _ = await TwitterIntegration().connect_with_credentials({"bearer_token": " fine "})
+    assert token_set.access_token == "fine"
+    assert token_set.refresh_token is None and token_set.expires_at is None
+
+
+@pytest.mark.asyncio
+async def test_search_twitter_raises_on_provider_error(monkeypatch):
+    """A non-200 from X recent search must raise (the scoped search path maps
+    it), never slip through to payload parsing and read as 'no matches'."""
+    from uuid import uuid4
+
+    async def fake_token(owner, provider):
+        return "tok"
+
+    monkeypatch.setattr(twitter_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", _FakeClient({}, status_code=429))
+    source = {"id": str(uuid4()), "workspace_id": str(uuid4()), "owner_user_id": str(uuid4())}
+    with pytest.raises(httpx.HTTPStatusError):
+        await twitter_indexer.search_twitter(source, "hello")
 
 
 @pytest.mark.asyncio
@@ -517,9 +539,12 @@ async def test_fetch_twitter_content_degrades_x_errors_to_readable_text(monkeypa
     assert "reconnect" in text
 
     # Refs only ever come from rows populated with X's own numeric ids; anything
-    # else is a broken invariant, not a fetchable post.
+    # else is a broken invariant, not a fetchable post. Unicode digits don't
+    # count — str.isdigit() alone would accept them.
     with pytest.raises(ValueError):
         await twitter_indexer.fetch_twitter_content(uuid4(), "../2/users/me")
+    with pytest.raises(ValueError):
+        await twitter_indexer.fetch_twitter_content(uuid4(), "٤٢")
 
 
 @pytest.mark.asyncio

@@ -297,6 +297,63 @@ async def test_unscoped_search_skips_scoped_only_federated_sources(client, monke
         await source_service.search_all(ws, owner_id, "hello", source=src["id"])
 
 
+@pytest.mark.asyncio
+async def test_scoped_search_maps_provider_errors_to_http_errors(client, monkeypatch):
+    """Scoped provider failures must become structured HTTP errors: an X 429
+    is a 429 (not an opaque 500), and a provider 401 must NOT surface as OUR
+    401 — clients read that as Stash session expiry."""
+    import httpx
+    from fastapi import HTTPException
+
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    async def rate_limited(source, query, limit):
+        raise httpx.HTTPStatusError("HTTP 429", request=None, response=httpx.Response(429))
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", rate_limited)
+    with pytest.raises(HTTPException) as exc:
+        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+    assert exc.value.status_code == 429
+
+    async def disconnected(source, query, limit):
+        raise HTTPException(status_code=401, detail="not connected to twitter")
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", disconnected)
+    with pytest.raises(HTTPException) as exc:
+        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_upsert_index_row_updates_on_name_change(client: AsyncClient):
+    """name is part of the freshness check: a tweet's name embeds the author's
+    mutable username, which can change without external_updated_at changing.
+    Dropping the comparison would leave stale names in list/search forever."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+    sid = UUID(src["id"])
+
+    kwargs = dict(
+        table="twitter_posts",
+        source_id=sid,
+        workspace_id=ws,
+        path="1",
+        kind="post",
+        external_ref="1",
+        external_updated_at=None,
+    )
+    assert await source_service.upsert_index_row(name="@old - 2026-06-08", **kwargs) == "inserted"
+    assert await source_service.upsert_index_row(name="@old - 2026-06-08", **kwargs) == "unchanged"
+    assert await source_service.upsert_index_row(name="@new - 2026-06-08", **kwargs) == "updated"
+    live = await source_service.list_documents(src)
+    assert [d["name"] for d in live] == ["@new - 2026-06-08"]
+
+
 # --- source-aware agent tools -----------------------------------------------
 
 

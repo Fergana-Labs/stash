@@ -420,7 +420,10 @@ function SourceRow({
     };
   }, [workspaceId, source.source]);
 
-  const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project";
+  const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project" || source.type === "twitter";
+  // Search-driven / queryable sources (twitter, snowflake) have no indexer;
+  // the backend rejects sync for them, so don't offer it.
+  const syncs = source.sync_enabled !== false;
   const ref = shortRef(source);
 
   return (
@@ -436,9 +439,9 @@ function SourceRow({
           {ref && <span className="font-mono text-[12px] font-normal text-muted">{ref}</span>}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
-          <SyncStatusMark syncStatus={source.sync_status} />
+          {syncs && <SyncStatusMark syncStatus={source.sync_status} />}
           <span>
-            {relativeTime(source.last_synced_at)}
+            {syncs ? relativeTime(source.last_synced_at) : "live"}
             {itemCount !== null && ` · ${itemCount} items`}
             {federated && " · federated"}
           </span>
@@ -451,9 +454,11 @@ function SourceRow({
         <button type="button" onClick={onOpen} className={rowButton()}>
           {open ? "Close" : "Browse"}
         </button>
-        <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
-          {busySync ? "Syncing..." : "Sync"}
-        </button>
+        {syncs && (
+          <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
+            {busySync ? "Syncing..." : "Sync"}
+          </button>
+        )}
         <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
           Remove
         </button>
@@ -694,6 +699,7 @@ function SearchablePanel({
 }) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SourceSearchHit[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [recent, setRecent] = useState<SourceEntry[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(null);
@@ -717,10 +723,14 @@ function SearchablePanel({
   async function search() {
     if (!query.trim()) return;
     setSearching(true);
+    setSearchError(null);
     try {
       setHits(await searchSource(workspaceId, query, source.source));
-    } catch {
-      setHits([]);
+    } catch (e) {
+      // A scoped provider failure (rate limit, disconnected connection) must
+      // never read as "No matches."
+      setHits(null);
+      setSearchError(e instanceof Error ? e.message : "Search failed");
     } finally {
       setSearching(false);
     }
@@ -746,6 +756,10 @@ function SearchablePanel({
           {searching ? "Searching..." : "Search"}
         </button>
       </form>
+
+      {searchError && (
+        <div className="mb-2 px-1.5 py-1 text-[12.5px] text-error">{searchError}</div>
+      )}
 
       {hits !== null && (
         <div className="mb-2">

@@ -135,7 +135,8 @@ async def search_twitter(source: dict, query: str, limit: int = SEARCH_LIMIT) ->
 async def fetch_twitter_content(owner_user_id: UUID, tweet_id: str) -> str:
     # Refs only ever come from twitter_posts rows we populated with X's own
     # ids; the digit check pins that invariant at the request boundary.
-    if not tweet_id.isdigit():
+    # isascii() too: str.isdigit() alone accepts Unicode digits like "٤٢".
+    if not (tweet_id.isascii() and tweet_id.isdigit()):
         raise ValueError(f"invalid tweet id {tweet_id!r}")
     try:
         token = await get_valid_token(owner_user_id, "twitter")
