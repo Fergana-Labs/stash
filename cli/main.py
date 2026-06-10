@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
 
 from . import __version__, telemetry
@@ -4704,6 +4705,11 @@ def _show_setup_complete_splash() -> None:
         )
     )
     console.print()
+
+    warning = shadow_install_warning()
+    if warning:
+        console.print(Text(warning, style="yellow"))
+        console.print()
 
 
 @app.command("welcome")
