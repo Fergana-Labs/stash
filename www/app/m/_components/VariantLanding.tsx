@@ -11,6 +11,7 @@ import {
 } from "../../_components/HomePage";
 import SiteHeader from "../../_components/SiteHeader";
 import type { VariantCopy } from "../variants";
+import CaptureLanding from "./CaptureLanding";
 
 // A complete landing page per message under test: real header and sections,
 // hero + "How it works" rewritten for the message. Every signup CTA leads to
@@ -25,6 +26,7 @@ export default function VariantLanding({
   const signupHref = `/m/${variant}/signup`;
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <CaptureLanding />
       <SiteHeader ctaHref={signupHref} />
       <VariantHero copy={copy} signupHref={signupHref} />
       <Logos />

@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 
 import CustomSelect from "../../_components/CustomSelect";
 import { submitVariantSignup, type VariantSignupState } from "../actions";
+import { LANDING_URL_KEY } from "./CaptureLanding";
 
 const INITIAL_STATE: VariantSignupState = { status: "idle" };
 
@@ -42,10 +43,14 @@ export default function SignupForm({
   const [agentUsage, setAgentUsage] = useState("");
   const [referralSource, setReferralSource] = useState("");
 
-  // The referrer is the variant page URL, which still carries the ad's
-  // utm params — that's the click-source trail for the lead email.
+  // The landing page recorded its full URL (with the ad's utm params) in
+  // sessionStorage — document.referrer is blank after Next's client-side
+  // navigation. Falls back to the referrer for direct hits on this page.
   function submitWithRef(formData: FormData) {
-    formData.set("ref", document.referrer);
+    formData.set(
+      "ref",
+      sessionStorage.getItem(LANDING_URL_KEY) || document.referrer,
+    );
     formAction(formData);
   }
 
