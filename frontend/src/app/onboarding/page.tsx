@@ -144,7 +144,7 @@ function OnboardingInner() {
     track("onboarding.collab_path_chosen", {});
     const content = generateCollabIntroMarkdown(user?.display_name || user?.name || "");
     const page = await createPage(workspaceId, "Welcome to your Drive", undefined, content);
-    router.push(`/workspaces/${workspaceId}/p/${page.id}`);
+    router.push(`/p/${page.id}`);
   }, [workspaceId, user, router]);
 
   if (loading || !apiKey) {

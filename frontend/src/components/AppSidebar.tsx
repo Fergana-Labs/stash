@@ -23,7 +23,7 @@ import {
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 import AddSourceModal from "./integrations/AddSourceModal";
-import { labelForProvider, providerForSourceType } from "./integrations/connectors";
+import { connectorIcon, labelForProvider, providerForSourceType } from "./integrations/connectors";
 import {
   ActivityIcon,
   FileIcon,
@@ -221,10 +221,15 @@ export default function AppSidebar({
   const sourceRows = useMemo<SourceRow[]>(() => {
     if (!activeWorkspaceKey) return [];
     const ws = activeWorkspaceKey;
-    const filesActive = !!pathname.match(
-      new RegExp(`^/workspaces/${ws}/(files|folders|p|f)(?:/|$)`),
-    );
-    const sessionsActive = pathname.startsWith(`/workspaces/${ws}/sessions`);
+    // Canonical item paths (/p, /f, /sessions) carry no workspace; they
+    // count as active because the sidebar only renders them for the
+    // workspace the open item resolved to.
+    const filesActive =
+      !!pathname.match(new RegExp(`^/workspaces/${ws}/(files|folders)(?:/|$)`)) ||
+      !!pathname.match(/^\/(p|f)\//);
+    const sessionsActive =
+      pathname.startsWith(`/workspaces/${ws}/sessions`) ||
+      pathname.startsWith("/sessions/");
     const native: SourceRow[] = [
       {
         key: "sessions",
@@ -250,11 +255,18 @@ export default function AppSidebar({
       const provider = providerForSourceType[s.type] ?? s.type;
       if (seen.has(provider)) continue;
       seen.add(provider);
+      const logo = connectorIcon(provider);
       connected.push({
         key: provider,
         href: `/workspaces/${ws}/integrations/${provider}`,
         label: labelForProvider(provider),
-        icon: <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />,
+        icon: logo ? (
+          <span className="flex h-4 w-4 items-center justify-center [&_img]:h-4 [&_img]:w-4 [&_svg]:h-4 [&_svg]:w-4">
+            {logo}
+          </span>
+        ) : (
+          <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />
+        ),
         active: pathname.startsWith(`/workspaces/${ws}/integrations/${provider}`),
       });
     }

@@ -4,7 +4,6 @@ This is the lightweight, structured-properties log. Separate from history_events
 which is the agent-transcript log (content-heavy, embedded).
 """
 
-import json
 import logging
 from collections.abc import Iterable
 from uuid import UUID
@@ -14,8 +13,9 @@ from ..database import get_pool
 logger = logging.getLogger(__name__)
 
 # Surfaces an event can come from. 'system' is reserved for backend-emitted
-# rows (e.g. a future signup hook); for now only 'web' and 'cli' are accepted.
-ALLOWED_SURFACES = {"web", "cli", "system"}
+# rows (e.g. a future signup hook); 'marketing' is the anonymous www
+# landing-page beacon (routers/marketing.py). Clients may send 'web'/'cli'.
+ALLOWED_SURFACES = {"web", "cli", "system", "marketing"}
 
 # Closed set of event names we accept from clients. Adding a new event means
 # adding a row here AND wiring the call site — keeps the dashboard honest.
@@ -39,6 +39,9 @@ ALLOWED_EVENT_NAMES = {
     "auth.signed_up",
     # CLI commands (one event per invocation; properties.command is the sub-axis)
     "cli.command_invoked",
+    # Messaging-test landing pages (anonymous; properties.variant is the axis)
+    "marketing.view",
+    "marketing.signup",
 }
 
 
@@ -50,6 +53,8 @@ async def record_event(
     properties: dict | None = None,
     session_anon: str | None = None,
 ) -> None:
+    # The pool's jsonb codec (database.py) serializes dicts itself — passing a
+    # pre-dumped string here double-encodes and breaks properties->> queries.
     pool = get_pool()
     await pool.execute(
         """
@@ -59,7 +64,7 @@ async def record_event(
         user_id,
         surface,
         event_name,
-        json.dumps(properties or {}),
+        properties or {},
         session_anon,
     )
 
@@ -71,7 +76,7 @@ async def record_events_batch(rows: Iterable[dict]) -> int:
             r.get("user_id"),
             r["surface"],
             r["event_name"],
-            json.dumps(r.get("properties") or {}),
+            r.get("properties") or {},
             r.get("session_anon"),
         )
         for r in rows

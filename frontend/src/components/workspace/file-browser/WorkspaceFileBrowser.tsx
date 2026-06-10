@@ -371,15 +371,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       return `/workspaces/${workspaceId}/folders/${item.id}`;
     }
     if (item.kind === "page" || item.kind === "html") {
-      return `/workspaces/${workspaceId}/p/${item.id}`;
+      return `/p/${item.id}`;
     }
     if (item.kind === "datatable") {
-      return `/tables/${item.id}?workspaceId=${workspaceId}`;
+      return `/tables/${item.id}`;
     }
     if (item.kind === "table" && item.linkedTableId) {
-      return `/tables/${item.linkedTableId}?workspaceId=${workspaceId}`;
+      return `/tables/${item.linkedTableId}`;
     }
-    return `/workspaces/${workspaceId}/f/${item.id}`;
+    return `/f/${item.id}`;
   }
 
   function navigateTo(item: GridItem, options?: NavigateOptions) {
@@ -400,7 +400,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       try {
         const result = await uploadFileOrPage(workspaceId, file, folderId ?? undefined);
         if (result.kind === "page") {
-          router.push(`/workspaces/${workspaceId}/p/${result.page.id}`);
+          router.push(`/p/${result.page.id}`);
           return;
         }
         await refreshAll();
@@ -415,7 +415,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     try {
       const p = await createPage(workspaceId, "Untitled", folderId ?? undefined);
       refreshWorkspaceSidebar(workspaceId).catch(() => {});
-      router.push(`/workspaces/${workspaceId}/p/${p.id}`);
+      router.push(`/p/${p.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create page");
     }
@@ -425,7 +425,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     try {
       const table = await createTable(workspaceId, "Untitled table");
       refreshWorkspaceSidebar(workspaceId).catch(() => {});
-      router.push(`/tables/${table.id}?workspaceId=${workspaceId}`);
+      router.push(`/tables/${table.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create table");
     }

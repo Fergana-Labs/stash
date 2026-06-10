@@ -301,7 +301,6 @@ function CartridgePageBody({
             <PrimaryItemOpenLink
               kind={primary.kind}
               item={primary.item}
-              workspaceId={stash.workspace_id}
               stashSlug={stash.slug}
             />
             {primary.kind === "file" ? (
@@ -449,23 +448,21 @@ function primaryItemForCartridge(data: PublicCartridgeDetail): PrimaryItem | nul
 function PrimaryItemOpenLink({
   kind,
   item,
-  workspaceId,
   stashSlug,
 }: {
   kind: "file" | "page" | "session";
   item: PublicCartridgeItem;
-  workspaceId: string;
   stashSlug: string;
 }) {
   let href: string | null = null;
   if (kind === "file") {
-    href = `/workspaces/${workspaceId}/f/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
+    href = `/f/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
   } else if (kind === "page") {
-    href = `/workspaces/${workspaceId}/p/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
+    href = `/p/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
   } else {
     const session = (item.inline as { session?: { session_id?: string } }).session;
     if (session?.session_id) {
-      href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}?stash=${encodeURIComponent(stashSlug)}`;
+      href = `/sessions/${encodeURIComponent(session.session_id)}?stash=${encodeURIComponent(stashSlug)}`;
     }
   }
   if (!href) return null;
@@ -823,10 +820,10 @@ function hrefForItem(
 ): string | null {
   const stash = encodeURIComponent(stashSlug);
   if (item.object_type === "file") {
-    return `/workspaces/${workspaceId}/f/${item.object_id}?stash=${stash}`;
+    return `/f/${item.object_id}?stash=${stash}`;
   }
   if (item.object_type === "page") {
-    return `/workspaces/${workspaceId}/p/${item.object_id}?stash=${stash}`;
+    return `/p/${item.object_id}?stash=${stash}`;
   }
   if (item.object_type === "folder") {
     return `/workspaces/${workspaceId}/folders/${item.object_id}?stash=${stash}`;
@@ -836,10 +833,10 @@ function hrefForItem(
     // row UUID. The string lives in inline.session.session_id.
     const sessionRow = (item.inline as { session?: { session_id?: string } }).session;
     if (!sessionRow?.session_id) return null;
-    return `/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionRow.session_id)}?stash=${stash}`;
+    return `/sessions/${encodeURIComponent(sessionRow.session_id)}?stash=${stash}`;
   }
   if (item.object_type === "table") {
-    return `/tables/${item.object_id}?stash=${stash}&workspaceId=${workspaceId}`;
+    return `/tables/${item.object_id}?stash=${stash}`;
   }
   return null;
 }

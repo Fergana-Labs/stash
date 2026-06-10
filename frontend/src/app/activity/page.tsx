@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import AppShell from "../../components/AppShell";
 import {
   ActivitySkeleton,
@@ -17,27 +17,16 @@ import {
 } from "../../components/StashIcons";
 import ContributorActivityTimeline from "../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../components/viz/EmbeddingSpaceExplorer";
-import KnowledgeDensityMap from "../../components/viz/KnowledgeDensityMap";
 import { useAuth } from "../../hooks/useAuth";
 import {
   getActivityTimeline,
   getEmbeddingProjection,
-  getKnowledgeDensity,
-  getWorkspace,
-  getWorkspaceOverview,
+  getMeOverview,
   listActivity,
-  listMyWorkspaces,
-  listWorkspaceActivity,
-  listWorkspaceSources,
   type ActivityEvent,
-  type WorkspaceOverview,
-  type WorkspaceSource,
+  type MeOverview,
 } from "../../lib/api";
-import type {
-  ActivityTimeline,
-  EmbeddingProjection,
-  KnowledgeDensity,
-} from "../../lib/types";
+import type { ActivityTimeline, EmbeddingProjection } from "../../lib/types";
 
 type FilterKey = "all" | "sessions" | "pages" | "cartridges";
 
@@ -58,10 +47,6 @@ const AVATAR_CLASSES = [
   "av-lime",
 ];
 
-// Native handles ("files"/"sessions") are always present — the Sources vital
-// counts the connected integrations the brain draws from, not these.
-const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
-
 function avatarClassFor(name: string): string {
   let h = 5381;
   for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
@@ -81,27 +66,14 @@ function relativeTime(iso: string): string {
 }
 
 export default function ActivityPage() {
-  return (
-    <Suspense fallback={<BasicPageSkeleton />}>
-      <ActivityPageInner />
-    </Suspense>
-  );
-}
-
-function ActivityPageInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const workspaceId = searchParams.get("workspace");
   const { user, loading, logout } = useAuth();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [workspaceName, setWorkspaceName] = useState("");
   const [fetching, setFetching] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
-  const [density, setDensity] = useState<KnowledgeDensity | null>(null);
-  const [overview, setOverview] = useState<WorkspaceOverview | null>(null);
-  const [sources, setSources] = useState<WorkspaceSource[]>([]);
+  const [overview, setOverview] = useState<MeOverview | null>(null);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
@@ -109,93 +81,51 @@ function ActivityPageInner() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    const eventsPromise = workspaceId
-      ? listWorkspaceActivity(workspaceId, 200)
-      : listActivity(200);
-    const workspacePromise = workspaceId ? getWorkspace(workspaceId) : null;
-
-    Promise.all([eventsPromise, workspacePromise])
-      .then(([nextEvents, workspace]) => {
-        if (cancelled) return;
-        setEvents(nextEvents);
-        if (workspace) setWorkspaceName(workspace.name);
+    listActivity(200)
+      .then((nextEvents) => {
+        if (!cancelled) setEvents(nextEvents);
       })
       .catch(() => {})
       .finally(() => {
         if (!cancelled) setFetching(false);
       });
-
     return () => {
       cancelled = true;
     };
-  }, [user, workspaceId]);
+  }, [user]);
 
-  // The brain's vitals + visualizations. All workspace-scoped, so for the
-  // global view we resolve the user's own workspace once and fan out.
+  // The brain's vitals + visualizations. All span the user's own content plus
+  // everything shared with them (the /me/* aggregates, called without a
+  // workspace, include readable shared rows).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     setInsightsLoaded(false);
-    (async () => {
-      const wsId = workspaceId || (await listMyWorkspaces()).workspaces[0]?.id;
-      if (!wsId) {
-        if (!cancelled) setInsightsLoaded(true);
-        return;
-      }
-      const [t, p, d, o, s] = await Promise.allSettled([
-        getActivityTimeline(30, "day", wsId),
-        getEmbeddingProjection(500, undefined, wsId),
-        getKnowledgeDensity(12, wsId),
-        getWorkspaceOverview(wsId),
-        listWorkspaceSources(wsId),
-      ]);
-      if (cancelled) return;
-      if (t.status === "fulfilled") setTimeline(t.value);
-      if (p.status === "fulfilled") setProjection(p.value);
-      if (d.status === "fulfilled") setDensity(d.value);
-      if (o.status === "fulfilled") setOverview(o.value);
-      if (s.status === "fulfilled") setSources(s.value);
-      setInsightsLoaded(true);
-    })().catch(() => {
-      if (!cancelled) setInsightsLoaded(true);
-    });
+    Promise.allSettled([
+      getActivityTimeline(30, "day"),
+      getEmbeddingProjection(500),
+      getMeOverview(),
+    ])
+      .then(([t, p, o]) => {
+        if (cancelled) return;
+        if (t.status === "fulfilled") setTimeline(t.value);
+        if (p.status === "fulfilled") setProjection(p.value);
+        if (o.status === "fulfilled") setOverview(o.value);
+        setInsightsLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [user, workspaceId]);
+  }, [user]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const stats = useMemo(() => {
-    const dayMs = 24 * 60 * 60 * 1000;
-    const since = nowMs - dayMs;
-    const recent = events.filter((e) => new Date(e.ts).getTime() >= since);
-    return {
-      recent24h: recent.length,
-      sessions24h: recent.filter((e) => e.kind === "session.uploaded").length,
-      pages24h: recent.filter((e) => e.kind === "page.updated").length,
-      files24h: recent.filter((e) => e.kind === "file.uploaded").length,
-      total: events.length,
-    };
+  const recent24h = useMemo(() => {
+    const since = nowMs - 24 * 60 * 60 * 1000;
+    return events.filter((e) => new Date(e.ts).getTime() >= since).length;
   }, [events, nowMs]);
-
-  // Connected integrations the brain learns from, plus their freshness.
-  const sourceVitals = useMemo(() => {
-    const connected = sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
-    const syncing = connected.filter((s) => s.sync_status === "syncing").length;
-    const syncedAt = connected
-      .map((s) => s.last_synced_at)
-      .filter((v): v is string => !!v)
-      .sort()
-      .at(-1);
-    let hint = "—";
-    if (syncing > 0) hint = `${syncing} syncing`;
-    else if (syncedAt) hint = `synced ${relativeTime(syncedAt)}`;
-    else if (connected.length > 0) hint = "not synced yet";
-    return { count: connected.length, hint };
-  }, [sources]);
 
   const knowledgePoints = projection?.stats.total_embeddings ?? 0;
 
@@ -222,17 +152,15 @@ function ActivityPageInner() {
     );
   }
 
-  const title = workspaceId ? workspaceName || "Your brain" : "Your brain";
-
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
         {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          {title}
+          Your brain
         </h1>
         <p className="mt-1 text-[13.5px] text-muted">
-          {`${knowledgePoints.toLocaleString()} things learned across ${sourceVitals.count} connected source${sourceVitals.count === 1 ? "" : "s"} · ${stats.recent24h} new in the last 24 hours.`}
+          {`${knowledgePoints.toLocaleString()} things learned across your own and shared knowledge · ${recent24h} new in the last 24 hours.`}
         </p>
 
         {/* Brain map — the knowledge the brain holds, laid out in space. The
@@ -251,22 +179,13 @@ function ActivityPageInner() {
         </VizCard>
 
         {/* Vitals — the brain's current size and pulse. */}
-        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
           <VitalCard label="Knowledge points" value={knowledgePoints} tint="var(--color-brand-600)" />
-          <VitalCard label="Pages" value={overview?.files.pages.length ?? 0} tint="var(--color-human)" />
-          <VitalCard label="Files" value={overview?.files.files.length ?? 0} tint="#16A34A" />
-          <VitalCard label="Sessions" value={overview?.sessions.length ?? 0} tint="var(--color-agent)" />
-          <VitalCard label="Sources" value={sourceVitals.count} hint={sourceVitals.hint} tint="#7C3AED" />
-          <VitalCard label="Learned today" value={stats.recent24h} tint="var(--text-muted)" />
+          <VitalCard label="Pages" value={overview?.pages ?? 0} tint="var(--color-human)" />
+          <VitalCard label="Files" value={overview?.files ?? 0} tint="#16A34A" />
+          <VitalCard label="Sessions" value={overview?.sessions ?? 0} tint="var(--color-agent)" />
+          <VitalCard label="Learned today" value={recent24h} tint="var(--text-muted)" />
         </div>
-
-        {/* What the brain knows — topic clusters. Hidden when there's nothing
-            to show, since it's an optional lens. */}
-        {density && density.clusters.length > 0 && (
-          <VizCard label="What your brain knows" className="mt-7">
-            <KnowledgeDensityMap data={density} />
-          </VizCard>
-        )}
 
         {/* Human / agent commits over time. (Decorative.) */}
         <VizCard label="Human / agent commits — last 30 days" className="mt-5" scroll>
@@ -317,7 +236,7 @@ function ActivityPageInner() {
               <FeedCard
                 key={`${event.kind}-${event.target_id}-${i}`}
                 event={event}
-                showWorkspace={!workspaceId}
+                showWorkspace
               />
             ))
           )}
@@ -448,11 +367,11 @@ function tagFor(kind: string): { kind: "agent" | "human"; label: string } | null
 function hrefFor(event: ActivityEvent): string | null {
   if (!event.workspace_id) return null;
   if (event.kind === "session.uploaded")
-    return `/workspaces/${event.workspace_id}/sessions/${encodeURIComponent(event.target_id)}`;
+    return `/sessions/${encodeURIComponent(event.target_id)}`;
   if (event.kind === "page.updated")
-    return `/workspaces/${event.workspace_id}/p/${event.target_id}`;
+    return `/p/${event.target_id}`;
   if (event.kind === "file.uploaded")
-    return `/workspaces/${event.workspace_id}/f/${event.target_id}`;
+    return `/f/${event.target_id}`;
   return null;
 }
 
