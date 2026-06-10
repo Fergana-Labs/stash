@@ -49,7 +49,6 @@ DEFAULT_SYNC_INTERVAL_S = {
     "jira_project": 1800,
     "asana_project": 1800,
     "gong_calls": 21600,
-    "twitter": 3600,
 }
 
 # Which capability each connected source type exposes.
@@ -400,6 +399,20 @@ async def soft_delete_missing(table: str, source_id: UUID, present_paths: list[s
         present_paths,
     )
     return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+
+
+async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) -> int:
+    """Hard-delete cache rows not refreshed recently. Search-backed caches
+    (twitter) grow per-query and have no re-sync pass to reconcile them, so age
+    is the only retention signal; a pruned post simply reappears the next time
+    a search returns it. Returns the number removed."""
+    result = await get_pool().execute(
+        f"DELETE FROM {table} "
+        f"WHERE source_id = $1 AND updated_at < now() - make_interval(days => $2)",
+        source_id,
+        max_age_days,
+    )
+    return int(result.split()[-1]) if result.startswith("DELETE") else 0
 
 
 async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> list[dict]:

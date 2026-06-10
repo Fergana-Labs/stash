@@ -101,9 +101,10 @@ async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
 
 
 async def _resolve_twitter_source(user_id) -> tuple[str, str]:
-    """Twitter source external_ref is a sentinel; search terms are supplied live
-    through search_source, so one source can answer arbitrary recent-search
-    queries."""
+    """Twitter source external_ref is always the sentinel; search terms are
+    supplied live through search_source, so one source answers arbitrary
+    recent-search queries. Caller-supplied refs are ignored — there are no
+    saved-query sources (they would burn the owner's X quota on a schedule)."""
     from ..integrations.twitter.indexer import DEFAULT_SOURCE_REF
 
     await integration_storage.get_valid_token(user_id, "twitter")
@@ -263,7 +264,7 @@ async def add_source(
     elif body.source_type == "snowflake" and not external_ref:
         external_ref, resolved_name = await _resolve_snowflake_source(current_user["id"])
         display_name = display_name or resolved_name
-    elif body.source_type == "twitter" and not external_ref:
+    elif body.source_type == "twitter":
         external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
         display_name = display_name or resolved_name
 

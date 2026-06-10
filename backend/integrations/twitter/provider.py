@@ -12,7 +12,10 @@ import httpx
 from ..base import AccountInfo, CredentialField, TokenSet
 
 API_BASE = "https://api.x.com"
-VALIDATION_URL = f"{API_BASE}/2/users/by/username/XDevelopers"
+# Validate against recent search — the capability the source actually uses.
+# A token can pass cheaper endpoints (user lookup) yet lack search access on
+# some X plans, which would connect fine and then silently return no results.
+VALIDATION_URL = f"{API_BASE}/2/tweets/search/recent"
 
 
 class TwitterIntegration:
@@ -39,9 +42,19 @@ class TwitterIntegration:
             raise ValueError("Bearer token is required")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(VALIDATION_URL, headers={"Authorization": f"Bearer {token}"})
+            resp = await client.get(
+                VALIDATION_URL,
+                params={"query": "hello", "max_results": 10},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        if resp.status_code == 429:
+            raise ValueError(
+                "X rate limit hit while validating the token — wait a few minutes and try again"
+            )
         if resp.status_code != 200:
-            raise ValueError(f"X rejected this bearer token (HTTP {resp.status_code})")
+            raise ValueError(
+                f"X rejected this bearer token for recent search (HTTP {resp.status_code})"
+            )
 
         token_set = TokenSet(
             access_token=token,
@@ -50,6 +63,3 @@ class TwitterIntegration:
             scopes=[],
         )
         return token_set, AccountInfo(email=None, display_name="X API")
-
-    async def revoke(self, access_token: str) -> None:
-        return None

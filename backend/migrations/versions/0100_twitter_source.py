@@ -3,14 +3,14 @@
 Twitter stores recent-search result metadata in `twitter_posts`. Search runs
 live against X, and post bodies are fetched lazily when a result is opened.
 
-Revision ID: 0095
-Revises: 0094
+Revision ID: 0100
+Revises: 0099
 """
 
 from alembic import op
 
-revision = "0095"
-down_revision = "0094"
+revision = "0100"
+down_revision = "0099"
 branch_labels = None
 depends_on = None
 
@@ -31,11 +31,9 @@ _BASE_COLUMNS = """
 
 
 def upgrade() -> None:
+    # No extra (source_id, path) index: the UNIQUE constraint already provides
+    # the btree the upsert's ON CONFLICT and lookups use.
     op.execute(f"CREATE TABLE twitter_posts ({_BASE_COLUMNS})")
-    op.execute(
-        "CREATE INDEX twitter_posts_source_idx "
-        "ON twitter_posts (source_id, path) WHERE deleted_at IS NULL"
-    )
 
 
 def downgrade() -> None:
