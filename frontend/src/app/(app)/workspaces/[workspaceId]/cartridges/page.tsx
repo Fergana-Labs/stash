@@ -8,7 +8,10 @@ import {
   StashesGridSkeleton,
 } from "../../../../../components/SkeletonStates";
 import { PinIcon, StashIcon } from "../../../../../components/StashIcons";
-import CartridgeCard from "../../../../../components/cartridge/CartridgeCard";
+import CartridgeCard, {
+  VIS_COLOR,
+  VisibilityBadge,
+} from "../../../../../components/cartridge/CartridgeCard";
 import ForkCartridgeCardButton from "../../../../../components/cartridge/ForkCartridgeCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useShareModal } from "../../../../../lib/shareModalContext";
@@ -28,30 +31,22 @@ import {
 import { usePins } from "../../../../../lib/pins";
 import { stashSlugFromInput } from "../../../../../lib/cartridgeLinks";
 
-// Visibility is one axis (who can see a Cartridge). "External" is a different
-// axis entirely — where it came from — so it's a section below, not a filter.
-type Visibility = "all" | "private" | "shared" | "public";
 type ViewKey = "grid" | "list";
 // The primary axis: which set of Cartridges you're looking at. Yours and Shared
-// share the visibility filter / view toggle / quick-access; Discover is its own
-// public-library surface.
+// share the view toggle / quick-access; Discover is its own public-library
+// surface. Each row carries its own Private/Shared/Public badge — there's no
+// visibility filter to learn.
 type Tab = "yours" | "shared" | "discover";
 
 const VIEW_STORAGE_KEY = "stash_stashes_view";
 
-const VISIBILITIES: { key: Visibility; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "private", label: "Private" },
-  { key: "shared", label: "Shared" },
-  { key: "public", label: "Public" },
-];
-
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
-const VIS_COLOR: Record<string, string> = {
-  public: "#22C55E",
-  shared: "var(--color-brand-500)",
-  private: "#9CA3AF",
+const TAB_COPY: Record<Tab, string> = {
+  yours:
+    "Cartridges you created in this workspace. Share them with people or publish them to the public library.",
+  shared: "Cartridges other people created and shared with you, plus pending invites.",
+  discover: "Public cartridges from the community — fork one into your workspace.",
 };
 
 export default function WorkspaceStashesPage() {
@@ -65,7 +60,6 @@ export default function WorkspaceStashesPage() {
   const [invites, setInvites] = useState<CartridgeInvite[]>([]);
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("yours");
-  const [visibility, setVisibility] = useState<Visibility>("all");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -129,22 +123,11 @@ export default function WorkspaceStashesPage() {
     }
   }
 
-  // Visibility filter applies across both axes; the section split (yours vs
-  // forked) is the origin axis, kept independent of it.
   const visible = useMemo(() => {
     if (!cartridges) return [];
-    const ordered = [...cartridges].sort(
+    return [...cartridges].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
-    if (visibility === "all") return ordered;
-    return ordered.filter((s) => displayVisibility(s.access, s.share_count) === visibility);
-  }, [cartridges, visibility]);
-
-  const counts = useMemo(() => {
-    const list = cartridges ?? [];
-    const by = (v: Visibility) =>
-      list.filter((s) => displayVisibility(s.access, s.share_count) === v).length;
-    return { all: list.length, private: by("private"), shared: by("shared"), public: by("public") };
   }, [cartridges]);
 
   const native = useMemo(() => visible.filter((s) => !s.is_external), [visible]);
@@ -192,14 +175,9 @@ export default function WorkspaceStashesPage() {
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
-              Cartridges
-            </h1>
-            <p className="mt-0.5 text-[12.5px] text-muted">
-              Your knowledge bundles — yours, shared with you, and the public library.
-            </p>
-          </div>
+          <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
+            Cartridges
+          </h1>
           <button
             type="button"
             onClick={() => shareModal.open({ workspaceId })}
@@ -224,9 +202,10 @@ export default function WorkspaceStashesPage() {
             (cartridges ?? []).filter((s) => s.is_external).length + invites.length
           }
         />
+        <p className="mt-2 text-[12.5px] text-muted">{TAB_COPY[tab]}</p>
 
-        {/* Quick-access + the visibility/view toolbar belong to your held
-            Cartridges, so they sit under Yours and Shared, not Discover. */}
+        {/* Quick-access + the view toolbar belong to your held Cartridges, so
+            they sit under Yours and Shared, not Discover. */}
         {tab !== "discover" && (pinnedStashes.length > 0 || recentStashes.length > 0) && (
           <CartridgeQuickAccess
             pinned={pinnedStashes}
@@ -237,12 +216,7 @@ export default function WorkspaceStashesPage() {
         )}
 
         {tab !== "discover" && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-            <VisibilityFilter
-              visibility={visibility}
-              counts={counts}
-              onChange={setVisibility}
-            />
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <CartridgeViewToggle view={view} onChange={setViewPersisted} />
           </div>
         )}
@@ -261,9 +235,7 @@ export default function WorkspaceStashesPage() {
                 embedded
               />
             ) : (
-              <EmptyHint>
-                {cartridges.length === 0 ? "No cartridges yet." : "None match this visibility."}
-              </EmptyHint>
+              <EmptyHint>No cartridges yet.</EmptyHint>
             )}
           </div>
         )}
@@ -271,9 +243,9 @@ export default function WorkspaceStashesPage() {
         {tab === "shared" && (
           <div className="mt-4">
             {invites.length > 0 && (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="overflow-hidden rounded-xl border border-border bg-surface">
                 {invites.map((invite) => (
-                  <SharedInviteCard
+                  <SharedInviteRow
                     key={invite.id}
                     invite={invite}
                     busy={busyInviteId === invite.id}
@@ -295,13 +267,7 @@ export default function WorkspaceStashesPage() {
                 className={invites.length > 0 ? "mt-3" : undefined}
               />
             ) : (
-              invites.length === 0 && (
-                <EmptyHint>
-                  {visibility === "all"
-                    ? "Nothing shared with you yet."
-                    : "None match this visibility."}
-                </EmptyHint>
-              )
+              invites.length === 0 && <EmptyHint>Nothing shared with you yet.</EmptyHint>
             )}
             <ExternalCartridgeLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
           </div>
@@ -408,51 +374,6 @@ function ExternalCartridgeLinkForm({
   );
 }
 
-// The single visibility axis as a segmented control. One pill per level plus
-// "All", each with its live count — replaces the old flat filter row that
-// mixed visibility with the unrelated "External" origin flag.
-function VisibilityFilter({
-  visibility,
-  counts,
-  onChange,
-}: {
-  visibility: Visibility;
-  counts: Record<Visibility, number>;
-  onChange: (next: Visibility) => void;
-}) {
-  return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-base p-[3px]">
-      {VISIBILITIES.map((v) => {
-        const active = visibility === v.key;
-        return (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => onChange(v.key)}
-            className={
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-[5px] text-[12.5px] " +
-              (active
-                ? "bg-raised font-semibold text-foreground"
-                : "text-muted hover:text-foreground")
-            }
-          >
-            {v.key !== "all" && (
-              <span
-                className="inline-block h-[7px] w-[7px] rounded-full"
-                style={{ background: VIS_COLOR[v.key] }}
-              />
-            )}
-            {v.label}
-            <span className="sys-label" style={{ fontSize: 10 }}>
-              {counts[v.key]}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function PlusGlyph() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -514,10 +435,10 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
   );
 }
 
-// A pending invite rendered as a grid peer of the Cartridge cards. View opens
-// the Cartridge; Dismiss removes the invite (the access stays — it can still be
-// reached by link). Mirrors the dismiss logic in CartridgeInviteCenter.
-function SharedInviteCard({
+// A pending invite rendered as a drive-style row above the shared list. View
+// opens the Cartridge; Dismiss removes the invite (the access stays — it can
+// still be reached by link). Mirrors the dismiss logic in CartridgeInviteCenter.
+function SharedInviteRow({
   invite,
   busy,
   onDismiss,
@@ -527,36 +448,36 @@ function SharedInviteCard({
   onDismiss: () => void;
 }) {
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--color-brand-600)]">
-          <StashIcon className="text-[18px]" />
+    <div
+      className="grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0"
+      style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr) auto" }}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
+          <StashIcon />
         </span>
-        <h3 className="min-w-0 flex-1 truncate font-display text-[14px] font-semibold text-foreground">
+        <span className="min-w-0 truncate font-medium text-foreground">
           {invite.cartridge_title}
-        </h3>
+        </span>
         <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
           INVITE
         </span>
       </div>
-      <p className="mt-2 line-clamp-2 flex-1 text-[12px] leading-relaxed text-muted">
-        {invite.cartridge_description || "No description."}
-      </p>
-      <p className="mt-2 text-[11px] text-muted">
-        Shared by {invite.invited_by_display_name} · from {invite.source_workspace_name}
-      </p>
-      <div className="mt-3 flex justify-end gap-1.5">
+      <span className="truncate text-[12px] text-muted">
+        from {invite.invited_by_display_name} · {invite.source_workspace_name}
+      </span>
+      <div className="flex items-center justify-end gap-1.5">
         <button
           type="button"
           disabled={busy}
           onClick={onDismiss}
-          className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[12px] text-muted hover:text-foreground disabled:opacity-50"
+          className="rounded-md border border-border-subtle px-2 py-1 text-[12px] text-muted hover:text-foreground disabled:opacity-50"
         >
           Dismiss
         </button>
         <Link
           href={`/cartridges/${invite.cartridge_slug}`}
-          className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+          className="rounded-md bg-[var(--color-brand-600)] px-2 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
         >
           View
         </Link>
@@ -825,45 +746,43 @@ function CartridgeListRow({
 }) {
   const itemCount = stash.items?.length ?? 0;
   const author = stash.owner_display_name || stash.owner_name || "";
-  const dotColor = VIS_COLOR[displayVisibility(stash.access, stash.share_count)];
 
   return (
     <Link
       href={`/cartridges/${stash.slug}`}
       className={
-        "group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0 " +
+        "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
       }
+      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto" }}
     >
       <SelectBox selected={selected} onToggle={() => onToggleSelect(stash.id)} />
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          {dotColor && (
-            <span
-              className="inline-block h-[8px] w-[8px] shrink-0 rounded-full"
-              style={{ background: dotColor }}
-              title={stash.access}
-            />
-          )}
-          <span className="min-w-0 truncate font-display text-[14px] font-semibold tracking-tight text-foreground group-hover:text-[var(--color-brand-700)]">
-            {stash.title}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
+          <StashIcon />
+        </span>
+        <span className="min-w-0 truncate font-medium text-foreground">{stash.title}</span>
+        {stash.is_external && (
+          <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
+            EXTERNAL
           </span>
-          {stash.is_external && (
-            <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
-              EXTERNAL
-            </span>
-          )}
-        </div>
-        <p className="mt-0.5 truncate text-[12px] text-muted">
-          {stash.description || "No description."}
-        </p>
+        )}
       </div>
-      <div className="sys-label whitespace-nowrap text-right" style={{ fontSize: 10.5 }}>
+      <span className="truncate text-[12px] text-muted">
         {author && `by ${author} · `}
         {itemCount} item{itemCount === 1 ? "" : "s"}
         {stash.updated_at && ` · ${relativeTime(stash.updated_at)}`}
-      </div>
-      <CartridgePinButton pinned={pinned} onToggle={() => onTogglePin(stash)} />
+      </span>
+      <VisibilityBadge access={stash.access} shareCount={stash.share_count} />
+      <span
+        className={
+          pinned
+            ? ""
+            : "opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+        }
+      >
+        <CartridgePinButton pinned={pinned} onToggle={() => onTogglePin(stash)} />
+      </span>
     </Link>
   );
 }
