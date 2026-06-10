@@ -86,8 +86,6 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 1. Once per checkout: `uv venv -p 3.12 && uv pip install -e .`
 2. Per terminal: `source .venv/bin/activate` — your prompt shows `(.venv)` and `stash` now runs this checkout's working tree. New terminals default back to the released CLI.
 
-Use uv for all Python installs — never a bare interpreter's pip (a bare `pip install -e .` under pyenv leaves a stale `stash` binary on PATH that shadows the real install).
-
 ### Backend
 - Install deps: `uv pip install -r backend/requirements.txt -r backend/requirements-dev.txt`
 - Migrate DB: `alembic upgrade head`
