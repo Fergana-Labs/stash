@@ -489,13 +489,6 @@ async def delete_ws_file(
     trashed = await files_service.delete_file(file_id, workspace_id, current_user["id"])
     if not trashed:
         raise HTTPException(status_code=404, detail="File not found")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="deleted",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="file",
-        target_id=file_id,
-    )
 
 
 @ws_router.post("/{file_id}/copy", response_model=FileResponse, status_code=201)
@@ -543,16 +536,9 @@ async def restore_ws_file(
 ):
     if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
-    restored = await files_service.restore_file(file_id, workspace_id)
+    restored = await files_service.restore_file(file_id, workspace_id, current_user["id"])
     if not restored:
         raise HTTPException(status_code=404, detail="File not in trash")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="restored",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="file",
-        target_id=file_id,
-    )
 
 
 @ws_router.delete("/{file_id}/purge", status_code=204)

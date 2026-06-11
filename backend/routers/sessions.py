@@ -344,13 +344,6 @@ async def delete_workspace_session(
     deleted = await session_service.delete_session(session_row_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="deleted",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="session",
-        target_id=session_row_id,
-    )
 
 
 @router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/restore", status_code=204)
@@ -360,16 +353,11 @@ async def restore_workspace_session(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_session_write(workspace_id, session_row_id, current_user["id"])
-    restored = await session_service.restore_session(session_row_id, workspace_id)
+    restored = await session_service.restore_session(
+        session_row_id, workspace_id, current_user["id"]
+    )
     if not restored:
         raise HTTPException(status_code=404, detail="Session not in trash")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="restored",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="session",
-        target_id=session_row_id,
-    )
 
 
 @router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}/purge", status_code=204)

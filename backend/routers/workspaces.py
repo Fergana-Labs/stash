@@ -17,7 +17,12 @@ from ..models import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import invite_token_service, storage_service, workspace_service
+from ..services import (
+    invite_token_service,
+    security_audit_service,
+    storage_service,
+    workspace_service,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
@@ -124,6 +129,16 @@ async def delete_workspace(
 
     for storage_key in storage_keys:
         await storage_service.delete_file(storage_key)
+
+    # workspace_id stays NULL on the event: the FK cascade would erase a row
+    # scoped to the now-deleted workspace, so the id goes in target_id instead.
+    await security_audit_service.record_event(
+        action="content.workspace_purged",
+        actor_user_id=current_user["id"],
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={"storage_key_count": len(storage_keys)},
+    )
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)

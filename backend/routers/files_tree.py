@@ -642,13 +642,6 @@ async def delete_page(
     deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="deleted",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="page",
-        target_id=page_id,
-    )
 
 
 @router.post("/pages/{page_id}/restore", status_code=204)
@@ -658,16 +651,9 @@ async def restore_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
-    restored = await files_tree_service.restore_page(page_id, workspace_id)
+    restored = await files_tree_service.restore_page(page_id, workspace_id, current_user["id"])
     if not restored:
         raise HTTPException(status_code=404, detail="Page not in trash")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="restored",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="page",
-        target_id=page_id,
-    )
 
 
 @router.delete("/pages/{page_id}/purge", status_code=204)
