@@ -18,7 +18,7 @@ from ...config import settings
 from ..base import AccountInfo, Integration, TokenSet
 
 API_BASE = "https://api.x.com"
-AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize"
+AUTHORIZE_URL = "https://x.com/i/oauth2/authorize"
 TOKEN_URL = f"{API_BASE}/2/oauth2/token"
 REVOKE_URL = f"{API_BASE}/2/oauth2/revoke"
 ME_URL = f"{API_BASE}/2/users/me"

@@ -394,7 +394,11 @@ def test_twitter_authorize_url_uses_pkce(monkeypatch):
     )
 
     url = TwitterIntegration().authorize_url("state-1", "verifier-1")
-    query = parse_qs(urlparse(url).query)
+    parsed = urlparse(url)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "x.com"
+    assert parsed.path == "/i/oauth2/authorize"
+    query = parse_qs(parsed.query)
 
     assert query["client_id"] == ["client-1"]
     assert query["state"] == ["state-1"]
