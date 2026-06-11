@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { API_BASE, clearToken, getAuth0AccessToken, listMyWorkspaces } from "@/lib/api";
+import { API_BASE, getAuth0AccessToken, listMyWorkspaces, revokeStoredApiKey } from "@/lib/api";
 
 type Props = {
   cliSession?: string | null;
@@ -35,7 +35,9 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
       throw new Error(data.detail || "Session provisioning failed");
     }
     const data = await res.json();
-    clearToken();
+    // Old Auth0 sign-ins stored a permanent mc_ key — revoke it server-side,
+    // not just locally, now that the browser runs on Auth0 tokens.
+    await revokeStoredApiKey();
     return { token, created: !!data.created };
   }, [auth0Token]);
 

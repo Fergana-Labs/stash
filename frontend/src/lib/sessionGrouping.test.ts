@@ -99,8 +99,8 @@ describe("groupSessionsByLinearTicket", () => {
         linear_tickets: [
           {
             ticket_identifier: "FER-19",
-            ticket_title: "Customize Stash homepage cover",
-            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-stash-homepage-cover",
+            ticket_title: "Customize Skill homepage cover",
+            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-skill-homepage-cover",
             source: "linear_preamble",
             confidence: 1,
             linear_issue_id: null,
@@ -119,8 +119,8 @@ describe("groupSessionsByLinearTicket", () => {
         linear_tickets: [
           {
             ticket_identifier: "FER-19",
-            ticket_title: "Customize Stash homepage cover",
-            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-stash-homepage-cover",
+            ticket_title: "Customize Skill homepage cover",
+            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-skill-homepage-cover",
             source: "linear_preamble",
             confidence: 1,
             linear_issue_id: null,
@@ -138,7 +138,7 @@ describe("groupSessionsByLinearTicket", () => {
     ]);
 
     expect(grouped.map((g) => g.key)).toEqual([
-      "FER-19: Customize Stash homepage cover",
+      "FER-19: Customize Skill homepage cover",
       "Unlabeled",
     ]);
     expect(grouped[0].count).toBe(2);

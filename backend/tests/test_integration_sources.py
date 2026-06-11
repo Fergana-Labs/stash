@@ -273,16 +273,17 @@ async def test_gong_rejects_missing_credentials():
 
 @pytest.mark.asyncio
 async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
-    soft_deleted: list[str] = []
+    """An unconfigured allowlist must purge previously indexed (unscoped)
+    calls and fail the sync — not report a healthy no-op that leaves them
+    searchable."""
+    purges: list[str] = []
 
     async def fail_get_valid_token(user_id, provider):
         raise AssertionError("Gong credentials should not be touched without an allowlist")
 
     async def fake_purge_disallowed_copied_documents(source):
+        purges.append(source["id"])
         return 0
-
-    async def fake_remove_missing_documents(table, source_id, present_paths):
-        soft_deleted.extend(present_paths)
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
     monkeypatch.setattr(
@@ -290,24 +291,19 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
         "purge_disallowed_copied_documents",
         fake_purge_disallowed_copied_documents,
     )
-    monkeypatch.setattr(
-        gong_indexer.source_service,
-        "remove_missing_documents",
-        fake_remove_missing_documents,
-    )
 
-    result = await gong_indexer.index_gong(
-        {
-            "id": "00000000-0000-0000-0000-000000000001",
-            "workspace_id": "00000000-0000-0000-0000-000000000002",
-            "owner_user_id": "00000000-0000-0000-0000-000000000003",
-            "source_type": "gong_calls",
-            "settings": {},
-        }
-    )
+    with pytest.raises(RuntimeError, match="no allowed workspaces"):
+        await gong_indexer.index_gong(
+            {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "workspace_id": "00000000-0000-0000-0000-000000000002",
+                "owner_user_id": "00000000-0000-0000-0000-000000000003",
+                "source_type": "gong_calls",
+                "settings": {},
+            }
+        )
 
-    assert result is None
-    assert soft_deleted == []
+    assert purges == ["00000000-0000-0000-0000-000000000001"]
 
 
 @pytest.mark.asyncio

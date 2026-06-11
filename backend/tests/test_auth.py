@@ -5,6 +5,8 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.services import user_service
+
 from .conftest import unique_name
 
 
@@ -258,6 +260,59 @@ async def test_expired_cli_auth_approval_revokes_unclaimed_device_key(
     polled = await client.get(f"/api/v1/users/cli-auth/sessions/{session_id}")
     assert polled.status_code == 404
 
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM cli_auth_sessions WHERE session_id = $1",
+            session_id,
+        )
+        == 0
+    )
+    me = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {unclaimed_key}"},
+    )
+    assert me.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_scheduled_cleanup_revokes_expired_unclaimed_cli_keys(client: AsyncClient, pool):
+    """Beat runs this cleanup directly so an approved-but-never-claimed key is
+    revoked even on a deployment with no further cli-auth traffic — otherwise
+    the plaintext key would sit live in cli_auth_sessions indefinitely."""
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("cli_auth_beat"),
+            "password": "securepassword1",
+        },
+    )
+    api_key = reg.json()["api_key"]
+
+    session = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "quiet-deployment"},
+    )
+    session_id = session.json()["session_id"]
+    approved = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session_id}/approve",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert approved.status_code == 200
+    unclaimed_key = await pool.fetchval(
+        "SELECT api_key FROM cli_auth_sessions WHERE session_id = $1",
+        session_id,
+    )
+
+    await pool.execute(
+        "UPDATE cli_auth_sessions "
+        "SET created_at = now() - interval '11 minutes' "
+        "WHERE session_id = $1",
+        session_id,
+    )
+
+    revoked = await user_service.cleanup_expired_cli_auth_sessions()
+
+    assert revoked == 1
     assert (
         await pool.fetchval(
             "SELECT COUNT(*) FROM cli_auth_sessions WHERE session_id = $1",

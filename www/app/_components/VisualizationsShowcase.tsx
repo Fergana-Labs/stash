@@ -74,7 +74,7 @@ function PageGraphMock() {
           </span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
-          12 pages · 19 Stashes
+          12 pages · 19 Skills
         </span>
       </div>
       <div className="relative aspect-[600/360] w-full">
@@ -204,7 +204,7 @@ export default function VisualizationsShowcase() {
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
               <span className="text-ink">Knowledge graph — the structural
               half.</span> The file tree your agents traverse: nodes are pages,
-              edges are <span className="font-mono text-brand">Stashes</span>.
+              edges are <span className="font-mono text-brand">Skills</span>.
               Orange nodes are the hubs your agents keep citing.
             </p>
           </div>

@@ -172,10 +172,10 @@ class Stash:
             raise
 
     # =========================================================================
-    # Discover (public Stashes)
+    # Discover (public Skills)
     # =========================================================================
 
-    def list_discover_stashes(
+    def list_discover_skills(
         self,
         query: str = "",
         sort: str = "trending",
@@ -184,16 +184,16 @@ class Stash:
         params: dict = {"sort": sort, "limit": limit}
         if query:
             params["q"] = query
-        return self._get("/api/v1/discover/stashes", **params)
+        return self._get("/api/v1/discover/skills", **params)
 
     # =========================================================================
-    # Stashes
+    # Skills
     # =========================================================================
 
-    def list_stashes(self, workspace: str | None = None) -> list:
-        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/stashes", "stashes")
+    def list_skills(self, workspace: str | None = None) -> list:
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/skills", "skills")
 
-    def create_stash(
+    def create_skill(
         self,
         title: str,
         description: str = "",
@@ -204,7 +204,7 @@ class Stash:
         workspace: str | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/stashes",
+            f"/api/v1/workspaces/{self._ws(workspace)}/skills",
             json={
                 "title": title,
                 "description": description,
@@ -215,7 +215,7 @@ class Stash:
             },
         )
 
-    def publish_stash(
+    def publish_skill(
         self,
         title: str,
         description: str = "",
@@ -225,7 +225,7 @@ class Stash:
         workspace: str | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/stashes/publish",
+            f"/api/v1/workspaces/{self._ws(workspace)}/skills/publish",
             json={
                 "title": title,
                 "description": description,
@@ -236,22 +236,22 @@ class Stash:
             },
         )
 
-    def update_stash(self, stash_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
+    def update_skill(self, skill_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/skills/{skill_id}", json=fields)
 
-    def delete_stash(self, stash_id: str) -> None:
-        self._delete(f"/api/v1/stashes/{stash_id}")
+    def delete_skill(self, skill_id: str) -> None:
+        self._delete(f"/api/v1/skills/{skill_id}")
 
-    def get_public_stash(self, slug: str) -> dict:
-        return self._get(f"/api/v1/stashes/{slug}")
+    def get_public_skill(self, slug: str) -> dict:
+        return self._get(f"/api/v1/skills/{slug}")
 
-    def get_stash_text(self, slug: str) -> str:
-        resp = self._request("GET", f"/api/v1/stashes/{slug}", params={"format": "text"})
+    def get_skill_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/skills/{slug}", params={"format": "text"})
         return resp.text
 
-    def add_stash_to_workspace(self, slug: str, workspace: str | None = None) -> dict:
+    def fork_skill(self, slug: str, workspace: str | None = None) -> dict:
         return self._post(
-            f"/api/v1/stashes/{slug}/add-to-workspace",
+            f"/api/v1/skills/{slug}/add-to-workspace",
             json={"workspace_id": self._ws(workspace)},
         )
 
@@ -407,7 +407,7 @@ class Stash:
         event_type: str,
         content: str,
         session_id: str | None = None,
-        default_stash_id: str | None = None,
+        default_skill_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -421,8 +421,8 @@ class Stash:
         }
         if session_id:
             body["session_id"] = session_id
-        if default_stash_id:
-            body["default_stash_id"] = default_stash_id
+        if default_skill_id:
+            body["default_skill_id"] = default_skill_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -439,11 +439,11 @@ class Stash:
         self,
         events: list[dict],
         workspace: str | None = None,
-        default_stash_id: str | None = None,
+        default_skill_id: str | None = None,
     ) -> list:
         body: dict = {"events": events}
-        if default_stash_id:
-            body["default_stash_id"] = default_stash_id
+        if default_skill_id:
+            body["default_skill_id"] = default_skill_id
         return self._post(
             f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events/batch",
             json=body,
@@ -491,7 +491,7 @@ class Stash:
         agent_name: str,
         cwd: str = "",
         workspace: str | None = None,
-        default_stash_id: str | None = None,
+        default_skill_id: str | None = None,
         replace: bool = False,
     ) -> dict:
         import gzip as _gzip
@@ -510,7 +510,7 @@ class Stash:
                 "agent_name": agent_name,
                 "cwd": cwd,
                 "replace": str(replace).lower(),
-                **({"default_stash_id": default_stash_id} if default_stash_id else {}),
+                **({"default_skill_id": default_skill_id} if default_skill_id else {}),
             },
             files={"file": (name, body, "application/gzip")},
             timeout=120,

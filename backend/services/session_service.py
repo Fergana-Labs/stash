@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from ..database import get_pool
+from . import security_audit_service
 
 _SELECT_COLS = (
     "id, workspace_id, session_id, agent_name, cwd, files_touched, "
@@ -103,10 +104,20 @@ async def delete_session(session_row_id: UUID, workspace_id: UUID, deleted_by: U
         workspace_id,
         deleted_by,
     )
-    return result == "UPDATE 1"
+    if result != "UPDATE 1":
+        return False
+    # Audited here so every front door (REST, batch, agent tools) leaves a trail.
+    await security_audit_service.record_content_lifecycle_event(
+        operation="deleted",
+        actor_user_id=deleted_by,
+        workspace_id=workspace_id,
+        target_type="session",
+        target_id=session_row_id,
+    )
+    return True
 
 
-async def restore_session(session_row_id: UUID, workspace_id: UUID) -> bool:
+async def restore_session(session_row_id: UUID, workspace_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "UPDATE sessions SET deleted_at = NULL, deleted_by = NULL "
@@ -114,7 +125,16 @@ async def restore_session(session_row_id: UUID, workspace_id: UUID) -> bool:
         session_row_id,
         workspace_id,
     )
-    return result == "UPDATE 1"
+    if result != "UPDATE 1":
+        return False
+    await security_audit_service.record_content_lifecycle_event(
+        operation="restored",
+        actor_user_id=restored_by,
+        workspace_id=workspace_id,
+        target_type="session",
+        target_id=session_row_id,
+    )
+    return True
 
 
 async def purge_session(session_row_id: UUID, workspace_id: UUID) -> bool:
@@ -132,7 +152,7 @@ async def list_trashed_session_artifact_storage_keys(
     workspace_id: UUID,
 ) -> list[str]:
     pool = get_pool()
-    # Forks copy storage_key by reference (cartridge_service._fork_session), so
+    # Forks copy storage_key by reference (shared_skill_service._fork_session), so
     # one S3 object can back artifacts in other sessions or files. Only return
     # keys nothing else points at; deleting a shared key would 502 those reads.
     rows = await pool.fetch(

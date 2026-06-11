@@ -7,6 +7,7 @@ S3 blob; soft deletes leave it intact so restore is fully reversible.
 from uuid import UUID
 
 from ..database import get_pool
+from . import security_audit_service
 
 
 async def delete_file(file_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bool:
@@ -18,10 +19,20 @@ async def delete_file(file_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bo
         workspace_id,
         deleted_by,
     )
-    return result == "UPDATE 1"
+    if result != "UPDATE 1":
+        return False
+    # Audited here so every front door (REST, batch, agent tools) leaves a trail.
+    await security_audit_service.record_content_lifecycle_event(
+        operation="deleted",
+        actor_user_id=deleted_by,
+        workspace_id=workspace_id,
+        target_type="file",
+        target_id=file_id,
+    )
+    return True
 
 
-async def restore_file(file_id: UUID, workspace_id: UUID) -> bool:
+async def restore_file(file_id: UUID, workspace_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
@@ -29,7 +40,16 @@ async def restore_file(file_id: UUID, workspace_id: UUID) -> bool:
         file_id,
         workspace_id,
     )
-    return result == "UPDATE 1"
+    if result != "UPDATE 1":
+        return False
+    await security_audit_service.record_content_lifecycle_event(
+        operation="restored",
+        actor_user_id=restored_by,
+        workspace_id=workspace_id,
+        target_type="file",
+        target_id=file_id,
+    )
+    return True
 
 
 async def get_trashed_file(file_id: UUID, workspace_id: UUID) -> dict | None:
@@ -42,6 +62,19 @@ async def get_trashed_file(file_id: UUID, workspace_id: UUID) -> dict | None:
         workspace_id,
     )
     return dict(row) if row else None
+
+
+async def storage_key_referenced_elsewhere(file_id: UUID, storage_key: str) -> bool:
+    """Forks copy storage_key by reference (shared_skill_service._fork_file /
+    _fork_session), so other files rows or session artifacts can point at the
+    same S3 object. Purge must keep the blob alive for them."""
+    pool = get_pool()
+    return await pool.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM files WHERE storage_key = $1 AND id <> $2) "
+        "OR EXISTS (SELECT 1 FROM session_artifacts WHERE storage_key = $1)",
+        storage_key,
+        file_id,
+    )
 
 
 async def purge_file(file_id: UUID, workspace_id: UUID) -> bool:

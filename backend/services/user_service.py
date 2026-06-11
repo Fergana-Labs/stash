@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from ..auth import create_api_key, hash_password, verify_password
+from ..auth import create_api_key, hash_api_key, hash_password, verify_password
 from ..database import get_pool
 
 
@@ -180,3 +180,32 @@ async def authenticate_by_password(name: str, password: str) -> tuple[dict, str]
     await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
     user = {k: v for k, v in dict(row).items() if k != "password_hash"}
     return user, api_key
+
+
+CLI_AUTH_TTL_INTERVAL = "10 minutes"
+
+
+async def cleanup_expired_cli_auth_sessions() -> int:
+    """Drop expired CLI auth sessions and revoke their unclaimed device keys.
+
+    DELETE ... RETURNING claims each expired row exactly once, so a poll that
+    concurrently claims (and deletes) the same session at the TTL boundary can
+    never have its just-delivered key revoked here. Returns the revoke count.
+    """
+    pool = get_pool()
+    expired = await pool.fetch(
+        "DELETE FROM cli_auth_sessions "
+        f"WHERE created_at < now() - interval '{CLI_AUTH_TTL_INTERVAL}' "
+        "RETURNING api_key"
+    )
+    revoked = 0
+    for row in expired:
+        if row["api_key"] is None:
+            continue
+        await pool.execute(
+            "UPDATE user_api_keys SET revoked_at = now() "
+            "WHERE key_hash = $1 AND revoked_at IS NULL",
+            hash_api_key(row["api_key"]),
+        )
+        revoked += 1
+    return revoked

@@ -5,7 +5,6 @@ import { useState } from "react";
 type Props = {
   apiUrl: string;
   sessionId: string;
-  device?: string;
   userName: string;
   accessToken: string;
 };

@@ -123,19 +123,22 @@ async def delete_workspace(
     workspace_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    storage_keys = await workspace_service.list_workspace_storage_keys_for_delete(
-        workspace_id,
-        current_user["id"],
-    )
+    storage_keys = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if storage_keys is None:
-        raise HTTPException(status_code=403, detail="Only workspace admins can delete")
+        raise HTTPException(status_code=403, detail="Only workspace owners can delete")
 
     for storage_key in storage_keys:
         await storage_service.delete_file(storage_key)
 
-    deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
-    if not deleted:
-        raise HTTPException(status_code=403, detail="Only workspace admins can delete")
+    # workspace_id stays NULL on the event: the FK cascade would erase a row
+    # scoped to the now-deleted workspace, so the id goes in target_id instead.
+    await security_audit_service.record_event(
+        action="content.workspace_purged",
+        actor_user_id=current_user["id"],
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={"storage_key_count": len(storage_keys)},
+    )
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)
@@ -170,6 +173,21 @@ async def leave_workspace(
     left = await workspace_service.leave_workspace(workspace_id, current_user["id"])
     if not left:
         raise HTTPException(status_code=400, detail="Cannot leave as the last workspace admin")
+
+
+@router.delete("/{workspace_id}/members/{user_id}", status_code=204)
+async def remove_member(
+    workspace_id: UUID,
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Offboard a member: owner-only, revokes their shares and skill grants."""
+    removed = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
+    if not removed:
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners can remove members, and owners cannot be removed",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import AppShell from "../components/AppShell";
 import { BasicPageSkeleton, HomeSkeleton } from "../components/SkeletonStates";
 import { useAuth } from "../hooks/useAuth";
 import { joinWorkspace, listMyWorkspaces } from "../lib/api";
-import { resetStashNavigationCache } from "../lib/stashNavigationCache";
+import { resetSkillNavigationCache } from "../lib/skillNavigationCache";
 import type { Workspace } from "../lib/types";
 
 function EmptyHome({
@@ -37,7 +37,7 @@ function EmptyHome({
         Your workspace home
       </h1>
       <p className="max-w-[720px] text-[14.5px] leading-relaxed text-muted">
-        Workspaces are the home for agent sessions, Files, and Cartridges.
+        Workspaces are the home for agent sessions, Files, and Skills.
         Create one to get started or join one with an invite code.
       </p>
 
@@ -166,7 +166,7 @@ function LoggedInHome({
     setJoining(true);
     try {
       const workspace = await joinWorkspace(joinCode.trim());
-      resetStashNavigationCache();
+      resetSkillNavigationCache();
       router.push(`/workspaces/${workspace.id}`);
     } catch {
       setError("Failed to join workspace");

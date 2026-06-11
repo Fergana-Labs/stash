@@ -152,30 +152,17 @@ async def update_workspace(
     return await get_workspace(workspace_id)
 
 
-async def delete_workspace(workspace_id: UUID, user_id: UUID) -> bool:
-    """Delete workspace. Only owner can delete."""
+async def delete_workspace(workspace_id: UUID, user_id: UUID) -> list[str] | None:
+    """Delete a workspace (owner only; None when refused). Returns the storage
+    keys its rows referenced so the caller can purge the blobs — collected
+    before, but purged only after, the DB delete, so a failed delete can never
+    leave live rows pointing at destroyed storage objects."""
     pool = get_pool()
-    role = await get_member_role(workspace_id, user_id)
-    if role != "owner":
-        return False
-    result = await pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
-    return result == "DELETE 1"
-
-
-def _deleted_count(result: str) -> int:
-    return int(result.rsplit(" ", 1)[-1])
-
-
-async def list_workspace_storage_keys_for_delete(
-    workspace_id: UUID,
-    user_id: UUID,
-) -> list[str] | None:
     role = await get_member_role(workspace_id, user_id)
     if role != "owner":
         return None
 
-    pool = get_pool()
-    # Forks copy storage_key by reference (cartridge_service._fork_file /
+    # Forks copy storage_key by reference (shared_skill_service._fork_file /
     # _fork_session), so one S3 object can back rows in several workspaces.
     # Only return keys referenced solely by this workspace; deleting a key that
     # a surviving workspace still points at would 502 their downloads.
@@ -207,7 +194,14 @@ async def list_workspace_storage_keys_for_delete(
         """,
         workspace_id,
     )
+    result = await pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
+    if result != "DELETE 1":
+        return None
     return [row["storage_key"] for row in rows]
+
+
+def _deleted_count(result: str) -> int:
+    return int(result.rsplit(" ", 1)[-1])
 
 
 async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id: UUID) -> dict:
@@ -233,53 +227,53 @@ async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id:
             user_id,
         )
     )
-    removed_cartridge_member_count = _deleted_count(
+    removed_skill_member_count = _deleted_count(
         await pool.execute(
-            "DELETE FROM cartridge_members cm "
-            "USING cartridges c "
-            "WHERE c.id = cm.cartridge_id "
+            "DELETE FROM skill_members cm "
+            "USING skills c "
+            "WHERE c.id = cm.skill_id "
             "AND c.workspace_id = $1 "
             "AND cm.user_id = $2",
             workspace_id,
             user_id,
         )
     )
-    removed_granted_cartridge_member_count = _deleted_count(
+    removed_granted_skill_member_count = _deleted_count(
         await pool.execute(
-            "DELETE FROM cartridge_members cm "
-            "USING cartridges c "
-            "WHERE c.id = cm.cartridge_id "
+            "DELETE FROM skill_members cm "
+            "USING skills c "
+            "WHERE c.id = cm.skill_id "
             "AND c.workspace_id = $1 "
             "AND cm.granted_by = $2",
             workspace_id,
             user_id,
         )
     )
-    removed_cartridge_invite_count = _deleted_count(
+    removed_skill_invite_count = _deleted_count(
         await pool.execute(
-            "DELETE FROM cartridge_invites ci "
-            "USING cartridges c "
-            "WHERE c.id = ci.cartridge_id "
+            "DELETE FROM skill_invites ci "
+            "USING skills c "
+            "WHERE c.id = ci.skill_id "
             "AND c.workspace_id = $1 "
             "AND ci.recipient_user_id = $2",
             workspace_id,
             user_id,
         )
     )
-    removed_sent_cartridge_invite_count = _deleted_count(
+    removed_sent_skill_invite_count = _deleted_count(
         await pool.execute(
-            "DELETE FROM cartridge_invites ci "
-            "USING cartridges c "
-            "WHERE c.id = ci.cartridge_id "
+            "DELETE FROM skill_invites ci "
+            "USING skills c "
+            "WHERE c.id = ci.skill_id "
             "AND c.workspace_id = $1 "
             "AND ci.invited_by_user_id = $2",
             workspace_id,
             user_id,
         )
     )
-    removed_cartridge_count = _deleted_count(
+    removed_skill_count = _deleted_count(
         await pool.execute(
-            "DELETE FROM cartridges WHERE workspace_id = $1 AND owner_id = $2",
+            "DELETE FROM skills WHERE workspace_id = $1 AND owner_id = $2",
             workspace_id,
             user_id,
         )
@@ -288,11 +282,11 @@ async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id:
         "removed_share_count": removed_share_count,
         "removed_granted_share_count": removed_granted_share_count,
         "removed_share_invite_count": removed_share_invite_count,
-        "removed_cartridge_member_count": removed_cartridge_member_count,
-        "removed_granted_cartridge_member_count": removed_granted_cartridge_member_count,
-        "removed_cartridge_invite_count": removed_cartridge_invite_count,
-        "removed_sent_cartridge_invite_count": removed_sent_cartridge_invite_count,
-        "removed_cartridge_count": removed_cartridge_count,
+        "removed_skill_member_count": removed_skill_member_count,
+        "removed_granted_skill_member_count": removed_granted_skill_member_count,
+        "removed_skill_invite_count": removed_skill_invite_count,
+        "removed_sent_skill_invite_count": removed_sent_skill_invite_count,
+        "removed_skill_count": removed_skill_count,
     }
 
 
@@ -354,38 +348,50 @@ async def join_by_invite(invite_code: str, user_id: UUID) -> dict | None:
     return await join_workspace(ws["id"], user_id)
 
 
-async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
-    pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role != 'owner'",
+async def _revoke_member_access(conn, workspace_id: UUID, user_id: UUID) -> dict:
+    """Revoke everything that grants access independently of membership:
+    webhooks, connected sources, shares, and skill grants/invites."""
+    from . import source_service
+
+    await conn.execute(
+        "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
         workspace_id,
         user_id,
     )
-    if result == "DELETE 1":
-        await pool.execute(
-            "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
-            workspace_id,
-            user_id,
-        )
-        from . import source_service
+    removed_sources = await source_service.delete_sources_for_workspace_member(
+        conn,
+        workspace_id,
+        user_id,
+    )
+    removed_access = await _delete_workspace_access_for_member(conn, workspace_id, user_id)
+    return {"removed_source_count": removed_sources, **removed_access}
 
-        removed_sources = await source_service.delete_sources_for_workspace_member(
-            workspace_id,
-            user_id,
-        )
-        removed_access = await _delete_workspace_access_for_member(pool, workspace_id, user_id)
-        await _record_member_event(
-            action="workspace.member_left",
-            actor_user_id=user_id,
-            workspace_id=workspace_id,
-            member_user_id=user_id,
-            metadata={
-                "removed_source_count": removed_sources,
-                **removed_access,
-            },
-        )
-        return True
-    return False
+
+async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
+    pool = get_pool()
+    # One transaction: the membership delete and the access revocation must
+    # land together, or a mid-sequence failure would strand shares/skill
+    # grants that confer access without membership — irrevocably, since a
+    # retry would match zero membership rows.
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute(
+                "DELETE FROM workspace_members "
+                "WHERE workspace_id = $1 AND user_id = $2 AND role != 'owner'",
+                workspace_id,
+                user_id,
+            )
+            if result != "DELETE 1":
+                return False
+            removed = await _revoke_member_access(conn, workspace_id, user_id)
+    await _record_member_event(
+        action="workspace.member_left",
+        actor_user_id=user_id,
+        workspace_id=workspace_id,
+        member_user_id=user_id,
+        metadata=removed,
+    )
+    return True
 
 
 async def get_members(workspace_id: UUID) -> list[dict]:
@@ -424,26 +430,24 @@ async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID)
         return False
     if kicker_role != "owner":
         return False
-    result = await pool.execute(
-        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        workspace_id,
-        target_user_id,
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute(
+                "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+                workspace_id,
+                target_user_id,
+            )
+            if result != "DELETE 1":
+                return False
+            removed = await _revoke_member_access(conn, workspace_id, target_user_id)
+    await _record_member_event(
+        action="workspace.member_removed",
+        actor_user_id=kicker_id,
+        workspace_id=workspace_id,
+        member_user_id=target_user_id,
+        metadata=removed,
     )
-    if result == "DELETE 1":
-        await pool.execute(
-            "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
-            workspace_id,
-            target_user_id,
-        )
-        from . import source_service
-
-        await source_service.delete_sources_for_workspace_member(
-            workspace_id,
-            target_user_id,
-        )
-        await _delete_workspace_access_for_member(pool, workspace_id, target_user_id)
-        return True
-    return False
+    return True
 
 
 # Role-based authorization helpers (PR 7).

@@ -53,7 +53,7 @@ export const CONNECTORS: Connector[] = [
     label: "Notion",
     sourceType: "notion",
     kind: "notion",
-    blurb: "Pick pages or databases shared with Stash.",
+    blurb: "Pick pages or databases shared with Skill.",
   },
   {
     provider: "jira",

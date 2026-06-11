@@ -58,7 +58,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
 <p>Under the hood, your workspace is organized into three things:</p>
 
 <ul>
-  <li><strong>Cartridges</strong> &mdash; virtual sub-workspaces. Bundle any subset of your workspace into a Stash, share it publicly, or keep it private. Use them for teams, workstreams, or projects (LinkedIn marketing, backend infra, kernel reading group).</li>
+  <li><strong>Skills</strong> &mdash; virtual sub-workspaces. Bundle any subset of your workspace into a Stash, share it publicly, or keep it private. Use them for teams, workstreams, or projects (LinkedIn marketing, backend infra, kernel reading group).</li>
   <li><strong>Files</strong> &mdash; a filesystem for documents (markdown, HTML, PDF, CSV, images). Built so agents can read and edit it natively.</li>
   <li><strong>Sessions</strong> &mdash; every conversation between you and your coding agent (Claude Code, Codex, OpenCode), automatically pushed and indexed.</li>
 </ul>
@@ -77,7 +77,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
   <li><strong>Real-time collaborative editing</strong> on every markdown page (two cursors at once).</li>
   <li><strong>Agent-native by default</strong> &mdash; markdown, HTML, virtual filesystems. The formats agents are already fluent in.</li>
   <li><strong>Search and ask across everything you&rsquo;ve added</strong> &mdash; your agent is grounded on your stuff, not just the pretty docs.</li>
-  <li><a href="{app_url}"><strong>Discover &amp; install Cartridges</strong></a> &mdash; browse skills and knowledge others have published; copy into your workspace in one click.</li>
+  <li><a href="{app_url}"><strong>Discover &amp; install Skills</strong></a> &mdash; browse skills and knowledge others have published; copy into your workspace in one click.</li>
 </ul>
 
 <p><strong>Bring your team in.</strong> One person using Stash is a personal log. A team using Stash is a shared brain.</p>

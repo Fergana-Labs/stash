@@ -5,45 +5,45 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
 import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
-import ForkCartridgeCardButton from "../../components/cartridge/ForkCartridgeCardButton";
-import CartridgeCard from "../../components/cartridge/CartridgeCard";
+import ForkSkillCardButton from "../../components/skill/ForkSkillCardButton";
+import SkillCard from "../../components/skill/SkillCard";
 import { useAuth } from "../../hooks/useAuth";
-import { API_BASE, type PublicCartridgeCard } from "../../lib/api";
+import { API_BASE, type PublicSkillCard } from "../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
 
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
-async function fetchPublicStashes(params: {
+async function fetchPublicSkills(params: {
   q?: string;
   sort: Sort;
-}): Promise<PublicCartridgeCard[]> {
+}): Promise<PublicSkillCard[]> {
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value) qs.set(key, value);
   }
   const res = await fetch(
-    `${API_BASE}/api/v1/discover/cartridges${qs.size ? `?${qs}` : ""}`,
+    `${API_BASE}/api/v1/discover/skills${qs.size ? `?${qs}` : ""}`,
   );
   if (!res.ok) return [];
   const data = await res.json();
-  return data.cartridges ?? [];
+  return data.skills ?? [];
 }
 
 export default function DiscoverPage() {
   const { user, loading, logout } = useAuth();
   const [sort, setSort] = useState<Sort>("trending");
   const [query, setQuery] = useState("");
-  const [cartridges, setStashes] = useState<PublicCartridgeCard[]>([]);
+  const [skills, setSkills] = useState<PublicSkillCard[]>([]);
   const [fetching, setFetching] = useState(true);
 
   useBreadcrumbs([{ label: "Discover" }], "discover");
 
   useEffect(() => {
     setFetching(true);
-    fetchPublicStashes({ q: query || undefined, sort })
-      .then(setStashes)
+    fetchPublicSkills({ q: query || undefined, sort })
+      .then(setSkills)
       .finally(() => setFetching(false));
   }, [query, sort]);
 
@@ -56,7 +56,7 @@ export default function DiscoverPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search public Cartridges…"
+            placeholder="Search public Skills…"
             className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted focus:outline-none"
           />
         </div>
@@ -79,16 +79,16 @@ export default function DiscoverPage() {
         </div>
         <span className="flex-1" />
         <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {cartridges.length} result{cartridges.length === 1 ? "" : "s"}
+          {skills.length} result{skills.length === 1 ? "" : "s"}
         </span>
       </div>
 
       {fetching ? (
         <CardGridLoading />
-      ) : cartridges.length === 0 ? (
+      ) : skills.length === 0 ? (
         <EmptyState />
       ) : (
-        <DiscoverGrid cartridges={cartridges} sort={sort} />
+        <DiscoverGrid skills={skills} sort={sort} />
       )}
     </div>
   );
@@ -113,29 +113,29 @@ function CardGridLoading() {
 }
 
 function DiscoverGrid({
-  cartridges,
+  skills,
   sort,
 }: {
-  cartridges: PublicCartridgeCard[];
+  skills: PublicSkillCard[];
   sort: Sort;
 }) {
   return (
     <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-      {cartridges.map((stash, i) => {
-        const owner = stash.owner_display_name;
+      {skills.map((skill, i) => {
+        const owner = skill.owner_display_name;
         const trending = sort === "trending" && i < 2;
         return (
-          <CartridgeCard
-            key={stash.id}
-            stash={{
-              id: stash.id,
-              slug: stash.slug,
-              title: stash.title,
-              description: stash.description,
-              cover_image_url: stash.cover_image_url,
+          <SkillCard
+            key={skill.id}
+            skill={{
+              id: skill.id,
+              slug: skill.slug,
+              title: skill.title,
+              description: skill.description,
+              cover_image_url: skill.cover_image_url,
               access: "public",
-              item_count: stash.item_count,
-              updated_at: stash.updated_at,
+              item_count: skill.item_count,
+              updated_at: skill.updated_at,
             }}
             cover={COVERS[i % COVERS.length]}
             badge={
@@ -149,19 +149,19 @@ function DiscoverGrid({
               ) : undefined
             }
             cornerAction={
-              <ForkCartridgeCardButton
-                slug={stash.slug}
-                sourceWorkspaceId={stash.workspace_id}
+              <ForkSkillCardButton
+                slug={skill.slug}
+                sourceWorkspaceId={skill.workspace_id}
               />
             }
             footer={
               <>
                 <span className="min-w-0 truncate">
                   {owner}
-                  {stash.workspace_name && (
+                  {skill.workspace_name && (
                     <>
                       {" · "}
-                      <span className="font-mono text-dim">{stash.workspace_name}</span>
+                      <span className="font-mono text-dim">{skill.workspace_name}</span>
                     </>
                   )}
                 </span>
@@ -181,10 +181,10 @@ function EmptyState() {
   return (
     <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
       <h2 className="font-display text-[20px] font-bold text-foreground">
-        No public Cartridges yet.
+        No public Skills yet.
       </h2>
       <p className="mx-auto mt-2 max-w-[420px] text-[13.5px] leading-[1.6] text-muted">
-        Public Cartridges appear here after their contents are readable from a public link.
+        Public Skills appear here after their contents are readable from a public link.
       </p>
     </section>
   );

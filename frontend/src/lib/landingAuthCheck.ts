@@ -1,4 +1,4 @@
-export const LANDING_AUTH_MESSAGE_TYPE = "stash:landing-auth-status";
+export const LANDING_AUTH_MESSAGE_TYPE = "skill:landing-auth-status";
 
 const LOCAL_MARKETING_ORIGINS = new Set([
   "http://localhost:3100",

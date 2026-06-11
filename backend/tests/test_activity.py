@@ -224,8 +224,8 @@ async def test_activity_timeline_includes_blank_day_buckets(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_activity_timeline_can_scope_blank_day_buckets_to_cartridge(client: AsyncClient):
-    api_key = await _register(client, "activity_cartridge_blank_days")
+async def test_activity_timeline_can_scope_blank_day_buckets_to_skill(client: AsyncClient):
+    api_key = await _register(client, "activity_skill_blank_days")
     workspace = await _workspace(client, api_key, "Stash Blank Day Activity")
     event_day = datetime.now(UTC).date() - timedelta(days=1)
     event_at = datetime.combine(event_day, time(hour=12), tzinfo=UTC).isoformat()
@@ -260,7 +260,7 @@ async def test_activity_timeline_can_scope_blank_day_buckets_to_cartridge(client
     )
 
     stash_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/cartridges",
+        f"/api/v1/workspaces/{workspace['id']}/skills",
         json={
             "title": "Timeline Stash",
             "items": [
@@ -276,7 +276,7 @@ async def test_activity_timeline_can_scope_blank_day_buckets_to_cartridge(client
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 3, "bucket": "day", "cartridge_id": stash_resp.json()["id"]},
+        params={"days": 3, "bucket": "day", "skill_id": stash_resp.json()["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -417,7 +417,7 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     assert len(visible) == 1
     assert visible[0]["workspace_id"] == owner_workspace["id"]
     assert visible[0]["workspace_name"] == "Team Activity"
-    assert "cartridge_id" not in visible[0]
+    assert "skill_id" not in visible[0]
     assert "stash_name" not in visible[0]
     assert visible[0]["target_label"] == "tester: visible-session"
     assert hidden == []

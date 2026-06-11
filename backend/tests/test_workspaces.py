@@ -83,9 +83,15 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_user_search_is_scoped_to_request_workspace(client: AsyncClient, pool):
-    owner_key, _ = await _register(client, "webflow_search_owner")
+async def test_skill_member_search_is_scoped_and_open_to_external_skill_admins(
+    client: AsyncClient, pool
+):
+    """Member search for the skill share dialog only returns the skill's
+    workspace members (no global user enumeration), and is authorized by skill
+    admin rights — a skill admin outside the workspace manages members too."""
+    owner_key, owner = await _register(client, "webflow_search_owner")
     teammate_key, teammate = await _register(client, "webflow_search_teammate")
+    external_key, external = await _register(client, "webflow_search_external")
     stranger_key, stranger = await _register(client, "webflow_search_stranger")
     workspace = (
         await client.post(
@@ -99,29 +105,55 @@ async def test_user_search_is_scoped_to_request_workspace(client: AsyncClient, p
         UUID(workspace["id"]),
         UUID(teammate["id"]),
     )
-
-    search = await client.get(
-        "/api/v1/users/search",
-        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+    skill = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/skills",
+            json={
+                "title": "Webflow demo",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+    # The external admin is NOT a member of the skill's workspace.
+    granted = await client.post(
+        f"/api/v1/skills/{skill['id']}/members",
+        json={"user_id": external["id"], "permission": "admin"},
         headers=_auth(owner_key),
     )
+    assert granted.status_code == 201
+
+    owner_search = await client.get(
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
+        headers=_auth(owner_key),
+    )
+    external_search = await client.get(
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
+        headers=_auth(external_key),
+    )
     stranger_search = await client.get(
-        "/api/v1/users/search",
-        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
         headers=_auth(stranger_key),
     )
     teammate_search = await client.get(
-        "/api/v1/users/search",
-        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
         headers=_auth(teammate_key),
     )
 
-    assert search.status_code == 200
-    assert {row["id"] for row in search.json()} == {teammate["id"]}
-    assert stranger["id"] not in {row["id"] for row in search.json()}
-    assert stranger_search.status_code == 404
-    assert teammate_search.status_code == 200
-    assert {row["id"] for row in teammate_search.json()} == {workspace["creator_id"]}
+    assert owner_search.status_code == 200
+    assert {row["id"] for row in owner_search.json()} == {teammate["id"]}
+    assert external_search.status_code == 200
+    assert {row["id"] for row in external_search.json()} == {owner["id"], teammate["id"]}
+    assert stranger["id"] not in {row["id"] for row in external_search.json()}
+    # Non-admins (workspace member or stranger) cannot enumerate members.
+    assert stranger_search.status_code == 403
+    assert teammate_search.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -407,7 +439,7 @@ async def test_editor_can_update_workspace(client: AsyncClient):
     ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
-    # Default role for joiners is editor; editors can rename/describe the stash.
+    # Default role for joiners is editor; editors can rename/describe the skill.
     resp = await client.patch(
         f"/api/v1/workspaces/{ws['id']}",
         json={"name": "Edited by member"},
@@ -472,6 +504,11 @@ async def test_delete_workspace_deletes_stored_files_and_session_artifacts(
     deleted_keys: list[str] = []
 
     async def fake_delete_file(storage_key: str) -> None:
+        # Blobs are purged only after the DB delete commits — a failed delete
+        # must never leave live rows pointing at destroyed storage objects.
+        assert (
+            await pool.fetchval("SELECT COUNT(*) FROM workspaces WHERE id = $1", workspace_id) == 0
+        )
         deleted_keys.append(storage_key)
 
     monkeypatch.setattr("backend.routers.workspaces.storage_service.delete_file", fake_delete_file)
@@ -673,7 +710,7 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     page_id = page["id"]
     owner_stash = (
         await client.post(
-            f"/api/v1/workspaces/{ws['id']}/cartridges",
+            f"/api/v1/workspaces/{ws['id']}/skills",
             json={
                 "title": "Owner private Stash",
                 "workspace_permission": "none",
@@ -685,7 +722,7 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     ).json()
     member_stash = (
         await client.post(
-            f"/api/v1/workspaces/{ws['id']}/cartridges",
+            f"/api/v1/workspaces/{ws['id']}/skills",
             json={
                 "title": "Member private Stash",
                 "workspace_permission": "none",
@@ -696,12 +733,12 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         )
     ).json()
     granted = await client.post(
-        f"/api/v1/cartridges/{owner_stash['id']}/members",
+        f"/api/v1/skills/{owner_stash['id']}/members",
         json={"user_id": str(member_id), "permission": "admin"},
         headers=_auth(owner_key),
     )
     member_granted = await client.post(
-        f"/api/v1/cartridges/{owner_stash['id']}/members",
+        f"/api/v1/skills/{owner_stash['id']}/members",
         json={"user_id": str(recipient_id), "permission": "read"},
         headers=_auth(member_key),
     )
@@ -738,19 +775,19 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await client.get(
-            f"/api/v1/cartridges/{owner_stash['slug']}",
+            f"/api/v1/skills/{owner_stash['slug']}",
             headers=_auth(member_key),
         )
     ).status_code == 200
     assert (
         await client.get(
-            f"/api/v1/cartridges/{member_stash['slug']}",
+            f"/api/v1/skills/{member_stash['slug']}",
             headers=_auth(member_key),
         )
     ).status_code == 200
     assert (
         await client.get(
-            f"/api/v1/cartridges/{owner_stash['slug']}",
+            f"/api/v1/skills/{owner_stash['slug']}",
             headers=_auth(recipient_key),
         )
     ).status_code == 200
@@ -763,19 +800,19 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     assert left.status_code == 204
     assert (
         await client.get(
-            f"/api/v1/cartridges/{owner_stash['slug']}",
+            f"/api/v1/skills/{owner_stash['slug']}",
             headers=_auth(member_key),
         )
     ).status_code == 404
     assert (
         await client.get(
-            f"/api/v1/cartridges/{member_stash['slug']}",
+            f"/api/v1/skills/{member_stash['slug']}",
             headers=_auth(member_key),
         )
     ).status_code == 404
     assert (
         await client.get(
-            f"/api/v1/cartridges/{owner_stash['slug']}",
+            f"/api/v1/skills/{owner_stash['slug']}",
             headers=_auth(recipient_key),
         )
     ).status_code == 404
@@ -806,8 +843,8 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await pool.fetchval(
-            "SELECT COUNT(*) FROM cartridge_members cm "
-            "JOIN cartridges c ON c.id = cm.cartridge_id "
+            "SELECT COUNT(*) FROM skill_members cm "
+            "JOIN skills c ON c.id = cm.skill_id "
             "WHERE c.workspace_id = $1 AND cm.user_id = $2",
             workspace_id,
             member_id,
@@ -816,8 +853,8 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await pool.fetchval(
-            "SELECT COUNT(*) FROM cartridge_members cm "
-            "JOIN cartridges c ON c.id = cm.cartridge_id "
+            "SELECT COUNT(*) FROM skill_members cm "
+            "JOIN skills c ON c.id = cm.skill_id "
             "WHERE c.workspace_id = $1 AND cm.granted_by = $2",
             workspace_id,
             member_id,
@@ -826,8 +863,8 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await pool.fetchval(
-            "SELECT COUNT(*) FROM cartridge_invites ci "
-            "JOIN cartridges c ON c.id = ci.cartridge_id "
+            "SELECT COUNT(*) FROM skill_invites ci "
+            "JOIN skills c ON c.id = ci.skill_id "
             "WHERE c.workspace_id = $1 AND ci.recipient_user_id = $2",
             workspace_id,
             member_id,
@@ -836,8 +873,8 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await pool.fetchval(
-            "SELECT COUNT(*) FROM cartridge_invites ci "
-            "JOIN cartridges c ON c.id = ci.cartridge_id "
+            "SELECT COUNT(*) FROM skill_invites ci "
+            "JOIN skills c ON c.id = ci.skill_id "
             "WHERE c.workspace_id = $1 AND ci.invited_by_user_id = $2",
             workspace_id,
             member_id,
@@ -846,7 +883,119 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
     assert (
         await pool.fetchval(
-            "SELECT COUNT(*) FROM cartridges WHERE workspace_id = $1 AND owner_id = $2",
+            "SELECT COUNT(*) FROM skills WHERE workspace_id = $1 AND owner_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, pool):
+    """Removal must offboard like a voluntary leave: shares and private skill
+    grants confer access independently of membership, so kicking a member has
+    to revoke them too, not just drop the membership row."""
+    owner_key, owner = await _register(client, "kick_owner")
+    member_key, member = await _register(client, "kick_member")
+    member_id = UUID(member["id"])
+
+    ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Kick Team"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    workspace_id = UUID(ws["id"])
+    joined = await client.post(
+        f"/api/v1/workspaces/join/{ws['invite_code']}",
+        headers=_auth(member_key),
+    )
+    assert joined.status_code == 200
+
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/pages/new",
+            json={"name": "Confidential", "content": "Kick offboarding plan"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    owner_skill = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/skills",
+            json={
+                "title": "Owner private skill",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [{"object_type": "page", "object_id": page["id"]}],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+    granted = await client.post(
+        f"/api/v1/skills/{owner_skill['id']}/members",
+        json={"user_id": str(member_id), "permission": "read"},
+        headers=_auth(owner_key),
+    )
+    assert granted.status_code == 201
+    await pool.execute(
+        "INSERT INTO shares "
+        "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
+        "VALUES ($1, 'page', $2, 'user', $3, 'read', $4)",
+        workspace_id,
+        UUID(page["id"]),
+        member_id,
+        UUID(owner["id"]),
+    )
+    assert (
+        await client.get(
+            f"/api/v1/skills/{owner_skill['slug']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 200
+
+    # Members cannot kick — owner-only.
+    forbidden = await client.delete(
+        f"/api/v1/workspaces/{ws['id']}/members/{owner['id']}",
+        headers=_auth(member_key),
+    )
+    assert forbidden.status_code == 403
+
+    removed = await client.delete(
+        f"/api/v1/workspaces/{ws['id']}/members/{member_id}",
+        headers=_auth(owner_key),
+    )
+    assert removed.status_code == 204
+
+    assert (
+        await client.get(
+            f"/api/v1/skills/{owner_skill['slug']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 404
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM shares "
+            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM skill_members cm "
+            "JOIN skills c ON c.id = cm.skill_id "
+            "WHERE c.workspace_id = $1 AND cm.user_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
             workspace_id,
             member_id,
         )

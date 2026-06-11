@@ -5,10 +5,10 @@ import CommandPalette from "./CommandPalette";
 import {
   getCachedWorkspaceSidebar,
   readCachedWorkspaceSidebar,
-} from "../lib/stashNavigationCache";
+} from "../lib/skillNavigationCache";
 import { listAllTables, semanticSearchPages } from "../lib/api";
 
-const searchPlaceholder = "Search Stash or jump to a page, session, file, or table...";
+const searchPlaceholder = "Search Skill or jump to a page, session, file, or table...";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -42,7 +42,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("../lib/stashNavigationCache", () => ({
+vi.mock("../lib/skillNavigationCache", () => ({
   readCachedWorkspaceSidebar: vi.fn(),
   getCachedWorkspaceSidebar: vi.fn(),
 }));
@@ -54,7 +54,7 @@ vi.mock("../lib/api", () => ({
 
 const sidebar = {
   sessions: [],
-  cartridges: [],
+  skills: [],
   files: {
     folders: [],
     pages: [
