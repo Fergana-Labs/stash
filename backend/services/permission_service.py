@@ -12,6 +12,7 @@ never grants write.
 from uuid import UUID
 
 from ..database import get_pool
+from . import workspace_service
 
 _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
@@ -24,8 +25,6 @@ _WORKSPACE_LOOKUP = {
 }
 
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
-_ROLES_CAN_READ = {"owner", "editor", "viewer"}
-_ROLES_CAN_WRITE = {"owner", "editor"}
 
 # Share permission levels, ordered. A grant satisfies a requirement when its
 # level is >= the required level: read < comment < write.
@@ -313,11 +312,13 @@ async def check_access(
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
+    # Workspace roles grant baseline access: owners/editors get everything,
+    # viewers can read and comment but never write.
     if user_id is not None and workspace_id is not None:
         role = await get_workspace_role(workspace_id, user_id)
-        if role in _ROLES_CAN_WRITE:
+        if role in workspace_service.ROLES_CAN_WRITE:
             return True
-        if require == "read" and role in _ROLES_CAN_READ:
+        if require in ("read", "comment") and role in workspace_service.ROLES_CAN_READ:
             return True
 
     # The skill bundle itself: gated by skill access (read-only).
