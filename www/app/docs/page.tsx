@@ -5,7 +5,7 @@ export default function DocsOverview() {
   return (
     <>
       <Title>Stash Overview</Title>
-      <Subtitle> Stash is shared memory for your repositories. Agents push in their work automatically. Stash indexes it into a shared, searchable knowledge base. </Subtitle>
+      <Subtitle> Stash is the one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack and more — plus an agent-native Drive in Markdown and HTML where their sessions, files, and pages all land. </Subtitle>
 
       <Callout type="tip">
         <strong>Ready to get started?</strong> Go straight to the{" "}

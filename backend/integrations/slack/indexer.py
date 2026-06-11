@@ -97,7 +97,9 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     refs: list[str] = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         channels = (
-            await _slack_get(client, CONVERSATIONS_LIST_URL, {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS})
+            await _slack_get(
+                client, CONVERSATIONS_LIST_URL, {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS}
+            )
         ).get("channels", [])
         for channel in channels:
             if len(refs) >= limit:

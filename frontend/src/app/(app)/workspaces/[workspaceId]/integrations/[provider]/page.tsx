@@ -100,7 +100,8 @@ export default function IntegrationPage() {
   }
 
   const connected = !!status?.connected;
-  const account = status?.account_email || status?.account_display_name;
+  const account = connectedAccountLabel(status);
+  const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
 
   async function connect() {
     setBusy("connect");
@@ -192,18 +193,29 @@ export default function IntegrationPage() {
           <div className="ml-auto flex items-center gap-3.5">
             {connected && account && (
               <span className="text-[12.5px] text-muted">
-                Connected as <b className="font-semibold text-foreground">{account}</b>
+                {account}
               </span>
             )}
             {connected ? (
-              <button
-                type="button"
-                onClick={() => void disconnect()}
-                disabled={busy === "disconnect"}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
-              >
-                {busy === "disconnect" ? "Disconnecting..." : "Disconnect"}
-              </button>
+              <>
+                {canConnectAnother && (
+                  <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={secondaryButton()}>
+                    {busy === "connect" ? "Connecting..." : "Connect another"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void disconnect()}
+                  disabled={busy === "disconnect"}
+                  className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+                >
+                  {busy === "disconnect"
+                    ? "Disconnecting..."
+                    : connector.provider === "gmail" && (status?.accounts.length ?? 0) > 1
+                    ? "Disconnect all"
+                    : "Disconnect"}
+                </button>
+              </>
             ) : status?.auth_kind === "api_key" ? (
               <button
                 type="button"
@@ -251,6 +263,8 @@ export default function IntegrationPage() {
               connector={connector}
               workspaceId={workspaceId}
               connected={connected}
+              accounts={status?.accounts ?? []}
+              existingRefs={sources.map((source) => source.external_ref).filter((ref): ref is string => Boolean(ref))}
               onAdded={() => void refresh()}
             />
           </section>
@@ -300,6 +314,13 @@ export default function IntegrationPage() {
   );
 }
 
+function connectedAccountLabel(status: IntegrationStatus | null): string | null {
+  if (!status?.connected) return null;
+  if (status.accounts.length > 1) return `${status.accounts.length} accounts connected`;
+  const account = status.account_email || status.account_display_name;
+  return account ? `Connected as ${account}` : "Connected";
+}
+
 // The uppercase section label that runs above each block, per the mock.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -316,6 +337,7 @@ function capitalize(s: string): string {
 // The noun used in the "Add a <thing>" / "<things>" section labels.
 const ITEM_NOUN: Record<string, string> = {
   github_repo: "repo",
+  gmail: "mailbox",
   google_drive: "folder",
   notion: "page",
   jira_project: "project",
@@ -359,6 +381,7 @@ function shortRef(source: WorkspaceSource): string | null {
   const ref = source.external_ref;
   if (!ref) return null;
   if (source.type === "jira_project") return ref.split(":")[1] ?? ref;
+  if (source.type === "gmail") return null;
   return ref;
 }
 
@@ -397,7 +420,10 @@ function SourceRow({
     };
   }, [workspaceId, source.source]);
 
-  const federated = source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project";
+  const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project" || source.type === "twitter";
+  // Search-driven / queryable sources (twitter, snowflake) have no indexer;
+  // the backend rejects sync for them, so don't offer it.
+  const syncs = source.sync_enabled !== false;
   const ref = shortRef(source);
 
   return (
@@ -413,9 +439,9 @@ function SourceRow({
           {ref && <span className="font-mono text-[12px] font-normal text-muted">{ref}</span>}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
-          <SyncStatusMark syncStatus={source.sync_status} />
+          {syncs && <SyncStatusMark syncStatus={source.sync_status} />}
           <span>
-            {relativeTime(source.last_synced_at)}
+            {syncs ? relativeTime(source.last_synced_at) : "live"}
             {itemCount !== null && ` · ${itemCount} items`}
             {federated && " · federated"}
           </span>
@@ -428,9 +454,11 @@ function SourceRow({
         <button type="button" onClick={onOpen} className={rowButton()}>
           {open ? "Close" : "Browse"}
         </button>
-        <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
-          {busySync ? "Syncing..." : "Sync"}
-        </button>
+        {syncs && (
+          <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
+            {busySync ? "Syncing..." : "Sync"}
+          </button>
+        )}
         <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
           Remove
         </button>
@@ -671,6 +699,7 @@ function SearchablePanel({
 }) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SourceSearchHit[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [recent, setRecent] = useState<SourceEntry[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(null);
@@ -694,10 +723,14 @@ function SearchablePanel({
   async function search() {
     if (!query.trim()) return;
     setSearching(true);
+    setSearchError(null);
     try {
       setHits(await searchSource(workspaceId, query, source.source));
-    } catch {
-      setHits([]);
+    } catch (e) {
+      // A scoped provider failure (rate limit, disconnected connection) must
+      // never read as "No matches."
+      setHits(null);
+      setSearchError(e instanceof Error ? e.message : "Search failed");
     } finally {
       setSearching(false);
     }
@@ -723,6 +756,10 @@ function SearchablePanel({
           {searching ? "Searching..." : "Search"}
         </button>
       </form>
+
+      {searchError && (
+        <div className="mb-2 px-1.5 py-1 text-[12.5px] text-error">{searchError}</div>
+      )}
 
       {hits !== null && (
         <div className="mb-2">

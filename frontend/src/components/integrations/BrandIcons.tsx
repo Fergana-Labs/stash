@@ -36,6 +36,24 @@ export function GoogleDriveIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function GmailIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 256 193"
+      aria-hidden
+    >
+      <path d="M58.18 192.05V93.14L27.5 65.08 0 49.5v127.34c0 8.84 7.16 16 16 16h42.18z" fill="#4285F4" />
+      <path d="M197.82 192.05H240c8.84 0 16-7.16 16-16V49.5l-28.68 16.42-29.5 27.22v98.91z" fill="#34A853" />
+      <path d="M58.18 93.14 53.9 54.8l4.28-37.3L128 69.87l69.82-52.37 4.67 35-4.67 40.64L128 145.5z" fill="#EA4335" />
+      <path d="M197.82 17.5v75.64L256 49.5V25.32C256 5.57 233.45-6.2 216.73 6z" fill="#FBBC04" />
+      <path d="M0 49.5 26.76 69.57l31.42 23.57V17.5L39.27 6C22.49-6.2 0 5.57 0 25.32z" fill="#C5221F" />
+    </svg>
+  );
+}
+
 export function ObsidianIcon({ className, size = defaultSize }: Props) {
   // Renders the official Obsidian logo SVG asset from /public.
   // Tip: use plain <img> here — next/image's optimizer would re-encode
@@ -174,6 +192,21 @@ export function SlackIcon({ className, size = defaultSize }: Props) {
       <path d="M45.2 25.8c-7.1 0-12.9-5.8-12.9-12.9S38.1 0 45.2 0s12.9 5.8 12.9 12.9v12.9zm0 6.5c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H12.9C5.8 58.1 0 52.3 0 45.2s5.8-12.9 12.9-12.9z" fill="#36C5F0" />
       <path d="M97 45.2c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9-5.8 12.9-12.9 12.9H97zm-6.5 0c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V12.9C64.7 5.8 70.5 0 77.6 0s12.9 5.8 12.9 12.9z" fill="#2EB67D" />
       <path d="M77.6 97c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9-12.9-5.8-12.9-12.9V97zm0-6.5c-7.1 0-12.9-5.8-12.9-12.9s5.8-12.9 12.9-12.9h32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9z" fill="#ECB22E" />
+    </svg>
+  );
+}
+
+export function TwitterIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M13.9 10.47 22.04 1h-1.93l-7.07 8.23L7.4 1H.9l8.53 12.44L.9 23.37h1.93l7.46-8.68 5.96 8.68h6.5zm-2.64 3.07-.86-1.24L3.52 2.45h2.95l5.55 7.94.86 1.24 7.23 10.35h-2.95z" />
     </svg>
   );
 }

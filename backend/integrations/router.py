@@ -23,7 +23,7 @@ from uuid import UUID
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
@@ -48,7 +48,13 @@ def _get_state_fernet() -> Fernet:
     return Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
 
 
-def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) -> str:
+def _encode_state(
+    user_id: UUID,
+    provider: str,
+    return_to: str | None = None,
+    *,
+    extra: dict | None = None,
+) -> str:
     payload = json.dumps(
         {
             "u": str(user_id),
@@ -56,12 +62,13 @@ def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) ->
             "n": secrets.token_urlsafe(16),
             "t": datetime.now(UTC).isoformat(),
             "r": return_to,
+            "x": extra or {},
         }
     )
     return _get_state_fernet().encrypt(payload.encode()).decode()
 
 
-def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]:
+def _decode_state_payload(state: str, expected_provider: str) -> dict:
     try:
         raw = _get_state_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
     except InvalidToken:
@@ -69,6 +76,11 @@ def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]
     payload = json.loads(raw)
     if payload.get("p") != expected_provider:
         raise HTTPException(status_code=400, detail="provider mismatch in state")
+    return payload
+
+
+def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]:
+    payload = _decode_state_payload(state, expected_provider)
     return UUID(payload["u"]), payload.get("r")
 
 
@@ -77,6 +89,15 @@ def _safe_return_to(return_to: str | None) -> str | None:
     if not return_to or not return_to.startswith("/") or return_to.startswith("//"):
         return None
     return return_to
+
+
+class IntegrationAccountItem(BaseModel):
+    account_key: str
+    account_email: str | None = None
+    account_display_name: str | None = None
+    scopes: list[str]
+    expires_at: str | None = None
+    connected_at: str | None = None
 
 
 class ProviderListItem(BaseModel):
@@ -95,6 +116,7 @@ class ProviderListItem(BaseModel):
     account_display_name: str | None = None
     expires_at: str | None = None
     connected_at: str | None = None
+    accounts: list[IntegrationAccountItem] = Field(default_factory=list)
 
 
 class IntegrationsListResponse(BaseModel):
@@ -123,6 +145,11 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GOOGLE_OAUTH_CLIENT_SECRET",
             "GOOGLE_OAUTH_REDIRECT_URI",
         ],
+        "gmail": [
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REDIRECT_URI",
+        ],
         "notion": [
             "NOTION_OAUTH_CLIENT_ID",
             "NOTION_OAUTH_CLIENT_SECRET",
@@ -132,6 +159,10 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "SLACK_OAUTH_CLIENT_ID",
             "SLACK_OAUTH_CLIENT_SECRET",
             "SLACK_OAUTH_REDIRECT_URI",
+        ],
+        "twitter": [
+            "TWITTER_OAUTH_CLIENT_ID",
+            "TWITTER_OAUTH_REDIRECT_URI",
         ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
         "jira": [
@@ -150,8 +181,10 @@ def _provider_disabled_reason(provider: str) -> str | None:
         display_names = {
             "github": "GitHub",
             "google": "Google",
+            "gmail": "Gmail",
             "notion": "Notion",
             "slack": "Slack",
+            "twitter": "Twitter / X",
             "granola": "Granola",
             "jira": "Jira",
             "asana": "Asana",
@@ -200,6 +233,7 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
                 connected_at=conn["connected_at"] if conn else None,
+                accounts=conn["accounts"] if conn else [],
             )
         )
     return IntegrationsListResponse(providers=items)
@@ -242,7 +276,18 @@ async def integration_connect(
     if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
         url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
         return ConnectStartResponse(authorize_url=url)
-    state = _encode_state(current_user["id"], provider, _safe_return_to(return_to))
+    return_path = _safe_return_to(return_to)
+    if getattr(p, "uses_pkce", False):
+        code_verifier = p.new_code_verifier()
+        state = _encode_state(
+            current_user["id"],
+            provider,
+            return_path,
+            extra={"code_verifier": code_verifier},
+        )
+        return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
+
+    state = _encode_state(current_user["id"], provider, return_path)
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
 
@@ -262,8 +307,16 @@ async def integration_callback(
             # The provider owns the exchange + storage and returns where to land.
             return_to = await p.finish_authorization(code, state)
         else:
-            user_id, return_to = _decode_state(state, expected_provider=provider)
-            token = await p.exchange_code(code)
+            payload = _decode_state_payload(state, expected_provider=provider)
+            user_id = UUID(payload["u"])
+            return_to = payload.get("r")
+            if getattr(p, "uses_pkce", False):
+                code_verifier = (payload.get("x") or {}).get("code_verifier")
+                if not code_verifier:
+                    raise HTTPException(status_code=400, detail="missing PKCE verifier in state")
+                token = await p.exchange_code(code, code_verifier)
+            else:
+                token = await p.exchange_code(code)
             # The account profile is display-only — a failure fetching it must
             # NOT block the connection (the token is what matters). Degrade to
             # an empty identity instead.
@@ -277,6 +330,19 @@ async def integration_callback(
                 )
                 account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
+
+            # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+            # Capture the connecting user's Slack identity so the bot can map
+            # inbound mentions to this Stash user without relying on email.
+            # Best-effort: a failure here must not break the connection.
+            if provider == "slack":
+                from .slack import links
+
+                try:
+                    await links.capture_from_user_token(user_id, token.access_token)
+                except Exception:
+                    logger.warning("slack: failed to capture user link", exc_info=True)
+            # --- END Slack agent ---
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:
@@ -491,9 +557,7 @@ async def jira_list_projects(current_user: dict = Depends(get_current_user)):
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     out: list[JiraProjectSummary] = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        sites_resp = await client.get(
-            "https://api.atlassian.com/oauth/token/accessible-resources"
-        )
+        sites_resp = await client.get("https://api.atlassian.com/oauth/token/accessible-resources")
         sites_resp.raise_for_status()
         for site in sites_resp.json():
             cloud_id = site["id"]

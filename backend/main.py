@@ -19,6 +19,7 @@ from .routers import (
     agent_chat,
     aggregate,
     analytics,
+    batch,
     cartridge_invites,
     cartridges,
     collab,
@@ -27,6 +28,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    marketing,
     memory,
     pins,
     publish,
@@ -104,14 +106,19 @@ app.include_router(cartridge_invites.router)
 app.include_router(cartridges.ws_router)
 app.include_router(cartridges.public_router)
 app.include_router(files_tree.router)
+app.include_router(files_tree.canonical_router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)
+app.include_router(tables.router)
 app.include_router(files.ws_router)
+app.include_router(files.canonical_router)
+app.include_router(batch.router)
 app.include_router(transcripts.router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
+app.include_router(marketing.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)

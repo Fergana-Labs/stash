@@ -36,28 +36,27 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Notion, Slack, Granola. Your agent reads across everything you connect.</li>
-      <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; add them to your Stash.</li>
+      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola, Twitter / X. Your agent reads across everything you connect.</li>
       <li><strong>Invite a teammate</strong>${
         inviteLink
           ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
           : ` from settings.`
       }</li>
-      <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>pip install stashai</code></li>
+      <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>bash -c "$(curl -fsSL https://joinstash.ai/install)"</code></li>
     </ul>`,
   );
 
   parts.push(`<h2>How Stash works</h2>`);
   parts.push(
-    `<p>Stash is built around <strong>sources</strong> your agents read and write, <strong>cartridges</strong> you share on top of them, and the <strong>agents</strong> you talk to over all of it.</p>
+    `<p>Stash is built around <strong>sources</strong> your agents read and write, the <strong>folders and files</strong> you share, and the <strong>agents</strong> you talk to over all of it.</p>
     <ul>
       <li><strong>Sources</strong> — everything your agents produce or consume, all searchable:
         <ul>
           <li><strong>Agent Sessions</strong> — the history of your agent conversations, automatically pushed in from Claude Code, Codex, and friends.</li>
-          <li><strong>Files</strong> — a file system for documents (markdown, HTML, images, PDF, CSV, tables), plus connected sources like Notion, Google Drive, Slack, and GitHub. Built so agents can use it natively.</li>
+          <li><strong>Files</strong> — a file system for documents (markdown, HTML, images, PDF, CSV, tables), plus connected sources like Notion, Google Drive, Slack, Twitter / X, and GitHub. Built so agents can use it natively.</li>
         </ul>
       </li>
-      <li><strong>Cartridges</strong> — curated bundles you share on top of your sources: pick any subset and publish it, or share it with specific people. The go-to surface for a team, workstream, or project.</li>
+      <li><strong>Sharing</strong> — share any folder, page, or file with a link, or give specific people access — so teammates and their agents work from the same docs.</li>
       <li><strong>Agents</strong> — talk to an agent grounded on everything above: search it, ask about it, and let your coding agents work against it.</li>
     </ul>`,
   );

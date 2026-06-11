@@ -17,6 +17,7 @@ for a new provider — only the explicit list of providers grows.
 from . import (
     asana,  # noqa: F401
     github,  # noqa: F401 — import for side-effect (provider self-registration)
+    gmail,  # noqa: F401
     gong,  # noqa: F401
     google,  # noqa: F401
     granola,  # noqa: F401
@@ -24,4 +25,5 @@ from . import (
     notion,  # noqa: F401
     slack,  # noqa: F401
     snowflake,  # noqa: F401
+    twitter,  # noqa: F401
 )

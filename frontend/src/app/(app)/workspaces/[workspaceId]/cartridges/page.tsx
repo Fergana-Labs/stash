@@ -3,42 +3,50 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { StashesGridSkeleton } from "../../../../../components/SkeletonStates";
+import {
+  CardGridSkeleton,
+  StashesGridSkeleton,
+} from "../../../../../components/SkeletonStates";
 import { PinIcon, StashIcon } from "../../../../../components/StashIcons";
-import CartridgeCard from "../../../../../components/cartridge/CartridgeCard";
+import CartridgeCard, {
+  VIS_COLOR,
+  VisibilityBadge,
+} from "../../../../../components/cartridge/CartridgeCard";
+import ForkCartridgeCardButton from "../../../../../components/cartridge/ForkCartridgeCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useShareModal } from "../../../../../lib/shareModalContext";
 import {
   addExternalCartridge,
   ApiError,
+  API_BASE,
   deleteCartridge,
+  dismissCartridgeInvite,
   displayVisibility,
+  listCartridgeInvites,
   listStashes,
+  type CartridgeInvite,
+  type PublicCartridgeCard,
   type WorkspaceCartridge,
 } from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
 import { stashSlugFromInput } from "../../../../../lib/cartridgeLinks";
 
-// Visibility is one axis (who can see a Cartridge). "External" is a different
-// axis entirely — where it came from — so it's a section below, not a filter.
-type Visibility = "all" | "private" | "shared" | "public";
 type ViewKey = "grid" | "list";
+// The primary axis: which set of Cartridges you're looking at. Yours and Shared
+// share the view toggle / quick-access; Discover is its own public-library
+// surface. Each row carries its own Private/Shared/Public badge — there's no
+// visibility filter to learn.
+type Tab = "yours" | "shared" | "discover";
 
 const VIEW_STORAGE_KEY = "stash_stashes_view";
 
-const VISIBILITIES: { key: Visibility; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "private", label: "Private" },
-  { key: "shared", label: "Shared" },
-  { key: "public", label: "Public" },
-];
-
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
-const VIS_COLOR: Record<string, string> = {
-  public: "#22C55E",
-  shared: "var(--color-brand-500)",
-  private: "#9CA3AF",
+const TAB_COPY: Record<Tab, string> = {
+  yours:
+    "Cartridges you created in this workspace. Share them with people or publish them to the public library.",
+  shared: "Cartridges other people created and shared with you, plus pending invites.",
+  discover: "Public cartridges from the community — fork one into your workspace.",
 };
 
 export default function WorkspaceStashesPage() {
@@ -49,7 +57,9 @@ export default function WorkspaceStashesPage() {
   const pins = usePins("cartridges", workspaceId);
 
   const [cartridges, setStashes] = useState<WorkspaceCartridge[] | null>(null);
-  const [visibility, setVisibility] = useState<Visibility>("all");
+  const [invites, setInvites] = useState<CartridgeInvite[]>([]);
+  const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("yours");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -95,22 +105,29 @@ export default function WorkspaceStashesPage() {
     load();
   }, [load, shareVersion]);
 
-  // Visibility filter applies across both axes; the section split (yours vs
-  // forked) is the origin axis, kept independent of it.
+  // Pending invites are Cartridges others shared directly with you — surfaced in
+  // the "Shared with you" section. Non-critical: failure leaves the list empty.
+  useEffect(() => {
+    listCartridgeInvites()
+      .then(setInvites)
+      .catch(() => setInvites([]));
+  }, [shareVersion]);
+
+  async function dismissInvite(invite: CartridgeInvite) {
+    setBusyInviteId(invite.id);
+    try {
+      await dismissCartridgeInvite(invite.id);
+      setInvites((current) => current.filter((item) => item.id !== invite.id));
+    } finally {
+      setBusyInviteId(null);
+    }
+  }
+
   const visible = useMemo(() => {
     if (!cartridges) return [];
-    const ordered = [...cartridges].sort(
+    return [...cartridges].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
-    if (visibility === "all") return ordered;
-    return ordered.filter((s) => displayVisibility(s.access, s.share_count) === visibility);
-  }, [cartridges, visibility]);
-
-  const counts = useMemo(() => {
-    const list = cartridges ?? [];
-    const by = (v: Visibility) =>
-      list.filter((s) => displayVisibility(s.access, s.share_count) === v).length;
-    return { all: list.length, private: by("private"), shared: by("shared"), public: by("public") };
   }, [cartridges]);
 
   const native = useMemo(() => visible.filter((s) => !s.is_external), [visible]);
@@ -158,18 +175,9 @@ export default function WorkspaceStashesPage() {
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
-              Cartridges
-            </h1>
-            <p className="mt-0.5 text-[12.5px] text-muted">
-              Publishable bundles you own. Browse public ones in{" "}
-              <Link href="/discover" className="text-[var(--color-brand-600)] hover:underline">
-                Discover
-              </Link>
-              .
-            </p>
-          </div>
+          <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
+            Cartridges
+          </h1>
           <button
             type="button"
             onClick={() => shareModal.open({ workspaceId })}
@@ -185,7 +193,20 @@ export default function WorkspaceStashesPage() {
           </div>
         )}
 
-        {(pinnedStashes.length > 0 || recentStashes.length > 0) && (
+        {/* The primary selector: Yours / Shared with you / Discover. */}
+        <CartridgeTabs
+          tab={tab}
+          onChange={setTab}
+          yoursCount={(cartridges ?? []).filter((s) => !s.is_external).length}
+          sharedCount={
+            (cartridges ?? []).filter((s) => s.is_external).length + invites.length
+          }
+        />
+        <p className="mt-2 text-[12.5px] text-muted">{TAB_COPY[tab]}</p>
+
+        {/* Quick-access + the view toolbar belong to your held Cartridges, so
+            they sit under Yours and Shared, not Discover. */}
+        {tab !== "discover" && (pinnedStashes.length > 0 || recentStashes.length > 0) && (
           <CartridgeQuickAccess
             pinned={pinnedStashes}
             recent={recentStashes}
@@ -194,27 +215,15 @@ export default function WorkspaceStashesPage() {
           />
         )}
 
-        {/* Toolbar: one visibility axis (who can see) + the view switch. */}
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5">
-          <VisibilityFilter
-            visibility={visibility}
-            counts={counts}
-            onChange={setVisibility}
-          />
-          <CartridgeViewToggle view={view} onChange={setViewPersisted} />
-        </div>
-
-        {cartridges.length === 0 ? (
-          <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
-            No Cartridges yet.
+        {tab !== "discover" && (
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <CartridgeViewToggle view={view} onChange={setViewPersisted} />
           </div>
-        ) : (
-          <>
-            <CartridgeSection
-              title="Your Cartridges"
-              count={native.length}
-              emptyHint="None match this visibility."
-            >
+        )}
+
+        {tab === "yours" && (
+          <div className="mt-4">
+            {native.length > 0 ? (
               <CartridgeCollection
                 cartridges={native}
                 startIndex={0}
@@ -225,34 +234,46 @@ export default function WorkspaceStashesPage() {
                 onToggleSelect={toggleSelect}
                 embedded
               />
-            </CartridgeSection>
-
-            {/* Origin axis: Cartridges forked in from other workspaces. Kept a
-                separate section (not a peer filter) and always shown so the
-                add-by-link entry point stays reachable. */}
-            <CartridgeSection
-              title="Forked from others"
-              count={forked.length}
-              emptyHint={visibility === "all" ? null : "None match this visibility."}
-              action={
-                <ExternalCartridgeLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
-              }
-            >
-              {forked.length > 0 && (
-                <CartridgeCollection
-                  cartridges={forked}
-                  startIndex={native.length}
-                  view={view}
-                  isPinned={isPinned}
-                  onTogglePin={(s) => pins.toggle(s.id)}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelect}
-                  embedded
-                />
-              )}
-            </CartridgeSection>
-          </>
+            ) : (
+              <EmptyHint>No cartridges yet.</EmptyHint>
+            )}
+          </div>
         )}
+
+        {tab === "shared" && (
+          <div className="mt-4">
+            {invites.length > 0 && (
+              <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                {invites.map((invite) => (
+                  <SharedInviteRow
+                    key={invite.id}
+                    invite={invite}
+                    busy={busyInviteId === invite.id}
+                    onDismiss={() => void dismissInvite(invite)}
+                  />
+                ))}
+              </div>
+            )}
+            {forked.length > 0 ? (
+              <CartridgeCollection
+                cartridges={forked}
+                startIndex={native.length}
+                view={view}
+                isPinned={isPinned}
+                onTogglePin={(s) => pins.toggle(s.id)}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                embedded
+                className={invites.length > 0 ? "mt-3" : undefined}
+              />
+            ) : (
+              invites.length === 0 && <EmptyHint>Nothing shared with you yet.</EmptyHint>
+            )}
+            <ExternalCartridgeLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
+          </div>
+        )}
+
+        {tab === "discover" && <DiscoverSection workspaceId={workspaceId} />}
       </div>
 
       {selectedStashes.length > 0 && (
@@ -353,44 +374,52 @@ function ExternalCartridgeLinkForm({
   );
 }
 
-// The single visibility axis as a segmented control. One pill per level plus
-// "All", each with its live count — replaces the old flat filter row that
-// mixed visibility with the unrelated "External" origin flag.
-function VisibilityFilter({
-  visibility,
-  counts,
-  onChange,
-}: {
-  visibility: Visibility;
-  counts: Record<Visibility, number>;
-  onChange: (next: Visibility) => void;
-}) {
+function PlusGlyph() {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-base p-[3px]">
-      {VISIBILITIES.map((v) => {
-        const active = visibility === v.key;
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+// The primary selector as an underline tab bar. Yours/Shared carry a live count;
+// Discover is the public library (no owned count).
+function CartridgeTabs({
+  tab,
+  onChange,
+  yoursCount,
+  sharedCount,
+}: {
+  tab: Tab;
+  onChange: (next: Tab) => void;
+  yoursCount: number;
+  sharedCount: number;
+}) {
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: "yours", label: "Yours", count: yoursCount },
+    { key: "shared", label: "Shared with you", count: sharedCount },
+    { key: "discover", label: "Discover" },
+  ];
+  return (
+    <div className="mt-5 flex gap-1 border-b border-border">
+      {tabs.map((t) => {
+        const active = tab === t.key;
         return (
           <button
-            key={v.key}
+            key={t.key}
             type="button"
-            onClick={() => onChange(v.key)}
+            onClick={() => onChange(t.key)}
             className={
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-[5px] text-[12.5px] " +
+              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors " +
               (active
-                ? "bg-raised font-semibold text-foreground"
-                : "text-muted hover:text-foreground")
+                ? "border-[var(--color-brand-600)] font-semibold text-foreground"
+                : "border-transparent text-muted hover:text-foreground")
             }
           >
-            {v.key !== "all" && (
-              <span
-                className="inline-block h-[7px] w-[7px] rounded-full"
-                style={{ background: VIS_COLOR[v.key] }}
-              />
+            {t.label}
+            {t.count !== undefined && (
+              <span className="ml-1.5 text-[11px] text-muted">{t.count}</span>
             )}
-            {v.label}
-            <span className="sys-label" style={{ fontSize: 10 }}>
-              {counts[v.key]}
-            </span>
           </button>
         );
       })}
@@ -398,48 +427,225 @@ function VisibilityFilter({
   );
 }
 
-// A titled block of Cartridges (the origin axis: "Your Cartridges" vs "Forked
-// from others"). Renders its header + count, an optional header action, and a
-// muted hint when the section is empty.
-function CartridgeSection({
-  title,
-  count,
-  emptyHint,
-  action,
-  children,
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
+      {children}
+    </p>
+  );
+}
+
+// A pending invite rendered as a drive-style row above the shared list. View
+// opens the Cartridge; Dismiss removes the invite (the access stays — it can
+// still be reached by link). Mirrors the dismiss logic in CartridgeInviteCenter.
+function SharedInviteRow({
+  invite,
+  busy,
+  onDismiss,
 }: {
-  title: string;
-  count: number;
-  emptyHint: string | null;
-  action?: React.ReactNode;
-  children?: React.ReactNode;
+  invite: CartridgeInvite;
+  busy: boolean;
+  onDismiss: () => void;
 }) {
   return (
-    <section className="mt-6">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <h2 className="m-0 font-display text-[14px] font-semibold">{title}</h2>
+    <div
+      className="grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0"
+      style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr) auto" }}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
+          <StashIcon />
+        </span>
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {invite.cartridge_title}
+        </span>
+        <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
+          INVITE
+        </span>
+      </div>
+      <span className="truncate text-[12px] text-muted">
+        from {invite.invited_by_display_name} · {invite.source_workspace_name}
+      </span>
+      <div className="flex items-center justify-end gap-1.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDismiss}
+          className="rounded-md border border-border-subtle px-2 py-1 text-[12px] text-muted hover:text-foreground disabled:opacity-50"
+        >
+          Dismiss
+        </button>
+        <Link
+          href={`/cartridges/${invite.cartridge_slug}`}
+          className="rounded-md bg-[var(--color-brand-600)] px-2 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+        >
+          View
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// --- Discover (public library), inline ---
+
+const DISCOVER_SORTS = ["trending", "newest", "popular"] as const;
+type DiscoverSort = (typeof DISCOVER_SORTS)[number];
+
+function discoverSortLabel(sort: DiscoverSort): string {
+  if (sort === "popular") return "Most viewed";
+  if (sort === "trending") return "Trending";
+  return "Newest";
+}
+
+async function fetchPublicCartridges(params: {
+  q?: string;
+  sort: DiscoverSort;
+}): Promise<PublicCartridgeCard[]> {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) qs.set(key, value);
+  }
+  const res = await fetch(`${API_BASE}/api/v1/discover/cartridges${qs.size ? `?${qs}` : ""}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.cartridges ?? [];
+}
+
+// The public marketplace as a section of the Cartridges page. Self-contained:
+// owns its own search/sort/fetch and isn't touched by the page's visibility
+// filter, view toggle, pins, or selection (those are for Cartridges you hold).
+function DiscoverSection({ workspaceId }: { workspaceId: string }) {
+  const [sort, setSort] = useState<DiscoverSort>("trending");
+  const [query, setQuery] = useState("");
+  const [cartridges, setCartridges] = useState<PublicCartridgeCard[]>([]);
+  const [fetching, setFetching] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFetching(true);
+    const handle = setTimeout(() => {
+      fetchPublicCartridges({ q: query || undefined, sort })
+        .then((list) => {
+          if (!cancelled) setCartridges(list);
+        })
+        .finally(() => {
+          if (!cancelled) setFetching(false);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [query, sort]);
+
+  return (
+    <section className="mt-4">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <div className="mr-auto flex items-baseline gap-2">
           <span className="sys-label" style={{ fontSize: 10.5 }}>
-            {count}
+            public library
           </span>
         </div>
-        {action}
+        <div className="flex items-center gap-2">
+          <div className="flex w-[220px] items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
+            <SearchGlyph />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search public Cartridges…"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
+            />
+          </div>
+          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
+            {DISCOVER_SORTS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setSort(option)}
+                className={
+                  "rounded-md px-2.5 py-[3px] text-[12px] " +
+                  (sort === option
+                    ? "bg-raised font-semibold text-foreground"
+                    : "text-muted hover:text-foreground")
+                }
+              >
+                {discoverSortLabel(option)}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      {count === 0
-        ? emptyHint && (
-            <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted">
-              {emptyHint}
-            </p>
-          )
-        : children}
+
+      {fetching ? (
+        <CardGridSkeleton />
+      ) : cartridges.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted">
+          No public Cartridges match.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cartridges.map((stash, i) => {
+            const trending = sort === "trending" && i < 2;
+            return (
+              <CartridgeCard
+                key={stash.id}
+                stash={{
+                  id: stash.id,
+                  slug: stash.slug,
+                  title: stash.title,
+                  description: stash.description,
+                  cover_image_url: stash.cover_image_url,
+                  access: "public",
+                  item_count: stash.item_count,
+                  updated_at: stash.updated_at,
+                }}
+                cover={COVERS[i % COVERS.length]}
+                badge={
+                  trending ? (
+                    <span className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white">
+                      ↗ trending
+                    </span>
+                  ) : undefined
+                }
+                cornerAction={
+                  stash.workspace_id === workspaceId ? undefined : (
+                    <ForkCartridgeCardButton
+                      slug={stash.slug}
+                      sourceWorkspaceId={stash.workspace_id}
+                    />
+                  )
+                }
+                footer={
+                  <>
+                    <span className="min-w-0 truncate">
+                      {stash.owner_display_name}
+                      {stash.workspace_name && (
+                        <>
+                          {" · "}
+                          <span className="font-mono text-dim">{stash.workspace_name}</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
+                      Open →
+                    </span>
+                  </>
+                }
+              />
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
 
-function PlusGlyph() {
+function SearchGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M12 5v14M5 12h14" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
     </svg>
   );
 }
@@ -454,6 +660,7 @@ function CartridgeCollection({
   selectedIds,
   onToggleSelect,
   embedded,
+  className,
 }: {
   cartridges: WorkspaceCartridge[];
   startIndex: number;
@@ -463,13 +670,16 @@ function CartridgeCollection({
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   embedded?: boolean;
+  className?: string;
 }) {
+  const extra = className ? ` ${className}` : "";
   if (view === "list") {
     return (
       <div
         className={
           (embedded ? "" : "mt-4 ") +
-          "overflow-hidden rounded-xl border border-border bg-surface"
+          "overflow-hidden rounded-xl border border-border bg-surface" +
+          extra
         }
       >
         {cartridges.map((stash) => (
@@ -490,7 +700,8 @@ function CartridgeCollection({
     <div
       className={
         (embedded ? "" : "mt-4 ") +
-        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" +
+        extra
       }
     >
       {cartridges.map((stash, i) => (
@@ -535,45 +746,43 @@ function CartridgeListRow({
 }) {
   const itemCount = stash.items?.length ?? 0;
   const author = stash.owner_display_name || stash.owner_name || "";
-  const dotColor = VIS_COLOR[displayVisibility(stash.access, stash.share_count)];
 
   return (
     <Link
       href={`/cartridges/${stash.slug}`}
       className={
-        "group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0 " +
+        "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
       }
+      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto" }}
     >
       <SelectBox selected={selected} onToggle={() => onToggleSelect(stash.id)} />
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          {dotColor && (
-            <span
-              className="inline-block h-[8px] w-[8px] shrink-0 rounded-full"
-              style={{ background: dotColor }}
-              title={stash.access}
-            />
-          )}
-          <span className="min-w-0 truncate font-display text-[14px] font-semibold tracking-tight text-foreground group-hover:text-[var(--color-brand-700)]">
-            {stash.title}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
+          <StashIcon />
+        </span>
+        <span className="min-w-0 truncate font-medium text-foreground">{stash.title}</span>
+        {stash.is_external && (
+          <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
+            EXTERNAL
           </span>
-          {stash.is_external && (
-            <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
-              EXTERNAL
-            </span>
-          )}
-        </div>
-        <p className="mt-0.5 truncate text-[12px] text-muted">
-          {stash.description || "No description."}
-        </p>
+        )}
       </div>
-      <div className="sys-label whitespace-nowrap text-right" style={{ fontSize: 10.5 }}>
+      <span className="truncate text-[12px] text-muted">
         {author && `by ${author} · `}
         {itemCount} item{itemCount === 1 ? "" : "s"}
         {stash.updated_at && ` · ${relativeTime(stash.updated_at)}`}
-      </div>
-      <CartridgePinButton pinned={pinned} onToggle={() => onTogglePin(stash)} />
+      </span>
+      <VisibilityBadge access={stash.access} shareCount={stash.share_count} />
+      <span
+        className={
+          pinned
+            ? ""
+            : "opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+        }
+      >
+        <CartridgePinButton pinned={pinned} onToggle={() => onTogglePin(stash)} />
+      </span>
     </Link>
   );
 }

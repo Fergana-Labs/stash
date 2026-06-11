@@ -30,8 +30,8 @@ async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
 
 class AddSourceRequest(BaseModel):
     source_type: str
-    # Optional for Slack/Granola — their workspace id + name are resolved from
-    # the connected token (the user can't easily supply them).
+    # Optional for sources where the connected account resolves the target. For
+    # Gmail, pass the account email when more than one mailbox is connected.
     external_ref: str | None = None
     display_name: str | None = None
 
@@ -54,6 +54,35 @@ async def _resolve_granola_source(user_id) -> tuple[str, str]:
     return "granola", "Granola"
 
 
+async def _resolve_gmail_source(user_id, account_key: str | None) -> tuple[str, str]:
+    """Gmail source external_ref = the connected mailbox email."""
+    status = await integration_storage.status(user_id, "gmail")
+    accounts = status.get("accounts", [])
+    if not accounts:
+        raise HTTPException(status_code=401, detail="not connected to gmail")
+
+    if not account_key:
+        if len(accounts) != 1:
+            raise HTTPException(status_code=400, detail="Choose a Gmail account to add.")
+        account = accounts[0]
+    else:
+        key = account_key.strip().lower()
+        account = next(
+            (
+                a
+                for a in accounts
+                if a["account_key"] == key or (a.get("account_email") or "").lower() == key
+            ),
+            None,
+        )
+        if account is None:
+            raise HTTPException(status_code=400, detail="Gmail account is not connected.")
+
+    email = account.get("account_email") or account["account_key"]
+    await integration_storage.get_valid_token(user_id, "gmail", account["account_key"])
+    return account["account_key"], f"Gmail ({email})"
+
+
 async def _resolve_gong_source(user_id) -> tuple[str, str]:
     """Gong is one connection per user (all calls); external_ref is constant.
     Confirm the credentials exist (raises 401 if not connected)."""
@@ -69,6 +98,24 @@ async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
     creds = json.loads(await integration_storage.get_valid_token(user_id, "snowflake"))
     account = creds.get("account", "snowflake")
     return account, f"Snowflake ({account})"
+
+
+async def _resolve_twitter_source(user_id) -> tuple[str, str]:
+    """Twitter source external_ref is the connected X account's numeric user
+    id, resolved once here so reads never depend on /users/me (X's most
+    rate-limited endpoint). Caller-supplied refs are ignored — there are no
+    saved-query sources (they would burn the owner's X quota on a schedule)."""
+    from ..integrations.twitter.indexer import fetch_me
+
+    token = await integration_storage.get_valid_token(user_id, "twitter")
+    me = await fetch_me(token)
+    username = me.get("username")
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail="Reconnect Twitter / X before adding it as a source.",
+        )
+    return me["id"], f"Twitter / X (@{username})"
 
 
 @router.get("")
@@ -215,12 +262,18 @@ async def add_source(
     elif body.source_type == "granola" and not external_ref:
         external_ref, resolved_name = await _resolve_granola_source(current_user["id"])
         display_name = display_name or resolved_name
+    elif body.source_type == "gmail":
+        external_ref, resolved_name = await _resolve_gmail_source(current_user["id"], external_ref)
+        display_name = display_name or resolved_name
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
         display_name = display_name or resolved_name
     elif body.source_type == "snowflake" and not external_ref:
         external_ref, resolved_name = await _resolve_snowflake_source(current_user["id"])
         display_name = display_name or resolved_name
+    elif body.source_type == "twitter":
+        external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
+        display_name = resolved_name
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
@@ -241,8 +294,13 @@ async def sync_source_now(
 ):
     """Trigger an immediate re-index of an owned source."""
     await _require_member(workspace_id, current_user["id"])
-    if await source_service.get_owned_source(source_id, current_user["id"]) is None:
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
+    if source["source_type"] not in source_service.DEFAULT_SYNC_INTERVAL_S:
+        # Search-driven / queryable sources have no indexer; the queued task
+        # would no-op, so a 200 here would be a lie.
+        raise HTTPException(status_code=400, detail="This source type does not sync")
     result = celery.send_task(
         "backend.tasks.sources.sync_source",
         kwargs={"source_id": str(source_id)},

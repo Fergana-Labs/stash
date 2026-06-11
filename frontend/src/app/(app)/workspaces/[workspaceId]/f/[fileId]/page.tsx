@@ -1,32 +1,14 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import {
-  firstSearchParam,
-  metadataForPublicCartridgeItem,
-} from "../../../../../../lib/cartridgeMetadata";
-import FileClient from "./FileClient";
-
+// Legacy URL shape. File links are canonical at /f/[fileId] — the workspace
+// is resolved server-side — but old links live on in transcripts and chats.
 type PageProps = {
-  params: Promise<{ workspaceId: string; fileId: string }>;
+  params: Promise<{ fileId: string }>;
   searchParams: Promise<{ stash?: string | string[] }>;
 };
 
-export async function generateMetadata({
-  params,
-  searchParams,
-}: PageProps): Promise<Metadata> {
-  const [{ workspaceId, fileId }, query] = await Promise.all([params, searchParams]);
-  const slug = firstSearchParam(query.stash);
-  if (!slug) return { title: "File - Stash" };
-
-  return metadataForPublicCartridgeItem({
-    slug,
-    itemType: "file",
-    itemId: fileId,
-    path: `/workspaces/${workspaceId}/f/${fileId}?stash=${encodeURIComponent(slug)}`,
-  });
-}
-
-export default function FileRoute() {
-  return <FileClient />;
+export default async function LegacyFileRoute({ params, searchParams }: PageProps) {
+  const [{ fileId }, query] = await Promise.all([params, searchParams]);
+  const stash = Array.isArray(query.stash) ? query.stash[0] : query.stash;
+  permanentRedirect(`/f/${fileId}${stash ? `?stash=${encodeURIComponent(stash)}` : ""}`);
 }

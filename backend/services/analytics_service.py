@@ -163,7 +163,7 @@ def _accessible_pages_cte(
     WITH accessible_pages AS (
         SELECT p.id AS page_id
         FROM pages p
-        WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+        WHERE p.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
           AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
           AND {readable_pages}
     )
@@ -201,7 +201,7 @@ def _accessible_tables_cte(
     WITH accessible_tables AS (
         SELECT t.id AS table_id
         FROM tables t
-        WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+        WHERE (t.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
            OR (t.workspace_id IS NULL AND t.created_by = $1))
           AND (t.workspace_id IS NULL OR {readable_tables})
     )
@@ -258,7 +258,7 @@ def _accessible_files_cte(
     WITH accessible_files AS (
         SELECT f.id AS file_id
         FROM files f
-        WHERE f.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+        WHERE f.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
           AND f.deleted_at IS NULL
           AND {readable_files}
     )
@@ -566,6 +566,36 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             user_id,
         )
     return {"pages": row["pages"], "rows": row["rows"], "events": row["events"]}
+
+
+async def get_overview_counts(user_id: UUID) -> dict:
+    """Counts for the 'Your brain' vitals, spanning the user's own content plus
+    everything shared with them. Pages/files run through readable_content_condition
+    so a share only surfaces the specific shared rows. Sessions stay member-scoped —
+    session sharing isn't reflected in these counts yet."""
+    pool = get_pool()
+    accessible_ws = permission_service.accessible_workspace_ids_sql(1)
+    readable_pages = permission_service.readable_content_condition("page", "p", 1)
+    readable_files = permission_service.readable_content_condition("file", "f", 1)
+    row = await pool.fetchrow(
+        f"""
+        SELECT
+            (SELECT COUNT(*) FROM pages p
+             WHERE p.workspace_id IN {accessible_ws}
+               AND p.deleted_at IS NULL
+               AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+               AND {readable_pages}) AS pages,
+            (SELECT COUNT(*) FROM files f
+             WHERE f.workspace_id IN {accessible_ws}
+               AND f.deleted_at IS NULL
+               AND {readable_files}) AS files,
+            (SELECT COUNT(*) FROM sessions s
+             WHERE s.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+               AND s.deleted_at IS NULL) AS sessions
+        """,
+        user_id,
+    )
+    return {"pages": row["pages"], "files": row["files"], "sessions": row["sessions"]}
 
 
 def _signature(counts: dict) -> int:

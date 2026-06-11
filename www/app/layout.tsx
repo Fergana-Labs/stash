@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -13,9 +14,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stash · Your team's AI work, compounding",
+  title: "Stash · One place your agents connect to all your data",
   description:
-    "Stash turns every coding-agent session into a shared, evolving asset, so your team stops running AI individually and starts compounding the work.",
+    "The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack and more — plus an agent-native Drive in Markdown and HTML to write the work back into.",
 };
 
 export default function RootLayout({
@@ -37,7 +38,16 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* X (Twitter) conversion tracking base code — pixel id rcxyy */}
+        <Script id="x-pixel" strategy="afterInteractive">
+          {`!function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
+},s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
+a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
+twq('config','rcxyy');`}
+        </Script>
+      </body>
     </html>
   );
 }

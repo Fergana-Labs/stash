@@ -55,9 +55,22 @@ async def register_user(
 async def get_user_by_id(user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, email, description, created_at, last_seen "
+        "SELECT id, name, display_name, email, description, created_at, last_seen, "
+        "       role, referral_source, use_case "
         "FROM users WHERE id = $1",
         user_id,
+    )
+    return dict(row) if row else None
+
+
+async def get_user_by_email(email: str) -> dict | None:
+    """Case-insensitive lookup. Used by the Slack agent to map a Slack user's
+    email to their Stash account."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name, email, description, created_at, last_seen "
+        "FROM users WHERE lower(email) = lower($1)",
+        email,
     )
     return dict(row) if row else None
 
@@ -69,6 +82,9 @@ async def update_user(
     password: str | None = None,
     current_password: str | None = None,
     current_key_id: UUID | None = None,
+    role: str | None = None,
+    referral_source: str | None = None,
+    use_case: str | None = None,
 ) -> dict:
     """Update profile fields. Password changes must present `current_password`,
     and revoke every other API key so a stolen session can't outlive the rotation.
@@ -101,9 +117,22 @@ async def update_user(
         sets.append(f"password_hash = ${idx}")
         args.append(hash_password(password))
         idx += 1
+    if role is not None:
+        sets.append(f"role = ${idx}")
+        args.append(role)
+        idx += 1
+    if referral_source is not None:
+        sets.append(f"referral_source = ${idx}")
+        args.append(referral_source)
+        idx += 1
+    if use_case is not None:
+        sets.append(f"use_case = ${idx}")
+        args.append(use_case)
+        idx += 1
     if not sets:
         row = await pool.fetchrow(
-            "SELECT id, name, display_name, email, description, created_at, last_seen "
+            "SELECT id, name, display_name, email, description, created_at, last_seen, "
+            "       role, referral_source, use_case "
             "FROM users WHERE id = $1",
             user_id,
         )
@@ -111,7 +140,8 @@ async def update_user(
     args.append(user_id)
     row = await pool.fetchrow(
         f"UPDATE users SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, display_name, email, description, created_at, last_seen",
+        "RETURNING id, name, display_name, email, description, created_at, last_seen, "
+        "          role, referral_source, use_case",
         *args,
     )
 

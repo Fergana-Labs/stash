@@ -10,12 +10,18 @@ on:
       - 'plugins/codex-plugin/**'
       - 'plugins/cursor-plugin/**'
       - 'plugins/opencode-plugin/**'
+      # Server code ships as versioned GHCR images pinned in
+      # docker-compose.prod.yml, so server changes must also cut a release.
+      - 'backend/**'
+      - 'frontend/**'
+      - 'collab/**'
 
 jobs:
   bump:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write    # required to dispatch publish.yml after the bump
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,6 +75,16 @@ jobs:
           marketplace["plugins"][0]["version"] = plugin_new
           marketplace_path.write_text(json.dumps(marketplace, indent=2) + "\n")
 
+          compose_path = pathlib.Path("docker-compose.prod.yml")
+          compose_text = compose_path.read_text()
+          compose_path.write_text(
+              re.sub(
+                  r"(ghcr\.io/fergana-labs/stash-[a-z]+):\S+",
+                  rf"\g<1>:{package_new}",
+                  compose_text,
+              )
+          )
+
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               print(f"package_version={package_new}", file=output)
               print(f"plugin_version={plugin_new}", file=output)
@@ -82,7 +98,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml plugins/claude-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json
+          git add pyproject.toml plugins/claude-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json docker-compose.prod.yml
           git diff --cached --quiet && echo "No change" && exit 0
           git commit -m "chore: bump stash release to ${{ steps.bump.outputs.package_version }} and plugin to ${{ steps.bump.outputs.plugin_version }}"
           git push
+
+      # The bump commit is pushed with GITHUB_TOKEN, which never fires
+      # publish.yml's `on: push` trigger (GitHub's recursion guard), so the
+      # release would otherwise wait for the next human push to main.
+      # workflow_dispatch is exempt from the guard.
+      - name: Publish release
+        if: steps.trigger.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --ref main

@@ -81,6 +81,10 @@ class Settings:
     GOOGLE_OAUTH_CLIENT_SECRET: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
     GOOGLE_OAUTH_REDIRECT_URI: str | None = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
 
+    GMAIL_OAUTH_CLIENT_ID: str | None = os.getenv("GMAIL_OAUTH_CLIENT_ID")
+    GMAIL_OAUTH_CLIENT_SECRET: str | None = os.getenv("GMAIL_OAUTH_CLIENT_SECRET")
+    GMAIL_OAUTH_REDIRECT_URI: str | None = os.getenv("GMAIL_OAUTH_REDIRECT_URI")
+
     GITHUB_OAUTH_CLIENT_ID: str | None = os.getenv("GITHUB_OAUTH_CLIENT_ID")
     GITHUB_OAUTH_CLIENT_SECRET: str | None = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
     GITHUB_OAUTH_REDIRECT_URI: str | None = os.getenv("GITHUB_OAUTH_REDIRECT_URI")
@@ -102,6 +106,10 @@ class Settings:
     SLACK_OAUTH_REDIRECT_URI: str | None = os.getenv("SLACK_OAUTH_REDIRECT_URI")
     # Verifies inbound Events API webhook signatures (X-Slack-Signature).
     SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET")
+
+    TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
+    TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
+    TWITTER_OAUTH_REDIRECT_URI: str | None = os.getenv("TWITTER_OAUTH_REDIRECT_URI")
 
     # Granola connects through its official MCP server over OAuth 2.0 with
     # Dynamic Client Registration + PKCE — no pre-shared client_id/secret. We

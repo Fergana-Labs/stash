@@ -48,9 +48,14 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     html = f"""
 <p>{greeting}</p>
 
-<p>Thanks for signing up for Stash. Your workspace is a shared hopper for everything your agents produce or consume &mdash; session transcripts, markdown docs, HTML pages, images, tables, raw files. Structured or not.</p>
+<p>Thanks for signing up for Stash. Two things it does for your agents:</p>
 
-<p>It&rsquo;s organized into three things:</p>
+<ul>
+  <li><strong>One place to connect to all your data</strong> &mdash; GitHub, Google Drive, Gmail, Notion, Slack, Granola. Your agent reads and searches across everything you connect, from day one.</li>
+  <li><strong>An agent-native Drive</strong> &mdash; Markdown and HTML pages, files, and session transcripts your agents read and write natively through the CLI, MCP, and API.</li>
+</ul>
+
+<p>Under the hood, your workspace is organized into three things:</p>
 
 <ul>
   <li><strong>Cartridges</strong> &mdash; virtual sub-workspaces. Bundle any subset of your workspace into a Stash, share it publicly, or keep it private. Use them for teams, workstreams, or projects (LinkedIn marketing, backend infra, kernel reading group).</li>
@@ -61,7 +66,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
 <p><strong>Three ways to get to a first &ldquo;aha&rdquo;:</strong></p>
 
 <ol>
-  <li><a href="{app_url}"><strong>Connect your data sources</strong></a> &mdash; GitHub, Google Drive, Notion, Slack, or Granola. Your agent reads across everything you connect from day one instead of starting empty.</li>
+  <li><a href="{app_url}"><strong>Connect your data sources</strong></a> &mdash; GitHub, Google Drive, Gmail, Notion, Slack, or Granola. Your agent reads across everything you connect from day one instead of starting empty.</li>
   <li><a href="{app_url}"><strong>Give your agent memory</strong></a> &mdash; install the CLI, run a coding agent like you normally would, then ask it something only Stash would know.</li>
   <li><a href="{app_url}"><strong>Publish your first artifact</strong></a> &mdash; drop a doc or deck, get a shareable link. Sharing is a first-class feature here, not an afterthought.</li>
 </ol>
@@ -87,7 +92,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
             "From": FOUNDER_FROM,
             "To": user_email,
             "ReplyTo": "sam@joinstash.ai",
-            "Subject": "Welcome to Stash — your knowledge base is ready",
+            "Subject": "Welcome to Stash — connect your data and start writing",
             "HtmlBody": html,
         }
     )

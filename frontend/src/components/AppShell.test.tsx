@@ -10,9 +10,13 @@ import { useMemo, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
-import { ShellChromeProvider, useShareAction } from "./ShellChromeContext";
+import {
+  ShellChromeProvider,
+  useActiveWorkspaceId,
+  useShareAction,
+} from "./ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import { getSessionDetail, publishCartridge } from "../lib/api";
+import { getPage, getSessionDetail, publishCartridge } from "../lib/api";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -54,9 +58,18 @@ vi.mock("../lib/stashNavigationCache", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
+  getPage: vi.fn(),
   getSessionDetail: vi.fn(),
   publishCartridge: vi.fn(),
 }));
+
+// Stands in for a detail client (PageClient / SessionClient): canonical item
+// URLs carry no workspace, so the client publishes the loaded resource's
+// workspace to the shell.
+function PublishActiveWorkspace({ id }: { id: string }) {
+  useActiveWorkspaceId(id);
+  return null;
+}
 
 vi.mock("./AppSidebar", () => ({
   default: () => <aside data-testid="app-sidebar">Sidebar</aside>,
@@ -228,15 +241,18 @@ describe("AppShell sidebar collapse", () => {
   });
 
   it("opens top-bar search with session scope", () => {
-    nav.pathname = "/workspaces/ws-1/sessions/session-123";
+    nav.pathname = "/sessions/session-123";
     mockWorkspaceCache();
 
     render(
-      <ShareModalProvider>
-        <AppShell user={user} onLogout={vi.fn()}>
-          <div>Session content</div>
-        </AppShell>
-      </ShareModalProvider>,
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PublishActiveWorkspace id="ws-1" />
+            <div>Session content</div>
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
@@ -248,15 +264,22 @@ describe("AppShell sidebar collapse", () => {
   });
 
   it("creates and copies a one-page Stash link from a page route", async () => {
-    nav.pathname = "/workspaces/ws-1/p/page-1";
+    nav.pathname = "/p/page-1";
     mockWorkspaceCache();
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-1",
+      workspace_id: "ws-1",
+    } as Awaited<ReturnType<typeof getPage>>);
 
     render(
-      <ShareModalProvider>
-        <AppShell user={user} onLogout={vi.fn()}>
-          <div>Page content</div>
-        </AppShell>
-      </ShareModalProvider>,
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PublishActiveWorkspace id="ws-1" />
+            <div>Page content</div>
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
@@ -282,29 +305,38 @@ describe("AppShell sidebar collapse", () => {
   });
 
   it("shows a readable error when the browser blocks copying a created share link", async () => {
-    nav.pathname = "/workspaces/ws-1/p/page-1";
+    nav.pathname = "/p/page-1";
     mockWorkspaceCache();
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-1",
+      workspace_id: "ws-1",
+    } as Awaited<ReturnType<typeof getPage>>);
     const blockedMessage = "The request is not allowed by the user agent.";
     vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(
       new Error(blockedMessage),
     );
 
     render(
-      <ShareModalProvider>
-        <AppShell user={user} onLogout={vi.fn()}>
-          <div>Page content</div>
-        </AppShell>
-      </ShareModalProvider>,
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PublishActiveWorkspace id="ws-1" />
+            <div>Page content</div>
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
 
-    expect(await screen.findByText("Link created. Copy blocked.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Link created. Copy blocked."),
+    ).toBeInTheDocument();
     expect(screen.queryByText(blockedMessage)).not.toBeInTheDocument();
   });
 
   it("creates and copies a one-session Stash link from a session route", async () => {
-    nav.pathname = "/workspaces/ws-1/sessions/session-route-id";
+    nav.pathname = "/sessions/session-route-id";
     mockWorkspaceCache();
     vi.mocked(getSessionDetail).mockResolvedValue({
       id: "session-row-uuid",
@@ -322,11 +354,14 @@ describe("AppShell sidebar collapse", () => {
     });
 
     render(
-      <ShareModalProvider>
-        <AppShell user={user} onLogout={vi.fn()}>
-          <div>Session content</div>
-        </AppShell>
-      </ShareModalProvider>,
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PublishActiveWorkspace id="ws-1" />
+            <div>Session content</div>
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
@@ -346,7 +381,7 @@ describe("AppShell sidebar collapse", () => {
         { discoverable: false },
       ),
     );
-    expect(getSessionDetail).toHaveBeenCalledWith("ws-1", "session-route-id");
+    expect(getSessionDetail).toHaveBeenCalledWith("session-route-id");
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       "https://app.joinstash.ai/cartridges/shared-link",
     );
