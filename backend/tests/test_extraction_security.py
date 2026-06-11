@@ -66,12 +66,14 @@ async def test_extraction_parent_persists_only_failure_reason(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_extraction_child_failure_logs_and_persists_redacted_error(
+async def test_extraction_child_persists_redacted_error_with_exception_type(
     monkeypatch,
 ):
+    """The dispatcher discards the child's stdout/stderr, so the files row is
+    the only diagnostic channel: it must carry the exception class for triage
+    but never the message, which can embed document text."""
     file_id = uuid.uuid4()
     persisted_errors: list[str] = []
-    captured_logs: list[tuple[str, tuple]] = []
 
     class FakeConnection:
         async def fetchrow(self, query, received_file_id):
@@ -103,28 +105,18 @@ async def test_extraction_child_failure_logs_and_persists_redacted_error(
     def extract_text(content, content_type):
         raise RuntimeError("token=secret-token and customer transcript")
 
-    def capture_error(message, *args, **kwargs):
-        captured_logs.append((message, args))
-
     monkeypatch.setattr(asyncpg, "connect", connect)
     monkeypatch.setattr(storage_service, "download_file", download_file)
     monkeypatch.setattr(storage_service, "close", close_storage)
     monkeypatch.setattr(file_extraction, "extract_text", extract_text)
-    monkeypatch.setattr(extract_one.logger, "error", capture_error)
 
     result = await extract_one._run(file_id)
 
     assert result == 1
-    assert persisted_errors == ["Extraction failed"]
-    assert captured_logs == [
-        (
-            "extract failed file=%s exception_type=%s",
-            (file_id, "RuntimeError"),
-        )
-    ]
-    assert "secret-token" not in str(captured_logs)
-    assert "customer transcript" not in str(captured_logs)
-    assert "private-file.txt" not in str(captured_logs)
+    assert persisted_errors == ["Extraction failed: RuntimeError"]
+    assert "secret-token" not in str(persisted_errors)
+    assert "customer transcript" not in str(persisted_errors)
+    assert "private-file.txt" not in str(persisted_errors)
 
 
 def test_extract_text_logs_only_failure_metadata(monkeypatch):
