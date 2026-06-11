@@ -404,8 +404,20 @@ async def integration_connect_with_credentials(
     _ensure_provider_enabled(provider)
     if getattr(p, "auth_kind", "oauth") != "api_key":
         raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
+    # Both handlers redact the exception message — provider errors can embed
+    # the pasted secrets, so only the exception type is logged.
     try:
         token, account = await p.connect_with_credentials(values)
+    except ValueError as e:
+        logger.warning(
+            "Credential connection rejected for provider %s (%s)",
+            provider,
+            type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not connect {p.display_name}; check credentials",
+        )
     except Exception as e:
         logger.warning(
             "Credential connection failed for provider %s (%s)",
@@ -413,8 +425,8 @@ async def integration_connect_with_credentials(
             type(e).__name__,
         )
         raise HTTPException(
-            status_code=400,
-            detail=f"Could not connect {p.display_name}; check credentials",
+            status_code=502,
+            detail=f"Could not connect {p.display_name}; upstream unavailable",
         )
     await storage.store_token(current_user["id"], provider, token, account)
     await security_audit_service.record_user_event(
