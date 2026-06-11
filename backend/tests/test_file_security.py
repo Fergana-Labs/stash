@@ -141,6 +141,22 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
         name="logo.svg",
         content_type="image/svg+xml",
     )
+    # content_type is attacker-controlled; parameter and case variants must not
+    # bypass the SVG attachment rule.
+    svg_charset_id = await _make_file(
+        pool,
+        workspace_id=workspace_id,
+        uploaded_by=uuid.UUID(owner["id"]),
+        name="logo2.svg",
+        content_type="image/svg+xml;charset=utf-8",
+    )
+    svg_upper_id = await _make_file(
+        pool,
+        workspace_id=workspace_id,
+        uploaded_by=uuid.UUID(owner["id"]),
+        name="logo3.svg",
+        content_type="image/SVG+xml",
+    )
     png_id = await _make_file(
         pool,
         workspace_id=workspace_id,
@@ -153,15 +169,20 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
         return b'<svg onload="alert(1)"/>'
 
     monkeypatch.setattr(storage_service, "download_file", fake_download)
-    svg_resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/files/{svg_id}/download",
-        headers=_auth(api_key),
-    )
-    png_resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/files/{png_id}/download",
-        headers=_auth(api_key),
-    )
+
+    async def download(file_id):
+        return await client.get(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
+            headers=_auth(api_key),
+        )
+
+    svg_resp = await download(svg_id)
+    svg_charset_resp = await download(svg_charset_id)
+    svg_upper_resp = await download(svg_upper_id)
+    png_resp = await download(png_id)
 
     assert svg_resp.status_code == 200
     assert svg_resp.headers["content-disposition"].startswith("attachment;")
+    assert svg_charset_resp.headers["content-disposition"].startswith("attachment;")
+    assert svg_upper_resp.headers["content-disposition"].startswith("attachment;")
     assert png_resp.headers["content-disposition"].startswith("inline;")

@@ -363,6 +363,10 @@ async def download_ws_file(
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
     content_type = row["content_type"] or "application/octet-stream"
+    # content_type is stored verbatim from the upload, so normalize away MIME
+    # parameters and casing before the SVG check — 'image/svg+xml;charset=utf-8'
+    # must not slip through.
+    content_type = content_type.split(";")[0].strip().lower()
     # SVG is the one image type that executes script when rendered inline, so
     # it must download as an attachment — uploads are attacker-controlled.
     is_inline_image = content_type.startswith("image/") and content_type != "image/svg+xml"
