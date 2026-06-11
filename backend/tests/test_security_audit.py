@@ -1,3 +1,4 @@
+import hashlib
 import json
 from uuid import UUID
 
@@ -7,6 +8,15 @@ from httpx import AsyncClient
 from backend.services import security_audit_service, source_service
 
 from .conftest import unique_name
+
+
+def test_hash_value_is_keyed_not_plain_sha256():
+    """Audited values are often low-entropy (emails, IPv4s). A plain SHA-256
+    can be reversed offline by hashing guesses, so redaction must be keyed."""
+    assert security_audit_service.hash_value(None) is None
+    assert (
+        security_audit_service.hash_value("127.0.0.1") != hashlib.sha256(b"127.0.0.1").hexdigest()
+    )
 
 
 def _auth(api_key: str) -> dict:

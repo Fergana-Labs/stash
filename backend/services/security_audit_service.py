@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from uuid import UUID
 
+from ..config import settings
 from ..database import get_pool
 
 
 def hash_value(value: str | None) -> str | None:
+    """Keyed HMAC, not a plain hash: redacted values are often low-entropy
+    (emails, IPv4s), so an unkeyed digest could be reversed offline by hashing
+    candidate values."""
     if value is None:
         return None
-    return hashlib.sha256(value.encode()).hexdigest()
+    return hmac.new(settings.AUDIT_HASH_KEY.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
 def _event_row(row) -> dict:

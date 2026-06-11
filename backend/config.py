@@ -188,6 +188,15 @@ class Settings:
     # browser. Leave unset to disable admin endpoints entirely.
     ADMIN_PASSWORD: str | None = parse_optional_secret("ADMIN_PASSWORD")
 
+    # --- Security audit ---
+    # Key for HMAC-redacting low-entropy identifiers (emails, client IPs) in
+    # security_audit_events. Without the key, a log/DB reader cannot recover
+    # the original value by hashing guesses offline. Required when managed.
+    AUDIT_HASH_KEY: str = (
+        parse_required_when_enabled("AUDIT_HASH_KEY", AUTH0_ENABLED, "AUTH0_ENABLED")
+        or "stash-local-dev-audit-hash-key"
+    )
+
     # --- Background tasks (Celery + Redis) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
