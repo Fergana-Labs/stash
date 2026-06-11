@@ -1154,7 +1154,9 @@ async def test_slack_sync_without_channels_records_sync_error(client: AsyncClien
     sources = await source_service.list_sources(ws, owner_id)
     slack = next(s for s in sources if s["type"] == "slack")
     assert slack["sync_status"] == "failed"
-    assert "no allowed channels configured" in slack["sync_error"]
+    # The stored error is a redacted constant — raw exception text could carry
+    # secrets, so the detail lives only in server logs.
+    assert slack["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
 
 
 @pytest.mark.asyncio
