@@ -129,13 +129,24 @@ async def test_oauth_profile_failure_does_not_log_tokens(
     assert "rt_should_not_be_logged" not in caplog.text
 
 
-@pytest.mark.parametrize("exc_type", [ValueError, RuntimeError])
+# Bad credentials (ValueError) are the caller's fault (400); anything else —
+# upstream outage, provider bug — must surface as a server-side 502, not blame
+# the user's credentials. Both paths must redact the raw exception message.
+@pytest.mark.parametrize(
+    ("exc_type", "expected_status", "expected_detail"),
+    [
+        (ValueError, 400, "Could not connect Leaky Credentials; check credentials"),
+        (RuntimeError, 502, "Could not connect Leaky Credentials; upstream unavailable"),
+    ],
+)
 @pytest.mark.asyncio
 async def test_credential_connect_failure_does_not_return_or_log_secrets(
     client: AsyncClient,
     monkeypatch,
     caplog,
     exc_type,
+    expected_status,
+    expected_detail,
 ):
     provider = FailingCredentialProvider(exc_type)
     _configure_callback(monkeypatch, provider)
@@ -147,8 +158,8 @@ async def test_credential_connect_failure_does_not_return_or_log_secrets(
         headers={"Authorization": f"Bearer {api_key}"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Could not connect Leaky Credentials; check credentials"
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == expected_detail
     assert "secret-token" not in response.text
     assert "customer transcript" not in response.text
     assert "secret-token" not in caplog.text

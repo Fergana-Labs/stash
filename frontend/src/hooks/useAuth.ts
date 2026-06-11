@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE, ApiError, clearToken, getMe, getToken } from "../lib/api";
+import { ApiError, clearToken, getMe, getToken, revokeStoredApiKey } from "../lib/api";
 import { markManualAuth0Logout } from "../lib/authLogout";
 import { User } from "../lib/types";
 
@@ -59,17 +59,11 @@ export function useAuth() {
     }
 
     // Drop local state first so the UI flips to signed-out the moment the
-    // user clicks. Revoke the active key before navigating so the browser
-    // session cannot be restored by a still-valid local API key.
-    const token = getToken();
-    clearToken();
+    // user clicks. Revoke the stored key before navigating so the browser
+    // session cannot be restored by a still-valid API key — this covers the
+    // legacy mc_ keys minted by old Auth0 sign-ins too.
     setUser(null);
-    if (token) {
-      await fetch(`${API_BASE}/api/v1/users/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-    }
+    await revokeStoredApiKey();
     // Hard navigation so module-level caches reset. `?federated` asks Auth0 to
     // clear upstream identity-provider state too.
     window.location.href = AUTH0_ENABLED ? "/auth/logout?federated" : "/login";

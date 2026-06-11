@@ -193,7 +193,7 @@ async def finish_authorization(code: str, state: str) -> str:
     account = await _fetch_account(token["access_token"])
     user_id = UUID(payload["u"])
     await _store_connection(user_id, token, client, account)
-    await security_audit_service.record_event(
+    await security_audit_service.record_user_event(
         action="integration.connected",
         actor_user_id=user_id,
         target_type="integration",

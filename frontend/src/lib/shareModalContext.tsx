@@ -9,12 +9,12 @@ import {
   type ReactNode,
 } from "react";
 
-import type { CartridgeItemSpec } from "./api";
+import type { SkillItemSpec } from "./api";
 
 export interface ShareModalOpenOptions {
   workspaceId: string;
   workspaceName?: string;
-  initial?: CartridgeItemSpec[];
+  initial?: SkillItemSpec[];
 }
 
 interface ShareModalState extends ShareModalOpenOptions {
@@ -25,8 +25,8 @@ interface ShareModalContextValue {
   state: ShareModalState;
   open: (opts: ShareModalOpenOptions) => void;
   close: () => void;
-  // Bumped whenever a Stash URL is minted or revoked. Consumers include it
-  // in deps to re-fetch their Cartridges list.
+  // Bumped whenever a Skill URL is minted or revoked. Consumers include it
+  // in deps to re-fetch their Skills list.
   version: number;
   bumpVersion: () => void;
 }

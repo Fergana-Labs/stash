@@ -1,14 +1,9 @@
 "use client";
 
 // Batched product telemetry for the web app. Mirrors cli/telemetry.py:
-// fire-and-forget, swallows network errors. Auth token read directly to
-// avoid a circular import with ./api (which calls track() on some helpers).
-const TOKEN_KEY = "stash_token";
-
-function readToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
+// fire-and-forget, swallows network errors. Importing api.ts here is safe —
+// api.ts only reaches analytics via a dynamic import, so there is no cycle.
+import { getAuthToken } from "./api";
 
 type Event = {
   surface: "web";
@@ -22,11 +17,11 @@ const MAX_BATCH = 20;
 const queue: Event[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-function flush() {
+async function flush() {
   timer = null;
   if (queue.length === 0) return;
   const batch = queue.splice(0, MAX_BATCH);
-  const token = readToken();
+  const token = await getAuthToken();
   if (!token) return; // unauth'd — drop. Onboarding always runs authed.
   fetch("/api/v1/analytics/events", {
     method: "POST",
@@ -42,7 +37,7 @@ function flush() {
 
 function schedule() {
   if (timer !== null) return;
-  timer = setTimeout(flush, FLUSH_MS);
+  timer = setTimeout(() => void flush(), FLUSH_MS);
 }
 
 // Per-page edit autosave fires this on every PATCH. Dedupe to one row
@@ -65,11 +60,11 @@ export function track(
     dedupeSeen.set(k, now);
   }
   queue.push({ surface: "web", event_name: event, properties });
-  if (queue.length >= MAX_BATCH) flush();
+  if (queue.length >= MAX_BATCH) void flush();
   else schedule();
 }
 
 // Page-unload flush so the last events in a session aren't lost.
 if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", () => flush());
+  window.addEventListener("pagehide", () => void flush());
 }

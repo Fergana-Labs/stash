@@ -17,7 +17,12 @@ from ..models import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import invite_token_service, storage_service, workspace_service
+from ..services import (
+    invite_token_service,
+    security_audit_service,
+    storage_service,
+    workspace_service,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
@@ -118,19 +123,22 @@ async def delete_workspace(
     workspace_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    storage_keys = await workspace_service.list_workspace_storage_keys_for_delete(
-        workspace_id,
-        current_user["id"],
-    )
+    storage_keys = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if storage_keys is None:
-        raise HTTPException(status_code=403, detail="Only workspace admins can delete")
+        raise HTTPException(status_code=403, detail="Only workspace owners can delete")
 
     for storage_key in storage_keys:
         await storage_service.delete_file(storage_key)
 
-    deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
-    if not deleted:
-        raise HTTPException(status_code=403, detail="Only workspace admins can delete")
+    # workspace_id stays NULL on the event: the FK cascade would erase a row
+    # scoped to the now-deleted workspace, so the id goes in target_id instead.
+    await security_audit_service.record_event(
+        action="content.workspace_purged",
+        actor_user_id=current_user["id"],
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={"storage_key_count": len(storage_keys)},
+    )
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)

@@ -40,7 +40,7 @@
 - **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — to a shared workspace.
 - **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. Humans and agents both write here; both sides see edits in real time.
 - **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose the workspace to any agent. Semantic and keyword search across pages, sessions, and tables.
-- **Stashes are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.
+- **Skills are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork a public Skill into your own workspace.
 
 ## Why shared beats individual
 
@@ -196,7 +196,7 @@ claude
 Stash is built for engineering teams working in private repos.
 
 - **LLM calls are optional and scoped.** When an Anthropic API key is configured, the server uses it for ask-the-workspace answers and auto-generated session titles. No key means those features are unavailable — the rest of Stash works without any LLM.
-- **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is controlled by Product Stashes.
+- **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is controlled by Skills.
 - **Transcripts are opt-in.** If you don't want to share your agent transcripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
   
 ## FAQ

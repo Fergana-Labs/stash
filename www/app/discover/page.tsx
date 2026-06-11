@@ -4,9 +4,9 @@ import Link from "next/link";
 import { APP_URL, fetchCatalog, type PublicStashCard } from "../../lib/discover";
 
 export const metadata: Metadata = {
-  title: "Discover Stashes · Stash",
+  title: "Discover Skills · Stash",
   description:
-    "Browse public Stashes — shared sessions, pages, tables, and files from teams building in the open.",
+    "Browse public Skills — shared sessions, pages, tables, and files from teams building in the open.",
 };
 
 type SearchParams = {
@@ -33,12 +33,12 @@ export default async function DiscoverPage({
           Discover
         </p>
         <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
-          Public Stashes from teams<br />
+          Public Skills from teams<br />
           <span className="text-brand">building in the open.</span>
         </h1>
         <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
           Browse sessions, pages, tables, and files from public Product
-          Stashes. Open one to read it without signing in.
+          Skills. Open one to read it without signing in.
         </p>
 
         <SortBar current={sort} query={params.q} />
@@ -124,7 +124,7 @@ function Card({ stash }: { stash: PublicStashCard }) {
 
   return (
     <Link
-      href={`${APP_URL}/cartridges/${stash.slug}`}
+      href={`${APP_URL}/skills/${stash.slug}`}
       className="group flex flex-col rounded-xl border border-border-subtle bg-raised/40 p-5 transition hover:border-ink"
     >
       <Cover stash={stash} />
@@ -169,10 +169,10 @@ function EmptyState() {
   return (
     <div className="rounded-xl border border-dashed border-border-subtle bg-raised/30 p-12 text-center">
       <p className="font-display text-[20px] font-bold text-ink">
-        No public Stashes yet.
+        No public Skills yet.
       </p>
       <p className="mt-2 text-[14px] text-dim">
-        Public Stashes appear here after they are selected for Discover.
+        Public Skills appear here after they are selected for Discover.
       </p>
     </div>
   );

@@ -17,13 +17,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .client import CartridgeClient
+from .client import StashClient
 
 BytesLoader = Callable[[], bytes]
 BytesWriter = Callable[[bytes], None]
 
 
-class CartridgeMountError(Exception):
+class MountError(Exception):
     pass
 
 
@@ -56,8 +56,8 @@ class OpenFile:
     dirty: bool = False
 
 
-class CartridgeVfsModel:
-    def __init__(self, client: CartridgeClient, workspace_id: str | None = None):
+class StashVfsModel:
+    def __init__(self, client: StashClient, workspace_id: str | None = None):
         self.client = client
         self.workspace_id = workspace_id
         self.nodes: dict[str, VfsNode] = {}
@@ -75,7 +75,7 @@ class CartridgeVfsModel:
                     "",
                     "- `workspaces/*/files` exposes folders, pages, and uploaded files.",
                     "- Markdown and HTML pages are writable; saves sync back to Stash.",
-                    "- Uploaded files, sessions, cartridges, and tables are read-only projections.",
+                    "- Uploaded files, sessions, skills, and tables are read-only projections.",
                     "",
                 ]
             ),
@@ -88,7 +88,7 @@ class CartridgeVfsModel:
                 workspace for workspace in workspaces if str(workspace["id"]) == self.workspace_id
             ]
             if not workspaces:
-                raise CartridgeMountError(f"Workspace not found: {self.workspace_id}")
+                raise MountError(f"Workspace not found: {self.workspace_id}")
 
         for workspace in workspaces:
             self._add_workspace(workspace)
@@ -162,7 +162,7 @@ class CartridgeVfsModel:
             ),
         )
         self._add_files_tree(workspace_path, workspace_id, overview.get("files", {}))
-        self._add_stashes(workspace_path, overview.get("cartridges", []))
+        self._add_skills(workspace_path, overview.get("skills", []))
         self._add_sessions(workspace_path, workspace_id, overview.get("sessions", []))
         self._add_tables(workspace_path, workspace_id)
 
@@ -220,17 +220,17 @@ class CartridgeVfsModel:
                 size_hint=file.get("size_bytes"),
             )
 
-    def _add_stashes(self, workspace_path: str, cartridges: list[dict]) -> None:
-        stashes_path = f"{workspace_path}/cartridges"
-        self._add_dir(stashes_path)
-        self._add_jsonl_file(f"{stashes_path}/_index.jsonl", cartridges)
-        for stash in cartridges:
-            cartridge_id = str(stash["id"])
-            basename = _object_basename(stash.get("title") or "stash", cartridge_id)
-            self._add_json_file(f"{stashes_path}/{basename}.json", stash)
+    def _add_skills(self, workspace_path: str, skills: list[dict]) -> None:
+        skills_path = f"{workspace_path}/skills"
+        self._add_dir(skills_path)
+        self._add_jsonl_file(f"{skills_path}/_index.jsonl", skills)
+        for skill in skills:
+            skill_id = str(skill["id"])
+            basename = _object_basename(skill.get("title") or "skill", skill_id)
+            self._add_json_file(f"{skills_path}/{basename}.json", skill)
             self._add_file(
-                f"{stashes_path}/{basename}.md",
-                loader=lambda slug=stash["slug"]: _text_bytes(self.client.get_cartridge_text(slug)),
+                f"{skills_path}/{basename}.md",
+                loader=lambda slug=skill["slug"]: _text_bytes(self.client.get_skill_text(slug)),
             )
 
     def _add_sessions(self, workspace_path: str, workspace_id: str, sessions: list[dict]) -> None:
@@ -410,8 +410,8 @@ class CartridgeVfsModel:
         return parent, name
 
 
-class CartridgeFuseOperations:
-    def __init__(self, model: CartridgeVfsModel):
+class SkillFuseOperations:
+    def __init__(self, model: StashVfsModel):
         self.model = model
         self.handles: dict[int, OpenFile] = {}
         self.dir_handles: dict[int, str] = {}
@@ -615,21 +615,19 @@ class CartridgeFuseOperations:
         opened.dirty = False
 
 
-def mount_cartridge(
-    client: CartridgeClient, mountpoint: Path, workspace_id: str | None = None
-) -> None:
+def mount_workspace(client: StashClient, mountpoint: Path, workspace_id: str | None = None) -> None:
     FUSE = _load_fuse_class()
     mountpoint.mkdir(parents=True, exist_ok=True)
-    model = CartridgeVfsModel(client, workspace_id=workspace_id)
+    model = StashVfsModel(client, workspace_id=workspace_id)
     model.refresh()
     try:
         FUSE(
-            CartridgeFuseOperations(model),
+            SkillFuseOperations(model),
             str(mountpoint),
             **_fuse_mount_options(mountpoint),
         )
     except (OSError, RuntimeError) as e:
-        raise CartridgeMountError(f"Stash mount failed: {e}") from e
+        raise MountError(f"Stash mount failed: {e}") from e
 
 
 def check_fuse_runtime() -> None:
@@ -642,7 +640,7 @@ def _load_fuse_class():
     try:
         from fuse import FUSE
     except (ImportError, OSError) as e:
-        raise CartridgeMountError(
+        raise MountError(
             "Stash mount is experimental and requires a local FUSE runtime plus fusepy. "
             "Use `stash vfs` for the supported app-level virtual filesystem."
         ) from e
@@ -677,12 +675,12 @@ def _validate_fuse_provider() -> None:
     if sys.platform != "darwin":
         return
     if _active_macos_fuse_provider() != "macfuse":
-        raise CartridgeMountError(
+        raise MountError(
             "Stash mount is experimental on macOS and requires macFUSE 5 FSKit. "
             "Use `stash vfs` for the supported app-level virtual filesystem."
         )
     if not _macos_supports_fskit():
-        raise CartridgeMountError("Stash mount on macOS requires macOS 15.4 or later.")
+        raise MountError("Stash mount on macOS requires macOS 15.4 or later.")
 
 
 def _active_macos_fuse_provider() -> str:
@@ -712,7 +710,7 @@ def _require_macos_fskit_mountpoint(mountpoint: Path) -> None:
     volumes = Path("/Volumes")
     if absolute == volumes or volumes in absolute.parents:
         return
-    raise CartridgeMountError(
+    raise MountError(
         "Stash mount on macOS uses macFUSE FSKit, which requires a mount point under "
         "/Volumes. Re-run with: stash mount /Volumes/Stash"
     )

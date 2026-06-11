@@ -17,6 +17,10 @@ router = APIRouter(
 
 async def _require_workspace_admin(workspace_id: UUID, user_id: UUID) -> None:
     role = await workspace_service.get_member_role(workspace_id, user_id)
+    if role is None:
+        # Match the sibling workspace routers: never confirm a workspace's
+        # existence to non-members.
+        raise HTTPException(status_code=404, detail="Workspace not found")
     if role not in workspace_service.ROLES_ADMIN:
         raise HTTPException(
             status_code=403, detail="Only workspace admins can read security events"

@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 
 import {
   firstSearchParam,
-  metadataForPublicCartridgeItem,
-} from "../../../../lib/cartridgeMetadata";
+  metadataForPublicSkillItem,
+} from "../../../../lib/skillMetadata";
 import FileClient from "./FileClient";
 
 type PageProps = {
   params: Promise<{ fileId: string }>;
-  searchParams: Promise<{ stash?: string | string[] }>;
+  searchParams: Promise<{ skill?: string | string[] }>;
 };
 
 export async function generateMetadata({
@@ -16,14 +16,14 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const [{ fileId }, query] = await Promise.all([params, searchParams]);
-  const slug = firstSearchParam(query.stash);
+  const slug = firstSearchParam(query.skill);
   if (!slug) return { title: "File - Stash" };
 
-  return metadataForPublicCartridgeItem({
+  return metadataForPublicSkillItem({
     slug,
     itemType: "file",
     itemId: fileId,
-    path: `/f/${fileId}?stash=${encodeURIComponent(slug)}`,
+    path: `/f/${fileId}?skill=${encodeURIComponent(slug)}`,
   });
 }
 
