@@ -34,6 +34,7 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
   const containerRef = useRef<HTMLDivElement>(null);
   const label = user.display_name;
   const accountLabel = user.email ?? user.name;
+  const usernameLabel = `@${user.name}`;
   const initial = label[0].toUpperCase();
 
   useEscapeKey(open, () => setOpen(false));
@@ -70,7 +71,12 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
           className="absolute right-0 top-full z-40 mt-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
         >
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
-            Signed in as <span className="break-all text-foreground">{accountLabel}</span>
+            <div>
+              Signed in as <span className="break-all text-foreground">{accountLabel}</span>
+            </div>
+            <div className="mt-0.5">
+              Username <span className="break-all text-foreground">{usernameLabel}</span>
+            </div>
           </div>
           <Link
             href="/settings"

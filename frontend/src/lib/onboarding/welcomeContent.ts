@@ -36,7 +36,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Notion, Slack, Granola. Your agent reads across everything you connect.</li>
+      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola. Your agent reads across everything you connect.</li>
       <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; add them to your Stash.</li>
       <li><strong>Invite a teammate</strong>${
         inviteLink

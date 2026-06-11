@@ -1,5 +1,7 @@
 "use server";
 
+import { escapeHtml, sendPostmark } from "../_lib/postmark";
+
 const SALES_EMAIL = "sam@joinstash.ai";
 const FROM_ADDRESS = "Stash <notifications@joinstash.ai>";
 
@@ -93,34 +95,4 @@ export async function submitContactSales(
     status: "ok",
     message: "Thanks — we'll be in touch within one business day. Check your inbox for a confirmation.",
   };
-}
-
-type PostmarkPayload = {
-  From: string;
-  To: string;
-  ReplyTo?: string;
-  Subject: string;
-  HtmlBody: string;
-  MessageStream: string;
-};
-
-function sendPostmark(token: string, payload: PostmarkPayload) {
-  return fetch("https://api.postmarkapp.com/email", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-Postmark-Server-Token": token,
-    },
-    body: JSON.stringify(payload),
-  });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }

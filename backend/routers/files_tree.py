@@ -1,9 +1,12 @@
 """Files router: workspace-scoped folders (nested) and pages."""
 
+import asyncio
+import json
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -14,6 +17,7 @@ from ..models import (
     CommentThread,
     CommentThreadCreateRequest,
     CommentThreadListResponse,
+    CopyRequest,
     FolderCreateRequest,
     FolderListResponse,
     FolderResponse,
@@ -28,6 +32,7 @@ from ..models import (
 from ..services import (
     comment_service,
     files_tree_service,
+    page_events,
     permission_service,
     security_audit_service,
     workspace_service,
@@ -69,14 +74,14 @@ async def _check_content_access(
     workspace_id: UUID,
     user_id: UUID,
     *,
-    require_write: bool = False,
+    require: str = "read",
 ) -> None:
     allowed = await permission_service.check_access(
         object_type,
         object_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=require_write,
+        require=require,
     )
     if allowed:
         return
@@ -94,6 +99,43 @@ async def list_workspace_pages(
     await _check_ws_access(workspace_id, current_user["id"])
     rows = await files_tree_service.list_workspace_pages(workspace_id, current_user["id"])
     return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
+
+
+# Heartbeat keeps the SSE connection (and intermediaries) alive between edits.
+_PAGE_EVENTS_HEARTBEAT_S = 25
+
+
+@router.get("/pages/events")
+async def page_events_stream(
+    workspace_id: UUID,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """SSE stream of page-update events for the workspace. Open viewers subscribe
+    and refetch the affected page so an agent (or another user) editing it shows
+    up live."""
+    await _check_ws_access(workspace_id, current_user["id"])
+
+    async def event_stream():
+        queue = page_events.subscribe(workspace_id)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=_PAGE_EVENTS_HEARTBEAT_S)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            page_events.unsubscribe(workspace_id, queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # --- Tree (nested folders + pages) ---
@@ -137,7 +179,7 @@ async def create_folder(
             req.parent_folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
     try:
         folder = await files_tree_service.create_folder(
@@ -309,7 +351,7 @@ async def update_folder(
         folder_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     if req.parent_folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
@@ -318,7 +360,7 @@ async def update_folder(
             req.parent_folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
     try:
         folder = await files_tree_service.update_folder(
@@ -349,11 +391,38 @@ async def delete_folder(
         folder_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     deleted = await files_tree_service.delete_folder(folder_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
+
+
+@router.post("/folders/{folder_id}/copy", response_model=FolderResponse, status_code=201)
+async def copy_folder(
+    workspace_id: UUID,
+    folder_id: UUID,
+    req: CopyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_owns_folder(workspace_id, folder_id)
+    await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
+    if req.target_folder_id is not None:
+        await _check_ws_owns_folder(workspace_id, req.target_folder_id)
+        await _check_content_access(
+            "folder", req.target_folder_id, workspace_id, current_user["id"], require="write"
+        )
+    else:
+        await _check_ws_write(workspace_id, current_user["id"])
+    try:
+        folder = await files_tree_service.copy_folder(
+            folder_id, workspace_id, current_user["id"], target_parent_id=req.target_folder_id
+        )
+    except FolderCycle as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return FolderResponse(**folder)
 
 
 # --- Pages ---
@@ -374,7 +443,7 @@ async def create_page(
             req.folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
     try:
         page = await files_tree_service.create_page(
@@ -389,6 +458,29 @@ async def create_page(
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
+    return PageResponse(**page)
+
+
+@router.post("/pages/{page_id}/copy", response_model=PageResponse, status_code=201)
+async def copy_page(
+    workspace_id: UUID,
+    page_id: UUID,
+    req: CopyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    if req.target_folder_id is not None:
+        await _check_ws_owns_folder(workspace_id, req.target_folder_id)
+        await _check_content_access(
+            "folder", req.target_folder_id, workspace_id, current_user["id"], require="write"
+        )
+    else:
+        await _check_ws_write(workspace_id, current_user["id"])
+    page = await files_tree_service.copy_page(
+        page_id, workspace_id, current_user["id"], target_folder_id=req.target_folder_id
+    )
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)
 
 
@@ -486,7 +578,7 @@ async def update_page(
         page_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     if req.folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
@@ -495,7 +587,7 @@ async def update_page(
             req.folder_id,
             workspace_id,
             current_user["id"],
-            require_write=True,
+            require="write",
         )
 
     try:
@@ -511,13 +603,12 @@ async def update_page(
             html_layout=req.html_layout,
             move_to_root=req.move_to_root,
             guard_content_hash=not (req.collab_projection and req.content is not None),
+            notify=not req.collab_projection,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
-    if req.content is not None and not req.collab_projection:
-        await files_tree_service.delete_page_collab_state(page_id, workspace_id)
     return PageResponse(**page)
 
 
@@ -532,7 +623,7 @@ async def delete_page(
         page_id,
         workspace_id,
         current_user["id"],
-        require_write=True,
+        require="write",
     )
     deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
@@ -552,9 +643,7 @@ async def restore_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require_write=True
-    )
+    await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
     restored = await files_tree_service.restore_page(page_id, workspace_id)
     if not restored:
         raise HTTPException(status_code=404, detail="Page not in trash")
@@ -574,9 +663,7 @@ async def purge_page(
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a page already in trash."""
-    await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require_write=True
-    )
+    await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
     purged = await files_tree_service.purge_page(page_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Page not in trash")
@@ -629,8 +716,11 @@ async def create_comment_thread(
     req: CommentThreadCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    # Comments are read-level permission — any workspace member can comment.
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    # Commenting needs at least the 'comment' share level (workspace members
+    # always qualify); a plain read-only share can view but not comment.
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require="comment"
+    )
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.create_thread(
         page_id,
@@ -655,7 +745,9 @@ async def reply_to_thread(
     req: CommentReplyRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require="comment"
+    )
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
     if thread is None:
@@ -748,8 +840,6 @@ async def reconcile_comment_anchors(
     Resolved threads are left alone.
     """
     await _check_ws_write(workspace_id, current_user["id"])
-    await _check_content_access(
-        "page", page_id, workspace_id, current_user["id"], require_write=True
-    )
+    await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
     await _check_page_in_workspace(workspace_id, page_id)
     await comment_service.reconcile_orphans(page_id, req.present_ids)

@@ -1,13 +1,13 @@
 """Remove public write links.
 
-Revision ID: 0097
-Revises: 0096
+Revision ID: 0104
+Revises: 0103
 """
 
 from alembic import op
 
-revision = "0097"
-down_revision = "0096"
+revision = "0104"
+down_revision = "0103"
 branch_labels = None
 depends_on = None
 

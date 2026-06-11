@@ -4,6 +4,7 @@ called with the source-optional arguments, so search-everything and
 search-one-source both reach the server correctly."""
 
 from cli import main
+from cli.client import CartridgeClient
 
 
 class _FakeClient:
@@ -66,3 +67,26 @@ def test_sources_browse_and_read(monkeypatch) -> None:
     main.sources_read("src-9", "specs/auth.md", workspace_id=None, as_json=True)
     assert ("entries", "ws-1", "src-9", "specs/") in calls
     assert ("read", "ws-1", "src-9", "specs/auth.md") in calls
+
+
+def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
+    """The entries endpoint takes a query param literally named "path". The real
+    client method must not collide with the helpers' URL argument (it did once:
+    `_list() got multiple values for argument 'path'`)."""
+    requests: list = []
+
+    class _Resp:
+        def json(self):
+            return {"entries": [{"path": "a.md"}]}
+
+    def fake_request(method, url, **kwargs):
+        requests.append((method, url, kwargs.get("params")))
+        return _Resp()
+
+    client = CartridgeClient("http://test")
+    monkeypatch.setattr(client, "_request", fake_request)
+    entries = client.list_source_entries("ws-1", "src-9", path="specs/")
+    assert entries == [{"path": "a.md"}]
+    assert requests == [
+        ("GET", "/api/v1/workspaces/ws-1/sources/src-9/entries", {"path": "specs/"})
+    ]
