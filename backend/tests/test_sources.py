@@ -1335,7 +1335,9 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     monkeypatch.setattr(indexer, "search_jira", fail_search)
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
-    hits = await source_service.search_all(ws, owner_id, "customer transcript", source=src["id"])
+    # Unscoped fan-out swallows provider errors and logs them; a scoped search
+    # raises instead, so only the fan-out path exercises the redacted log line.
+    hits = await source_service.search_all(ws, owner_id, "customer transcript")
 
     assert hits == []
     assert captured_logs == [
