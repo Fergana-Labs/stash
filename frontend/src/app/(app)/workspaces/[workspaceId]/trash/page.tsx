@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import { useAuth } from "../../../../../hooks/useAuth";
 import { getTrash, purgeItem, restoreItem } from "../../../../../lib/api";
 import type { TrashEntry, TrashKind, TrashListing } from "../../../../../lib/types";
@@ -26,6 +27,7 @@ export default function TrashPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const { user, loading } = useAuth();
+  const confirm = useConfirm();
 
   const [data, setData] = useState<TrashListing | null>(null);
   const [error, setError] = useState("");
@@ -110,7 +112,12 @@ export default function TrashPage() {
   }
 
   async function handlePurge(kind: RowKind, id: string, name: string) {
-    if (!window.confirm(`Permanently delete "${name}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Permanently delete "${name}"?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     setBusyId(id);
     setError("");
     try {
@@ -157,12 +164,12 @@ export default function TrashPage() {
   async function handleBulkPurge() {
     const items = parseSelection();
     if (items.length === 0) return;
-    if (
-      !window.confirm(
-        `Permanently delete ${items.length} item${items.length === 1 ? "" : "s"}? This cannot be undone.`
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Permanently delete ${items.length} item${items.length === 1 ? "" : "s"}?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     setBulkBusy(true);
     setError("");
     try {

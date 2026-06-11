@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import { useActiveWorkspaceId } from "../../../../../components/ShellChromeContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -25,6 +26,7 @@ import { resetSkillNavigationCache } from "../../../../../lib/skillNavigationCac
 export default function SkillSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const confirm = useConfirm();
   const [data, setData] = useState<PublicSkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
@@ -193,7 +195,12 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
 
   async function handleDelete() {
     if (!skill) return;
-    if (!confirm(`Delete "${skill.title}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete "${skill.title}"?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
 
     setSaving("delete");
     setError("");

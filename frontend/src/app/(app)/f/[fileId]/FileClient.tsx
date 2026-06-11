@@ -3,6 +3,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
   useActiveWorkspaceId,
   useShareAction,
@@ -56,6 +57,7 @@ function FileViewerPageInner() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const fileId = params.fileId as string;
   // ?skill=<slug> is a back-link hint AND a permission fallback. We try
   // the workspace endpoint first so workspace members get the full editor
@@ -277,7 +279,11 @@ function FileViewerPageInner() {
                           label: "Delete",
                           destructive: true,
                           onSelect: async () => {
-                            if (!window.confirm(`Move "${file.name}" to trash?`)) return;
+                            const ok = await confirm({
+                              title: `Move "${file.name}" to trash?`,
+                              confirmLabel: "Move to trash",
+                            });
+                            if (!ok) return;
                             try {
                               await trashItem(workspaceId, "file", fileId);
                               router.push(`/workspaces/${workspaceId}`);

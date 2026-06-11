@@ -1,6 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceFileBrowser from "./WorkspaceFileBrowser";
+import { ConfirmDialogProvider } from "../../ConfirmDialog";
+
+function render(ui: ReactNode) {
+  return renderBase(ui, { wrapper: ConfirmDialogProvider });
+}
 import {
   createTable,
   deleteTable,
@@ -146,7 +152,6 @@ describe("WorkspaceFileBrowser table creation", () => {
   });
 
   it("deletes standalone tables with the table API", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
     vi.mocked(listTables).mockResolvedValue({
       tables: [table("table-standalone", "Budget", 2)],
     });
@@ -156,6 +161,9 @@ describe("WorkspaceFileBrowser table creation", () => {
 
     await screen.findByText("Budget");
     fireEvent.click(screen.getByLabelText("Delete"));
+
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
       expect(deleteTable).toHaveBeenCalledWith("ws-1", "table-standalone")

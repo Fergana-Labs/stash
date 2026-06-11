@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useConfirm } from "../ConfirmDialog";
 import {
   addSkillMember,
   ApiError,
@@ -95,6 +96,7 @@ export default function SkillShareButton({
   canWrite: boolean;
   onChanged: () => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [workspacePermission, setWorkspacePermission] =
@@ -315,7 +317,11 @@ export default function SkillShareButton({
   }
 
   async function deleteMember(userId: string) {
-    if (!confirm("Remove this member from the skill?")) return;
+    const ok = await confirm({
+      title: "Remove this member from the skill?",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
 
     setMemberBusy(true);
     setMemberMessage("");

@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
   useActiveWorkspaceId,
   useShareAction,
@@ -99,6 +100,7 @@ export default function SkillPageView() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const pageId = params.pageId as string;
   const { user, loading } = useAuth();
   // When ?skill=<slug> is present, the page is viewed through a skill —
@@ -645,7 +647,11 @@ export default function SkillPageView() {
                   label: "Delete",
                   destructive: true,
                   onSelect: async () => {
-                    if (!window.confirm(`Move "${page.name}" to trash?`)) return;
+                    const ok = await confirm({
+                      title: `Move "${page.name}" to trash?`,
+                      confirmLabel: "Move to trash",
+                    });
+                    if (!ok) return;
                     try {
                       await trashItem(workspaceId, "page", pageId);
                       router.push(`/workspaces/${workspaceId}`);

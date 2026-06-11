@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import {
   CardGridSkeleton,
   SkillsGridSkeleton,
@@ -55,6 +56,7 @@ export default function WorkspaceSkillsPage() {
   const shareModal = useShareModal();
   const shareVersion = shareModal.version;
   const pins = usePins("skills", workspaceId);
+  const confirm = useConfirm();
 
   const [skills, setSkills] = useState<WorkspaceSkill[] | null>(null);
   const [invites, setInvites] = useState<SkillInvite[]>([]);
@@ -150,10 +152,12 @@ export default function WorkspaceSkillsPage() {
 
   async function bulkDeleteSkills() {
     if (selectedSkills.length === 0) return;
-    const yes = window.confirm(
-      `Delete ${selectedSkills.length} Skill${selectedSkills.length === 1 ? "" : "s"}? This can't be undone.`,
-    );
-    if (!yes) return;
+    const ok = await confirm({
+      title: `Delete ${selectedSkills.length} Skill${selectedSkills.length === 1 ? "" : "s"}?`,
+      body: "This can't be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       for (const skill of selectedSkills) {
         await deleteSkill(skill.id);

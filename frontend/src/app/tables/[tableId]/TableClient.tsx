@@ -21,6 +21,7 @@ import { downloadBlob } from "../../../components/DownloadMenu";
 import { useShareAction } from "../../../components/ShellChromeContext";
 import ResourceShareButton from "../../../components/share/ResourceShareButton";
 import { useAuth } from "../../../hooks/useAuth";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
@@ -229,6 +230,7 @@ function TableEditorPageInner() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const confirm = useConfirm();
   const tableId = params.tableId as string;
   // Skill mode: `?skill=<slug>` switches the data source to the public
   // skill payload (which the backend gates by skill readability). All
@@ -558,7 +560,12 @@ function TableEditorPageInner() {
   const removeFilter = (idx: number) => setFilters((prev) => prev.filter((_, i) => i !== idx));
 
   const handleDelete = async () => {
-    if (!confirm("Delete this table and all its data?")) return;
+    const ok = await confirm({
+      title: "Delete this table?",
+      body: "All its data will be permanently deleted.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await deleteTable(resolvedWorkspaceId, tableId);
       router.push(wsId ? `/workspaces/${wsId}` : "/");
@@ -575,7 +582,8 @@ function TableEditorPageInner() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to add column"); }
   };
   const handleDeleteColumn = async (colId: string) => {
-    if (!confirm("Delete this column?")) return;
+    const ok = await confirm({ title: "Delete this column?", confirmLabel: "Delete" });
+    if (!ok) return;
     try { setTable(await deleteTableColumn(wsId, tableId, colId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleRenameColumn = async (colId: string) => {
@@ -625,7 +633,12 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to duplicate"); }
   };
   const handleBulkDelete = async () => {
-    if (selectedRows.size === 0 || !confirm(`Delete ${selectedRows.size} rows?`)) return;
+    if (selectedRows.size === 0) return;
+    const ok = await confirm({
+      title: `Delete ${selectedRows.size} rows?`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try { await deleteTableRowsBatch(wsId, tableId, Array.from(selectedRows)); setRows((prev) => prev.filter((r) => !selectedRows.has(r.id))); setTotalCount((c) => c - selectedRows.size); setSelectedRows(new Set()); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };

@@ -2,13 +2,18 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderBase,
   screen,
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TableEditorPage from "./TableClient";
+import { ConfirmDialogProvider } from "../../../components/ConfirmDialog";
+
+function render(ui: ReactNode) {
+  return renderBase(ui, { wrapper: ConfirmDialogProvider });
+}
 
 const api = vi.hoisted(() => ({
   fetchAuthed: vi.fn(),

@@ -1,7 +1,12 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render as renderBase, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillPageView from "./PageClient";
+import { ConfirmDialogProvider } from "../../../../components/ConfirmDialog";
+
+function render(ui: ReactNode) {
+  return renderBase(ui, { wrapper: ConfirmDialogProvider });
+}
 
 const api = vi.hoisted(() => {
   class ApiError extends Error {
