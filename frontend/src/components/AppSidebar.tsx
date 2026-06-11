@@ -47,7 +47,7 @@ interface WorkspaceNode extends Workspace {
 }
 
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
-const SOURCES_COLLAPSED_KEY = "stash_sources_collapsed";
+const EXTERNAL_SOURCES_COLLAPSED_KEY = "stash_external_sources_collapsed";
 
 // A colored dot per source type, so the grouped Sources list reads as a set of
 // equal peers (matching the mockup). Falls back to neutral.
@@ -159,15 +159,17 @@ export default function AppSidebar({
   // Connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) for the active
   // workspace, keyed by workspace id. User-scoped — only the viewer's own.
   const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
-  const [sourcesCollapsed, setSourcesCollapsed] = useState<boolean>(() => {
+  // Collapses only the connected external sources; the native Agent Sessions
+  // and Files rows stay visible.
+  const [externalCollapsed, setExternalCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem(SOURCES_COLLAPSED_KEY) === "1";
+    return localStorage.getItem(EXTERNAL_SOURCES_COLLAPSED_KEY) === "1";
   });
 
-  function toggleSourcesCollapsed() {
-    const next = !sourcesCollapsed;
-    setSourcesCollapsed(next);
-    localStorage.setItem(SOURCES_COLLAPSED_KEY, next ? "1" : "0");
+  function toggleExternalCollapsed() {
+    const next = !externalCollapsed;
+    setExternalCollapsed(next);
+    localStorage.setItem(EXTERNAL_SOURCES_COLLAPSED_KEY, next ? "1" : "0");
   }
 
   // The sidebar always renders a single workspace context. Priority:
@@ -225,11 +227,11 @@ export default function AppSidebar({
       .catch(() => {});
   }, [activeWorkspaceKey]);
 
-  // The flat Sources list: the two native sources first, then the user's
-  // connected sources — every source an equal peer (per the mockup). Connected
-  // sources are managed on the integrations settings page.
-  const sourceRows = useMemo<SourceRow[]>(() => {
-    if (!activeWorkspaceKey) return [];
+  // The Sources list: the two native sources always visible, then the user's
+  // connected external sources behind a collapsible "External" header.
+  // Connected sources are managed on the integrations settings page.
+  const sourceRows = useMemo<{ native: SourceRow[]; connected: SourceRow[] }>(() => {
+    if (!activeWorkspaceKey) return { native: [], connected: [] };
     const ws = activeWorkspaceKey;
     // Canonical item paths (/p, /f, /sessions) carry no workspace; they
     // count as active because the sidebar only renders them for the
@@ -280,7 +282,7 @@ export default function AppSidebar({
         active: pathname.startsWith(`/workspaces/${ws}/integrations/${provider}`),
       });
     }
-    return [...native, ...connected];
+    return { native, connected };
   }, [activeWorkspaceKey, sourceMap, pathname]);
 
   const activeCartridgeSlug = pathname.match(/^\/cartridges\/([^/?#]+)/)?.[1] ?? null;
@@ -349,21 +351,35 @@ export default function AppSidebar({
 
       {activeWorkspace ? (
         <nav className="mt-4 px-2 text-[13px]">
-          <button
-            type="button"
-            onClick={toggleSourcesCollapsed}
-            className="flex w-full items-center gap-1 px-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
-          >
-            <span
-              aria-hidden
-              className={`transition-transform ${sourcesCollapsed ? "-rotate-90" : ""}`}
-            >
-              ▾
-            </span>
+          <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
             Sources
-          </button>
-          {!sourcesCollapsed &&
-            sourceRows.map((row) => (
+          </div>
+          {sourceRows.native.map((row) => (
+            <NavRow
+              key={row.key}
+              href={row.href}
+              icon={row.icon}
+              label={row.label}
+              active={row.active}
+            />
+          ))}
+          {sourceRows.connected.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleExternalCollapsed}
+              className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+            >
+              <span
+                aria-hidden
+                className={`transition-transform ${externalCollapsed ? "-rotate-90" : ""}`}
+              >
+                ▾
+              </span>
+              External
+            </button>
+          )}
+          {!externalCollapsed &&
+            sourceRows.connected.map((row) => (
               <NavRow
                 key={row.key}
                 href={row.href}
