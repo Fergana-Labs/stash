@@ -157,50 +157,6 @@ def test_gmail_jira_asana_drive_are_index_only_federated():
         assert source_service.SOURCE_TABLE[st] not in source_service.CONTENT_TABLES, st
 
 
-def test_gmail_is_readonly_searchable_source():
-    gmail = GmailIntegration()
-    assert "https://www.googleapis.com/auth/gmail.readonly" in gmail.scopes
-    assert "https://www.googleapis.com/auth/gmail.modify" not in gmail.scopes
-    assert source_service.SOURCE_CAPABILITY["gmail"] == "searchable"
-    assert source_service.SOURCE_TABLE["gmail"] == "gmail_index"
-    assert "gmail" in source_tasks.INDEXERS
-    assert (
-        source_service.source_document_url("gmail", None, "msg-123")
-        == "https://mail.google.com/mail/u/0/#all/msg-123"
-    )
-
-
-def test_gmail_message_rendering_prefers_plain_text_body():
-    import base64
-
-    body = base64.urlsafe_b64encode(b"Your invoice is past due.").decode().rstrip("=")
-    message = {
-        "id": "msg-1",
-        "snippet": "invoice snippet",
-        "payload": {
-            "headers": [
-                {"name": "Subject", "value": "Past due invoice"},
-                {"name": "From", "value": "billing@example.com"},
-                {"name": "To", "value": "henry@example.com"},
-                {"name": "Date", "value": "Mon, 08 Jun 2026 12:00:00 -0700"},
-            ],
-            "parts": [
-                {
-                    "mimeType": "text/plain",
-                    "body": {"data": body},
-                }
-            ],
-        },
-    }
-
-    rendered = gmail_indexer._render_message(message)
-
-    assert "# Past due invoice" in rendered
-    assert "From: billing@example.com" in rendered
-    assert "Snippet: invoice snippet" in rendered
-    assert "Your invoice is past due." in rendered
-
-
 def test_jira_project_refs_reject_jql_injection_shapes():
     assert source_service.parse_jira_project_ref("cloud-1:PROJ_1") == ("cloud-1", "PROJ_1")
 

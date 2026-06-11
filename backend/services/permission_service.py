@@ -282,7 +282,7 @@ async def _session_folder_open(
     if user_id is None:
         return False
     if (
-        require_write
+        require == "write"
         and await get_workspace_role(folder["workspace_id"], user_id) not in _ROLES_CAN_WRITE
     ):
         return False
