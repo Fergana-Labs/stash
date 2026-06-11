@@ -2,9 +2,11 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
-import { FileViewerSkeleton } from "../../../../../../components/SkeletonStates";
-import { useAuth } from "../../../../../../hooks/useAuth";
+import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useActiveWorkspaceId } from "../../../../components/ShellChromeContext";
+import { recordRecent } from "../../../../lib/pins";
+import { FileViewerSkeleton } from "../../../../components/SkeletonStates";
+import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   getFile,
@@ -15,15 +17,15 @@ import {
   trashItem,
   updateFile,
   type FolderBreadcrumb,
-} from "../../../../../../lib/api";
-import type { FileInfo } from "../../../../../../lib/types";
+} from "../../../../lib/api";
+import type { FileInfo } from "../../../../lib/types";
 import FileContentRenderer, {
   isImage,
   isMarkdown,
   isPdf,
   isText,
-} from "../../../../../../components/workspace/FileContentRenderer";
-import FileViewerHeader from "../../../../../../components/workspace/FileViewerHeader";
+} from "../../../../components/workspace/FileContentRenderer";
+import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
@@ -50,7 +52,6 @@ function FileViewerPageInner() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const workspaceId = params.workspaceId as string;
   const fileId = params.fileId as string;
   // ?stash=<slug> is a back-link hint AND a permission fallback. We try
   // the workspace endpoint first so workspace members get the full editor
@@ -69,6 +70,10 @@ function FileViewerPageInner() {
   // the viewer can't reach the workspace endpoint. Workspace members who
   // arrive via ?stash= still get full edit affordances.
   const [readOnly, setReadOnly] = useState(false);
+  // Empty until the file loads — every consumer below renders or fires
+  // only after that.
+  const workspaceId = file?.workspace_id ?? "";
+  useActiveWorkspaceId(workspaceId || null);
 
   useBreadcrumbs(
     readOnly
@@ -114,7 +119,7 @@ function FileViewerPageInner() {
         content_type: inline.content_type ?? "",
         size_bytes: inline.size_bytes ?? 0,
         url: inline.url ?? "",
-        app_url: `/workspaces/${stash.cartridge.workspace_id}/f/${fileId}?stash=${stashSlug}`,
+        app_url: `/f/${fileId}?stash=${stashSlug}`,
         uploaded_by: "",
         created_at: inline.created_at ?? "",
       };
@@ -131,12 +136,16 @@ function FileViewerPageInner() {
 
   const load = useCallback(async () => {
     try {
-      const f = await getFile(workspaceId, fileId);
+      const f = await getFile(fileId);
+      // The canonical endpoint 404s workspace-less rows, so ws is always set
+      // here; the guard narrows the nullable type.
+      const ws = f.workspace_id ?? "";
       setFile(f);
       setReadOnly(false);
+      recordRecent(ws, fileId, "file");
       if (f.folder_id) {
         try {
-          const contents = await getFolderContents(workspaceId, f.folder_id);
+          const contents = await getFolderContents(ws, f.folder_id);
           setFolderChain(contents.breadcrumbs);
         } catch {
           setFolderChain([]);
@@ -149,11 +158,11 @@ function FileViewerPageInner() {
       // Otherwise ingest and then redirect — user never sees this route for CSVs.
       if (isCsv(f.content_type)) {
         if (f.linked_table_id) {
-          router.replace(`/tables/${f.linked_table_id}?workspaceId=${workspaceId}`);
+          router.replace(`/tables/${f.linked_table_id}`);
         } else {
           try {
-            const table = await ingestCsvFile(workspaceId, fileId);
-            router.replace(`/tables/${table.id}?workspaceId=${workspaceId}`);
+            const table = await ingestCsvFile(ws, fileId);
+            router.replace(`/tables/${table.id}`);
           } catch (e) {
             setError(e instanceof Error ? e.message : "CSV ingest failed");
           }
@@ -164,14 +173,14 @@ function FileViewerPageInner() {
       // sheet's table; the others appear in the workspace sidebar.
       if (isXlsx(f.content_type, f.name)) {
         if (f.linked_table_id) {
-          router.replace(`/tables/${f.linked_table_id}?workspaceId=${workspaceId}`);
+          router.replace(`/tables/${f.linked_table_id}`);
         } else {
           try {
-            const { tables } = await ingestXlsxFile(workspaceId, fileId);
+            const { tables } = await ingestXlsxFile(ws, fileId);
             if (tables.length === 0) {
               setError("Workbook had no readable sheets");
             } else {
-              router.replace(`/tables/${tables[0].id}?workspaceId=${workspaceId}`);
+              router.replace(`/tables/${tables[0].id}`);
             }
           } catch (e) {
             setError(e instanceof Error ? e.message : "XLSX ingest failed");
@@ -189,7 +198,7 @@ function FileViewerPageInner() {
       }
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [workspaceId, fileId, router, stashSlug, loadStashFallback]);
+  }, [fileId, router, stashSlug, loadStashFallback]);
 
   useEffect(() => {
     if (user) load();

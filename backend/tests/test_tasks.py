@@ -170,7 +170,7 @@ async def test_source_sync_registers_user_owned_task(
     source = await source_service.create_source(
         workspace_id=UUID(workspace_id),
         owner_user_id=UUID(owner["id"]),
-        source_type="github",
+        source_type="github_repo",
         external_ref=f"repo-{uuid.uuid4().hex}",
         display_name="Repo",
     )

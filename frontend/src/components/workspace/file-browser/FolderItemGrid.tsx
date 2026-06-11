@@ -2,30 +2,9 @@
 
 import { useState, type DragEvent } from "react";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import { type FBDragPayload } from "./WorkspaceFileBrowser";
 import { SelectBox, handleFolderDrop, isFbDrag, startItemDrag } from "./ItemsList";
-
-// "table" = a CSV/spreadsheet *file* linked to a table; "datatable" = a
-// standalone structured-data table (the `tables` entity). Both render with the
-// table icon, but they have different backing rows so move/delete/nav differ.
-export type ItemKind = "folder" | "page" | "html" | "table" | "datatable" | "file";
-
-export interface GridItem {
-  kind: ItemKind;
-  id: string;
-  name: string;
-  subtitle: string;
-  sizeBytes?: number;
-  contentType?: string;
-  tableId?: string;
-  tableBackedBy?: "file" | "table";
-  linkedTableId?: string;
-  movable?: boolean;
-  /** ISO timestamp. Renders as "Modified" in the Drive-style List view.
-   *  Not all rows have one — FolderContents.pages currently omits it. */
-  updatedAt?: string;
-}
+import { KindIcon, tintFor, type GridItem } from "./kind";
 
 interface Props {
   items: GridItem[];
@@ -148,9 +127,9 @@ function Tile({
       className={
         "group flex items-start gap-3 rounded-lg border bg-base p-3 transition cursor-pointer select-none " +
         (selected || multiSelected
-          ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)]/40"
-          : "border-border hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]/30") +
-        (over ? " ring-2 ring-[var(--color-brand-300)]" : "")
+          ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)]"
+          : "border-border hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]/50") +
+        (over ? " ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
     >
       {onToggleSelect && (
@@ -187,20 +166,4 @@ function Tile({
       )}
     </div>
   );
-}
-
-function KindIcon({ kind }: { kind: ItemKind }) {
-  if (kind === "folder") return <FolderIcon />;
-  if (kind === "page" || kind === "html") return <PageIcon />;
-  if (kind === "table") return <TableIcon />;
-  return <FileIcon />;
-}
-
-function tintFor(item: GridItem): string {
-  if (item.kind === "folder") return "text-muted";
-  if (item.kind === "html") return "text-[#D97706]";
-  if (item.kind === "table") return "text-emerald-600";
-  if (item.contentType?.includes("pdf")) return "text-rose-500";
-  if (item.contentType?.includes("image")) return "text-[var(--color-brand-600)]";
-  return "text-muted";
 }

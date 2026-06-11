@@ -29,7 +29,7 @@ import {
   deleteTableColumn, reorderTableColumns, listTableRows, searchTableRows,
   createTableRow, createTableRowsBatch, updateTableRow, deleteTableRow,
   deleteTableRowsBatch, duplicateTableRow, summarizeTableRows,
-  listAllTables, saveTableView, deleteTableView,
+  saveTableView, deleteTableView,
   setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
@@ -228,7 +228,6 @@ function TableEditorPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tableId = params.tableId as string;
-  const urlWorkspaceId = searchParams.get("workspaceId");
   // Stash mode: `?stash=<slug>` switches the data source to the public
   // stash payload (which the backend gates by stash readability). All
   // mutating UI is hidden in this mode.
@@ -237,8 +236,9 @@ function TableEditorPageInner() {
   const [stashTitle, setStashTitle] = useState<string | null>(null);
   const { user, loading, logout } = useAuth();
 
-  // Core state
-  const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(urlWorkspaceId);
+  // Core state. The workspace comes from the loaded table itself (the
+  // canonical table endpoint resolves it server-side), not from the URL.
+  const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(null);
   const [table, setTable] = useState<Table | null>(null);
   const [rows, setRows] = useState<TableRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -422,24 +422,11 @@ function TableEditorPageInner() {
         setOffset(synthRows.length);
         return;
       }
-      if (resolvedWorkspaceId) {
-        setTable(await getTable(resolvedWorkspaceId, tableId));
-        return;
-      }
-      try {
-        setTable(await getTable(null, tableId));
-      } catch {
-        const all = await listAllTables();
-        const match = all?.tables?.find((t) => t.id === tableId);
-        if (match?.workspace_id) {
-          setResolvedWorkspaceId(match.workspace_id);
-          setTable(await getTable(match.workspace_id, tableId));
-        } else {
-          setError("Table not found");
-        }
-      }
+      const loaded = await getTable(tableId);
+      setResolvedWorkspaceId(loaded.workspace_id);
+      setTable(loaded);
     } catch { setError("Table not found"); }
-  }, [tableId, resolvedWorkspaceId, stashSlug]);
+  }, [tableId, stashSlug]);
 
   const buildRowParams = useCallback((pageOffset: number) => {
     const p: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] } = {
