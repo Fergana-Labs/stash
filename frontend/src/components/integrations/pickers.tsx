@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { addWorkspaceSource } from "@/lib/api";
 import {
+  type IntegrationAccount,
   listAsanaProjects,
   listGitHubRepos,
   listJiraProjects,
@@ -33,11 +34,15 @@ export function AddSourceControls({
   connector,
   workspaceId,
   connected,
+  accounts = [],
+  existingRefs = [],
   onAdded,
 }: {
   connector: Connector;
   workspaceId: string;
   connected: boolean;
+  accounts?: IntegrationAccount[];
+  existingRefs?: string[];
   onAdded: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -165,6 +170,38 @@ export function AddSourceControls({
         >
           {busy ? "Adding..." : "Add"}
         </button>
+        {errorRow}
+      </div>
+    );
+  }
+
+  if (connector.provider === "gmail") {
+    return (
+      <div className="space-y-2">
+        {accounts.length === 0 ? (
+          <div className="text-[11.5px] text-muted">Connect Gmail first to add a mailbox.</div>
+        ) : (
+          accounts.map((account) => {
+            const label = account.account_email || account.account_display_name || account.account_key;
+            const added = existingRefs.includes(account.account_key);
+            return (
+              <div key={account.account_key} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-medium text-foreground">{label}</div>
+                  <div className="text-[11.5px] text-muted">Mailbox</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void add({ external_ref: account.account_key, display_name: `Gmail (${label})` })}
+                  disabled={busy || added}
+                  className={secondaryButton()}
+                >
+                  {added ? "Added" : busy ? "Adding..." : "Add"}
+                </button>
+              </div>
+            );
+          })
+        )}
         {errorRow}
       </div>
     );

@@ -1,9 +1,12 @@
 name: Publish Docker images to GHCR
 
+# Images are published per release only. The normal path is publish.yml
+# dispatching this workflow on the v* tag it creates (tag pushes made with
+# GITHUB_TOKEN never fire the push trigger — GitHub's recursion guard); the
+# push trigger covers hand-pushed tags.
 on:
   push:
     tags: ["v*"]
-    branches: [main]
   workflow_dispatch:
 
 env:
@@ -45,10 +48,10 @@ jobs:
         id: meta
         with:
           images: ${{ env.REGISTRY }}/fergana-labs/${{ matrix.image }}
+          # latest=auto also moves `latest` to each release.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
 
       - uses: docker/setup-qemu-action@v3
 

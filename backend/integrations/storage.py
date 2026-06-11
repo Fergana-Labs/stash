@@ -22,6 +22,7 @@ from .base import AccountInfo, TokenSet
 from .crypto import integration_fernet
 from .registry import get_provider
 
+DEFAULT_ACCOUNT_KEY = "default"
 
 def _encrypt(plaintext: str | None) -> bytes | None:
     if plaintext is None:
@@ -35,6 +36,25 @@ def _decrypt(ciphertext: bytes | None) -> str | None:
     return integration_fernet().decrypt(bytes(ciphertext)).decode()
 
 
+def _account_key_for(provider: str, account: AccountInfo) -> str:
+    if provider == "gmail":
+        if not account.email:
+            raise ValueError("Gmail account email is required")
+        return account.email.strip().lower()
+    return DEFAULT_ACCOUNT_KEY
+
+
+def _account_row(row) -> dict:
+    return {
+        "account_key": row["account_key"],
+        "account_email": row["account_email"],
+        "account_display_name": row["account_display_name"],
+        "scopes": list(row["scopes"] or []),
+        "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
+        "connected_at": row["created_at"].isoformat() if row["created_at"] else None,
+    }
+
+
 async def store_token(
     user_id: UUID,
     provider: str,
@@ -42,17 +62,18 @@ async def store_token(
     account: AccountInfo,
 ) -> None:
     pool = get_pool()
+    account_key = _account_key_for(provider, account)
     await pool.execute(
         """
         INSERT INTO user_integrations (
-            user_id, provider,
+            user_id, provider, account_key,
             access_token_encrypted, refresh_token_encrypted,
             scopes, expires_at,
             account_email, account_display_name,
             updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
-        ON CONFLICT (user_id, provider) DO UPDATE SET
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+        ON CONFLICT (user_id, provider, account_key) DO UPDATE SET
             access_token_encrypted = EXCLUDED.access_token_encrypted,
             refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, user_integrations.refresh_token_encrypted),
             scopes = EXCLUDED.scopes,
@@ -63,6 +84,7 @@ async def store_token(
         """,
         user_id,
         provider,
+        account_key,
         _encrypt(token.access_token),
         _encrypt(token.refresh_token),
         token.scopes,
@@ -72,16 +94,22 @@ async def store_token(
     )
 
 
-async def get_valid_token(user_id: UUID, provider: str) -> str:
+async def get_valid_token(
+    user_id: UUID,
+    provider: str,
+    account_key: str = DEFAULT_ACCOUNT_KEY,
+) -> str:
     """Return a usable access token, refreshing if expired."""
     pool = get_pool()
     row = await pool.fetchrow(
         """
         SELECT access_token_encrypted, refresh_token_encrypted, expires_at, scopes
-        FROM user_integrations WHERE user_id = $1 AND provider = $2
+        FROM user_integrations
+        WHERE user_id = $1 AND provider = $2 AND account_key = $3
         """,
         user_id,
         provider,
+        account_key,
     )
     if row is None:
         raise HTTPException(
@@ -114,61 +142,76 @@ async def get_valid_token(user_id: UUID, provider: str) -> str:
             expires_at = $5,
             updated_at = now()
         WHERE user_id = $1 AND provider = $2
+          AND account_key = $6
         """,
         user_id,
         provider,
         _encrypt(new_token.access_token),
         _encrypt(new_token.refresh_token),
         new_token.expires_at,
+        account_key,
     )
     return new_token.access_token
 
 
-async def revoke_stored(user_id: UUID, provider: str) -> None:
+async def revoke_stored(
+    user_id: UUID,
+    provider: str,
+    account_key: str | None = None,
+) -> None:
     pool = get_pool()
-    row = await pool.fetchrow(
+    rows = await pool.fetch(
         "SELECT access_token_encrypted FROM user_integrations "
-        "WHERE user_id = $1 AND provider = $2",
+        "WHERE user_id = $1 AND provider = $2 "
+        "AND ($3::text IS NULL OR account_key = $3)",
         user_id,
         provider,
+        account_key,
     )
-    if row is None:
+    if not rows:
         return
-    access_token = _decrypt(row["access_token_encrypted"])
     provider_impl = get_provider(provider)
-    if access_token:
-        try:
-            await provider_impl.revoke(access_token)
-        except Exception:
-            # Provider may already consider the token invalid; we still
-            # delete our local copy so the user can reconnect cleanly.
-            pass
+    for row in rows:
+        access_token = _decrypt(row["access_token_encrypted"])
+        if access_token:
+            try:
+                await provider_impl.revoke(access_token)
+            except Exception:
+                # Provider may already consider the token invalid; we still
+                # delete our local copy so the user can reconnect cleanly.
+                pass
     await pool.execute(
-        "DELETE FROM user_integrations WHERE user_id = $1 AND provider = $2",
+        "DELETE FROM user_integrations WHERE user_id = $1 AND provider = $2 "
+        "AND ($3::text IS NULL OR account_key = $3)",
         user_id,
         provider,
+        account_key,
     )
 
 
 async def status(user_id: UUID, provider: str) -> dict:
     pool = get_pool()
-    row = await pool.fetchrow(
+    rows = await pool.fetch(
         """
-        SELECT scopes, expires_at, account_email, account_display_name, created_at
+        SELECT account_key, scopes, expires_at, account_email, account_display_name, created_at
         FROM user_integrations WHERE user_id = $1 AND provider = $2
+        ORDER BY account_email NULLS LAST, account_display_name NULLS LAST, account_key
         """,
         user_id,
         provider,
     )
-    if row is None:
-        return {"connected": False}
+    if not rows:
+        return {"connected": False, "accounts": []}
+    accounts = [_account_row(row) for row in rows]
+    first = accounts[0]
     return {
         "connected": True,
-        "scopes": list(row["scopes"] or []),
-        "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
-        "account_email": row["account_email"],
-        "account_display_name": row["account_display_name"],
-        "connected_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "scopes": first["scopes"],
+        "expires_at": first["expires_at"],
+        "account_email": first["account_email"],
+        "account_display_name": first["account_display_name"],
+        "connected_at": first["connected_at"],
+        "accounts": accounts,
     }
 
 
@@ -176,20 +219,26 @@ async def list_connections(user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT provider, scopes, expires_at, account_email, account_display_name, created_at
+        SELECT provider, account_key, scopes, expires_at,
+               account_email, account_display_name, created_at
         FROM user_integrations WHERE user_id = $1
-        ORDER BY provider
+        ORDER BY provider, account_email NULLS LAST, account_display_name NULLS LAST, account_key
         """,
         user_id,
     )
-    return [
-        {
-            "provider": r["provider"],
-            "scopes": list(r["scopes"] or []),
-            "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,
-            "account_email": r["account_email"],
-            "account_display_name": r["account_display_name"],
-            "connected_at": r["created_at"].isoformat() if r["created_at"] else None,
-        }
-        for r in rows
-    ]
+    connections: dict[str, dict] = {}
+    for row in rows:
+        provider = row["provider"]
+        account = _account_row(row)
+        if provider not in connections:
+            connections[provider] = {
+                "provider": provider,
+                "scopes": account["scopes"],
+                "expires_at": account["expires_at"],
+                "account_email": account["account_email"],
+                "account_display_name": account["account_display_name"],
+                "connected_at": account["connected_at"],
+                "accounts": [],
+            }
+        connections[provider]["accounts"].append(account)
+    return list(connections.values())

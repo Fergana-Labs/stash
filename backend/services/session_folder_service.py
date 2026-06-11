@@ -172,7 +172,7 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
         folder_id,
         user_id,
         workspace_id=row["workspace_id"],
-        require_write=True,
+        require="write",
     )
 
 
@@ -253,7 +253,7 @@ async def assign_session(
         session_row_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=True,
+        require="write",
     )
     if not can_write_session:
         return False
@@ -271,7 +271,7 @@ async def assign_session(
             folder_id,
             user_id,
             workspace_id=workspace_id,
-            require_write=True,
+            require="write",
         )
         if not can_write_folder:
             return False

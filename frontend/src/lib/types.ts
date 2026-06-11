@@ -57,6 +57,8 @@ export interface Page {
   content_markdown: string;
   content_html: string;
   html_layout: HtmlLayout;
+  last_edit_session_id?: string | null;
+  last_edit_agent_name?: string | null;
   created_by: string;
   updated_by: string | null;
   created_at: string;

@@ -332,7 +332,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <P>
         A <strong>source</strong> is anything the agent can read, exposed as a virtual file
         system: the two native sources — <Code>files</Code> and <Code>sessions</Code> — plus your
-        connected sources (GitHub, Google Drive, Notion, Slack, Granola). Pick a source like a
+        connected sources (GitHub, Google Drive, Gmail, Notion, Slack, Granola). Pick a source like a
         drive, browse it by path, read a document, or search one source — or everything at once.
       </P>
 
@@ -348,10 +348,10 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <CommandRef
         command="stash sources add"
         args="<source_type> [--ref REF] [--name NAME]"
-        description="Connect a source. Slack and Granola resolve their reference from your connected token; the others need a --ref (e.g. a repo 'owner/name')."
+        description="Connect a source. Slack and Granola resolve their reference from your connected token; Gmail uses the mailbox email as --ref; the others need a --ref (e.g. a repo 'owner/name')."
         params={[
-          { name: "<source_type>", type: "string", desc: "github_repo | google_drive | notion | slack | granola.", required: true },
-          { name: "--ref", type: "string", desc: "External reference, e.g. a repo 'owner/name'." },
+          { name: "<source_type>", type: "string", desc: "github_repo | google_drive | gmail | notion | slack | granola.", required: true },
+          { name: "--ref", type: "string", desc: "External reference, e.g. a repo 'owner/name' or Gmail address." },
           { name: "--name", type: "string", desc: "Display name for the source." },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}

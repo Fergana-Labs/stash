@@ -17,6 +17,7 @@ jobs:
     permissions:
       id-token: write    # required for PyPI trusted publishing (OIDC)
       contents: write    # required to push the release tag
+      actions: write     # required to dispatch docker-publish on the tag
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +51,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
           git push origin "$TAG"
+
+      # Tag pushes made with GITHUB_TOKEN never fire docker-publish's
+      # `on: push: tags` trigger (GitHub's recursion guard), so dispatch it
+      # explicitly — workflow_dispatch is exempt from that guard.
+      - name: Build release images
+        if: steps.check.outputs.release == 'true'
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run docker-publish.yml --ref "$TAG"
 
       - name: Install build tooling
         if: steps.check.outputs.release == 'true'

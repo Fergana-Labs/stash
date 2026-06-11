@@ -23,6 +23,7 @@ from ._celery_helpers import run_async
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 32
+TEXT_LIMIT = embedding_service.MAX_TEXT_CHARS
 
 
 def _text_hash(text: str) -> str:
@@ -32,9 +33,10 @@ def _text_hash(text: str) -> str:
 async def _reconcile_pages() -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, content_markdown FROM pages "
+        "SELECT id, LEFT(content_markdown, $2) AS content_markdown FROM pages "
         "WHERE embed_stale AND deleted_at IS NULL LIMIT $1",
         BATCH_SIZE,
+        TEXT_LIMIT,
     )
     if not rows:
         return 0
@@ -66,7 +68,9 @@ async def _reconcile_table_rows() -> int:
     texts = []
     hashes = []
     for r in rows:
-        text = _build_embedding_text(r["data"], r["embedding_config"], r["columns"])
+        text = embedding_service.clip_text(
+            _build_embedding_text(r["data"], r["embedding_config"], r["columns"])
+        )
         ids.append(r["id"])
         texts.append(text)
         hashes.append(_text_hash(text))
@@ -83,8 +87,9 @@ async def _reconcile_table_rows() -> int:
 async def _reconcile_history_events() -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, content FROM history_events WHERE embed_stale LIMIT $1",
+        "SELECT id, LEFT(content, $2) AS content FROM history_events WHERE embed_stale LIMIT $1",
         BATCH_SIZE,
+        TEXT_LIMIT,
     )
     if not rows:
         return 0
@@ -107,12 +112,13 @@ async def _reconcile_files() -> int:
     # off after embedding the text.
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, extracted_text FROM files "
+        "SELECT id, LEFT(extracted_text, $2) AS extracted_text FROM files "
         "WHERE embed_stale AND deleted_at IS NULL "
         "AND extraction_status = 'done' "
         "AND extracted_text IS NOT NULL AND extracted_text <> '' "
         "LIMIT $1",
         BATCH_SIZE,
+        TEXT_LIMIT,
     )
     if not rows:
         return 0
@@ -137,10 +143,11 @@ async def _reconcile_files() -> int:
 async def _reconcile_source_table(table: str) -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        f"SELECT id, content FROM {table} "
+        f"SELECT id, LEFT(content, $2) AS content FROM {table} "
         f"WHERE embed_stale AND deleted_at IS NULL "
         f"AND content IS NOT NULL AND content <> '' LIMIT $1",
         BATCH_SIZE,
+        TEXT_LIMIT,
     )
     if not rows:
         return 0
