@@ -694,8 +694,10 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    workspace_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read)$")
+    # Defaults are private so a non-owner editor's bare publish lands as a
+    # draft; broader visibility is an explicit, owner-gated choice.
+    workspace_permission: SkillGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
+    public_permission: SkillGeneralPermission = Field("none", pattern=r"^(none|read)$")
     folder_id: UUID | None = None
 
 

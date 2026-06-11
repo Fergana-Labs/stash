@@ -799,12 +799,14 @@ class StashClient:
         audience: str = "public",
         folder_id: str | None = None,
     ) -> dict:
+        # The API speaks per-scope permissions; `audience` is the CLI/MCP
+        # shorthand translated by skill_permissions_for_access.
         body: dict = {
             "workspace_id": workspace_id,
             "title": title,
             "content": content,
             "content_type": content_type,
-            "audience": audience,
+            **skill_permissions_for_access(audience),
         }
         if folder_id:
             body["folder_id"] = folder_id

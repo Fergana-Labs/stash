@@ -66,3 +66,25 @@ def test_publish_skill_uses_public_permission_fields() -> None:
             },
         )
     ]
+
+
+def test_publish_maps_audience_to_permission_fields() -> None:
+    # The /publish API has no `audience` field — sending one would be silently
+    # dropped and the server would apply its private defaults.
+    client, calls = _post_stub_client()
+
+    client.publish("WS", "Draft", "# hi", audience="private")
+
+    assert calls == [
+        (
+            "/api/v1/publish",
+            {
+                "workspace_id": "WS",
+                "title": "Draft",
+                "content": "# hi",
+                "content_type": "markdown",
+                "workspace_permission": "none",
+                "public_permission": "none",
+            },
+        )
+    ]
