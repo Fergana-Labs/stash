@@ -904,6 +904,65 @@ function TableEditorPageInner() {
       await importTabular(text, detectDelimiter(text));
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to paste"); }
   };
+  // --- Block paste (spreadsheet sections) ---
+  // Copying a range of cells in Google Sheets / Excel puts TSV on the
+  // clipboard. Pasting such a block into a cell editor fills cells right and
+  // down from that cell — overwriting the rows it covers and appending new
+  // rows past the end — instead of dumping tab-separated text into one cell.
+  // Clipboard columns past the last visible column are dropped.
+  const pasteCellBlock = async (anchorRowId: string, anchorColId: string, block: string[][]) => {
+    const startColIdx = visibleColumns.findIndex((c) => c.id === anchorColId);
+    const startRowIdx = isDraftRowId(anchorRowId) ? rows.length : rows.findIndex((r) => r.id === anchorRowId);
+    if (startColIdx === -1 || startRowIdx === -1) return;
+    if (hasMore && startRowIdx + block.length > rows.length) {
+      setError("Scroll to load all rows before pasting past the end of the table");
+      return;
+    }
+    setEditingCell(null);
+
+    const targetCols = visibleColumns.slice(startColIdx);
+    const rowData = (cells: string[]) => {
+      const data: Record<string, unknown> = {};
+      cells.slice(0, targetCols.length).forEach((raw, i) => {
+        // Server coerces raw strings per column type; empty cells become NULL.
+        data[targetCols[i].id] = raw === "" ? null : raw;
+      });
+      return data;
+    };
+
+    const overlapCount = Math.min(block.length, rows.length - startRowIdx);
+    const overlapRows = rows.slice(startRowIdx, startRowIdx + overlapCount);
+    const overflow = block.slice(overlapCount);
+    try {
+      const updated = await Promise.all(
+        overlapRows.map((row, i) => updateTableRow(wsId, tableId, row.id, rowData(block[i]))),
+      );
+      overlapRows.forEach((row) => rememberUndo({ kind: "row-update", row: cloneTableRow(row) }));
+      const updatedById = new Map(updated.map((r) => [r.id, r]));
+      setRows((prev) => prev.map((r) => updatedById.get(r.id) ?? r));
+
+      if (overflow.length > 0) {
+        const res = await createTableRowsBatch(wsId, tableId, overflow.map((cells) => ({ data: rowData(cells) })));
+        setRows((prev) => [...prev, ...res.rows]);
+        setTotalCount((c) => c + res.rows.length);
+        res.rows.forEach((row) => rememberUndo({ kind: "row-create", row: cloneTableRow(row) }));
+      }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to paste"); }
+  };
+
+  const handleCellEditorPaste = (e: React.ClipboardEvent) => {
+    if (readOnly || !editingCell) return;
+    const block = parseCsv(e.clipboardData.getData("text/plain"), "\t");
+    const isMultiCell = block.length > 1 || (block[0]?.length ?? 0) > 1;
+    if (!isMultiCell) return;
+    e.preventDefault();
+    if (groupByCol) {
+      setError("Pasting a block isn't supported while grouped — clear grouping first");
+      return;
+    }
+    void pasteCellBlock(editingCell.rowId, editingCell.colId, block);
+  };
+
   const handleCsvExport = async () => {
     if (!table || !wsId) return;
     const base = `/api/v1/workspaces/${wsId}/tables`;
@@ -979,7 +1038,7 @@ function TableEditorPageInner() {
     return (
       <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={startCellEditing}>
         {isEditing ? (
-          <div data-table-cell-editor>
+          <div data-table-cell-editor onPaste={handleCellEditorPaste}>
             {col.type === "boolean" ? (
               <label className="flex items-center h-8 px-2 cursor-pointer"><input aria-label={`Edit row ${rowNumber} ${col.name}`} type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
             ) : col.type === "select" && col.options ? (

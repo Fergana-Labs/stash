@@ -47,16 +47,21 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(route.search),
 }));
 
+// The user must be referentially stable across renders, like the real
+// useAuth. A fresh object per render re-fires every effect that lists
+// `user` in its deps (e.g. the loadRows effect), wiping row state edits.
+const authUser = vi.hoisted(() => ({
+  id: "user-1",
+  name: "Henry",
+  display_name: "Henry",
+  description: "",
+  created_at: "2026-05-31T00:00:00Z",
+  last_seen: "2026-05-31T00:00:00Z",
+}));
+
 vi.mock("../../../hooks/useAuth", () => ({
   useAuth: () => ({
-    user: {
-      id: "user-1",
-      name: "Henry",
-      display_name: "Henry",
-      description: "",
-      created_at: "2026-05-31T00:00:00Z",
-      last_seen: "2026-05-31T00:00:00Z",
-    },
+    user: authUser,
     loading: false,
     logout: vi.fn(),
   }),
@@ -414,5 +419,182 @@ describe("TableEditorPage row creation", () => {
     fireEvent.blur(await screen.findByLabelText(/^Edit row \d+ Name$/));
 
     expect(api.createTableRow).not.toHaveBeenCalled();
+  });
+});
+
+describe("TableEditorPage block paste from spreadsheets", () => {
+  const twoColTable = {
+    ...table,
+    columns: [
+      ...table.columns,
+      {
+        id: "role",
+        name: "Role",
+        type: "text",
+        order: 1,
+        required: false,
+        default: null,
+        options: null,
+      },
+    ],
+  };
+
+  const twoColRows = [
+    { ...existingRows[0], data: { name: "Alice", role: "Dev" } },
+    { ...existingRows[1], data: { name: "Bob", role: "PM" } },
+  ];
+
+  const pasteInto = (target: Element, text: string) =>
+    fireEvent.paste(target, { clipboardData: { getData: () => text } });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    route.search = "";
+    api.getTable.mockResolvedValue(twoColTable);
+    api.summarizeTableRows.mockResolvedValue({ total_rows: 2, columns: {} });
+    api.listTableRows.mockResolvedValue({
+      rows: twoColRows,
+      total_count: 2,
+      has_more: false,
+    });
+    api.updateTableRow.mockImplementation(
+      async (_ws: string, _t: string, rowId: string, data: Record<string, unknown>) => {
+        const base = twoColRows.find((r) => r.id === rowId)!;
+        return { ...base, data: { ...base.data, ...data } };
+      },
+    );
+
+    class TestIntersectionObserver {
+      observe() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("overwrites cells right and down from the focused cell, dropping extra columns", async () => {
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    // Sheets puts TSV on the clipboard; the third column has nowhere to go.
+    pasteInto(input, "A1\tB1\tdropped\nA2\tB2\tdropped\n");
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+        name: "A1",
+        role: "B1",
+      }),
+    );
+    expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-2", {
+      name: "A2",
+      role: "B2",
+    });
+    expect(api.createTableRowsBatch).not.toHaveBeenCalled();
+    expect(await screen.findByText("A1")).toBeInTheDocument();
+    expect(await screen.findByText("B2")).toBeInTheDocument();
+  });
+
+  it("fills a single pasted column downward from a non-first anchor column", async () => {
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Dev"));
+    const input = await screen.findByLabelText("Edit row 1 Role");
+    pasteInto(input, "Designer\nSales\n");
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+        role: "Designer",
+      }),
+    );
+    expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-2", {
+      role: "Sales",
+    });
+  });
+
+  it("appends new rows when the pasted block extends past the last row", async () => {
+    const appendedRow = {
+      ...createdRow,
+      data: { name: "Carol", role: "CTO" },
+    };
+    api.createTableRowsBatch.mockResolvedValue({ rows: [appendedRow] });
+
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Bob"));
+    const input = await screen.findByLabelText("Edit row 2 Name");
+    pasteInto(input, "Bobby\tCOO\nCarol\tCTO\n");
+
+    await waitFor(() =>
+      expect(api.createTableRowsBatch).toHaveBeenCalledWith("ws-1", "table-1", [
+        { data: { name: "Carol", role: "CTO" } },
+      ]),
+    );
+    expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-2", {
+      name: "Bobby",
+      role: "COO",
+    });
+    expect(await screen.findByText("Carol")).toBeInTheDocument();
+  });
+
+  it("creates all rows when pasting into an empty tail row", async () => {
+    api.createTableRowsBatch.mockResolvedValue({
+      rows: [
+        { ...createdRow, id: "row-3", data: { name: "Carol", role: "CTO" } },
+        { ...createdRow, id: "row-4", data: { name: "Dan", role: "CFO" } },
+      ],
+    });
+
+    render(<TableEditorPage />);
+
+    const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
+    fireEvent.click(emptyCell);
+    const input = await screen.findByLabelText(/^Edit row \d+ Name$/);
+    pasteInto(input, "Carol\tCTO\nDan\tCFO\n");
+
+    await waitFor(() =>
+      expect(api.createTableRowsBatch).toHaveBeenCalledWith("ws-1", "table-1", [
+        { data: { name: "Carol", role: "CTO" } },
+        { data: { name: "Dan", role: "CFO" } },
+      ]),
+    );
+    expect(api.updateTableRow).not.toHaveBeenCalled();
+    expect(await screen.findByText("Dan")).toBeInTheDocument();
+  });
+
+  it("undoes a block paste one row at a time with command-z", async () => {
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    pasteInto(input, "A1\tB1\nA2\tB2\n");
+
+    await waitFor(() => expect(screen.getByText("A2")).toBeInTheDocument());
+
+    fireEvent.keyDown(document, { key: "z", metaKey: true });
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenLastCalledWith("ws-1", "table-1", "row-2", {
+        name: "Bob",
+        role: "PM",
+      }),
+    );
+  });
+
+  it("leaves single-value pastes to the native cell input", async () => {
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    const notPrevented = pasteInto(input, "just one value");
+
+    expect(notPrevented).toBe(true);
+    expect(api.updateTableRow).not.toHaveBeenCalled();
+    expect(api.createTableRowsBatch).not.toHaveBeenCalled();
   });
 });
