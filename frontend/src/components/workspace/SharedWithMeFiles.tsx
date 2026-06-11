@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { listSharedWithMe, type SharedWithMeItem } from "../../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import {
+  getMyRecents,
+  listSharedWithMe,
+  type RecentEntry,
+  type SharedWithMeItem,
+} from "../../lib/api";
 import { KindIcon, tintFor, type ItemKind } from "./file-browser/kind";
 
 // Shared folders/pages/files/tables surfaced inside the Files source. Session
@@ -36,6 +41,7 @@ function hrefFor(item: SharedWithMeItem): string {
 
 export default function SharedWithMeFiles() {
   const [items, setItems] = useState<SharedWithMeItem[]>([]);
+  const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -43,7 +49,20 @@ export default function SharedWithMeFiles() {
       .then((all) => setItems(all.filter((i) => FILE_KINDS.has(i.object_type))))
       .catch(() => setItems([]))
       .finally(() => setLoaded(true));
+    getMyRecents()
+      .then(setRecents)
+      .catch(() => setRecents([]));
   }, []);
+
+  // Recently-viewed shared items: /me/recents spans all workspaces, so its
+  // intersection with the share list is exactly "shared things I opened".
+  const recentItems = useMemo(() => {
+    const byId = new Map(items.map((item) => [item.object_id, item]));
+    return recents
+      .map((entry) => byId.get(entry.object_id))
+      .filter((item): item is SharedWithMeItem => !!item)
+      .slice(0, 8);
+  }, [items, recents]);
 
   if (!loaded) return null;
 
@@ -57,7 +76,20 @@ export default function SharedWithMeFiles() {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+    <div>
+      {recentItems.length > 0 && (
+        <section className="mb-5">
+          <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Recent
+          </h2>
+          <div className="flex flex-wrap gap-2.5">
+            {recentItems.map((item) => (
+              <RecentCard key={`${item.object_type}:${item.object_id}`} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
       <div
         className="grid items-center gap-3 border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted"
         style={{ gridTemplateColumns: GRID_COLS }}
@@ -100,6 +132,37 @@ export default function SharedWithMeFiles() {
           </Link>
         );
       })}
+      </div>
     </div>
+  );
+}
+
+// Compact quick-access card, mirroring the My-files Recent strip (minus the
+// pin button — pins are workspace-scoped and shared items live elsewhere).
+function RecentCard({ item }: { item: SharedWithMeItem }) {
+  const kind = ITEM_KIND[item.object_type];
+  return (
+    <Link
+      href={hrefFor(item)}
+      className="flex w-[180px] items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised"
+    >
+      <span
+        className={
+          "flex h-5 w-5 shrink-0 items-center justify-center " +
+          tintFor({ kind, id: item.object_id, name: item.name, subtitle: "" })
+        }
+      >
+        <KindIcon kind={kind} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium text-foreground">
+          {item.name}
+        </span>
+        <span className="block truncate text-[10.5px] text-muted">
+          {LABEL[item.object_type]}
+          {item.shared_by ? ` · from ${item.shared_by}` : ""}
+        </span>
+      </span>
+    </Link>
   );
 }

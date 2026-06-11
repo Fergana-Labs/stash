@@ -49,6 +49,29 @@ async def list_all_session_events(
     return {"events": events, "has_more": has_more}
 
 
+@router.get("/recents")
+async def list_my_recents(current_user: dict = Depends(get_current_user)):
+    """Recently-viewed objects across all workspaces, most recent first.
+
+    Includes objects in workspaces the user isn't a member of (shared items),
+    which the Shared-with-me Recent strip resolves against the share list.
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT object_id, kind, workspace_id FROM user_recents "
+        "WHERE user_id = $1 ORDER BY viewed_at DESC LIMIT 30",
+        current_user["id"],
+    )
+    return [
+        {
+            "object_id": r["object_id"],
+            "kind": r["kind"],
+            "workspace_id": r["workspace_id"],
+        }
+        for r in rows
+    ]
+
+
 @router.get("/activity")
 async def list_activity(
     limit: int = Query(50, ge=1, le=200),
