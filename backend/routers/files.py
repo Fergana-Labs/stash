@@ -42,6 +42,7 @@ from ..services.xlsx_ingest import ingest_xlsx_bytes
 logger = logging.getLogger(__name__)
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/files", tags=["files"])
+canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
@@ -80,11 +81,11 @@ async def _can_access_file(
 
 
 def _file_app_url(row: dict) -> str:
-    return f"{settings.PUBLIC_URL.rstrip('/')}/workspaces/{row['workspace_id']}/f/{row['id']}"
+    return f"{settings.PUBLIC_URL.rstrip('/')}/f/{row['id']}"
 
 
-def _page_app_url(workspace_id: UUID, page_id: UUID) -> str:
-    return f"{settings.PUBLIC_URL.rstrip('/')}/workspaces/{workspace_id}/p/{page_id}"
+def _page_app_url(page_id: UUID) -> str:
+    return f"{settings.PUBLIC_URL.rstrip('/')}/p/{page_id}"
 
 
 _MD_EXTS = (".md", ".markdown", ".mdx")
@@ -204,7 +205,7 @@ async def upload_ws_file(
             folder_id=page.get("folder_id"),
             name=page["name"],
             content_type=page["content_type"],
-            app_url=_page_app_url(page["workspace_id"], page["id"]),
+            app_url=_page_app_url(page["id"]),
             created_at=page["created_at"],
             content_markdown=page.get("content_markdown") or None,
             content_html=page.get("content_html") or None,
@@ -299,6 +300,26 @@ async def list_ws_files(
     )
     files = [await _file_to_response(dict(row)) for row in rows]
     return FileListResponse(files=files)
+
+
+@canonical_router.get("/{file_id}", response_model=FileResponse)
+async def get_file_by_id(
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Any failure is a 404: an unscoped lookup must not confirm that a
+    file the caller can't read exists."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
+        "FROM files WHERE id = $1 AND deleted_at IS NULL",
+        file_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, row["workspace_id"], current_user["id"]):
+        raise HTTPException(status_code=404, detail="File not found")
+    return await _file_to_response(dict(row))
 
 
 @ws_router.get("/{file_id}", response_model=FileResponse)

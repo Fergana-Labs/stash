@@ -392,6 +392,18 @@ async def create_page(
     return page
 
 
+async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
+    """Access semantics match get_page; the workspace comes from the row."""
+    pool = get_pool()
+    workspace_id = await pool.fetchval(
+        f"SELECT workspace_id FROM pages WHERE id = $1 AND {_WORKSPACE_PAGE_FILTER}",
+        page_id,
+    )
+    if workspace_id is None:
+        return None
+    return await get_page(page_id, workspace_id, user_id)
+
+
 async def get_page(
     page_id: UUID,
     workspace_id: UUID,
