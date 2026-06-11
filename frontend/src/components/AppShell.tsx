@@ -86,7 +86,7 @@ function readSidebarWidth(): number {
   return clampSidebarWidth(width);
 }
 
-// Pre-select the current page/folder/file/session when the Share button is
+// Pre-select the current page/folder/session when the Share button is
 // clicked from a detail route, so "share this" is one click instead of a hunt
 // through the picker.
 function inferShareInitial(pathname: string): CartridgeItemSpec[] | undefined {
@@ -98,9 +98,6 @@ function inferShareInitial(pathname: string): CartridgeItemSpec[] | undefined {
   );
   if (folderMatch)
     return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
-  const fileMatch = pathname.match(/^\/f\/([^/?#]+)/);
-  if (fileMatch)
-    return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
   const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
   if (sessionMatch) {
     const sessionId = decodeURIComponent(sessionMatch[1]);

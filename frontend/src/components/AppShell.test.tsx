@@ -399,6 +399,28 @@ describe("AppShell sidebar collapse", () => {
     expect(publishCartridge).not.toHaveBeenCalled();
   });
 
+  it("does not use the Stash share fallback on canonical file routes", async () => {
+    nav.pathname = "/f/file-1";
+    mockWorkspaceCache();
+
+    render(
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PublishActiveWorkspace id="ws-1" />
+            <div>File content</div>
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
+    );
+
+    await screen.findByText("File content");
+    expect(
+      screen.queryByRole("button", { name: "Share" }),
+    ).not.toBeInTheDocument();
+    expect(publishCartridge).not.toHaveBeenCalled();
+  });
+
   it("renders a custom header Share action outside workspace routes", async () => {
     nav.pathname = "/cartridges/shared-stash";
     mockWorkspaceCache();
