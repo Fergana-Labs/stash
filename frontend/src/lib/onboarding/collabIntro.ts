@@ -2,9 +2,11 @@
 // onboarding path. It's a real Markdown page in their Drive — editable and
 // deletable — that doubles as an explainer for how the agent-native Drive works.
 //
-// The page embeds its own id and the user's API key so the agent prompt is a
-// one-shot copy-paste: the agent installs the CLI, authenticates, and edits
-// this exact page while the user watches.
+// The page embeds its own id so the agent prompt is a one-shot copy-paste:
+// the agent installs the CLI, authenticates, and edits this exact page while
+// the user watches. Self-hosted browsers hold a persistent API key we can
+// embed; under managed Auth0 the browser never mints keys, so the prompt
+// points at the CLI sign-in flow (`stash login`) instead.
 
 export function generateCollabIntroMarkdown({
   displayName,
@@ -13,9 +15,10 @@ export function generateCollabIntroMarkdown({
 }: {
   displayName: string;
   pageId: string;
-  apiKey: string;
+  apiKey: string | null;
 }): string {
   const name = displayName.trim() || "there";
+  const authenticate = apiKey ? `export STASH_API_KEY=${apiKey}` : "stash login";
   return `# Welcome to your agent-native Drive, ${name}
 
 This is a real page in your Skill — start typing to make it yours, or delete it. Edits save automatically, and you and your agent can edit the same page at the same time (two cursors at once).
@@ -26,7 +29,7 @@ Paste this into Claude Code, Codex, or Cursor — keep this tab open and watch t
 
 \`\`\`
 Install the Skill CLI: bash -c "$(curl -fsSL https://joinstash.ai/install)"
-Authenticate: export STASH_API_KEY=${apiKey}
+Authenticate: ${authenticate}
 Read this page: stash files read-page ${pageId}
 Then append a short hello note at the bottom and save the full updated markdown with:
 stash files edit-page ${pageId} --content "<full updated markdown>"
