@@ -84,6 +84,7 @@ PROVIDER_SOURCE_TYPES = {
     "asana": ("asana_project",),
     "gong": ("gong_calls",),
     "snowflake": ("snowflake",),
+    "twitter": ("twitter",),
 }
 
 

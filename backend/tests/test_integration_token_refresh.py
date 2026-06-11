@@ -14,6 +14,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.integrations import crypto as integration_crypto
 from backend.integrations import storage
 from backend.integrations.base import AccountInfo, TokenSet
 
@@ -24,8 +25,7 @@ TEST_FERNET_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 @pytest.fixture(autouse=True)
 def _integration_encryption(monkeypatch):
-    monkeypatch.setattr(storage.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
-    monkeypatch.setattr(storage, "_fernet", None)
+    monkeypatch.setattr(integration_crypto.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
 
 
 async def _register(client: AsyncClient) -> UUID:
