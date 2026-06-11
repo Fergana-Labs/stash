@@ -165,27 +165,24 @@ describe("managed Auth0 token handling", () => {
     });
   });
 
-  it("getAgentApiKey mints a persistent key via the exchange endpoint", async () => {
+  it("getAgentApiKey never mints a key under managed Auth0 — browser key minting is disabled", async () => {
     const { getAgentApiKey } = await import("./api");
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ token: "auth0-access-token" }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ api_key: "mc_agent_key" }),
-      } as Response);
+    expect(getAgentApiKey()).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 
-    expect(await getAgentApiKey()).toBe("mc_agent_key");
-    expect(fetch).toHaveBeenNthCalledWith(
-      2,
-      "/api/v1/auth0/exchange?device=onboarding",
-      expect.objectContaining({
-        method: "POST",
-        headers: { Authorization: "Bearer auth0-access-token" },
-      }),
-    );
+describe("self-hosted agent key", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    localStorage.clear();
+  });
+
+  it("getAgentApiKey returns the stored browser key", async () => {
+    const { getAgentApiKey, setToken } = await import("./api");
+    setToken("self-hosted-key");
+
+    expect(getAgentApiKey()).toBe("self-hosted-key");
   });
 });
