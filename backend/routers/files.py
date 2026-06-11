@@ -188,15 +188,6 @@ async def upload_ws_file(
                     status_code=400,
                     detail="folder_id does not belong to workspace",
                 )
-            can_write_folder = await permission_service.check_access(
-                "folder",
-                folder_id,
-                current_user["id"],
-                workspace_id=workspace_id,
-                require="write",
-            )
-            if not can_write_folder:
-                raise HTTPException(status_code=404, detail="Folder not found")
 
         text = content.decode("utf-8", errors="replace")
         exts = _MD_EXTS if page_kind == "markdown" else _HTML_EXTS
@@ -258,15 +249,6 @@ async def upload_ws_file(
         )
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
-        can_write_folder = await permission_service.check_access(
-            "folder",
-            folder_id,
-            current_user["id"],
-            workspace_id=workspace_id,
-            require="write",
-        )
-        if not can_write_folder:
-            raise HTTPException(status_code=404, detail="Folder not found")
     row = await pool.fetchrow(
         "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
@@ -380,10 +362,14 @@ async def download_ws_file(
     if not await _can_access_file(file_id, workspace_id, viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
-    disposition = "inline" if (row["content_type"] or "").startswith("image/") else "attachment"
+    content_type = row["content_type"] or "application/octet-stream"
+    # SVG is the one image type that executes script when rendered inline, so
+    # it must download as an attachment — uploads are attacker-controlled.
+    is_inline_image = content_type.startswith("image/") and content_type != "image/svg+xml"
+    disposition = "inline" if is_inline_image else "attachment"
     return Response(
         content=content,
-        media_type=row["content_type"] or "application/octet-stream",
+        media_type=content_type,
         headers={
             "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(row['name'])}",
         },
