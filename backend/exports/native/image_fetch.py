@@ -124,7 +124,6 @@ async def _download_skill_file(
     if export_workspace_id is None or user_id is None or url_workspace_id != export_workspace_id:
         return None
 
-
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT workspace_id, storage_key FROM files WHERE id = $1",
