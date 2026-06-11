@@ -997,6 +997,40 @@ async def test_session_folder_write_access_cannot_manage_folder(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_workspace_editor_can_manage_session_folders(client: AsyncClient, pool):
+    """Removing public/shared write links must not strip workspace editors of
+    folder rename/delete — the workspace is the trust boundary and the UI
+    shows these controls to every member."""
+    owner_key, _ = await _register(client)
+    editor_key, editor = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Team Deploys"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    rename = await client.patch(
+        f"/api/v1/workspaces/{ws}/session-folders/{folder_id}",
+        json={"name": "Renamed by editor"},
+        headers=_auth(editor_key),
+    )
+    delete = await client.delete(
+        f"/api/v1/workspaces/{ws}/session-folders/{folder_id}",
+        headers=_auth(editor_key),
+    )
+
+    assert rename.status_code == 200
+    assert rename.json()["name"] == "Renamed by editor"
+    assert delete.status_code == 204
+
+
+@pytest.mark.asyncio
 async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncClient):
     first_key, _ = await _register(client)
     second_key, _ = await _register(client)

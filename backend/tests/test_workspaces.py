@@ -317,6 +317,11 @@ async def test_delete_workspace_deletes_stored_files_and_session_artifacts(
     deleted_keys: list[str] = []
 
     async def fake_delete_file(storage_key: str) -> None:
+        # Blobs are purged only after the DB delete commits — a failed delete
+        # must never leave live rows pointing at destroyed storage objects.
+        assert (
+            await pool.fetchval("SELECT COUNT(*) FROM workspaces WHERE id = $1", workspace_id) == 0
+        )
         deleted_keys.append(storage_key)
 
     monkeypatch.setattr("backend.routers.workspaces.storage_service.delete_file", fake_delete_file)
