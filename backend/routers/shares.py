@@ -6,6 +6,7 @@ to a cartridge (the cartridge-principal share) is handled on the cartridge route
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -22,6 +23,7 @@ class ShareRequest(BaseModel):
     object_id: UUID
     email: str
     permission: str = "read"
+    expires_at: datetime | None = None
 
 
 class UnshareRequest(BaseModel):
@@ -39,6 +41,7 @@ async def create_share(req: ShareRequest, current_user: dict = Depends(get_curre
         email=req.email,
         permission=req.permission,
         owner_id=current_user["id"],
+        expires_at=req.expires_at,
     )
 
 

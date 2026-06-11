@@ -3,16 +3,17 @@
 A *source* is anything the agent can read. Two are native and always present
 per workspace — the **file system** and **session transcripts** (workspace-scoped,
 visible to all members). The rest are **connected sources** (GitHub / Drive /
-Notion / Slack / Granola) — rows in `workspace_sources`, USER-SCOPED so only the
-owner sees them.
+Gmail / Notion / Slack / Granola) — rows in `workspace_sources`, USER-SCOPED so
+only the owner sees them.
 
 This module owns:
 - the `workspace_sources` registry (CRUD + sync bookkeeping),
 - the per-integration document store. Each source type has its own table
-  (migration 0084): some COPY content (FTS + embeddings live in the table),
-  while drive/jira/asana store an INDEX ONLY and fetch the body lazily from the
-  provider at read time. Every table shares the navigation shape
-  (path/name/kind/deleted_at) so the agent's list/read tools stay uniform.
+  (migration 0084): some COPY content (FTS + embeddings live in the table —
+  github/slack/granola/gong/notion), while drive/gmail/jira/asana store an INDEX
+  ONLY and fetch the body lazily from the provider at read time. Every table
+  shares the navigation shape (path/name/kind/deleted_at) so the agent's
+  list/read tools stay uniform.
 
 This module also owns the unified VFS surface (`source_entries`, `source_document`,
 `search_all`) over BOTH native and connected sources — the single codepath the
@@ -27,6 +28,7 @@ import asyncio
 import hashlib
 import logging
 import re
+from urllib.parse import quote
 from uuid import UUID
 
 from ..database import get_pool
@@ -41,6 +43,7 @@ NATIVE_SESSIONS = "sessions"
 # get their freshness from webhooks; the interval is just the safety re-backfill.
 DEFAULT_SYNC_INTERVAL_S = {
     "github_repo": 3600,
+    "gmail": 1800,
     "google_drive": 1800,
     "notion": 1800,
     "slack": 21600,
@@ -53,6 +56,7 @@ DEFAULT_SYNC_INTERVAL_S = {
 # Which capability each connected source type exposes.
 SOURCE_CAPABILITY = {
     "github_repo": "navigable",
+    "gmail": "searchable",
     "google_drive": "navigable",
     "notion": "navigable",
     "slack": "searchable",
@@ -68,6 +72,7 @@ SOURCE_CAPABILITY = {
 PROVIDER_SOURCE_TYPES = {
     "github": ("github_repo",),
     "google": ("google_drive",),
+    "gmail": ("gmail",),
     "notion": ("notion",),
     "slack": ("slack",),
     "granola": ("granola",),
@@ -392,6 +397,7 @@ async def mark_sync_failed(source_id: UUID, error: str) -> None:
 # source_type -> the table holding its documents.
 SOURCE_TABLE = {
     "github_repo": "github_documents",
+    "gmail": "gmail_index",
     "google_drive": "drive_index",
     "notion": "notion_index",
     "slack": "slack_messages",
@@ -404,9 +410,10 @@ SOURCE_TABLE = {
 # Tables that COPY content (FTS + embeddings live in them). The rest are
 # index-only and fetch their body lazily from the provider at read time.
 # Notion copies content too — its crawl already renders each page's text to
-# discover sub-pages, so storing it for FTS is nearly free. Jira/Asana/Drive do
-# NOT copy: they're index-only and search is federated to the provider's own
-# search API (see FEDERATED_SEARCH_TYPES) so we don't duplicate their content.
+# discover sub-pages, so storing it for FTS is nearly free. Gmail/Jira/Asana/
+# Drive do NOT copy: they're index-only and search is federated to the
+# provider's own search API (see FEDERATED_SEARCH_TYPES) so we don't duplicate
+# their content.
 CONTENT_TABLES = {
     "github_documents",
     "slack_messages",
@@ -418,7 +425,7 @@ CONTENT_TABLES = {
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
 # provider search coroutine, resolved lazily to avoid an import cycle.
-FEDERATED_SEARCH_TYPES = {"google_drive", "jira_project", "asana_project"}
+FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
@@ -683,9 +690,7 @@ async def read_document(source: dict, path: str) -> dict | None:
     )
     if not row:
         return None
-    content = await _lazy_fetch(
-        source["source_type"], UUID(source["owner_user_id"]), row["external_ref"]
-    )
+    content = await _lazy_fetch(source, row["external_ref"])
     return {
         "path": row["path"],
         "name": row["name"],
@@ -695,15 +700,21 @@ async def read_document(source: dict, path: str) -> dict | None:
     }
 
 
-async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str | None) -> str:
+async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
     """Fetch an index-only document's body from the provider. Local import keeps
     the integration indexers (which import this module) free of a cycle."""
     if not external_ref:
         return ""
+    source_type = source["source_type"]
+    owner_user_id = UUID(source["owner_user_id"])
     if source_type == "google_drive":
         from ..integrations.google.indexer import fetch_drive_content
 
         return await fetch_drive_content(owner_user_id, external_ref)
+    if source_type == "gmail":
+        from ..integrations.gmail.indexer import fetch_gmail_content
+
+        return await fetch_gmail_content(owner_user_id, source["external_ref"], external_ref)
     if source_type == "jira_project":
         from ..integrations.jira.indexer import fetch_jira_content
 
@@ -740,6 +751,8 @@ async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
     try:
         if source_type == "google_drive":
             from ..integrations.google.indexer import search_drive as fn
+        elif source_type == "gmail":
+            from ..integrations.gmail.indexer import search_gmail as fn
         elif source_type == "jira_project":
             from ..integrations.jira.indexer import search_jira as fn
         elif source_type == "asana_project":
@@ -982,6 +995,9 @@ def source_document_url(
         if link:
             return link
         return f"https://drive.google.com/file/d/{path}/view"
+    if source_type == "gmail":
+        mailbox = quote(external_ref or "0", safe="")
+        return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
     return None
 
@@ -1043,6 +1059,8 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
     if source_type in ("notion", "google_drive"):
         # The page/file id lives on the document row, not the source row.
         return source_document_url(source_type, None, doc_ref or doc["path"])
+    if source_type == "gmail":
+        return source_document_url(source_type, source["external_ref"], doc_ref or doc["path"])
     if source_type == "jira_project":
         from ..integrations.jira.indexer import site_url
 

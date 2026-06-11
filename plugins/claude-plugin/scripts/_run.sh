@@ -13,10 +13,11 @@ SCRIPT="$1"
 shift
 TARGET="$(dirname "$0")/$SCRIPT.py"
 
-# On session start, pull the latest plugin code in the background so the
-# plugin cache never drifts from the source repo.
-if [ "$SCRIPT" = "on_session_start" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  git -C "$CLAUDE_PLUGIN_ROOT" pull --ff-only origin main >/dev/null 2>&1 &
+# On session start, upgrade the stashai package in the background. The hook
+# scripts themselves only update through Claude Code's marketplace refresh
+# (keyed off the plugin version bump) — the cache is a plain copy, not a git
+# checkout, so there is nothing to pull here.
+if [ "$SCRIPT" = "on_session_start" ]; then
   command -v uv >/dev/null 2>&1 && uv tool install --quiet stashai@latest >/dev/null 2>&1 &
 fi
 

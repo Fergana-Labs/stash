@@ -44,9 +44,9 @@ export default function ContactSalesPage() {
           </h1>
           <p className="mt-6 max-w-[440px] text-[17px] leading-[1.6] text-foreground">
             Tell us a bit about your team and we&apos;ll set up a 30-minute
-            walkthrough. We&apos;ll cover how Stash captures every agent run,
-            keeps a shared files, and answers questions across your team&apos;s
-            history.
+            walkthrough. We&apos;ll cover how Stash connects your agents to all
+            your data and gives them an agent-native Drive to write the work
+            back into.
           </p>
 
           <ul className="mt-8 flex flex-col gap-3 text-[14px] text-dim">

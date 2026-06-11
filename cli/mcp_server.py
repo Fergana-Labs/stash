@@ -35,7 +35,7 @@ def _json(obj: object) -> str:
 @mcp.tool()
 def stash_search(query: str, source: str = "", limit: int = 20, workspace_id: str = "") -> str:
     """Search across all your sources — native files + session transcripts +
-    connected sources (GitHub/Drive/Notion/Slack/Granola).
+    connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola).
 
     Pass `source` to scope to one (a handle from stash_list_sources: 'files',
     'sessions', or a connected-source id); omit it to search everything.
@@ -80,9 +80,9 @@ def stash_add_source(
     display_name: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Connect a source. source_type: github_repo | google_drive | notion |
-    slack | granola. Slack/Granola resolve external_ref from your connected
-    token; the rest need an external_ref (e.g. a repo 'owner/name')."""
+    """Connect a source. source_type: github_repo | google_drive | gmail |
+    notion | slack | granola. Slack/Granola resolve external_ref from your
+    connected token; Gmail uses the mailbox email as external_ref."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -277,6 +277,66 @@ def stash_delete_page(page_id: str, workspace_id: str = "") -> str:
     ws = _require_ws(workspace_id or default_ws)
     client.delete_page(ws, page_id)
     return _json({"deleted": page_id})
+
+
+@mcp.tool()
+def stash_copy_page(page_id: str, target_folder_id: str = "", workspace_id: str = "") -> str:
+    """Duplicate a page as 'Copy of <name>'. Optionally place it in target_folder_id."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.copy_page(ws, page_id, target_folder_id=target_folder_id or None))
+
+
+@mcp.tool()
+def stash_copy_folder(folder_id: str, target_folder_id: str = "", workspace_id: str = "") -> str:
+    """Deep-duplicate a folder (subfolders, pages, tables, files) as 'Copy of <name>'."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.copy_folder(ws, folder_id, target_folder_id=target_folder_id or None))
+
+
+@mcp.tool()
+def stash_copy_file(file_id: str, target_folder_id: str = "", workspace_id: str = "") -> str:
+    """Duplicate an uploaded file (and its blob) as 'Copy of <name>'."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.copy_ws_file(ws, file_id, target_folder_id=target_folder_id or None))
+
+
+@mcp.tool()
+def stash_batch_move(
+    items: list[dict],
+    target_folder_id: str = "",
+    move_to_root: bool = False,
+    workspace_id: str = "",
+) -> str:
+    """Move many items at once. `items` is a list of {object_type, object_id}
+    (object_type: page | file | folder | table). Best-effort: returns which
+    moved and which failed."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.batch_move(
+            ws, items, target_folder_id=target_folder_id or None, move_to_root=move_to_root
+        )
+    )
+
+
+@mcp.tool()
+def stash_batch_delete(items: list[dict], workspace_id: str = "") -> str:
+    """Move many pages/files to the trash at once. `items` is a list of
+    {object_type, object_id}. Best-effort."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.batch_delete(ws, items))
+
+
+@mcp.tool()
+def stash_batch_restore(items: list[dict], workspace_id: str = "") -> str:
+    """Restore many pages/files from the trash at once. Best-effort."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.batch_restore(ws, items))
 
 
 # ── Tables ────────────────────────────────────────────────────────
@@ -870,13 +930,22 @@ def stash_purge(kind: str, id: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_share_object(
-    object_type: str, object_id: str, email: str, permission: str = "read"
+    object_type: str,
+    object_id: str,
+    email: str,
+    permission: str = "read",
+    expires_at: str = "",
 ) -> str:
     """Share a folder/page/file/session/table with a person by email. If they
     don't have an account yet the share is recorded as pending and converts when
-    they sign up. permission: read | write | admin."""
+    they sign up. permission: read | comment | write. expires_at: optional
+    ISO-8601 timestamp after which the share lapses (omit = never)."""
     client, _ = _client()
-    return _json(client.share_object(object_type, object_id, email, permission=permission))
+    return _json(
+        client.share_object(
+            object_type, object_id, email, permission=permission, expires_at=expires_at or None
+        )
+    )
 
 
 @mcp.tool()

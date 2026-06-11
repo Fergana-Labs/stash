@@ -40,6 +40,9 @@ class UserProfile(BaseModel):
     description: str
     created_at: datetime
     last_seen: datetime
+    role: str | None = None
+    referral_source: str | None = None
+    use_case: str | None = None
 
 
 class UserUpdateRequest(BaseModel):
@@ -49,6 +52,10 @@ class UserUpdateRequest(BaseModel):
     # Required whenever `password` is set — stops a stolen session key from
     # being enough to permanently take over the account.
     current_password: str | None = Field(None, max_length=128)
+    # Captured during onboarding's first step.
+    role: str | None = Field(None, max_length=128)
+    referral_source: str | None = Field(None, max_length=128)
+    use_case: str | None = Field(None, max_length=2000)
 
 
 class LoginRequest(BaseModel):
@@ -354,6 +361,28 @@ class PageUpdateRequest(BaseModel):
     move_to_root: bool = False
 
 
+class CopyRequest(BaseModel):
+    """Duplicate a page/folder/file into target_folder_id (defaults to the
+    source's own folder when omitted)."""
+
+    target_folder_id: UUID | None = None
+
+
+class BatchItem(BaseModel):
+    object_type: str
+    object_id: UUID
+
+
+class BatchMoveRequest(BaseModel):
+    items: list[BatchItem]
+    target_folder_id: UUID | None = None
+    move_to_root: bool = False
+
+
+class BatchRequest(BaseModel):
+    items: list[BatchItem]
+
+
 class PageResponse(BaseModel):
     id: UUID
     workspace_id: UUID
@@ -365,6 +394,8 @@ class PageResponse(BaseModel):
     html_layout: str = "responsive"
     content_hash: str | None = None
     metadata: dict = {}
+    last_edit_session_id: str | None = None
+    last_edit_agent_name: str | None = None
     created_by: UUID
     updated_by: UUID | None
     created_at: datetime

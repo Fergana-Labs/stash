@@ -110,9 +110,7 @@ export default function SourceConnectorList({
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] font-medium text-foreground">{connector.label}</div>
                 <div className="truncate text-[11.5px] text-muted">
-                  {connected && (status?.account_email || status?.account_display_name)
-                    ? `Connected as ${status.account_email || status.account_display_name}`
-                    : connector.blurb}
+                  {connected ? connectedLabel(status) : connector.blurb}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -158,6 +156,14 @@ export default function SourceConnectorList({
       )}
     </div>
   );
+}
+
+function connectedLabel(status: IntegrationStatus | undefined): string {
+  const accounts = status?.accounts ?? [];
+  if (accounts.length > 1) return `${accounts.length} accounts connected`;
+  const account = status?.account_email || status?.account_display_name;
+  if (account) return `Connected as ${account}`;
+  return "Connected";
 }
 
 function ConnectorAction({

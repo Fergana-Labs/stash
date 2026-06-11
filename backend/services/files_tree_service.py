@@ -12,11 +12,84 @@ from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 import asyncpg
+import nh3
 
 from ..database import get_pool
-from . import permission_service
+from . import page_events, permission_service
 
 logger = logging.getLogger(__name__)
+
+# HTML pages render in a sandboxed iframe with allow-scripts, and are served on
+# public cartridge URLs. We strip author-supplied scripts / event handlers /
+# javascript: + data:text/html URLs on write so an agent- or attacker-authored
+# page can't run hostile JS for a public viewer. The trusted resize/slide
+# bootstrap is injected at render time (not stored), so this never touches it.
+_SANITIZE_TAGS = nh3.ALLOWED_TAGS | {
+    "section",
+    "style",
+    "div",
+    "span",
+    "header",
+    "footer",
+    "main",
+    "article",
+    "aside",
+    "nav",
+    "figure",
+    "figcaption",
+    "video",
+    "audio",
+    "source",
+    "picture",
+    "details",
+    "summary",
+    "mark",
+    "svg",
+    "path",
+    "g",
+    "circle",
+    "rect",
+    "line",
+    "polyline",
+    "polygon",
+    "text",
+}
+_SANITIZE_ATTRS = {
+    "*": {"class", "id", "style", "title", "lang", "dir", "role", "width", "height"},
+    "span": {"data-comment-id"},  # inline comment anchors depend on this
+    "img": {"src", "alt", "loading", "srcset"},
+    "a": {"href", "target", "name"},
+    "video": {"src", "controls", "poster", "autoplay", "loop", "muted"},
+    "audio": {"src", "controls"},
+    "source": {"src", "srcset", "type", "media"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan", "scope"},
+    "section": {"data-slide"},
+}
+_SANITIZE_URL_SCHEMES = {"http", "https", "mailto", "tel", "data"}
+
+
+def _drop_unsafe_data_uri(tag: str, attr: str, value: str) -> str | None:
+    """data: URLs are useful for inline images but a phishing/exfil vector
+    elsewhere (e.g. <a href="data:text/html,…">). Keep them only on <img src>."""
+    if value.strip().lower().startswith("data:") and not (tag == "img" and attr == "src"):
+        return None
+    return value
+
+
+def _sanitize_html(html: str) -> str:
+    if not html:
+        return html
+    return nh3.clean(
+        html,
+        tags=_SANITIZE_TAGS,
+        attributes=_SANITIZE_ATTRS,
+        url_schemes=_SANITIZE_URL_SCHEMES,
+        link_rel=None,
+        clean_content_tags={"script"},
+        attribute_filter=_drop_unsafe_data_uri,
+    )
+
 
 # Workspace-owned page (excludes the read-only stash mirror rows).
 _OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_cartridge_id', '') = ''"
@@ -242,6 +315,27 @@ async def _assert_no_cycle(folder_id: UUID, new_parent_id: UUID | None) -> None:
 # --- Page CRUD ---
 
 
+async def _log_page_edit(
+    page_id: UUID,
+    workspace_id: UUID,
+    edited_by: UUID,
+    agent_name: str | None,
+    session_id: str | None,
+    op: str,
+) -> None:
+    await get_pool().execute(
+        "INSERT INTO page_edits "
+        "(page_id, workspace_id, edited_by, agent_name, session_id, op) "
+        "VALUES ($1, $2, $3, $4, $5, $6)",
+        page_id,
+        workspace_id,
+        edited_by,
+        agent_name,
+        session_id,
+        op,
+    )
+
+
 async def create_page(
     workspace_id: UUID,
     name: str,
@@ -252,12 +346,15 @@ async def create_page(
     content_type: str = "markdown",
     content_html: str = "",
     html_layout: str = "responsive",
+    edit_session_id: str | None = None,
+    edit_agent_name: str | None = None,
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
         folder = await pool.fetchrow("SELECT workspace_id FROM folders WHERE id = $1", folder_id)
         if not folder or folder["workspace_id"] != workspace_id:
             raise ValueError("folder_id does not belong to workspace")
+    content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
     meta = metadata or {}
@@ -265,11 +362,12 @@ async def create_page(
         row = await pool.fetchrow(
             "INSERT INTO pages "
             "(workspace_id, folder_id, name, content_markdown, content_html, content_type, "
-            "html_layout, content_hash, metadata, created_by, updated_by) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10) "
+            "html_layout, content_hash, metadata, created_by, updated_by, "
+            "last_edit_session_id, last_edit_agent_name) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12) "
             "RETURNING id, workspace_id, folder_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, created_by, updated_by, "
-            "created_at, updated_at",
+            "last_edit_session_id, last_edit_agent_name, created_at, updated_at",
             workspace_id,
             folder_id,
             name,
@@ -280,10 +378,15 @@ async def create_page(
             ch,
             meta,
             created_by,
+            edit_session_id,
+            edit_agent_name,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicatePageName(workspace_id, folder_id, name) from e
     page = dict(row)
+    await _log_page_edit(
+        page["id"], workspace_id, created_by, edit_agent_name, edit_session_id, "create"
+    )
     if active:
         _schedule_embed(page["id"], active)
     return page
@@ -298,6 +401,7 @@ async def get_page(
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, "
+        "last_edit_session_id, last_edit_agent_name, "
         "created_by, updated_by, created_at, updated_at "
         f"FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
         page_id,
@@ -347,9 +451,20 @@ async def update_page(
     metadata: dict | None = None,
     guard_content_hash: bool = True,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
+    edit_session_id: str | None = None,
+    edit_agent_name: str | None = None,
+    edit_op: str = "update",
+    notify: bool = True,
 ) -> dict | None:
-    """Update a page with optimistic concurrency on content_hash."""
+    """Update a page with optimistic concurrency on content_hash.
+
+    When `notify` (the default for agent/REST writes, but False for the live
+    editor's own Yjs->DB projection), a content change broadcasts a page-update
+    event to open viewers and invalidates any persisted collab doc so a reopened
+    editor reloads the fresh content instead of stale Yjs state."""
     pool = get_pool()
+    if content_html is not None:
+        content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
 
     if folder_id is not None and not move_to_root:
@@ -416,6 +531,12 @@ async def update_page(
             sets.append(f"content_hash = ${idx}")
             args.append(_content_hash(new_active))
             idx += 1
+            sets.append(f"last_edit_session_id = ${idx}")
+            args.append(edit_session_id)
+            idx += 1
+            sets.append(f"last_edit_agent_name = ${idx}")
+            args.append(edit_agent_name)
+            idx += 1
         if metadata is not None:
             sets.append(f"metadata = ${idx}::jsonb")
             args.append(metadata)
@@ -433,6 +554,7 @@ async def update_page(
                 f"UPDATE pages SET {', '.join(sets)} WHERE {where} "
                 "RETURNING id, workspace_id, folder_id, name, content_markdown, content_html, "
                 "content_type, html_layout, content_hash, metadata, "
+                "last_edit_session_id, last_edit_agent_name, "
                 "created_by, updated_by, created_at, updated_at",
                 *args,
             )
@@ -440,11 +562,22 @@ async def update_page(
             raise DuplicatePageName(workspace_id, folder_id, name or "") from e
         if row:
             page = dict(row)
-            if content_changed and page["content_hash"] != expected_hash:
-                active = _active_content(
-                    page["content_type"], page["content_markdown"], page["content_html"]
+            if content_changed:
+                await _log_page_edit(
+                    page["id"], workspace_id, updated_by, edit_agent_name, edit_session_id, edit_op
                 )
-                _schedule_embed(page["id"], active)
+                if page["content_hash"] != expected_hash:
+                    active = _active_content(
+                        page["content_type"], page["content_markdown"], page["content_html"]
+                    )
+                    _schedule_embed(page["id"], active)
+                if notify:
+                    # An external (non-editor) write: drop stale collab state so a
+                    # reopened editor reloads fresh, and tell open viewers.
+                    await delete_page_collab_state(page["id"], workspace_id)
+                    page_events.publish_page_update(
+                        workspace_id, page["id"], page["content_hash"], edit_agent_name
+                    )
             return page
 
         if expected_hash is None or not guard_content_hash:
@@ -484,6 +617,66 @@ async def update_page(
     if fresh is None:
         return None
     raise ConcurrentEditError(dict(fresh))
+
+
+class EditMatchError(Exception):
+    """`old_string` did not match exactly once in the page body."""
+
+    def __init__(self, count: int):
+        self.count = count
+        super().__init__(f"old_string matched {count} times; it must match exactly once")
+
+
+def _apply_edit(text: str, old_string: str, new_string: str, mode: str) -> str:
+    if mode == "append":
+        return text + new_string
+    count = text.count(old_string)
+    if count != 1:
+        raise EditMatchError(count)
+    return text.replace(old_string, new_string)
+
+
+async def edit_page(
+    page_id: UUID,
+    workspace_id: UUID,
+    updated_by: UUID,
+    *,
+    old_string: str,
+    new_string: str,
+    mode: str = "replace",
+    edit_session_id: str | None = None,
+    edit_agent_name: str | None = None,
+) -> dict | None:
+    """Surgical edit of a page body: replace a unique `old_string`, or append.
+
+    Operates on the active content field (markdown or html). `replace` mode
+    fails loud — no fuzzy matching — when `old_string` matches zero or many
+    times, writing nothing. Concurrent edits that leave the anchor intact are
+    re-applied to the fresh body and retried; if a collaborator removes or
+    duplicates the anchor, the retry raises EditMatchError rather than guessing.
+    """
+    for _ in range(MAX_UPDATE_RETRIES):
+        page = await get_page(page_id, workspace_id)
+        if page is None:
+            return None
+        is_html = page["content_type"] == "html"
+        field = (page["content_html"] if is_html else page["content_markdown"]) or ""
+        new_text = _apply_edit(field, old_string, new_string, mode)
+        edited = {"content_html": new_text} if is_html else {"content": new_text}
+        try:
+            result = await update_page(
+                page_id=page_id,
+                workspace_id=workspace_id,
+                updated_by=updated_by,
+                edit_session_id=edit_session_id,
+                edit_agent_name=edit_agent_name,
+                edit_op="edit",
+                **edited,
+            )
+        except ConcurrentEditError:
+            continue
+        return result
+    raise ConcurrentEditError(page)
 
 
 async def delete_page(page_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bool:
@@ -543,6 +736,202 @@ async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
         workspace_id,
     )
     return [dict(r) for r in rows]
+
+
+# --- Copy / duplicate ---
+#
+# A duplicate is just a fresh create from a source's content, so copies inherit
+# uniqueness, sanitization, and embedding for free. The top-level object copied
+# directly gets a "Copy of …" name; descendants of a copied folder keep their
+# names (the new folder is empty, so they can't collide).
+
+
+async def _create_page_unique(
+    workspace_id: UUID, base_name: str, created_by: UUID, folder_id: UUID | None, **content
+) -> dict:
+    name = base_name
+    n = 2
+    while True:
+        try:
+            return await create_page(workspace_id, name, created_by, folder_id=folder_id, **content)
+        except DuplicatePageName:
+            name = f"{base_name} ({n})"
+            n += 1
+
+
+async def _create_folder_unique(
+    workspace_id: UUID, base_name: str, created_by: UUID, parent_folder_id: UUID | None
+) -> dict:
+    name = base_name
+    n = 2
+    while True:
+        try:
+            return await create_folder(
+                workspace_id, name, created_by, parent_folder_id=parent_folder_id
+            )
+        except DuplicateFolderName:
+            name = f"{base_name} ({n})"
+            n += 1
+
+
+def _page_content_kwargs(src: dict) -> dict:
+    return {
+        "content": src["content_markdown"] or "",
+        "content_type": src["content_type"],
+        "content_html": src["content_html"] or "",
+        "html_layout": src["html_layout"],
+        "metadata": src["metadata"],
+    }
+
+
+async def copy_page(
+    page_id: UUID,
+    workspace_id: UUID,
+    copied_by: UUID,
+    target_folder_id: UUID | None = None,
+) -> dict | None:
+    """Duplicate a page as 'Copy of <name>'. Lands in the source's folder unless
+    target_folder_id is given."""
+    src = await get_page(page_id, workspace_id)
+    if src is None:
+        return None
+    folder_id = target_folder_id if target_folder_id is not None else src["folder_id"]
+    return await _create_page_unique(
+        workspace_id, f"Copy of {src['name']}", copied_by, folder_id, **_page_content_kwargs(src)
+    )
+
+
+async def copy_file(
+    file_id: UUID,
+    workspace_id: UUID,
+    copied_by: UUID,
+    target_folder_id: UUID | None = None,
+    name: str | None = None,
+) -> dict | None:
+    """Duplicate an uploaded file, copying its S3 blob to a fresh key. Files have
+    no name-uniqueness constraint, so the name is used as-is."""
+    from . import storage_service
+
+    pool = get_pool()
+    src = await pool.fetchrow(
+        "SELECT name, content_type, storage_key, folder_id, extracted_text, extraction_status "
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        file_id,
+        workspace_id,
+    )
+    if not src:
+        return None
+    data = await storage_service.download_file(src["storage_key"])
+    new_name = name or f"Copy of {src['name']}"
+    new_key = await storage_service.upload_file(
+        str(workspace_id), new_name, data, src["content_type"]
+    )
+    folder_id = target_folder_id if target_folder_id is not None else src["folder_id"]
+    row = await pool.fetchrow(
+        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, "
+        "uploaded_by, folder_id, extracted_text, extraction_status) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, name",
+        workspace_id,
+        new_name,
+        src["content_type"],
+        len(data),
+        new_key,
+        copied_by,
+        folder_id,
+        src["extracted_text"],
+        src["extraction_status"],
+    )
+    return dict(row)
+
+
+async def _copy_table_into(
+    table_id: UUID, workspace_id: UUID, copied_by: UUID, folder_id: UUID | None, name: str
+) -> dict:
+    """Clone a table's schema + rows into folder_id under `name`. Column ids are
+    preserved by create_table, so existing row payloads stay valid."""
+    from . import table_service
+
+    meta = await table_service.get_table_metadata(table_id)
+    new_table = await table_service.create_table(
+        workspace_id, name, meta["description"], meta["columns"], copied_by, folder_id=folder_id
+    )
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT data FROM table_rows WHERE table_id = $1 ORDER BY row_order", table_id
+    )
+    if rows:
+        await table_service.create_rows_batch(new_table["id"], [r["data"] for r in rows], copied_by)
+    return new_table
+
+
+async def _copy_folder_contents(
+    src_folder_id: UUID, dst_folder_id: UUID, workspace_id: UUID, copied_by: UUID
+) -> None:
+    pool = get_pool()
+    page_rows = await pool.fetch(
+        f"SELECT id FROM pages WHERE workspace_id = $1 AND folder_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+        workspace_id,
+        src_folder_id,
+    )
+    for p in page_rows:
+        src = await get_page(p["id"], workspace_id)
+        if src:
+            await create_page(
+                workspace_id,
+                src["name"],
+                copied_by,
+                folder_id=dst_folder_id,
+                **_page_content_kwargs(src),
+            )
+
+    table_rows = await pool.fetch(
+        "SELECT id, name FROM tables WHERE workspace_id = $1 AND folder_id = $2",
+        workspace_id,
+        src_folder_id,
+    )
+    for t in table_rows:
+        await _copy_table_into(t["id"], workspace_id, copied_by, dst_folder_id, t["name"])
+
+    file_rows = await pool.fetch(
+        "SELECT id FROM files WHERE workspace_id = $1 AND folder_id = $2 AND deleted_at IS NULL",
+        workspace_id,
+        src_folder_id,
+    )
+    for f in file_rows:
+        await copy_file(f["id"], workspace_id, copied_by, target_folder_id=dst_folder_id, name=None)
+
+    sub_rows = await pool.fetch(
+        "SELECT id, name FROM folders WHERE workspace_id = $1 AND parent_folder_id = $2",
+        workspace_id,
+        src_folder_id,
+    )
+    for s in sub_rows:
+        child = await create_folder(
+            workspace_id, s["name"], copied_by, parent_folder_id=dst_folder_id
+        )
+        await _copy_folder_contents(s["id"], child["id"], workspace_id, copied_by)
+
+
+async def copy_folder(
+    folder_id: UUID,
+    workspace_id: UUID,
+    copied_by: UUID,
+    target_parent_id: UUID | None = None,
+) -> dict | None:
+    """Deep-copy a folder (subfolders, pages, tables, files) as 'Copy of <name>'.
+    Inside the copy, descendants keep their original names — only the top folder
+    is renamed. Copying files requires S3 storage to be configured."""
+    src = await get_folder(folder_id)
+    if not src or src["workspace_id"] != workspace_id:
+        return None
+    parent = target_parent_id if target_parent_id is not None else src["parent_folder_id"]
+    if parent is not None:
+        await _assert_no_cycle(folder_id, parent)
+    new_root = await _create_folder_unique(
+        workspace_id, f"Copy of {src['name']}", copied_by, parent
+    )
+    await _copy_folder_contents(folder_id, new_root["id"], workspace_id, copied_by)
+    return new_root
 
 
 # --- Listings ---

@@ -225,12 +225,12 @@ async def _store_connection(user_id: UUID, token: dict, client: dict, account: d
     await pool.execute(
         """
         INSERT INTO user_integrations (
-            user_id, provider, access_token_encrypted, refresh_token_encrypted,
+            user_id, provider, account_key, access_token_encrypted, refresh_token_encrypted,
             scopes, expires_at, account_email, account_display_name,
             client_info, updated_at
         )
-        VALUES ($1, 'granola', $2, $3, $4, $5, $6, $7, $8, now())
-        ON CONFLICT (user_id, provider) DO UPDATE SET
+        VALUES ($1, 'granola', 'default', $2, $3, $4, $5, $6, $7, $8, now())
+        ON CONFLICT (user_id, provider, account_key) DO UPDATE SET
             access_token_encrypted = EXCLUDED.access_token_encrypted,
             refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, user_integrations.refresh_token_encrypted),
             scopes = EXCLUDED.scopes,
@@ -258,7 +258,8 @@ async def get_valid_access_token(user_id: UUID) -> str:
     row = await pool.fetchrow(
         """
         SELECT access_token_encrypted, refresh_token_encrypted, expires_at, client_info
-        FROM user_integrations WHERE user_id = $1 AND provider = 'granola'
+        FROM user_integrations
+        WHERE user_id = $1 AND provider = 'granola' AND account_key = 'default'
         """,
         user_id,
     )
@@ -296,6 +297,7 @@ async def get_valid_access_token(user_id: UUID) -> str:
             expires_at = $4,
             updated_at = now()
         WHERE user_id = $1 AND provider = 'granola'
+          AND account_key = 'default'
         """,
         user_id,
         f.encrypt(token["access_token"].encode()),
