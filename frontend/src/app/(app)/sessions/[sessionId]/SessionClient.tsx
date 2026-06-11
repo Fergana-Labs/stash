@@ -11,25 +11,25 @@ import {
 import DownloadMenu from "../../../../components/DownloadMenu";
 import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "../../../../components/SkeletonStates";
-import { StashIcon } from "../../../../components/StashIcons";
+import { SkillIcon } from "../../../../components/SkillIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   fetchAuthed,
-  getPublicCartridge,
+  getPublicSkill,
   getSessionDetail,
   getSessionEvents,
   getWorkspaceSidebar,
-  listObjectStashes,
+  listObjectSkills,
   renameSession,
   trashItem,
-  type PublicCartridgeItem,
+  type PublicSkillItem,
   type SessionDetail,
   type SessionEvent,
-  type WorkspaceCartridge,
+  type WorkspaceSkill,
 } from "../../../../lib/api";
-import { refreshWorkspaceSidebar } from "../../../../lib/stashNavigationCache";
-import { SessionBody } from "../../cartridges/[slug]/CartridgeItemBodies";
+import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
+import { SessionBody } from "../../skills/[slug]/SkillItemBodies";
 import EditableTitle from "../../../../components/workspace/EditableTitle";
 
 interface MessageTurn {
@@ -126,7 +126,7 @@ export default function SessionViewerPage() {
   const searchParams = useSearchParams();
   const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading } = useAuth();
-  const stashSlug = searchParams.get("stash");
+  const skillSlug = searchParams.get("skill");
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
@@ -135,9 +135,9 @@ export default function SessionViewerPage() {
   const workspaceId = sessionDetail?.workspace_id ?? "";
   useActiveWorkspaceId(workspaceId || null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
-  const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
-  const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
+  const [containingSkills, setContainingSkills] = useState<WorkspaceSkill[]>([]);
+  const [skillFallback, setSkillFallback] = useState<
+    { skill: WorkspaceSkill; item: PublicSkillItem } | null
   >(null);
   const [error, setError] = useState("");
 
@@ -147,7 +147,7 @@ export default function SessionViewerPage() {
   );
 
   const shareAction = useMemo(() => {
-    if (!sessionDetail || stashSlug || !user) return null;
+    if (!sessionDetail || skillSlug || !user) return null;
     return (
       <ResourceShareButton
         objectType="session"
@@ -157,30 +157,30 @@ export default function SessionViewerPage() {
         currentUser={user}
       />
     );
-  }, [sessionDetail, sessionId, stashSlug, user]);
+  }, [sessionDetail, sessionId, skillSlug, user]);
   useShareAction(shareAction);
 
-  const loadStashFallback = useCallback(async () => {
-    if (!stashSlug) return false;
+  const loadSkillFallback = useCallback(async () => {
+    if (!skillSlug) return false;
     try {
-      const data = await getPublicCartridge(stashSlug);
+      const data = await getPublicSkill(skillSlug);
       const item = data.items.find((it) => {
         if (it.object_type !== "session") return false;
         const s = (it.inline as { session?: { session_id?: string } }).session;
         return s?.session_id === sessionId;
       });
       if (!item) {
-        setError("This session isn't part of the linked Stash.");
+        setError("This session isn't part of the linked Skill.");
         return false;
       }
-      setStashFallback({ stash: data.cartridge, item });
+      setSkillFallback({ skill: data.skill, item });
       setError("");
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Stash not found");
+      setError(e instanceof Error ? e.message : "Skill not found");
       return false;
     }
-  }, [stashSlug, sessionId]);
+  }, [skillSlug, sessionId]);
 
   const load = useCallback(async () => {
     try {
@@ -195,25 +195,25 @@ export default function SessionViewerPage() {
       setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
       setSessionDetail(detail);
       setTurns(events.map(eventToTurn));
-      setStashFallback(null);
+      setSkillFallback(null);
       const session = sidebar.sessions.find((item) => item.session_id === sessionId);
-      setContainingStashes(
-        session?.id ? await listObjectStashes(ws, "session", session.id) : []
+      setContainingSkills(
+        session?.id ? await listObjectSkills(ws, "session", session.id) : []
       );
     } catch (e) {
       if (
-        stashSlug &&
+        skillSlug &&
         e instanceof ApiError &&
         (e.status === 401 || e.status === 403 || e.status === 404)
       ) {
-        if (await loadStashFallback()) return;
+        if (await loadSkillFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
-  }, [sessionId, stashSlug, loadStashFallback]);
+  }, [sessionId, skillSlug, loadSkillFallback]);
 
-  // Anonymous viewer, no stash hint: the session may carry a public (anyone
-  // with the link) grant. Fetch detail + events only — sidebar and stash
+  // Anonymous viewer, no skill hint: the session may carry a public (anyone
+  // with the link) grant. Fetch detail + events only — sidebar and skill
   // containment are member surfaces.
   const loadPublic = useCallback(async () => {
     try {
@@ -232,24 +232,24 @@ export default function SessionViewerPage() {
   useEffect(() => {
     if (loading) return;
     if (user) load();
-    else if (stashSlug) void loadStashFallback();
+    else if (skillSlug) void loadSkillFallback();
     else void loadPublic();
-  }, [user, loading, load, loadStashFallback, loadPublic, stashSlug]);
+  }, [user, loading, load, loadSkillFallback, loadPublic, skillSlug]);
 
   if (loading) return <SessionDetailSkeleton />;
-  if (stashFallback) {
+  if (skillFallback) {
     return (
-      <StashFallbackSessionView
-        stashSlug={stashSlug ?? ""}
-        stashTitle={stashFallback.stash.title}
-        item={stashFallback.item}
+      <SkillFallbackSessionView
+        skillSlug={skillSlug ?? ""}
+        skillTitle={skillFallback.skill.title}
+        item={skillFallback.item}
       />
     );
   }
   if (!user) {
     // Public-grant probe: render the thread once it lands; the login bounce
     // fires from loadPublic when the session isn't public.
-    if (!stashSlug) {
+    if (!skillSlug) {
       if (sessionDetail) {
         return (
           <PublicSessionView
@@ -400,7 +400,7 @@ export default function SessionViewerPage() {
             )}
           </div>
         </main>
-        <SessionAside detail={sessionDetail} stashes={containingStashes} />
+        <SessionAside detail={sessionDetail} skills={containingSkills} />
       </div>
     </div>
   );
@@ -408,10 +408,10 @@ export default function SessionViewerPage() {
 
 function SessionAside({
   detail,
-  stashes,
+  skills,
 }: {
   detail: SessionDetail | null;
-  stashes: WorkspaceCartridge[];
+  skills: WorkspaceSkill[];
 }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
@@ -473,30 +473,30 @@ function SessionAside({
         </div>
 
         <div className="card-soft p-3.5">
-          <div className="sys-label">In Stashes</div>
-          {stashes.length > 0 ? (
+          <div className="sys-label">In Skills</div>
+          {skills.length > 0 ? (
             <div className="mt-2 flex flex-col gap-1.5">
-              {stashes.map((stash) => (
+              {skills.map((skill) => (
                 <a
-                  key={stash.id}
-                  href={`/cartridges/${stash.slug}`}
+                  key={skill.id}
+                  href={`/skills/${skill.slug}`}
                   className="linkrow px-2 py-1.5"
                 >
                   <span className="text-[var(--color-brand-600)]">
-                    <StashGlyph />
+                    <SkillGlyph />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-                    {stash.title}
+                    {skill.title}
                   </span>
                   <span className="sys-label" style={{ fontSize: 10 }}>
-                    {stash.items.length}
+                    {skill.items.length}
                   </span>
                 </a>
               ))}
             </div>
           ) : (
             <div className="mt-2 text-[12px] leading-relaxed text-muted">
-              This session is not in a Stash yet.
+              This session is not in a Skill yet.
             </div>
           )}
         </div>
@@ -577,8 +577,8 @@ function FileGlyph() {
   );
 }
 
-function StashGlyph() {
-  return <StashIcon className="text-[12px]" />;
+function SkillGlyph() {
+  return <SkillIcon className="text-[12px]" />;
 }
 
 function formatBytes(bytes: number): string {
@@ -701,29 +701,29 @@ function PublicSessionView({
   );
 }
 
-function StashFallbackSessionView({
-  stashSlug,
-  stashTitle,
+function SkillFallbackSessionView({
+  skillSlug,
+  skillTitle,
   item,
 }: {
-  stashSlug: string;
-  stashTitle: string;
-  item: PublicCartridgeItem;
+  skillSlug: string;
+  skillTitle: string;
+  item: PublicSkillItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/cartridges/${stashSlug}`}
+          href={`/skills/${skillSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
-          ← {stashTitle}
+          ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
           {item.label || "(untitled session)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
-          session · read-only via Stash
+          session · read-only via Skill
         </div>
         <div className="mt-6">
           <SessionBody item={item} />

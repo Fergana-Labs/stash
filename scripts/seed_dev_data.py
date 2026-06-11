@@ -30,7 +30,7 @@ from backend.services import (  # noqa: E402
     files_tree_service,
     memory_service,
     session_service,
-    stash_service,
+    shared_skill_service,
     storage_service,
     table_service,
     user_service,
@@ -51,12 +51,12 @@ log.setLevel(logging.INFO)
 
 SAMPLE_WORKSPACE_NAME = "Sample Product Studio"
 SAMPLE_WORKSPACE_DESCRIPTION = (
-    "Local development dataset used to preview the Sessions/Files/Stashes product "
+    "Local development dataset used to preview the Sessions/Files/Skills product "
     "UI with realistic sample content."
 )
 SAMPLE_EXTERNAL_WORKSPACE_NAME = "Sample Partner Workspace"
 SAMPLE_EXTERNAL_WORKSPACE_DESCRIPTION = (
-    "Small external workspace used to seed one attachable external stash."
+    "Small external workspace used to seed one attachable external skill."
 )
 
 SAMPLE_USERS = [
@@ -225,7 +225,7 @@ SAMPLE_SESSIONS = [
         "events": [
             ("prompt", "Please implement a cleaner sidebar with fewer duplicates."),
             ("assistant", "I removed duplicate nav labels and adjusted defaults."),
-            ("assistant", "I added grouping labels for sessions, files, and stashes."),
+            ("assistant", "I added grouping labels for sessions, files, and skills."),
             ("tool_call", "git_commit"),
         ],
     },
@@ -259,9 +259,9 @@ SAMPLE_SESSIONS = [
         "agent_name": "claude",
         "cwd": "/workspace/backend",
         "created_by": "demo_devon",
-        "files_touched": ["backend/services/permission_service.py", "backend/services/stash_service.py"],
+        "files_touched": ["backend/services/permission_service.py", "backend/services/shared_skill_service.py"],
         "events": [
-            ("prompt", "Can we test workspace/private/public access rules for stashes?"),
+            ("prompt", "Can we test workspace/private/public access rules for skills?"),
             ("assistant", "I mapped access checks and identified partition collisions."),
             ("assistant", "I confirmed private bundles reject cross-level items."),
             ("tool_call", "policy_test"),
@@ -313,7 +313,7 @@ SAMPLE_SESSIONS = [
         "events": [
             ("prompt", "What are the riskiest regressions in this area?"),
             ("assistant", "I added checks for session list shape and sidebar items."),
-            ("assistant", "I included stashes edge cases for private/workspace/public mix."),
+            ("assistant", "I included skills edge cases for private/workspace/public mix."),
         ],
     },
     {
@@ -345,7 +345,7 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/backend",
         "created_by": "demo_maya",
-        "files_touched": ["backend/routers/sessions.py", "backend/services/stash_service.py"],
+        "files_touched": ["backend/routers/sessions.py", "backend/services/shared_skill_service.py"],
         "events": [
             ("prompt", "Create a release triage list with top three blockers."),
             ("assistant", "I identified ownership, impact, and fallback plans."),
@@ -384,7 +384,7 @@ SAMPLE_FILES = [
         "name": "architecture-overview.md",
         "folder": "Engineering / Observability",
         "content_type": "text/markdown",
-        "content": "# Architecture Overview\n\nShared context is built around sessions, pages, files, and stashes.",
+        "content": "# Architecture Overview\n\nShared context is built around sessions, pages, files, and skills.",
     },
     {
         "name": "runbook.md",
@@ -534,7 +534,7 @@ async def _ensure_pages(workspace_id: UUID, creator_id: UUID, folders: dict[str,
 
         existing = await database.get_pool().fetchrow(
             "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 AND folder_id IS NOT DISTINCT FROM $3 "
-            "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
+            "AND COALESCE(metadata->>'shared_in_skill_id', '') = ''",
             workspace_id,
             spec["name"],
             parent_id,
@@ -697,8 +697,8 @@ async def _ensure_files(
     return out
 
 
-async def _ensure_stashes(workspace_id: UUID, user: dict, folders: dict[str, dict], pages: dict[str, dict], tables: dict[str, dict], sessions: dict[str, dict], files: dict[str, dict]) -> None:
-    stash_defs: list[dict[str, Any]] = [
+async def _ensure_skills(workspace_id: UUID, user: dict, folders: dict[str, dict], pages: dict[str, dict], tables: dict[str, dict], sessions: dict[str, dict], files: dict[str, dict]) -> None:
+    skill_defs: list[dict[str, Any]] = [
         {
             "title": "Workspace Product Pack",
             "description": "Core product artifacts for sprint planning.",
@@ -749,26 +749,26 @@ async def _ensure_stashes(workspace_id: UUID, user: dict, folders: dict[str, dic
         },
     ]
 
-    for spec in stash_defs:
+    for spec in skill_defs:
         exists = await database.get_pool().fetchrow(
-            "SELECT id FROM stashes WHERE workspace_id = $1 AND title = $2",
+            "SELECT id FROM skills WHERE workspace_id = $1 AND title = $2",
             workspace_id,
             spec["title"],
         )
         if exists:
             item_count = await database.get_pool().fetchval(
-                "SELECT COUNT(*) FROM stash_items WHERE stash_id = $1",
+                "SELECT COUNT(*) FROM skill_items WHERE skill_id = $1",
                 exists["id"],
             )
             if item_count:
                 continue
-            await stash_service.update_stash(
-                stash_id=exists["id"],
+            await shared_skill_service.update_skill(
+                skill_id=exists["id"],
                 user_id=user["id"],
                 items=spec["items"],
             )
             continue
-        await stash_service.create_stash(
+        await shared_skill_service.create_skill(
             workspace_id=workspace_id,
             owner_id=user["id"],
             title=spec["title"],
@@ -792,7 +792,7 @@ async def _seed_workspace_bundle(
     sessions = await _ensure_sessions(workspace_id, created_users, folders)
 
     owner = {"id": workspace_owner_id}
-    await _ensure_stashes(
+    await _ensure_skills(
         workspace_id,
         owner,
         folders,
@@ -811,7 +811,7 @@ async def _seed_workspace_bundle(
     }
 
 
-async def _ensure_external_stash_sample(
+async def _ensure_external_skill_sample(
     workspace_id: UUID,
     workspace_owner: dict,
     users: dict[str, dict],
@@ -828,7 +828,7 @@ async def _ensure_external_stash_sample(
     page_name = "External Contributor Brief"
     existing_page = await database.get_pool().fetchrow(
         "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 AND folder_id IS NOT DISTINCT FROM NULL "
-        "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
+        "AND COALESCE(metadata->>'shared_in_skill_id', '') = ''",
         external_workspace_id,
         page_name,
     )
@@ -843,34 +843,34 @@ async def _ensure_external_stash_sample(
             content=(
                 "# External collaborator brief\\n\\n"
                 "This page lives in a different workspace and is intentionally attached as "
-                "an external stash item.\n"
+                "an external skill item.\n"
             ),
         )
 
-    external_stash_title = "Partner Briefs"
+    external_skill_title = "Partner Briefs"
     existing_external = await database.get_pool().fetchrow(
-        "SELECT id, slug FROM stashes WHERE workspace_id = $1 AND title = $2",
+        "SELECT id, slug FROM skills WHERE workspace_id = $1 AND title = $2",
         external_workspace_id,
-        external_stash_title,
+        external_skill_title,
     )
     if existing_external:
         external_slug = existing_external["slug"]
         item_count = await database.get_pool().fetchval(
-            "SELECT COUNT(*) FROM stash_items WHERE stash_id = $1",
+            "SELECT COUNT(*) FROM skill_items WHERE skill_id = $1",
             existing_external["id"],
         )
         if not item_count:
-            await stash_service.update_stash(
-                stash_id=existing_external["id"],
+            await shared_skill_service.update_skill(
+                skill_id=existing_external["id"],
                 user_id=external_owner["id"],
                 items=[_item("page", page["id"], 0)],
             )
     else:
-        created_external = await stash_service.create_stash(
+        created_external = await shared_skill_service.create_skill(
             workspace_id=external_workspace_id,
             owner_id=external_owner["id"],
-            title=external_stash_title,
-            description="Sample public stash from a different workspace.",
+            title=external_skill_title,
+            description="Sample public skill from a different workspace.",
             access="public",
             discoverable=True,
             cover_image_url=None,
@@ -878,16 +878,16 @@ async def _ensure_external_stash_sample(
         )
         external_slug = created_external["slug"]
 
-    attached = await stash_service.add_external_stash(
+    attached = await shared_skill_service.fork_skill(
         workspace_id,
         external_slug,
         workspace_owner["id"],
     )
     if attached:
         if not attached["is_external"]:
-            log.warning("External stash %s is already local to workspace; skipping attachment.", external_slug)
+            log.warning("External skill %s is already local to workspace; skipping attachment.", external_slug)
         else:
-            log.info("Attached external stash sample: %s", attached["title"])
+            log.info("Attached external skill sample: %s", attached["title"])
 
 
 async def main() -> int:
@@ -897,7 +897,7 @@ async def main() -> int:
     parser.add_argument(
         "--seed-empty-workspaces",
         action="store_true",
-        help="Seed every workspace that currently has no stashes.",
+        help="Seed every workspace that currently has no skills.",
     )
     args = parser.parse_args()
 
@@ -961,7 +961,7 @@ async def main() -> int:
                 log.info("Reusing workspace: %s", workspace_name)
 
             metrics = await _seed_workspace_bundle(workspace_id, workspace_owner["id"], created_users)
-            await _ensure_external_stash_sample(workspace_id, workspace_owner, created_users)
+            await _ensure_external_skill_sample(workspace_id, workspace_owner, created_users)
             seeded_workspace_count = 1
             seeded_session_total += metrics["sessions"]
             seeded_file_total += metrics["files"]
@@ -971,7 +971,7 @@ async def main() -> int:
                     """
                     SELECT w.id, w.name, w.creator_id
                     FROM workspaces w
-                    LEFT JOIN stashes s ON s.workspace_id = w.id
+                    LEFT JOIN skills s ON s.workspace_id = w.id
                     WHERE s.id IS NULL
                     ORDER BY w.created_at
                     """
@@ -997,8 +997,8 @@ async def main() -> int:
             for username, key in created_api_keys.items():
                 log.info("  %s: %s", username, key)
 
-        stash_count = await database.get_pool().fetchval(
-            "SELECT count(*) FROM stashes WHERE workspace_id = $1",
+        skill_count = await database.get_pool().fetchval(
+            "SELECT count(*) FROM skills WHERE workspace_id = $1",
             workspace_id,
         )
         print(
@@ -1006,7 +1006,7 @@ async def main() -> int:
             f"users={len(created_users)} "
             f"sessions={seeded_session_total} "
             f"files={seeded_file_total} "
-            f"stashes={stash_count}"
+            f"skills={skill_count}"
         )
     finally:
         await database.close_db()

@@ -9,14 +9,14 @@ from pathlib import Path
 import httpx
 
 
-class CartridgeError(Exception):
+class StashError(Exception):
     def __init__(self, status_code: int, detail):
         self.status_code = status_code
         self.detail = detail
         super().__init__(f"[{status_code}] {detail}")
 
 
-def stash_permissions_for_access(access: str) -> dict[str, str]:
+def skill_permissions_for_access(access: str) -> dict[str, str]:
     if access == "public":
         return {"workspace_permission": "read", "public_permission": "read"}
     if access == "workspace":
@@ -26,7 +26,7 @@ def stash_permissions_for_access(access: str) -> dict[str, str]:
     raise ValueError("access must be public, workspace, or private")
 
 
-class CartridgeClient:
+class StashClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -56,7 +56,7 @@ class CartridgeClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise CartridgeError(resp.status_code, detail)
+            raise StashError(resp.status_code, detail)
         return resp
 
     # The URL argument is named `url`, not `path`, so callers can pass a query
@@ -141,7 +141,7 @@ class CartridgeClient:
 
     # --- Discover (public catalog, no auth required) ---
 
-    def list_discover_stashes(
+    def list_discover_skills(
         self,
         query: str = "",
         sort: str = "trending",
@@ -149,14 +149,14 @@ class CartridgeClient:
         params: dict = {"sort": sort}
         if query:
             params["q"] = query
-        return self._get("/api/v1/discover/cartridges", **params)
+        return self._get("/api/v1/discover/skills", **params)
 
-    # --- Cartridges (publishable subsets) ---
+    # --- Skills (publishable subsets) ---
 
-    def list_stashes(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/cartridges", "cartridges")
+    def list_skills(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/skills", "skills")
 
-    def create_cartridge(
+    def create_skill(
         self,
         workspace_id: str,
         title: str,
@@ -167,7 +167,7 @@ class CartridgeClient:
         items: list | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/cartridges",
+            f"/api/v1/workspaces/{workspace_id}/skills",
             json={
                 "title": title,
                 "description": description,
@@ -178,7 +178,7 @@ class CartridgeClient:
             },
         )
 
-    def publish_cartridge(
+    def publish_skill(
         self,
         workspace_id: str,
         title: str,
@@ -186,9 +186,9 @@ class CartridgeClient:
         discoverable: bool = False,
         items: list | None = None,
     ) -> dict:
-        """Create a public Stash in one atomic call."""
+        """Create a public Skill in one atomic call."""
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/cartridges/publish",
+            f"/api/v1/workspaces/{workspace_id}/skills/publish",
             json={
                 "title": title,
                 "description": description,
@@ -199,43 +199,43 @@ class CartridgeClient:
             },
         )
 
-    def update_cartridge(self, cartridge_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/cartridges/{cartridge_id}", json=fields)
+    def update_skill(self, skill_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/skills/{skill_id}", json=fields)
 
-    def delete_cartridge(self, cartridge_id: str) -> None:
-        self._delete(f"/api/v1/cartridges/{cartridge_id}")
+    def delete_skill(self, skill_id: str) -> None:
+        self._delete(f"/api/v1/skills/{skill_id}")
 
-    def add_external_cartridge(self, slug: str, workspace_id: str) -> dict:
+    def fork_skill(self, slug: str, workspace_id: str) -> dict:
         return self._post(
-            f"/api/v1/cartridges/{slug}/add-to-workspace",
+            f"/api/v1/skills/{slug}/add-to-workspace",
             json={"workspace_id": workspace_id},
         )
 
-    def remove_external_cartridge(self, workspace_id: str, cartridge_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/external-cartridges/{cartridge_id}")
+    def remove_forked_skill(self, workspace_id: str, skill_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/external-skills/{skill_id}")
 
-    def get_public_cartridge(self, slug: str) -> dict:
-        return self._get(f"/api/v1/cartridges/{slug}")
+    def get_public_skill(self, slug: str) -> dict:
+        return self._get(f"/api/v1/skills/{slug}")
 
-    def get_cartridge_text(self, slug: str) -> str:
-        resp = self._request("GET", f"/api/v1/cartridges/{slug}", params={"format": "text"})
+    def get_skill_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/skills/{slug}", params={"format": "text"})
         return resp.text
 
-    def snapshot_source_into_cartridge(
-        self, workspace_id: str, cartridge_id: str, source_id: str, path: str
+    def snapshot_source_into_skill(
+        self, workspace_id: str, skill_id: str, source_id: str, path: str
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/cartridges/{cartridge_id}/snapshot-source",
+            f"/api/v1/workspaces/{workspace_id}/skills/{skill_id}/snapshot-source",
             json={"source_id": source_id, "path": path},
         )
 
-    # --- Cartridge invites (pending invites awaiting the current user) ---
+    # --- Skill invites (pending invites awaiting the current user) ---
 
-    def list_cartridge_invites(self) -> list:
-        return self._list("/api/v1/cartridge-invites", "invites")
+    def list_skill_invites(self) -> list:
+        return self._list("/api/v1/skill-invites", "invites")
 
-    def dismiss_cartridge_invite(self, invite_id: str) -> None:
-        self._post(f"/api/v1/cartridge-invites/{invite_id}/dismiss")
+    def dismiss_skill_invite(self, invite_id: str) -> None:
+        self._post(f"/api/v1/skill-invites/{invite_id}/dismiss")
 
     # --- Object sharing (grant a person access to a folder/file/session by email) ---
 
@@ -322,7 +322,7 @@ class CartridgeClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise CartridgeError(resp.status_code, detail)
+            raise StashError(resp.status_code, detail)
         return resp.json()
 
     # --- Aggregate ---
@@ -446,7 +446,7 @@ class CartridgeClient:
         event_type: str,
         content: str,
         session_id: str | None = None,
-        default_cartridge_id: str | None = None,
+        default_skill_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -455,8 +455,8 @@ class CartridgeClient:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
-        if default_cartridge_id:
-            body["default_cartridge_id"] = default_cartridge_id
+        if default_skill_id:
+            body["default_skill_id"] = default_skill_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -512,11 +512,11 @@ class CartridgeClient:
         self,
         workspace_id: str,
         events: list[dict],
-        default_cartridge_id: str | None = None,
+        default_skill_id: str | None = None,
     ) -> list:
         body: dict = {"events": events}
-        if default_cartridge_id:
-            body["default_cartridge_id"] = default_cartridge_id
+        if default_skill_id:
+            body["default_skill_id"] = default_skill_id
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/sessions/events/batch",
             json=body,
@@ -529,7 +529,7 @@ class CartridgeClient:
         transcript_path: str | Path,
         agent_name: str,
         cwd: str = "",
-        default_cartridge_id: str | None = None,
+        default_skill_id: str | None = None,
         replace: bool = False,
     ) -> dict:
         import gzip as _gzip
@@ -548,7 +548,7 @@ class CartridgeClient:
                 "agent_name": agent_name,
                 "cwd": cwd,
                 "replace": str(replace).lower(),
-                **({"default_cartridge_id": default_cartridge_id} if default_cartridge_id else {}),
+                **({"default_skill_id": default_skill_id} if default_skill_id else {}),
             },
             files={"file": (name, body, "application/gzip")},
             timeout=120,

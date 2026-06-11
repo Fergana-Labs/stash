@@ -20,7 +20,7 @@ from . import page_events, permission_service
 logger = logging.getLogger(__name__)
 
 # HTML pages render in a sandboxed iframe with allow-scripts, and are served on
-# public cartridge URLs. We strip author-supplied scripts / event handlers /
+# public skill URLs. We strip author-supplied scripts / event handlers /
 # javascript: + data:text/html URLs on write so an agent- or attacker-authored
 # page can't run hostile JS for a public viewer. The trusted resize/slide
 # bootstrap is injected at render time (not stored), so this never touches it.
@@ -92,7 +92,7 @@ def _sanitize_html(html: str) -> str:
 
 
 # Workspace-owned page (excludes the read-only stash mirror rows).
-_OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_cartridge_id', '') = ''"
+_OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_skill_id', '') = ''"
 # All "live" reads filter both stash-mirror and trash. Every SELECT on
 # pages that wants the active set uses this.
 _WORKSPACE_PAGE_FILTER = f"{_OWNED_PAGE_PRED} AND deleted_at IS NULL"
@@ -960,7 +960,7 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
     args: list = [workspace_id]
     where = (
         "p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "AND p.deleted_at IS NULL"
     )
     if user_id is not None:
@@ -1007,7 +1007,7 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "JOIN member_workspaces mw ON mw.workspace_id = p.workspace_id "
         "JOIN workspaces w ON w.id = p.workspace_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
-        "WHERE COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
+        "WHERE COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY w.name, c.path NULLS FIRST, p.name",
@@ -1023,7 +1023,7 @@ async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -
     args: list = [workspace_id]
     where = (
         "p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "AND p.deleted_at IS NULL"
     )
     if user_id is not None:

@@ -4,16 +4,16 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import CartridgeClient, stash_permissions_for_access
+from cli.client import StashClient, skill_permissions_for_access
 from cli.config import load_config, load_manifest
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
 
 
-def _client() -> tuple[CartridgeClient, str]:
-    """Build a CartridgeClient + resolve the active workspace id."""
+def _client() -> tuple[StashClient, str]:
+    """Build a StashClient + resolve the active workspace id."""
     cfg = load_config()
-    client = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
+    client = StashClient(cfg["base_url"], cfg.get("api_key", ""))
     manifest = load_manifest()
     ws_id = (manifest or {}).get("workspace_id", "")
     return client, ws_id
@@ -143,7 +143,7 @@ def stash_push_event(
     event_type: str,
     content: str,
     session_id: str = "",
-    default_cartridge_id: str = "",
+    default_skill_id: str = "",
     tool_name: str = "",
     workspace_id: str = "",
 ) -> str:
@@ -157,7 +157,7 @@ def stash_push_event(
             event_type=event_type,
             content=content,
             session_id=session_id or None,
-            default_cartridge_id=default_cartridge_id or None,
+            default_skill_id=default_skill_id or None,
             tool_name=tool_name or None,
         )
     )
@@ -497,10 +497,10 @@ def stash_workspace_members(workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_list_skills(workspace_id: str = "") -> str:
-    """List skills defined as Files folders with a SKILL.md page."""
+    """List skills in the workspace — local SKILL.md folders and shared bundles."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client._get(f"/api/v1/workspaces/{ws}/skills"))
+    return _json(client.list_skills(ws))
 
 
 @mcp.tool()
@@ -575,19 +575,11 @@ def stash_delete_file(file_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": file_id})
 
 
-# ── Cartridges ───────────────────────────────────────────────
+# ── Shared skills ───────────────────────────────────────────────
 
 
 @mcp.tool()
-def stash_list_cartridges(workspace_id: str = "") -> str:
-    """List Cartridges in the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.list_stashes(ws))
-
-
-@mcp.tool()
-def stash_create_cartridge(
+def stash_create_skill(
     title: str,
     description: str = "",
     access: str = "workspace",
@@ -595,13 +587,13 @@ def stash_create_cartridge(
     items: str = "[]",
     workspace_id: str = "",
 ) -> str:
-    """Create a Stash. items is a JSON array of object references."""
+    """Create a Skill. items is a JSON array of object references."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     item_list = json.loads(items) if isinstance(items, str) else items
     if access == "public":
         return _json(
-            client.publish_cartridge(
+            client.publish_skill(
                 ws,
                 title,
                 description=description,
@@ -610,11 +602,11 @@ def stash_create_cartridge(
             )
         )
     return _json(
-        client.create_cartridge(
+        client.create_skill(
             ws,
             title,
             description=description,
-            **stash_permissions_for_access(access),
+            **skill_permissions_for_access(access),
             discoverable=discoverable,
             items=item_list,
         )
@@ -622,15 +614,15 @@ def stash_create_cartridge(
 
 
 @mcp.tool()
-def stash_update_cartridge(
-    cartridge_id: str,
+def stash_update_skill(
+    skill_id: str,
     title: str = "",
     description: str = "",
     access: str = "",
     discoverable: str = "",
     items: str = "",
 ) -> str:
-    """Update a Stash's metadata, access, Discover flag, or item list."""
+    """Update a Skill's metadata, access, Discover flag, or item list."""
     client, _ = _client()
     fields: dict = {}
     if title:
@@ -638,46 +630,46 @@ def stash_update_cartridge(
     if description:
         fields["description"] = description
     if access:
-        fields.update(stash_permissions_for_access(access))
+        fields.update(skill_permissions_for_access(access))
     if discoverable:
         fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
     if items:
         fields["items"] = json.loads(items)
     if not fields:
         raise ValueError("Pass at least one field to update")
-    return _json(client.update_cartridge(cartridge_id, **fields))
+    return _json(client.update_skill(skill_id, **fields))
 
 
 @mcp.tool()
-def stash_delete_cartridge(cartridge_id: str) -> str:
-    """Delete a Stash."""
+def stash_delete_skill(skill_id: str) -> str:
+    """Delete a Skill."""
     client, _ = _client()
-    client.delete_cartridge(cartridge_id)
-    return _json({"deleted": cartridge_id})
+    client.delete_skill(skill_id)
+    return _json({"deleted": skill_id})
 
 
 @mcp.tool()
-def stash_get_cartridge(slug: str) -> str:
-    """Get a public Stash by its slug."""
+def stash_get_shared_skill(slug: str) -> str:
+    """Get a public shared skill by its slug."""
     client, _ = _client()
-    return _json(client.get_public_cartridge(slug))
+    return _json(client.get_public_skill(slug))
 
 
 @mcp.tool()
-def stash_add_external_cartridge(slug: str, workspace_id: str = "") -> str:
-    """Fork an external Stash into a workspace."""
+def stash_fork_skill(slug: str, workspace_id: str = "") -> str:
+    """Fork a public Skill into a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.add_external_cartridge(slug, ws))
+    return _json(client.fork_skill(slug, ws))
 
 
 @mcp.tool()
-def stash_remove_external_cartridge(cartridge_id: str, workspace_id: str = "") -> str:
-    """Remove a forked external Stash from a workspace."""
+def stash_remove_forked_skill(skill_id: str, workspace_id: str = "") -> str:
+    """Remove a forked Skill from a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    client.remove_external_cartridge(ws, cartridge_id)
-    return _json({"removed": cartridge_id})
+    client.remove_forked_skill(ws, skill_id)
+    return _json({"removed": skill_id})
 
 
 # ── Invites ───────────────────────────────────────────────────────
@@ -722,7 +714,7 @@ def stash_whoami() -> str:
     return _json(client.whoami())
 
 
-# ── Sharing (Stash URLs + publish) ──────────────────
+# ── Sharing (Skill URLs + publish) ──────────────────
 
 
 @mcp.tool()
@@ -733,7 +725,7 @@ def stash_publish_html(
     audience: str = "public",
     folder_id: str = "",
 ) -> str:
-    """Single-call publish: create an HTML page, wrap it in a Stash, and return the Stash URL.
+    """Single-call publish: create an HTML page, wrap it in a Skill, and return the Skill URL.
 
     If folder_id is omitted, the page lands in the workspace's auto-created
     'AI Drafts' folder. audience: 'workspace', 'private', or 'public'."""
@@ -759,7 +751,7 @@ def stash_publish_markdown(
     audience: str = "public",
     folder_id: str = "",
 ) -> str:
-    """Single-call publish: create a markdown page, wrap it in a Stash, and return the Stash URL.
+    """Single-call publish: create a markdown page, wrap it in a Skill, and return the Skill URL.
     Same flow as stash_publish_html but for markdown content."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
@@ -775,28 +767,28 @@ def stash_publish_markdown(
     )
 
 
-# ── Discover (public Stash catalog) ───────────────────────────────
+# ── Discover (public Skill catalog) ───────────────────────────────
 
 
 @mcp.tool()
-def stash_search_public_cartridges(query: str = "", sort: str = "trending") -> str:
-    """Search the public Cartridge catalog (Discover).
+def stash_search_public_skills(query: str = "", sort: str = "trending") -> str:
+    """Search the public Skill catalog (Discover).
 
     sort: trending | newest | popular. Pass an empty query to browse by
     sort order. Returns the catalog entries — fork into a workspace with
-    stash_add_external_cartridge to follow up.
+    stash_fork_skill to follow up.
     """
     client, _ = _client()
-    return _json(client.list_discover_stashes(query=query, sort=sort))
+    return _json(client.list_discover_skills(query=query, sort=sort))
 
 
 @mcp.tool()
-def stash_read_public_cartridge(slug: str) -> str:
-    """Fetch a public Stash by slug as plain text (markdown-formatted
+def stash_read_public_skill(slug: str) -> str:
+    """Fetch a public Skill by slug as plain text (markdown-formatted
     transcript + pages). Use this instead of WebFetch for joinstash.ai/v/
-    or any /cartridges/<slug> URL."""
+    or any /skills/<slug> URL."""
     client, _ = _client()
-    return client.get_cartridge_text(slug)
+    return client.get_skill_text(slug)
 
 
 # ── Sessions: full surface (transcript + soft-delete) ─────────────
@@ -821,23 +813,23 @@ def stash_delete_session(session_row_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": session_row_id})
 
 
-# ── Stash access control ──────────────────────────────────────────
+# ── Skill access control ──────────────────────────────────────────
 
 
-_STASH_ACCESS = {"private", "workspace", "public"}
+_SKILL_ACCESS = {"private", "workspace", "public"}
 
 
 @mcp.tool()
-def stash_set_cartridge_access(
-    cartridge_id: str,
+def stash_set_skill_access(
+    skill_id: str,
     access: str = "workspace",
     discoverable: bool = False,
 ) -> str:
-    """Change a Stash's access level. access: private | workspace | public.
-    `discoverable=True` lists the Stash in the public Discover catalog (only
+    """Change a Skill's access level. access: private | workspace | public.
+    `discoverable=True` lists the Skill in the public Discover catalog (only
     meaningful with access='public')."""
-    if access not in _STASH_ACCESS:
-        raise ValueError(f"access must be one of {sorted(_STASH_ACCESS)}")
+    if access not in _SKILL_ACCESS:
+        raise ValueError(f"access must be one of {sorted(_SKILL_ACCESS)}")
     if discoverable and access != "public":
         raise ValueError("discoverable=True requires access='public'")
     client, _ = _client()
@@ -847,7 +839,7 @@ def stash_set_cartridge_access(
         "workspace_permission": "read" if access in {"workspace", "public"} else "none",
         "discoverable": discoverable,
     }
-    return _json(client.update_cartridge(cartridge_id, **fields))
+    return _json(client.update_skill(skill_id, **fields))
 
 
 # ── Tables: rename + export ───────────────────────────────────────
@@ -966,36 +958,34 @@ def stash_list_shares(object_type: str, object_id: str) -> str:
     return _json(client.list_object_shares(object_type, object_id))
 
 
-# ── Cartridge invites ─────────────────────────────────────────────
-# Cartridge access goes through the generic share tools (object_type="stash").
+# ── Skill invites ─────────────────────────────────────────────────
+# Skill access goes through the generic share tools (object_type="skill").
 
 
 @mcp.tool()
-def stash_list_cartridge_invites() -> str:
-    """List Cartridge invites pending for the current user (shared with you,
+def stash_list_skill_invites() -> str:
+    """List Skill invites pending for the current user (shared with you,
     awaiting accept/dismiss)."""
     client, _ = _client()
-    return _json(client.list_cartridge_invites())
+    return _json(client.list_skill_invites())
 
 
 @mcp.tool()
-def stash_dismiss_cartridge_invite(invite_id: str) -> str:
-    """Dismiss a pending Cartridge invite."""
+def stash_dismiss_skill_invite(invite_id: str) -> str:
+    """Dismiss a pending Skill invite."""
     client, _ = _client()
-    client.dismiss_cartridge_invite(invite_id)
+    client.dismiss_skill_invite(invite_id)
     return _json({"dismissed": invite_id})
 
 
 @mcp.tool()
-def stash_snapshot_source(
-    cartridge_id: str, source_id: str, path: str, workspace_id: str = ""
-) -> str:
+def stash_snapshot_source(skill_id: str, source_id: str, path: str, workspace_id: str = "") -> str:
     """Copy a point-in-time snapshot of one connected-source document (source_id
-    + path from the source tools) into a Cartridge as a page, so the bundle stays
+    + path from the source tools) into a Skill as a page, so the bundle stays
     self-contained."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.snapshot_source_into_cartridge(ws, cartridge_id, source_id, path))
+    return _json(client.snapshot_source_into_skill(ws, skill_id, source_id, path))
 
 
 # ── Session folders ───────────────────────────────────────────────

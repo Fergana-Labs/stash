@@ -33,7 +33,7 @@ const LABEL: Record<string, string> = {
 // Drag payload for shared items. Distinct from the main browser's FB_DRAG_MIME
 // because shared items carry their home workspace — moves run against it, and
 // items can only move within it.
-const SHARED_DRAG_MIME = "application/x-stash-shared-item";
+const SHARED_DRAG_MIME = "application/x-skill-shared-item";
 
 interface SharedDragPayload {
   object_type: SharedWithMeItem["object_type"];

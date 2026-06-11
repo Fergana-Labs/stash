@@ -14,7 +14,7 @@ import {
   ApiError,
   getFile,
   getFolderContents,
-  getPublicCartridge,
+  getPublicSkill,
   ingestCsvFile,
   ingestXlsxFile,
   trashItem,
@@ -57,11 +57,11 @@ function FileViewerPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fileId = params.fileId as string;
-  // ?stash=<slug> is a back-link hint AND a permission fallback. We try
+  // ?skill=<slug> is a back-link hint AND a permission fallback. We try
   // the workspace endpoint first so workspace members get the full editor
   // chrome (rename / move / trash / CSV ingest). Non-members fall back to
-  // the public-stash payload, read-only.
-  const stashSlug = searchParams.get("stash");
+  // the public-skill payload, read-only.
+  const skillSlug = searchParams.get("skill");
   const { user, loading, logout: _logout } = useAuth();
   // logout isn't used here; kept for parity with other workspace pages.
   void _logout;
@@ -69,10 +69,10 @@ function FileViewerPageInner() {
   const [file, setFile] = useState<FileInfo | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [error, setError] = useState("");
-  const [stashTitle, setStashTitle] = useState<string | null>(null);
-  // readOnly flips on only when we fall back to the stash payload — i.e.
+  const [skillTitle, setSkillTitle] = useState<string | null>(null);
+  // readOnly flips on only when we fall back to the skill payload — i.e.
   // the viewer can't reach the workspace endpoint. Workspace members who
-  // arrive via ?stash= still get full edit affordances.
+  // arrive via ?skill= still get full edit affordances.
   const [readOnly, setReadOnly] = useState(false);
   // Empty until the file loads — every consumer below renders or fires
   // only after that.
@@ -80,12 +80,12 @@ function FileViewerPageInner() {
   useActiveWorkspaceId(workspaceId || null);
 
   useBreadcrumbs(
-    readOnly && !stashSlug
+    readOnly && !skillSlug
       ? [{ label: file ? file.name : "File" }]
       : readOnly
       ? [
-          { label: "Cartridges", href: "/cartridges" },
-          { label: stashTitle ?? "Cartridge", href: stashSlug ? `/cartridges/${stashSlug}` : "/cartridges" },
+          { label: "Skills", href: "/skills" },
+          { label: skillTitle ?? "Skill", href: skillSlug ? `/skills/${skillSlug}` : "/skills" },
           { label: file ? file.name : "File" },
         ]
       : [
@@ -95,19 +95,19 @@ function FileViewerPageInner() {
           })),
           { label: file ? file.name : "File" },
         ],
-    `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${stashSlug ?? ""}`
+    `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${skillSlug ?? ""}`
   );
 
-  const loadStashFallback = useCallback(async () => {
-    if (!stashSlug) return false;
+  const loadSkillFallback = useCallback(async () => {
+    if (!skillSlug) return false;
     try {
-      const stash = await getPublicCartridge(stashSlug);
-      setStashTitle(stash.cartridge.title);
-      const item = stash.items.find(
+      const skill = await getPublicSkill(skillSlug);
+      setSkillTitle(skill.skill.title);
+      const item = skill.items.find(
         (it) => it.object_type === "file" && it.object_id === fileId
       );
       if (!item || !item.inline) {
-        setError("File isn't in this Stash.");
+        setError("File isn't in this Skill.");
         return false;
       }
       const inline = item.inline as {
@@ -119,13 +119,13 @@ function FileViewerPageInner() {
       };
       const synth: FileInfo = {
         id: fileId,
-        workspace_id: stash.cartridge.workspace_id,
+        workspace_id: skill.skill.workspace_id,
         folder_id: null,
         name: inline.name ?? item.label,
         content_type: inline.content_type ?? "",
         size_bytes: inline.size_bytes ?? 0,
         url: inline.url ?? "",
-        app_url: `/f/${fileId}?stash=${stashSlug}`,
+        app_url: `/f/${fileId}?skill=${skillSlug}`,
         uploaded_by: "",
         created_at: inline.created_at ?? "",
       };
@@ -135,10 +135,10 @@ function FileViewerPageInner() {
       setError("");
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Stash not found");
+      setError(e instanceof Error ? e.message : "Skill not found");
       return false;
     }
-  }, [stashSlug, fileId]);
+  }, [skillSlug, fileId]);
 
   const load = useCallback(async () => {
     try {
@@ -196,17 +196,17 @@ function FileViewerPageInner() {
       }
     } catch (e) {
       if (
-        stashSlug &&
+        skillSlug &&
         e instanceof ApiError &&
         (e.status === 401 || e.status === 403 || e.status === 404)
       ) {
-        if (await loadStashFallback()) return;
+        if (await loadSkillFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [fileId, router, stashSlug, loadStashFallback]);
+  }, [fileId, router, skillSlug, loadSkillFallback]);
 
-  // Anonymous viewer, no stash hint: the file may carry a public (anyone
+  // Anonymous viewer, no skill hint: the file may carry a public (anyone
   // with the link) grant. Try the canonical endpoint; bounce to login only
   // when it 404s.
   const loadPublic = useCallback(async () => {
@@ -224,9 +224,9 @@ function FileViewerPageInner() {
   useEffect(() => {
     if (loading) return;
     if (user) load();
-    else if (stashSlug) void loadStashFallback();
+    else if (skillSlug) void loadSkillFallback();
     else void loadPublic();
-  }, [user, loading, load, loadStashFallback, loadPublic, stashSlug]);
+  }, [user, loading, load, loadSkillFallback, loadPublic, skillSlug]);
 
   const shareAction = useMemo(() => {
     if (!file || readOnly || !user) return null;
@@ -276,8 +276,8 @@ function FileViewerPageInner() {
               : undefined
           }
           readOnly={readOnly}
-          readOnlyLabel="read-only · via Stash"
-          backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/cartridges/${stashSlug}` } : undefined}
+          readOnlyLabel="read-only · via Skill"
+          backLink={readOnly && skillSlug ? { label: skillTitle ?? "Skill", href: `/skills/${skillSlug}` } : undefined}
           tags={tags}
           meta={meta}
           downloadOptions={

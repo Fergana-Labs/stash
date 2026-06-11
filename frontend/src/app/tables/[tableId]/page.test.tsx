@@ -12,7 +12,7 @@ import TableEditorPage from "./TableClient";
 
 const api = vi.hoisted(() => ({
   fetchAuthed: vi.fn(),
-  getPublicCartridge: vi.fn(),
+  getPublicSkill: vi.fn(),
   getTable: vi.fn(),
   updateTable: vi.fn(),
   deleteTable: vi.fn(),
@@ -204,12 +204,12 @@ describe("TableEditorPage row creation", () => {
     );
   });
 
-  it("renders stash-mode tables without the app shell for signed-in users", async () => {
-    route.search = "stash=shared-stash";
-    api.getPublicCartridge.mockResolvedValue({
-      cartridge: {
-        id: "stash-1",
-        title: "Shared Stash",
+  it("renders skill-mode tables without the app shell for signed-in users", async () => {
+    route.search = "skill=shared-skill";
+    api.getPublicSkill.mockResolvedValue({
+      skill: {
+        id: "skill-1",
+        title: "Shared Skill",
         workspace_id: "ws-1",
       },
       items: [

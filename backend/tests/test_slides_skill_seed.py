@@ -65,8 +65,8 @@ async def test_seeded_workspace_has_slides_skill(client: AsyncClient, enable_see
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200
-    skills = resp.json()
-    names = [s["name"] for s in skills]
+    skills = resp.json()["skills"]
+    names = [s["name"] for s in skills if s["kind"] == "local"]
     assert "slides" in names, f"slides skill missing after seed: {names}"
 
 
@@ -105,5 +105,5 @@ async def test_seed_is_idempotent(client: AsyncClient, enable_seed):
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200
-    slides_skills = [s for s in resp.json() if s["name"] == "slides"]
+    slides_skills = [s for s in resp.json()["skills"] if s["name"] == "slides"]
     assert len(slides_skills) == 1, f"expected one slides skill, got {len(slides_skills)}"

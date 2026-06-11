@@ -52,7 +52,7 @@ stash login`}</CodeBlock>
       <P>
         Sessions stream into searchable sessions. Promote useful outputs into pages, organize
         them with folders, and bundle related resources into{" "}
-        <code className="text-brand font-mono text-[13px]">Cartridges</code> to share them.
+        <code className="text-brand font-mono text-[13px]">Skills</code> to share them.
       </P>
     </>
   );

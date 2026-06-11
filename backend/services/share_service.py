@@ -1,5 +1,5 @@
 """Sharing: grant a principal (a user, or 'public' = anyone with the link)
-access to an object. Cartridges share through here too (object_type='stash').
+access to an object. Shared skills share through here too (object_type='skill').
 
 Primary path is sharing a folder/file/session with a person by email. Only the
 object's owner (its workspace member) may share it. Folder/session-folder shares
@@ -20,11 +20,12 @@ from fastapi import HTTPException
 from ..database import get_pool
 from . import permission_service
 
-_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "stash"}
+_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "skill"}
 _PERMISSIONS = {"read", "comment", "write"}
 
-# Objects that can carry an "anyone with the link" grant. Stashes and session
-# folders have their own public dial (slug + public_permission) — not this one.
+# Objects that can carry an "anyone with the link" grant. Shared skills and
+# session folders have their own public dial (slug + public_permission) — not
+# this one.
 _PUBLICLY_SHAREABLE = {"file", "page", "folder", "session", "table"}
 
 
@@ -95,12 +96,12 @@ async def share_with_user_by_email(
         owner_id,
         expires_at,
     )
-    if object_type == "stash":
-        # Sharing a cartridge also rings the recipient's in-app invite bell.
-        from . import cartridge_invite_service
+    if object_type == "skill":
+        # Sharing a skill also rings the recipient's in-app invite bell.
+        from . import skill_invite_service
 
-        await cartridge_invite_service.create_or_update_invite(
-            cartridge_id=object_id,
+        await skill_invite_service.create_or_update_invite(
+            skill_id=object_id,
             recipient_user_id=user["id"],
             invited_by_user_id=owner_id,
             permission=permission,
@@ -157,10 +158,10 @@ async def unshare(
         principal_type,
         principal_id,
     )
-    if object_type == "stash" and principal_type == "user":
-        from . import cartridge_invite_service
+    if object_type == "skill" and principal_type == "user":
+        from . import skill_invite_service
 
-        await cartridge_invite_service.delete_pending_invite(object_id, principal_id)
+        await skill_invite_service.delete_pending_invite(object_id, principal_id)
 
 
 async def set_public_access(
@@ -255,8 +256,8 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
 async def list_shared_with_user(user_id: UUID) -> list[dict]:
     """Every object shared *with* this user (across workspaces) — the data behind
     the 'Shared with me' surface. Resolves each share to the object's name, its
-    owning workspace, and who shared it. Cartridge shares are excluded: those
-    surface through the invite bell and the cartridge pages instead."""
+    owning workspace, and who shared it. Skill shares are excluded: those
+    surface through the invite bell and the skill pages instead."""
     rows = await get_pool().fetch(
         """
         SELECT s.object_type, s.object_id, s.permission, s.workspace_id,
@@ -278,7 +279,7 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
         JOIN workspaces w ON w.id = s.workspace_id
         LEFT JOIN users u ON u.id = s.created_by
         WHERE s.principal_type = 'user' AND s.principal_id = $1
-          AND s.object_type != 'stash'
+          AND s.object_type != 'skill'
           AND (s.expires_at IS NULL OR s.expires_at > now())
         ORDER BY w.name, s.object_type, name
         """,

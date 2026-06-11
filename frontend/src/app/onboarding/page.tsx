@@ -38,7 +38,7 @@ const REFERRAL_OPTIONS = [
   "Other",
 ];
 
-function useStashToken(): string | null {
+function useSkillToken(): string | null {
   return useSyncExternalStore(
     (cb) => {
       window.addEventListener("storage", cb);
@@ -65,7 +65,7 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const apiKey = useStashToken();
+  const apiKey = useSkillToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [sourceCount, setSourceCount] = useState(0);
   const [obsidianAdded, setObsidianAdded] = useState(false);

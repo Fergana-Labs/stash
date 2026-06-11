@@ -12,12 +12,12 @@ import { useAuth } from "../../../../../../hooks/useAuth";
 import {
   ApiError,
   getFolderContents,
-  getPublicCartridge,
+  getPublicSkill,
   type FolderContents,
-  type PublicCartridgeItem,
-  type WorkspaceCartridge,
+  type PublicSkillItem,
+  type WorkspaceSkill,
 } from "../../../../../../lib/api";
-import { FolderBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
+import { FolderBody } from "../../../../skills/[slug]/SkillItemBodies";
 
 export default function FolderDetailPage() {
   const params = useParams();
@@ -26,7 +26,7 @@ export default function FolderDetailPage() {
   const workspaceId = params.workspaceId as string;
   const folderId = params.folderId as string;
   const { user, loading } = useAuth();
-  const stashSlug = searchParams.get("stash");
+  const skillSlug = searchParams.get("skill");
 
   // Small auxiliary breadcrumb fetch so the top bar is correct before the
   // file browser shell finishes its own load. The shell still owns the main
@@ -37,32 +37,32 @@ export default function FolderDetailPage() {
   const [folderName, setFolderName] = useState<string | null>(null);
   // Anonymous viewer reading a publicly-shared folder (anyone with the link).
   const [publicContents, setPublicContents] = useState<FolderContents | null>(null);
-  const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
+  const [skillFallback, setSkillFallback] = useState<
+    { skill: WorkspaceSkill; item: PublicSkillItem } | null
   >(null);
   const [error, setError] = useState("");
 
-  const loadStashFallback = useCallback(async () => {
-    if (!stashSlug) return false;
+  const loadSkillFallback = useCallback(async () => {
+    if (!skillSlug) return false;
     try {
-      const data = await getPublicCartridge(stashSlug);
+      const data = await getPublicSkill(skillSlug);
       const item = data.items.find(
         (it) => it.object_type === "folder" && it.object_id === folderId,
       );
       if (!item) {
-        setError("This folder isn't part of the linked Stash.");
+        setError("This folder isn't part of the linked Skill.");
         return false;
       }
-      setStashFallback({ stash: data.cartridge, item });
+      setSkillFallback({ skill: data.skill, item });
       setError("");
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Stash not found");
+      setError(e instanceof Error ? e.message : "Skill not found");
       return false;
     }
-  }, [stashSlug, folderId]);
+  }, [skillSlug, folderId]);
 
-  // Anonymous viewer, no stash hint: the folder may carry a public (anyone
+  // Anonymous viewer, no skill hint: the folder may carry a public (anyone
   // with the link) grant. The contents endpoint allows anonymous viewers and
   // filters children to publicly-readable rows.
   const loadPublic = useCallback(async () => {
@@ -79,7 +79,7 @@ export default function FolderDetailPage() {
   useEffect(() => {
     if (!user) {
       if (loading) return;
-      if (stashSlug) void loadStashFallback();
+      if (skillSlug) void loadSkillFallback();
       else void loadPublic();
       return;
     }
@@ -98,22 +98,22 @@ export default function FolderDetailPage() {
           { label: c.folder.name },
         ]);
         setFolderName(c.folder.name);
-        setStashFallback(null);
+        setSkillFallback(null);
       })
       .catch(async (e) => {
         if (cancelled) return;
         if (
-          stashSlug &&
+          skillSlug &&
           e instanceof ApiError &&
           (e.status === 401 || e.status === 403 || e.status === 404)
         ) {
-          await loadStashFallback();
+          await loadSkillFallback();
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [user, loading, workspaceId, folderId, stashSlug, loadStashFallback, loadPublic]);
+  }, [user, loading, workspaceId, folderId, skillSlug, loadSkillFallback, loadPublic]);
 
   useBreadcrumbs(
     crumbs,
@@ -121,7 +121,7 @@ export default function FolderDetailPage() {
   );
 
   const shareAction = useMemo(() => {
-    if (!folderName || stashSlug || !user) return null;
+    if (!folderName || skillSlug || !user) return null;
     return (
       <ResourceShareButton
         objectType="folder"
@@ -131,24 +131,24 @@ export default function FolderDetailPage() {
         currentUser={user}
       />
     );
-  }, [folderId, folderName, stashSlug, user, workspaceId]);
+  }, [folderId, folderName, skillSlug, user, workspaceId]);
   useShareAction(shareAction);
 
   if (loading) return <FileBrowserSkeleton />;
   if (!user && publicContents) {
     return <PublicFolderView contents={publicContents} />;
   }
-  if (stashFallback) {
+  if (skillFallback) {
     return (
-      <StashFallbackFolderView
-        stashSlug={stashSlug ?? ""}
-        stashTitle={stashFallback.stash.title}
-        item={stashFallback.item}
+      <SkillFallbackFolderView
+        skillSlug={skillSlug ?? ""}
+        skillTitle={skillFallback.skill.title}
+        item={skillFallback.item}
       />
     );
   }
   if (!user) {
-    if (!stashSlug) return <FileBrowserSkeleton />;
+    if (!skillSlug) return <FileBrowserSkeleton />;
     if (!error) return <FileBrowserSkeleton />;
     return (
       <div className="mx-auto max-w-md py-24 text-center">
@@ -161,29 +161,29 @@ export default function FolderDetailPage() {
   return <WorkspaceFileBrowser workspaceId={workspaceId} folderId={folderId} />;
 }
 
-function StashFallbackFolderView({
-  stashSlug,
-  stashTitle,
+function SkillFallbackFolderView({
+  skillSlug,
+  skillTitle,
   item,
 }: {
-  stashSlug: string;
-  stashTitle: string;
-  item: PublicCartridgeItem;
+  skillSlug: string;
+  skillTitle: string;
+  item: PublicSkillItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/cartridges/${stashSlug}`}
+          href={`/skills/${skillSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
-          ← {stashTitle}
+          ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
           {item.label || "(untitled folder)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
-          folder · read-only via Stash
+          folder · read-only via Skill
         </div>
         <div className="mt-6">
           <FolderBody item={item} />
