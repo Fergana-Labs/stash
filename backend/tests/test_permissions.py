@@ -360,6 +360,34 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
 
 
 @pytest.mark.asyncio
+async def test_table_share_by_email_grants_direct_read(pool):
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    table = await _make_table(pool, ws, owner, name="prospects")
+    await pool.execute(
+        "UPDATE users SET email = 'friend@example.com' WHERE id = $1",
+        friend,
+    )
+
+    await share_service.share_with_user_by_email(
+        object_type="table",
+        object_id=table,
+        email="friend@example.com",
+        permission="read",
+        owner_id=owner,
+    )
+
+    assert await permission_service.check_access("table", table, friend)
+    assert not await permission_service.check_access(
+        "table",
+        table,
+        friend,
+        require="write",
+    )
+
+
+@pytest.mark.asyncio
 async def test_public_cartridge_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)

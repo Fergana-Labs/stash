@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useActiveWorkspaceId } from "../../../../components/ShellChromeContext";
+import {
+  useActiveWorkspaceId,
+  useShareAction,
+} from "../../../../components/ShellChromeContext";
 import { recordRecent } from "../../../../lib/pins";
 import { PageBody } from "../../cartridges/[slug]/CartridgeItemBodies";
 import {
@@ -21,6 +24,7 @@ import HtmlPageView, {
   type HtmlSelectionInfo,
 } from "../../../../components/workspace/HtmlPageView";
 import ExportDeckButton from "../../../../components/export/ExportDeckButton";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
@@ -185,6 +189,21 @@ export default function StashPageView() {
     ],
     `${workspaceId}/page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
+
+  const shareAction = useMemo(() => {
+    if (!page || stashSlug || !user) return null;
+    const title = page.name.replace(/\.md$/, "");
+    return (
+      <ResourceShareButton
+        objectType="page"
+        objectId={page.id}
+        resourceName={title}
+        resourceUrlPath={`/p/${page.id}`}
+        currentUser={user}
+      />
+    );
+  }, [page, stashSlug, user]);
+  useShareAction(shareAction);
 
   const refreshThreads = useCallback(
     async (ws: string = workspaceId) => {

@@ -1,9 +1,12 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useActiveWorkspaceId } from "../../../../components/ShellChromeContext";
+import {
+  useActiveWorkspaceId,
+  useShareAction,
+} from "../../../../components/ShellChromeContext";
 import { recordRecent } from "../../../../lib/pins";
 import { FileViewerSkeleton } from "../../../../components/SkeletonStates";
 import { useAuth } from "../../../../hooks/useAuth";
@@ -26,6 +29,7 @@ import FileContentRenderer, {
   isText,
 } from "../../../../components/workspace/FileContentRenderer";
 import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
@@ -208,6 +212,20 @@ function FileViewerPageInner() {
   useEffect(() => {
     if (!loading && !user && !stashSlug) router.push("/login");
   }, [user, loading, router, stashSlug]);
+
+  const shareAction = useMemo(() => {
+    if (!file || readOnly || !user) return null;
+    return (
+      <ResourceShareButton
+        objectType="file"
+        objectId={file.id}
+        resourceName={file.name}
+        resourceUrlPath={`/f/${file.id}`}
+        currentUser={user}
+      />
+    );
+  }, [file, readOnly, user]);
+  useShareAction(shareAction);
 
   if (loading) return <FileViewerSkeleton />;
   if (!user && !stashSlug) return null;
