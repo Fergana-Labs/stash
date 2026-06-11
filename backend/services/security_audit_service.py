@@ -63,6 +63,36 @@ async def record_event(
     )
 
 
+async def record_user_event(
+    *,
+    action: str,
+    actor_user_id: UUID,
+    target_type: str,
+    target_id: str | None = None,
+    provider: str | None = None,
+    source_type: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Account-scoped actions (integration connect/disconnect) have no single
+    workspace. The only read surface is per-workspace, so record one event per
+    workspace the actor belongs to — a NULL workspace_id row would be invisible."""
+    rows = await get_pool().fetch(
+        "SELECT workspace_id FROM workspace_members WHERE user_id = $1",
+        actor_user_id,
+    )
+    for row in rows:
+        await record_event(
+            action=action,
+            actor_user_id=actor_user_id,
+            workspace_id=row["workspace_id"],
+            target_type=target_type,
+            target_id=target_id,
+            provider=provider,
+            source_type=source_type,
+            metadata=metadata,
+        )
+
+
 async def list_workspace_events(
     *,
     workspace_id: UUID,
