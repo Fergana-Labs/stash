@@ -38,7 +38,7 @@ const REFERRAL_OPTIONS = [
   "Other",
 ];
 
-function useStashToken(): string | null {
+function useSkillToken(): string | null {
   return useSyncExternalStore(
     (cb) => {
       window.addEventListener("storage", cb);
@@ -65,7 +65,7 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const apiKey = useStashToken();
+  const apiKey = useSkillToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [sourceCount, setSourceCount] = useState(0);
   const [obsidianAdded, setObsidianAdded] = useState(false);
@@ -280,7 +280,7 @@ function AboutStep({
           First, tell us about you
         </h1>
         <p className="text-sm text-dim max-w-lg">
-          Three quick questions so we can tailor Stash to how you&rsquo;ll use it.
+          Three quick questions so we can tailor Skill to how you&rsquo;ll use it.
         </p>
       </div>
       <Field label="What's your role?">
@@ -299,7 +299,7 @@ function AboutStep({
           />
         )}
       </Field>
-      <Field label="What do you want to use Stash for?" optional>
+      <Field label="What do you want to use Skill for?" optional>
         <textarea
           value={useCase}
           onChange={(e) => onUseCase(e.target.value)}
@@ -392,10 +392,10 @@ function IntroStep() {
     <div className="space-y-5">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Welcome to Stash
+          Welcome to Skill
         </h1>
         <p className="text-sm text-dim max-w-lg">
-          Stash gives your agents one place to reach everything they need — in the
+          Skill gives your agents one place to reach everything they need — in the
           format they&rsquo;re fluent in.
         </p>
       </div>
@@ -503,7 +503,7 @@ function TryItOutStep({
       </TryOption>
       <TryOption
         badge="Capture"
-        lead="Run this in your terminal — every Claude Code / Codex session streams into Stash automatically."
+        lead="Run this in your terminal — every Claude Code / Codex session streams into Skill automatically."
       >
         <div className="space-y-2">
           <CommandBlock command={CLI_INSTALL_COMMAND} />

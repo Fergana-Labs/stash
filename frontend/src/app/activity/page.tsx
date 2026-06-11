@@ -20,8 +20,8 @@ import {
   FileIcon,
   PageIcon,
   SessionsIcon,
-  StashIcon,
-} from "../../components/StashIcons";
+  SkillIcon,
+} from "../../components/SkillIcons";
 import ContributorActivityTimeline from "../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../hooks/useAuth";
@@ -357,7 +357,7 @@ function verbFor(kind: string): string {
   if (kind === "page.updated") return "edited a page";
   if (kind === "file.uploaded") return "uploaded a file";
   if (kind === "member.joined") return "joined the workspace";
-  if (kind === "stash.published") return "published a Stash";
+  if (kind === "skill.published") return "published a Skill";
   return kind;
 }
 
@@ -398,10 +398,10 @@ function EventGlyph({ kind }: { kind: string }) {
         <FileIcon />
       </span>
     );
-  if (kind === "stash.published")
+  if (kind === "skill.published")
     return (
       <span style={{ color: "var(--color-brand-600)" }}>
-        <StashIcon />
+        <SkillIcon />
       </span>
     );
   return null;

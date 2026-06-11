@@ -38,7 +38,7 @@ const FEATURES = [
   ],
   [
     "Share a slice",
-    "Bundle any set of pages into a Cartridge with a link, or share a folder with specific people — teammates and their agents work from the same docs.",
+    "Bundle any set of pages into a Skill with a link, or share a folder with specific people — teammates and their agents work from the same docs.",
   ],
 ];
 
@@ -117,8 +117,8 @@ export default function AgentNativeDrivePage() {
             their own agents, and everyone works from the same source.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
-            <Point title="Publish a Cartridge">
-              Bundle any set of pages, files, and sessions into a Cartridge and
+            <Point title="Publish a Skill">
+              Bundle any set of pages, files, and sessions into a Skill and
               share it as a link — public on Discover, or private to a few people.
             </Point>
             <Point title="Share a folder">
@@ -126,7 +126,7 @@ export default function AgentNativeDrivePage() {
               get the same access, so context is shared, not copy-pasted.
             </Point>
             <Point title="Fork and stay in sync">
-              Anyone can fork a published Cartridge into their own workspace, and
+              Anyone can fork a published Skill into their own workspace, and
               it stays live with the source as it changes.
             </Point>
           </div>

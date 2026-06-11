@@ -10,7 +10,7 @@ import {
   useShareAction,
 } from "../../../../components/ShellChromeContext";
 import { recordRecent } from "../../../../lib/pins";
-import { PageBody } from "../../cartridges/[slug]/CartridgeItemBodies";
+import { PageBody } from "../../skills/[slug]/SkillItemBodies";
 import {
   downloadBlob,
   downloadRenderedPdf,
@@ -18,7 +18,7 @@ import {
   markdownToPdfBlocks,
 } from "../../../../components/DownloadMenu";
 import { DocumentPageSkeleton } from "../../../../components/SkeletonStates";
-import { StashIcon } from "../../../../components/StashIcons";
+import { SkillIcon } from "../../../../components/SkillIcons";
 import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
@@ -40,17 +40,17 @@ import {
   deleteCommentThread,
   getFolderContents,
   getPage,
-  getPublicCartridge,
+  getPublicSkill,
   listCommentThreads,
-  listObjectStashes,
+  listObjectSkills,
   reconcileCommentAnchors,
   replyToCommentThread,
   setCommentResolved,
   trashItem,
   updatePage,
   type FolderBreadcrumb,
-  type PublicCartridgeItem,
-  type WorkspaceCartridge,
+  type PublicSkillItem,
+  type WorkspaceSkill,
 } from "../../../../lib/api";
 import type { CommentThread, Page } from "../../../../lib/types";
 import { subscribePageEvents } from "../../../../lib/pageEvents";
@@ -95,16 +95,16 @@ function sameAnchorTops(a: Record<string, number>, b: Record<string, number>): b
   return aKeys.every((key) => a[key] === b[key]);
 }
 
-export default function StashPageView() {
+export default function SkillPageView() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const pageId = params.pageId as string;
   const { user, loading } = useAuth();
-  // When ?stash=<slug> is present, the page is viewed through a stash —
+  // When ?skill=<slug> is present, the page is viewed through a skill —
   // the viewer might not be a workspace member, so we fall back to the
-  // public-stash payload for read-only rendering.
-  const stashSlug = searchParams.get("stash");
+  // public-skill payload for read-only rendering.
+  const skillSlug = searchParams.get("skill");
 
   const [page, setPage] = useState<Page | null>(null);
   // Empty until the page loads — every consumer below renders or fires
@@ -112,11 +112,11 @@ export default function StashPageView() {
   const workspaceId = page?.workspace_id ?? "";
   useActiveWorkspaceId(workspaceId || null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
-  const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
-  const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
+  const [containingSkills, setContainingSkills] = useState<WorkspaceSkill[]>([]);
+  const [skillFallback, setSkillFallback] = useState<
+    { skill: WorkspaceSkill; item: PublicSkillItem } | null
   >(null);
-  const [stashAccessDenied, setStashAccessDenied] = useState(false);
+  const [skillAccessDenied, setSkillAccessDenied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
   // Save responses can arrive out of order if a fast save fires while a
@@ -166,7 +166,7 @@ export default function StashPageView() {
   const loadRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
-    if (!user || stashSlug || !workspaceId) return;
+    if (!user || skillSlug || !workspaceId) return;
     return subscribePageEvents(workspaceId, (evt) => {
       if (evt.page_id !== pageId) return;
       const { isHtml, htmlEditMode } = liveViewRef.current;
@@ -177,7 +177,7 @@ export default function StashPageView() {
         setExternalEdit({ agentName: evt.agent_name });
       }
     });
-  }, [workspaceId, pageId, user, stashSlug]);
+  }, [workspaceId, pageId, user, skillSlug]);
 
   useBreadcrumbs(
     [
@@ -191,7 +191,7 @@ export default function StashPageView() {
   );
 
   const shareAction = useMemo(() => {
-    if (!page || stashSlug || !user) return null;
+    if (!page || skillSlug || !user) return null;
     const title = page.name.replace(/\.md$/, "");
     return (
       <ResourceShareButton
@@ -202,7 +202,7 @@ export default function StashPageView() {
         currentUser={user}
       />
     );
-  }, [page, stashSlug, user]);
+  }, [page, skillSlug, user]);
   useShareAction(shareAction);
 
   const refreshThreads = useCallback(
@@ -218,60 +218,60 @@ export default function StashPageView() {
     [workspaceId, pageId]
   );
 
-  const loadStashFallback = useCallback(async () => {
-    if (!stashSlug) return false;
+  const loadSkillFallback = useCallback(async () => {
+    if (!skillSlug) return false;
     try {
-      const data = await getPublicCartridge(stashSlug);
+      const data = await getPublicSkill(skillSlug);
       const item = data.items.find(
         (it) => it.object_type === "page" && it.object_id === pageId,
       );
       if (!item) {
-        setStashFallback(null);
-        setStashAccessDenied(true);
+        setSkillFallback(null);
+        setSkillAccessDenied(true);
         setError("");
         return true;
       }
-      setStashFallback({ stash: data.cartridge, item });
-      setStashAccessDenied(false);
+      setSkillFallback({ skill: data.skill, item });
+      setSkillAccessDenied(false);
       setError("");
       return true;
     } catch {
-      setStashFallback(null);
-      setStashAccessDenied(true);
+      setSkillFallback(null);
+      setSkillAccessDenied(true);
       setError("");
       return true;
     }
-  }, [stashSlug, pageId]);
+  }, [skillSlug, pageId]);
 
   const load = useCallback(async () => {
     let p;
     try {
       p = await getPage(pageId);
     } catch (e) {
-      // Non-members of the workspace fall back to the stash payload when
-      // a ?stash=<slug> hint is present. The stash's readability check is
+      // Non-members of the workspace fall back to the skill payload when
+      // a ?skill=<slug> hint is present. The skill's readability check is
       // the only authorization in that path.
       if (
-        stashSlug &&
+        skillSlug &&
         e instanceof ApiError &&
         (e.status === 401 || e.status === 403 || e.status === 404)
       ) {
-        if (await loadStashFallback()) return;
+        if (await loadSkillFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load page");
       return;
     }
-    // getPage is the authorization gate (member OR share OR cartridge). The
+    // getPage is the authorization gate (member OR share OR skill). The
     // rest is enrichment — a shared viewer may not have access to every related
-    // resource (folder, containing cartridges), and that must never blank the
+    // resource (folder, containing skills), and that must never blank the
     // page they were legitimately shared.
     setPage(p);
-    setStashFallback(null);
-    setStashAccessDenied(false);
+    setSkillFallback(null);
+    setSkillAccessDenied(false);
     setError("");
     recordRecent(p.workspace_id, pageId, "page");
-    listObjectStashes(p.workspace_id, "page", pageId)
-      .then(setContainingStashes)
+    listObjectSkills(p.workspace_id, "page", pageId)
+      .then(setContainingSkills)
       .catch(() => {});
     if (p.folder_id) {
       getFolderContents(p.workspace_id, p.folder_id)
@@ -281,7 +281,7 @@ export default function StashPageView() {
       setFolderChain([]);
     }
     refreshThreads(p.workspace_id).catch(() => {});
-  }, [pageId, refreshThreads, stashSlug, loadStashFallback]);
+  }, [pageId, refreshThreads, skillSlug, loadSkillFallback]);
 
   const reconcileAfterSave = useCallback(
     (savedContent: string, contentType: "markdown" | "html") => {
@@ -434,17 +434,17 @@ export default function StashPageView() {
   );
 
   useEffect(() => {
-    // Anonymous viewers can load this page when ?stash=<slug> is set —
-    // the stash payload is the read source. Authenticated viewers always
+    // Anonymous viewers can load this page when ?skill=<slug> is set —
+    // the skill payload is the read source. Authenticated viewers always
     // try the workspace endpoint first.
     if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+    else if (!loading && skillSlug) void loadSkillFallback();
+  }, [user, loading, load, loadSkillFallback, skillSlug]);
 
   useEffect(() => {
-    // Only bounce to login if there's no stash fallback path available.
-    if (!loading && !user && !stashSlug) router.push("/login");
-  }, [user, loading, router, stashSlug]);
+    // Only bounce to login if there's no skill fallback path available.
+    if (!loading && !user && !skillSlug) router.push("/login");
+  }, [user, loading, router, skillSlug]);
 
   const handleHtmlAnchorTops = useCallback((iframeAnchorTops: Record<string, number>) => {
     const layout = pageLayoutRef.current;
@@ -494,22 +494,22 @@ export default function StashPageView() {
   }, [page]);
 
   if (loading) return <DocumentPageSkeleton />;
-  if (stashFallback) {
+  if (skillFallback) {
     return (
-      <StashFallbackPageView
-        stashSlug={stashSlug ?? ""}
-        stashTitle={stashFallback.stash.title}
-        item={stashFallback.item}
+      <SkillFallbackPageView
+        skillSlug={skillSlug ?? ""}
+        skillTitle={skillFallback.skill.title}
+        item={skillFallback.item}
       />
     );
   }
-  if (stashAccessDenied) {
+  if (skillAccessDenied) {
     return <PageAccessDeniedScreen accountLabel={user?.email ?? user?.name ?? null} />;
   }
   if (!user) {
-    // Login bounce is already firing for the no-stash case.
-    if (!stashSlug) return null;
-    // Stash mode: waiting on the fallback to land, or it failed.
+    // Login bounce is already firing for the no-skill case.
+    if (!skillSlug) return null;
+    // Skill mode: waiting on the fallback to land, or it failed.
     if (!error) return <DocumentPageSkeleton />;
     return (
       <div className="mx-auto max-w-md py-24 text-center">
@@ -780,7 +780,7 @@ export default function StashPageView() {
             onDeleteMessage={handleDeleteMessage}
           />
           <div className={threads.length > 0 ? "mt-6" : "mt-20"}>
-            <StashAside stashes={containingStashes} />
+            <SkillAside skills={containingSkills} />
           </div>
         </div>
       </div>
@@ -808,7 +808,7 @@ function PageAccessDeniedScreen({ accountLabel }: { accountLabel: string | null 
             You don&apos;t have access to this page
           </h1>
           <p className="mt-3 text-[14px] leading-6 text-dim">
-            If someone sent you this link, ask them to share the Stash with your
+            If someone sent you this link, ask them to share the Skill with your
             account.
           </p>
           {accountLabel ? (
@@ -851,34 +851,34 @@ function AccessPageGlyph({ large = false }: { large?: boolean }) {
   );
 }
 
-function StashAside({ stashes }: { stashes: WorkspaceCartridge[] }) {
+function SkillAside({ skills }: { skills: WorkspaceSkill[] }) {
   return (
     <aside>
       <div className="card-soft p-3.5">
-        <div className="sys-label">In Stashes</div>
-        {stashes.length > 0 ? (
+        <div className="sys-label">In Skills</div>
+        {skills.length > 0 ? (
           <div className="mt-2 flex flex-col gap-1.5">
-            {stashes.map((stash) => (
+            {skills.map((skill) => (
               <Link
-                key={stash.id}
-                href={`/cartridges/${stash.slug}`}
+                key={skill.id}
+                href={`/skills/${skill.slug}`}
                 className="linkrow px-2 py-1.5"
               >
                 <span className="text-[var(--color-brand-600)]">
-                  <StashIcon />
+                  <SkillIcon />
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-                  {stash.title}
+                  {skill.title}
                 </span>
                 <span className="sys-label" style={{ fontSize: 10 }}>
-                  {stash.items.length}
+                  {skill.items.length}
                 </span>
               </Link>
             ))}
           </div>
         ) : (
           <div className="mt-2 text-[12px] leading-relaxed text-muted">
-            This page is not in a Stash yet.
+            This page is not in a Skill yet.
           </div>
         )}
       </div>
@@ -909,30 +909,30 @@ function HtmlGlyph() {
 
 // Read-only render for viewers who can't reach the workspace endpoint —
 // usually because they aren't a workspace member. The content comes from
-// the public-stash payload, gated by the stash's readability rules.
-function StashFallbackPageView({
-  stashSlug,
-  stashTitle,
+// the public-skill payload, gated by the skill's readability rules.
+function SkillFallbackPageView({
+  skillSlug,
+  skillTitle,
   item,
 }: {
-  stashSlug: string;
-  stashTitle: string;
-  item: PublicCartridgeItem;
+  skillSlug: string;
+  skillTitle: string;
+  item: PublicSkillItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/cartridges/${stashSlug}`}
+          href={`/skills/${skillSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
-          ← {stashTitle}
+          ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
           {item.label || "(untitled)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
-          page · read-only via Stash
+          page · read-only via Skill
         </div>
         <div className="mt-6">
           <PageBody item={item} />

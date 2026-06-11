@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../../components/SessionUpload";
 import { SessionsListSkeleton } from "../../../../../components/SkeletonStates";
-import { PinIcon } from "../../../../../components/StashIcons";
+import { PinIcon } from "../../../../../components/SkillIcons";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -60,7 +60,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 
 // Drag payload: the DB row ids (sessions.id) of the dragged sessions. Dragging
 // a selected row carries the whole selection, like the file browser.
-const SESSION_DRAG_MIME = "application/x-stash-sessions";
+const SESSION_DRAG_MIME = "application/x-skill-sessions";
 
 // Drag wiring threaded down to session rows: whether rows can be dragged at
 // all (off inside shared folders), the row ids the current selection would
@@ -88,7 +88,7 @@ function readSessionDrop(e: DragEvent<HTMLElement>): string[] {
   }
 }
 
-export default function CartridgeSessionsPage() {
+export default function SkillSessionsPage() {
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.workspaceId as string;

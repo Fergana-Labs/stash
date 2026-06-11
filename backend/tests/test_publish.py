@@ -43,7 +43,7 @@ async def test_publish_falls_back_to_primary_workspace(client: AsyncClient):
     body = resp.json()
     assert body["page_id"]
     assert body["workspace_id"]
-    assert body["url"].endswith(f"/cartridges/{body['cartridge_slug']}")
+    assert body["url"].endswith(f"/skills/{body['skill_slug']}")
 
 
 @pytest.mark.asyncio

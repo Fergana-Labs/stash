@@ -1,12 +1,12 @@
-"""Tests for Stash-mediated content access."""
+"""Tests for Skill-mediated content access."""
 
 import uuid
 
 import pytest
 from httpx import AsyncClient
 
-from backend.models import CartridgeItem
-from backend.services import cartridge_service, permission_service, share_service
+from backend.models import SkillItem
+from backend.services import permission_service, share_service, shared_skill_service
 
 from .conftest import unique_name
 
@@ -163,18 +163,18 @@ async def _make_history_event(
     )
 
 
-async def _make_cartridge(workspace_id, owner_id, access, object_type, object_id):
+async def _make_skill(workspace_id, owner_id, access, object_type, object_id):
     workspace_permission, public_permission = _permissions_for_access(access)
-    return await cartridge_service.create_cartridge(
+    return await shared_skill_service.create_skill(
         workspace_id=workspace_id,
         owner_id=owner_id,
-        title=f"{access} Stash",
+        title=f"{access} Skill",
         description="",
         workspace_permission=workspace_permission,
         public_permission=public_permission,
         discoverable=False,
         cover_image_url=None,
-        items=[CartridgeItem(object_type=object_type, object_id=object_id)],
+        items=[SkillItem(object_type=object_type, object_id=object_id)],
     )
 
 
@@ -186,18 +186,18 @@ def _permissions_for_access(access):
     return "read", "none"
 
 
-async def _add_cartridge_member(pool, cartridge_id, user_id, granted_by, permission="read"):
+async def _add_skill_member(pool, skill_id, user_id, granted_by, permission="read"):
     await pool.execute(
-        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
+        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
         "VALUES ($1, $2, $3, $4)",
-        cartridge_id,
+        skill_id,
         user_id,
         permission,
         granted_by,
     )
 
 
-# --- New model: private by default; owner + shares + cartridge-open ---
+# --- New model: private by default; owner + shares + skill-open ---
 
 
 async def _share(pool, ws_id, object_type, object_id, user_id, permission="read", by=None):
@@ -388,26 +388,26 @@ async def test_table_share_by_email_grants_direct_read(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_cartridge_grants_read_only(pool):
+async def test_public_skill_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
-    await _make_cartridge(ws, owner, "public", "page", page)
+    await _make_skill(ws, owner, "public", "page", page)
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
 
 
 @pytest.mark.asyncio
-async def test_private_cartridge_member_reads_contents_not_write(pool):
+async def test_private_skill_member_reads_contents_not_write(pool):
     owner = await _make_user(pool)
     member = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
-    cartridge = await _make_cartridge(ws, owner, "private", "page", page)
-    await _add_cartridge_member(pool, cartridge["id"], member, owner, "read")
+    skill = await _make_skill(ws, owner, "private", "page", page)
+    await _add_skill_member(pool, skill["id"], member, owner, "read")
     assert await permission_service.check_access("page", page, member)
     assert not await permission_service.check_access("page", page, member, require="write")
     assert not await permission_service.check_access("page", page, stranger)

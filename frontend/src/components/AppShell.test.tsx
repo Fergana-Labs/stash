@@ -19,7 +19,7 @@ import { ShareModalProvider } from "../lib/shareModalContext";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
-} from "../lib/stashNavigationCache";
+} from "../lib/skillNavigationCache";
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
@@ -51,7 +51,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("../lib/stashNavigationCache", () => ({
+vi.mock("../lib/skillNavigationCache", () => ({
   getCachedWorkspaces: vi.fn(),
   readCachedWorkspaces: vi.fn(),
 }));
@@ -82,8 +82,8 @@ vi.mock("./CommandPalette", () => ({
   },
 }));
 
-vi.mock("./CartridgeInviteCenter", () => ({
-  default: () => <button aria-label="Stash invites">Invites</button>,
+vi.mock("./SkillInviteCenter", () => ({
+  default: () => <button aria-label="Skill invites">Invites</button>,
 }));
 
 const user = {
@@ -97,7 +97,7 @@ const user = {
 
 const workspace = {
   id: "ws-1",
-  name: "Demo Stash",
+  name: "Demo Skill",
   description: "",
   creator_id: user.id,
   invite_code: "invite",
@@ -273,7 +273,7 @@ describe("AppShell sidebar collapse", () => {
       screen.queryByRole("button", { name: "Back" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Demo Stash" }),
+      screen.queryByRole("link", { name: "Demo Skill" }),
     ).not.toBeInTheDocument();
   });
 
@@ -322,7 +322,7 @@ describe("AppShell sidebar collapse", () => {
   });
 
   it("renders a custom header Share action outside workspace routes", async () => {
-    nav.pathname = "/cartridges/shared-stash";
+    nav.pathname = "/skills/shared-skill";
     mockWorkspaceCache();
 
     function PageWithShareAction() {
@@ -333,7 +333,7 @@ describe("AppShell sidebar collapse", () => {
         [],
       );
       useShareAction(shareButton);
-      return <div>Stash content</div>;
+      return <div>Skill content</div>;
     }
 
     render(
@@ -377,7 +377,7 @@ describe("AppShell sidebar collapse", () => {
     expect(within(header!).getByText("Launch plan")).toBeInTheDocument();
     expect(within(header!).getAllByText("/")).toHaveLength(2);
     expect(
-      within(header!).queryByRole("link", { name: "Demo Stash" }),
+      within(header!).queryByRole("link", { name: "Demo Skill" }),
     ).not.toBeInTheDocument();
   });
 });

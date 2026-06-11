@@ -15,7 +15,7 @@ import {
   readCachedSidebars,
   readCachedWorkspaces,
   subscribeToSidebarRefresh,
-} from "../lib/stashNavigationCache";
+} from "../lib/skillNavigationCache";
 import {
   listWorkspaceSources,
   type WorkspaceSidebar,
@@ -30,9 +30,9 @@ import {
   HelpIcon,
   SessionsIcon,
   SettingsIcon,
-  StashIcon,
+  SkillIcon,
   TrashIcon,
-} from "./StashIcons";
+} from "./SkillIcons";
 
 interface AppSidebarProps {
   user?: User;
@@ -143,7 +143,7 @@ export default function AppSidebar({
   const cachedWorkspaces = readCachedWorkspaces(userId);
   const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
   // Persisted "last-viewed workspace" so navigation to non-workspace routes
-  // (/cartridges/{slug}, /discover, /activity) doesn't lose the workspace
+  // (/skills/{slug}, /discover, /activity) doesn't lose the workspace
   // context. Updated below whenever the route reveals an explicit workspace.
   const [lastWorkspaceId, setLastWorkspaceId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -153,7 +153,7 @@ export default function AppSidebar({
     activeWorkspaceId ?? routeWorkspaceId ?? lastWorkspaceId;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
-  // Spine resolves the active cartridge's slug for the footer Settings link.
+  // Spine resolves the active skill's slug for the footer Settings link.
   const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
     readCachedSidebars()
   );
@@ -205,7 +205,7 @@ export default function AppSidebar({
       .catch(() => {});
   }, [userId]);
 
-  // Load the active workspace's spine (for the active-cartridge slug).
+  // Load the active workspace's spine (for the active-skill slug).
   useEffect(() => {
     if (!activeWorkspaceKey) return;
     if (spines[activeWorkspaceKey]) return;
@@ -286,18 +286,18 @@ export default function AppSidebar({
     return { native, connected };
   }, [activeWorkspaceKey, sourceMap, pathname]);
 
-  const activeCartridgeSlug = pathname.match(/^\/cartridges\/([^/?#]+)/)?.[1] ?? null;
-  const activeCartridge =
-    activeWorkspace && activeCartridgeSlug
-      ? spines[activeWorkspace.id]?.cartridges?.find((stash) => stash.slug === activeCartridgeSlug)
+  const activeSkillSlug = pathname.match(/^\/skills\/([^/?#]+)/)?.[1] ?? null;
+  const activeSkill =
+    activeWorkspace && activeSkillSlug
+      ? spines[activeWorkspace.id]?.skills?.find((skill) => skill.slug === activeSkillSlug)
       : null;
-  // Workspace settings now live on the unified /settings page; only Cartridges
+  // Workspace settings now live on the unified /settings page; only Skills
   // keep their own settings route.
-  const settingsHref = activeCartridge
-    ? `/cartridges/${activeCartridge.slug}/settings`
+  const settingsHref = activeSkill
+    ? `/skills/${activeSkill.slug}/settings`
     : "/settings";
-  const settingsActive = activeCartridge
-    ? pathname === `/cartridges/${activeCartridge.slug}/settings`
+  const settingsActive = activeSkill
+    ? pathname === `/skills/${activeSkill.slug}/settings`
     : pathname === "/settings";
 
   return (
@@ -312,7 +312,7 @@ export default function AppSidebar({
       <nav className="px-2 pt-2 text-[13px]">
         <NavRow
           href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}
-          icon={<StashIcon />}
+          icon={<SkillIcon />}
           label="Home"
           active={
             activeWorkspace
@@ -339,12 +339,12 @@ export default function AppSidebar({
         ) : null}
         {activeWorkspace ? (
           <NavRow
-            href={`/workspaces/${activeWorkspace.id}/cartridges`}
+            href={`/workspaces/${activeWorkspace.id}/skills`}
             icon={<span aria-hidden>❏</span>}
-            label="Cartridges"
+            label="Skills"
             active={
-              pathname.startsWith(`/workspaces/${activeWorkspace.id}/cartridges`) ||
-              pathname.startsWith("/cartridges/")
+              pathname.startsWith(`/workspaces/${activeWorkspace.id}/skills`) ||
+              pathname.startsWith("/skills/")
             }
           />
         ) : null}

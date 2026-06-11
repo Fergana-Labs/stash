@@ -13,7 +13,7 @@ describe("generateWelcomeHtml", () => {
       },
     });
 
-    expect(html).toContain("<h1>Welcome to Stash, Ada</h1>");
+    expect(html).toContain("<h1>Welcome to Skill, Ada</h1>");
     expect(html).toContain("<h2>What to try next</h2>");
     expect(html).not.toContain("This is your About page");
   });

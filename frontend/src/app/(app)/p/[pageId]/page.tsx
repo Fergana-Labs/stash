@@ -4,13 +4,13 @@ import { Suspense } from "react";
 import { DocumentPageSkeleton } from "../../../../components/SkeletonStates";
 import {
   firstSearchParam,
-  metadataForPublicCartridgeItem,
-} from "../../../../lib/cartridgeMetadata";
+  metadataForPublicSkillItem,
+} from "../../../../lib/skillMetadata";
 import PageClient from "./PageClient";
 
 type PageProps = {
   params: Promise<{ pageId: string }>;
-  searchParams: Promise<{ stash?: string | string[] }>;
+  searchParams: Promise<{ skill?: string | string[] }>;
 };
 
 export async function generateMetadata({
@@ -18,14 +18,14 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const [{ pageId }, query] = await Promise.all([params, searchParams]);
-  const slug = firstSearchParam(query.stash);
+  const slug = firstSearchParam(query.skill);
   if (!slug) return { title: "Page - Stash" };
 
-  return metadataForPublicCartridgeItem({
+  return metadataForPublicSkillItem({
     slug,
     itemType: "page",
     itemId: pageId,
-    path: `/p/${pageId}?stash=${encodeURIComponent(slug)}`,
+    path: `/p/${pageId}?skill=${encodeURIComponent(slug)}`,
   });
 }
 

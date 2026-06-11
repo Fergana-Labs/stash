@@ -20,7 +20,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   const parts: string[] = [];
 
   parts.push(
-    `<h1>Welcome to Stash, ${escapeHtml(displayName)}</h1>`,
+    `<h1>Welcome to Skill, ${escapeHtml(displayName)}</h1>`,
   );
 
   if (counts.sessions > 0) {
@@ -42,13 +42,13 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
           ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
           : ` from settings.`
       }</li>
-      <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>bash -c "$(curl -fsSL https://joinstash.ai/install)"</code></li>
+      <li><strong>Install the CLI</strong> — let your coding agent use Skill directly: <code>bash -c "$(curl -fsSL https://joinstash.ai/install)"</code></li>
     </ul>`,
   );
 
-  parts.push(`<h2>How Stash works</h2>`);
+  parts.push(`<h2>How Skill works</h2>`);
   parts.push(
-    `<p>Stash is built around <strong>sources</strong> your agents read and write, the <strong>folders and files</strong> you share, and the <strong>agents</strong> you talk to over all of it.</p>
+    `<p>Skill is built around <strong>sources</strong> your agents read and write, the <strong>folders and files</strong> you share, and the <strong>agents</strong> you talk to over all of it.</p>
     <ul>
       <li><strong>Sources</strong> — everything your agents produce or consume, all searchable:
         <ul>

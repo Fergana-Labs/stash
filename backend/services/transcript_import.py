@@ -10,7 +10,7 @@ The CLI writes a JSONL line per turn. Each line is shaped roughly:
 We map each line to a session event row so the session viewer can
 reconstruct the conversation by querying rows ordered by created_at.
 
-Reuses the parsing pattern from `routers/cartridges.py:get_cartridge_transcript_messages`
+Reuses the parsing pattern from `routers/skills.py:get_skill_transcript_messages`
 but goes one step further by also surfacing tool_use blocks as their own
 events.
 """

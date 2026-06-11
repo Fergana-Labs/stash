@@ -1,4 +1,4 @@
-"""Sharing: grant a principal (user or cartridge) access to an object.
+"""Sharing: grant a principal (user or skill) access to an object.
 
 Primary path is sharing a folder/file/session with a person by email. Only the
 object's owner (its workspace member) may share it. Folder/session-folder shares
@@ -151,10 +151,10 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         SELECT s.principal_type, s.principal_id, s.permission, s.expires_at,
                (s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,
                u.name AS user_name, u.display_name AS user_display, u.email AS user_email,
-               c.title AS cartridge_title
+               c.title AS skill_title
         FROM shares s
         LEFT JOIN users u ON s.principal_type = 'user' AND u.id = s.principal_id
-        LEFT JOIN cartridges c ON s.principal_type = 'cartridge' AND c.id = s.principal_id
+        LEFT JOIN skills c ON s.principal_type = 'skill' AND c.id = s.principal_id
         WHERE s.object_type = $1 AND s.object_id = $2
         ORDER BY s.created_at
         """,
@@ -167,7 +167,7 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
             "principal_type": r["principal_type"],
             "principal_id": str(r["principal_id"]),
             "permission": r["permission"],
-            "label": r["user_display"] or r["user_name"] or r["cartridge_title"] or "",
+            "label": r["user_display"] or r["user_name"] or r["skill_title"] or "",
             "email": r["user_email"],
             "pending": False,
             "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,
