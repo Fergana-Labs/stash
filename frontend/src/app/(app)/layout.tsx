@@ -28,10 +28,19 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const { user, loading, logout } = useAuth();
   const isWorkspaceStashRoute =
     pathname.startsWith("/workspaces/") && searchParams.has("stash");
+  // Resource detail routes may carry a public (anyone with the link) grant.
+  // Their clients probe it themselves and bounce to /login when it's absent,
+  // so the layout must not pre-empt them for anonymous viewers.
+  const isResourceDetailRoute =
+    pathname.startsWith("/p/") ||
+    pathname.startsWith("/f/") ||
+    pathname.startsWith("/sessions/") ||
+    /^\/workspaces\/[^/]+\/folders\//.test(pathname);
   const isPublicCartridgeRoute =
     pathname.startsWith("/cartridges/") ||
     pathname.startsWith("/session-folders/") ||
-    isWorkspaceStashRoute;
+    isWorkspaceStashRoute ||
+    isResourceDetailRoute;
 
   useEffect(() => {
     if (loading) return;
