@@ -102,7 +102,7 @@ export default function CommandPalette({
           local.push({
             kind: "page",
             label: p.name.replace(/\.md$/, ""),
-            href: `/workspaces/${workspaceId}/p/${p.id}`,
+            href: `/p/${p.id}`,
             detail: p.content_type === "html" ? "HTML page" : "Page",
           });
       });
@@ -111,7 +111,7 @@ export default function CommandPalette({
           local.push({
             kind: "session",
             label: `#${s.session_id}`,
-            href: `/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`,
+            href: `/sessions/${encodeURIComponent(s.session_id)}`,
             detail: s.agent_name,
           });
       });
@@ -130,8 +130,8 @@ export default function CommandPalette({
             kind: "file",
             label: f.name,
             href: f.linked_table_id
-              ? `/tables/${f.linked_table_id}?workspaceId=${workspaceId}`
-              : `/workspaces/${workspaceId}/f/${f.id}`,
+              ? `/tables/${f.linked_table_id}`
+              : `/f/${f.id}`,
             detail: f.content_type,
           });
       });
@@ -157,7 +157,7 @@ export default function CommandPalette({
         const remote: Result[] = pages.map((p) => ({
           kind: "page" as const,
           label: p.name.replace(/\.md$/, ""),
-          href: `/workspaces/${workspaceId}/p/${p.id}`,
+          href: `/p/${p.id}`,
           detail: "Page",
         }));
         setResults((prev) => {
@@ -304,8 +304,7 @@ function tableMatchesQuery(table: TableWithWorkspace, query: string): boolean {
 }
 
 function tableHref(table: TableWithWorkspace): string {
-  if (!table.workspace_id) return `/tables/${table.id}`;
-  return `/tables/${table.id}?workspaceId=${table.workspace_id}`;
+  return `/tables/${table.id}`;
 }
 
 function tableDetail(table: TableWithWorkspace): string {

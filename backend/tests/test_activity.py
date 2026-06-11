@@ -402,7 +402,7 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     )
     assert resp.status_code == 200
 
-    events = resp.json()
+    events = resp.json()["events"]
     visible = [
         event
         for event in events
@@ -439,6 +439,44 @@ async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
     )
     assert resp.status_code == 200
 
-    events = [event for event in resp.json() if event["kind"] == "session.uploaded"]
+    events = [event for event in resp.json()["events"] if event["kind"] == "session.uploaded"]
     assert {event["target_id"] for event in events} == {"first-session"}
     assert {event["workspace_id"] for event in events} == {first_workspace["id"]}
+
+
+@pytest.mark.asyncio
+async def test_user_activity_paginates_with_before_cursor(client: AsyncClient):
+    api_key = await _register(client, "activity_paged")
+    workspace = await _workspace(client, api_key, "Paged Activity")
+
+    for hour in (1, 2, 3):
+        await _event(
+            client,
+            api_key,
+            workspace["id"],
+            f"paged-session-{hour}",
+            created_at=f"2026-01-02T0{hour}:00:00Z",
+        )
+
+    # Page through one event at a time using the last event's ts as the cursor.
+    # The feed also contains member.joined events, so only the session events
+    # have a known count and order.
+    seen: list[tuple[str, str, str]] = []
+    before: str | None = None
+    has_more = True
+    while has_more:
+        params: dict = {"limit": 1}
+        if before:
+            params["before"] = before
+        resp = await client.get("/api/v1/me/activity", params=params, headers=_auth(api_key))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["events"]) == 1
+        seen.extend((event["kind"], event["target_id"], event["ts"]) for event in body["events"])
+        before = body["events"][-1]["ts"]
+        has_more = body["has_more"]
+        assert len(seen) <= 10, "cursor failed to advance"
+
+    assert len(seen) == len(set(seen)), "an event repeated across pages"
+    session_ids = [target for kind, target, _ in seen if kind == "session.uploaded"]
+    assert session_ids == ["paged-session-3", "paged-session-2", "paged-session-1"]

@@ -37,7 +37,7 @@ const api = vi.hoisted(() => ({
 }));
 
 const route = vi.hoisted(() => ({
-  search: "workspaceId=ws-1",
+  search: "",
   push: vi.fn(),
 }));
 
@@ -139,7 +139,7 @@ const createdRow = {
 describe("TableEditorPage row creation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    route.search = "workspaceId=ws-1";
+    route.search = "";
     route.push.mockClear();
     api.getTable.mockResolvedValue(table);
     api.createTableRow.mockResolvedValue(createdRow);
@@ -170,6 +170,20 @@ describe("TableEditorPage row creation", () => {
     vi.unstubAllGlobals();
   });
 
+  it("loads the table by ID alone and scopes rows to its canonical workspace", async () => {
+    render(<TableEditorPage />);
+
+    expect(await screen.findByText("Alice")).toBeInTheDocument();
+    // The URL carries no workspaceId; the table's own workspace_id must
+    // drive every workspace-scoped call, so links can never go stale.
+    expect(api.getTable).toHaveBeenCalledWith("table-1");
+    expect(api.listTableRows).toHaveBeenCalledWith(
+      "ws-1",
+      "table-1",
+      expect.objectContaining({ offset: 0 }),
+    );
+  });
+
   it("keeps pagination in sync when appending a newly-created row", async () => {
     render(<TableEditorPage />);
 
@@ -191,7 +205,7 @@ describe("TableEditorPage row creation", () => {
   });
 
   it("renders stash-mode tables without the app shell for signed-in users", async () => {
-    route.search = "workspaceId=ws-1&stash=shared-stash";
+    route.search = "stash=shared-stash";
     api.getPublicCartridge.mockResolvedValue({
       cartridge: {
         id: "stash-1",

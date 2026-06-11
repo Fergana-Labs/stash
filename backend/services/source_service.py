@@ -31,9 +31,13 @@ import re
 from urllib.parse import quote
 from uuid import UUID
 
+import httpx
+from fastapi import HTTPException
+
 from ..database import get_pool
 
 logger = logging.getLogger(__name__)
+TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
 
 # Native source handles. Connected sources use their workspace_sources.id (str).
 NATIVE_FILES = "files"
@@ -64,6 +68,7 @@ SOURCE_CAPABILITY = {
     "jira_project": "searchable",
     "asana_project": "navigable",
     "gong_calls": "searchable",
+    "twitter": "searchable",
     # Queryable sources run live read-only SQL; they have no document table or
     # indexer (see source_entries / query_source).
     "snowflake": "queryable",
@@ -80,6 +85,7 @@ PROVIDER_SOURCE_TYPES = {
     "asana": ("asana_project",),
     "gong": ("gong_calls",),
     "snowflake": ("snowflake",),
+    "twitter": ("twitter",),
 }
 
 SOURCE_TYPE_PROVIDER = {
@@ -197,6 +203,25 @@ def _source_row(row) -> dict:
     }
 
 
+def _source_search_hint(source: dict) -> str | None:
+    if source["source_type"] != "twitter":
+        return None
+
+    personal = (
+        "Use list_source on this source to read home, my-posts, bookmarks, likes, and dms. "
+        "Post reads also advertise thread:<id>, likers:<id>, and reposters:<id> refs. "
+        "For You is not exposed by the official X API."
+    )
+    match = TWITTER_HANDLE_RE.search(source["display_name"] or "")
+    if not match:
+        return f"Twitter / X source. Scope search to this source before querying X. {personal}"
+    username = match.group(1)
+    return (
+        "Twitter / X source. To search this user's recent public posts, scope search "
+        f"to this source and add `from:{username}` to the query. {personal}"
+    )
+
+
 # --- workspace_sources registry --------------------------------------------
 
 
@@ -209,19 +234,24 @@ async def create_source(
     display_name: str,
     settings: dict | None = None,
 ) -> dict:
-    """Register a connected source (idempotent on the natural key). The first
-    sync runs immediately because `next_sync_at` defaults to now()."""
+    """Register a connected source (idempotent on the natural key). For synced
+    types the first sync runs immediately because `next_sync_at` defaults to
+    now(). Types without a scheduled-sync interval (search-driven / queryable)
+    have no indexer and must NOT enroll in the sync queue: the reconciler skips
+    them without advancing next_sync_at, so an enabled row would sit "due"
+    forever at the front of the due_sources window and starve real syncs."""
     validate_source_external_ref(source_type, external_ref)
     capability = SOURCE_CAPABILITY.get(source_type, "navigable")
     interval = DEFAULT_SYNC_INTERVAL_S.get(source_type, 3600)
     normalized_settings = normalize_source_settings(source_type, settings)
+    sync_enabled = source_type in DEFAULT_SYNC_INTERVAL_S
     row = await get_pool().fetchrow(
         """
         INSERT INTO workspace_sources (
             workspace_id, owner_user_id, source_type, external_ref,
-            display_name, capability, sync_interval_s, settings
+            display_name, capability, sync_interval_s, sync_enabled, settings
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
         ON CONFLICT (workspace_id, owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
@@ -236,6 +266,7 @@ async def create_source(
         display_name,
         capability,
         interval,
+        sync_enabled,
         normalized_settings,
     )
     return _source_row(row)
@@ -423,6 +454,7 @@ SOURCE_TABLE = {
     "jira_project": "jira_documents",
     "asana_project": "asana_documents",
     "gong_calls": "gong_documents",
+    "twitter": "twitter_posts",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -443,7 +475,13 @@ CONTENT_TABLES = {
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
 # provider search coroutine, resolved lazily to avoid an import cycle.
-FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project"}
+FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project", "twitter"}
+
+# Federated types excluded from UNSCOPED search fan-out: the owner's API quota
+# is metered (X free tier: one recent-search per 15 minutes), too scarce to
+# spend on searches that weren't aimed at the provider. Agents search these
+# only by explicitly scoping to the source handle.
+SCOPED_ONLY_SEARCH_TYPES = {"twitter"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
@@ -546,7 +584,7 @@ async def upsert_index_row(
     the path/name + the provider's external_ref; the body is fetched lazily."""
     pool = get_pool()
     existing = await pool.fetchrow(
-        f"SELECT external_ref, external_updated_at, deleted_at FROM {table} "
+        f"SELECT name, external_ref, external_updated_at, deleted_at FROM {table} "
         f"WHERE source_id = $1 AND path = $2",
         source_id,
         path,
@@ -554,6 +592,11 @@ async def upsert_index_row(
     if (
         existing
         and existing["deleted_at"] is None
+        # name is part of the freshness check: some providers' names derive
+        # from mutable fields (a tweet's name embeds the author's username)
+        # without external_updated_at changing, and stale names would surface
+        # in list/search results forever.
+        and existing["name"] == name
         and existing["external_ref"] == external_ref
         and existing["external_updated_at"] == external_updated_at
     ):
@@ -586,6 +629,22 @@ async def soft_delete_missing(table: str, source_id: UUID, present_paths: list[s
         present_paths,
     )
     return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+
+
+async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) -> int:
+    """Hard-delete cache rows whose last write is older than the window.
+    Search-backed caches (twitter) grow per-query and have no re-sync pass to
+    reconcile them, so age is the only retention signal. Immutable rows never
+    bump updated_at when re-seen, so this is age-since-first-cached — fine,
+    because a pruned post simply reappears the next time a search returns it.
+    Returns the number removed."""
+    result = await get_pool().execute(
+        f"DELETE FROM {table} "
+        f"WHERE source_id = $1 AND updated_at < now() - make_interval(days => $2)",
+        source_id,
+        max_age_days,
+    )
+    return int(result.split()[-1]) if result.startswith("DELETE") else 0
 
 
 async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> list[dict]:
@@ -635,10 +694,30 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
     return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
 
 
+async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
+    from ..integrations.twitter.indexer import fetch_twitter_content, twitter_ref_name
+
+    owner_user_id = UUID(source["owner_user_id"])
+    is_post = (ref.isascii() and ref.isdigit()) or ref.startswith("post:")
+    return {
+        "path": ref,
+        "name": twitter_ref_name(ref),
+        "kind": "post" if is_post else "feed",
+        "content": await fetch_twitter_content(owner_user_id, source["external_ref"], ref),
+        "external_ref": ref,
+    }
+
+
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables (drive/notion) fetch it lazily from the provider with the owner's
     token."""
+    if source["source_type"] == "twitter":
+        from ..integrations.twitter.indexer import is_twitter_live_ref
+
+        if is_twitter_live_ref(path):
+            return await _read_twitter_live_ref(source, path)
+
     table = _table_for(source["source_type"])
     if table in CONTENT_TABLES:
         if table == "slack_messages":
@@ -741,6 +820,8 @@ async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
         from ..integrations.asana.indexer import fetch_asana_content
 
         return await fetch_asana_content(owner_user_id, external_ref)
+    # twitter never reaches here: every cached path is a numeric post id, which
+    # read_document already routes through the live-ref path.
     return ""
 
 
@@ -761,10 +842,38 @@ async def index_paths_for_refs(
     return {r["external_ref"]: (r["path"], r["name"]) for r in rows}
 
 
-async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
+def _scoped_search_error(source: dict, e: Exception) -> Exception:
+    """Map a scoped-search provider failure to an HTTP error the API can serve.
+    A provider 401 must not surface as OUR 401 (clients read that as Stash
+    session expiry), and provider HTTP errors must not escape as raw 500s."""
+    name = source["display_name"] or source["source_type"]
+    if isinstance(e, HTTPException) and e.status_code == 401:
+        return HTTPException(status_code=409, detail=e.detail)
+    if isinstance(e, httpx.HTTPStatusError):
+        status = e.response.status_code
+        if status == 429:
+            return HTTPException(
+                status_code=429,
+                detail=f"{name} rate limit reached — try again in a few minutes",
+            )
+        if status in (401, 403):
+            return HTTPException(
+                status_code=409,
+                detail=f"{name} rejected the connection — reconnect it in Settings",
+            )
+        return HTTPException(status_code=502, detail=f"{name} search failed (HTTP {status})")
+    return e
+
+
+async def _federated_search(
+    source: dict, query: str, limit: int, *, swallow_errors: bool = True
+) -> list[dict]:
     """Run a federated source's native provider search. Returns unified hits
-    ({source, source_name, ref, name, snippet}); never raises — a provider error
-    (e.g. Asana on a free tier) logs and yields no hits so search stays alive."""
+    ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
+    provider error (e.g. Asana on a free tier) logs and yields no hits so
+    search stays alive; a SCOPED search raises instead — when the user asked
+    for this one source, an empty result must mean "no matches", never a
+    silently dead connection (revoked token, rate limit, bad query)."""
     source_type = source["source_type"]
     try:
         if source_type == "google_drive":
@@ -775,10 +884,14 @@ async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
             from ..integrations.jira.indexer import search_jira as fn
         elif source_type == "asana_project":
             from ..integrations.asana.indexer import search_asana as fn
+        elif source_type == "twitter":
+            from ..integrations.twitter.indexer import search_twitter as fn
         else:
             return []
         hits = await fn(source, query, limit)
     except Exception as exc:
+        if not swallow_errors:
+            raise _scoped_search_error(source, exc) from exc
         logger.warning(
             "federated search failed source=%s source_type=%s exception_type=%s",
             source["id"],
@@ -893,21 +1006,24 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
         },
     ]
     for s in await list_connected_sources(workspace_id, user_id):
-        sources.append(
-            {
-                "source": s["id"],
-                "type": s["source_type"],
-                "capability": s["capability"],
-                "display_name": s["display_name"],
-                # Sync bookkeeping for the per-integration page (the sidebar
-                # ignores these). Already on the row — no extra query.
-                "external_ref": s["external_ref"],
-                "sync_status": s["sync_status"],
-                "sync_error": s["sync_error"],
-                "last_synced_at": s["last_synced_at"],
-                "settings": s["settings"],
-            }
-        )
+        item = {
+            "source": s["id"],
+            "type": s["source_type"],
+            "capability": s["capability"],
+            "display_name": s["display_name"],
+            # Sync bookkeeping for the per-integration page (the sidebar
+            # ignores these). Already on the row — no extra query.
+            "external_ref": s["external_ref"],
+            "sync_enabled": s["sync_enabled"],
+            "sync_status": s["sync_status"],
+            "sync_error": s["sync_error"],
+            "last_synced_at": s["last_synced_at"],
+            "settings": s["settings"],
+        }
+        hint = _source_search_hint(s)
+        if hint:
+            item["search_hint"] = hint
+        sources.append(item)
     return sources
 
 
@@ -990,6 +1106,10 @@ async def source_entries(
         from ..integrations.snowflake.client import list_tables
 
         return await list_tables(connected)
+    if connected["source_type"] == "twitter":
+        from ..integrations.twitter.indexer import twitter_live_entries
+
+        return twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
     return await list_documents(connected, prefix=prefix)
 
 
@@ -1021,6 +1141,11 @@ def source_document_url(
     if source_type == "gmail":
         mailbox = quote(external_ref or "0", safe="")
         return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
+    if source_type == "twitter":
+        post_id = path.removeprefix("post:")
+        if post_id.isascii() and post_id.isdigit():
+            return f"https://x.com/i/web/status/{post_id}"
+        return None
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
     return None
 
@@ -1231,16 +1356,19 @@ async def search_all(
         ]
 
         # Federated sources search the provider's native API live. Scoped → the
-        # one source; unscoped → fan out across the user's federated sources
-        # (each call is independent and already swallows its own errors).
+        # one source, raising on provider errors so a dead connection is never
+        # mistaken for "no matches"; unscoped → fan out across the user's
+        # federated sources (each call swallows its own errors, and scoped-only
+        # types are skipped — see SCOPED_ONLY_SEARCH_TYPES).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                results += await _federated_search(connected, query, limit)
+                results += await _federated_search(connected, query, limit, swallow_errors=False)
         else:
             federated = [
                 s
                 for s in await list_connected_sources(workspace_id, user_id)
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
+                and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]
             for hits in await asyncio.gather(
                 *(_federated_search(s, query, limit) for s in federated)
