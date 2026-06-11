@@ -13,11 +13,12 @@ import json
 import time
 import zipfile
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
 
+from backend.routers import sources as sources_router
 from backend.services import agent_runtime, source_service
 
 from .conftest import unique_name
@@ -311,6 +312,251 @@ async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
     assert removed == 1
     live = await source_service.list_documents(src)
     assert {d["path"] for d in live} == {"README.md"}
+
+
+# --- search-driven sources (twitter) -----------------------------------------
+
+
+async def _create_twitter_source(ws: UUID, owner_id: UUID) -> dict:
+    # external_ref is the connected X account's numeric user id (see
+    # _resolve_twitter_source) — reads address personal feeds with it directly.
+    return await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="twitter",
+        external_ref="111",
+        display_name="Twitter / X (@stash)",
+    )
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_stores_account_id_and_handle(monkeypatch):
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    async def fake_me(token):
+        return {"id": "111", "username": "henry_dowling"}
+
+    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
+    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
+
+    external_ref, display_name = await sources_router._resolve_twitter_source(uuid4())
+
+    assert external_ref == "111"
+    assert display_name == "Twitter / X (@henry_dowling)"
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_requires_connected_handle(monkeypatch):
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    async def fake_me(token):
+        return {"id": "111"}
+
+    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
+    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
+
+    with pytest.raises(sources_router.HTTPException, match="Reconnect Twitter"):
+        await sources_router._resolve_twitter_source(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_prune_index_rows_removes_only_stale_rows(client: AsyncClient):
+    from backend.database import get_pool
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+    sid = UUID(src["id"])
+
+    for path in ("1", "2"):
+        await source_service.upsert_index_row(
+            table="twitter_posts",
+            source_id=sid,
+            workspace_id=ws,
+            path=path,
+            name=f"@stash - post {path}",
+            kind="post",
+            external_ref=path,
+        )
+    await get_pool().execute(
+        "UPDATE twitter_posts SET updated_at = now() - interval '31 days' "
+        "WHERE source_id = $1 AND path = '2'",
+        sid,
+    )
+
+    removed = await source_service.prune_index_rows("twitter_posts", sid, max_age_days=30)
+    assert removed == 1
+    live = await source_service.list_documents(src)
+    assert {d["path"] for d in live} == {"1"}
+
+
+@pytest.mark.asyncio
+async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient):
+    """A source type with no indexer must not enroll in the sync schedule: the
+    reconciler skips it WITHOUT advancing next_sync_at, so an enabled row would
+    sit "due" forever at the front of the due_sources window and starve every
+    real sync behind it."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    assert src["sync_enabled"] is False
+    assert src["id"] not in {s["id"] for s in await source_service.due_sources()}
+
+    # Manual sync-now is refused too — the queued task would silently no-op.
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/sync", headers=_auth(api_key)
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_unscoped_search_skips_scoped_only_federated_sources(client, monkeypatch):
+    """Unscoped fan-out must not spend X's metered quota; an explicitly scoped
+    search does — and surfaces provider errors instead of swallowing them into
+    a misleading "no results"."""
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    queries: list[str] = []
+
+    async def fake_search(source, query, limit):
+        queries.append(query)
+        return [{"ref": "1", "name": "@stash - 2026-06-08", "snippet": "hello"}]
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", fake_search)
+    await source_service.search_all(ws, owner_id, "anything at all")
+    assert queries == []
+
+    scoped = await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+    assert queries == ["hello"]
+    assert any(h.get("ref") == "1" for h in scoped)
+
+    async def dead_connection(source, query, limit):
+        raise RuntimeError("X said 401")
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", dead_connection)
+    with pytest.raises(RuntimeError):
+        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+
+
+@pytest.mark.asyncio
+async def test_twitter_list_sources_exposes_my_posts_search_hint(client):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    sources = await source_service.list_sources(ws, owner_id)
+    twitter = next(s for s in sources if s["source"] == src["id"])
+
+    assert twitter["display_name"] == "Twitter / X (@stash)"
+    assert "from:stash" in twitter["search_hint"]
+    assert "bookmarks" in twitter["search_hint"]
+    assert "dms" in twitter["search_hint"]
+    assert "For You is not exposed" in twitter["search_hint"]
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_lists_live_personal_refs(client):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    entries = await source_service.source_entries(ws, owner_id, src["id"])
+    paths = {entry["path"] for entry in entries}
+
+    assert {"home", "my-posts", "bookmarks", "likes", "dms"} <= paths
+
+
+@pytest.mark.asyncio
+async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    fetched: list[tuple[str, str]] = []
+
+    async def fake_fetch(owner, account_id, ref):
+        fetched.append((account_id, ref))
+        return "# Bookmarks\n\n> saved post"
+
+    monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fake_fetch)
+
+    doc = await source_service.read_document(src, "bookmarks")
+
+    assert doc["path"] == "bookmarks"
+    assert doc["name"] == "Bookmarks"
+    assert "> saved post" in doc["content"]
+    # The stored account id rides along so the read never re-resolves /users/me.
+    assert fetched == [("111", "bookmarks")]
+
+
+@pytest.mark.asyncio
+async def test_scoped_search_maps_provider_errors_to_http_errors(client, monkeypatch):
+    """Scoped provider failures must become structured HTTP errors: an X 429
+    is a 429 (not an opaque 500), and a provider 401 must NOT surface as OUR
+    401 — clients read that as Stash session expiry."""
+    import httpx
+    from fastapi import HTTPException
+
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    async def rate_limited(source, query, limit):
+        raise httpx.HTTPStatusError("HTTP 429", request=None, response=httpx.Response(429))
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", rate_limited)
+    with pytest.raises(HTTPException) as exc:
+        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+    assert exc.value.status_code == 429
+
+    async def disconnected(source, query, limit):
+        raise HTTPException(status_code=401, detail="not connected to twitter")
+
+    monkeypatch.setattr(twitter_indexer, "search_twitter", disconnected)
+    with pytest.raises(HTTPException) as exc:
+        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_upsert_index_row_updates_on_name_change(client: AsyncClient):
+    """name is part of the freshness check: a tweet's name embeds the author's
+    mutable username, which can change without external_updated_at changing.
+    Dropping the comparison would leave stale names in list/search forever."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+    sid = UUID(src["id"])
+
+    kwargs = dict(
+        table="twitter_posts",
+        source_id=sid,
+        workspace_id=ws,
+        path="1",
+        kind="post",
+        external_ref="1",
+        external_updated_at=None,
+    )
+    assert await source_service.upsert_index_row(name="@old - 2026-06-08", **kwargs) == "inserted"
+    assert await source_service.upsert_index_row(name="@old - 2026-06-08", **kwargs) == "unchanged"
+    assert await source_service.upsert_index_row(name="@new - 2026-06-08", **kwargs) == "updated"
+    live = await source_service.list_documents(src)
+    assert [d["name"] for d in live] == ["@new - 2026-06-08"]
 
 
 # --- source-aware agent tools -----------------------------------------------

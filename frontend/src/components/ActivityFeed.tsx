@@ -29,13 +29,13 @@ function colorFor(name: string) {
 function targetHref(event: ActivityEvent): string | null {
   if (!event.workspace_id) return null;
   if (event.kind === "session.uploaded") {
-    return `/workspaces/${event.workspace_id}/sessions/${encodeURIComponent(event.target_id)}`;
+    return `/sessions/${encodeURIComponent(event.target_id)}`;
   }
   if (event.kind === "page.updated") {
-    return `/workspaces/${event.workspace_id}/p/${event.target_id}`;
+    return `/p/${event.target_id}`;
   }
   if (event.kind === "file.uploaded") {
-    return `/workspaces/${event.workspace_id}/f/${event.target_id}`;
+    return `/f/${event.target_id}`;
   }
   return null;
 }

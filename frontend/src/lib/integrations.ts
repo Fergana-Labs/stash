@@ -18,7 +18,8 @@ export type IntegrationProvider =
   | "jira"
   | "asana"
   | "gong"
-  | "snowflake";
+  | "snowflake"
+  | "twitter";
 
 export type CredentialField = {
   name: string;

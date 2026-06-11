@@ -41,7 +41,13 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 STATE_TTL = timedelta(minutes=10)
 
 
-def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) -> str:
+def _encode_state(
+    user_id: UUID,
+    provider: str,
+    return_to: str | None = None,
+    *,
+    extra: dict | None = None,
+) -> str:
     payload = json.dumps(
         {
             "u": str(user_id),
@@ -49,12 +55,13 @@ def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) ->
             "n": secrets.token_urlsafe(16),
             "t": datetime.now(UTC).isoformat(),
             "r": return_to,
+            "x": extra or {},
         }
     )
     return integration_fernet().encrypt(payload.encode()).decode()
 
 
-def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]:
+def _decode_state_payload(state: str, expected_provider: str) -> dict:
     try:
         raw = integration_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
     except InvalidToken:
@@ -62,6 +69,11 @@ def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]
     payload = json.loads(raw)
     if payload.get("p") != expected_provider:
         raise HTTPException(status_code=400, detail="provider mismatch in state")
+    return payload
+
+
+def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]:
+    payload = _decode_state_payload(state, expected_provider)
     return UUID(payload["u"]), payload.get("r")
 
 
@@ -135,6 +147,10 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "SLACK_OAUTH_CLIENT_SECRET",
             "SLACK_OAUTH_REDIRECT_URI",
         ],
+        "twitter": [
+            "TWITTER_OAUTH_CLIENT_ID",
+            "TWITTER_OAUTH_REDIRECT_URI",
+        ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
         "jira": [
             "JIRA_OAUTH_CLIENT_ID",
@@ -155,6 +171,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "gmail": "Gmail",
             "notion": "Notion",
             "slack": "Slack",
+            "twitter": "Twitter / X",
             "granola": "Granola",
             "jira": "Jira",
             "asana": "Asana",
@@ -246,7 +263,18 @@ async def integration_connect(
     if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
         url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
         return ConnectStartResponse(authorize_url=url)
-    state = _encode_state(current_user["id"], provider, _safe_return_to(return_to))
+    return_path = _safe_return_to(return_to)
+    if getattr(p, "uses_pkce", False):
+        code_verifier = p.new_code_verifier()
+        state = _encode_state(
+            current_user["id"],
+            provider,
+            return_path,
+            extra={"code_verifier": code_verifier},
+        )
+        return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
+
+    state = _encode_state(current_user["id"], provider, return_path)
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
 
@@ -266,8 +294,16 @@ async def integration_callback(
             # The provider owns the exchange + storage and returns where to land.
             return_to = await p.finish_authorization(code, state)
         else:
-            user_id, return_to = _decode_state(state, expected_provider=provider)
-            token = await p.exchange_code(code)
+            payload = _decode_state_payload(state, expected_provider=provider)
+            user_id = UUID(payload["u"])
+            return_to = payload.get("r")
+            if getattr(p, "uses_pkce", False):
+                code_verifier = (payload.get("x") or {}).get("code_verifier")
+                if not code_verifier:
+                    raise HTTPException(status_code=400, detail="missing PKCE verifier in state")
+                token = await p.exchange_code(code, code_verifier)
+            else:
+                token = await p.exchange_code(code)
             # The account profile is display-only — a failure fetching it must
             # NOT block the connection (the token is what matters). Degrade to
             # an empty identity instead.

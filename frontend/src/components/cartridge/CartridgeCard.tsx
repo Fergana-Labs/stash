@@ -38,11 +38,33 @@ interface CartridgeCardProps {
   selected?: boolean;
 }
 
-const VIS_COLOR: Record<string, string> = {
+export const VIS_COLOR: Record<string, string> = {
   public: "#22C55E",
   shared: "var(--color-brand-500)",
   private: "#9CA3AF",
 };
+
+// The one way visibility is shown on a Cartridge: a dot + label pill. Used on
+// card covers and list rows so there's no filter to learn — every row says
+// Private / Shared / Public itself.
+export function VisibilityBadge({
+  access,
+  shareCount,
+}: {
+  access: "private" | "public";
+  shareCount: number;
+}) {
+  const visibility = displayVisibility(access, shareCount);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-base px-1.5 py-0.5 text-[10.5px] text-muted">
+      <span
+        className="inline-block h-[7px] w-[7px] rounded-full"
+        style={{ background: VIS_COLOR[visibility] }}
+      />
+      {visibility.charAt(0).toUpperCase() + visibility.slice(1)}
+    </span>
+  );
+}
 
 export default function CartridgeCard({
   stash,
@@ -53,10 +75,6 @@ export default function CartridgeCard({
   selected,
 }: CartridgeCardProps) {
   const itemCount = stash.item_count ?? stash.items?.length ?? 0;
-  const visibility = stash.access
-    ? displayVisibility(stash.access, stash.share_count ?? 0)
-    : null;
-  const dotColor = visibility ? VIS_COLOR[visibility] : null;
   const author = authorName(stash);
 
   return (
@@ -90,14 +108,10 @@ export default function CartridgeCard({
             EXTERNAL
           </span>
         )}
-        {dotColor && (
-          // Visibility lives as a small corner dot on the cover, freeing a
-          // whole row of card body space the inline chip used to occupy.
-          <span
-            className="absolute bottom-2 left-2.5 inline-block h-[8px] w-[8px] rounded-full ring-2 ring-white/80"
-            style={{ background: dotColor }}
-            title={visibility ?? undefined}
-          />
+        {stash.access && (
+          <span className="absolute bottom-2 left-2.5">
+            <VisibilityBadge access={stash.access} shareCount={stash.share_count ?? 0} />
+          </span>
         )}
       </div>
       <div className="flex flex-1 flex-col p-4">

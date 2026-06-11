@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
-import DownloadMenu from "../../../../../../components/DownloadMenu";
-import { SessionDetailSkeleton } from "../../../../../../components/SkeletonStates";
-import { StashIcon } from "../../../../../../components/StashIcons";
-import { useAuth } from "../../../../../../hooks/useAuth";
+import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useActiveWorkspaceId } from "../../../../components/ShellChromeContext";
+import DownloadMenu from "../../../../components/DownloadMenu";
+import { SessionDetailSkeleton } from "../../../../components/SkeletonStates";
+import { StashIcon } from "../../../../components/StashIcons";
+import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   fetchAuthed,
@@ -22,10 +23,10 @@ import {
   type SessionDetail,
   type SessionEvent,
   type WorkspaceCartridge,
-} from "../../../../../../lib/api";
-import { refreshWorkspaceSidebar } from "../../../../../../lib/stashNavigationCache";
-import { SessionBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
-import EditableTitle from "../../../../../../components/workspace/EditableTitle";
+} from "../../../../lib/api";
+import { refreshWorkspaceSidebar } from "../../../../lib/stashNavigationCache";
+import { SessionBody } from "../../cartridges/[slug]/CartridgeItemBodies";
+import EditableTitle from "../../../../components/workspace/EditableTitle";
 
 interface MessageTurn {
   kind: "message";
@@ -119,13 +120,16 @@ export default function SessionViewerPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const workspaceId = params.workspaceId as string;
   const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading } = useAuth();
   const stashSlug = searchParams.get("stash");
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
+  // Empty until the session loads — every consumer below renders or fires
+  // only after that.
+  const workspaceId = sessionDetail?.workspace_id ?? "";
+  useActiveWorkspaceId(workspaceId || null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
   const [stashFallback, setStashFallback] = useState<
@@ -162,10 +166,13 @@ export default function SessionViewerPage() {
 
   const load = useCallback(async () => {
     try {
-      const [events, sidebar, detail] = await Promise.all([
-        getSessionEvents(workspaceId, sessionId),
-        getWorkspaceSidebar(workspaceId),
-        getSessionDetail(workspaceId, sessionId),
+      // The detail fetch resolves the workspace; everything else is scoped
+      // to it and has to wait for that answer.
+      const detail = await getSessionDetail(sessionId);
+      const ws = detail.workspace_id;
+      const [events, sidebar] = await Promise.all([
+        getSessionEvents(ws, sessionId),
+        getWorkspaceSidebar(ws),
       ]);
       setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
       setSessionDetail(detail);
@@ -173,7 +180,7 @@ export default function SessionViewerPage() {
       setStashFallback(null);
       const session = sidebar.sessions.find((item) => item.session_id === sessionId);
       setContainingStashes(
-        session?.id ? await listObjectStashes(workspaceId, "session", session.id) : []
+        session?.id ? await listObjectStashes(ws, "session", session.id) : []
       );
     } catch (e) {
       if (
@@ -185,7 +192,7 @@ export default function SessionViewerPage() {
       }
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
-  }, [workspaceId, sessionId, stashSlug, loadStashFallback]);
+  }, [sessionId, stashSlug, loadStashFallback]);
 
   useEffect(() => {
     if (user) load();

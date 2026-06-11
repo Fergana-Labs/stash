@@ -244,7 +244,6 @@ export default function CartridgeSessionsPage() {
               Pinned
             </h2>
             <SessionsTable
-              workspaceId={workspaceId}
               sessions={pinnedSessions}
               isPinned={pins.isPinned}
               onTogglePin={pins.toggle}
@@ -344,7 +343,6 @@ function SessionsView({
   view,
   sessions,
   folders,
-  workspaceId,
   isPinned,
   onTogglePin,
   selectedIds,
@@ -353,7 +351,6 @@ function SessionsView({
   view: ViewKey;
   sessions: SessionSummary[];
   folders: SessionFolder[];
-  workspaceId: string;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
@@ -370,7 +367,6 @@ function SessionsView({
   if (view === "list") {
     return (
       <SessionsTable
-        workspaceId={workspaceId}
         sessions={sessions}
         isPinned={isPinned}
         onTogglePin={onTogglePin}
@@ -388,7 +384,6 @@ function SessionsView({
           <DayGroup
             key={group.key}
             group={group}
-            workspaceId={workspaceId}
             initialOpen={i === 0}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
@@ -414,7 +409,6 @@ function SessionsView({
         <FlatGroup
           key={group.key}
           group={group}
-          workspaceId={workspaceId}
           initialOpen={i === 0}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
@@ -428,7 +422,6 @@ function SessionsView({
 
 function DayGroup({
   group,
-  workspaceId,
   initialOpen,
   isPinned,
   onTogglePin,
@@ -436,7 +429,6 @@ function DayGroup({
   onToggleSelect,
 }: {
   group: SessionDayGroup;
-  workspaceId: string;
   initialOpen: boolean;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
@@ -463,7 +455,6 @@ function DayGroup({
             <div key={bucket.user}>
               <div className="mb-1 px-2 text-[11px] font-medium text-muted">{bucket.user}</div>
               <SessionsTable
-                workspaceId={workspaceId}
                 sessions={bucket.sessions}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
@@ -480,7 +471,6 @@ function DayGroup({
 
 function FlatGroup({
   group,
-  workspaceId,
   initialOpen,
   isPinned,
   onTogglePin,
@@ -488,7 +478,6 @@ function FlatGroup({
   onToggleSelect,
 }: {
   group: SessionFlatGroup;
-  workspaceId: string;
   initialOpen: boolean;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
@@ -512,7 +501,6 @@ function FlatGroup({
       {open && (
         <div className="mt-1.5">
           <SessionsTable
-            workspaceId={workspaceId}
             sessions={group.sessions}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
@@ -582,14 +570,12 @@ function Chev({ open }: { open: boolean }) {
 }
 
 function SessionsTable({
-  workspaceId,
   sessions,
   isPinned,
   onTogglePin,
   selectedIds,
   onToggleSelect,
 }: {
-  workspaceId: string;
   sessions: SessionSummary[];
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
@@ -619,7 +605,6 @@ function SessionsTable({
       {sessions.map((session) => (
         <SessionTableRow
           key={session.session_id}
-          workspaceId={workspaceId}
           session={session}
           pinned={isPinned(session.session_id)}
           onTogglePin={onTogglePin}
@@ -632,14 +617,12 @@ function SessionsTable({
 }
 
 function SessionTableRow({
-  workspaceId,
   session,
   pinned,
   onTogglePin,
   selected,
   onToggleSelect,
 }: {
-  workspaceId: string;
   session: SessionSummary;
   pinned: boolean;
   onTogglePin: (sessionId: string) => void;
@@ -653,7 +636,7 @@ function SessionTableRow({
 
   return (
     <Link
-      href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`}
+      href={`/sessions/${encodeURIComponent(session.session_id)}`}
       className={
         "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]")
@@ -1100,7 +1083,6 @@ function FolderDrill({
           view={view}
           sessions={drillSessions}
           folders={folders}
-          workspaceId={workspaceId}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
           selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}

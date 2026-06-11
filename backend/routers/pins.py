@@ -2,7 +2,8 @@
 
 Pins are an explicit per-kind set the user curates (cartridges / sessions /
 files); recents are stamped automatically as the user opens things. Both are
-private to the user — membership in the workspace is the only access check.
+private to the user. Pins require workspace membership; recents can also be
+stamped by non-members for objects shared with them.
 """
 
 import json
@@ -13,7 +14,7 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import workspace_service
+from ..services import permission_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["pins"])
 
@@ -23,6 +24,27 @@ RECENTS_LIMIT = 24
 
 async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
     if not await workspace_service.is_member(workspace_id, user_id):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+async def _require_member_or_readable(
+    workspace_id: UUID, user_id: UUID, kind: str, object_id: str
+) -> None:
+    """Members can stamp anything; non-members only objects shared with them.
+
+    Lets opening a shared page/file/folder record a recent in the object's
+    home workspace, which powers the Shared-with-me Recent strip.
+    """
+    if await workspace_service.is_member(workspace_id, user_id):
+        return
+    try:
+        parsed_id = UUID(object_id)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    readable = await permission_service.check_access(
+        kind, parsed_id, user_id, workspace_id=workspace_id
+    )
+    if not readable:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
@@ -106,7 +128,7 @@ async def record_recent(
     req: RecordRecentRequest,
     current_user: dict = Depends(get_current_user),
 ) -> None:
-    await _require_member(workspace_id, current_user["id"])
+    await _require_member_or_readable(workspace_id, current_user["id"], req.kind, req.object_id)
     pool = get_pool()
     await pool.execute(
         """
