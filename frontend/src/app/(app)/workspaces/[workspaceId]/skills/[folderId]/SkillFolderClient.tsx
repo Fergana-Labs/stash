@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { useShareAction } from "../../../../../../components/ShellChromeContext";
 import { FileBrowserSkeleton } from "../../../../../../components/SkeletonStates";
+import ResourceShareButton from "../../../../../../components/share/ResourceShareButton";
 import SkillShareButton from "../../../../../../components/skill/SkillShareButton";
 import WorkspaceFileBrowser from "../../../../../../components/workspace/file-browser/WorkspaceFileBrowser";
 import { useAuth } from "../../../../../../hooks/useAuth";
@@ -125,6 +126,7 @@ export default function SkillFolderClient() {
 
   // Skill actions live on the skill root; subfolders are plain browsing.
   const isSkillRoot = !!contents?.folder.is_skill;
+  const folderName = contents?.folder.name ?? "";
   const shareAction = useMemo(() => {
     if (!user || !isSkillRoot) return null;
     return (
@@ -136,6 +138,14 @@ export default function SkillFolderClient() {
         >
           Convert to folder
         </button>
+        {/* Person-to-person sharing of a skill = sharing its folder. */}
+        <ResourceShareButton
+          objectType="folder"
+          objectId={folderId}
+          resourceName={folderName}
+          resourceUrlPath={`/workspaces/${workspaceId}/skills/${folderId}`}
+          currentUser={user}
+        />
         <SkillShareButton
           workspaceId={workspaceId}
           folderId={folderId}
@@ -144,7 +154,7 @@ export default function SkillFolderClient() {
         />
       </div>
     );
-  }, [user, isSkillRoot, workspaceId, folderId, publish, convertToFolder]);
+  }, [user, isSkillRoot, workspaceId, folderId, folderName, publish, convertToFolder]);
   useShareAction(shareAction);
 
   if (loading) return <FileBrowserSkeleton />;

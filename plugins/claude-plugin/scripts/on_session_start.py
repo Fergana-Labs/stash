@@ -31,8 +31,8 @@ CONTEXT = (
     "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
     "Your activity in this repo is streamed to your team's Stash workspace.\n\n"
     "What a Skill is: a *special folder* (one containing a SKILL.md) of related "
-    "files, sessions, tables) with its own access control and an optional "
-    "public URL. A Skill is for a bundle — a project writeup with its "
+    "files, tables) that shares like any folder and gains a public URL when "
+    "published. A Skill is for a collection — a project writeup with its "
     "supporting files, a research thread with its sources. It is NOT a "
     "wrapper to slap on every single file you share.\n\n"
     "When sharing artifacts, pick the right tool:\n"
@@ -41,7 +41,7 @@ CONTEXT = (
     " - Upload a folder/project into the workspace → `stash upload <path> "
     "--json` returns the folder `app_url`. NO Skill created by default.\n"
     " - You're publishing a curated bundle people should see together → "
-    "`stash upload <path> --skill \"<title>\" --json` (or `stash skills "
+    '`stash upload <path> --skill "<title>" --json` (or `stash skills '
     "create` to compose from existing items).\n"
     " - Sharing a coding session → `stash share <session_id>` wraps the "
     "transcript and touched files in one Skill. Don't ALSO mint a Skill "
@@ -49,12 +49,12 @@ CONTEXT = (
     "Run `stash prompts agent-guidance` any time you want this guidance "
     "reprinted in full.\n\n"
     "Browse Stash through the virtual filesystem first when you need workspace "
-    "context: `stash vfs ls /`, `stash vfs \"find /workspaces -maxdepth 3 "
-    "-type f\"`, `stash vfs \"rg \\\"query\\\" /workspaces\"`, or "
+    'context: `stash vfs ls /`, `stash vfs "find /workspaces -maxdepth 3 '
+    '-type f"`, `stash vfs "rg \\"query\\" /workspaces"`, or '
     "`stash vfs \"cat '/workspaces/<workspace>/README.md' | sed -n "
     "'1,80p'\"`.\n\n"
     "Common direct reads (all support `--json`): "
-    "`stash sessions search \"<query>\"`, "
+    '`stash sessions search "<query>"`, '
     "`stash sessions query --limit 20`, "
     "`stash sessions agents`, "
     "`stash files pages --all`."

@@ -127,13 +127,13 @@ async def test_skill_is_public_unlisted_and_includes_kb_pages(client: AsyncClien
     ).json()
 
     row = await pool.fetchrow(
-        "SELECT folder_id, workspace_permission, public_permission, discoverable "
-        "FROM skills WHERE id = $1",
+        "SELECT folder_id, discoverable FROM skills WHERE id = $1",
         stash["skill_id"],
     )
-    assert row["workspace_permission"] == "none"
-    assert row["public_permission"] == "read"
+    # Published == publicly readable; unlisted means not in Discover.
     assert row["discoverable"] is False
+    detail = await client.get(f"/api/v1/skills/{stash['slug']}")
+    assert detail.status_code == 200
 
     # The KB pages must be copied into the skill folder even though we only
     # passed the page in.

@@ -611,8 +611,9 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <H2>Skills</H2>
       <P>
         A <strong>Skill</strong> is a special folder — one containing a <Code>SKILL.md</Code> —
-        of pages, files, and tables. Publishing a skill mints a public link you can share with
-        specific people or list in Discover. (The <Code>stash</Code> CLI name is unchanged.)
+        of pages, files, and tables. Publishing a skill makes it publicly readable at its link (optionally listed
+        in Discover); to share privately with a specific person, share its folder
+        like any other folder. (The <Code>stash</Code> CLI name is unchanged.)
       </P>
 
       <CommandRef
@@ -643,52 +644,6 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         params={[
           { name: "<folder_id>", type: "string", desc: "The skill folder to publish.", required: true },
           { name: "--discover", type: "flag", desc: "List the public Skill in Discover." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash skills members"
-        args="<skill_id>"
-        description="List the people granted access to a Skill."
-        params={[
-          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash skills add-member"
-        args="<skill_id> <user_id> [--permission read]"
-        description="Grant a user access to a Skill."
-        params={[
-          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
-          { name: "<user_id>", type: "string", desc: "The user to grant access.", required: true },
-          { name: "--permission", type: "string", desc: "read | write | admin. Defaults to read." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash skills remove-member"
-        args="<skill_id> <user_id>"
-        description="Revoke a user's access to a Skill."
-        params={[
-          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
-          { name: "<user_id>", type: "string", desc: "The user to revoke.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash skills invites"
-        args=""
-        description="List Skill invites pending for you — Skills shared with you, awaiting accept or dismiss."
-        params={[]}
-      />
-
-      <CommandRef
-        command="stash skills dismiss-invite"
-        args="<invite_id>"
-        description="Dismiss a pending Skill invite."
-        params={[
-          { name: "<invite_id>", type: "string", desc: "ID of the pending invite.", required: true },
         ]}
       />
 

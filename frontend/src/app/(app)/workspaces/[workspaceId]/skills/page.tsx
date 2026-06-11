@@ -9,8 +9,8 @@ import {
 } from "../../../../../components/SkeletonStates";
 import { PinIcon, SkillIcon } from "../../../../../components/SkillIcons";
 import SkillCard, {
-  VIS_COLOR,
-  VisibilityBadge,
+  PUBLISH_COLOR,
+  PublishBadge,
 } from "../../../../../components/skill/SkillCard";
 import ForkSkillCardButton from "../../../../../components/skill/ForkSkillCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
@@ -21,12 +21,10 @@ import {
   createFolder,
   createPage,
   deleteFolder,
-  dismissSkillInvite,
-  displayVisibility,
-  listSkillInvites,
   listSkills,
+  listSkillsSharedWithMe,
+  type SharedSkill,
   type Skill,
-  type SkillInvite,
   type PublicSkillCard,
 } from "../../../../../lib/api";
 import { SKILL_MD, skillMdTemplate } from "../../../../../lib/localSkill";
@@ -48,7 +46,7 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 const TAB_COPY: Record<Tab, string> = {
   yours:
     "Skill folders in this workspace. Share them with people or publish them to the public library.",
-  shared: "Pending invites from other people, plus adding a skill by link.",
+  shared: "Skill folders other people shared with you, plus adding a skill by link.",
   discover: "Public skills from the community — fork one into your workspace.",
 };
 
@@ -59,8 +57,7 @@ export default function WorkspaceSkillsPage() {
   const pins = usePins("skills", workspaceId);
 
   const [skills, setSkills] = useState<Skill[] | null>(null);
-  const [invites, setInvites] = useState<SkillInvite[]>([]);
-  const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
+  const [sharedSkills, setSharedSkills] = useState<SharedSkill[]>([]);
   const [tab, setTab] = useState<Tab>("yours");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
@@ -106,23 +103,13 @@ export default function WorkspaceSkillsPage() {
     load();
   }, [load]);
 
-  // Pending invites are Skills others shared directly with you — surfaced in
-  // the "Shared with you" section. Non-critical: failure leaves the list empty.
+  // Skill folders others shared directly with you (folder shares) — surfaced
+  // in the "Shared with you" section. Non-critical: failure leaves it empty.
   useEffect(() => {
-    listSkillInvites()
-      .then(setInvites)
-      .catch(() => setInvites([]));
+    listSkillsSharedWithMe()
+      .then(setSharedSkills)
+      .catch(() => setSharedSkills([]));
   }, []);
-
-  async function dismissInvite(invite: SkillInvite) {
-    setBusyInviteId(invite.id);
-    try {
-      await dismissSkillInvite(invite.id);
-      setInvites((current) => current.filter((item) => item.id !== invite.id));
-    } finally {
-      setBusyInviteId(null);
-    }
-  }
 
   async function newSkill() {
     const name = window.prompt("Skill name?");
@@ -210,7 +197,7 @@ export default function WorkspaceSkillsPage() {
           tab={tab}
           onChange={setTab}
           yoursCount={skills.length}
-          sharedCount={invites.length}
+          sharedCount={sharedSkills.length}
         />
         <p className="mt-2 text-[12.5px] text-muted">{TAB_COPY[tab]}</p>
 
@@ -252,15 +239,10 @@ export default function WorkspaceSkillsPage() {
 
         {tab === "shared" && (
           <div className="mt-4">
-            {invites.length > 0 ? (
+            {sharedSkills.length > 0 ? (
               <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                {invites.map((invite) => (
-                  <SharedInviteRow
-                    key={invite.id}
-                    invite={invite}
-                    busy={busyInviteId === invite.id}
-                    onDismiss={() => void dismissInvite(invite)}
-                  />
+                {sharedSkills.map((shared) => (
+                  <SharedSkillRow key={shared.folder_id} shared={shared} />
                 ))}
               </div>
             ) : (
@@ -428,18 +410,15 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
   );
 }
 
-// A pending invite rendered as a drive-style row above the shared list. View
-// opens the Skill; Dismiss removes the invite (the access stays — it can
-// still be reached by link). Mirrors the dismiss logic in SkillInviteCenter.
-function SharedInviteRow({
-  invite,
-  busy,
-  onDismiss,
-}: {
-  invite: SkillInvite;
-  busy: boolean;
-  onDismiss: () => void;
-}) {
+// A skill folder shared with you, as a drive-style row. The folder lives in
+// the sharer's workspace (you're not a member), so View opens the public
+// skill page when it's published, else the shared folder route.
+function sharedSkillHref(shared: SharedSkill): string {
+  if (shared.slug) return `/skills/${shared.slug}`;
+  return `/workspaces/${shared.workspace_id}/folders/${shared.folder_id}`;
+}
+
+function SharedSkillRow({ shared }: { shared: SharedSkill }) {
   return (
     <div
       className="grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0"
@@ -449,27 +428,19 @@ function SharedInviteRow({
         <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
           <SkillIcon />
         </span>
-        <span className="min-w-0 truncate font-medium text-foreground">
-          {invite.skill_title}
-        </span>
-        <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
-          INVITE
-        </span>
+        <span className="min-w-0 truncate font-medium text-foreground">{shared.name}</span>
+        {shared.description && (
+          <span className="min-w-0 truncate text-[12px] text-muted">
+            {shared.description}
+          </span>
+        )}
       </div>
       <span className="truncate text-[12px] text-muted">
-        from {invite.invited_by_display_name} · {invite.source_workspace_name}
+        shared by {shared.shared_by ?? "someone"} · {shared.workspace_name}
       </span>
-      <div className="flex items-center justify-end gap-1.5">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onDismiss}
-          className="rounded-md border border-border-subtle px-2 py-1 text-[12px] text-muted hover:text-foreground disabled:opacity-50"
-        >
-          Dismiss
-        </button>
+      <div className="flex items-center justify-end">
         <Link
-          href={`/skills/${invite.skill_slug}`}
+          href={sharedSkillHref(shared)}
           className="rounded-md bg-[var(--color-brand-600)] px-2 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
         >
           View
@@ -588,7 +559,6 @@ function DiscoverSection({ workspaceId }: { workspaceId: string }) {
                   title: skill.title,
                   description: skill.description,
                   cover_image_url: skill.cover_image_url,
-                  access: "public",
                   file_count: skill.item_count,
                   updated_at: skill.updated_at,
                 }}
@@ -647,9 +617,10 @@ function skillHref(workspaceId: string, skill: Skill): string {
   return `/workspaces/${workspaceId}/skills/${skill.folder_id}`;
 }
 
-function skillAccess(skill: Skill): { access: "private" | "public"; shareCount: number } {
-  if (!skill.published) return { access: "private", shareCount: 0 };
-  return { access: skill.published.access, shareCount: skill.published.share_count };
+// Publish badge state: null = Private, otherwise Published (+ Discover dot).
+function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
+  if (!skill.published) return null;
+  return { discoverable: skill.published.discoverable };
 }
 
 function SkillCollection({
@@ -690,7 +661,6 @@ function SkillCollection({
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {skills.map((skill, i) => {
-        const { access, shareCount } = skillAccess(skill);
         return (
           <SkillCard
             key={skill.folder_id}
@@ -700,8 +670,7 @@ function SkillCollection({
               description: skill.description,
               cover_image_url: skill.published?.cover_image_url ?? null,
               icon_url: skill.published?.icon_url ?? null,
-              access,
-              share_count: shareCount,
+              published: skillPublishBadge(skill),
               updated_at: skill.updated_at,
               file_count: skill.file_count,
             }}
@@ -744,8 +713,6 @@ function SkillListRow({
   selected: boolean;
   onToggleSelect: (id: string) => void;
 }) {
-  const { access, shareCount } = skillAccess(skill);
-
   return (
     <Link
       href={skillHref(workspaceId, skill)}
@@ -767,7 +734,7 @@ function SkillListRow({
         {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
       </span>
-      <VisibilityBadge access={access} shareCount={shareCount} />
+      <PublishBadge published={skillPublishBadge(skill)} />
       <span
         className={
           pinned
@@ -887,8 +854,7 @@ function SkillQuickCard({
   pinned: boolean;
   onTogglePin: (skill: Skill) => void;
 }) {
-  const { access, shareCount } = skillAccess(skill);
-  const dotColor = VIS_COLOR[displayVisibility(access, shareCount)];
+  const dotColor = skill.published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private;
   return (
     <Link
       href={skillHref(workspaceId, skill)}

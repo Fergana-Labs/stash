@@ -404,9 +404,9 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
           (SELECT MAX(updated_at) FROM skills WHERE workspace_id = $1)            AS st,
-          (SELECT MAX(sm.created_at) FROM skill_members sm
-           JOIN skills s ON s.id = sm.skill_id
-           WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
+          (SELECT MAX(sh.created_at) FROM shares sh
+           WHERE sh.workspace_id = $1 AND sh.principal_type = 'user'
+             AND sh.principal_id = $2)                                            AS sm,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,
         workspace_id,

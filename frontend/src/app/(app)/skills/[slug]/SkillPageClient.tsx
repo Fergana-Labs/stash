@@ -21,8 +21,10 @@ import {
   useShareAction,
 } from "../../../../components/ShellChromeContext";
 import { PublicSkillSkeleton } from "../../../../components/SkeletonStates";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import SkillShareButton from "../../../../components/skill/SkillShareButton";
 import { SettingsIcon, SkillIcon } from "../../../../components/SkillIcons";
+import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   getPublicSkill,
@@ -36,6 +38,7 @@ import { SKILL_MD, stripFrontmatter } from "../../../../lib/localSkill";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
 export default function SkillPageClient({ slug }: { slug: string }) {
+  const { user } = useAuth();
   const [data, setData] = useState<PublicSkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -80,24 +83,32 @@ export default function SkillPageClient({ slug }: { slug: string }) {
     const publish: SkillPublishInfo = {
       id: skill.id,
       slug: skill.slug,
-      access: skill.access,
-      workspace_permission: skill.workspace_permission,
-      public_permission: skill.public_permission,
       discoverable: skill.discoverable,
       cover_image_url: skill.cover_image_url,
       icon_url: skill.icon_url,
       view_count: skill.view_count,
-      share_count: skill.share_count,
     };
     return (
-      <SkillShareButton
-        workspaceId={skill.workspace_id}
-        folderId={skill.folder_id}
-        publish={publish}
-        onPublishChange={() => void load()}
-      />
+      <div className="flex items-center gap-1.5">
+        {/* Person-to-person sharing of a skill = sharing its folder. */}
+        {user && (
+          <ResourceShareButton
+            objectType="folder"
+            objectId={skill.folder_id}
+            resourceName={skill.title}
+            resourceUrlPath={`/workspaces/${skill.workspace_id}/skills/${skill.folder_id}`}
+            currentUser={user}
+          />
+        )}
+        <SkillShareButton
+          workspaceId={skill.workspace_id}
+          folderId={skill.folder_id}
+          publish={publish}
+          onPublishChange={() => void load()}
+        />
+      </div>
     );
-  }, [skill, canWrite, load]);
+  }, [skill, canWrite, user, load]);
   useShareAction(shareAction);
 
   if (loading) {

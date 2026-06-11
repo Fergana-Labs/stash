@@ -274,8 +274,6 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
             folder["id"],
             title=req.title,
             description=req.description,
-            workspace_permission="none",
-            public_permission="read",
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))

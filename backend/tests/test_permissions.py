@@ -162,41 +162,7 @@ async def _make_history_event(
     )
 
 
-async def _make_skill(workspace_id, owner_id, access, folder_id):
-    """Publish `folder_id` as a skill. Skills are folders now: a publish record
-    grants read on the folder's subtree, so the object under test must already
-    sit inside the folder."""
-    workspace_permission, public_permission = _permissions_for_access(access)
-    return await shared_skill_service.publish_folder(
-        workspace_id,
-        owner_id,
-        folder_id,
-        title=f"{access} Skill",
-        workspace_permission=workspace_permission,
-        public_permission=public_permission,
-    )
-
-
-def _permissions_for_access(access):
-    if access == "private":
-        return "none", "none"
-    if access == "public":
-        return "read", "read"
-    return "read", "none"
-
-
-async def _add_skill_member(pool, skill_id, user_id, granted_by, permission="read"):
-    await pool.execute(
-        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
-        "VALUES ($1, $2, $3, $4)",
-        skill_id,
-        user_id,
-        permission,
-        granted_by,
-    )
-
-
-# --- New model: private by default; owner + shares + skill-open ---
+# --- New model: private by default; owner + shares + publish record ---
 
 
 async def _share(pool, ws_id, object_type, object_id, user_id, permission="read", by=None):
@@ -387,30 +353,35 @@ async def test_table_share_by_email_grants_direct_read(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_skill_grants_read_only(pool):
+async def test_published_skill_grants_read_only(pool):
+    """A publish record's existence makes the skill folder publicly readable —
+    stranger and anonymous alike — but is never a write grant."""
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     folder = await _make_folder(pool, ws, owner, name="public-skill")
     page = await _make_page(pool, ws, owner, folder_id=folder)
-    await _make_skill(ws, owner, "public", folder)
+    await shared_skill_service.publish_folder(ws, owner, folder, title="Public Skill")
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
 
 
 @pytest.mark.asyncio
-async def test_private_skill_member_reads_contents_not_write(pool):
+async def test_skill_folder_share_grants_friend_read_of_nested_contents(pool):
+    """Person-to-person skill access rides generic folder shares: an unpublished
+    skill folder shared with a friend grants them read of the nested contents
+    (read share, so no write), while strangers stay locked out."""
     owner = await _make_user(pool)
-    member = await _make_user(pool)
+    friend = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     folder = await _make_folder(pool, ws, owner, name="private-skill")
+    await _make_page(pool, ws, owner, folder_id=folder, name="SKILL.md")
     page = await _make_page(pool, ws, owner, folder_id=folder)
-    skill = await _make_skill(ws, owner, "private", folder)
-    await _add_skill_member(pool, skill["id"], member, owner, "read")
-    assert await permission_service.check_access("page", page, member)
-    assert not await permission_service.check_access("page", page, member, require="write")
+    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    assert await permission_service.check_access("page", page, friend)
+    assert not await permission_service.check_access("page", page, friend, require="write")
     assert not await permission_service.check_access("page", page, stranger)
 
 

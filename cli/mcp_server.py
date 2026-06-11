@@ -4,7 +4,7 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import StashClient, skill_permissions_for_access
+from cli.client import StashClient
 from cli.config import load_config, load_manifest
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
@@ -597,21 +597,14 @@ def stash_create_skill(
 @mcp.tool()
 def stash_publish_skill(
     folder_id: str,
-    access: str = "public",
     discoverable: bool = False,
     workspace_id: str = "",
 ) -> str:
-    """Publish a skill folder: mint its share record. access: private | workspace | public."""
+    """Publish a skill folder: make it publicly readable at /skills/<slug>.
+    To share privately with a person instead, share the folder (stash_share_object)."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(
-        client.publish_skill_folder(
-            ws,
-            folder_id,
-            **skill_permissions_for_access(access),
-            discoverable=discoverable,
-        )
-    )
+    return _json(client.publish_skill_folder(ws, folder_id, discoverable=discoverable))
 
 
 @mcp.tool()
@@ -619,18 +612,15 @@ def stash_update_skill(
     skill_id: str,
     title: str = "",
     description: str = "",
-    access: str = "",
     discoverable: str = "",
 ) -> str:
-    """Update a published skill's metadata, access, or Discover flag."""
+    """Update a published skill's metadata or Discover flag."""
     client, _ = _client()
     fields: dict = {}
     if title:
         fields["title"] = title
     if description:
         fields["description"] = description
-    if access:
-        fields.update(skill_permissions_for_access(access))
     if discoverable:
         fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
     if not fields:
@@ -802,35 +792,6 @@ def stash_delete_session(session_row_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": session_row_id})
 
 
-# ── Skill access control ──────────────────────────────────────────
-
-
-_SKILL_ACCESS = {"private", "workspace", "public"}
-
-
-@mcp.tool()
-def stash_set_skill_access(
-    skill_id: str,
-    access: str = "workspace",
-    discoverable: bool = False,
-) -> str:
-    """Change a Skill's access level. access: private | workspace | public.
-    `discoverable=True` lists the Skill in the public Discover catalog (only
-    meaningful with access='public')."""
-    if access not in _SKILL_ACCESS:
-        raise ValueError(f"access must be one of {sorted(_SKILL_ACCESS)}")
-    if discoverable and access != "public":
-        raise ValueError("discoverable=True requires access='public'")
-    client, _ = _client()
-    fields: dict = {
-        "access": access,
-        "public_permission": "read" if access == "public" else "none",
-        "workspace_permission": "read" if access in {"workspace", "public"} else "none",
-        "discoverable": discoverable,
-    }
-    return _json(client.update_skill(skill_id, **fields))
-
-
 # ── Tables: rename + export ───────────────────────────────────────
 
 
@@ -945,47 +906,6 @@ def stash_list_shares(object_type: str, object_id: str) -> str:
     """List who an object is shared with."""
     client, _ = _client()
     return _json(client.list_object_shares(object_type, object_id))
-
-
-# ── Skill members + invites ───────────────────────────────────
-
-
-@mcp.tool()
-def stash_list_skill_members(skill_id: str) -> str:
-    """List the people granted access to a Skill."""
-    client, _ = _client()
-    return _json(client.list_skill_members(skill_id))
-
-
-@mcp.tool()
-def stash_add_skill_member(skill_id: str, user_id: str, permission: str = "read") -> str:
-    """Grant a user access to a Skill. permission: read | write | admin."""
-    client, _ = _client()
-    return _json(client.add_skill_member(skill_id, user_id, permission=permission))
-
-
-@mcp.tool()
-def stash_remove_skill_member(skill_id: str, user_id: str) -> str:
-    """Revoke a user's access to a Skill."""
-    client, _ = _client()
-    client.remove_skill_member(skill_id, user_id)
-    return _json({"removed": user_id})
-
-
-@mcp.tool()
-def stash_list_skill_invites() -> str:
-    """List Skill invites pending for the current user (shared with you,
-    awaiting accept/dismiss)."""
-    client, _ = _client()
-    return _json(client.list_skill_invites())
-
-
-@mcp.tool()
-def stash_dismiss_skill_invite(invite_id: str) -> str:
-    """Dismiss a pending Skill invite."""
-    client, _ = _client()
-    client.dismiss_skill_invite(invite_id)
-    return _json({"dismissed": invite_id})
 
 
 @mcp.tool()

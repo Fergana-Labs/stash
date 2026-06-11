@@ -81,10 +81,6 @@ vi.mock("./CommandPalette", () => ({
   },
 }));
 
-vi.mock("./SkillInviteCenter", () => ({
-  default: () => <button aria-label="Skill invites">Invites</button>,
-}));
-
 const user = {
   id: "user-1",
   name: "Henry",

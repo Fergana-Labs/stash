@@ -124,8 +124,6 @@ class SkillPublishRequest(BaseModel):
     folder_id: UUID
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    workspace_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: SkillGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -134,10 +132,6 @@ class SkillPublishRequest(BaseModel):
 class SkillUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    workspace_permission: SkillGeneralPermission | None = Field(
-        None, pattern=r"^(none|read|write)$"
-    )
-    public_permission: SkillGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -153,36 +147,12 @@ class SkillResponse(BaseModel):
     owner_id: UUID
     owner_name: str
     owner_display_name: str | None = None
-    access: str
-    workspace_permission: SkillGeneralPermission
-    public_permission: SkillGeneralPermission
     discoverable: bool
     cover_image_url: str | None = None
     icon_url: str | None = None
     view_count: int
-    # Count of people invited to the skill (skill_members). Drives the
-    # "Shared · N" visibility label when the skill isn't public.
-    share_count: int = 0
     created_at: datetime
     updated_at: datetime
-
-
-class SkillMemberRequest(BaseModel):
-    user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
-
-
-class SkillMemberResponse(BaseModel):
-    user_id: UUID
-    name: str
-    display_name: str
-    permission: str
-    granted_by: UUID | None
-    created_at: datetime
-
-
-class SkillMembersResponse(BaseModel):
-    members: list[SkillMemberResponse]
 
 
 # Public renderer payload — the skill's folder contents, inlined: pages carry
@@ -199,25 +169,6 @@ class SkillPublicResponse(BaseModel):
 
 class ForkSkillRequest(BaseModel):
     workspace_id: UUID
-
-
-class SkillInviteResponse(BaseModel):
-    id: UUID
-    skill_id: UUID
-    skill_slug: str
-    skill_title: str
-    skill_description: str
-    source_workspace_id: UUID
-    source_workspace_name: str
-    invited_by_user_id: UUID
-    invited_by_name: str
-    invited_by_display_name: str
-    permission: str
-    created_at: datetime
-
-
-class SkillInviteListResponse(BaseModel):
-    invites: list[SkillInviteResponse]
 
 
 class WorkspaceMember(BaseModel):
@@ -663,8 +614,6 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    workspace_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     folder_id: UUID | None = None
 
 
@@ -672,9 +621,6 @@ class PublishResponse(BaseModel):
     page_id: UUID
     folder_id: UUID | None
     workspace_id: UUID
-    visibility: str
-    workspace_permission: SkillGeneralPermission
-    public_permission: SkillGeneralPermission
     url: str
     skill_id: UUID | None = None
     skill_slug: str | None = None

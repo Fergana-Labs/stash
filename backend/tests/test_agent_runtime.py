@@ -113,11 +113,9 @@ async def test_skill_tools_create_publish_update_and_unpublish(workspace: UUID, 
         )
         listed = json.loads((await agent_runtime._list_skills.handler({}))["content"][0]["text"])
         published = json.loads(
-            (
-                await agent_runtime._publish_skill.handler(
-                    {"folder_id": created["folder_id"], "public_permission": "read"}
-                )
-            )["content"][0]["text"]
+            (await agent_runtime._publish_skill.handler({"folder_id": created["folder_id"]}))[
+                "content"
+            ][0]["text"]
         )
         updated = json.loads(
             (
@@ -141,7 +139,8 @@ async def test_skill_tools_create_publish_update_and_unpublish(workspace: UUID, 
     assert skill["files"] == 2  # SKILL.md + checklist.md
     assert skill["published"] is None  # creating a skill does not share it
 
-    assert published["public_permission"] == "read"
+    # Publishing alone makes the skill public but not Discover-listed.
+    assert published["discoverable"] is False
     assert published["url"].endswith(f"/skills/{published['slug']}")
     assert updated["description"] == "Edited"
     assert unpublished == {"deleted": True, "skill_id": published["id"]}
@@ -526,7 +525,6 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: U
         owner_id,
         folder_id,
         title="Fork source Stash",
-        public_permission="read",
     )
 
     attached = await shared_skill_service.fork_skill(

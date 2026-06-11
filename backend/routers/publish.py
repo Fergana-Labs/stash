@@ -65,8 +65,6 @@ async def publish(
             current_user["id"],
             target_folder["id"],
             title=req.title,
-            workspace_permission=req.workspace_permission,
-            public_permission=req.public_permission,
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -76,9 +74,6 @@ async def publish(
         page_id=page["id"],
         folder_id=target_folder["id"],
         workspace_id=workspace_id,
-        visibility=skill["access"],
-        workspace_permission=skill["workspace_permission"],
-        public_permission=skill["public_permission"],
         url=f"{base}/skills/{skill['slug']}",
         skill_id=skill["id"],
         skill_slug=skill["slug"],

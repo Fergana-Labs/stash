@@ -83,11 +83,8 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
         "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
         "   AND p2.deleted_at IS NULL) AS file_count, "
-        "  s.id AS publish_id, s.slug, s.title, "
-        "  CASE WHEN s.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
-        "  s.workspace_permission, s.public_permission, s.discoverable, "
-        "  s.cover_image_url, s.icon_url, s.view_count, "
-        "  (SELECT COUNT(*) FROM skill_members sm WHERE sm.skill_id = s.id) AS share_count "
+        "  s.id AS publish_id, s.slug, s.title, s.discoverable, "
+        "  s.cover_image_url, s.icon_url, s.view_count "
         "FROM folders f "
         "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "LEFT JOIN skills s ON s.folder_id = f.id "
@@ -111,14 +108,10 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
             published = {
                 "id": str(r["publish_id"]),
                 "slug": r["slug"],
-                "access": r["access"],
-                "workspace_permission": r["workspace_permission"],
-                "public_permission": r["public_permission"],
                 "discoverable": bool(r["discoverable"]),
                 "cover_image_url": r["cover_image_url"],
                 "icon_url": r["icon_url"],
                 "view_count": int(r["view_count"] or 0),
-                "share_count": int(r["share_count"] or 0),
             }
         out.append(
             {

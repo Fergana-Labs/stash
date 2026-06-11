@@ -132,7 +132,6 @@ function DiscoverGrid({
               title: skill.title,
               description: skill.description,
               cover_image_url: skill.cover_image_url,
-              access: "public",
               file_count: skill.item_count,
               updated_at: skill.updated_at,
             }}

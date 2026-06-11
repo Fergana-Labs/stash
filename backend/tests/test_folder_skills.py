@@ -191,13 +191,7 @@ async def test_published_skill_grants_subtree_read_never_write(pool):
     # Unpublished: a skill folder on its own grants nothing to outsiders.
     assert not await permission_service.check_access("page", page, stranger)
 
-    await shared_skill_service.publish_folder(
-        ws,
-        owner,
-        root,
-        title="Subtree skill",
-        public_permission="read",
-    )
+    await shared_skill_service.publish_folder(ws, owner, root, title="Subtree skill")
 
     # The publish record grants READ on the whole subtree — anonymous included.
     assert await permission_service.check_access("page", page, stranger)
@@ -306,3 +300,77 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
     )
     assert again.status_code == 400
     assert "already published" in again.json()["detail"]
+
+
+# --- Person-to-person sharing rides generic folder shares ---
+
+
+async def _register_with_email(client: AsyncClient, email: str) -> tuple[str, dict]:
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("folder_skill"), "password": "securepassword1", "email": email},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    return body["api_key"], body
+
+
+@pytest.mark.asyncio
+async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client: AsyncClient):
+    """Replaces the retired skill-invite system: sharing a skill's FOLDER with a
+    user grants subtree read, and GET /api/v1/me/shared-skills surfaces it
+    (with the publish slug when the owner has also published)."""
+    owner_key, _ = await _register(client)
+    ws = await _workspace(client, owner_key)
+    skill_folder = await _folder(client, owner_key, ws, "partner-skill")
+    await _page(
+        client,
+        owner_key,
+        ws,
+        "SKILL.md",
+        folder_id=skill_folder,
+        content="---\nname: Partner Playbook\ndescription: How we partner\n---\n\n# Go\n",
+    )
+    nested_page = await _page(
+        client, owner_key, ws, "private plan", folder_id=skill_folder, content="private context"
+    )
+    published = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
+        json={"folder_id": skill_folder, "title": "Partner Playbook"},
+        headers=_auth(owner_key),
+    )
+    assert published.status_code == 201
+    slug = published.json()["slug"]
+
+    recipient_key, _ = await _register_with_email(client, "skill-grantee@example.com")
+    before = await client.get("/api/v1/me/shared-skills", headers=_auth(recipient_key))
+    assert before.status_code == 200
+    assert before.json()["skills"] == []
+
+    shared = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "folder",
+            "object_id": skill_folder,
+            "email": "skill-grantee@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert shared.status_code == 200
+
+    listed = await client.get("/api/v1/me/shared-skills", headers=_auth(recipient_key))
+    assert listed.status_code == 200
+    [skill] = listed.json()["skills"]
+    assert skill["folder_id"] == skill_folder
+    assert skill["name"] == "Partner Playbook"
+    assert skill["description"] == "How we partner"
+    assert skill["permission"] == "read"
+    assert skill["slug"] == slug
+
+    # The folder share grants subtree read of the skill's contents.
+    page_read = await client.get(
+        f"/api/v1/workspaces/{ws}/pages/{nested_page}", headers=_auth(recipient_key)
+    )
+    assert page_read.status_code == 200
+    assert page_read.json()["content_markdown"] == "private context"

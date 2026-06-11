@@ -16,16 +16,6 @@ class StashError(Exception):
         super().__init__(f"[{status_code}] {detail}")
 
 
-def skill_permissions_for_access(access: str) -> dict[str, str]:
-    if access == "public":
-        return {"workspace_permission": "read", "public_permission": "read"}
-    if access == "workspace":
-        return {"workspace_permission": "read", "public_permission": "none"}
-    if access == "private":
-        return {"workspace_permission": "none", "public_permission": "none"}
-    raise ValueError("access must be public, workspace, or private")
-
-
 class StashClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
@@ -163,15 +153,11 @@ class StashClient:
         folder_id: str,
         title: str | None = None,
         description: str = "",
-        workspace_permission: str = "read",
-        public_permission: str = "none",
         discoverable: bool = False,
     ) -> dict:
         body = {
             "folder_id": folder_id,
             "description": description,
-            "workspace_permission": workspace_permission,
-            "public_permission": public_permission,
             "discoverable": discoverable,
         }
         if title:
@@ -204,28 +190,6 @@ class StashClient:
             f"/api/v1/workspaces/{workspace_id}/skills/{skill_id}/snapshot-source",
             json={"source_id": source_id, "path": path},
         )
-
-    # --- Skill members (per-person access on a skill) ---
-
-    def list_skill_members(self, skill_id: str) -> list:
-        return self._list(f"/api/v1/skills/{skill_id}/members", "members")
-
-    def add_skill_member(self, skill_id: str, user_id: str, permission: str = "read") -> dict:
-        return self._post(
-            f"/api/v1/skills/{skill_id}/members",
-            json={"user_id": user_id, "permission": permission},
-        )
-
-    def remove_skill_member(self, skill_id: str, user_id: str) -> None:
-        self._delete(f"/api/v1/skills/{skill_id}/members/{user_id}")
-
-    # --- Skill invites (pending invites awaiting the current user) ---
-
-    def list_skill_invites(self) -> list:
-        return self._list("/api/v1/skill-invites", "invites")
-
-    def dismiss_skill_invite(self, invite_id: str) -> None:
-        self._post(f"/api/v1/skill-invites/{invite_id}/dismiss")
 
     # --- Object sharing (grant a person access to a folder/file/session by email) ---
 

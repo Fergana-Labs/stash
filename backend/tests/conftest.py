@@ -110,8 +110,6 @@ _TRUNCATE_TABLES = [
     "workspace_sources",
     "documents",
     "files",
-    "skill_invites",
-    "skill_members",
     "skills",
     "analytics_events",
     "history_events",

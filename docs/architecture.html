@@ -52,7 +52,7 @@
   <h3>The two-table model</h3>
   <ul>
     <li><b><code>shares</code></b> — grants a <b>principal</b> (a <code>user</code>, or a <code>skill</code>) access to an object. This is the primary, team-collaboration path: <i>share a folder/file/session with a person by email</i>. Folder &amp; session-folder shares <b>cascade</b> to their contents.</li>
-    <li><b><code>skills</code> + <code>skill_members</code></b> — the publish record for a skill folder (a folder containing SKILL.md): slug, access, who can open it. Secondary, PLG: a link you hand to an agent (curl-able). Adding a source to a skill copies a <b>snapshot</b> page into its folder so it's self-contained.</li>
+    <li><b><code>skills</code></b> — the publish record for a skill folder (a folder containing SKILL.md): slug, Discover flag, cover art. Existence = publicly readable. Person shares ride the generic <code>shares</code> table on the folder. Adding a source to a skill copies a <b>snapshot</b> page into its folder so it's self-contained.</li>
   </ul>
   <h3>Access resolution — <code>check_access(object, user)</code></h3>
   <pre>owner (user is the workspace member)                         → read + write
@@ -67,7 +67,7 @@ else                                                         → denied</pre>
     <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
     <tr><td><code>shares</code></td><td>object_type, object_id, principal_type (user|skill), principal_id, permission</td><td>Per-object access grants (the permission model).</td></tr>
     <tr><td><code>skills</code></td><td>id, workspace_id, owner_id, slug, title, public_permission</td><td>Bundle metadata + public-link visibility. (Renamed from <code>stashes</code>.)</td></tr>
-    <tr><td><code>skill_members</code></td><td>skill_id, user_id, permission</td><td>Who can open a skill.</td></tr>
+    
     <tr><td><code>skills.folder_id</code></td><td>unique FK to folders</td><td>The folder a skill publishes. Its subtree is the content.</td></tr>
   </table>
   <h3>Sources</h3>

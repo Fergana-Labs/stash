@@ -1,10 +1,10 @@
-"""Shared skills — publish records attached 1:1 to skill folders.
+"""Published skills — public records attached 1:1 to skill folders.
 
-A skill is a folder containing SKILL.md (skill_service). This module owns the
-*sharing* side: the ``skills`` row (slug, access, members, Discover, cover art)
-that points at exactly one folder. Anyone who can open the record reads the
-whole folder subtree (permission_service); writes always go through the normal
-Files APIs and are never granted by the record.
+A skill is a folder containing SKILL.md (skill_service). Person-to-person
+sharing rides the generic folder shares; this module owns only *publishing*:
+the ``skills`` row (slug, Discover flag, cover art, view count) whose
+existence makes the folder publicly readable at /skills/<slug>. Writes always
+go through the normal Files APIs and are never granted by the record.
 """
 
 import hashlib
@@ -23,7 +23,6 @@ from . import (
     skill_service,
     source_service,
     storage_service,
-    workspace_service,
 )
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -72,16 +71,11 @@ def _content_hash(content: str) -> str:
 _SKILL_COLS = (
     "v.id, v.workspace_id, v.folder_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "CASE WHEN v.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
-    "v.workspace_permission, v.public_permission, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
-    "(SELECT COUNT(*) FROM skill_members cm WHERE cm.skill_id = v.id) AS share_count, "
     "v.created_at, v.updated_at"
 )
 _SKILL_FROM = "FROM skills v JOIN users owner_user ON owner_user.id = v.owner_id"
 _SKILL_SELECT = f"SELECT {_SKILL_COLS} {_SKILL_FROM}"
-
-_GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
 
 
 def agent_install_pitch(stash_url: str) -> str:
@@ -118,25 +112,6 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
-# Two-state visibility (private/public). "Shared" is derived in the UI from the
-# member list (share_count), not stored here.
-def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
-    return "public" if public_permission != "none" else "private"
-
-
-def _validate_general_permissions(
-    workspace_permission: str,
-    public_permission: str,
-    discoverable: bool,
-) -> None:
-    if workspace_permission not in _GENERAL_PERMISSION_VALUES:
-        raise ValueError("Unsupported workspace Skill permission")
-    if public_permission not in _GENERAL_PERMISSION_VALUES:
-        raise ValueError("Unsupported public Skill permission")
-    if discoverable and public_permission == "none":
-        raise ValueError("Discover Skills must be public")
-
-
 def skill_md_template(name: str, description: str = "") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
@@ -170,15 +145,13 @@ async def publish_folder(
     *,
     title: str | None = None,
     description: str = "",
-    workspace_permission: str = "read",
-    public_permission: str = "none",
     discoverable: bool = False,
     cover_image_url: str | None = None,
     icon_url: str | None = None,
 ) -> dict:
-    """Mint the publish record for a skill folder. Creates the SKILL.md
-    template if the folder doesn't have one yet."""
-    _validate_general_permissions(workspace_permission, public_permission, discoverable)
+    """Mint the publish record for a skill folder — the folder becomes
+    publicly readable at /skills/<slug>. Creates the SKILL.md template if the
+    folder doesn't have one yet."""
     pool = get_pool()
     folder = await pool.fetchrow(
         "SELECT id, name, workspace_id FROM folders WHERE id = $1", folder_id
@@ -204,16 +177,14 @@ async def publish_folder(
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (workspace_id, folder_id, slug, title, description, owner_id, "
-            "workspace_permission, public_permission, discoverable, cover_image_url, icon_url) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
+            "discoverable, cover_image_url, icon_url) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
             workspace_id,
             folder_id,
             _slugify(title),
             title,
             description,
             owner_id,
-            workspace_permission,
-            public_permission,
             discoverable,
             cover_image_url,
             icon_url,
@@ -226,29 +197,14 @@ async def publish_folder(
 
 async def update_skill(skill_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
-    skill = await pool.fetchrow(
-        "SELECT id, workspace_permission, public_permission FROM skills WHERE id = $1",
-        skill_id,
-    )
-    if not skill or not await user_can_manage(skill_id, user_id):
+    if not await user_can_manage(skill_id, user_id):
         return None
-    next_workspace_permission = updates.get("workspace_permission") or skill["workspace_permission"]
-    next_public_permission = updates.get("public_permission") or skill["public_permission"]
-    _validate_general_permissions(
-        next_workspace_permission,
-        next_public_permission,
-        bool(updates.get("discoverable")),
-    )
-    if updates.get("public_permission") == "none" and updates.get("discoverable") is None:
-        updates["discoverable"] = False
 
     sets, args, idx = [], [], 1
     clearable_fields = {"cover_image_url", "icon_url"}
     for col in (
         "title",
         "description",
-        "workspace_permission",
-        "public_permission",
         "discoverable",
         "cover_image_url",
         "icon_url",
@@ -298,9 +254,7 @@ async def get_public_skill(slug: str, viewer_id: UUID | None = None) -> dict | N
     if not row:
         return None
     skill = dict(row)
-    if not await user_can_read(skill["id"], viewer_id):
-        return None
-
+    _ = viewer_id  # published == public
     await pool.execute("UPDATE skills SET view_count = view_count + 1 WHERE id = $1", skill["id"])
 
     names = await pool.fetchrow(
@@ -342,7 +296,7 @@ async def list_public_skills(
 ) -> list[dict]:
     """Discover catalog: public + discoverable skills."""
     pool = get_pool()
-    where = ["v.public_permission != 'none'", "v.discoverable = true"]
+    where = ["v.discoverable = true"]
     args: list = []
     idx = 1
     if query:
@@ -374,9 +328,6 @@ async def list_public_skills(
                 "slug": skill["slug"],
                 "title": skill["title"],
                 "description": skill["description"],
-                "access": skill["access"],
-                "workspace_permission": skill["workspace_permission"],
-                "public_permission": skill["public_permission"],
                 "discoverable": skill["discoverable"],
                 "cover_image_url": skill["cover_image_url"],
                 "view_count": skill["view_count"],
@@ -392,12 +343,45 @@ async def list_public_skills(
     return out
 
 
-async def _filter_readable_skills(skills: list[dict], user_id: UUID | None) -> list[dict]:
-    readable = []
-    for skill in skills:
-        if await user_can_read(skill["id"], user_id):
-            readable.append(skill)
-    return readable
+async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
+    """Skill folders shared with this user via folder shares, with publish
+    info when the owner has also published them."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT f.id AS folder_id, f.name AS folder_name, sh.permission,
+               w.name AS workspace_name, w.id AS workspace_id,
+               COALESCE(u.display_name, u.name) AS shared_by,
+               p.content_markdown AS skill_md,
+               v.slug
+        FROM shares sh
+        JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder'
+        JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
+        JOIN workspaces w ON w.id = sh.workspace_id
+        LEFT JOIN users u ON u.id = sh.created_by
+        LEFT JOIN skills v ON v.folder_id = f.id
+        WHERE sh.principal_type = 'user' AND sh.principal_id = $1
+          AND (sh.expires_at IS NULL OR sh.expires_at > now())
+        ORDER BY w.name, f.name
+        """,
+        user_id,
+    )
+    out = []
+    for r in rows:
+        meta, _body = skill_service.parse_frontmatter(r["skill_md"] or "")
+        out.append(
+            {
+                "folder_id": str(r["folder_id"]),
+                "name": meta.get("name") or r["folder_name"],
+                "description": meta.get("description", ""),
+                "workspace_id": str(r["workspace_id"]),
+                "workspace_name": r["workspace_name"],
+                "shared_by": r["shared_by"],
+                "permission": r["permission"],
+                "slug": r["slug"],
+            }
+        )
+    return out
 
 
 # --- Folder contents (the public payload) ---
@@ -737,8 +721,6 @@ async def fork_skill(workspace_id: UUID, slug: str, added_by: UUID) -> dict | No
     skill = dict(row)
     if skill["workspace_id"] == workspace_id:
         return {"folder_id": str(skill["folder_id"]), "name": skill["title"]}
-    if not await user_can_read(skill["id"], added_by):
-        return None
 
     source_name = await pool.fetchval("SELECT name FROM folders WHERE id = $1", skill["folder_id"])
     async with pool.acquire() as conn:
@@ -761,13 +743,6 @@ async def fork_skill(workspace_id: UUID, slug: str, added_by: UUID) -> dict | No
                     name = f"{source_name or skill['title']} ({n})"
                     n += 1
 
-    from . import skill_invite_service
-
-    await skill_invite_service.mark_invite_accepted_for_skill(
-        skill_id=skill["id"],
-        user_id=added_by,
-        workspace_id=workspace_id,
-    )
     return {"folder_id": str(new_folder_id), "name": name}
 
 
@@ -1013,153 +988,23 @@ def contents_to_text(title: str, contents: dict) -> str:
     return "\n\n".join(parts)
 
 
-# --- Members + access checks (on the publish record) ---
-
-
-async def user_can_manage(skill_id: UUID, user_id: UUID) -> bool:
-    return await user_can_write(skill_id, user_id)
-
-
-async def user_can_admin(skill_id: UUID, user_id: UUID) -> bool:
-    pool = get_pool()
-    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM skills WHERE id = $1", skill_id)
-    if not row:
-        return False
-    if row["owner_id"] == user_id:
-        return True
-    member = await pool.fetchrow(
-        "SELECT permission FROM skill_members WHERE skill_id = $1 AND user_id = $2",
-        skill_id,
-        user_id,
-    )
-    return bool(member and member["permission"] == "admin")
-
-
-async def list_members(skill_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT sm.user_id, u.name, u.display_name, sm.permission, sm.granted_by, sm.created_at "
-        "FROM skill_members sm "
-        "JOIN users u ON u.id = sm.user_id "
-        "WHERE sm.skill_id = $1 "
-        "ORDER BY sm.created_at, u.name",
-        skill_id,
-    )
-    return [dict(row) for row in rows]
-
-
-async def add_member(
-    skill_id: UUID,
-    user_id: UUID,
-    permission: str,
-    granted_by: UUID,
-) -> dict | None:
-    if permission not in {"read", "write", "admin"}:
-        raise ValueError("Invalid Skill permission")
-
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
-        "VALUES ($1, $2, $3, $4) "
-        "ON CONFLICT (skill_id, user_id) DO UPDATE "
-        "SET permission = EXCLUDED.permission, granted_by = EXCLUDED.granted_by "
-        "RETURNING user_id, permission, granted_by, created_at",
-        skill_id,
-        user_id,
-        permission,
-        granted_by,
-    )
-    if not row:
-        return None
-    await pool.execute("UPDATE skills SET updated_at = now() WHERE id = $1", skill_id)
-
-    user = await pool.fetchrow(
-        "SELECT name, display_name FROM users WHERE id = $1",
-        user_id,
-    )
-    if not user:
-        return None
-
-    from . import skill_invite_service
-
-    await skill_invite_service.create_or_update_invite(
-        skill_id=skill_id,
-        recipient_user_id=user_id,
-        invited_by_user_id=granted_by,
-        permission=permission,
-    )
-
-    member = dict(row)
-    member["name"] = user["name"]
-    member["display_name"] = user["display_name"]
-    return member
-
-
-async def remove_member(skill_id: UUID, user_id: UUID) -> bool:
-    pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM skill_members WHERE skill_id = $1 AND user_id = $2",
-        skill_id,
-        user_id,
-    )
-    removed = result == "DELETE 1"
-    if removed:
-        from . import skill_invite_service
-
-        await skill_invite_service.delete_pending_invite(skill_id, user_id)
-        await pool.execute("UPDATE skills SET updated_at = now() WHERE id = $1", skill_id)
-    return removed
-
-
-async def user_can_write(skill_id: UUID, user_id: UUID) -> bool:
-    """Managing the publish record requires owner/admin, explicit write, or
-    general edit access. Folder writes always go through the Files permissions."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
-        "FROM skills WHERE id = $1",
-        skill_id,
-    )
-    if not row:
-        return False
-    if row["owner_id"] == user_id:
-        return True
-    member = await pool.fetchrow(
-        "SELECT permission FROM skill_members WHERE skill_id = $1 AND user_id = $2",
-        skill_id,
-        user_id,
-    )
-    if member and member["permission"] in ("write", "admin"):
-        return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    if role is not None and row["workspace_permission"] == "write":
-        return True
-    return row["public_permission"] == "write"
+# --- Access checks (on the publish record) ---
+#
+# A publish record's existence means "publicly readable"; managing it is
+# owner-only. Person-to-person access rides folder shares, not this module.
 
 
 async def user_can_read(skill_id: UUID, user_id: UUID | None) -> bool:
+    _ = user_id  # published == public
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
-        "FROM skills WHERE id = $1",
-        skill_id,
-    )
-    if not row:
-        return False
-    if row["public_permission"] != "none":
-        return True
-    if user_id is None:
-        return False
-    if row["owner_id"] == user_id:
-        return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    member = await pool.fetchrow(
-        "SELECT 1 FROM skill_members WHERE skill_id = $1 AND user_id = $2",
-        skill_id,
-        user_id,
-    )
-    if member is not None:
-        return True
-    if row["workspace_permission"] != "none":
-        return role is not None
-    return False
+    return bool(await pool.fetchval("SELECT 1 FROM skills WHERE id = $1", skill_id))
+
+
+async def user_can_manage(skill_id: UUID, user_id: UUID) -> bool:
+    pool = get_pool()
+    owner_id = await pool.fetchval("SELECT owner_id FROM skills WHERE id = $1", skill_id)
+    return owner_id == user_id
+
+
+async def user_can_write(skill_id: UUID, user_id: UUID) -> bool:
+    return await user_can_manage(skill_id, user_id)

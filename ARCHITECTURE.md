@@ -33,8 +33,10 @@ tree (an S3-backed binary, vs. an in-app-editable page, vs. a folder).
   Skills are MECE — skill folders are hidden from every Files surface and
   shown in the Skills area instead.
 - `skills` is the 1:1 publish record for a skill folder (`folder_id`
-  unique): slug, access, cover art, Discover flag.
-- `skill_members` grants explicit access to private published Skills.
+  unique): slug, cover art, Discover flag. Its existence makes the folder
+  publicly readable at /skills/<slug>.
+- Person-to-person skill access rides the generic `shares` table on the
+  skill's folder, exactly like any other folder.
 - Forking deep-copies the skill folder into the forker's workspace.
 
 Object-level privacy tables and page-link graph tables are intentionally not part
@@ -43,10 +45,9 @@ of the current architecture. Privacy is mediated by Skills.
 ## Access Rules
 
 - Content not inside a published skill folder is visible to workspace members.
-- A readable publish record grants READ on the whole folder subtree, never write.
-- Public Skills are anonymously readable.
-- Private published Skills are readable only to their owner and explicit
-  Skill members.
+- A publish record grants READ on the whole folder subtree to everyone,
+  never write — publishing IS the public grant.
+- Private skill access is a plain folder share.
 - Publishing mints the skill's publish record and returns its public URL.
 
 ## Main Backend Routers
@@ -70,8 +71,8 @@ of the current architecture. Privacy is mediated by Skills.
 
 Object-level privacy is enforced inline in each router that returns a
 resource — there is no separate permissions router. The `workspace_members`
-table gates everything inside a workspace; the `skill_members` table gates
-per-Skill sharing; the publish record's permissions control public exposure.
+table gates everything inside a workspace; folder shares gate
+per-person access; the publish record's existence controls public exposure.
 
 ## Frontend Shell
 

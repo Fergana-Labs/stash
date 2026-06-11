@@ -1,4 +1,4 @@
-from cli.client import StashClient, skill_permissions_for_access
+from cli.client import StashClient
 
 
 def _post_stub_client():
@@ -13,27 +13,10 @@ def _post_stub_client():
     return client, calls
 
 
-def test_skill_permissions_for_access() -> None:
-    assert skill_permissions_for_access("public") == {
-        "workspace_permission": "read",
-        "public_permission": "read",
-    }
-    assert skill_permissions_for_access("workspace") == {
-        "workspace_permission": "read",
-        "public_permission": "none",
-    }
-    assert skill_permissions_for_access("private") == {
-        "workspace_permission": "none",
-        "public_permission": "none",
-    }
-
-
-def test_publish_skill_folder_sends_permission_fields() -> None:
+def test_publish_skill_folder_publishes_publicly() -> None:
     client, calls = _post_stub_client()
 
-    client.publish_skill_folder(
-        "WS", "F1", title="Launch notes", **skill_permissions_for_access("public")
-    )
+    client.publish_skill_folder("WS", "F1", title="Launch notes", discoverable=True)
 
     assert calls == [
         (
@@ -41,16 +24,14 @@ def test_publish_skill_folder_sends_permission_fields() -> None:
             {
                 "folder_id": "F1",
                 "description": "",
-                "workspace_permission": "read",
-                "public_permission": "read",
-                "discoverable": False,
+                "discoverable": True,
                 "title": "Launch notes",
             },
         )
     ]
 
 
-def test_publish_skill_folder_defaults_private() -> None:
+def test_publish_skill_folder_defaults() -> None:
     client, calls = _post_stub_client()
 
     client.publish_skill_folder("WS", "F1")
@@ -61,8 +42,6 @@ def test_publish_skill_folder_defaults_private() -> None:
             {
                 "folder_id": "F1",
                 "description": "",
-                "workspace_permission": "read",
-                "public_permission": "none",
                 "discoverable": False,
             },
         )

@@ -3,8 +3,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { displayVisibility } from "../../lib/api";
-
 // Minimum shape required by the card — both workspace skill folders and the
 // Discover catalog's PublicSkillCard project into this.
 export interface SkillCardData {
@@ -14,8 +12,8 @@ export interface SkillCardData {
   icon_url?: string | null;
   owner_name?: string;
   owner_display_name?: string | null;
-  access?: "private" | "public";
-  share_count?: number;
+  /** Publish state badge: pass null for Private, undefined to hide the badge. */
+  published?: { discoverable: boolean } | null;
   updated_at?: string;
   file_count?: number;
 }
@@ -35,30 +33,36 @@ interface SkillCardProps {
   selected?: boolean;
 }
 
-export const VIS_COLOR: Record<string, string> = {
-  public: "#22C55E",
-  shared: "var(--color-brand-500)",
+export const PUBLISH_COLOR = {
+  published: "#22C55E",
+  discover: "var(--color-brand-500)",
   private: "#9CA3AF",
-};
+} as const;
 
-// The one way visibility is shown on a Skill: a dot + label pill. Used on
-// card covers and list rows so there's no filter to learn — every row says
-// Private / Shared / Public itself.
-export function VisibilityBadge({
-  access,
-  shareCount,
+// The one way publish state is shown on a Skill: a dot + label pill. Used on
+// card covers and list rows — every row says Published / Private itself, with
+// a second dot when the skill is also listed on Discover.
+export function PublishBadge({
+  published,
 }: {
-  access: "private" | "public";
-  shareCount: number;
+  published: { discoverable: boolean } | null;
 }) {
-  const visibility = displayVisibility(access, shareCount);
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-base px-1.5 py-0.5 text-[10.5px] text-muted">
       <span
         className="inline-block h-[7px] w-[7px] rounded-full"
-        style={{ background: VIS_COLOR[visibility] }}
+        style={{
+          background: published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private,
+        }}
       />
-      {visibility.charAt(0).toUpperCase() + visibility.slice(1)}
+      {published ? "Published" : "Private"}
+      {published?.discoverable && (
+        <span
+          title="Listed on Discover"
+          className="inline-block h-[7px] w-[7px] rounded-full"
+          style={{ background: PUBLISH_COLOR.discover }}
+        />
+      )}
     </span>
   );
 }
@@ -100,9 +104,9 @@ export default function SkillCard({
         {cornerAction && (
           <div className="absolute right-2.5 top-2 z-10">{cornerAction}</div>
         )}
-        {skill.access && (
+        {skill.published !== undefined && (
           <span className="absolute bottom-2 left-2.5">
-            <VisibilityBadge access={skill.access} shareCount={skill.share_count ?? 0} />
+            <PublishBadge published={skill.published} />
           </span>
         )}
       </div>

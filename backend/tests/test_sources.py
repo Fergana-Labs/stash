@@ -999,7 +999,7 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     assert folder.status_code == 201
     skill = await client.post(
         f"/api/v1/workspaces/{ws}/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle", "public_permission": "read"},
+        json={"folder_id": folder.json()["id"], "title": "Bundle"},
         headers=_auth(api_key),
     )
     assert skill.status_code == 201

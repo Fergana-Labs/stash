@@ -93,9 +93,6 @@ def _skill_to_dict(skill: dict) -> dict:
         "slug": skill["slug"],
         "title": skill["title"],
         "description": skill["description"],
-        "access": skill["access"],
-        "workspace_permission": skill["workspace_permission"],
-        "public_permission": skill["public_permission"],
         "discoverable": bool(skill["discoverable"]),
         "view_count": skill["view_count"],
         "created_at": str(skill["created_at"]),
@@ -398,16 +395,11 @@ async def _create_skill(args: dict) -> dict:
 
 @tool(
     "publish_skill",
-    "Publish a skill folder: mint its share record and return the public URL.",
+    "Publish a skill folder: make it publicly readable at /skills/<slug> and " "return the URL.",
     {
         "type": "object",
         "properties": {
             "folder_id": {"type": "string"},
-            "public_permission": {
-                "type": "string",
-                "enum": ["none", "read", "write"],
-                "default": "read",
-            },
             "discoverable": {"type": "boolean", "default": False},
         },
         "required": ["folder_id"],
@@ -421,7 +413,6 @@ async def _publish_skill(args: dict) -> dict:
             workspace_id,
             user_id,
             UUID(args["folder_id"]),
-            public_permission=args.get("public_permission") or "read",
             discoverable=bool(args.get("discoverable", False)),
         )
     except (ValueError, PermissionError) as e:
@@ -440,14 +431,6 @@ async def _publish_skill(args: dict) -> dict:
             "skill_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
-            "workspace_permission": {
-                "type": "string",
-                "enum": ["none", "read", "write"],
-            },
-            "public_permission": {
-                "type": "string",
-                "enum": ["none", "read", "write"],
-            },
             "discoverable": {"type": "boolean"},
         },
         "required": ["skill_id"],
@@ -459,17 +442,7 @@ async def _update_skill(args: dict) -> dict:
     if not await shared_skill_service.user_can_manage(skill_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
-    updates = {
-        key: args[key]
-        for key in (
-            "title",
-            "description",
-            "workspace_permission",
-            "public_permission",
-            "discoverable",
-        )
-        if key in args
-    }
+    updates = {key: args[key] for key in ("title", "description", "discoverable") if key in args}
     skill = await shared_skill_service.update_skill(skill_id, user_id, updates)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))

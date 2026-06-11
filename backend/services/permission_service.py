@@ -79,8 +79,10 @@ def _share_target_condition(object_type: str, object_alias: str, share_alias: st
 
 
 def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -> str:
-    """A skill whose folder is an ancestor of the object grants READ when the
-    user can open it. Sessions never live in folders, so no skill clause."""
+    """A published skill on an ancestor folder grants READ to everyone —
+    publishing IS the public grant. Person shares ride the shares branch.
+    Sessions never live in folders, so no skill clause."""
+    _ = user_arg
     if object_type == "folder":
         folder_chain = _folder_chain_sql(f"{object_alias}.id")
     elif object_type in ("page", "file", "table"):
@@ -95,15 +97,7 @@ def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -
     return f"""
         ({guard}EXISTS (
           SELECT 1 FROM skills content_skill
-          LEFT JOIN skill_members content_cm
-            ON content_cm.skill_id = content_skill.id
-           AND content_cm.user_id = ${user_arg}
           WHERE content_skill.folder_id IN ({folder_chain})
-            AND (
-              content_skill.public_permission != 'none'
-              OR content_skill.owner_id = ${user_arg}
-              OR content_cm.user_id IS NOT NULL
-            )
         ))
     """
 
@@ -260,7 +254,7 @@ async def _user_share_grants(
 
 
 async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
-    """Skills whose folder is the object or one of its ancestor folders."""
+    """Published skills whose folder is the object or one of its ancestors."""
     if object_type not in _CONTENT_TYPES:
         return []
     ancestor_folder_ids = [
@@ -272,39 +266,16 @@ async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
         return []
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, workspace_id, owner_id, public_permission "
-        "FROM skills WHERE folder_id = ANY($1::uuid[])",
+        "SELECT id, workspace_id, owner_id FROM skills WHERE folder_id = ANY($1::uuid[])",
         ancestor_folder_ids,
     )
     return [dict(row) for row in rows]
 
 
-async def _skill_member_permission(skill_id: UUID, user_id: UUID) -> str | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT permission FROM skill_members WHERE skill_id = $1 AND user_id = $2",
-        skill_id,
-        user_id,
-    )
-    return row["permission"] if row else None
-
-
-async def _skill_open(skill: dict, user_id: UUID | None) -> bool:
-    """Can the user OPEN this skill (read its contents)? Skills are
-    read-only links: public, owned, or a skill member."""
-    if skill["public_permission"] != "none":
-        return True
-    if user_id is None:
-        return False
-    if skill["owner_id"] == user_id:
-        return True
-    return await _skill_member_permission(skill["id"], user_id) is not None
-
-
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
-    """Can the user access this session folder? Mirrors _skill_open: public
+    """Can the user access this session folder? Public
     link, owner, or an explicit user share. Workspace members are granted earlier
     in check_access (the workspace is the trust boundary)."""
     public = folder["public_permission"]
@@ -338,18 +309,18 @@ async def check_access(
     ):
         return True
 
-    # The skill publish record itself: gated by skill access (read-only).
+    # The publish record itself: existence == publicly readable; owner manages.
     if object_type == "skill":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, workspace_id, owner_id, public_permission FROM skills WHERE id = $1",
+            "SELECT id, owner_id FROM skills WHERE id = $1",
             object_id,
         )
         if not row:
             return False
         if require != "read":
             return row["owner_id"] == user_id
-        return await _skill_open(dict(row), user_id)
+        return True
 
     # A session folder is a shareable bundle: public link, owner, or user share.
     if object_type == "session_folder":
@@ -382,11 +353,9 @@ async def check_access(
         if frow and await _session_folder_open(dict(frow), frow["id"], user_id, "read"):
             return True
 
-    # Read-only access via a skill that contains the object.
-    if require == "read":
-        for skill in await _containing_skills(object_type, object_id):
-            if await _skill_open(skill, user_id):
-                return True
+    # Read-only access via a published skill that contains the object.
+    if require == "read" and await _containing_skills(object_type, object_id):
+        return True
 
     return False
 
@@ -410,7 +379,7 @@ async def get_visibility(object_type: str, object_id: UUID) -> str:
     else 'private'."""
     pool = get_pool()
     skills = await _containing_skills(object_type, object_id)
-    if any(c["public_permission"] != "none" for c in skills):
+    if skills:
         return "public"
     shared = await pool.fetchrow(
         "SELECT 1 FROM shares WHERE object_type = $1 AND object_id = $2 LIMIT 1",

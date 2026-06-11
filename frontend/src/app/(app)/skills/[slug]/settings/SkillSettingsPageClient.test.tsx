@@ -71,8 +71,6 @@ vi.mock("../../../../../lib/skillNavigationCache", () => ({
 }));
 
 vi.mock("../../../../../lib/api", () => ({
-  displayVisibility: (access: "private" | "public", shareCount: number) =>
-    access === "public" ? "public" : shareCount > 0 ? "shared" : "private",
   getPublicSkill: vi.fn(),
   unpublishSkill: vi.fn(),
   updateSkill: vi.fn(),
@@ -93,14 +91,10 @@ function skillDetail(
       owner_id: "user-1",
       owner_name: "henry",
       owner_display_name: "Henry",
-      access: "public",
-      workspace_permission: "read",
-      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
       view_count: 0,
-      share_count: 0,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
       ...skill,
@@ -126,16 +120,25 @@ describe("SkillSettingsPageClient", () => {
     cleanup();
   });
 
-  it("loads editable skill settings", async () => {
+  it("loads editable skill settings without member management", async () => {
     render(<SkillSettingsPageClient slug="shared-skill" />);
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(await screen.findByDisplayValue("Shared Skill")).toBeInTheDocument();
+    // Person-to-person access is folder shares now, not skill members.
     expect(screen.queryByText("Members")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Visibility")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Workspace access")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Public access")).not.toBeInTheDocument();
-    expect(screen.queryByText("List on Discover")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("List on Discover")).not.toBeChecked();
+  });
+
+  it("toggles the Discover listing", async () => {
+    render(<SkillSettingsPageClient slug="shared-skill" />);
+
+    fireEvent.click(await screen.findByLabelText("List on Discover"));
+
+    await waitFor(() =>
+      expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
+    );
   });
 
   it("saves title changes only", async () => {

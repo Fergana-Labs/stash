@@ -69,8 +69,6 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
             "folder_id": folder["id"],
             "title": "Auth 401 spike",
             "description": "Clock skew investigation",
-            "workspace_permission": "read",
-            "public_permission": "read",
         },
         headers=_auth(api_key),
     )
@@ -118,8 +116,6 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
             "title": "HTML strategy memo",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",
-            "workspace_permission": "read",
-            "public_permission": "read",
         },
         headers=_auth(api_key),
     )

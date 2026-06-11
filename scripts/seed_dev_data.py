@@ -718,14 +718,6 @@ async def _ensure_files(
     return out
 
 
-def skill_permissions_for_access(access: str) -> dict[str, str]:
-    if access == "public":
-        return {"workspace_permission": "read", "public_permission": "read"}
-    if access == "workspace":
-        return {"workspace_permission": "read", "public_permission": "none"}
-    return {"workspace_permission": "none", "public_permission": "none"}
-
-
 async def _ensure_skills(
     workspace_id: UUID,
     user: dict,
@@ -742,7 +734,7 @@ async def _ensure_skills(
         {
             "title": "Workspace Product Pack",
             "description": "Core product artifacts for sprint planning.",
-            "access": "workspace",
+            "publish": False,
             "discoverable": False,
             "pages": ["Vision and Principles", "Launch Plan"],
             "tables": ["Feature Readiness"],
@@ -750,7 +742,7 @@ async def _ensure_skills(
         {
             "title": "Public Launch Bundle",
             "description": "Shareable launch-facing packet.",
-            "access": "public",
+            "publish": True,
             "discoverable": True,
             "pages": ["Team Working Agreement"],
             "tables": ["Release Risks"],
@@ -758,7 +750,7 @@ async def _ensure_skills(
         {
             "title": "Private Research Notes",
             "description": "Internal review notes not ready for public share.",
-            "access": "private",
+            "publish": False,
             "discoverable": False,
             "pages": ["Data Validation"],
             "tables": [],
@@ -793,15 +785,18 @@ async def _ensure_skills(
                 await pool.execute(
                     "UPDATE tables SET folder_id = $1 WHERE id = $2", folder["id"], table["id"]
                 )
-        await shared_skill_service.publish_folder(
-            workspace_id,
-            user["id"],
-            folder["id"],
-            title=spec["title"],
-            description=spec["description"],
-            **skill_permissions_for_access(spec["access"]),
-            discoverable=spec["discoverable"],
+        await shared_skill_service._ensure_skill_md(
+            workspace_id, folder["id"], user["id"], spec["title"]
         )
+        if spec["publish"]:
+            await shared_skill_service.publish_folder(
+                workspace_id,
+                user["id"],
+                folder["id"],
+                title=spec["title"],
+                description=spec["description"],
+                discoverable=spec["discoverable"],
+            )
 
     # Freeze a couple of sessions into a published skill folder.
     story_title = "Session Story Bundle"
@@ -819,13 +814,8 @@ async def _ensure_skills(
                 folder["id"],
                 user["id"],
             )
-        await shared_skill_service.publish_folder(
-            workspace_id,
-            user["id"],
-            folder["id"],
-            title=story_title,
-            description="A curated set of historical work sessions.",
-            **skill_permissions_for_access("workspace"),
+        await shared_skill_service._ensure_skill_md(
+            workspace_id, folder["id"], user["id"], story_title
         )
 
 
@@ -903,7 +893,6 @@ async def _ensure_external_skill_sample(
             folder["id"],
             title=external_skill_title,
             description="Sample public skill from a different workspace.",
-            **skill_permissions_for_access("public"),
             discoverable=True,
         )
         external_slug = created_external["slug"]

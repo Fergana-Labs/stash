@@ -8,13 +8,9 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
-from ..database import get_pool
 from ..models import (
     ForkSkillRequest,
     PageResponse,
-    SkillMemberRequest,
-    SkillMemberResponse,
-    SkillMembersResponse,
     SkillPublicResponse,
     SkillPublishRequest,
     SkillResponse,
@@ -52,8 +48,6 @@ async def publish_skill(
             req.folder_id,
             title=req.title,
             description=req.description,
-            workspace_permission=req.workspace_permission,
-            public_permission=req.public_permission,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,
@@ -88,6 +82,17 @@ async def get_local_skill(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill
+
+
+me_router = APIRouter(prefix="/api/v1/me", tags=["skills"])
+
+
+@me_router.get("/shared-skills")
+async def list_shared_skills_with_me(current_user: dict = Depends(get_current_user)):
+    """Skill folders shared with me person-to-person (folder shares whose
+    folder contains a SKILL.md), with publish info when published."""
+    skills = await shared_skill_service.list_skills_shared_with_user(current_user["id"])
+    return {"skills": skills}
 
 
 class SnapshotSourceRequest(BaseModel):
@@ -175,61 +180,6 @@ async def unpublish_skill(
     deleted = await shared_skill_service.unpublish_skill(skill_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Skill not found")
-
-
-async def _require_can_manage_skill(skill_id: UUID, user_id: UUID) -> None:
-    skill = await shared_skill_service.get_skill(skill_id)
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    if not await shared_skill_service.user_can_admin(skill_id, user_id):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this skill")
-
-
-@public_router.get("/{skill_id}/members", response_model=SkillMembersResponse)
-async def list_skill_members(
-    skill_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_manage_skill(skill_id, current_user["id"])
-    members = await shared_skill_service.list_members(skill_id)
-    return SkillMembersResponse(members=[SkillMemberResponse(**member) for member in members])
-
-
-@public_router.post("/{skill_id}/members", response_model=SkillMemberResponse, status_code=201)
-async def add_skill_member(
-    skill_id: UUID,
-    req: SkillMemberRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_manage_skill(skill_id, current_user["id"])
-
-    pool = get_pool()
-    user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    try:
-        member = await shared_skill_service.add_member(
-            skill_id,
-            req.user_id,
-            req.permission,
-            current_user["id"],
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if not member:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return SkillMemberResponse(**member)
-
-
-@public_router.delete("/{skill_id}/members/{user_id}", status_code=204)
-async def remove_skill_member(
-    skill_id: UUID,
-    user_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_manage_skill(skill_id, current_user["id"])
-    await shared_skill_service.remove_member(skill_id, user_id)
 
 
 @public_router.get("/{slug}")

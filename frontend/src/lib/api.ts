@@ -403,9 +403,6 @@ export interface PublicSkillCard {
   slug: string;
   title: string;
   description: string;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   view_count: number;
@@ -1073,7 +1070,7 @@ export type SessionFolderVisibility = "private" | "public";
 export type DisplayVisibility = "private" | "shared" | "public";
 
 // The label to show: public link, else "shared" if anyone's been invited, else
-// private. Folders and skills both feed (access, count) in.
+// private. Session folders feed (access, count) in.
 export function displayVisibility(
   access: "private" | "public",
   shareCount: number,
@@ -1310,22 +1307,15 @@ export async function recordWorkspaceRecent(
 
 // --- Skills (special folders with a SKILL.md, plus their publish records) ---
 
-export type SkillVisibility = "private" | "public";
-export type SkillGeneralPermission = "none" | "read" | "write";
-
-// The publish record on a skill folder. Minted lazily when the skill is
-// first shared; null for skills that have never been shared.
+// The publish record on a skill folder. Published means publicly readable;
+// null for skills that have never been published.
 export interface SkillPublishInfo {
   id: string;
   slug: string;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
-  share_count: number;
 }
 
 // A skill folder: SKILL.md frontmatter + folder stats + publish info.
@@ -1359,14 +1349,10 @@ export interface WorkspaceSkill {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
-  share_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -1378,8 +1364,6 @@ export async function publishSkillFolder(
   body: {
     title?: string;
     description?: string;
-    workspace_permission?: SkillGeneralPermission;
-    public_permission?: SkillGeneralPermission;
     discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
@@ -1396,15 +1380,22 @@ export async function publishSkillFolder(
   return skill;
 }
 
-export type SkillMemberPermission = "read" | "write" | "admin";
-
-export interface SkillMember {
-  user_id: string;
+// A skill folder someone shared with me person-to-person (a folder share on
+// a folder that contains a SKILL.md). slug is set when it's also published.
+export interface SharedSkill {
+  folder_id: string;
   name: string;
-  display_name: string;
-  permission: SkillMemberPermission;
-  granted_by: string | null;
-  created_at: string;
+  description: string;
+  workspace_id: string;
+  workspace_name: string;
+  shared_by: string | null;
+  permission: "read" | "write";
+  slug: string | null;
+}
+
+export async function listSkillsSharedWithMe(): Promise<SharedSkill[]> {
+  const data = await apiFetch<{ skills: SharedSkill[] }>("/api/v1/me/shared-skills");
+  return data.skills;
 }
 
 // Inlined folder contents for the public skill renderer.
@@ -1471,8 +1462,6 @@ export async function updateSkill(
   data: {
     title?: string;
     description?: string;
-    workspace_permission?: SkillGeneralPermission;
-    public_permission?: SkillGeneralPermission;
     discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
@@ -1482,28 +1471,6 @@ export async function updateSkill(
     method: "PATCH",
     body: JSON.stringify(data),
   });
-}
-
-export async function listSkillMembers(skillId: string): Promise<SkillMember[]> {
-  const data = await apiFetch<{ members: SkillMember[] }>(
-    `/api/v1/skills/${skillId}/members`
-  );
-  return data.members;
-}
-
-export async function addSkillMember(
-  skillId: string,
-  userId: string,
-  permission: SkillMemberPermission
-): Promise<SkillMember> {
-  return apiFetch(`/api/v1/skills/${skillId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeSkillMember(skillId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/skills/${skillId}/members/${userId}`, { method: "DELETE" });
 }
 
 export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
@@ -1520,32 +1487,6 @@ export async function forkSkill(
     method: "POST",
     body: JSON.stringify({ workspace_id: workspaceId }),
   });
-}
-
-// --- Skill invites ---
-
-export interface SkillInvite {
-  id: string;
-  skill_id: string;
-  skill_slug: string;
-  skill_title: string;
-  skill_description: string;
-  source_workspace_id: string;
-  source_workspace_name: string;
-  invited_by_user_id: string;
-  invited_by_name: string;
-  invited_by_display_name: string;
-  permission: SkillMemberPermission;
-  created_at: string;
-}
-
-export async function listSkillInvites(): Promise<SkillInvite[]> {
-  const data = await apiFetch<{ invites: SkillInvite[] }>("/api/v1/skill-invites");
-  return data.invites;
-}
-
-export async function dismissSkillInvite(inviteId: string): Promise<void> {
-  await apiFetch(`/api/v1/skill-invites/${inviteId}/dismiss`, { method: "POST" });
 }
 
 // --- Workspace-wide page index ---

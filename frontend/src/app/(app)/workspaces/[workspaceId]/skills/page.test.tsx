@@ -11,8 +11,9 @@ import WorkspaceSkillsPage from "./page";
 import {
   createFolder,
   createPage,
-  listSkillInvites,
   listSkills,
+  listSkillsSharedWithMe,
+  type SharedSkill,
   type Skill,
 } from "../../../../../lib/api";
 import { skillMdTemplate } from "../../../../../lib/localSkill";
@@ -50,15 +51,12 @@ vi.mock("../../../../../lib/api", () => ({
       this.status = status;
     }
   },
-  displayVisibility: (access: "private" | "public", shareCount: number) =>
-    access === "public" ? "public" : shareCount > 0 ? "shared" : "private",
   createFolder: vi.fn(),
   createPage: vi.fn(),
   deleteFolder: vi.fn(),
-  dismissSkillInvite: vi.fn(),
   forkSkill: vi.fn(),
-  listSkillInvites: vi.fn(),
   listSkills: vi.fn(),
+  listSkillsSharedWithMe: vi.fn(),
 }));
 
 vi.mock("../../../../../lib/pins", () => ({
@@ -88,6 +86,20 @@ function skill(overrides: Partial<Skill> = {}): Skill {
   };
 }
 
+function sharedSkill(overrides: Partial<SharedSkill> = {}): SharedSkill {
+  return {
+    folder_id: "folder-ext",
+    name: "Onboarding",
+    description: "How we onboard",
+    workspace_id: "ws-2",
+    workspace_name: "Henry's Workspace",
+    shared_by: "Henry",
+    permission: "read",
+    slug: null,
+    ...overrides,
+  };
+}
+
 describe("WorkspaceSkillsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -102,18 +114,14 @@ describe("WorkspaceSkillsPage", () => {
         published: {
           id: "skill-2",
           slug: "research",
-          access: "public",
-          workspace_permission: "read",
-          public_permission: "read",
           discoverable: true,
           cover_image_url: null,
           icon_url: null,
           view_count: 4,
-          share_count: 0,
         },
       }),
     ]);
-    vi.mocked(listSkillInvites).mockResolvedValue([]);
+    vi.mocked(listSkillsSharedWithMe).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -135,15 +143,41 @@ describe("WorkspaceSkillsPage", () => {
     }
     expect(screen.getByText("How we launch")).toBeInTheDocument();
 
-    // Unpublished skills badge as Private; published ones reflect access.
+    // Unpublished skills badge as Private; published ones say Published.
     expect(screen.getByText("Private")).toBeInTheDocument();
-    expect(screen.getByText("Public")).toBeInTheDocument();
+    expect(screen.getByText("Published")).toBeInTheDocument();
     const researchLinks = screen
       .getAllByText("Research")
       .map((el) => el.closest("a"));
     for (const link of researchLinks) {
       expect(link).toHaveAttribute("href", "/workspaces/ws-1/skills/folder-2");
     }
+  });
+
+  it("lists skill folders shared with you and links by publish state", async () => {
+    vi.mocked(listSkillsSharedWithMe).mockResolvedValue([
+      sharedSkill(),
+      sharedSkill({
+        folder_id: "folder-pub",
+        name: "Published Guide",
+        slug: "published-guide",
+      }),
+    ]);
+
+    render(<WorkspaceSkillsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Shared with you/ }));
+
+    // Unpublished shared skill links to the sharer's folder route (the share
+    // grants read); published ones link to the public skill page.
+    expect(await screen.findByText("Onboarding")).toBeInTheDocument();
+    expect(screen.getAllByText(/shared by Henry/)).toHaveLength(2);
+    const viewLinks = screen.getAllByRole("link", { name: "View" });
+    expect(viewLinks[0]).toHaveAttribute(
+      "href",
+      "/workspaces/ws-2/folders/folder-ext",
+    );
+    expect(viewLinks[1]).toHaveAttribute("href", "/skills/published-guide");
   });
 
   it("creates a New Skill folder with a SKILL.md and navigates to it", async () => {

@@ -14,11 +14,10 @@ import {
   useShellChromeValue,
 } from "../../../../components/ShellChromeContext";
 import {
-  addSkillMember,
-  getMe,
   getPublicSkill,
-  listSkillMembers,
-  searchUsers,
+  listObjectShares,
+  shareObjectByEmail,
+  unpublishSkill,
   updateSkill,
   type PublicSkillDetail,
 } from "../../../../lib/api";
@@ -58,13 +57,12 @@ vi.mock("../../../../lib/api", () => ({
     }
   },
   forkSkill: vi.fn(),
-  addSkillMember: vi.fn(),
-  getMe: vi.fn(),
   getPublicSkill: vi.fn(),
-  listSkillMembers: vi.fn(),
+  listObjectShares: vi.fn(),
   publishSkillFolder: vi.fn(),
-  removeSkillMember: vi.fn(),
-  searchUsers: vi.fn(),
+  shareObjectByEmail: vi.fn(),
+  unpublishSkill: vi.fn(),
+  unshareObject: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
   getToken: vi.fn(() => "test-token"),
@@ -117,14 +115,10 @@ function skillDetail(
       owner_id: "user-1",
       owner_name: "henry",
       owner_display_name: "Henry",
-      access: "public",
-      workspace_permission: "read",
-      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
       view_count: 0,
-      share_count: 0,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
       ...skill,
@@ -152,53 +146,31 @@ describe("SkillPageClient", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(getMe).mockResolvedValue(authState.user!);
     vi.mocked(getPublicSkill).mockResolvedValue({
       ...skillDetail(),
       can_write: true,
     });
-    vi.mocked(listSkillMembers).mockResolvedValue([
-      {
-        user_id: "user-2",
-        name: "sam",
-        display_name: "Sam",
-        permission: "write",
-        granted_by: "user-1",
-        created_at: "2026-05-12T00:00:00Z",
-      },
-    ]);
-    vi.mocked(searchUsers).mockResolvedValue([
-      { id: "user-3", name: "alex", display_name: "Alex" },
-    ]);
+    vi.mocked(listObjectShares).mockResolvedValue([]);
     vi.mocked(updateSkill).mockImplementation(async (_skillId, updates) => ({
       ...skillDetail().skill,
       ...updates,
     }));
-    vi.mocked(addSkillMember).mockResolvedValue({
-      user_id: "user-3",
-      name: "alex",
-      display_name: "Alex",
-      permission: "read",
-      granted_by: "user-1",
-      created_at: "2026-05-13T00:00:00Z",
-    });
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("renders the Share button in the app header with a copy-link affordance", async () => {
+  it("renders the publish popover in the app header with a copy-link affordance", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    const shareButton = await screen.findByRole("button", { name: "Share" });
+    const publishButton = await screen.findByRole("button", { name: "Published" });
     expect(
       screen.getByRole("button", { name: "Copy agent handoff link" }),
     ).toBeInTheDocument();
-    expect(shareButton.closest("header")).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: "Share" })).toHaveLength(1);
+    expect(publishButton.closest("header")).not.toBeNull();
 
-    fireEvent.click(shareButton);
+    fireEvent.click(publishButton);
     // Popover renders a "Copy" button for the public URL; click it.
     fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
@@ -224,88 +196,53 @@ describe("SkillPageClient", () => {
     );
   });
 
-  it("makes private Skills public and unlisted before copying an agent link", async () => {
-    vi.mocked(getPublicSkill).mockResolvedValueOnce({
-      ...skillDetail({
-        access: "private",
-        workspace_permission: "none",
-        public_permission: "none",
-        discoverable: false,
-      }),
-      can_write: true,
-    });
-
+  it("toggles the Discover listing from the publish popover", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Copy agent handoff link" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
+    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
+    fireEvent.click(within(dialog).getByLabelText("List on Discover"));
 
     await waitFor(() =>
-      expect(updateSkill).toHaveBeenCalledWith("skill-1", {
-        workspace_permission: "read",
-        public_permission: "read",
-        discoverable: false,
-      }),
-    );
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      `${window.location.origin}/api/v1/skills/shared-skill?format=text`,
+      expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
     );
   });
 
-  it("can make the Skill private from the Share dropdown", async () => {
-    vi.mocked(getPublicSkill).mockResolvedValueOnce({
-      ...skillDetail({
-        access: "public",
-        workspace_permission: "write",
-        public_permission: "read",
-      }),
-      can_write: true,
-    });
+  it("unpublishes from the publish popover", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.mocked(unpublishSkill).mockResolvedValue(undefined);
 
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-    const dialog = await screen.findByRole("dialog", { name: "Share skill" });
-    fireEvent.change(within(dialog).getByLabelText("Visibility"), {
-      target: { value: "private" },
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
+    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unpublish" }));
 
-    await waitFor(() =>
-      expect(updateSkill).toHaveBeenCalledWith("skill-1", {
-        workspace_permission: "none",
-        public_permission: "none",
-        discoverable: false,
-      }),
-    );
+    await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
+    vi.unstubAllGlobals();
   });
 
-  it("manages explicit Skill members from the Share dropdown", async () => {
-    vi.mocked(getPublicSkill).mockResolvedValueOnce({
-      ...skillDetail({
-        access: "private",
-        workspace_permission: "none",
-        public_permission: "none",
-      }),
-      can_write: true,
-    });
-
+  it("shares the skill folder person-to-person via the generic share button", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-    const dialog = await screen.findByRole("dialog", { name: "Share skill" });
-
-    expect(await within(dialog).findByText("@sam")).toBeInTheDocument();
-    expect(listSkillMembers).toHaveBeenCalledWith("skill-1");
-
-    fireEvent.change(within(dialog).getByPlaceholderText("Search users"), {
-      target: { value: "alex" },
+    const dialog = await screen.findByRole("dialog", {
+      name: "Share Shared Skill",
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Search" }));
-    fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
+    expect(listObjectShares).toHaveBeenCalledWith("folder", "folder-1");
+
+    fireEvent.change(within(dialog).getByPlaceholderText("Add people by email"), {
+      target: { value: "sam@example.com" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Invite" }));
 
     await waitFor(() =>
-      expect(addSkillMember).toHaveBeenCalledWith("skill-1", "user-3", "read"),
+      expect(shareObjectByEmail).toHaveBeenCalledWith(
+        "folder",
+        "folder-1",
+        "sam@example.com",
+        "read",
+      ),
     );
   });
 

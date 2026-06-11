@@ -196,16 +196,12 @@ class Stash:
         folder_id: str,
         title: str | None = None,
         description: str = "",
-        workspace_permission: str = "read",
-        public_permission: str = "none",
         discoverable: bool = False,
         workspace: str | None = None,
     ) -> dict:
         body = {
             "folder_id": folder_id,
             "description": description,
-            "workspace_permission": workspace_permission,
-            "public_permission": public_permission,
             "discoverable": discoverable,
         }
         if title:
