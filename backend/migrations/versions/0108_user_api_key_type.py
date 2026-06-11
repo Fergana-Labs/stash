@@ -1,13 +1,13 @@
 """Classify user API keys by creation path.
 
-Revision ID: 0107
-Revises: 0106
+Revision ID: 0108
+Revises: 0107
 """
 
 from alembic import op
 
-revision = "0107"
-down_revision = "0106"
+revision = "0108"
+down_revision = "0107"
 branch_labels = None
 depends_on = None
 
