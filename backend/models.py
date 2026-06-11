@@ -519,6 +519,7 @@ class ColumnDefinition(BaseModel):
     required: bool = False
     default: str | int | float | bool | list | None = None
     options: list[str] | None = None
+    width: int = Field(180, ge=80, le=800)
 
 
 class TableCreateRequest(BaseModel):
@@ -562,6 +563,7 @@ class ColumnAddRequest(BaseModel):
     required: bool = False
     default: str | int | float | bool | list | None = None
     options: list[str] | None = None
+    width: int = Field(180, ge=80, le=800)
 
 
 class ColumnUpdateRequest(BaseModel):
@@ -573,6 +575,7 @@ class ColumnUpdateRequest(BaseModel):
     required: bool | None = None
     default: str | int | float | bool | list | None = None
     options: list[str] | None = None
+    width: int | None = Field(None, ge=80, le=800)
 
 
 class ColumnReorderRequest(BaseModel):

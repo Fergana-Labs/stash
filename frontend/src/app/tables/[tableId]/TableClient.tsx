@@ -9,9 +9,11 @@ import {
   useRef,
   useState,
   type AnchorHTMLAttributes,
+  type CSSProperties,
   type FormEvent,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import Markdown from "react-markdown";
@@ -50,6 +52,13 @@ const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty
 const COLUMN_TYPE_OPTIONS = COLUMN_TYPES.map((type) => ({ value: type, label: type }));
 const FILTER_OP_OPTIONS = FILTER_OPS.map((op) => ({ value: op, label: op }));
 const MARKDOWN_LINK_RE = /\[[^\]\n]+\]\([^)]+\)/;
+const DEFAULT_COLUMN_WIDTH = 180;
+const MIN_COLUMN_WIDTH = 80;
+const MAX_COLUMN_WIDTH = 800;
+const SELECT_COLUMN_WIDTH = 32;
+const ROW_NUMBER_COLUMN_WIDTH = 40;
+const ADD_COLUMN_WIDTH = 40;
+const ROW_ACTIONS_MIN_WIDTH = 64;
 const TABLE_CELL_MARKDOWN_COMPONENTS = {
   p: ({ children }: HTMLAttributes<HTMLParagraphElement>) => <>{children}</>,
   a: ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
@@ -77,6 +86,12 @@ type CellLinkEditorState = {
   top: number;
   left: number;
 };
+type ColumnResizeState = {
+  colId: string;
+  startX: number;
+  startWidth: number;
+  width: number;
+};
 
 const LINK_EDITOR_DEFAULT_HREF = "https://";
 const LINK_EDITOR_WIDTH = 320;
@@ -92,6 +107,15 @@ function isTextEntryTarget(target: EventTarget | null) {
 
 function canLinkCellText(col: TableColumn) {
   return col.type === "text";
+}
+
+function clampColumnWidth(width: number) {
+  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
+}
+
+function storedColumnWidth(col: TableColumn) {
+  if (!Number.isFinite(col.width)) return DEFAULT_COLUMN_WIDTH;
+  return clampColumnWidth(col.width);
 }
 
 function cellInputType(col: TableColumn) {
@@ -284,6 +308,7 @@ function TableEditorPageInner() {
   const [colMenu, setColMenu] = useState<{ colId: string; x: number; y: number } | null>(null);
   const [colMenuTypeOpen, setColMenuTypeOpen] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
+  const [columnResize, setColumnResize] = useState<ColumnResizeState | null>(null);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [showColVisibility, setShowColVisibility] = useState(false);
 
@@ -318,6 +343,21 @@ function TableEditorPageInner() {
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = rows.length < totalCount;
+  const columnPixelWidth = useCallback((col: TableColumn) => {
+    if (columnResize?.colId === col.id) return columnResize.width;
+    return storedColumnWidth(col);
+  }, [columnResize]);
+  const columnWidthStyle = useCallback((col: TableColumn): CSSProperties => {
+    const width = columnPixelWidth(col);
+    return { width, minWidth: width, maxWidth: width };
+  }, [columnPixelWidth]);
+  const minimumTableWidth = useMemo(() => (
+    SELECT_COLUMN_WIDTH +
+    ROW_NUMBER_COLUMN_WIDTH +
+    ADD_COLUMN_WIDTH +
+    ROW_ACTIONS_MIN_WIDTH +
+    visibleColumns.reduce((total, col) => total + columnPixelWidth(col), 0)
+  ), [columnPixelWidth, visibleColumns]);
 
   const shareAction = useMemo(() => {
     if (!table || readOnly || !user) return null;
@@ -592,6 +632,65 @@ function TableEditorPageInner() {
     // pick won't break the table — it'll just stop accepting new values.
     try { setTable(await updateTableColumn(wsId, tableId, colId, { type })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
+  const commitColumnWidth = useCallback(async (colId: string, width: number) => {
+    const nextWidth = clampColumnWidth(width);
+    setTable((prev) => prev ? {
+      ...prev,
+      columns: prev.columns.map((col) => col.id === colId ? { ...col, width: nextWidth } : col),
+    } : prev);
+    try {
+      setTable(await updateTableColumn(wsId, tableId, colId, { width: nextWidth }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resize column");
+      void loadTable();
+    }
+  }, [loadTable, tableId, wsId]);
+  const startColumnResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    col: TableColumn,
+  ) => {
+    if (readOnly) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setColMenu(null);
+    const startWidth = columnPixelWidth(col);
+    setColumnResize({
+      colId: col.id,
+      startX: event.clientX,
+      startWidth,
+      width: startWidth,
+    });
+  };
+  const resizingColId = columnResize?.colId ?? null;
+  const resizingStartX = columnResize?.startX ?? null;
+  const resizingStartWidth = columnResize?.startWidth ?? null;
+  useEffect(() => {
+    if (!resizingColId || resizingStartX == null || resizingStartWidth == null) return;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const nextWidth = (clientX: number) => clampColumnWidth(resizingStartWidth + clientX - resizingStartX);
+    const handlePointerMove = (event: PointerEvent) => {
+      const width = nextWidth(event.clientX);
+      setColumnResize((current) => current?.colId === resizingColId ? { ...current, width } : current);
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      const width = nextWidth(event.clientX);
+      setColumnResize(null);
+      void commitColumnWidth(resizingColId, width);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp, { once: true });
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [commitColumnWidth, resizingColId, resizingStartWidth, resizingStartX]);
   const handleColumnDrop = async (targetColId: string) => {
     if (!dragCol || dragCol === targetColId) { setDragCol(null); return; }
     const ids = sortedColumns.map((c) => c.id);
@@ -977,7 +1076,7 @@ function TableEditorPageInner() {
     const isEditing = editingCell?.rowId === rowId && editingCell?.colId === col.id;
     const startCellEditing = () => { if (!isEditing) startEditing(rowId, col.id, value); };
     return (
-      <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={startCellEditing}>
+      <td key={col.id} style={columnWidthStyle(col)} className={`px-1 py-0 border-r border-border/50 ${cellBg}`} onClick={startCellEditing}>
         {isEditing ? (
           <div data-table-cell-editor>
             {col.type === "boolean" ? (
@@ -1272,7 +1371,16 @@ function TableEditorPageInner() {
         {/* Grid */}
         {table && (
           <div className="flex-1 overflow-auto overscroll-x-contain">
-            <table className="w-full border-collapse min-w-max">
+            <table className="w-full border-collapse table-fixed" style={{ minWidth: minimumTableWidth }}>
+              <colgroup>
+                <col style={{ width: SELECT_COLUMN_WIDTH }} />
+                <col style={{ width: ROW_NUMBER_COLUMN_WIDTH }} />
+                {visibleColumns.map((col) => (
+                  <col key={col.id} style={{ width: columnPixelWidth(col) }} />
+                ))}
+                <col style={{ width: ADD_COLUMN_WIDTH }} />
+                <col />
+              </colgroup>
               <thead className="sticky top-0 z-10">
                 <tr className="bg-surface border-b border-border">
                   <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
@@ -1280,19 +1388,30 @@ function TableEditorPageInner() {
                   {visibleColumns.map((col) => (
                     <th
                       key={col.id}
-                      className={`px-3 py-2 text-left text-xs font-medium text-muted border-r border-border min-w-[140px] select-none cursor-pointer hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
-                      draggable={!readOnly}
+                      style={columnWidthStyle(col)}
+                      className={`relative px-3 py-2 text-left text-xs font-medium text-muted border-r border-border select-none hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
+                      draggable={!readOnly && !columnResize}
                       onDragStart={() => { if (!readOnly) setDragCol(col.id); }}
                       onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
                       onDrop={() => { if (!readOnly) handleColumnDrop(col.id); }}
                       onDragEnd={() => setDragCol(null)}
                       onContextMenu={(e) => { if (readOnly) return; e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}
                     >
-                      <span className="flex items-center gap-1.5" onClick={() => handleSort(col.id)}>
-                        <span className="text-[10px] text-muted/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
-                        {col.name}
-                        {sortBy === col.id && <span className="text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                      <span className="flex min-w-0 cursor-pointer items-center gap-1.5 pr-2" onClick={() => handleSort(col.id)}>
+                        <span className="flex-shrink-0 text-[10px] text-muted/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
+                        <span className="min-w-0 truncate">{col.name}</span>
+                        {sortBy === col.id && <span className="flex-shrink-0 text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
                       </span>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          aria-label={`Resize ${col.name} column`}
+                          title="Resize column"
+                          onPointerDown={(event) => startColumnResize(event, col)}
+                          onClick={(event) => event.stopPropagation()}
+                          className={`absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 transition-colors ${columnResize?.colId === col.id ? "border-brand bg-brand/10" : "border-transparent hover:border-brand/60 hover:bg-brand/5"}`}
+                        />
+                      )}
                     </th>
                   ))}
                   <th className="w-10 px-2 py-2 border-r border-border">
@@ -1330,7 +1449,7 @@ function TableEditorPageInner() {
                     {visibleColumns.map((col) => {
                       const s = summary.columns[col.id];
                       return (
-                        <td key={col.id} className="px-2 py-1.5 border-r border-border text-[10px] font-mono text-muted">
+                        <td key={col.id} style={columnWidthStyle(col)} className="px-2 py-1.5 border-r border-border text-[10px] font-mono text-muted">
                           {s ? (
                             s.sum != null ? (
                               <div className="space-y-0.5">
