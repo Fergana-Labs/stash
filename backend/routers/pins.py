@@ -1,6 +1,6 @@
 """Per-user pins and recently-viewed items, scoped to a workspace.
 
-Pins are an explicit per-kind set the user curates (cartridges / sessions /
+Pins are an explicit per-kind set the user curates (skills / sessions /
 files); recents are stamped automatically as the user opens things. Both are
 private to the user. Pins require workspace membership; recents can also be
 stamped by non-members for objects shared with them.
@@ -18,7 +18,7 @@ from ..services import permission_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["pins"])
 
-PIN_KINDS = {"cartridges", "sessions", "files"}
+PIN_KINDS = {"skills", "sessions", "files"}
 RECENTS_LIMIT = 24
 
 

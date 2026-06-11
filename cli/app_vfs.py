@@ -8,7 +8,7 @@ import re
 import shlex
 from dataclasses import dataclass
 
-from .mount import CartridgeMountError, CartridgeVfsModel
+from .mount import MountError, StashVfsModel
 
 
 @dataclass
@@ -19,8 +19,8 @@ class VfsCommandResult:
     cwd: str = "/"
 
 
-class CartridgeAppVfsShell:
-    def __init__(self, model: CartridgeVfsModel, cwd: str = "/"):
+class SkillAppVfsShell:
+    def __init__(self, model: StashVfsModel, cwd: str = "/"):
         self.model = model
         self.cwd = self._resolve_path(cwd)
         self._require_dir(self.cwd)
@@ -73,7 +73,7 @@ class CartridgeAppVfsShell:
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, PermissionError) as e:
             message = e.args[0] if e.args else str(e)
             return VfsCommandResult(stderr=f"{name}: {message}\n", exit_code=1, cwd=self.cwd)
-        except (CartridgeMountError, ValueError) as e:
+        except (MountError, ValueError) as e:
             return VfsCommandResult(stderr=f"{name}: {e}\n", exit_code=2, cwd=self.cwd)
 
     def _dispatch(self, name: str, args: list[str], stdin: str | None) -> str:
@@ -484,9 +484,9 @@ class CartridgeAppVfsShell:
         try:
             node = self.model._get_node(path)
         except FileNotFoundError as e:
-            raise CartridgeMountError(f"directory not found: {path}") from e
+            raise MountError(f"directory not found: {path}") from e
         if not node.is_dir:
-            raise CartridgeMountError(f"not a directory: {path}")
+            raise MountError(f"not a directory: {path}")
 
 
 class VfsShellError(Exception):

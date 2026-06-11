@@ -74,23 +74,22 @@ class ImageFetcher:
         return data
 
     async def _fetch_uncached(self, src: str) -> bytes | None:
-        if src.startswith("data:"):
+        # Routed via image_source_kind so log labels can never diverge
+        # from the fetch dispatch.
+        kind = image_source_kind(src)
+        if kind == "data_uri":
             return _decode_data_uri(src)
 
-        stash = _STASH_FILE_RE.match(src)
-        if stash:
-            return await _download_cartridge_file(
+        if kind == "stash_file":
+            stash = _STASH_FILE_RE.match(src)
+            return await _download_skill_file(
                 UUID(stash.group("wid")),
                 UUID(stash.group("fid")),
                 self.workspace_id,
                 self.user_id,
             )
 
-        if src.startswith("http://") or src.startswith("https://"):
-            logger.info("skipping remote image during export src_type=remote_url")
-            return None
-
-        logger.info("skipping unrecognised image during export src_type=unknown")
+        logger.info("skipping image during export src_type=%s", kind)
         return None
 
 
@@ -131,7 +130,7 @@ def _svg_to_png(svg: bytes) -> bytes | None:
         return None
 
 
-async def _download_cartridge_file(
+async def _download_skill_file(
     url_workspace_id: UUID,
     file_id: UUID,
     export_workspace_id: UUID | None,

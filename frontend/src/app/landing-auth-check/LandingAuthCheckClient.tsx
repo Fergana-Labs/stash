@@ -22,7 +22,7 @@ export default function LandingAuthCheckClient() {
     let cancelled = false;
 
     async function postStatus() {
-      const signedIn = await hasStashSession();
+      const signedIn = await hasSkillSession();
       if (cancelled) return;
 
       window.parent.postMessage(landingAuthStatusMessage(signedIn), targetOrigin);
@@ -38,7 +38,7 @@ export default function LandingAuthCheckClient() {
   return null;
 }
 
-async function hasStashSession(): Promise<boolean> {
+async function hasSkillSession(): Promise<boolean> {
   if (await hasApiKeySession()) return true;
   if (await hasAuth0Session()) return true;
   return false;

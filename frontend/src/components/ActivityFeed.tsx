@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ActivityEvent } from "../lib/api";
-import { FileIcon, PageIcon, PersonIcon, SessionsIcon } from "./StashIcons";
+import { FileIcon, PageIcon, PersonIcon, SessionsIcon } from "./SkillIcons";
 
 const VERB: Record<string, string> = {
   "session.uploaded": "pushed a transcript",

@@ -4,7 +4,7 @@
 /* === Design System Tokens (DESIGN.md) === */
 
 :root {
-  /* Notion-tan palette (matches stash-share-mockup) */
+  /* Notion-tan palette (matches skill-share-mockup) */
   --bg-base: #FFFFFF;
   --bg-surface: #F7F7F5;
   --bg-raised: #EFEFEE;
@@ -626,9 +626,9 @@ details > summary::-webkit-details-marker {
  * Classification is purely by href pattern. CSS doesn't need to
  * know about edit vs view mode; both render the same.
  *
- *   internal  = stash route (absolute or relative)
+ *   internal  = skill route (absolute or relative)
  *   external  = any other scheme, off-origin URL (↗ trailing)
- *   dead      = relative ref that doesn't match a stash route
+ *   dead      = relative ref that doesn't match a skill route
  *               (import artifacts like "README.md")
  * ============================================================= */
 
@@ -644,8 +644,8 @@ details > summary::-webkit-details-marker {
   color: var(--link-hover, #EA580C);
 }
 
-/* External URLs — anything with a scheme that isn't stash itself.
-   The :not() chain keeps stash absolute URLs styled as internal. */
+/* External URLs — anything with a scheme that isn't skill itself.
+   The :not() chain keeps skill absolute URLs styled as internal. */
 .ProseMirror a[href^="http://"]:not([href*="://joinstash.ai/"]):not([href*="://app.joinstash.ai/"])::after,
 .ProseMirror a[href^="https://"]:not([href*="://joinstash.ai/"]):not([href*="://app.joinstash.ai/"])::after {
   content: "\a0↗";
@@ -747,7 +747,7 @@ details > summary::-webkit-details-marker {
 .av-teal { background: #99F6E4; color: #115E59; }
 .av-lime { background: #D9F99D; color: #3F6212; }
 
-/* Discover/stash cover gradients */
+/* Discover/skill cover gradients */
 .cover-1 { background: linear-gradient(135deg, #FED7AA, #FCA5A5); }
 .cover-2 { background: linear-gradient(135deg, #BFDBFE, #A7F3D0); }
 .cover-3 { background: linear-gradient(135deg, #A7F3D0, #BAE6FD); }

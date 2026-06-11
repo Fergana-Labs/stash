@@ -186,3 +186,29 @@ def test_parse_auth0_domain_accepts_hostname(monkeypatch):
     monkeypatch.setenv("AUTH0_DOMAIN", "tenant.example.com")
 
     assert parse_auth0_domain(True) == "tenant.example.com"
+
+
+def test_parse_auth0_domain_skips_format_check_when_disabled(monkeypatch):
+    """A leftover scheme-prefixed AUTH0_DOMAIN must not brick a self-hosted
+    boot — the value is never used when AUTH0_ENABLED=false."""
+    monkeypatch.setenv("AUTH0_DOMAIN", "https://tenant.example.com")
+
+    assert parse_auth0_domain(False) == "https://tenant.example.com"
+
+
+def test_every_oauth_redirect_uri_setting_uses_the_managed_validator():
+    """A provider wired through raw os.getenv lets an http:// or query-bearing
+    callback boot cleanly in managed mode (the Gmail/Twitter regression this
+    pins), so every *_OAUTH_REDIRECT_URI must go through parse_oauth_redirect_uri."""
+    import inspect
+    import re
+
+    from backend.config import Settings
+
+    source = inspect.getsource(Settings)
+    assignments = re.findall(r"(\w+_OAUTH_REDIRECT_URI): str \| None = (\w+)", source)
+    names = {name for name, _ in assignments}
+    assert {"GMAIL_OAUTH_REDIRECT_URI", "TWITTER_OAUTH_REDIRECT_URI"} <= names
+    assert len(assignments) >= 9
+    for name, parser in assignments:
+        assert parser == "parse_oauth_redirect_uri", name

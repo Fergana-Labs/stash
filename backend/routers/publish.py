@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user
 from ..config import settings
-from ..models import CartridgeItem, PublishRequest, PublishResponse
-from ..services import cartridge_service, files_tree_service, permission_service, workspace_service
+from ..models import PublishRequest, PublishResponse, SkillItem
+from ..services import files_tree_service, shared_skill_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -44,14 +44,6 @@ async def publish(
         folder = await files_tree_service.get_folder(req.folder_id)
         if not folder or folder["workspace_id"] != workspace_id:
             raise HTTPException(status_code=404, detail="Folder not found in this workspace")
-        if not await permission_service.check_access(
-            "folder",
-            req.folder_id,
-            current_user["id"],
-            workspace_id=workspace_id,
-            require="write",
-        ):
-            raise HTTPException(status_code=404, detail="Folder not found in this workspace")
         target_folder = folder
     else:
         target_folder = await files_tree_service.find_or_create_root_folder(
@@ -70,7 +62,7 @@ async def publish(
     )
 
     try:
-        stash = await cartridge_service.create_cartridge(
+        skill = await shared_skill_service.create_skill(
             workspace_id=workspace_id,
             owner_id=current_user["id"],
             title=req.title,
@@ -79,7 +71,7 @@ async def publish(
             public_permission=req.public_permission,
             discoverable=False,
             cover_image_url=None,
-            items=[CartridgeItem(object_type="page", object_id=page["id"], position=0)],
+            items=[SkillItem(object_type="page", object_id=page["id"], position=0)],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -89,10 +81,10 @@ async def publish(
         page_id=page["id"],
         folder_id=target_folder["id"],
         workspace_id=workspace_id,
-        visibility=stash["access"],
-        workspace_permission=stash["workspace_permission"],
-        public_permission=stash["public_permission"],
-        url=f"{base}/cartridges/{stash['slug']}",
-        cartridge_id=stash["id"],
-        cartridge_slug=stash["slug"],
+        visibility=skill["access"],
+        workspace_permission=skill["workspace_permission"],
+        public_permission=skill["public_permission"],
+        url=f"{base}/skills/{skill['slug']}",
+        skill_id=skill["id"],
+        skill_slug=skill["slug"],
     )

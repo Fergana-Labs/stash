@@ -35,7 +35,7 @@ vi.mock("../../components/AppShell", () => ({
 
 vi.mock("../../components/SkeletonStates", () => ({
   AppShellSkeleton: () => <div data-testid="app-shell-skeleton" />,
-  PublicCartridgeSkeleton: () => <div data-testid="public-stash-skeleton" />,
+  PublicSkillSkeleton: () => <div data-testid="public-skill-skeleton" />,
 }));
 
 vi.mock("../../hooks/useAuth", () => ({
@@ -77,17 +77,17 @@ describe("AppGroupLayout", () => {
     expect(screen.getByTestId("app-shell")).toHaveTextContent("Workspace content");
   });
 
-  it("renders workspace Stash item routes without app chrome", () => {
+  it("renders workspace Skill item routes without app chrome", () => {
     route.pathname = "/workspaces/ws-1/p/page-1";
-    route.search = "stash=shared-stash";
+    route.search = "skill=shared-skill";
 
     render(
       <AppGroupLayout>
-        <div>Stash item content</div>
+        <div>Skill item content</div>
       </AppGroupLayout>,
     );
 
     expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
-    expect(screen.getByText("Stash item content")).toBeInTheDocument();
+    expect(screen.getByText("Skill item content")).toBeInTheDocument();
   });
 });

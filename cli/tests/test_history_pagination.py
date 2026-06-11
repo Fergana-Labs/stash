@@ -1,10 +1,10 @@
 """Tests for history pagination plumbing in the CLI."""
 
 from cli import main as cli_main
-from cli.client import CartridgeClient
+from cli.client import StashClient
 
 
-class RecordingClient(CartridgeClient):
+class RecordingClient(StashClient):
     def __init__(self) -> None:
         self.calls = []
 

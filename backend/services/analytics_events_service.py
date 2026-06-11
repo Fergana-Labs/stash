@@ -33,10 +33,10 @@ ALLOWED_EVENT_NAMES = {
     "web.page_created",
     "web.page_edited",
     "web.file_uploaded",
-    "web.stash_created",
+    "web.skill_created",
     "web.session_shared",
     "web.search_query",
-    "web.ask_cartridge",
+    "web.ask_skill",
     # Auth lifecycle
     "auth.signed_up",
     # CLI commands (one event per invocation; properties.command is the sub-axis)

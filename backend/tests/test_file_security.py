@@ -175,3 +175,42 @@ async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeyp
         )
     ]
     assert "secret worksheet metadata" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool, monkeypatch):
+    """SVG executes embedded script when rendered inline, so user uploads must
+    never come back inline on the API origin; passive image types stay inline."""
+    api_key, owner = await _register(client)
+    workspace_id = await _workspace_id(client, api_key)
+    svg_id = await _make_file(
+        pool,
+        workspace_id=workspace_id,
+        uploaded_by=uuid.UUID(owner["id"]),
+        name="logo.svg",
+        content_type="image/svg+xml",
+    )
+    png_id = await _make_file(
+        pool,
+        workspace_id=workspace_id,
+        uploaded_by=uuid.UUID(owner["id"]),
+        name="logo.png",
+        content_type="image/png",
+    )
+
+    async def fake_download(storage_key):
+        return b'<svg onload="alert(1)"/>'
+
+    monkeypatch.setattr(storage_service, "download_file", fake_download)
+    svg_resp = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/files/{svg_id}/download",
+        headers=_auth(api_key),
+    )
+    png_resp = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/files/{png_id}/download",
+        headers=_auth(api_key),
+    )
+
+    assert svg_resp.status_code == 200
+    assert svg_resp.headers["content-disposition"].startswith("attachment;")
+    assert png_resp.headers["content-disposition"].startswith("inline;")

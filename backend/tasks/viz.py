@@ -70,8 +70,12 @@ async def _precompute() -> int:
         try:
             await _recompute_one(r["id"])
             done += 1
-        except Exception:
-            logger.exception("viz precompute failed for user %s", r["id"])
+        except Exception as exc:
+            logger.error(
+                "viz precompute failed user=%s exception_type=%s",
+                r["id"],
+                type(exc).__name__,
+            )
     if done:
         logger.info("viz precompute: refreshed %d user(s)", done)
     return done
