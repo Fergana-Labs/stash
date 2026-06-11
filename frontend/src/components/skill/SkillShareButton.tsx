@@ -3,20 +3,17 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
-  addSkillMember,
   ApiError,
   getMe,
-  listSkillMembers,
-  removeSkillMember,
-  searchUsers,
+  listObjectShares,
+  shareObjectByEmail,
+  unshareObject,
   updateSkill,
+  type ObjectShare,
   type PublicSkillDetail,
   type SkillGeneralPermission,
-  type SkillMember,
-  type SkillMemberPermission,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
-import type { UserSearchResult } from "../../lib/types";
 
 type SkillVisibility = "private" | "workspace" | "public";
 type HandoffStatus = "idle" | "copying" | "copied" | "error";
@@ -273,7 +270,7 @@ export default function SkillShareButton({
       await loadMembers();
       setMemberEmail("");
       setMemberMessage("Added.");
-      resetStashNavigationCache();
+      resetSkillNavigationCache();
     } catch (e) {
       setMemberMessage(e instanceof Error ? e.message : "Could not add member.");
     } finally {
@@ -290,7 +287,7 @@ export default function SkillShareButton({
       await shareObjectByEmail("skill", skill.id, share.email, permission);
       await loadMembers();
       setMemberMessage("Updated.");
-      resetStashNavigationCache();
+      resetSkillNavigationCache();
     } catch (e) {
       setMemberMessage(e instanceof Error ? e.message : "Could not update member.");
     } finally {
@@ -307,7 +304,7 @@ export default function SkillShareButton({
     try {
       await unshareObject("skill", skill.id, "user", share.principal_id);
       await loadMembers();
-      resetStashNavigationCache();
+      resetSkillNavigationCache();
     } catch (e) {
       setMemberMessage(e instanceof Error ? e.message : "Could not remove member.");
     } finally {

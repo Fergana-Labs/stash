@@ -334,9 +334,7 @@ async def check_access(
         if require != "read":
             if row["owner_id"] == user_id:
                 return True
-            return user_id is not None and await _share_grants(
-                "skill", object_id, user_id, require
-            )
+            return user_id is not None and await _share_grants("skill", object_id, user_id, require)
         return await _skill_open(dict(row), user_id)
 
     # A session folder is a shareable bundle: public link, owner, or user share.

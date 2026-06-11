@@ -879,9 +879,7 @@ async def test_skill_share_grants_read_and_write_share_manages(pool):
     await _share_skill_with_user(pool, skill["id"], editor, owner, "write")
 
     assert await permission_service.check_access("skill", skill["id"], reader)
-    assert not await permission_service.check_access(
-        "skill", skill["id"], reader, require="write"
-    )
+    assert not await permission_service.check_access("skill", skill["id"], reader, require="write")
     assert await permission_service.check_access("skill", skill["id"], editor, require="write")
     assert not await permission_service.check_access("skill", skill["id"], stranger)
     # Cartridge containment grants read-only access to the bundled page.

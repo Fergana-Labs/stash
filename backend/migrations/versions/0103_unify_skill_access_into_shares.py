@@ -36,9 +36,7 @@ def upgrade() -> None:
     op.execute("DROP TABLE skill_members")
 
     op.execute("UPDATE skill_invites SET permission = 'write' WHERE permission = 'admin'")
-    op.execute(
-        "ALTER TABLE skill_invites DROP CONSTRAINT IF EXISTS skill_invites_permission_check"
-    )
+    op.execute("ALTER TABLE skill_invites DROP CONSTRAINT IF EXISTS skill_invites_permission_check")
     op.execute(
         "ALTER TABLE skill_invites ADD CONSTRAINT skill_invites_permission_chk "
         "CHECK (permission IN ('read', 'comment', 'write'))"
