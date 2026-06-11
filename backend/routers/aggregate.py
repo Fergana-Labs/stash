@@ -51,11 +51,12 @@ async def list_all_session_events(
 
 @router.get("/activity")
 async def list_activity(
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=200),
+    before: datetime | None = Query(None),
     workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent product activity across accessible workspaces, optionally one workspace."""
+    """Recent product activity across accessible workspaces, cursor-paginated by ts."""
     pool = get_pool()
     events = await pool.fetch(
         """
@@ -77,6 +78,7 @@ async def list_activity(
         + """
           AND ($3::uuid IS NULL OR w.id = $3)
         )
+        SELECT * FROM (
         (
           SELECT 'session.uploaded' AS kind,
                  MAX(he.created_at) AS ts,
@@ -144,12 +146,18 @@ async def list_activity(
           FROM workspace_members wm
           JOIN member_workspaces aw ON aw.id = wm.workspace_id
         )
+        ) ev
+        WHERE ($4::timestamptz IS NULL OR ev.ts < $4)
         ORDER BY ts DESC LIMIT $2
         """,
         current_user["id"],
-        limit,
+        limit + 1,
         workspace_id,
+        before,
     )
+    has_more = len(events) > limit
+    if has_more:
+        events = events[:limit]
     user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
     users = {}
     if user_ids:
@@ -159,18 +167,21 @@ async def list_activity(
         )
         users = {r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in rows}
 
-    return [
-        {
-            "kind": r["kind"],
-            "ts": r["ts"],
-            "actor": users[r["actor_id"]],
-            "target_id": r["target_id"],
-            "target_label": r["target_label"],
-            "workspace_id": r["workspace_id"],
-            "workspace_name": r["workspace_name"],
-        }
-        for r in events
-    ]
+    return {
+        "events": [
+            {
+                "kind": r["kind"],
+                "ts": r["ts"],
+                "actor": users[r["actor_id"]],
+                "target_id": r["target_id"],
+                "target_label": r["target_label"],
+                "workspace_id": r["workspace_id"],
+                "workspace_name": r["workspace_name"],
+            }
+            for r in events
+        ],
+        "has_more": has_more,
+    }
 
 
 @router.get("/tables")

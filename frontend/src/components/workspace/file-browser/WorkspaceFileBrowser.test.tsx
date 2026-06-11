@@ -96,12 +96,13 @@ afterEach(() => {
 });
 
 describe("WorkspaceFileBrowser table creation", () => {
-  it("creates a blank table from the root files view", async () => {
+  it("creates a blank table from the + New menu", async () => {
     vi.mocked(createTable).mockResolvedValue(table("table-1", "Untitled table"));
 
     render(<WorkspaceFileBrowser workspaceId="ws-1" folderId={null} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "+ New table" }));
+    fireEvent.click(await screen.findByRole("button", { name: /\+ New/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
 
     await waitFor(() =>
       expect(createTable).toHaveBeenCalledWith("ws-1", "Untitled table")

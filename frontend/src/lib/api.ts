@@ -1724,18 +1724,16 @@ export interface ActivityEvent {
   workspace_name?: string;
 }
 
-export async function listActivity(limit = 100): Promise<ActivityEvent[]> {
-  return apiFetch(`/api/v1/me/activity?limit=${limit}`);
+export interface ActivityFeed {
+  events: ActivityEvent[];
+  has_more: boolean;
 }
 
-export async function listWorkspaceActivity(
-  workspaceId: string,
-  limit = 100
-): Promise<ActivityEvent[]> {
-  const qs = new URLSearchParams({
-    limit: String(limit),
-    workspace_id: workspaceId,
-  });
+export async function listActivity(
+  opts: { limit?: number; before?: string } = {}
+): Promise<ActivityFeed> {
+  const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
+  if (opts.before) qs.set("before", opts.before);
   return apiFetch(`/api/v1/me/activity?${qs}`);
 }
 

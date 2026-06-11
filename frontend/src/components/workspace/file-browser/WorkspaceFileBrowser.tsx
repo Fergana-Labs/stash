@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import {
   ApiError,
   createTable,
@@ -33,11 +34,12 @@ import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation"
 import { useWorkspaceRecents } from "../../../lib/pins";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
-import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
+import FolderItemGrid from "./FolderItemGrid";
 import ItemsList from "./ItemsList";
 import ItemsColumns from "./ItemsColumns";
 import SharedWithMeFiles from "../SharedWithMeFiles";
 import QuickAccess from "./QuickAccess";
+import { type GridItem, type ItemKind } from "./kind";
 
 interface Props {
   workspaceId: string;
@@ -58,6 +60,9 @@ export interface FBDragPayload {
 }
 
 type View = "list" | "column" | "grid";
+// Which set of files you're looking at: your workspace's drive, or items other
+// people shared with you. Only selectable at root — folders are always "mine".
+type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
@@ -71,6 +76,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [rootTables, setRootTables] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
+  const [scope, setScope] = useState<Scope>("mine");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins(workspaceId);
   const recents = useWorkspaceRecents(workspaceId);
@@ -424,6 +430,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   async function handleNewTable() {
     try {
       const table = await createTable(workspaceId, "Untitled table");
+      // createTable has no folder param, so move the new table into the
+      // current folder before navigating.
+      if (folderId) {
+        await updateTable(workspaceId, table.id, { folder_id: folderId });
+      }
       refreshWorkspaceSidebar(workspaceId).catch(() => {});
       router.push(`/tables/${table.id}`);
     } catch (e) {
@@ -561,58 +572,45 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       id: item.id,
     }));
 
+  const showShared = !folderId && scope === "shared";
+
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-8 py-7">
+        {!folderId && <ScopeTabs scope={scope} onChange={setScope} />}
         {/* Header: the page path lives in AppShell's top-bar breadcrumb, so we
             only show the current folder name (rename target) or the section
             title here, alongside the view toggle + create actions. */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {folderId && contents?.folder ? (
-            <h1 className="m-0 min-w-0 font-display text-[22px] font-semibold leading-tight tracking-tight text-foreground">
-              <EditableTitle
-                value={contents.folder.name}
-                onSave={(next) => renameItem("folder", folderId, next)}
-              />
-            </h1>
-          ) : (
-            // Root: the breadcrumb + sidebar already say "Files"; no redundant title.
-            <div />
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <ViewToggle view={view} onChange={setViewPersisted} />
-            <button
-              type="button"
-              onClick={handleUploadFile}
-              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
-            >
-              + Upload
-            </button>
-            <button
-              type="button"
-              onClick={handleNewPage}
-              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
-            >
-              + New page
-            </button>
-            {!folderId && (
+        {!showShared && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {folderId && contents?.folder ? (
+              <h1 className="m-0 min-w-0 font-display text-[22px] font-semibold leading-tight tracking-tight text-foreground">
+                <EditableTitle
+                  value={contents.folder.name}
+                  onSave={(next) => renameItem("folder", folderId, next)}
+                />
+              </h1>
+            ) : (
+              // Root: the breadcrumb + sidebar already say "Files"; no redundant title.
+              <div />
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <ViewToggle view={view} onChange={setViewPersisted} />
               <button
                 type="button"
-                onClick={handleNewTable}
+                onClick={handleUploadFile}
                 className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
               >
-                + New table
+                + Upload
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleNewFolder}
-              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
-            >
-              + New folder
-            </button>
+              <NewMenu
+                onNewFolder={handleNewFolder}
+                onNewPage={handleNewPage}
+                onNewTable={handleNewTable}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -620,56 +618,63 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           </div>
         )}
 
-        {showQuickAccess && (
-          <QuickAccess
-            pinned={pinnedItems}
-            recent={recentItems}
-            onOpen={navigateTo}
-            isPinned={(item) => pins.isPinned(item.id)}
-            onTogglePin={(item) => pins.toggle(item.id)}
-          />
-        )}
+        {showShared ? (
+          <div className="mt-5">
+            <SharedWithMeFiles />
+          </div>
+        ) : (
+          <>
+            {showQuickAccess && (
+              <QuickAccess
+                pinned={pinnedItems}
+                recent={recentItems}
+                onOpen={navigateTo}
+                isPinned={(item) => pins.isPinned(item.id)}
+                onTogglePin={(item) => pins.toggle(item.id)}
+              />
+            )}
 
-        <div className={view === "column" ? "mt-5 h-[68vh]" : "mt-5"}>
-          {view === "list" && (
-            <ItemsList
-              items={items}
-              onNavigate={navigateTo}
-              onReparent={reparent}
-              onReparentMany={reparentMany}
-              onDelete={handleDelete}
-              isPinned={(item) => pins.isPinned(item.id)}
-              onTogglePin={(item) => pins.toggle(item.id)}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              selectedDragPayloads={selectedDragPayloads}
-            />
-          )}
-          {view === "grid" && (
-            <FolderItemGrid
-              items={items}
-              selectedId={null}
-              onSelect={navigateTo}
-              onNavigate={navigateTo}
-              onReparent={reparent}
-              onReparentMany={reparentMany}
-              onDelete={handleDelete}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              selectedDragPayloads={selectedDragPayloads}
-            />
-          )}
-          {view === "column" && (
-            <ItemsColumns
-              workspaceId={workspaceId}
-              rootItems={rootItems}
-              onNavigate={navigateTo}
-              onReparent={reparent}
-              onDelete={handleDelete}
-            />
-          )}
-        </div>
-        {!folderId ? <SharedWithMeFiles /> : null}
+            <div className={view === "column" ? "mt-5 h-[68vh]" : "mt-5"}>
+              {view === "list" && (
+                <ItemsList
+                  items={items}
+                  onNavigate={navigateTo}
+                  onReparent={reparent}
+                  onReparentMany={reparentMany}
+                  onDelete={handleDelete}
+                  isPinned={(item) => pins.isPinned(item.id)}
+                  onTogglePin={(item) => pins.toggle(item.id)}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  selectedDragPayloads={selectedDragPayloads}
+                />
+              )}
+              {view === "grid" && (
+                <FolderItemGrid
+                  items={items}
+                  selectedId={null}
+                  onSelect={navigateTo}
+                  onNavigate={navigateTo}
+                  onReparent={reparent}
+                  onReparentMany={reparentMany}
+                  onDelete={handleDelete}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  selectedDragPayloads={selectedDragPayloads}
+                />
+              )}
+              {view === "column" && (
+                <ItemsColumns
+                  workspaceId={workspaceId}
+                  rootItems={rootItems}
+                  onNavigate={navigateTo}
+                  onReparent={reparent}
+                  onDelete={handleDelete}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
       {selectedItems.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -718,6 +723,99 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
               ×
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Drive-style root selector: your workspace's files vs items shared with you.
+function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) => void }) {
+  const tabs: { key: Scope; label: string }[] = [
+    { key: "mine", label: "My files" },
+    { key: "shared", label: "Shared with me" },
+  ];
+  return (
+    <div className="flex gap-1 border-b border-border">
+      {tabs.map((t) => {
+        const active = scope === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => onChange(t.key)}
+            className={
+              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors " +
+              (active
+                ? "border-[var(--color-brand-600)] font-semibold text-foreground"
+                : "border-transparent text-muted hover:text-foreground")
+            }
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// One "+ New" button for everything creatable here (Drive-style), so the
+// toolbar stays two buttons no matter how many creatable kinds we grow.
+function NewMenu({
+  onNewFolder,
+  onNewPage,
+  onNewTable,
+}: {
+  onNewFolder: () => void;
+  onNewPage: () => void;
+  onNewTable: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEscapeKey(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const options: { label: string; onSelect: () => void }[] = [
+    { label: "Folder", onSelect: onNewFolder },
+    { label: "Page", onSelect: onNewPage },
+    { label: "Table", onSelect: onNewTable },
+  ];
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+      >
+        + New <span aria-hidden className="text-[10px]">▾</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+          {options.map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                o.onSelect();
+              }}
+              className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
