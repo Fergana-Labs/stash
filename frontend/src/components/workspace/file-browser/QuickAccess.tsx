@@ -2,8 +2,7 @@
 
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { PinIcon } from "../../StashIcons";
-import type { GridItem } from "./FolderItemGrid";
-import { KindIcon, tintFor, typeFor } from "./ItemsList";
+import { KindIcon, tintFor, typeFor, type GridItem } from "./kind";
 
 interface Props {
   pinned: GridItem[];

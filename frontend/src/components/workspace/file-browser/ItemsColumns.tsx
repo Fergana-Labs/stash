@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { getFolderContents, type FolderContents } from "../../../lib/api";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
-import type { GridItem, ItemKind } from "./FolderItemGrid";
+import { KindIcon, tintFor, type GridItem } from "./kind";
 import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
 
 interface Props {
@@ -279,7 +278,7 @@ function ColumnRow({
         "group flex cursor-pointer select-none items-center gap-2 px-3 py-1.5 text-[13px] " +
         (active
           ? "bg-[var(--color-brand-600)] text-white"
-          : "text-foreground hover:bg-[var(--color-brand-50)]/40") +
+          : "text-foreground hover:bg-[var(--color-brand-50)]/50") +
         (over ? " ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
     >
@@ -419,23 +418,6 @@ function folderContentsToItems(contents: FolderContents): GridItem[] {
       subtitle: `table · ${t.row_count} row${t.row_count === 1 ? "" : "s"}`,
     })),
   ];
-}
-
-function KindIcon({ kind }: { kind: ItemKind }) {
-  if (kind === "folder") return <FolderIcon />;
-  if (kind === "page" || kind === "html") return <PageIcon />;
-  if (kind === "table" || kind === "datatable") return <TableIcon />;
-  return <FileIcon />;
-}
-
-function tintFor(item: GridItem): string {
-  if (item.kind === "folder") return "text-muted";
-  if (item.kind === "html") return "text-[#D97706]";
-  if (item.kind === "table" || item.kind === "datatable") return "text-emerald-600";
-  if (item.contentType?.includes("pdf")) return "text-rose-500";
-  if (item.contentType?.startsWith("image/")) return "text-[var(--color-brand-600)]";
-  if (item.kind === "page") return "text-[var(--color-brand-600)]";
-  return "text-muted";
 }
 
 function kindLabel(item: GridItem): string {

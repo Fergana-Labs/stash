@@ -49,23 +49,59 @@ async def list_all_session_events(
     return {"events": events, "has_more": has_more}
 
 
+@router.get("/recents")
+async def list_my_recents(current_user: dict = Depends(get_current_user)):
+    """Recently-viewed objects across all workspaces, most recent first.
+
+    Includes objects in workspaces the user isn't a member of (shared items),
+    which the Shared-with-me Recent strip resolves against the share list.
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT object_id, kind, workspace_id FROM user_recents "
+        "WHERE user_id = $1 ORDER BY viewed_at DESC LIMIT 30",
+        current_user["id"],
+    )
+    return [
+        {
+            "object_id": r["object_id"],
+            "kind": r["kind"],
+            "workspace_id": r["workspace_id"],
+        }
+        for r in rows
+    ]
+
+
 @router.get("/activity")
 async def list_activity(
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=200),
+    before: datetime | None = Query(None),
     workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent product activity across accessible workspaces, optionally one workspace."""
+    """Recent product activity across accessible workspaces, cursor-paginated by ts."""
     pool = get_pool()
     events = await pool.fetch(
         """
-        WITH accessible_workspaces AS (
+        WITH member_workspaces AS (
           SELECT w.id, w.name
           FROM workspaces w
           JOIN workspace_members wm ON wm.workspace_id = w.id
           WHERE wm.user_id = $1
           AND ($3::uuid IS NULL OR w.id = $3)
+        ),
+        -- Member workspaces plus any workspace that has shared content with the
+        -- user. Page/file rows still pass readable_content_condition, so a share
+        -- only surfaces the specific shared rows — never the whole workspace.
+        accessible_workspaces AS (
+          SELECT w.id, w.name
+          FROM workspaces w
+          WHERE w.id IN """
+        + permission_service.accessible_workspace_ids_sql(1)
+        + """
+          AND ($3::uuid IS NULL OR w.id = $3)
         )
+        SELECT * FROM (
         (
           SELECT 'session.uploaded' AS kind,
                  MAX(he.created_at) AS ts,
@@ -81,7 +117,7 @@ async def list_activity(
                  aw.id AS workspace_id,
                  aw.name AS workspace_name
           FROM history_events he
-          JOIN accessible_workspaces aw ON aw.id = he.workspace_id
+          JOIN member_workspaces aw ON aw.id = he.workspace_id
           WHERE he.session_id IS NOT NULL
             AND """
         + memory_service.readable_session_event_condition("he", 1)
@@ -131,14 +167,20 @@ async def list_activity(
                  aw.id AS workspace_id,
                  aw.name AS workspace_name
           FROM workspace_members wm
-          JOIN accessible_workspaces aw ON aw.id = wm.workspace_id
+          JOIN member_workspaces aw ON aw.id = wm.workspace_id
         )
+        ) ev
+        WHERE ($4::timestamptz IS NULL OR ev.ts < $4)
         ORDER BY ts DESC LIMIT $2
         """,
         current_user["id"],
-        limit,
+        limit + 1,
         workspace_id,
+        before,
     )
+    has_more = len(events) > limit
+    if has_more:
+        events = events[:limit]
     user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
     users = {}
     if user_ids:
@@ -148,18 +190,21 @@ async def list_activity(
         )
         users = {r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in rows}
 
-    return [
-        {
-            "kind": r["kind"],
-            "ts": r["ts"],
-            "actor": users[r["actor_id"]],
-            "target_id": r["target_id"],
-            "target_label": r["target_label"],
-            "workspace_id": r["workspace_id"],
-            "workspace_name": r["workspace_name"],
-        }
-        for r in events
-    ]
+    return {
+        "events": [
+            {
+                "kind": r["kind"],
+                "ts": r["ts"],
+                "actor": users[r["actor_id"]],
+                "target_id": r["target_id"],
+                "target_label": r["target_label"],
+                "workspace_id": r["workspace_id"],
+                "workspace_name": r["workspace_name"],
+            }
+            for r in events
+        ],
+        "has_more": has_more,
+    }
 
 
 @router.get("/tables")
@@ -167,6 +212,13 @@ async def list_all_tables(current_user: dict = Depends(get_current_user)):
     """All tables from workspaces + personal."""
     tables = await table_service.list_all_user_tables(current_user["id"])
     return {"tables": tables}
+
+
+@router.get("/overview")
+async def overview_counts(current_user: dict = Depends(get_current_user)):
+    """Page / file / session counts for the 'Your brain' vitals, spanning the
+    user's own content plus everything shared with them."""
+    return await analytics_service.get_overview_counts(current_user["id"])
 
 
 async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:

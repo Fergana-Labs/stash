@@ -235,7 +235,7 @@ def create_session_record(
     record_upload_success(data_dir, "session")
 
     state["session_row_id"] = str(session["id"])
-    state["session_url"] = f"{cfg['api_endpoint'].rstrip('/')}/workspaces/{workspace_id}/sessions/{sid}"
+    state["session_url"] = f"{cfg['api_endpoint'].rstrip('/')}/sessions/{sid}"
     state["uploaded_session_id"] = sid
     state["uploaded_workspace_id"] = workspace_id
     state["cwd"] = event.cwd or state.get("cwd", "")

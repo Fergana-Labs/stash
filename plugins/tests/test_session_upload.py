@@ -40,11 +40,11 @@ def test_create_session_record_saves_url_and_transcript_path(tmp_path):
 
     url = create_session_record(client, _cfg(), state, event, tmp_path)
 
-    assert url == "https://joinstash.ai/workspaces/ws1/sessions/s1"
+    assert url == "https://joinstash.ai/sessions/s1"
     assert client.created[0]["session_id"] == "s1"
     assert client.created[0]["cwd"] == "/repo"
     assert state["session_row_id"] == "session-row-1"
-    assert state["session_url"] == "https://joinstash.ai/workspaces/ws1/sessions/s1"
+    assert state["session_url"] == "https://joinstash.ai/sessions/s1"
     assert state["uploaded_session_id"] == "s1"
     assert state["uploaded_workspace_id"] == "ws1"
     assert state["transcript_path"] == "/tmp/s1.jsonl"
@@ -65,7 +65,7 @@ def test_create_session_record_resolves_workspace_from_event_cwd(monkeypatch, tm
 
     url = create_session_record(client, cfg, state, event, tmp_path)
 
-    assert url == "https://joinstash.ai/workspaces/ws-from-cwd/sessions/s1"
+    assert url == "https://joinstash.ai/sessions/s1"
     assert client.created[0]["workspace_id"] == "ws-from-cwd"
     assert state["uploaded_workspace_id"] == "ws-from-cwd"
 

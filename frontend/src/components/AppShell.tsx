@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  getPage,
   getSessionDetail,
   publishCartridge,
   type SessionDetail,
@@ -59,8 +60,8 @@ export interface SearchScope {
 }
 
 type DirectShareTarget =
-  | { kind: "page"; workspaceId: string; pageId: string; title: string }
-  | { kind: "session"; workspaceId: string; sessionId: string };
+  | { kind: "page"; pageId: string; title: string }
+  | { kind: "session"; sessionId: string };
 
 type ShareStatus = "idle" | "creating" | "copied" | "error";
 
@@ -89,7 +90,7 @@ function readSidebarWidth(): number {
 // clicked from a detail route, so "share this" is one click instead of a hunt
 // through the picker.
 function inferShareInitial(pathname: string): CartridgeItemSpec[] | undefined {
-  const pageMatch = pathname.match(/^\/workspaces\/[^/]+\/p\/([^/?#]+)/);
+  const pageMatch = pathname.match(/^\/p\/([^/?#]+)/);
   if (pageMatch)
     return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
   const folderMatch = pathname.match(
@@ -97,12 +98,10 @@ function inferShareInitial(pathname: string): CartridgeItemSpec[] | undefined {
   );
   if (folderMatch)
     return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
-  const fileMatch = pathname.match(/^\/workspaces\/[^/]+\/f\/([^/?#]+)/);
+  const fileMatch = pathname.match(/^\/f\/([^/?#]+)/);
   if (fileMatch)
     return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
-  const sessionMatch = pathname.match(
-    /^\/workspaces\/[^/]+\/sessions\/([^/?#]+)/,
-  );
+  const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
   if (sessionMatch) {
     const sessionId = decodeURIComponent(sessionMatch[1]);
     return [
@@ -171,24 +170,20 @@ function inferDirectShareTarget(
   pathname: string,
   breadcrumbs: Crumb[] | null,
 ): DirectShareTarget | null {
-  const pageMatch = pathname.match(/^\/workspaces\/([^/]+)\/p\/([^/?#]+)/);
+  const pageMatch = pathname.match(/^\/p\/([^/?#]+)/);
   if (pageMatch) {
     return {
       kind: "page",
-      workspaceId: pageMatch[1],
-      pageId: pageMatch[2],
+      pageId: pageMatch[1],
       title: lastCrumbLabel(breadcrumbs) ?? "Shared page",
     };
   }
 
-  const sessionMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/,
-  );
+  const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
   if (sessionMatch) {
     return {
       kind: "session",
-      workspaceId: sessionMatch[1],
-      sessionId: decodeURIComponent(sessionMatch[2]),
+      sessionId: decodeURIComponent(sessionMatch[1]),
     };
   }
 
@@ -211,26 +206,26 @@ function inferSearchScope(
     };
   }
 
-  const sessionMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/,
-  );
-  if (sessionMatch) {
-    const sessionId = decodeURIComponent(sessionMatch[2]);
+  // Canonical item routes carry no workspace in the path; the detail client
+  // publishes it via useActiveWorkspaceId once the resource loads.
+  const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
+  if (sessionMatch && activeWorkspace) {
+    const sessionId = decodeURIComponent(sessionMatch[1]);
     return {
       kind: "session",
       label: "this session",
       detail: `Search only in #${sessionId}`,
-      params: { workspace: sessionMatch[1], session: sessionId },
+      params: { workspace: activeWorkspace.id, session: sessionId },
     };
   }
 
-  const pageMatch = pathname.match(/^\/workspaces\/([^/]+)\/p\/([^/?#]+)/);
-  if (pageMatch) {
+  const pageMatch = pathname.match(/^\/p\/([^/?#]+)/);
+  if (pageMatch && activeWorkspace) {
     return {
       kind: "page",
       label: lastCrumbLabel(breadcrumbs) ?? "this page",
       detail: "Search only in this page",
-      params: { workspace: pageMatch[1], page: pageMatch[2] },
+      params: { workspace: activeWorkspace.id, page: pageMatch[1] },
     };
   }
 
@@ -362,13 +357,14 @@ export default function AppShell({
     if (m?.[1]) setActiveWorkspaceId(m[1]);
   }, [pathname]);
 
-  // Record per-user "recently viewed" whenever a page/file/folder opens, so
-  // the Files Recent strip reflects this user's activity (not global mtime).
+  // Record per-user "recently viewed" whenever a folder opens, so the Files
+  // Recent strip reflects this user's activity (not global mtime). Pages and
+  // files record from their own clients — their canonical URLs don't carry
+  // the workspace, so only the loaded resource knows it.
   useEffect(() => {
-    const m = pathname.match(/^\/workspaces\/([^/]+)\/(p|f|folders)\/([^/?#]+)/);
+    const m = pathname.match(/^\/workspaces\/([^/]+)\/folders\/([^/?#]+)/);
     if (!m) return;
-    const kind = m[2] === "p" ? "page" : m[2] === "f" ? "file" : "folder";
-    recordRecent(m[1], decodeURIComponent(m[3]), kind);
+    recordRecent(m[1], decodeURIComponent(m[2]), "folder");
   }, [pathname]);
 
   useEffect(() => {
@@ -474,24 +470,12 @@ export default function AppShell({
     setShareStatus("creating");
     setShareMessage("");
     try {
-      const result =
+      const { result, workspaceId } =
         target.kind === "page"
-          ? await publishCartridge(
-              target.workspaceId,
-              target.title,
-              [
-                {
-                  object_type: "page",
-                  object_id: target.pageId,
-                  position: 0,
-                  label_override: target.title,
-                },
-              ],
-              { discoverable: false },
-            )
+          ? await publishPageCartridge(target)
           : await publishSessionCartridge(target);
       track("web.session_shared", {
-        workspace_id: target.workspaceId,
+        workspace_id: workspaceId,
         cartridge_id: result.cartridge_id,
       });
       await navigator.clipboard.writeText(result.url);
@@ -625,13 +609,35 @@ export default function AppShell({
   );
 }
 
+// Share targets are parsed from canonical URLs, which carry no workspace —
+// each publish helper resolves it from the resource at share time.
+async function publishPageCartridge(
+  target: Extract<DirectShareTarget, { kind: "page" }>,
+) {
+  const page = await getPage(target.pageId);
+  const result = await publishCartridge(
+    page.workspace_id,
+    target.title,
+    [
+      {
+        object_type: "page",
+        object_id: target.pageId,
+        position: 0,
+        label_override: target.title,
+      },
+    ],
+    { discoverable: false },
+  );
+  return { result, workspaceId: page.workspace_id };
+}
+
 async function publishSessionCartridge(
   target: Extract<DirectShareTarget, { kind: "session" }>,
 ) {
-  const session = await getSessionDetail(target.workspaceId, target.sessionId);
+  const session = await getSessionDetail(target.sessionId);
   const title = sessionShareTitle(session);
-  return publishCartridge(
-    target.workspaceId,
+  const result = await publishCartridge(
+    session.workspace_id,
     title,
     [
       {
@@ -643,6 +649,7 @@ async function publishSessionCartridge(
     ],
     { discoverable: false },
   );
+  return { result, workspaceId: session.workspace_id };
 }
 
 function sessionShareTitle(session: SessionDetail): string {
