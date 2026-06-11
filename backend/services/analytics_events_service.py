@@ -13,16 +13,19 @@ from ..database import get_pool
 logger = logging.getLogger(__name__)
 
 # Surfaces an event can come from. 'system' is reserved for backend-emitted
-# rows (e.g. a future signup hook); for now only 'web' and 'cli' are accepted.
-ALLOWED_SURFACES = {"web", "cli", "system"}
+# rows (e.g. a future signup hook); 'marketing' is the anonymous www
+# landing-page beacon (routers/marketing.py). Clients may send 'web'/'cli'.
+ALLOWED_SURFACES = {"web", "cli", "system", "marketing"}
 
 # Closed set of event names we accept from clients. Adding a new event means
 # adding a row here AND wiring the call site — keeps the dashboard honest.
 ALLOWED_EVENT_NAMES = {
-    # Onboarding funnel (linear Connect → Ask; no path picker)
+    # Onboarding funnel (linear Try it out → Ask; no path picker)
     "onboarding.viewed",
     "onboarding.step_viewed",
+    "onboarding.about_submitted",
     "onboarding.source_selected",
+    "onboarding.collab_path_chosen",
     "onboarding.skipped",
     "onboarding.completed",
     # Web actions
@@ -38,6 +41,9 @@ ALLOWED_EVENT_NAMES = {
     "auth.signed_up",
     # CLI commands (one event per invocation; properties.command is the sub-axis)
     "cli.command_invoked",
+    # Messaging-test landing pages (anonymous; properties.variant is the axis)
+    "marketing.view",
+    "marketing.signup",
 }
 
 
@@ -49,6 +55,8 @@ async def record_event(
     properties: dict | None = None,
     session_anon: str | None = None,
 ) -> None:
+    # The pool's jsonb codec (database.py) serializes dicts itself — passing a
+    # pre-dumped string here double-encodes and breaks properties->> queries.
     pool = get_pool()
     await pool.execute(
         """

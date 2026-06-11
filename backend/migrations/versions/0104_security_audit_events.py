@@ -1,13 +1,13 @@
 """Security audit events for sensitive integration/source actions.
 
-Revision ID: 0102
-Revises: 0101
+Revision ID: 0104
+Revises: 0103
 """
 
 from alembic import op
 
-revision = "0102"
-down_revision = "0101"
+revision = "0104"
+down_revision = "0103"
 branch_labels = None
 depends_on = None
 
