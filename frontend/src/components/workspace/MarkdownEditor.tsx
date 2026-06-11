@@ -59,7 +59,7 @@ interface MarkdownEditorProps {
   collaborationUser: CollaborationUser;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
-  /** Called on clicks to same-origin stash routes so the page
+  /** Called on clicks to same-origin skill routes so the page
    *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
   /** Adds a comment thread anchored to the current selection. Resolves
@@ -124,43 +124,39 @@ export default function MarkdownEditor({
       return;
     }
     let active = true;
-    let document: Y.Doc | null = null;
-    let provider: HocuspocusProvider | null = null;
     setCollabError("");
     setReadOnly(false);
-    setCollaboration(null);
 
-    void getAuthToken().then((token) => {
-      if (!active) return;
-      document = new Y.Doc();
-      provider = new HocuspocusProvider({
-        url: getCollabUrl(),
-        name: `workspace:${workspaceId}:page:${file.id}`,
-        document,
-        sessionAwareness: true,
-        token: token ?? "",
-        onAuthenticated: ({ scope }) => {
-          if (!active) return;
-          setReadOnly(scope === "readonly");
-          setCollabError("");
-        },
-        onAuthenticationFailed: ({ reason }) => {
-          if (!active) return;
-          setCollabError(reason || "Live editing authentication failed");
-        },
-        onClose: ({ event }) => {
-          if (!active) return;
-          if (event.code === 1000) return;
-          setCollabError("Live editing connection closed");
-        },
-      });
-      setCollaboration({ document, provider });
+    const document = new Y.Doc();
+    const provider = new HocuspocusProvider({
+      url: getCollabUrl(),
+      name: `workspace:${workspaceId}:page:${file.id}`,
+      document,
+      sessionAwareness: true,
+      // Async factory, re-run on every (re)connect — Auth0 access tokens
+      // expire, so a reconnect must not re-send a stale token.
+      token: async () => (await getAuthToken()) ?? "",
+      onAuthenticated: ({ scope }) => {
+        if (!active) return;
+        setReadOnly(scope === "readonly");
+        setCollabError("");
+      },
+      onAuthenticationFailed: ({ reason }) => {
+        if (!active) return;
+        setCollabError(reason || "Live editing authentication failed");
+      },
+      onClose: ({ event }) => {
+        if (!active) return;
+        if (event.code === 1000) return;
+        setCollabError("Live editing connection closed");
+      },
     });
+    setCollaboration({ document, provider });
 
     return () => {
       active = false;
-      provider?.destroy();
-      document?.destroy();
+      provider.destroy();
+      document.destroy();
     };
   }, [file.id, workspaceId]);
 
@@ -196,7 +192,7 @@ export default function MarkdownEditor({
       Typography,
       Link.configure({
         // We route clicks ourselves via editorProps.handleClickOn below
-        // so internal stash URLs SPA-navigate instead of opening a new
+        // so internal skill URLs SPA-navigate instead of opening a new
         // tab, and relative/dead hrefs don't trigger 404s. Keep TipTap's
         // own click plugin disabled.
         openOnClick: false,
@@ -298,11 +294,11 @@ export default function MarkdownEditor({
           const href = anchor.getAttribute("href");
           if (!href) return false;
 
-          const isStashAbsolute = /^https?:\/\/(app\.)?stash\.ac\//i.test(href);
+          const isSkillAbsolute = /^https?:\/\/(app\.)?skill\.ac\//i.test(href);
           const isRouteRelative = href.startsWith("/");
           const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
 
-          if (isStashAbsolute || isRouteRelative) {
+          if (isSkillAbsolute || isRouteRelative) {
             event.preventDefault();
             if (shouldOpenInNewTab(event)) {
               openInNewTab(href);

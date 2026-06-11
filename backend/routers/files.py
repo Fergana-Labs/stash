@@ -147,7 +147,21 @@ async def upload_ws_file(
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_write(workspace_id, current_user["id"])
+    # Workspace writers can upload anywhere; non-members can upload into a
+    # specific folder shared with them with write permission.
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        can_write_folder = folder_id is not None and await permission_service.check_access(
+            "folder",
+            folder_id,
+            current_user["id"],
+            workspace_id=workspace_id,
+            require="write",
+        )
+        if not can_write_folder:
+            raise HTTPException(
+                status_code=403,
+                detail="Viewers can read but not modify files",
+            )
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
@@ -174,6 +188,15 @@ async def upload_ws_file(
                     status_code=400,
                     detail="folder_id does not belong to workspace",
                 )
+            can_write_folder = await permission_service.check_access(
+                "folder",
+                folder_id,
+                current_user["id"],
+                workspace_id=workspace_id,
+                require="write",
+            )
+            if not can_write_folder:
+                raise HTTPException(status_code=404, detail="Folder not found")
 
         text = content.decode("utf-8", errors="replace")
         exts = _MD_EXTS if page_kind == "markdown" else _HTML_EXTS

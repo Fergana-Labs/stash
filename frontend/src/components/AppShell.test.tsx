@@ -16,11 +16,10 @@ import {
   useShareAction,
 } from "./ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import { getPage, getSessionDetail, publishCartridge } from "../lib/api";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
-} from "../lib/stashNavigationCache";
+} from "../lib/skillNavigationCache";
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
@@ -52,15 +51,9 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("../lib/stashNavigationCache", () => ({
+vi.mock("../lib/skillNavigationCache", () => ({
   getCachedWorkspaces: vi.fn(),
   readCachedWorkspaces: vi.fn(),
-}));
-
-vi.mock("../lib/api", () => ({
-  getPage: vi.fn(),
-  getSessionDetail: vi.fn(),
-  publishCartridge: vi.fn(),
 }));
 
 // Stands in for a detail client (PageClient / SessionClient): canonical item
@@ -89,8 +82,8 @@ vi.mock("./CommandPalette", () => ({
   },
 }));
 
-vi.mock("./CartridgeInviteCenter", () => ({
-  default: () => <button aria-label="Stash invites">Invites</button>,
+vi.mock("./SkillInviteCenter", () => ({
+  default: () => <button aria-label="Skill invites">Invites</button>,
 }));
 
 const user = {
@@ -104,7 +97,7 @@ const user = {
 
 const workspace = {
   id: "ws-1",
-  name: "Demo Stash",
+  name: "Demo Skill",
   description: "",
   creator_id: user.id,
   invite_code: "invite",
@@ -146,9 +139,6 @@ describe("AppShell sidebar collapse", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(publishCartridge).mockResolvedValue(
-      publishedCartridgeResult("shared-link"),
-    );
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,
       all: [],
@@ -263,99 +253,6 @@ describe("AppShell sidebar collapse", () => {
     expect(commandPaletteState.props?.searchScope?.kind).toBe("session");
   });
 
-  it("creates and copies a one-page Stash link from a page route", async () => {
-    nav.pathname = "/p/page-1";
-    mockWorkspaceCache();
-    vi.mocked(getPage).mockResolvedValue({
-      id: "page-1",
-      workspace_id: "ws-1",
-    } as Awaited<ReturnType<typeof getPage>>);
-
-    render(
-      <ShellChromeProvider>
-        <ShareModalProvider>
-          <AppShell user={user} onLogout={vi.fn()}>
-            <PublishActiveWorkspace id="ws-1" />
-            <div>Page content</div>
-          </AppShell>
-        </ShareModalProvider>
-      </ShellChromeProvider>,
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-
-    await waitFor(() =>
-      expect(publishCartridge).toHaveBeenCalledWith(
-        "ws-1",
-        "Shared page",
-        [
-          {
-            object_type: "page",
-            object_id: "page-1",
-            position: 0,
-            label_override: "Shared page",
-          },
-        ],
-        { discoverable: false },
-      ),
-    );
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://app.joinstash.ai/cartridges/shared-link",
-    );
-  });
-
-  it("creates and copies a one-session Stash link from a session route", async () => {
-    nav.pathname = "/sessions/session-route-id";
-    mockWorkspaceCache();
-    vi.mocked(getSessionDetail).mockResolvedValue({
-      id: "session-row-uuid",
-      workspace_id: "ws-1",
-      session_id: "session-route-id",
-      title: "Debug auth flow",
-      agent_name: "codex",
-      cwd: null,
-      files_touched: [],
-      linear_tickets: [],
-      started_at: null,
-      finished_at: null,
-      created_by: "user-1",
-      artifacts: [],
-    });
-
-    render(
-      <ShellChromeProvider>
-        <ShareModalProvider>
-          <AppShell user={user} onLogout={vi.fn()}>
-            <PublishActiveWorkspace id="ws-1" />
-            <div>Session content</div>
-          </AppShell>
-        </ShareModalProvider>
-      </ShellChromeProvider>,
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-
-    await waitFor(() =>
-      expect(publishCartridge).toHaveBeenCalledWith(
-        "ws-1",
-        "Debug auth flow",
-        [
-          {
-            object_type: "session",
-            object_id: "session-row-uuid",
-            position: 0,
-            label_override: "Debug auth flow",
-          },
-        ],
-        { discoverable: false },
-      ),
-    );
-    expect(getSessionDetail).toHaveBeenCalledWith("session-route-id");
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://app.joinstash.ai/cartridges/shared-link",
-    );
-  });
-
   it("keeps Home clickable on the workspace home route", async () => {
     nav.pathname = "/workspaces/ws-1";
     mockWorkspaceCache();
@@ -376,7 +273,7 @@ describe("AppShell sidebar collapse", () => {
       screen.queryByRole("button", { name: "Back" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Demo Stash" }),
+      screen.queryByRole("link", { name: "Demo Skill" }),
     ).not.toBeInTheDocument();
   });
 
@@ -396,11 +293,36 @@ describe("AppShell sidebar collapse", () => {
     expect(
       screen.queryByRole("button", { name: "Share" }),
     ).not.toBeInTheDocument();
-    expect(publishCartridge).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "/f/file-1",
+    "/p/page-1",
+    "/sessions/session-route-id",
+    "/workspaces/ws-1/folders/folder-1",
+  ])("does not render a default Share action on %s", async (pathname) => {
+    nav.pathname = pathname;
+    mockWorkspaceCache();
+
+    render(
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PublishActiveWorkspace id="ws-1" />
+            <div>File content</div>
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
+    );
+
+    await screen.findByText("File content");
+    expect(
+      screen.queryByRole("button", { name: "Share" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a custom header Share action outside workspace routes", async () => {
-    nav.pathname = "/cartridges/shared-stash";
+    nav.pathname = "/skills/shared-skill";
     mockWorkspaceCache();
 
     function PageWithShareAction() {
@@ -411,7 +333,7 @@ describe("AppShell sidebar collapse", () => {
         [],
       );
       useShareAction(shareButton);
-      return <div>Stash content</div>;
+      return <div>Skill content</div>;
     }
 
     render(
@@ -455,39 +377,7 @@ describe("AppShell sidebar collapse", () => {
     expect(within(header!).getByText("Launch plan")).toBeInTheDocument();
     expect(within(header!).getAllByText("/")).toHaveLength(2);
     expect(
-      within(header!).queryByRole("link", { name: "Demo Stash" }),
+      within(header!).queryByRole("link", { name: "Demo Skill" }),
     ).not.toBeInTheDocument();
   });
 });
-
-function publishedCartridgeResult(slug: string) {
-  return {
-    cartridge: {
-      id: "stash-1",
-      workspace_id: "ws-1",
-      slug,
-      title: "Shared link",
-      description: "",
-      owner_id: "user-1",
-      owner_name: "henry",
-      owner_display_name: "Henry",
-      access: "public" as const,
-      workspace_permission: "read" as const,
-      public_permission: "read" as const,
-      discoverable: false,
-      cover_image_url: null,
-      icon_url: null,
-      view_count: 0,
-      share_count: 0,
-      items: [],
-      is_external: false,
-      added_to_workspace_id: null,
-      forked_from_cartridge_id: null,
-      created_at: "2026-05-11T00:00:00Z",
-      updated_at: "2026-05-11T00:00:00Z",
-    },
-    url: `https://app.joinstash.ai/cartridges/${slug}`,
-    cartridge_id: "stash-1",
-    cartridge_slug: slug,
-  };
-}

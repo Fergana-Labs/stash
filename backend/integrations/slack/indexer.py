@@ -43,8 +43,9 @@ async def index_slack(source: dict) -> str | None:
     owner_user_id = UUID(source["owner_user_id"])
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     if not allowed_channel_ids:
-        logger.info("slack source %s: no allowed channels configured", source_id)
-        return None
+        # Fail loudly so the sync records a sync_error instead of reporting a
+        # successful sync that ingested nothing.
+        raise RuntimeError("no allowed channels configured")
 
     token = await get_valid_token(owner_user_id, "slack")
     headers = {"Authorization": f"Bearer {token}"}

@@ -8,6 +8,6 @@ export const securityHeaders = [
   },
 ];
 
-export const stashEmbedHeaders = [
+export const skillEmbedHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors *" },
 ];

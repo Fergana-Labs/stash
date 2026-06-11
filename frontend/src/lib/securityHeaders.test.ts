@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { securityHeaders, stashEmbedHeaders } from "./securityHeaders";
+import { securityHeaders, skillEmbedHeaders } from "./securityHeaders";
 
 function asRecord(headers: { key: string; value: string }[]) {
   return Object.fromEntries(headers.map((header) => [header.key, header.value]));
@@ -18,9 +18,9 @@ describe("securityHeaders", () => {
     );
   });
 
-  it("keeps published Stash embedding as an explicit exception", () => {
+  it("keeps published Skill embedding as an explicit exception", () => {
     const baseline = asRecord(securityHeaders);
-    const embed = asRecord(stashEmbedHeaders);
+    const embed = asRecord(skillEmbedHeaders);
 
     expect(baseline["Content-Security-Policy"]).toBeUndefined();
     expect(embed["Content-Security-Policy"]).toBe("frame-ancestors *");

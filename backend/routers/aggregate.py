@@ -135,7 +135,7 @@ async def list_activity(
                  aw.name AS workspace_name
           FROM pages p
           JOIN accessible_workspaces aw ON aw.id = p.workspace_id
-          WHERE COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+          WHERE COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
             AND p.deleted_at IS NULL
             AND """
         + permission_service.readable_content_condition("page", "p", 1)
@@ -234,24 +234,24 @@ async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
 
 async def _verify_scope(
     workspace_id: UUID | None,
-    cartridge_id: UUID | None,
+    skill_id: UUID | None,
     user_id: UUID,
 ) -> None:
-    """workspace_id and cartridge_id are mutually exclusive. Verify access to whichever was passed."""
+    """workspace_id and skill_id are mutually exclusive. Verify access to whichever was passed."""
     from fastapi import HTTPException
 
-    from ..services import cartridge_service
+    from ..services import shared_skill_service
 
-    if workspace_id is not None and cartridge_id is not None:
+    if workspace_id is not None and skill_id is not None:
         raise HTTPException(
-            status_code=400, detail="workspace_id and cartridge_id are mutually exclusive"
+            status_code=400, detail="workspace_id and skill_id are mutually exclusive"
         )
     if workspace_id is not None:
         await _verify_workspace_access(workspace_id, user_id)
         return
-    if cartridge_id is not None:
-        if not await cartridge_service.user_can_read(cartridge_id, user_id):
-            raise HTTPException(status_code=403, detail="Cannot read this Stash")
+    if skill_id is not None:
+        if not await shared_skill_service.user_can_read(skill_id, user_id):
+            raise HTTPException(status_code=403, detail="Cannot read this Skill")
 
 
 @router.get("/activity-timeline")
@@ -259,17 +259,17 @@ async def activity_timeline(
     days: int = Query(30, ge=1, le=365),
     bucket: str = Query("day"),
     workspace_id: UUID | None = Query(None),
-    cartridge_id: UUID | None = Query(None),
+    skill_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Human + coding-agent session commits bucketed by time for the dashboard timeline."""
-    await _verify_scope(workspace_id, cartridge_id, current_user["id"])
+    await _verify_scope(workspace_id, skill_id, current_user["id"])
     return await analytics_service.get_activity_timeline(
         current_user["id"],
         days=days,
         bucket=bucket,
         workspace_id=workspace_id,
-        cartridge_id=cartridge_id,
+        skill_id=skill_id,
     )
 
 
@@ -294,15 +294,15 @@ async def embedding_projection(
     max_points: int = Query(500, ge=1, le=2000),
     source: str | None = Query(None),
     workspace_id: UUID | None = Query(None),
-    cartridge_id: UUID | None = Query(None),
+    skill_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """2D UMAP projection of embeddings for the space explorer."""
-    await _verify_scope(workspace_id, cartridge_id, current_user["id"])
+    await _verify_scope(workspace_id, skill_id, current_user["id"])
     return await analytics_service.get_embedding_projection(
         current_user["id"],
         max_points=max_points,
         source=source,
         workspace_id=workspace_id,
-        cartridge_id=cartridge_id,
+        skill_id=skill_id,
     )

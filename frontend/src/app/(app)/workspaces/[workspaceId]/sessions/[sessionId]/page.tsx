@@ -5,13 +5,13 @@ import { permanentRedirect } from "next/navigation";
 // transcripts and chats.
 type PageProps = {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ stash?: string | string[] }>;
+  searchParams: Promise<{ skill?: string | string[] }>;
 };
 
 export default async function LegacySessionRoute({ params, searchParams }: PageProps) {
   const [{ sessionId }, query] = await Promise.all([params, searchParams]);
-  const stash = Array.isArray(query.stash) ? query.stash[0] : query.stash;
+  const skill = Array.isArray(query.skill) ? query.skill[0] : query.skill;
   permanentRedirect(
-    `/sessions/${sessionId}${stash ? `?stash=${encodeURIComponent(stash)}` : ""}`
+    `/sessions/${sessionId}${skill ? `?skill=${encodeURIComponent(skill)}` : ""}`
   );
 }
