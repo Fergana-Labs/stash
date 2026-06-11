@@ -64,6 +64,7 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "asana_project": "asana-project-1",
         "gong_calls": "gong-source",
         "snowflake": "account/database/schema",
+        "twitter": "111",
     }
     return refs[source_type]
 
