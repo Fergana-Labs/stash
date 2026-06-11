@@ -115,15 +115,14 @@ async def assign_sessions(
 ):
     await _require_member(workspace_id, current_user["id"])
     await _require_write(workspace_id, current_user["id"])
-    for session_row_id in body.session_row_ids:
-        assigned = await session_folder_service.assign_session(
-            workspace_id,
-            current_user["id"],
-            session_row_id,
-            body.folder_id,
-        )
-        if not assigned:
-            raise HTTPException(status_code=404, detail="Session or folder not found")
+    assigned = await session_folder_service.assign_sessions(
+        workspace_id,
+        current_user["id"],
+        body.session_row_ids,
+        body.folder_id,
+    )
+    if not assigned:
+        raise HTTPException(status_code=404, detail="Session or folder not found")
     return {"ok": True, "moved": len(body.session_row_ids)}
 
 
