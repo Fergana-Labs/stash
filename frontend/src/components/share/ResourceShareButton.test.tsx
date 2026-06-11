@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import FileShareButton from "./FileShareButton";
+import ResourceShareButton from "./ResourceShareButton";
 import {
   listObjectShares,
   shareObjectByEmail,
@@ -24,7 +24,7 @@ const currentUser = {
   last_seen: "2026-05-11T00:00:00Z",
 };
 
-describe("FileShareButton", () => {
+describe("ResourceShareButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(navigator, "clipboard", {
@@ -51,9 +51,11 @@ describe("FileShareButton", () => {
 
   it("shows file access and copies the canonical file URL", async () => {
     render(
-      <FileShareButton
-        fileId="file-1"
-        fileName="launch.png"
+      <ResourceShareButton
+        objectType="file"
+        objectId="file-1"
+        resourceName="launch.png"
+        resourceUrlPath="/f/file-1"
         currentUser={currentUser}
       />,
     );
@@ -75,7 +77,7 @@ describe("FileShareButton", () => {
     expect(await screen.findByText("Link copied.")).toBeInTheDocument();
   });
 
-  it("invites people directly to the file", async () => {
+  it("invites people directly to the resource", async () => {
     vi.mocked(listObjectShares)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
@@ -90,15 +92,17 @@ describe("FileShareButton", () => {
       ]);
 
     render(
-      <FileShareButton
-        fileId="file-1"
-        fileName="launch.png"
+      <ResourceShareButton
+        objectType="table"
+        objectId="table-1"
+        resourceName="Prospects"
+        resourceUrlPath="/tables/table-1"
         currentUser={currentUser}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await screen.findByRole("dialog", { name: "Share launch.png" });
+    await screen.findByRole("dialog", { name: "Share Prospects" });
 
     fireEvent.change(screen.getByLabelText("Add people"), {
       target: { value: "ada@example.com" },
@@ -110,8 +114,8 @@ describe("FileShareButton", () => {
 
     await waitFor(() =>
       expect(shareObjectByEmail).toHaveBeenCalledWith(
-        "file",
-        "file-1",
+        "table",
+        "table-1",
         "ada@example.com",
         "write",
       ),

@@ -15,6 +15,7 @@ import {
   unshareObject,
   type GeneralPermission,
   type ObjectShare,
+  type SharedObjectType,
 } from "../../lib/api";
 import type { User } from "../../lib/types";
 
@@ -25,13 +26,17 @@ const PERMISSIONS: { value: SharePermission; label: string }[] = [
   { value: "write", label: "Can edit" },
 ];
 
-export default function FileShareButton({
-  fileId,
-  fileName,
+export default function ResourceShareButton({
+  objectType,
+  objectId,
+  resourceName,
+  resourceUrlPath,
   currentUser,
 }: {
-  fileId: string;
-  fileName: string;
+  objectType: SharedObjectType;
+  objectId: string;
+  resourceName: string;
+  resourceUrlPath: string;
   currentUser: User;
 }) {
   const [open, setOpen] = useState(false);
@@ -45,22 +50,23 @@ export default function FileShareButton({
 
   useEscapeKey(open, () => setOpen(false));
 
-  const fileUrl =
+  const resourceUrl =
     typeof window === "undefined"
-      ? `/f/${fileId}`
-      : `${window.location.origin}/f/${fileId}`;
+      ? resourceUrlPath
+      : `${window.location.origin}${resourceUrlPath}`;
+  const displayName = resourceName.trim() || "Untitled";
 
   const loadShares = useCallback(async () => {
     setLoadingShares(true);
     setMessage("");
     try {
-      setShares(await listObjectShares("file", fileId));
+      setShares(await listObjectShares(objectType, objectId));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not load access.");
     } finally {
       setLoadingShares(false);
     }
-  }, [fileId]);
+  }, [objectId, objectType]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,12 +93,12 @@ export default function FileShareButton({
     setBusy(true);
     setMessage("");
     try {
-      await shareObjectByEmail("file", fileId, trimmedEmail, permission);
+      await shareObjectByEmail(objectType, objectId, trimmedEmail, permission);
       setEmail("");
       await loadShares();
       setMessage("Access updated.");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not share file.");
+      setMessage(e instanceof Error ? e.message : "Could not share resource.");
     } finally {
       setBusy(false);
     }
@@ -104,7 +110,12 @@ export default function FileShareButton({
     setBusy(true);
     setMessage("");
     try {
-      await unshareObject("file", fileId, share.principal_type, share.principal_id);
+      await unshareObject(
+        objectType,
+        objectId,
+        share.principal_type,
+        share.principal_id,
+      );
       await loadShares();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not remove access.");
@@ -116,7 +127,7 @@ export default function FileShareButton({
   async function copyLink() {
     setMessage("");
     try {
-      await navigator.clipboard.writeText(fileUrl);
+      await navigator.clipboard.writeText(resourceUrl);
       setMessage("Link copied.");
     } catch {
       setMessage("Could not copy link.");
@@ -138,13 +149,13 @@ export default function FileShareButton({
       {open && (
         <div
           role="dialog"
-          aria-label={`Share ${fileName}`}
+          aria-label={`Share ${displayName}`}
           className="absolute right-0 top-full z-40 mt-1.5 w-[420px] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-base p-4 shadow-lg"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="m-0 truncate text-[18px] font-semibold text-foreground">
-                {`Share "${fileName}"`}
+                {`Share "${displayName}"`}
               </h2>
             </div>
             <button
@@ -168,12 +179,12 @@ export default function FileShareButton({
           </div>
 
           <form onSubmit={addPerson} className="mt-4">
-            <label className="sr-only" htmlFor="file-share-email">
+            <label className="sr-only" htmlFor="resource-share-email">
               Add people
             </label>
             <div className="flex gap-2">
               <input
-                id="file-share-email"
+                id="resource-share-email"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}

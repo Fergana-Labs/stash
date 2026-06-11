@@ -10,19 +10,10 @@ import {
 } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  getPage,
-  getSessionDetail,
-  publishCartridge,
-  type SessionDetail,
-  type CartridgeItemSpec,
-} from "../lib/api";
-import { track } from "../lib/analytics";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import CartridgeInviteCenter from "./CartridgeInviteCenter";
-import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { useShellChromeValue } from "./ShellChromeContext";
 import {
@@ -59,12 +50,6 @@ export interface SearchScope {
   params: Record<string, string>;
 }
 
-type DirectShareTarget =
-  | { kind: "page"; pageId: string; title: string }
-  | { kind: "session"; sessionId: string };
-
-type ShareStatus = "idle" | "creating" | "copied" | "error";
-
 function readBool(key: string): boolean {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(key) === "1";
@@ -84,33 +69,6 @@ function readSidebarWidth(): number {
   const width = Number(stored);
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
   return clampSidebarWidth(width);
-}
-
-// Pre-select the current page/folder/session when the Share button is
-// clicked from a detail route, so "share this" is one click instead of a hunt
-// through the picker.
-function inferShareInitial(pathname: string): CartridgeItemSpec[] | undefined {
-  const pageMatch = pathname.match(/^\/p\/([^/?#]+)/);
-  if (pageMatch)
-    return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
-  const folderMatch = pathname.match(
-    /^\/workspaces\/[^/]+\/folders\/([^/?#]+)/,
-  );
-  if (folderMatch)
-    return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
-  const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
-  if (sessionMatch) {
-    const sessionId = decodeURIComponent(sessionMatch[1]);
-    return [
-      {
-        object_type: "session",
-        object_id: sessionId,
-        position: 0,
-        label_override: `#${sessionId}`,
-      },
-    ];
-  }
-  return undefined;
 }
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
@@ -161,30 +119,6 @@ function SidebarResizeHandle({
 function lastCrumbLabel(crumbs: Crumb[] | null): string | null {
   const label = crumbs?.[crumbs.length - 1]?.label.trim();
   return label || null;
-}
-
-function inferDirectShareTarget(
-  pathname: string,
-  breadcrumbs: Crumb[] | null,
-): DirectShareTarget | null {
-  const pageMatch = pathname.match(/^\/p\/([^/?#]+)/);
-  if (pageMatch) {
-    return {
-      kind: "page",
-      pageId: pageMatch[1],
-      title: lastCrumbLabel(breadcrumbs) ?? "Shared page",
-    };
-  }
-
-  const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
-  if (sessionMatch) {
-    return {
-      kind: "session",
-      sessionId: decodeURIComponent(sessionMatch[1]),
-    };
-  }
-
-  return null;
 }
 
 function inferSearchScope(
@@ -324,7 +258,6 @@ export default function AppShell({
   const breadcrumbs = useBreadcrumbsValue();
   const { shareAction, activeWorkspaceId: preferredWorkspaceId } =
     useShellChromeValue();
-  const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
@@ -334,8 +267,6 @@ export default function AppShell({
     () => readCachedWorkspaces(user.id)?.all ?? [],
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
-  const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
-  const [shareMessage, setShareMessage] = useState("");
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
@@ -389,8 +320,6 @@ export default function AppShell({
   const initial = user.display_name[0].toUpperCase();
   const accountLabel = user.email ?? user.name;
   const usernameLabel = `@${user.name}`;
-  const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
-  const shareInitial = inferShareInitial(pathname);
 
   function applySidebarWidth(width: number) {
     const next = clampSidebarWidth(width);
@@ -451,74 +380,6 @@ export default function AppShell({
     }
   }
 
-  async function copyCurrentViewLink() {
-    if (!activeWorkspaceId) return;
-
-    const target = directShareTarget;
-    if (!target) {
-      shareModal.open({
-        workspaceId: activeWorkspaceId,
-        workspaceName: activeWorkspace?.name,
-        initial: shareInitial,
-      });
-      return;
-    }
-
-    setShareStatus("creating");
-    setShareMessage("");
-    try {
-      const { result, workspaceId } =
-        target.kind === "page"
-          ? await publishPageCartridge(target)
-          : await publishSessionCartridge(target);
-      track("web.session_shared", {
-        workspace_id: workspaceId,
-        cartridge_id: result.cartridge_id,
-      });
-      await navigator.clipboard.writeText(result.url);
-      setShareStatus("copied");
-      setShareMessage("Link copied");
-      window.setTimeout(() => {
-        setShareStatus("idle");
-        setShareMessage("");
-      }, 1600);
-    } catch (e) {
-      setShareStatus("error");
-      setShareMessage(e instanceof Error ? e.message : "Share failed");
-      window.setTimeout(() => {
-        setShareStatus("idle");
-        setShareMessage("");
-      }, 3000);
-    }
-  }
-
-  const defaultShareAction =
-    activeWorkspaceId && shareInitial ? (
-      <div className="mr-1 flex items-center gap-2">
-        {shareMessage && (
-          <span
-            className={
-              "max-w-[180px] truncate text-[11.5px] " +
-              (shareStatus === "error" ? "text-red-500" : "text-muted")
-            }
-          >
-            {shareMessage}
-          </span>
-        )}
-        <button
-          className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-          onClick={() => void copyCurrentViewLink()}
-          disabled={shareStatus === "creating"}
-        >
-          {shareStatus === "creating"
-            ? "Creating..."
-            : shareStatus === "copied"
-              ? "Copied"
-              : "Share"}
-        </button>
-      </div>
-    ) : null;
-
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
       <header className="sticky top-0 z-30 flex h-14 flex-shrink-0 items-center gap-3 border-b border-border bg-base/85 px-4 backdrop-blur-md">
@@ -558,7 +419,7 @@ export default function AppShell({
 
         <div className="flex shrink-0 items-center justify-end gap-1">
           <CartridgeInviteCenter />
-          {shareAction ?? defaultShareAction}
+          {shareAction}
           <UserMenu
             initial={initial}
             accountLabel={accountLabel}
@@ -604,55 +465,6 @@ export default function AppShell({
       />
     </div>
   );
-}
-
-// Share targets are parsed from canonical URLs, which carry no workspace —
-// each publish helper resolves it from the resource at share time.
-async function publishPageCartridge(
-  target: Extract<DirectShareTarget, { kind: "page" }>,
-) {
-  const page = await getPage(target.pageId);
-  const result = await publishCartridge(
-    page.workspace_id,
-    target.title,
-    [
-      {
-        object_type: "page",
-        object_id: target.pageId,
-        position: 0,
-        label_override: target.title,
-      },
-    ],
-    { discoverable: false },
-  );
-  return { result, workspaceId: page.workspace_id };
-}
-
-async function publishSessionCartridge(
-  target: Extract<DirectShareTarget, { kind: "session" }>,
-) {
-  const session = await getSessionDetail(target.sessionId);
-  const title = sessionShareTitle(session);
-  const result = await publishCartridge(
-    session.workspace_id,
-    title,
-    [
-      {
-        object_type: "session",
-        object_id: session.id,
-        position: 0,
-        label_override: title,
-      },
-    ],
-    { discoverable: false },
-  );
-  return { result, workspaceId: session.workspace_id };
-}
-
-function sessionShareTitle(session: SessionDetail): string {
-  const title = session.title?.trim();
-  if (title) return title;
-  return `#${session.session_id}`;
 }
 
 function UserMenu({

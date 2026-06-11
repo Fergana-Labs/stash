@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useActiveWorkspaceId } from "../../../../components/ShellChromeContext";
+import {
+  useActiveWorkspaceId,
+  useShareAction,
+} from "../../../../components/ShellChromeContext";
 import DownloadMenu from "../../../../components/DownloadMenu";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "../../../../components/SkeletonStates";
 import { StashIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
@@ -141,6 +145,20 @@ export default function SessionViewerPage() {
     [{ label: "Sessions" }, { label: `#${sessionId}` }],
     `${workspaceId}/session/${sessionId}`
   );
+
+  const shareAction = useMemo(() => {
+    if (!sessionDetail || stashSlug || !user) return null;
+    return (
+      <ResourceShareButton
+        objectType="session"
+        objectId={sessionDetail.id}
+        resourceName={sessionHeading(sessionDetail, sessionId)}
+        resourceUrlPath={`/sessions/${encodeURIComponent(sessionId)}`}
+        currentUser={user}
+      />
+    );
+  }, [sessionDetail, sessionId, stashSlug, user]);
+  useShareAction(shareAction);
 
   const loadStashFallback = useCallback(async () => {
     if (!stashSlug) return false;

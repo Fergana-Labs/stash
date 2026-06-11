@@ -29,7 +29,7 @@ import FileContentRenderer, {
   isText,
 } from "../../../../components/workspace/FileContentRenderer";
 import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
-import FileShareButton from "../../../../components/share/FileShareButton";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
@@ -216,9 +216,11 @@ function FileViewerPageInner() {
   const shareAction = useMemo(() => {
     if (!file || readOnly || !user) return null;
     return (
-      <FileShareButton
-        fileId={file.id}
-        fileName={file.name}
+      <ResourceShareButton
+        objectType="file"
+        objectId={file.id}
+        resourceName={file.name}
+        resourceUrlPath={`/f/${file.id}`}
         currentUser={user}
       />
     );
