@@ -252,7 +252,7 @@ async def test_editor_can_update_workspace(client: AsyncClient):
     ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
-    # Default role for joiners is editor; editors can rename/describe the stash.
+    # Default role for joiners is editor; editors can rename/describe the skill.
     resp = await client.patch(
         f"/api/v1/workspaces/{ws['id']}",
         json={"name": "Edited by member"},

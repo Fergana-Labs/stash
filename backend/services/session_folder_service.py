@@ -2,7 +2,7 @@
 
 A folder groups related sessions (one per project/repo, plus a per-workspace
 Default that catches chat-UI and un-targeted CLI sessions). Folders share the
-same access model as cartridges — a (workspace_permission, public_permission)
+same access model as skills — a (workspace_permission, public_permission)
 pair computed into private/workspace/public — and access cascades to the
 sessions inside (see permission_service). Public folders are reachable by slug
 without login, rendered by the same session viewer.
@@ -231,30 +231,15 @@ async def delete_folder(folder_id: UUID, user_id: UUID) -> bool:
     return True
 
 
-async def assign_session(
+async def assign_sessions(
     workspace_id: UUID,
     user_id: UUID,
-    session_row_id: UUID,
+    session_row_ids: list[UUID],
     folder_id: UUID | None,
 ) -> bool:
+    """All-or-nothing: every session (and the target folder) is validated
+    before anything moves, so a failure means nothing changed."""
     pool = get_pool()
-    session = await pool.fetchrow(
-        "SELECT id FROM sessions WHERE id = $1 AND workspace_id = $2",
-        session_row_id,
-        workspace_id,
-    )
-    if not session:
-        return False
-
-    can_write_session = await permission_service.check_access(
-        "session",
-        session_row_id,
-        user_id,
-        workspace_id=workspace_id,
-        require="write",
-    )
-    if not can_write_session:
-        return False
 
     if folder_id is not None:
         folder = await pool.fetchrow(
@@ -274,13 +259,31 @@ async def assign_session(
         if not can_write_folder:
             return False
 
-    result = await pool.execute(
-        "UPDATE sessions SET session_folder_id = $2 WHERE id = $1 AND workspace_id = $3",
-        session_row_id,
+    for session_row_id in session_row_ids:
+        session = await pool.fetchrow(
+            "SELECT id FROM sessions WHERE id = $1 AND workspace_id = $2",
+            session_row_id,
+            workspace_id,
+        )
+        if not session:
+            return False
+        can_write_session = await permission_service.check_access(
+            "session",
+            session_row_id,
+            user_id,
+            workspace_id=workspace_id,
+            require="write",
+        )
+        if not can_write_session:
+            return False
+
+    await pool.execute(
+        "UPDATE sessions SET session_folder_id = $2 WHERE id = ANY($1) AND workspace_id = $3",
+        session_row_ids,
         folder_id,
         workspace_id,
     )
-    return result == "UPDATE 1"
+    return True
 
 
 async def get_public_folder(slug: str, viewer_id: UUID | None = None) -> dict | None:

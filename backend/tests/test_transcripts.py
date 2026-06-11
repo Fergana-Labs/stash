@@ -46,9 +46,9 @@ async def _workspace(client, key):
     return r.json()["id"]
 
 
-async def _cartridge(client, key, ws):
+async def _skill(client, key, ws):
     r = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges",
+        f"/api/v1/workspaces/{ws}/skills",
         json={"title": "Default sessions", "items": []},
         headers={"Authorization": f"Bearer {key}"},
     )
@@ -199,10 +199,10 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_upload_adds_session_to_default_cartridge(client: AsyncClient):
+async def test_upload_adds_session_to_default_skill(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
-    cartridge_id = await _cartridge(client, key, ws)
+    skill_id = await _skill(client, key, ws)
     headers = {"Authorization": f"Bearer {key}"}
 
     up = await client.post(
@@ -211,15 +211,15 @@ async def test_upload_adds_session_to_default_cartridge(client: AsyncClient):
         data={
             "session_id": "sess-default",
             "agent_name": "claude",
-            "default_cartridge_id": cartridge_id,
+            "default_skill_id": skill_id,
         },
         headers=headers,
     )
     assert up.status_code == 201, up.text
 
-    cartridges = await client.get(f"/api/v1/workspaces/{ws}/cartridges", headers=headers)
-    assert cartridges.status_code == 200
-    [stash] = [item for item in cartridges.json()["cartridges"] if item["id"] == cartridge_id]
+    skills = await client.get(f"/api/v1/workspaces/{ws}/skills", headers=headers)
+    assert skills.status_code == 200
+    [stash] = [item for item in skills.json()["skills"] if item["id"] == skill_id]
     assert [item["object_type"] for item in stash["items"]] == ["session"]
 
 

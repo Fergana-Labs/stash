@@ -5,6 +5,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type AnchorHTMLAttributes,
@@ -17,13 +18,14 @@ import Markdown from "react-markdown";
 import AppShell from "../../../components/AppShell";
 import CustomSelect from "../../../components/CustomSelect";
 import { downloadBlob } from "../../../components/DownloadMenu";
+import { useShareAction } from "../../../components/ShellChromeContext";
+import ResourceShareButton from "../../../components/share/ResourceShareButton";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
-import { useShareModal } from "../../../lib/shareModalContext";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
   fetchAuthed,
-  getPublicCartridge,
+  getPublicSkill,
   getTable, updateTable,
   deleteTable, addTableColumn, updateTableColumn,
   deleteTableColumn, reorderTableColumns, listTableRows, searchTableRows,
@@ -228,12 +230,12 @@ function TableEditorPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tableId = params.tableId as string;
-  // Stash mode: `?stash=<slug>` switches the data source to the public
-  // stash payload (which the backend gates by stash readability). All
+  // Skill mode: `?skill=<slug>` switches the data source to the public
+  // skill payload (which the backend gates by skill readability). All
   // mutating UI is hidden in this mode.
-  const stashSlug = searchParams.get("stash");
-  const readOnly = !!stashSlug;
-  const [stashTitle, setStashTitle] = useState<string | null>(null);
+  const skillSlug = searchParams.get("skill");
+  const readOnly = !!skillSlug;
+  const [skillTitle, setSkillTitle] = useState<string | null>(null);
   const { user, loading, logout } = useAuth();
 
   // Core state. The workspace comes from the loaded table itself (the
@@ -317,7 +319,19 @@ function TableEditorPageInner() {
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = rows.length < totalCount;
 
-  const shareModal = useShareModal();
+  const shareAction = useMemo(() => {
+    if (!table || readOnly || !user) return null;
+    return (
+      <ResourceShareButton
+        objectType="table"
+        objectId={table.id}
+        resourceName={table.name}
+        resourceUrlPath={`/tables/${table.id}`}
+        currentUser={user}
+      />
+    );
+  }, [readOnly, table, user]);
+  useShareAction(shareAction);
 
   const rememberUndo = useCallback((action: TableUndoAction) => {
     undoStackRef.current.push(action);
@@ -378,17 +392,17 @@ function TableEditorPageInner() {
   // --- Data Loading ---
   const loadTable = useCallback(async () => {
     try {
-      if (stashSlug) {
-        // Synthesize a Table from the stash's inlined item content. The
-        // backend serializes columns + the first 500 rows when the stash
-        // is readable; that's the source of truth in stash mode.
-        const stash = await getPublicCartridge(stashSlug);
-        setStashTitle(stash.cartridge.title);
-        const item = stash.items.find(
+      if (skillSlug) {
+        // Synthesize a Table from the skill's inlined item content. The
+        // backend serializes columns + the first 500 rows when the skill
+        // is readable; that's the source of truth in skill mode.
+        const skill = await getPublicSkill(skillSlug);
+        setSkillTitle(skill.skill.title);
+        const item = skill.items.find(
           (it) => it.object_type === "table" && it.object_id === tableId
         );
         if (!item || !item.inline) {
-          setError("Table isn't in this Stash.");
+          setError("Table isn't in this Skill.");
           return;
         }
         const inline = item.inline as {
@@ -398,7 +412,7 @@ function TableEditorPageInner() {
         };
         const synth: Table = {
           id: tableId,
-          workspace_id: stash.cartridge.workspace_id,
+          workspace_id: skill.skill.workspace_id,
           name: item.label || "Table",
           description: inline.description ?? "",
           columns: (inline.columns ?? []).map((c) => ({ ...c })),
@@ -406,10 +420,10 @@ function TableEditorPageInner() {
           created_at: "",
           updated_at: "",
         } as unknown as Table;
-        setResolvedWorkspaceId(stash.cartridge.workspace_id);
+        setResolvedWorkspaceId(skill.skill.workspace_id);
         setTable(synth);
         const synthRows: TableRow[] = (inline.rows ?? []).map((r, i) => ({
-          id: `stash-${i}`,
+          id: `skill-${i}`,
           table_id: tableId,
           data: r.data,
           row_order: r.row_order ?? i,
@@ -426,7 +440,7 @@ function TableEditorPageInner() {
       setResolvedWorkspaceId(loaded.workspace_id);
       setTable(loaded);
     } catch { setError("Table not found"); }
-  }, [tableId, stashSlug]);
+  }, [tableId, skillSlug]);
 
   const buildRowParams = useCallback((pageOffset: number) => {
     const p: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] } = {
@@ -438,7 +452,7 @@ function TableEditorPageInner() {
   }, [sortBy, sortOrder, filters]);
 
   const loadRows = useCallback(async () => {
-    // In stash mode the rows are already populated inline by loadTable
+    // In skill mode the rows are already populated inline by loadTable
     // (the backend caps the inline payload at 500 rows). Search/filter
     // happen client-side from that snapshot.
     if (readOnly) return;
@@ -478,7 +492,7 @@ function TableEditorPageInner() {
     } catch { /* ignore */ }
   }, [tableId, wsId, filters, showSummary, readOnly]);
 
-  // Stash mode is anonymous-readable, so load eagerly. Workspace mode
+  // Skill mode is anonymous-readable, so load eagerly. Workspace mode
   // waits for auth before hitting workspace-scoped endpoints.
   useEffect(() => { if (readOnly || user) loadTable(); }, [readOnly, user, loadTable]);
   useEffect(() => { if ((readOnly || user) && table) loadRows(); }, [readOnly, user, table, loadRows]);
@@ -938,7 +952,7 @@ function TableEditorPageInner() {
     return "";
   };
 
-  // Stash-scoped readers can be anonymous when the stash is public; only
+  // Skill-scoped readers can be anonymous when the skill is public; only
   // redirect to /login in workspace mode.
   useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
   if (loading && !readOnly) return <TableEditorSkeleton />;
@@ -1087,10 +1101,10 @@ function TableEditorPageInner() {
               : undefined
           }
           readOnly={readOnly}
-          readOnlyLabel="read-only · via Stash"
+          readOnlyLabel="read-only · via Skill"
           backLink={
-            readOnly && stashSlug
-              ? { label: stashTitle ?? "Stash", href: `/cartridges/${stashSlug}` }
+            readOnly && skillSlug
+              ? { label: skillTitle ?? "Skill", href: `/skills/${skillSlug}` }
               : undefined
           }
           tags={[{ label: "table", tone: "muted" }]}
@@ -1135,19 +1149,6 @@ function TableEditorPageInner() {
             {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
             {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
             {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
-            {!readOnly && wsId && table && (
-              <button
-                onClick={() =>
-                  shareModal.open({
-                    workspaceId: wsId,
-                    initial: [{ object_type: "table", object_id: table.id, label_override: table.name }],
-                  })
-                }
-                className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
-              >
-                Share
-              </button>
-            )}
             {!readOnly && <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
           </>}
         </div>
@@ -1494,7 +1495,7 @@ function TableEditorPageInner() {
       </div>
   );
 
-  // Stash-mode viewers are reading through the stash, not the workspace, so
+  // Skill-mode viewers are reading through the skill, not the workspace, so
   // keep workspace chrome hidden even when they are signed in.
   if (readOnly || !user) {
     return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;

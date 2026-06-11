@@ -7,7 +7,7 @@ import type { GridItem } from "./kind";
 const item: GridItem = {
   kind: "html",
   id: "page-1",
-  name: "Stash Product Memo 6.1.25",
+  name: "Skill Product Memo 6.1.25",
   subtitle: "html page",
   updatedAt: "2026-06-02T21:35:23Z",
 };

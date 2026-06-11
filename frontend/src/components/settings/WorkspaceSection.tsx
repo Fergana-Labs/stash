@@ -9,7 +9,7 @@ import {
   updateWorkspace,
   uploadFile,
 } from "../../lib/api";
-import { resetStashNavigationCache } from "../../lib/stashNavigationCache";
+import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
 import type { Workspace } from "../../lib/types";
 
 // The sidebar remembers the last workspace the user was in; the unified
@@ -58,7 +58,7 @@ export default function WorkspaceSection() {
     if (!workspace) return;
     if (!confirm(`Delete "${workspace.name}"? This cannot be undone.`)) return;
     await deleteWorkspace(workspace.id);
-    resetStashNavigationCache();
+    resetSkillNavigationCache();
     router.push("/");
   }
 

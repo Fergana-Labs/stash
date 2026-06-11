@@ -268,13 +268,16 @@ async def test_gong_rejects_missing_credentials():
 
 @pytest.mark.asyncio
 async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
-    soft_deleted: list[str] = []
+    """An unconfigured allowlist must purge previously indexed (unscoped)
+    calls and fail the sync — not report a healthy no-op that leaves them
+    searchable."""
+    purges: list[tuple[str, list[str]]] = []
 
     async def fail_get_valid_token(user_id, provider):
         raise AssertionError("Gong credentials should not be touched without an allowlist")
 
     async def fake_soft_delete_missing(table, source_id, present_paths):
-        soft_deleted.extend(present_paths)
+        purges.append((table, present_paths))
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
     monkeypatch.setattr(
@@ -283,17 +286,17 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
         fake_soft_delete_missing,
     )
 
-    result = await gong_indexer.index_gong(
-        {
-            "id": "00000000-0000-0000-0000-000000000001",
-            "workspace_id": "00000000-0000-0000-0000-000000000002",
-            "owner_user_id": "00000000-0000-0000-0000-000000000003",
-            "settings": {},
-        }
-    )
+    with pytest.raises(RuntimeError, match="no allowed workspaces"):
+        await gong_indexer.index_gong(
+            {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "workspace_id": "00000000-0000-0000-0000-000000000002",
+                "owner_user_id": "00000000-0000-0000-0000-000000000003",
+                "settings": {},
+            }
+        )
 
-    assert result is None
-    assert soft_deleted == []
+    assert purges == [("gong_documents", [])]
 
 
 @pytest.mark.asyncio

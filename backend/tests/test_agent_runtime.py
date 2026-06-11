@@ -17,8 +17,8 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 
-from backend.models import CartridgeItem
-from backend.services import agent_runtime, cartridge_service, prompts
+from backend.models import SkillItem
+from backend.services import agent_runtime, prompts, shared_skill_service
 
 
 def test_tool_catalog_matches_prompts_set():
@@ -90,7 +90,7 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool):
+async def test_skill_tools_create_list_and_delete(workspace: UUID, _db_pool):
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     folder_id = uuid4()
     await _db_pool.execute(
@@ -104,14 +104,14 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        create_result = await agent_runtime._create_cartridge.handler(
+        create_result = await agent_runtime._create_shared_skill.handler(
             {
                 "title": "Launch bundle",
                 "description": "Published launch context",
                 "items": [{"object_type": "folder", "object_id": str(folder_id)}],
             }
         )
-        list_result = await agent_runtime._list_stashes.handler({})
+        list_result = await agent_runtime._list_shared_skills.handler({})
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)
@@ -125,15 +125,15 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        delete_result = await agent_runtime._delete_cartridge.handler(
-            {"cartridge_id": created["id"]}
+        delete_result = await agent_runtime._delete_shared_skill.handler(
+            {"skill_id": created["id"]}
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)
 
     deleted = json.loads(delete_result["content"][0]["text"])
-    assert deleted == {"deleted": True, "cartridge_id": created["id"]}
+    assert deleted == {"deleted": True, "skill_id": created["id"]}
 
 
 def test_page_tools_are_writable_surfaces_only():
@@ -463,7 +463,7 @@ async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
+async def test_external_skill_is_workspace_fork(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     target_workspace = uuid4()
     page_id = uuid4()
@@ -509,7 +509,7 @@ async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
         "Copied session event",
         "session-external-source",
     )
-    source = await cartridge_service.create_cartridge(
+    source = await shared_skill_service.create_skill(
         workspace_id=workspace,
         owner_id=owner_id,
         title="Fork source Stash",
@@ -519,23 +519,23 @@ async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
         discoverable=False,
         cover_image_url=None,
         items=[
-            CartridgeItem(object_type="page", object_id=page_id, position=0),
-            CartridgeItem(object_type="session", object_id=session_row_id, position=1),
+            SkillItem(object_type="page", object_id=page_id, position=0),
+            SkillItem(object_type="session", object_id=session_row_id, position=1),
         ],
     )
 
-    attached = await cartridge_service.add_external_cartridge(
+    attached = await shared_skill_service.fork_skill(
         target_workspace, source["slug"], added_by=owner_id
     )
-    target_stashes = await cartridge_service.list_workspace_stashes(target_workspace, owner_id)
+    target_skills = await shared_skill_service.list_workspace_skills(target_workspace, owner_id)
 
     assert attached is not None
     assert attached["id"] != source["id"]
     assert attached["is_external"] is True
     assert attached["added_to_workspace_id"] == target_workspace
-    assert attached["forked_from_cartridge_id"] == source["id"]
-    assert [stash["id"] for stash in target_stashes] == [attached["id"]]
-    assert target_stashes[0]["workspace_id"] == target_workspace
+    assert attached["forked_from_skill_id"] == source["id"]
+    assert [skill["id"] for skill in target_skills] == [attached["id"]]
+    assert target_skills[0]["workspace_id"] == target_workspace
 
     fork_page_id = attached["items"][0]["object_id"]
     assert fork_page_id != page_id

@@ -8,7 +8,7 @@ primary surfaces:
 - **Sessions** — agent transcripts uploaded under
   `/api/v1/workspaces/{id}/sessions`.
 - **Files** — folders, markdown pages, HTML pages, uploads, and tables.
-- **Stashes** — shareable bundles of sessions and Files.
+- **Skills** — modules of agent-usable knowledge: local SKILL.md folders and shareable bundles of sessions and Files.
 
 To give your agents a skill, **create a Files folder** in a workspace whose
 immediate children include a file named `SKILL.md`. The body of `SKILL.md`
@@ -44,7 +44,7 @@ It provides:
 - tables (typed columns, rows, CSV import/export, semantic row search)
 - session events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
-- Stashes for publishing sets of pages, sessions, and files
+- Skills for publishing sets of pages, sessions, and files
 
 Design boundary:
 - Stash owns persistent shared state and plugin-based memory access

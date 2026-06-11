@@ -24,68 +24,68 @@ const nextConfig: NextConfig = {
       // formats, not slug suffixes.
       beforeFiles: [
         {
-          source: "/stashes/:slug.md",
-          destination: `${backend}/api/v1/stashes/:slug?format=text`,
+          source: "/skills/:slug.md",
+          destination: `${backend}/api/v1/skills/:slug?format=text`,
         },
         {
-          source: "/stashes/:slug.json",
-          destination: `${backend}/api/v1/stashes/:slug`,
+          source: "/skills/:slug.json",
+          destination: `${backend}/api/v1/skills/:slug`,
         },
         {
-          source: "/stashes/:slug/items/:type/:id.md",
-          destination: `${backend}/api/v1/stashes/:slug/items/:type/:id?format=text`,
+          source: "/skills/:slug/items/:type/:id.md",
+          destination: `${backend}/api/v1/skills/:slug/items/:type/:id?format=text`,
         },
         {
-          source: "/stashes/:slug/items/:type/:id.json",
-          destination: `${backend}/api/v1/stashes/:slug/items/:type/:id`,
+          source: "/skills/:slug/items/:type/:id.json",
+          destination: `${backend}/api/v1/skills/:slug/items/:type/:id`,
         },
         {
-          source: "/stashes/:slug",
+          source: "/skills/:slug",
           has: [{ type: "header", key: "accept", value: acceptsJson }],
-          destination: `${backend}/api/v1/stashes/:slug`,
+          destination: `${backend}/api/v1/skills/:slug`,
         },
         {
-          source: "/stashes/:slug/items/:type/:id",
+          source: "/skills/:slug/items/:type/:id",
           has: [{ type: "header", key: "accept", value: acceptsJson }],
-          destination: `${backend}/api/v1/stashes/:slug/items/:type/:id`,
+          destination: `${backend}/api/v1/skills/:slug/items/:type/:id`,
         },
         {
-          source: "/stashes/:slug",
+          source: "/skills/:slug",
           has: [{ type: "header", key: "accept", value: acceptsMarkdown }],
-          destination: `${backend}/api/v1/stashes/:slug?format=text`,
+          destination: `${backend}/api/v1/skills/:slug?format=text`,
         },
         {
-          source: "/stashes/:slug/items/:type/:id",
+          source: "/skills/:slug/items/:type/:id",
           has: [{ type: "header", key: "accept", value: acceptsMarkdown }],
-          destination: `${backend}/api/v1/stashes/:slug/items/:type/:id?format=text`,
+          destination: `${backend}/api/v1/skills/:slug/items/:type/:id?format=text`,
         },
         {
-          source: "/stashes/:slug",
+          source: "/skills/:slug",
           has: [{ type: "header", key: "user-agent", value: agentUserAgent }],
           missing: [{ type: "header", key: "accept", value: acceptsHtml }],
-          destination: `${backend}/api/v1/stashes/:slug?format=text`,
+          destination: `${backend}/api/v1/skills/:slug?format=text`,
         },
         {
-          source: "/stashes/:slug/items/:type/:id",
+          source: "/skills/:slug/items/:type/:id",
           has: [{ type: "header", key: "user-agent", value: agentUserAgent }],
           missing: [{ type: "header", key: "accept", value: acceptsHtml }],
-          destination: `${backend}/api/v1/stashes/:slug/items/:type/:id?format=text`,
+          destination: `${backend}/api/v1/skills/:slug/items/:type/:id?format=text`,
         },
         {
-          source: "/stashes/:slug",
+          source: "/skills/:slug",
           missing: [
             { type: "header", key: "user-agent" },
             { type: "header", key: "accept", value: acceptsHtml },
           ],
-          destination: `${backend}/api/v1/stashes/:slug?format=text`,
+          destination: `${backend}/api/v1/skills/:slug?format=text`,
         },
         {
-          source: "/stashes/:slug/items/:type/:id",
+          source: "/skills/:slug/items/:type/:id",
           missing: [
             { type: "header", key: "user-agent" },
             { type: "header", key: "accept", value: acceptsHtml },
           ],
-          destination: `${backend}/api/v1/stashes/:slug/items/:type/:id?format=text`,
+          destination: `${backend}/api/v1/skills/:slug/items/:type/:id?format=text`,
         },
         {
           source: "/api/v1/:path*",
@@ -109,8 +109,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Published Stash embeds must be iframe-able from anywhere.
-        source: "/stashes/:slug/embed",
+        // Published Skill embeds must be iframe-able from anywhere.
+        source: "/skills/:slug/embed",
         headers: [
           { key: "Content-Security-Policy", value: "frame-ancestors *" },
         ],
