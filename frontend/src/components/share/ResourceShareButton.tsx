@@ -11,6 +11,7 @@ import {
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   listObjectShares,
+  setPublicAccess,
   shareObjectByEmail,
   unshareObject,
   type GeneralPermission,
@@ -55,6 +56,9 @@ export default function ResourceShareButton({
       ? resourceUrlPath
       : `${window.location.origin}${resourceUrlPath}`;
   const displayName = resourceName.trim() || "Untitled";
+  const isPublic = shares.some(
+    (share) => share.principal_type === "public" && !share.expired,
+  );
 
   const loadShares = useCallback(async () => {
     setLoadingShares(true);
@@ -131,6 +135,20 @@ export default function ResourceShareButton({
       setMessage("Link copied.");
     } catch {
       setMessage("Could not copy link.");
+    }
+  }
+
+  async function changeGeneralAccess(nextPublic: boolean) {
+    setBusy(true);
+    setMessage("");
+    try {
+      await setPublicAccess(objectType, objectId, nextPublic);
+      await loadShares();
+      setMessage("Access updated.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Could not update access.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -234,7 +252,9 @@ export default function ResourceShareButton({
               )}
 
               {!loadingShares &&
-                shares.map((share, index) => (
+                shares
+                  .filter((share) => share.principal_type !== "public")
+                  .map((share, index) => (
                   <AccessRow
                     key={`${share.principal_id ?? share.email}-${index}`}
                     label={share.label || share.email || "Invited user"}
@@ -263,24 +283,50 @@ export default function ResourceShareButton({
             </h3>
             <div className="mt-2 flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base text-muted ring-1 ring-border">
-                <svg
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="5" y="11" width="14" height="10" rx="2" />
-                  <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                </svg>
+                {isPublic ? (
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M3 12h18" />
+                    <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18" />
+                  </svg>
+                ) : (
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <rect x="5" y="11" width="14" height="10" rx="2" />
+                    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                  </svg>
+                )}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium text-foreground">
-                  Restricted
-                </span>
-                <span className="block truncate text-[12px] text-muted">
-                  Only people with access can open this link
+                <select
+                  value={isPublic ? "public" : "restricted"}
+                  disabled={busy || loadingShares}
+                  onChange={(event) =>
+                    void changeGeneralAccess(event.target.value === "public")
+                  }
+                  aria-label="General access"
+                  className="block w-full max-w-[220px] rounded-md border border-border bg-base px-2 py-1 text-[13px] font-medium text-foreground"
+                >
+                  <option value="restricted">Restricted</option>
+                  <option value="public">Anyone with the link</option>
+                </select>
+                <span className="mt-1 block truncate text-[12px] text-muted">
+                  {isPublic
+                    ? "Anyone on the internet with the link can view"
+                    : "Only people with access can open this link"}
                 </span>
               </span>
             </div>

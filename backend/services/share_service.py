@@ -1,4 +1,5 @@
-"""Sharing: grant a principal (user or cartridge) access to an object.
+"""Sharing: grant a principal (a user, or 'public' = anyone with the link)
+access to an object. Cartridges share through here too (object_type='stash').
 
 Primary path is sharing a folder/file/session with a person by email. Only the
 object's owner (its workspace member) may share it. Folder/session-folder shares
@@ -19,8 +20,12 @@ from fastapi import HTTPException
 from ..database import get_pool
 from . import permission_service
 
-_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table"}
+_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "stash"}
 _PERMISSIONS = {"read", "comment", "write"}
+
+# Objects that can carry an "anyone with the link" grant. Stashes and session
+# folders have their own public dial (slug + public_permission) — not this one.
+_PUBLICLY_SHAREABLE = {"file", "page", "folder", "session", "table"}
 
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
@@ -158,7 +163,9 @@ async def unshare(
         await cartridge_invite_service.delete_pending_invite(object_id, principal_id)
 
 
-async def set_public_access(*, object_type: str, object_id: UUID, enabled: bool, owner_id: UUID) -> None:
+async def set_public_access(
+    *, object_type: str, object_id: UUID, enabled: bool, owner_id: UUID
+) -> None:
     """Toggle the "anyone with the link" grant: one read-level shares row with
     the public principal. Folder grants cascade to contents like any share."""
     if object_type not in _PUBLICLY_SHAREABLE:
@@ -194,11 +201,9 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         """
         SELECT s.principal_type, s.principal_id, s.permission, s.expires_at,
                (s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,
-               u.name AS user_name, u.display_name AS user_display, u.email AS user_email,
-               c.title AS cartridge_title
+               u.name AS user_name, u.display_name AS user_display, u.email AS user_email
         FROM shares s
         LEFT JOIN users u ON s.principal_type = 'user' AND u.id = s.principal_id
-        LEFT JOIN cartridges c ON s.principal_type = 'cartridge' AND c.id = s.principal_id
         WHERE s.object_type = $1 AND s.object_id = $2
         ORDER BY s.created_at
         """,
@@ -211,7 +216,11 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
             "principal_type": r["principal_type"],
             "principal_id": str(r["principal_id"]),
             "permission": r["permission"],
-            "label": r["user_display"] or r["user_name"] or r["cartridge_title"] or "",
+            "label": (
+                "Anyone with the link"
+                if r["principal_type"] == "public"
+                else r["user_display"] or r["user_name"] or ""
+            ),
             "email": r["user_email"],
             "pending": False,
             "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,
@@ -246,7 +255,8 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
 async def list_shared_with_user(user_id: UUID) -> list[dict]:
     """Every object shared *with* this user (across workspaces) — the data behind
     the 'Shared with me' surface. Resolves each share to the object's name, its
-    owning workspace, and who shared it."""
+    owning workspace, and who shared it. Cartridge shares are excluded: those
+    surface through the invite bell and the cartridge pages instead."""
     rows = await get_pool().fetch(
         """
         SELECT s.object_type, s.object_id, s.permission, s.workspace_id,
@@ -268,6 +278,7 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
         JOIN workspaces w ON w.id = s.workspace_id
         LEFT JOIN users u ON u.id = s.created_by
         WHERE s.principal_type = 'user' AND s.principal_id = $1
+          AND s.object_type != 'stash'
           AND (s.expires_at IS NULL OR s.expires_at > now())
         ORDER BY w.name, s.object_type, name
         """,

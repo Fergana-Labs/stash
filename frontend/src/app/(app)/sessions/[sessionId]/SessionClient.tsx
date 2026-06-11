@@ -212,14 +212,29 @@ export default function SessionViewerPage() {
     }
   }, [sessionId, stashSlug, loadStashFallback]);
 
-  useEffect(() => {
-    if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+  // Anonymous viewer, no stash hint: the session may carry a public (anyone
+  // with the link) grant. Fetch detail + events only — sidebar and stash
+  // containment are member surfaces.
+  const loadPublic = useCallback(async () => {
+    try {
+      const detail = await getSessionDetail(sessionId);
+      const events = await getSessionEvents(detail.workspace_id, sessionId);
+      setAgentName(
+        detail.agent_name || events.find((event) => event.agent_name)?.agent_name || ""
+      );
+      setSessionDetail(detail);
+      setTurns(events.map(eventToTurn));
+    } catch {
+      router.push("/login");
+    }
+  }, [sessionId, router]);
 
   useEffect(() => {
-    if (!loading && !user && !stashSlug) router.push("/login");
-  }, [user, loading, router, stashSlug]);
+    if (loading) return;
+    if (user) load();
+    else if (stashSlug) void loadStashFallback();
+    else void loadPublic();
+  }, [user, loading, load, loadStashFallback, loadPublic, stashSlug]);
 
   if (loading) return <SessionDetailSkeleton />;
   if (stashFallback) {
@@ -232,7 +247,20 @@ export default function SessionViewerPage() {
     );
   }
   if (!user) {
-    if (!stashSlug) return null;
+    // Public-grant probe: render the thread once it lands; the login bounce
+    // fires from loadPublic when the session isn't public.
+    if (!stashSlug) {
+      if (sessionDetail) {
+        return (
+          <PublicSessionView
+            heading={sessionHeading(sessionDetail, sessionId)}
+            agentName={agentName}
+            turns={turns}
+          />
+        );
+      }
+      return <SessionDetailSkeleton />;
+    }
     if (!error) return <SessionDetailSkeleton />;
     return (
       <div className="mx-auto max-w-md py-24 text-center">
@@ -623,6 +651,50 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
           >
             {turn.content}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PublicSessionView({
+  heading,
+  agentName,
+  turns,
+}: {
+  heading: string;
+  agentName: string;
+  turns: MessageTurn[];
+}) {
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <h1 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {heading}
+        </h1>
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+          session · shared with link{agentName ? ` · ${agentName}` : ""}
+        </div>
+        <div className="mt-6 flex flex-col">
+          {turns.map((turn, i) => {
+            const previousTurn = turns[i - 1];
+            const dateDividerLabel =
+              turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
+                ? turn.dateLabel
+                : null;
+
+            return (
+              <div key={i}>
+                {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
+                <MessageRow turn={turn} index={i} />
+              </div>
+            );
+          })}
+          {turns.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+              No transcript events yet.
+            </div>
+          )}
         </div>
       </div>
     </div>

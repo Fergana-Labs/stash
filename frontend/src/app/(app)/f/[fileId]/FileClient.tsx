@@ -80,7 +80,9 @@ function FileViewerPageInner() {
   useActiveWorkspaceId(workspaceId || null);
 
   useBreadcrumbs(
-    readOnly
+    readOnly && !stashSlug
+      ? [{ label: file ? file.name : "File" }]
+      : readOnly
       ? [
           { label: "Cartridges", href: "/cartridges" },
           { label: stashTitle ?? "Cartridge", href: stashSlug ? `/cartridges/${stashSlug}` : "/cartridges" },
@@ -204,14 +206,27 @@ function FileViewerPageInner() {
     }
   }, [fileId, router, stashSlug, loadStashFallback]);
 
-  useEffect(() => {
-    if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+  // Anonymous viewer, no stash hint: the file may carry a public (anyone
+  // with the link) grant. Try the canonical endpoint; bounce to login only
+  // when it 404s.
+  const loadPublic = useCallback(async () => {
+    try {
+      const f = await getFile(fileId);
+      setFile(f);
+      setFolderChain([]);
+      setReadOnly(true);
+      setError("");
+    } catch {
+      router.push("/login");
+    }
+  }, [fileId, router]);
 
   useEffect(() => {
-    if (!loading && !user && !stashSlug) router.push("/login");
-  }, [user, loading, router, stashSlug]);
+    if (loading) return;
+    if (user) load();
+    else if (stashSlug) void loadStashFallback();
+    else void loadPublic();
+  }, [user, loading, load, loadStashFallback, loadPublic, stashSlug]);
 
   const shareAction = useMemo(() => {
     if (!file || readOnly || !user) return null;
@@ -228,7 +243,6 @@ function FileViewerPageInner() {
   useShareAction(shareAction);
 
   if (loading) return <FileViewerSkeleton />;
-  if (!user && !stashSlug) return null;
   if (!file && !error) return <FileViewerSkeleton />;
 
   const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";

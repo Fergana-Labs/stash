@@ -1720,63 +1720,6 @@ def stashes_remove_external(
     console.print(f"[green]Removed forked Stash[/green] {cartridge_id}")
 
 
-@stashes_app.command("members")
-def stashes_members(
-    cartridge_id: str = typer.Argument(..., help="Cartridge ID."),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List the people granted access to a Cartridge."""
-    with _client() as c:
-        try:
-            data = c.list_cartridge_members(cartridge_id)
-        except CartridgeError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No members.[/dim]")
-        return
-    for m in data:
-        console.print(
-            f"  [bold]{m.get('display_name') or m.get('name')}[/bold]  "
-            f"[dim]{m.get('permission')} — {m.get('user_id')}[/dim]"
-        )
-
-
-@stashes_app.command("add-member")
-def stashes_add_member(
-    cartridge_id: str = typer.Argument(...),
-    user_id: str = typer.Argument(..., help="The user to grant access."),
-    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Grant a user access to a Cartridge."""
-    with _client() as c:
-        try:
-            data = c.add_cartridge_member(cartridge_id, user_id, permission=permission)
-        except CartridgeError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    console.print(f"[green]Added member[/green] {user_id} ({permission})")
-
-
-@stashes_app.command("remove-member")
-def stashes_remove_member(
-    cartridge_id: str = typer.Argument(...),
-    user_id: str = typer.Argument(...),
-):
-    """Revoke a user's access to a Cartridge."""
-    with _client() as c:
-        try:
-            c.remove_cartridge_member(cartridge_id, user_id)
-        except CartridgeError as e:
-            _err(e)
-    console.print(f"[green]Removed member[/green] {user_id}")
-
-
 @stashes_app.command("invites")
 def stashes_invites(as_json: bool = typer.Option(False, "--json")):
     """List Cartridge invites pending for you (shared with you, awaiting action)."""

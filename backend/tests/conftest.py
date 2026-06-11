@@ -111,7 +111,6 @@ _TRUNCATE_TABLES = [
     "documents",
     "files",
     "cartridge_invites",
-    "cartridge_members",
     "cartridge_items",
     "cartridges",
     "analytics_events",

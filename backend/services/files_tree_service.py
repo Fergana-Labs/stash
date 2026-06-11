@@ -392,7 +392,7 @@ async def create_page(
     return page
 
 
-async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
+async def get_page_by_id(page_id: UUID, user_id: UUID | None) -> dict | None:
     """Access semantics match get_page; the workspace comes from the row."""
     pool = get_pool()
     workspace_id = await pool.fetchval(
@@ -404,11 +404,8 @@ async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
     return await get_page(page_id, workspace_id, user_id)
 
 
-async def get_page(
-    page_id: UUID,
-    workspace_id: UUID,
-    user_id: UUID | None = None,
-) -> dict | None:
+async def _page_row(page_id: UUID, workspace_id: UUID) -> dict | None:
+    """The raw page row, no access check — internal callers only."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
@@ -419,11 +416,19 @@ async def get_page(
         page_id,
         workspace_id,
     )
-    if not row:
+    return dict(row) if row else None
+
+
+async def get_page(
+    page_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID | None,
+) -> dict | None:
+    """user_id=None is an anonymous viewer: only a public (anyone with the
+    link) grant lets the page through."""
+    page = await _page_row(page_id, workspace_id)
+    if not page:
         return None
-    page = dict(row)
-    if user_id is None:
-        return page
     if not await permission_service.check_access("page", page_id, user_id, workspace_id):
         return None
     return page
@@ -668,7 +673,7 @@ async def edit_page(
     duplicates the anchor, the retry raises EditMatchError rather than guessing.
     """
     for _ in range(MAX_UPDATE_RETRIES):
-        page = await get_page(page_id, workspace_id)
+        page = await _page_row(page_id, workspace_id)
         if page is None:
             return None
         is_html = page["content_type"] == "html"
@@ -804,7 +809,7 @@ async def copy_page(
 ) -> dict | None:
     """Duplicate a page as 'Copy of <name>'. Lands in the source's folder unless
     target_folder_id is given."""
-    src = await get_page(page_id, workspace_id)
+    src = await _page_row(page_id, workspace_id)
     if src is None:
         return None
     folder_id = target_folder_id if target_folder_id is not None else src["folder_id"]
@@ -886,7 +891,7 @@ async def _copy_folder_contents(
         src_folder_id,
     )
     for p in page_rows:
-        src = await get_page(p["id"], workspace_id)
+        src = await _page_row(p["id"], workspace_id)
         if src:
             await create_page(
                 workspace_id,

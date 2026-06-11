@@ -17,7 +17,7 @@ class _FakeClient:
         return None
 
     # object sharing
-    def share_object(self, object_type, object_id, email, permission="read"):
+    def share_object(self, object_type, object_id, email, permission="read", expires_at=None):
         self._calls.append(("share", object_type, object_id, email, permission))
         return {"pending": True, "email": email}
 
@@ -28,15 +28,8 @@ class _FakeClient:
         self._calls.append(("list_shares", object_type, object_id))
         return [{"display_name": "Sam", "permission": "read", "principal_id": "u1"}]
 
-    # cartridge members + invites + snapshot
-    def add_cartridge_member(self, cartridge_id, user_id, permission="read"):
-        self._calls.append(("add_member", cartridge_id, user_id, permission))
-        return {"user_id": user_id, "permission": permission}
-
-    def list_cartridge_members(self, cartridge_id):
-        self._calls.append(("members", cartridge_id))
-        return [{"display_name": "Sam", "permission": "admin", "user_id": "u1"}]
-
+    # cartridge invites + snapshot (cartridge access goes through the
+    # generic shares commands with object_type="stash")
     def list_cartridge_invites(self):
         self._calls.append(("invites",))
         return [
@@ -82,16 +75,16 @@ def test_shares_add_and_remove(monkeypatch) -> None:
     assert ("unshare", "folder", "fold-1", "user", "u9") in calls
 
 
-def test_cartridge_members_and_invites_and_snapshot(monkeypatch) -> None:
+def test_cartridge_shares_invites_and_snapshot(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.stashes_members("cart-1", as_json=True)
-    main.stashes_add_member("cart-1", "u1", permission="admin", as_json=True)
+    main.shares_add("stash", "cart-1", "sam@example.com", permission="write", as_json=True)
+    main.shares_ls("stash", "cart-1", as_json=True)
     main.stashes_invites(as_json=True)
     main.stashes_snapshot_source(
         "cart-1", source="src-1", path="specs/auth.md", workspace_id=None, as_json=True
     )
-    assert ("members", "cart-1") in calls
-    assert ("add_member", "cart-1", "u1", "admin") in calls
+    assert ("share", "stash", "cart-1", "sam@example.com", "write") in calls
+    assert ("list_shares", "stash", "cart-1") in calls
     assert ("invites",) in calls
     assert ("snapshot", "ws-1", "cart-1", "src-1", "specs/auth.md") in calls
 

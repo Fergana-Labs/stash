@@ -117,6 +117,8 @@ export default function StashPageView() {
     { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [stashAccessDenied, setStashAccessDenied] = useState(false);
+  // Anonymous viewer reading a publicly-shared page (anyone with the link).
+  const [publicView, setPublicView] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
   // Save responses can arrive out of order if a fast save fires while a
@@ -433,18 +435,29 @@ export default function StashPageView() {
     [workspaceId, pageId, activeThreadId]
   );
 
-  useEffect(() => {
-    // Anonymous viewers can load this page when ?stash=<slug> is set —
-    // the stash payload is the read source. Authenticated viewers always
-    // try the workspace endpoint first.
-    if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+  // Anonymous viewer, no stash hint: the page may carry a public (anyone
+  // with the link) grant. Try the canonical endpoint; bounce to login only
+  // when it 404s.
+  const loadPublic = useCallback(async () => {
+    try {
+      const p = await getPage(pageId);
+      setPage(p);
+      setPublicView(true);
+      setError("");
+    } catch {
+      router.push("/login");
+    }
+  }, [pageId, router]);
 
   useEffect(() => {
-    // Only bounce to login if there's no stash fallback path available.
-    if (!loading && !user && !stashSlug) router.push("/login");
-  }, [user, loading, router, stashSlug]);
+    // Anonymous viewers can load this page via ?stash=<slug> (the stash
+    // payload is the read source) or via a public grant on the page itself.
+    // Authenticated viewers always try the workspace endpoint first.
+    if (loading) return;
+    if (user) load();
+    else if (stashSlug) void loadStashFallback();
+    else void loadPublic();
+  }, [user, loading, load, loadStashFallback, loadPublic, stashSlug]);
 
   const handleHtmlAnchorTops = useCallback((iframeAnchorTops: Record<string, number>) => {
     const layout = pageLayoutRef.current;
@@ -494,6 +507,9 @@ export default function StashPageView() {
   }, [page]);
 
   if (loading) return <DocumentPageSkeleton />;
+  if (publicView && page) {
+    return <PublicPageView page={page} />;
+  }
   if (stashFallback) {
     return (
       <StashFallbackPageView
@@ -507,8 +523,8 @@ export default function StashPageView() {
     return <PageAccessDeniedScreen accountLabel={user?.email ?? user?.name ?? null} />;
   }
   if (!user) {
-    // Login bounce is already firing for the no-stash case.
-    if (!stashSlug) return null;
+    // Public-grant probe in flight, or the login bounce is already firing.
+    if (!stashSlug) return <DocumentPageSkeleton />;
     // Stash mode: waiting on the fallback to land, or it failed.
     if (!error) return <DocumentPageSkeleton />;
     return (
@@ -910,6 +926,30 @@ function HtmlGlyph() {
 // Read-only render for viewers who can't reach the workspace endpoint —
 // usually because they aren't a workspace member. The content comes from
 // the public-stash payload, gated by the stash's readability rules.
+function PublicPageView({ page }: { page: Page }) {
+  const item = {
+    object_type: "page",
+    object_id: page.id,
+    label: page.name,
+    inline: { page },
+  } as unknown as PublicCartridgeItem;
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <h1 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {page.name.replace(/\.(md|html)$/i, "")}
+        </h1>
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+          page · shared with link
+        </div>
+        <div className="mt-6">
+          <PageBody item={item} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StashFallbackPageView({
   stashSlug,
   stashTitle,

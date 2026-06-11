@@ -13,6 +13,7 @@ import {
   ApiError,
   getFolderContents,
   getPublicCartridge,
+  type FolderContents,
   type PublicCartridgeItem,
   type WorkspaceCartridge,
 } from "../../../../../../lib/api";
@@ -34,6 +35,8 @@ export default function FolderDetailPage() {
     { label: "Folder" },
   ]);
   const [folderName, setFolderName] = useState<string | null>(null);
+  // Anonymous viewer reading a publicly-shared folder (anyone with the link).
+  const [publicContents, setPublicContents] = useState<FolderContents | null>(null);
   const [stashFallback, setStashFallback] = useState<
     { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
@@ -59,9 +62,25 @@ export default function FolderDetailPage() {
     }
   }, [stashSlug, folderId]);
 
+  // Anonymous viewer, no stash hint: the folder may carry a public (anyone
+  // with the link) grant. The contents endpoint allows anonymous viewers and
+  // filters children to publicly-readable rows.
+  const loadPublic = useCallback(async () => {
+    try {
+      const contents = await getFolderContents(workspaceId, folderId);
+      setPublicContents(contents);
+      setFolderName(contents.folder.name);
+      setCrumbs([{ label: contents.folder.name }]);
+    } catch {
+      router.push("/login");
+    }
+  }, [workspaceId, folderId, router]);
+
   useEffect(() => {
     if (!user) {
-      if (!loading && stashSlug) void loadStashFallback();
+      if (loading) return;
+      if (stashSlug) void loadStashFallback();
+      else void loadPublic();
       return;
     }
     let cancelled = false;
@@ -94,7 +113,7 @@ export default function FolderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading, workspaceId, folderId, stashSlug, loadStashFallback]);
+  }, [user, loading, workspaceId, folderId, stashSlug, loadStashFallback, loadPublic]);
 
   useBreadcrumbs(
     crumbs,
@@ -115,11 +134,10 @@ export default function FolderDetailPage() {
   }, [folderId, folderName, stashSlug, user, workspaceId]);
   useShareAction(shareAction);
 
-  useEffect(() => {
-    if (!loading && !user && !stashSlug) router.push("/login");
-  }, [user, loading, router, stashSlug]);
-
   if (loading) return <FileBrowserSkeleton />;
+  if (!user && publicContents) {
+    return <PublicFolderView contents={publicContents} />;
+  }
   if (stashFallback) {
     return (
       <StashFallbackFolderView
@@ -130,7 +148,7 @@ export default function FolderDetailPage() {
     );
   }
   if (!user) {
-    if (!stashSlug) return null;
+    if (!stashSlug) return <FileBrowserSkeleton />;
     if (!error) return <FileBrowserSkeleton />;
     return (
       <div className="mx-auto max-w-md py-24 text-center">
@@ -170,6 +188,58 @@ function StashFallbackFolderView({
         <div className="mt-6">
           <FolderBody item={item} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PublicFolderView({ contents }: { contents: FolderContents }) {
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <h1 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {contents.folder.name}
+        </h1>
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+          folder · shared with link
+        </div>
+        <ul className="mt-6 flex flex-col gap-1">
+          {contents.pages.map((page) => (
+            <li key={page.id}>
+              <Link
+                href={`/p/${page.id}`}
+                className="block rounded-md px-3 py-2 text-[13.5px] text-foreground hover:bg-raised"
+              >
+                {page.name}
+              </Link>
+            </li>
+          ))}
+          {contents.files.map((file) => (
+            <li key={file.id}>
+              <Link
+                href={`/f/${file.id}`}
+                className="block rounded-md px-3 py-2 text-[13.5px] text-foreground hover:bg-raised"
+              >
+                {file.name}
+              </Link>
+            </li>
+          ))}
+          {contents.tables.map((table) => (
+            <li key={table.id}>
+              <Link
+                href={`/tables/${table.id}`}
+                className="block rounded-md px-3 py-2 text-[13.5px] text-foreground hover:bg-raised"
+              >
+                {table.name}
+              </Link>
+            </li>
+          ))}
+          {contents.pages.length + contents.files.length + contents.tables.length === 0 && (
+            <li className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+              This folder is empty.
+            </li>
+          )}
+        </ul>
       </div>
     </div>
   );

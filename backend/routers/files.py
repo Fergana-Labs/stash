@@ -315,10 +315,11 @@ async def list_ws_files(
 @canonical_router.get("/{file_id}", response_model=FileResponse)
 async def get_file_by_id(
     file_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Any failure is a 404: an unscoped lookup must not confirm that a
-    file the caller can't read exists."""
+    file the caller can't read exists. Anonymous viewers pass when the file
+    carries a public (anyone with the link) grant."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
@@ -327,7 +328,8 @@ async def get_file_by_id(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, row["workspace_id"], current_user["id"]):
+    viewer_id = current_user["id"] if current_user else None
+    if not await _can_access_file(file_id, row["workspace_id"], viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
@@ -389,9 +391,10 @@ async def download_ws_file(
 async def get_ws_file_text(
     workspace_id: UUID,
     file_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    # No membership pre-gate: shared and public viewers read extracted text
+    # through the same readable predicate as the file itself.
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(
@@ -400,7 +403,7 @@ async def get_ws_file_text(
         f"AND {readable_file}",
         file_id,
         workspace_id,
-        current_user["id"],
+        current_user["id"] if current_user else None,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")

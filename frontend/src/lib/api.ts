@@ -1465,17 +1465,6 @@ export interface WorkspaceCartridge {
   updated_at: string;
 }
 
-export type CartridgeMemberPermission = "read" | "write" | "admin";
-
-export interface CartridgeMember {
-  user_id: string;
-  name: string;
-  display_name: string;
-  permission: CartridgeMemberPermission;
-  granted_by: string | null;
-  created_at: string;
-}
-
 export interface PublicCartridgeItem {
   object_type: CollectableObjectType;
   object_id: string;
@@ -1530,28 +1519,6 @@ export async function updateCartridge(
     method: "PATCH",
     body: JSON.stringify(data),
   });
-}
-
-export async function listCartridgeMembers(stashId: string): Promise<CartridgeMember[]> {
-  const data = await apiFetch<{ members: CartridgeMember[] }>(
-    `/api/v1/cartridges/${stashId}/members`
-  );
-  return data.members;
-}
-
-export async function addCartridgeMember(
-  stashId: string,
-  userId: string,
-  permission: CartridgeMemberPermission
-): Promise<CartridgeMember> {
-  return apiFetch(`/api/v1/cartridges/${stashId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeCartridgeMember(stashId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/cartridges/${stashId}/members/${userId}`, { method: "DELETE" });
 }
 
 export async function getPublicCartridge(slug: string): Promise<PublicCartridgeDetail> {
@@ -1612,7 +1579,7 @@ export interface CartridgeInvite {
   invited_by_user_id: string;
   invited_by_name: string;
   invited_by_display_name: string;
-  permission: CartridgeMemberPermission;
+  permission: string;
   created_at: string;
 }
 
@@ -1981,7 +1948,14 @@ export async function getFolderContents(
 
 // --- Shared with me ---
 
-export type SharedObjectType = "folder" | "session_folder" | "page" | "file" | "table" | "session";
+export type SharedObjectType =
+  | "folder"
+  | "session_folder"
+  | "page"
+  | "file"
+  | "table"
+  | "session"
+  | "stash";
 
 export interface SharedWithMeItem {
   object_type: SharedObjectType;
@@ -2016,6 +1990,8 @@ export interface ObjectShare {
   email: string | null;
   permission: GeneralPermission;
   pending: boolean;
+  expires_at: string | null;
+  expired: boolean;
 }
 
 export async function listObjectShares(
@@ -2054,6 +2030,17 @@ export async function unshareObject(
       principal_type: principalType,
       principal_id: principalId,
     }),
+  });
+}
+
+export async function setPublicAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+  enabled: boolean,
+): Promise<void> {
+  await apiFetch("/api/v1/share/public", {
+    method: "PUT",
+    body: JSON.stringify({ object_type: objectType, object_id: objectId, enabled }),
   });
 }
 

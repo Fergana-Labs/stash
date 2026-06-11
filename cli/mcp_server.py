@@ -966,29 +966,8 @@ def stash_list_shares(object_type: str, object_id: str) -> str:
     return _json(client.list_object_shares(object_type, object_id))
 
 
-# ── Cartridge members + invites ───────────────────────────────────
-
-
-@mcp.tool()
-def stash_list_cartridge_members(cartridge_id: str) -> str:
-    """List the people granted access to a Cartridge."""
-    client, _ = _client()
-    return _json(client.list_cartridge_members(cartridge_id))
-
-
-@mcp.tool()
-def stash_add_cartridge_member(cartridge_id: str, user_id: str, permission: str = "read") -> str:
-    """Grant a user access to a Cartridge. permission: read | write | admin."""
-    client, _ = _client()
-    return _json(client.add_cartridge_member(cartridge_id, user_id, permission=permission))
-
-
-@mcp.tool()
-def stash_remove_cartridge_member(cartridge_id: str, user_id: str) -> str:
-    """Revoke a user's access to a Cartridge."""
-    client, _ = _client()
-    client.remove_cartridge_member(cartridge_id, user_id)
-    return _json({"removed": user_id})
+# ── Cartridge invites ─────────────────────────────────────────────
+# Cartridge access goes through the generic share tools (object_type="stash").
 
 
 @mcp.tool()

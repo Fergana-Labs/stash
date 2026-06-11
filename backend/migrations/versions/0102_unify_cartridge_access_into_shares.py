@@ -23,8 +23,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by, created_at)
         SELECT c.workspace_id, 'stash', cm.cartridge_id, 'user', cm.user_id,
@@ -33,13 +32,10 @@ def upgrade() -> None:
         FROM cartridge_members cm
         JOIN cartridges c ON c.id = cm.cartridge_id
         ON CONFLICT (object_type, object_id, principal_type, principal_id) DO NOTHING
-        """
-    )
+        """)
     op.execute("DROP TABLE cartridge_members")
 
-    op.execute(
-        "UPDATE cartridge_invites SET permission = 'write' WHERE permission = 'admin'"
-    )
+    op.execute("UPDATE cartridge_invites SET permission = 'write' WHERE permission = 'admin'")
     # The inline CHECK from 0057 kept its auto-generated name through the
     # 0081 table rename; drop both spellings to be safe.
     op.execute(

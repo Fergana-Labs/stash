@@ -229,22 +229,6 @@ class CartridgeClient:
             json={"source_id": source_id, "path": path},
         )
 
-    # --- Cartridge members (per-person access on a cartridge) ---
-
-    def list_cartridge_members(self, cartridge_id: str) -> list:
-        return self._list(f"/api/v1/cartridges/{cartridge_id}/members", "members")
-
-    def add_cartridge_member(
-        self, cartridge_id: str, user_id: str, permission: str = "read"
-    ) -> dict:
-        return self._post(
-            f"/api/v1/cartridges/{cartridge_id}/members",
-            json={"user_id": user_id, "permission": permission},
-        )
-
-    def remove_cartridge_member(self, cartridge_id: str, user_id: str) -> None:
-        self._delete(f"/api/v1/cartridges/{cartridge_id}/members/{user_id}")
-
     # --- Cartridge invites (pending invites awaiting the current user) ---
 
     def list_cartridge_invites(self) -> list:

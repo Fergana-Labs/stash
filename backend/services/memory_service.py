@@ -294,7 +294,7 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """
 
 
-async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -> bool:
+async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID | None) -> bool:
     session = await session_service.get_session(workspace_id, session_id)
     if not session:
         return False
@@ -309,12 +309,12 @@ async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -
 async def read_session_events(
     workspace_id: UUID,
     session_id: str,
-    user_id: UUID | None = None,
+    user_id: UUID | None,
 ) -> list[dict]:
     """Ordered events for a session within a workspace. The canonical
     source for session-thread rendering — replaces reading the R2 transcript
-    blob."""
-    if user_id is not None and not await can_read_session(workspace_id, session_id, user_id):
+    blob. user_id=None is an anonymous viewer: only public grants pass."""
+    if not await can_read_session(workspace_id, session_id, user_id):
         return []
 
     pool = get_pool()

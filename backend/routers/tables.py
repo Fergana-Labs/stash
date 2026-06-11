@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..models import (
     ColumnAddRequest,
     ColumnReorderRequest,
@@ -72,7 +72,7 @@ async def _check_ws_table(
 async def _check_table_access(
     workspace_id: UUID,
     table_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     require_write: bool = False,
 ) -> None:
@@ -107,15 +107,16 @@ def _parse_row_ids(body: dict) -> list[UUID]:
 @router.get("/{table_id}", response_model=TableResponse)
 async def get_table_by_id(
     table_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Any failure is a 404: an unscoped lookup must not confirm that a
-    table the caller can't read exists."""
+    table the caller can't read exists. check_access covers members, share
+    recipients, and anonymous viewers of public tables."""
     table = await table_service.get_table(table_id)
     if not table or not table.get("workspace_id"):
         raise HTTPException(status_code=404, detail="Table not found")
-    if not await workspace_service.is_member(table["workspace_id"], current_user["id"]):
-        raise HTTPException(status_code=404, detail="Table not found")
+    viewer_id = current_user["id"] if current_user else None
+    await _check_table_access(table["workspace_id"], table_id, viewer_id)
     return TableResponse(**table)
 
 
@@ -158,11 +159,11 @@ async def list_ws_tables(
 async def get_ws_table(
     workspace_id: UUID,
     table_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_read(workspace_id, current_user["id"])
     table = await _check_ws_table(workspace_id, table_id, with_row_count=True)
-    await _check_table_access(workspace_id, table_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_table_access(workspace_id, table_id, viewer_id)
     return TableResponse(**table)
 
 
@@ -290,11 +291,11 @@ async def list_ws_rows(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     filters: str | None = Query(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
-    await _check_table_access(workspace_id, table_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_table_access(workspace_id, table_id, viewer_id)
     parsed_filters = json.loads(filters) if filters else None
     rows, total = await table_service.list_rows(
         table_id,
@@ -430,11 +431,11 @@ async def count_ws_rows(
     workspace_id: UUID,
     table_id: UUID,
     filters: str | None = Query(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
-    await _check_table_access(workspace_id, table_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_table_access(workspace_id, table_id, viewer_id)
     parsed_filters = json.loads(filters) if filters else None
     count = await table_service.count_rows(table_id, filters=parsed_filters)
     return {"count": count}
@@ -544,11 +545,11 @@ async def summarize_ws_rows(
     workspace_id: UUID,
     table_id: UUID,
     filters: str | None = Query(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
-    await _check_table_access(workspace_id, table_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_table_access(workspace_id, table_id, viewer_id)
     parsed_filters = json.loads(filters) if filters else None
     return await table_service.summarize_rows(table_id, filters=parsed_filters)
 

@@ -14,13 +14,12 @@ import {
   useShellChromeValue,
 } from "../../../../components/ShellChromeContext";
 import {
-  addCartridgeMember,
   getActivityTimeline,
   getEmbeddingProjection,
   getMe,
   getPublicCartridge,
-  listCartridgeMembers,
-  searchUsers,
+  listObjectShares,
+  shareObjectByEmail,
   updateCartridge,
   type PublicCartridgeDetail,
 } from "../../../../lib/api";
@@ -60,7 +59,6 @@ vi.mock("../../../../lib/api", () => ({
     }
   },
   addExternalCartridge: vi.fn(),
-  addCartridgeMember: vi.fn(),
   createPage: vi.fn(),
   getMe: vi.fn(),
   getPublicCartridge: vi.fn(),
@@ -68,9 +66,9 @@ vi.mock("../../../../lib/api", () => ({
   listAllTables: vi.fn(),
   listFiles: vi.fn(),
   listMySessions: vi.fn(),
-  listCartridgeMembers: vi.fn(),
-  removeCartridgeMember: vi.fn(),
-  searchUsers: vi.fn(),
+  listObjectShares: vi.fn(),
+  shareObjectByEmail: vi.fn(),
+  unshareObject: vi.fn(),
   updateCartridge: vi.fn(),
   uploadFile: vi.fn(),
   getActivityTimeline: vi.fn(),
@@ -178,31 +176,23 @@ describe("CartridgePageClient sharing", () => {
     });
     vi.mocked(getMe).mockResolvedValue(authState.user!);
     vi.mocked(getPublicCartridge).mockResolvedValue(stashDetail());
-    vi.mocked(listCartridgeMembers).mockResolvedValue([
+    vi.mocked(listObjectShares).mockResolvedValue([
       {
-        user_id: "user-2",
-        name: "sam",
-        display_name: "Sam",
+        principal_type: "user",
+        principal_id: "user-2",
+        label: "Sam",
+        email: "sam@example.com",
         permission: "write",
-        granted_by: "user-1",
-        created_at: "2026-05-12T00:00:00Z",
+        pending: false,
+        expires_at: null,
+        expired: false,
       },
-    ]);
-    vi.mocked(searchUsers).mockResolvedValue([
-      { id: "user-3", name: "alex", display_name: "Alex" },
     ]);
     vi.mocked(updateCartridge).mockImplementation(async (_stashId, updates) => ({
       ...stashDetail().cartridge,
       ...updates,
     }));
-    vi.mocked(addCartridgeMember).mockResolvedValue({
-      user_id: "user-3",
-      name: "alex",
-      display_name: "Alex",
-      permission: "read",
-      granted_by: "user-1",
-      created_at: "2026-05-13T00:00:00Z",
-    });
+    vi.mocked(shareObjectByEmail).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -327,17 +317,21 @@ describe("CartridgePageClient sharing", () => {
       name: "Share Shared Stash",
     });
 
-    expect(await within(dialog).findByText("@sam")).toBeInTheDocument();
-    expect(listCartridgeMembers).toHaveBeenCalledWith("stash-1");
+    expect(await within(dialog).findByText("Sam")).toBeInTheDocument();
+    expect(listObjectShares).toHaveBeenCalledWith("stash", "stash-1");
 
-    fireEvent.change(within(dialog).getByPlaceholderText("Search users"), {
-      target: { value: "alex" },
+    fireEvent.change(within(dialog).getByPlaceholderText("Add people by email"), {
+      target: { value: "alex@example.com" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Search" }));
-    fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Invite" }));
 
     await waitFor(() =>
-      expect(addCartridgeMember).toHaveBeenCalledWith("stash-1", "user-3", "read"),
+      expect(shareObjectByEmail).toHaveBeenCalledWith(
+        "stash",
+        "stash-1",
+        "alex@example.com",
+        "read",
+      ),
     );
   });
 
