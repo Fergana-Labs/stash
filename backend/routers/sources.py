@@ -33,47 +33,6 @@ async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 
-async def _audit_source_action(
-    *,
-    action: str,
-    workspace_id: UUID,
-    user_id: UUID,
-    source: str | None,
-    metadata: dict | None = None,
-) -> None:
-    target_type = "source"
-    target_id = source
-    source_type = None
-    provider = None
-
-    if source is None:
-        target_type = "source_collection"
-        target_id = None
-    elif source in (source_service.NATIVE_FILES, source_service.NATIVE_SESSIONS):
-        source_type = source
-    else:
-        try:
-            source_id = UUID(source)
-        except ValueError:
-            source_id = None
-        connected = await source_service.get_owned_source(source_id, user_id) if source_id else None
-        if connected:
-            target_id = connected["id"]
-            source_type = connected["source_type"]
-            provider = source_service.SOURCE_TYPE_PROVIDER.get(source_type)
-
-    await security_audit_service.record_event(
-        action=action,
-        actor_user_id=user_id,
-        workspace_id=workspace_id,
-        target_type=target_type,
-        target_id=target_id,
-        provider=provider,
-        source_type=source_type,
-        metadata=metadata,
-    )
-
-
 class AddSourceRequest(BaseModel):
     source_type: str
     # Optional for sources where the connected account resolves the target. For
@@ -189,17 +148,6 @@ async def search_sources(
     )
     if results is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    await _audit_source_action(
-        action="source.searched",
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        source=source,
-        metadata={
-            "query_hash": security_audit_service.hash_value(q),
-            "limit": limit,
-            "result_count": len(results),
-        },
-    )
     return {"results": results}
 
 
@@ -218,16 +166,6 @@ async def list_source_entries(
     )
     if entries is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    await _audit_source_action(
-        action="source.entries_listed",
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        source=source,
-        metadata={
-            "path_hash": security_audit_service.hash_value(path),
-            "result_count": len(entries),
-        },
-    )
     return {"entries": entries}
 
 
@@ -248,13 +186,6 @@ async def read_source_doc(
         raise HTTPException(status_code=404, detail="Source not found")
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    await _audit_source_action(
-        action="source.document_read",
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        source=source,
-        metadata={"ref_hash": security_audit_service.hash_value(ref)},
-    )
     return doc
 
 
@@ -292,18 +223,6 @@ async def query_source(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    await _audit_source_action(
-        action="source.queried",
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        source=source,
-        metadata={
-            "sql_hash": security_audit_service.hash_value(body.sql),
-            "limit": body.limit,
-            "row_count": result.get("row_count"),
-            "error": bool(result.get("error")),
-        },
-    )
     return result
 
 
@@ -328,19 +247,6 @@ async def fetch_source_history(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    await _audit_source_action(
-        action="source.history_fetched",
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        source=source,
-        metadata={
-            "since_hash": security_audit_service.hash_value(body.since),
-            "until_hash": security_audit_service.hash_value(body.until),
-            "limit": body.limit,
-            "fetched": result.get("fetched"),
-            "error": bool(result.get("error")),
-        },
-    )
     return result
 
 

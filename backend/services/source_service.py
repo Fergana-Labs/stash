@@ -34,6 +34,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..database import get_pool
+from . import security_audit_service
 
 logger = logging.getLogger(__name__)
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
@@ -305,30 +306,17 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     return result.endswith("1")
 
 
-async def delete_sources_for_provider(user_id: UUID, provider: str) -> int:
-    """Remove all connected sources backed by one disconnected provider."""
-    source_types = PROVIDER_SOURCE_TYPES.get(provider)
-    if source_types is None:
-        raise ValueError(f"unknown provider source mapping: {provider}")
-
-    result = await get_pool().execute(
-        "DELETE FROM workspace_sources "
-        "WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
-        user_id,
-        list(source_types),
-    )
-    return int(result.rsplit(" ", 1)[-1])
-
-
-async def list_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """Remove all connected sources backed by one disconnected provider.
+    Returns the deleted rows so callers audit exactly what was removed."""
     source_types = PROVIDER_SOURCE_TYPES.get(provider)
     if source_types is None:
         raise ValueError(f"unknown provider source mapping: {provider}")
 
     rows = await get_pool().fetch(
-        "SELECT * FROM workspace_sources "
+        "DELETE FROM workspace_sources "
         "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
-        "ORDER BY workspace_id, source_type, display_name",
+        "RETURNING *",
         user_id,
         list(source_types),
     )
@@ -1039,40 +1027,91 @@ async def _resolve_connected(source: str, user_id: UUID) -> dict | None:
     return await get_owned_source(source_id, user_id)
 
 
+async def _audit_source_read(
+    *,
+    action: str,
+    workspace_id: UUID,
+    user_id: UUID,
+    source: str | None,
+    connected: dict | None,
+    metadata: dict,
+) -> None:
+    """Audit a successful source read. Lives here — not in the routers — so
+    every front door to the same data (REST, agent tools) hits the same trail."""
+    target_type = "source"
+    target_id = source
+    source_type = None
+    provider = None
+    if source is None:
+        target_type = "source_collection"
+        target_id = None
+    elif source in (NATIVE_FILES, NATIVE_SESSIONS):
+        source_type = source
+    elif connected is not None:
+        target_id = connected["id"]
+        source_type = connected["source_type"]
+        provider = SOURCE_TYPE_PROVIDER.get(source_type)
+
+    await security_audit_service.record_event(
+        action=action,
+        actor_user_id=user_id,
+        workspace_id=workspace_id,
+        target_type=target_type,
+        target_id=target_id,
+        provider=provider,
+        source_type=source_type,
+        metadata=metadata,
+    )
+
+
 async def source_entries(
     workspace_id: UUID, user_id: UUID, source: str, prefix: str = ""
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
     scopes connected sources to a path. Returns None for an unknown source."""
+    connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import list_workspace_pages
 
         pages = await list_workspace_pages(workspace_id, user_id)
-        return [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
-
-    if source == NATIVE_SESSIONS:
+        entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
+    elif source == NATIVE_SESSIONS:
         from .memory_service import list_workspace_sessions
 
         sessions = await list_workspace_sessions(workspace_id, user_id)
-        return [
+        entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
         ]
+    else:
+        connected = await _resolve_connected(source, user_id)
+        if connected is None:
+            return None
+        if connected["capability"] == "queryable":
+            # A queryable source (Snowflake) has no document table — list its tables.
+            from ..integrations.snowflake.client import list_tables
 
-    connected = await _resolve_connected(source, user_id)
-    if connected is None:
-        return None
-    if connected["capability"] == "queryable":
-        # A queryable source (Snowflake) has no document table — list its tables.
-        from ..integrations.snowflake.client import list_tables
+            entries = await list_tables(connected)
+        elif connected["source_type"] == "twitter":
+            from ..integrations.twitter.indexer import twitter_live_entries
 
-        return await list_tables(connected)
-    if connected["source_type"] == "twitter":
-        from ..integrations.twitter.indexer import twitter_live_entries
+            entries = twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
+        else:
+            entries = await list_documents(connected, prefix=prefix)
 
-        return twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
-    return await list_documents(connected, prefix=prefix)
+    await _audit_source_read(
+        action="source.entries_listed",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "path_hash": security_audit_service.hash_value(prefix),
+            "result_count": len(entries),
+        },
+    )
+    return entries
 
 
 def source_document_url(
@@ -1120,38 +1159,50 @@ async def source_document(
     `source_ok` is False when the handle is unknown / not owned, and `doc` is
     None when the source is valid but the document is missing — callers keep the
     two not-found cases distinct (an unowned source must never look like a typo)."""
+    connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import get_page
 
         page = await get_page(UUID(ref), workspace_id, user_id)
-        if not page:
-            return True, None
-        return True, {
-            "name": page["name"],
-            "content": page.get("content_markdown") or page.get("content_html") or "",
-        }
-
-    if source == NATIVE_SESSIONS:
+        doc = (
+            {
+                "name": page["name"],
+                "content": page.get("content_markdown") or page.get("content_html") or "",
+            }
+            if page
+            else None
+        )
+    elif source == NATIVE_SESSIONS:
         from .memory_service import read_session_events
 
         events = await read_session_events(workspace_id, ref, user_id)
         transcript = "\n".join(
             f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
         )
-        return True, {"session": ref, "transcript": transcript[:8000]}
+        doc = {"session": ref, "transcript": transcript[:8000]}
+    else:
+        connected = await _resolve_connected(source, user_id)
+        if connected is None:
+            return False, None
+        if connected["capability"] == "queryable":
+            # Reading a "document" from a queryable source means describing a table.
+            from ..integrations.snowflake.client import describe_table
 
-    connected = await _resolve_connected(source, user_id)
-    if connected is None:
-        return False, None
-    if connected["capability"] == "queryable":
-        # Reading a "document" from a queryable source means describing a table.
-        from ..integrations.snowflake.client import describe_table
+            doc = await describe_table(connected, ref)
+        else:
+            doc = await read_document(connected, ref)
+            if doc is not None:
+                doc["url"] = await _deep_link(connected, doc)
 
-        return True, await describe_table(connected, ref)
-
-    doc = await read_document(connected, ref)
     if doc is not None:
-        doc["url"] = await _deep_link(connected, doc)
+        await _audit_source_read(
+            action="source.document_read",
+            workspace_id=workspace_id,
+            user_id=user_id,
+            source=source,
+            connected=connected,
+            metadata={"ref_hash": security_audit_service.hash_value(ref)},
+        )
     return True, doc
 
 
@@ -1199,9 +1250,23 @@ async def query_source(
     from ..integrations.snowflake.client import run_query
 
     try:
-        return await run_query(connected, sql, limit)
+        result = await run_query(connected, sql, limit)
     except ValueError as e:
-        return {"error": str(e)}
+        result = {"error": str(e)}
+    await _audit_source_read(
+        action="source.queried",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "sql_hash": security_audit_service.hash_value(sql),
+            "limit": limit,
+            "row_count": result.get("row_count"),
+            "error": bool(result.get("error")),
+        },
+    )
+    return result
 
 
 def _parse_dt(value: str | None):
@@ -1244,7 +1309,22 @@ async def fetch_history(
         from ..integrations.slack.indexer import fetch_history as fn
     else:
         from ..integrations.gong.indexer import fetch_history as fn
-    return await fn(connected, since_dt, until_dt, min(limit, 1000))
+    result = await fn(connected, since_dt, until_dt, min(limit, 1000))
+    await _audit_source_read(
+        action="source.history_fetched",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "since_hash": security_audit_service.hash_value(since),
+            "until_hash": security_audit_service.hash_value(until),
+            "limit": limit,
+            "fetched": result.get("fetched"),
+            "error": bool(result.get("error")),
+        },
+    )
+    return result
 
 
 async def search_all(
@@ -1333,4 +1413,16 @@ async def search_all(
             ):
                 results += hits
 
+    await _audit_source_read(
+        action="source.searched",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "query_hash": security_audit_service.hash_value(query),
+            "limit": limit,
+            "result_count": len(results),
+        },
+    )
     return results
