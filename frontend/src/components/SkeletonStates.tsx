@@ -401,7 +401,7 @@ export function FileBrowserSkeleton() {
   );
 }
 
-export function StashesGridSkeleton() {
+export function SkillsGridSkeleton() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
@@ -627,7 +627,7 @@ export function TableEditorSkeleton() {
   );
 }
 
-export function PublicCartridgeSkeleton() {
+export function PublicSkillSkeleton() {
   return (
     <div className="scroll-thin min-h-screen bg-background">
       <SkeletonBlock className="h-[72px] w-full rounded-none bg-brand-100" />
@@ -654,7 +654,7 @@ export function PublicCartridgeSkeleton() {
   );
 }
 
-export function CartridgeItemSkeleton() {
+export function SkillItemSkeleton() {
   return (
     <div className="scroll-thin min-h-screen bg-background">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">

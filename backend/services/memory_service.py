@@ -257,30 +257,30 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
               AND (
                 NOT EXISTS (
                   SELECT 1
-                  FROM cartridge_items session_cartridge_item
-                  WHERE session_cartridge_item.object_type = 'session'
-                    AND session_cartridge_item.object_id = readable_session.id
+                  FROM skill_items session_skill_item
+                  WHERE session_skill_item.object_type = 'session'
+                    AND session_skill_item.object_id = readable_session.id
                 )
                 OR EXISTS (
                   SELECT 1
-                  FROM cartridge_items session_cartridge_item
-                  JOIN cartridges session_cartridge ON session_cartridge.id = session_cartridge_item.cartridge_id
+                  FROM skill_items session_skill_item
+                  JOIN skills session_skill ON session_skill.id = session_skill_item.skill_id
                   LEFT JOIN workspace_members session_workspace_member
-                    ON session_workspace_member.workspace_id = session_cartridge.workspace_id
+                    ON session_workspace_member.workspace_id = session_skill.workspace_id
                    AND session_workspace_member.user_id = ${user_arg}
-                  LEFT JOIN cartridge_members session_cartridge_member
-                    ON session_cartridge_member.cartridge_id = session_cartridge.id
-                   AND session_cartridge_member.user_id = ${user_arg}
-                  WHERE session_cartridge_item.object_type = 'session'
-                    AND session_cartridge_item.object_id = readable_session.id
+                  LEFT JOIN skill_members session_skill_member
+                    ON session_skill_member.skill_id = session_skill.id
+                   AND session_skill_member.user_id = ${user_arg}
+                  WHERE session_skill_item.object_type = 'session'
+                    AND session_skill_item.object_id = readable_session.id
                     AND (
-                      session_cartridge.public_permission != 'none'
+                      session_skill.public_permission != 'none'
                       OR (
-                        session_cartridge.workspace_permission != 'none'
+                        session_skill.workspace_permission != 'none'
                         AND session_workspace_member.user_id IS NOT NULL
                       )
-                      OR session_cartridge.owner_id = ${user_arg}
-                      OR session_cartridge_member.user_id IS NOT NULL
+                      OR session_skill.owner_id = ${user_arg}
+                      OR session_skill_member.user_id IS NOT NULL
                     )
                 )
               )

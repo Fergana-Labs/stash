@@ -59,7 +59,7 @@ interface MarkdownEditorProps {
   collaborationUser: CollaborationUser;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
-  /** Called on clicks to same-origin stash routes so the page
+  /** Called on clicks to same-origin skill routes so the page
    *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
   /** Adds a comment thread anchored to the current selection. Resolves
@@ -196,7 +196,7 @@ export default function MarkdownEditor({
       Typography,
       Link.configure({
         // We route clicks ourselves via editorProps.handleClickOn below
-        // so internal stash URLs SPA-navigate instead of opening a new
+        // so internal skill URLs SPA-navigate instead of opening a new
         // tab, and relative/dead hrefs don't trigger 404s. Keep TipTap's
         // own click plugin disabled.
         openOnClick: false,
@@ -298,11 +298,11 @@ export default function MarkdownEditor({
           const href = anchor.getAttribute("href");
           if (!href) return false;
 
-          const isStashAbsolute = /^https?:\/\/(app\.)?stash\.ac\//i.test(href);
+          const isSkillAbsolute = /^https?:\/\/(app\.)?skill\.ac\//i.test(href);
           const isRouteRelative = href.startsWith("/");
           const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
 
-          if (isStashAbsolute || isRouteRelative) {
+          if (isSkillAbsolute || isRouteRelative) {
             event.preventDefault();
             if (shouldOpenInNewTab(event)) {
               openInNewTab(href);

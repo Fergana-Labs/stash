@@ -52,6 +52,7 @@ from backend.exports.html_canvas import (
 from backend.exports.native.aspose_builder import build_pptx_via_aspose
 from backend.exports.native.layout_probe import probe
 from backend.exports.native.pptx_builder import build_pptx
+from backend.exports.playwright_network import abort_network_request
 
 log = logging.getLogger("native-diff")
 
@@ -69,6 +70,7 @@ async def _render_slides(html: str) -> list[bytes]:
                 device_scale_factor=1,
             )
             try:
+                await ctx.route("**/*", abort_network_request)
                 for i in range(count):
                     page = await ctx.new_page()
                     try:

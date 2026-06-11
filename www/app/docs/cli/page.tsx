@@ -608,87 +608,87 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         ]}
       />
 
-      <H2>Cartridges</H2>
+      <H2>Skills</H2>
       <P>
-        A <strong>Cartridge</strong> is a shareable bundle of pages, sessions, tables, and files —
-        the unit you publish to a public link or share with specific people. (Cartridges are what
+        A <strong>Skill</strong> is a shareable bundle of pages, sessions, tables, and files —
+        the unit you publish to a public link or share with specific people. (Skills are what
         earlier versions called &ldquo;Stashes&rdquo;; the <Code>stash</Code> CLI name is unchanged.)
       </P>
 
       <CommandRef
-        command="stash cartridges list"
+        command="stash skills list"
         args="[--ws ID]"
-        description="List Cartridges in the workspace."
+        description="List Skills in the workspace."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges create"
+        command="stash skills create"
         args="<title> [--public/--private] [--discover] [--items JSON]"
-        description="Create a Cartridge. Pass --items as JSON to attach resources up front."
+        description="Create a Skill. Pass --items as JSON to attach resources up front."
         params={[
-          { name: "<title>", type: "string", desc: "Cartridge title.", required: true },
+          { name: "<title>", type: "string", desc: "Skill title.", required: true },
           { name: "--public/--private", type: "flag", desc: "Visibility. --public mints a shareable link." },
-          { name: "--discover", type: "flag", desc: "List a public Cartridge in the Discover catalog (requires --public)." },
+          { name: "--discover", type: "flag", desc: "List a public Skill in the Discover catalog (requires --public)." },
           { name: "--items", type: "JSON", desc: 'Items as a JSON array of {object_type, object_id}.' },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges members"
-        args="<cartridge_id>"
-        description="List the people granted access to a Cartridge."
+        command="stash skills members"
+        args="<skill_id>"
+        description="List the people granted access to a Skill."
         params={[
-          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges add-member"
-        args="<cartridge_id> <user_id> [--permission read]"
-        description="Grant a user access to a Cartridge."
+        command="stash skills add-member"
+        args="<skill_id> <user_id> [--permission read]"
+        description="Grant a user access to a Skill."
         params={[
-          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
           { name: "<user_id>", type: "string", desc: "The user to grant access.", required: true },
           { name: "--permission", type: "string", desc: "read | write | admin. Defaults to read." },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges remove-member"
-        args="<cartridge_id> <user_id>"
-        description="Revoke a user's access to a Cartridge."
+        command="stash skills remove-member"
+        args="<skill_id> <user_id>"
+        description="Revoke a user's access to a Skill."
         params={[
-          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
           { name: "<user_id>", type: "string", desc: "The user to revoke.", required: true },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges invites"
+        command="stash skills invites"
         args=""
-        description="List Cartridge invites pending for you — Cartridges shared with you, awaiting accept or dismiss."
+        description="List Skill invites pending for you — Skills shared with you, awaiting accept or dismiss."
         params={[]}
       />
 
       <CommandRef
-        command="stash cartridges dismiss-invite"
+        command="stash skills dismiss-invite"
         args="<invite_id>"
-        description="Dismiss a pending Cartridge invite."
+        description="Dismiss a pending Skill invite."
         params={[
           { name: "<invite_id>", type: "string", desc: "ID of the pending invite.", required: true },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges snapshot-source"
-        args="<cartridge_id> --source ID --path PATH [--ws ID]"
-        description="Copy a point-in-time snapshot of one connected-source document into the Cartridge as a page, so the bundle stays self-contained."
+        command="stash skills snapshot-source"
+        args="<skill_id> --source ID --path PATH [--ws ID]"
+        description="Copy a point-in-time snapshot of one connected-source document into the Skill as a page, so the bundle stays self-contained."
         params={[
-          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
           { name: "--source", type: "string", desc: "Connected-source id (from stash sources ls).", required: true },
           { name: "--path", type: "string", desc: "Document path within the source.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -696,21 +696,21 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       />
 
       <CommandRef
-        command="stash cartridges add-external"
+        command="stash skills add-external"
         args="<slug> [--ws ID]"
-        description="Fork a public Cartridge into a workspace by its slug."
+        description="Fork a public Skill into a workspace by its slug."
         params={[
-          { name: "<slug>", type: "string", desc: "Public Cartridge slug.", required: true },
+          { name: "<slug>", type: "string", desc: "Public Skill slug.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash cartridges delete"
-        args="<cartridge_id>"
-        description="Delete a Cartridge."
+        command="stash skills delete"
+        args="<skill_id>"
+        description="Delete a Skill."
         params={[
-          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
         ]}
       />
 
@@ -718,7 +718,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <P>
         Share a single object — a folder, page, file, session, or table — with a specific person by
         email. If they don&apos;t have an account yet the share is recorded as pending and converts
-        when they sign up. (To share a whole bundle, use a <strong>Cartridge</strong> above.)
+        when they sign up. (To share a whole bundle, use a <strong>Skill</strong> above.)
       </P>
 
       <CommandRef

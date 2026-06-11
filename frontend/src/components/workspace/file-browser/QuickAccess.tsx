@@ -1,7 +1,10 @@
 "use client";
 
+import { useState, type DragEvent } from "react";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { PinIcon } from "../../StashIcons";
+import { PinIcon } from "../../SkillIcons";
+import type { FBDragPayload } from "./WorkspaceFileBrowser";
+import { handleFolderDrop, isFbDrag, startItemDrag } from "./ItemsList";
 import { KindIcon, tintFor, typeFor, type GridItem } from "./kind";
 
 interface Props {
@@ -10,6 +13,8 @@ interface Props {
   onOpen: (item: GridItem, options?: NavigateOptions) => void;
   isPinned: (item: GridItem) => boolean;
   onTogglePin: (item: GridItem) => void;
+  onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
 }
 
 // Quick-access strip above the file list: pinned items the user chose, plus a
@@ -22,6 +27,8 @@ export default function QuickAccess({
   onOpen,
   isPinned,
   onTogglePin,
+  onReparent,
+  onReparentMany,
 }: Props) {
   return (
     <div className="mt-5 space-y-4">
@@ -34,6 +41,8 @@ export default function QuickAccess({
               pinned
               onOpen={onOpen}
               onTogglePin={onTogglePin}
+              onReparent={onReparent}
+              onReparentMany={onReparentMany}
             />
           ))}
         </Section>
@@ -47,6 +56,8 @@ export default function QuickAccess({
               pinned={isPinned(item)}
               onOpen={onOpen}
               onTogglePin={onTogglePin}
+              onReparent={onReparent}
+              onReparentMany={onReparentMany}
             />
           ))}
         </Section>
@@ -71,12 +82,19 @@ function Card({
   pinned,
   onOpen,
   onTogglePin,
+  onReparent,
+  onReparentMany,
 }: {
   item: GridItem;
   pinned: boolean;
   onOpen: (item: GridItem, options?: NavigateOptions) => void;
   onTogglePin: (item: GridItem) => void;
+  onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
 }) {
+  const [over, setOver] = useState(false);
+  const isFolder = item.kind === "folder";
+
   return (
     <div
       role="button"
@@ -88,7 +106,26 @@ function Card({
       onKeyDown={(e) => {
         if (e.key === "Enter") onOpen(item);
       }}
-      className="group/qa relative flex w-[180px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised"
+      draggable={item.movable !== false}
+      onDragStart={(e: DragEvent<HTMLDivElement>) => startItemDrag(e, item, false, [])}
+      onDragOver={(e) => {
+        if (!isFolder) return;
+        if (!isFbDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        if (!isFolder) return;
+        setOver(false);
+        e.preventDefault();
+        handleFolderDrop(e, item.id, onReparent, onReparentMany);
+      }}
+      className={
+        "group/qa relative flex w-[180px] cursor-pointer items-center gap-2.5 rounded-lg border bg-surface px-3 py-2.5 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised " +
+        (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
+      }
     >
       <span className={"flex h-5 w-5 shrink-0 items-center justify-center " + tintFor(item)}>
         <KindIcon kind={item.kind} />

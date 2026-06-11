@@ -1,12 +1,12 @@
-"""Tests for Stash-mediated content access."""
+"""Tests for Skill-mediated content access."""
 
 import uuid
 
 import pytest
 from httpx import AsyncClient
 
-from backend.models import CartridgeItem
-from backend.services import cartridge_service, permission_service, share_service
+from backend.models import SkillItem
+from backend.services import permission_service, share_service, shared_skill_service
 
 from .conftest import unique_name
 
@@ -163,18 +163,18 @@ async def _make_history_event(
     )
 
 
-async def _make_cartridge(workspace_id, owner_id, access, object_type, object_id):
+async def _make_skill(workspace_id, owner_id, access, object_type, object_id):
     workspace_permission, public_permission = _permissions_for_access(access)
-    return await cartridge_service.create_cartridge(
+    return await shared_skill_service.create_skill(
         workspace_id=workspace_id,
         owner_id=owner_id,
-        title=f"{access} Stash",
+        title=f"{access} Skill",
         description="",
         workspace_permission=workspace_permission,
         public_permission=public_permission,
         discoverable=False,
         cover_image_url=None,
-        items=[CartridgeItem(object_type=object_type, object_id=object_id)],
+        items=[SkillItem(object_type=object_type, object_id=object_id)],
     )
 
 
@@ -186,18 +186,18 @@ def _permissions_for_access(access):
     return "read", "none"
 
 
-async def _add_cartridge_member(pool, cartridge_id, user_id, granted_by, permission="read"):
+async def _add_skill_member(pool, skill_id, user_id, granted_by, permission="read"):
     await pool.execute(
-        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
+        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
         "VALUES ($1, $2, $3, $4)",
-        cartridge_id,
+        skill_id,
         user_id,
         permission,
         granted_by,
     )
 
 
-# --- New model: private by default; owner + shares + cartridge-open ---
+# --- New model: private by default; owner + shares + skill-open ---
 
 
 async def _share(pool, ws_id, object_type, object_id, user_id, permission="read", by=None):
@@ -231,6 +231,8 @@ async def test_viewer_workspace_member_can_read_not_write(pool):
     page = await _make_page(pool, ws, owner)
 
     assert await permission_service.check_access("page", page, viewer)
+    # Viewers can comment (files_tree comment endpoints rely on this) but not write.
+    assert await permission_service.check_access("page", page, viewer, require="comment")
     assert not await permission_service.check_access("page", page, viewer, require="write")
 
 
@@ -372,26 +374,54 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_cartridge_grants_read_only(pool):
+async def test_table_share_by_email_grants_direct_read(pool):
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    table = await _make_table(pool, ws, owner, name="prospects")
+    await pool.execute(
+        "UPDATE users SET email = 'friend@example.com' WHERE id = $1",
+        friend,
+    )
+
+    await share_service.share_with_user_by_email(
+        object_type="table",
+        object_id=table,
+        email="friend@example.com",
+        permission="read",
+        owner_id=owner,
+    )
+
+    assert await permission_service.check_access("table", table, friend)
+    assert not await permission_service.check_access(
+        "table",
+        table,
+        friend,
+        require="write",
+    )
+
+
+@pytest.mark.asyncio
+async def test_public_skill_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
-    await _make_cartridge(ws, owner, "public", "page", page)
+    await _make_skill(ws, owner, "public", "page", page)
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
 
 
 @pytest.mark.asyncio
-async def test_private_cartridge_member_reads_contents_not_write(pool):
+async def test_private_skill_member_reads_contents_not_write(pool):
     owner = await _make_user(pool)
     member = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
-    cartridge = await _make_cartridge(ws, owner, "private", "page", page)
-    await _add_cartridge_member(pool, cartridge["id"], member, owner, "read")
+    skill = await _make_skill(ws, owner, "private", "page", page)
+    await _add_skill_member(pool, skill["id"], member, owner, "read")
     assert await permission_service.check_access("page", page, member)
     assert not await permission_service.check_access("page", page, member, require="write")
     assert not await permission_service.check_access("page", page, stranger)
@@ -655,7 +685,7 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
     ).json()["id"]
 
     create = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges",
+        f"/api/v1/workspaces/{ws}/skills",
         json={
             "title": "Internal bundle",
             "items": [{"object_type": "page", "object_id": page_id}],
@@ -663,7 +693,77 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
         headers=_auth(editor_key),
     )
 
-    assert create.status_code == 403
+    assert create.status_code == 400
+    assert "workspace owners" in create.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_skill_admin_can_edit_metadata_of_already_public_skill(
+    client: AsyncClient,
+    pool,
+):
+    # The owner gate guards visibility escalation only; metadata edits of an
+    # already-shared Skill stay open to any skill admin.
+    owner_key, owner = await _register(client)
+    admin_key, admin = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    skill_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/skills",
+            json={"title": "Handbook", "workspace_permission": "none", "public_permission": "read"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    await _add_skill_member(
+        pool,
+        uuid.UUID(skill_id),
+        uuid.UUID(admin["id"]),
+        granted_by=uuid.UUID(owner["id"]),
+        permission="admin",
+    )
+
+    rename = await client.patch(
+        f"/api/v1/skills/{skill_id}",
+        json={"title": "Handbook v2"},
+        headers=_auth(admin_key),
+    )
+
+    assert rename.status_code == 200
+    assert rename.json()["title"] == "Handbook v2"
+
+
+@pytest.mark.asyncio
+async def test_skill_admin_cannot_escalate_skill_visibility(client: AsyncClient, pool):
+    owner_key, owner = await _register(client)
+    admin_key, admin = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    skill_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/skills",
+            json={"title": "Drafts", "workspace_permission": "none", "public_permission": "none"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    await _add_skill_member(
+        pool,
+        uuid.UUID(skill_id),
+        uuid.UUID(admin["id"]),
+        granted_by=uuid.UUID(owner["id"]),
+        permission="admin",
+    )
+
+    publish = await client.patch(
+        f"/api/v1/skills/{skill_id}",
+        json={"public_permission": "read"},
+        headers=_auth(admin_key),
+    )
+
+    assert publish.status_code == 400
+    assert "workspace owners" in publish.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -792,6 +892,45 @@ async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncCl
     )
 
     assert assign.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_session_folder_assign_batch_is_all_or_nothing(client: AsyncClient, pool):
+    # A 404 on a mixed batch must mean nothing moved — otherwise the client's
+    # view and the server state silently diverge.
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Deploys"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    session = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "batch-1", "agent_name": "codex"},
+        headers=_auth(owner_key),
+    )
+    assert session.status_code == 201
+    valid_id = session.json()["id"]
+    before = await pool.fetchrow(
+        "SELECT session_folder_id FROM sessions WHERE id = $1", uuid.UUID(valid_id)
+    )
+
+    assign = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        json={"session_row_ids": [valid_id, str(uuid.uuid4())], "folder_id": folder_id},
+        headers=_auth(owner_key),
+    )
+
+    assert assign.status_code == 404
+    after = await pool.fetchrow(
+        "SELECT session_folder_id FROM sessions WHERE id = $1", uuid.UUID(valid_id)
+    )
+    assert after["session_folder_id"] == before["session_folder_id"]
 
 
 @pytest.mark.asyncio

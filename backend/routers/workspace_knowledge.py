@@ -1,4 +1,4 @@
-"""Workspace knowledge router: overview, sessions, files, cartridges, and skills."""
+"""Workspace knowledge router: overview, sessions, files, and shared skills."""
 
 import asyncio
 import json
@@ -15,25 +15,24 @@ from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
-    cartridge_service,
     files_tree_service,
     linear_ticket_service,
     llm,
     memory_service,
     session_title_service,
-    skill_service,
+    shared_skill_service,
     workspace_service,
 )
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-generated-title-linear-ticket-v2"
+SIDEBAR_ETAG_VERSION = "sidebar-skills-rename-v3"
 
 
 # ---------------------------------------------------------------------------
 # Overview + Sidebar — the per-workspace view shapes
 #
-# `/overview` is what the workspace home page loads: sessions + files + cartridges. `/sidebar`
+# `/overview` is what the workspace home page loads: sessions + files + skills. `/sidebar`
 # is a smaller payload for the nav tree, served with an ETag so it can be
 # cached cheaply across navigation.
 # ---------------------------------------------------------------------------
@@ -66,19 +65,16 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
             "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
-            "        AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
+            "        AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
-            "        AND fi.deleted_at IS NULL) AS file_count, "
-            "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md' "
-            "              AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
-            "              AND p.deleted_at IS NULL) AS has_skill "
+            "        AND fi.deleted_at IS NULL) AS file_count "
             "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
             workspace_id,
         ),
         pool.fetch(
             "SELECT id, name, content_type, folder_id FROM pages WHERE workspace_id = $1 "
-            "AND COALESCE(metadata->>'shared_in_cartridge_id', '') = '' "
+            "AND COALESCE(metadata->>'shared_in_skill_id', '') = '' "
             "AND deleted_at IS NULL ORDER BY name",
             workspace_id,
         ),
@@ -132,7 +128,6 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
                 "parent_folder_id": str(r["parent_folder_id"]) if r["parent_folder_id"] else None,
                 "page_count": int(r["page_count"] or 0),
                 "file_count": int(r["file_count"] or 0),
-                "has_skill": bool(r["has_skill"]),
             }
             for r in folders
         ],
@@ -149,21 +144,21 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
     }
 
 
-async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
-    cartridges = await cartridge_service.list_workspace_stashes(workspace_id, user_id)
+async def _list_shared_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
+    skills = await shared_skill_service.list_workspace_skills(workspace_id, user_id)
     return [
         {
-            "id": str(stash["id"]),
-            "workspace_id": str(stash["workspace_id"]),
-            "slug": stash["slug"],
-            "title": stash["title"],
-            "description": stash["description"],
-            "access": stash["access"],
-            "workspace_permission": stash["workspace_permission"],
-            "public_permission": stash["public_permission"],
-            "discoverable": stash["discoverable"],
-            "is_external": stash["is_external"],
-            "item_count": len(stash.get("items", [])),
+            "id": str(skill["id"]),
+            "workspace_id": str(skill["workspace_id"]),
+            "slug": skill["slug"],
+            "title": skill["title"],
+            "description": skill["description"],
+            "access": skill["access"],
+            "workspace_permission": skill["workspace_permission"],
+            "public_permission": skill["public_permission"],
+            "discoverable": skill["discoverable"],
+            "is_external": skill["is_external"],
+            "item_count": len(skill.get("items", [])),
             "items": [
                 {
                     "object_type": item["object_type"],
@@ -171,36 +166,12 @@ async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
                     "position": item["position"],
                     "label_override": item.get("label_override"),
                 }
-                for item in stash.get("items", [])
+                for item in skill.get("items", [])
             ],
-            "updated_at": stash["updated_at"],
+            "updated_at": skill["updated_at"],
         }
-        for stash in cartridges
+        for skill in skills
     ]
-
-
-# ---------------------------------------------------------------------------
-# Skills (Phase 2) — markdown folders with a SKILL.md frontmatter file
-# ---------------------------------------------------------------------------
-
-
-@router.get("/{workspace_id}/skills")
-async def list_workspace_skills(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-    return await skill_service.list_skills(workspace_id, current_user["id"])
-
-
-@router.get("/{workspace_id}/skills/{name}")
-async def get_workspace_skill(
-    workspace_id: UUID, name: str, current_user: dict = Depends(get_current_user)
-):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-    skill = await skill_service.read_skill(workspace_id, name, current_user["id"])
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
 
 
 # ---------------------------------------------------------------------------
@@ -361,19 +332,19 @@ async def memory_demo(
 async def get_workspace_overview(
     workspace_id: UUID, current_user: dict = Depends(get_current_user)
 ):
-    """{sessions, files, cartridges} for the workspace home page.
+    """{sessions, files, skills} for the workspace home page.
 
     `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
     """
     await _check_overview_access(workspace_id, current_user["id"])
 
-    sessions, files, cartridges = await asyncio.gather(
+    sessions, files, skills = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
-        _list_stashes(workspace_id, current_user["id"]),
+        _list_shared_skills(workspace_id, current_user["id"]),
     )
-    return {"sessions": sessions, "files": files, "cartridges": cartridges}
+    return {"sessions": sessions, "files": files, "skills": skills}
 
 
 @router.get("/{workspace_id}/sidebar")
@@ -382,7 +353,7 @@ async def get_workspace_sidebar(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """Lighter payload for the nav sidebar: sessions + files + cartridges. Carries an
+    """Lighter payload for the nav sidebar: sessions + files + skills. Carries an
     ETag derived from the workspace's mutation timestamps so navigation
     between workspaces hits 304 instead of re-fetching."""
     await _check_overview_access(workspace_id, current_user["id"])
@@ -391,14 +362,14 @@ async def get_workspace_sidebar(
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
-    sessions, files, cartridges = await asyncio.gather(
+    sessions, files, skills = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
-        _list_stashes(workspace_id, current_user["id"]),
+        _list_shared_skills(workspace_id, current_user["id"]),
     )
     return Response(
         content=json.dumps(
-            {"sessions": sessions, "files": files, "cartridges": cartridges},
+            {"sessions": sessions, "files": files, "skills": skills},
             default=_json_default,
         ),
         media_type="application/json",
@@ -420,7 +391,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         f"""
         SELECT
           (SELECT MAX(updated_at) FROM pages
-            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_cartridge_id', '') = ''
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_skill_id', '') = ''
             AND deleted_at IS NULL) AS p,
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
@@ -454,9 +425,9 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
            WHERE stt.workspace_id = $1
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
-          (SELECT MAX(updated_at) FROM cartridges WHERE workspace_id = $1)            AS st,
-          (SELECT MAX(sm.created_at) FROM cartridge_members sm
-           JOIN cartridges s ON s.id = sm.cartridge_id
+          (SELECT MAX(updated_at) FROM skills WHERE workspace_id = $1)            AS st,
+          (SELECT MAX(sm.created_at) FROM skill_members sm
+           JOIN skills s ON s.id = sm.skill_id
            WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,

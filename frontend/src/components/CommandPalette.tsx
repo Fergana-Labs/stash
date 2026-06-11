@@ -7,7 +7,7 @@ import { listAllTables, semanticSearchPages, type WorkspaceSidebar } from "../li
 import {
   getCachedWorkspaceSidebar,
   readCachedWorkspaceSidebar,
-} from "../lib/stashNavigationCache";
+} from "../lib/skillNavigationCache";
 import type { TableWithWorkspace } from "../lib/types";
 import type { SearchScope } from "./AppShell";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -195,7 +195,6 @@ export default function CommandPalette({
     search: "⌕",
     page: "📄",
     session: "#",
-    skill: "⚙︎",
     file: "📁",
     table: "T",
   };
@@ -217,7 +216,7 @@ export default function CommandPalette({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Stash or jump to a page, session, file, or table..."
+            placeholder="Search Skill or jump to a page, session, file, or table..."
             className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
             autoFocus
           />
@@ -265,7 +264,7 @@ export default function CommandPalette({
           </div>
         ) : (
           <div className="px-4 py-6 text-center text-[13px] text-muted">
-            Start typing to search this cartridge...
+            Start typing to search this skill...
           </div>
         )}
       </div>
@@ -285,7 +284,7 @@ function fullPageSearchResult(
   const q = query.trim();
   if (q) params.set("q", q);
 
-  const label = scope?.label ?? workspaceName ?? (workspaceId ? "this workspace" : "Stash");
+  const label = scope?.label ?? workspaceName ?? (workspaceId ? "this workspace" : "Skill");
   const hrefParams = params.toString();
 
   return {

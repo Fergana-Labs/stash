@@ -36,7 +36,7 @@ async def test_start_returns_instructions(client: AsyncClient):
     # The agent must be told the three publish endpoints by name.
     assert "/api/v1/demo/pages" in body
     assert "/api/v1/demo/sessions" in body
-    assert "/api/v1/demo/cartridges" in body
+    assert "/api/v1/demo/skills" in body
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def test_skill_returns_canonical_slides_skill(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_about_returns_cartridge_pitch(client: AsyncClient):
+async def test_about_returns_skill_pitch(client: AsyncClient):
     resp = await client.get("/api/v1/demo/about")
     assert resp.status_code == 200
     assert "Stash" in resp.text
@@ -58,7 +58,7 @@ async def test_about_returns_cartridge_pitch(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_full_publish_flow(client: AsyncClient):
-    """End-to-end: page + session + stash → returns a public app_url."""
+    """End-to-end: page + session + skill → returns a public app_url."""
     page_resp = await client.post(
         "/api/v1/demo/pages",
         json={
@@ -86,7 +86,7 @@ async def test_full_publish_flow(client: AsyncClient):
     session_id = session_resp.json()["session_id"]
 
     stash_resp = await client.post(
-        "/api/v1/demo/cartridges",
+        "/api/v1/demo/skills",
         json={
             "title": "Stash for Test Visitor",
             "description": "Demo from the landing page",
@@ -98,13 +98,13 @@ async def test_full_publish_flow(client: AsyncClient):
     )
     assert stash_resp.status_code == 201, stash_resp.text
     body = stash_resp.json()
-    assert body["app_url"].endswith(f"/cartridges/{body['slug']}")
+    assert body["app_url"].endswith(f"/skills/{body['slug']}")
     assert body["slug"]
 
 
 @pytest.mark.asyncio
-async def test_cartridge_is_public_unlisted_and_includes_kb_folder(client: AsyncClient, pool):
-    """Demo Cartridges must be public-link-shareable but not discoverable, and
+async def test_skill_is_public_unlisted_and_includes_kb_folder(client: AsyncClient, pool):
+    """Demo Skills must be public-link-shareable but not discoverable, and
     must auto-include the canonical Stash knowledge base folder."""
     page = (
         await client.post(
@@ -117,7 +117,7 @@ async def test_cartridge_is_public_unlisted_and_includes_kb_folder(client: Async
     ).json()
     stash = (
         await client.post(
-            "/api/v1/demo/cartridges",
+            "/api/v1/demo/skills",
             json={
                 "title": "Visibility check",
                 "items": [{"object_type": "page", "object_id": page["page_id"]}],
@@ -126,9 +126,8 @@ async def test_cartridge_is_public_unlisted_and_includes_kb_folder(client: Async
     ).json()
 
     row = await pool.fetchrow(
-        "SELECT workspace_permission, public_permission, discoverable "
-        "FROM cartridges WHERE id = $1",
-        stash["cartridge_id"],
+        "SELECT workspace_permission, public_permission, discoverable " "FROM skills WHERE id = $1",
+        stash["skill_id"],
     )
     assert row["workspace_permission"] == "none"
     assert row["public_permission"] == "read"
@@ -138,8 +137,8 @@ async def test_cartridge_is_public_unlisted_and_includes_kb_folder(client: Async
     # passed the page in.
     folder_id = await demo_service.get_kb_folder_id()
     items = await pool.fetch(
-        "SELECT object_type, object_id FROM cartridge_items WHERE cartridge_id = $1",
-        stash["cartridge_id"],
+        "SELECT object_type, object_id FROM skill_items WHERE skill_id = $1",
+        stash["skill_id"],
     )
     pairs = {(r["object_type"], str(r["object_id"])) for r in items}
     assert ("folder", str(folder_id)) in pairs
@@ -161,7 +160,7 @@ async def test_kb_folder_is_reused_across_demos(client: AsyncClient, pool):
             )
         ).json()
         resp = await client.post(
-            "/api/v1/demo/cartridges",
+            "/api/v1/demo/skills",
             json={
                 "title": "Reuse check",
                 "items": [{"object_type": "page", "object_id": page["page_id"]}],
@@ -213,7 +212,7 @@ async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
     )
 
     resp = await client.post(
-        "/api/v1/demo/cartridges",
+        "/api/v1/demo/skills",
         json={
             "title": "Cross-workspace attempt",
             "items": [{"object_type": "page", "object_id": str(outside_page_id)}],
@@ -238,7 +237,7 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
         )
     ).json()
     await client.post(
-        "/api/v1/demo/cartridges",
+        "/api/v1/demo/skills",
         json={
             "title": "Referenced",
             "items": [{"object_type": "page", "object_id": referenced_page["page_id"]}],

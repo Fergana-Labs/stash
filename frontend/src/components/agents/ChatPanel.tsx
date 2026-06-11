@@ -176,16 +176,16 @@ function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
           </div>
           <p className="mt-1.5 text-[13px] leading-5 text-dim">
             Install the CLI when you want Codex, Claude Code, or another coding agent to push
-            sessions into Stash and search this workspace directly.
+            sessions into Skill and search this workspace directly.
           </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <SetupStep n={1} title="Install the Stash CLI">
+            <SetupStep n={1} title="Install the Skill CLI">
               <Code>{`bash -c "$(curl -fsSL https://joinstash.ai/install)"`}</Code>
             </SetupStep>
             <SetupStep n={2} title="Sign in">
               <Code>stash signin</Code>
             </SetupStep>
-            <SetupStep n={3} title="Point your agent at Stash">
+            <SetupStep n={3} title="Point your agent at Skill">
               <a
                 className="text-[var(--color-brand-700)] underline"
                 href="https://joinstash.ai/docs/mcp"

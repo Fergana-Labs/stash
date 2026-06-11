@@ -205,7 +205,7 @@ function ActiveSessions() {
           <h2 className="text-base font-semibold text-foreground">API keys & sessions</h2>
           <p className="text-xs text-muted mt-0.5">
             Each browser tab and CLI install holds its own key. Create a personal
-            key to use the Stash API or CLI directly, and revoke anything you
+            key to use the Skill API or CLI directly, and revoke anything you
             don&apos;t recognize.
           </p>
         </div>
