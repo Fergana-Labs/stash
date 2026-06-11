@@ -759,6 +759,73 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
 
 
 @pytest.mark.asyncio
+async def test_fork_respects_skill_creation_gates(client: AsyncClient, pool):
+    """add-to-workspace writes forked pages into the workspace, so it obeys
+    the same gates as creating a Skill: viewers cannot fork at all, and only
+    workspace owners land a workspace-visible fork."""
+    publisher_key, _ = await _register(client)
+    owner_key, _ = await _register(client)
+    editor_key, editor = await _register(client)
+    viewer_key, viewer = await _register(client)
+    source_ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(publisher_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{source_ws}/pages/new",
+            json={"name": "Guide", "content": "published guide"},
+            headers=_auth(publisher_key),
+        )
+    ).json()["id"]
+    skill = (
+        await client.post(
+            f"/api/v1/workspaces/{source_ws}/skills",
+            json={
+                "title": "Public bundle",
+                "workspace_permission": "none",
+                "public_permission": "read",
+                "items": [{"object_type": "page", "object_id": page_id}],
+            },
+            headers=_auth(publisher_key),
+        )
+    ).json()
+    target_ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(target_ws), uuid.UUID(editor["id"]), role="editor")
+    await _add_workspace_member(pool, uuid.UUID(target_ws), uuid.UUID(viewer["id"]), role="viewer")
+    owner_ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Owner fork target"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    viewer_fork = await client.post(
+        f"/api/v1/skills/{skill['slug']}/add-to-workspace",
+        json={"workspace_id": target_ws},
+        headers=_auth(viewer_key),
+    )
+    editor_fork = await client.post(
+        f"/api/v1/skills/{skill['slug']}/add-to-workspace",
+        json={"workspace_id": target_ws},
+        headers=_auth(editor_key),
+    )
+    owner_fork = await client.post(
+        f"/api/v1/skills/{skill['slug']}/add-to-workspace",
+        json={"workspace_id": owner_ws},
+        headers=_auth(owner_key),
+    )
+
+    assert viewer_fork.status_code == 403
+    assert editor_fork.status_code == 201
+    assert editor_fork.json()["workspace_permission"] == "none"
+    assert owner_fork.status_code == 201
+    assert owner_fork.json()["workspace_permission"] == "read"
+
+
+@pytest.mark.asyncio
 async def test_skill_admin_can_edit_metadata_of_already_public_skill(
     client: AsyncClient,
     pool,

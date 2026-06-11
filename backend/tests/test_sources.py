@@ -880,6 +880,34 @@ async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_twitter_live_read_failure_returns_generic_error_doc(client, monkeypatch):
+    """A Twitter provider failure gets the same redaction as every other lazy
+    source read: a generic error document, never a raw exception/500 that
+    could leak provider details."""
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    async def fail_fetch(owner, account_id, ref):
+        raise RuntimeError("token=secret-token X API exploded")
+
+    monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fail_fetch)
+
+    doc = await source_service.read_document(src, "bookmarks")
+
+    assert doc == {
+        "path": "bookmarks",
+        "name": "Bookmarks",
+        "kind": "feed",
+        "content": "",
+        "error": "source document fetch failed",
+    }
+    assert "secret-token" not in json.dumps(doc)
+
+
+@pytest.mark.asyncio
 async def test_scoped_search_maps_provider_errors_to_http_errors(client, monkeypatch):
     """Scoped provider failures must become structured HTTP errors: an X 429
     is a 429 (not an opaque 500), and a provider 401 must NOT surface as OUR
@@ -2350,6 +2378,68 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
     item_ids = {i["object_id"] for i in public.json()["items"]}
     assert page["id"] in item_ids
+
+
+@pytest.mark.asyncio
+async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
+    client: AsyncClient, pool, monkeypatch
+):
+    """A failed provider fetch must fail the snapshot request — never persist
+    an empty page or record a success audit event for content that was
+    never copied."""
+    from backend.integrations.google import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="root",
+        display_name="My Drive",
+    )
+    await source_service.upsert_index_row(
+        table="drive_index",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="Auth",
+        name="Auth",
+        kind="file",
+        external_ref="file-abc",
+    )
+
+    async def fail_fetch(owner, file_id):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(indexer, "fetch_drive_content", fail_fetch)
+
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
+        json={"title": "Bundle", "public_permission": "read", "items": []},
+        headers=_auth(api_key),
+    )
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "Auth"},
+        headers=_auth(api_key),
+    )
+    copied_pages = await pool.fetchval(
+        "SELECT COUNT(*) FROM pages WHERE metadata->>'shared_in_skill_id' = $1",
+        skill_id,
+    )
+    snapshot_events = await pool.fetchval(
+        "SELECT COUNT(*) FROM security_audit_events "
+        "WHERE workspace_id = $1 AND action = 'source.document_snapshotted'",
+        ws,
+    )
+
+    assert snap.status_code == 404
+    assert copied_pages == 0
+    assert snapshot_events == 0
 
 
 @pytest.mark.asyncio
