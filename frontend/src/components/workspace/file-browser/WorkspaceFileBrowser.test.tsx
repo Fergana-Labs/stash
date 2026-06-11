@@ -96,18 +96,19 @@ afterEach(() => {
 });
 
 describe("WorkspaceFileBrowser table creation", () => {
-  it("creates a blank table from the root files view", async () => {
+  it("creates a blank table from the + New menu", async () => {
     vi.mocked(createTable).mockResolvedValue(table("table-1", "Untitled table"));
 
     render(<WorkspaceFileBrowser workspaceId="ws-1" folderId={null} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "+ New table" }));
+    fireEvent.click(await screen.findByRole("button", { name: /\+ New/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
 
     await waitFor(() =>
       expect(createTable).toHaveBeenCalledWith("ws-1", "Untitled table")
     );
     expect(refreshWorkspaceSidebar).toHaveBeenCalledWith("ws-1");
-    expect(router.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-1");
+    expect(router.push).toHaveBeenCalledWith("/tables/table-1");
   });
 
   it("shows standalone workspace tables at the root without duplicating CSV-backed tables", async () => {
@@ -140,7 +141,7 @@ describe("WorkspaceFileBrowser table creation", () => {
     expect(screen.getByText("contacts.csv")).toBeInTheDocument();
     expect(screen.queryByText("Contacts from CSV")).not.toBeInTheDocument();
     expect(router.push).toHaveBeenCalledWith(
-      "/tables/table-standalone?workspaceId=ws-1"
+      "/tables/table-standalone"
     );
   });
 

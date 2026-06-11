@@ -1,38 +1,14 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
+import { permanentRedirect } from "next/navigation";
 
-import { DocumentPageSkeleton } from "../../../../../../components/SkeletonStates";
-import {
-  firstSearchParam,
-  metadataForPublicCartridgeItem,
-} from "../../../../../../lib/cartridgeMetadata";
-import PageClient from "./PageClient";
-
+// Legacy URL shape. Page links are canonical at /p/[pageId] — the workspace
+// is resolved server-side — but old links live on in transcripts and chats.
 type PageProps = {
-  params: Promise<{ workspaceId: string; pageId: string }>;
+  params: Promise<{ pageId: string }>;
   searchParams: Promise<{ stash?: string | string[] }>;
 };
 
-export async function generateMetadata({
-  params,
-  searchParams,
-}: PageProps): Promise<Metadata> {
-  const [{ workspaceId, pageId }, query] = await Promise.all([params, searchParams]);
-  const slug = firstSearchParam(query.stash);
-  if (!slug) return { title: "Page - Stash" };
-
-  return metadataForPublicCartridgeItem({
-    slug,
-    itemType: "page",
-    itemId: pageId,
-    path: `/workspaces/${workspaceId}/p/${pageId}?stash=${encodeURIComponent(slug)}`,
-  });
-}
-
-export default function PageRoute() {
-  return (
-    <Suspense fallback={<DocumentPageSkeleton />}>
-      <PageClient />
-    </Suspense>
-  );
+export default async function LegacyPageRoute({ params, searchParams }: PageProps) {
+  const [{ pageId }, query] = await Promise.all([params, searchParams]);
+  const stash = Array.isArray(query.stash) ? query.stash[0] : query.stash;
+  permanentRedirect(`/p/${pageId}${stash ? `?stash=${encodeURIComponent(stash)}` : ""}`);
 }

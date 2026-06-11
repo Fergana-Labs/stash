@@ -17,6 +17,10 @@ const FEATURES = [
     "Pages are real Markdown and HTML — plus CSV, PDF, and images. The formats your agent already reads and writes, not a proprietary block format.",
   ],
   [
+    "WYSIWYG HTML editing",
+    "When your agent builds an HTML page — a report, a dashboard, a deck — you edit it visually in a WYSIWYG editor. Tweak the result by hand without touching the markup.",
+  ],
+  [
     "Real-time collaboration",
     "You and your agent edit the same page at the same time — two cursors at once. Edits save automatically.",
   ],
@@ -55,9 +59,10 @@ export default function AgentNativeDrivePage() {
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
             Write with your agent in real time on pages that are real Markdown and
-            HTML. The whole Drive — pages, files, and session transcripts — is
-            reachable through the CLI, MCP, and API, so your agent reads and writes
-            it as naturally as you do.
+            HTML — and when it builds an HTML page, edit the result visually in a
+            WYSIWYG editor. The whole Drive — pages, files, and session
+            transcripts — is reachable through the CLI, MCP, and API, so your
+            agent reads and writes it as naturally as you do.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link

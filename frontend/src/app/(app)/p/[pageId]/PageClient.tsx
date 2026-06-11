@@ -4,29 +4,31 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
-import { PageBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
+import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useActiveWorkspaceId } from "../../../../components/ShellChromeContext";
+import { recordRecent } from "../../../../lib/pins";
+import { PageBody } from "../../cartridges/[slug]/CartridgeItemBodies";
 import {
   downloadBlob,
   downloadRenderedPdf,
   htmlToPdfBlocks,
   markdownToPdfBlocks,
-} from "../../../../../../components/DownloadMenu";
-import { DocumentPageSkeleton } from "../../../../../../components/SkeletonStates";
-import { StashIcon } from "../../../../../../components/StashIcons";
+} from "../../../../components/DownloadMenu";
+import { DocumentPageSkeleton } from "../../../../components/SkeletonStates";
+import { StashIcon } from "../../../../components/StashIcons";
 import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
-} from "../../../../../../components/workspace/HtmlPageView";
-import ExportDeckButton from "../../../../../../components/export/ExportDeckButton";
-import FileViewerHeader from "../../../../../../components/workspace/FileViewerHeader";
+} from "../../../../components/workspace/HtmlPageView";
+import ExportDeckButton from "../../../../components/export/ExportDeckButton";
+import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,
-} from "../../../../../../components/workspace/MarkdownEditor";
-import CommentsSidebar from "../../../../../../components/workspace/CommentsSidebar";
-import CommentComposerPopover from "../../../../../../components/workspace/CommentComposerPopover";
-import { useAuth } from "../../../../../../hooks/useAuth";
+} from "../../../../components/workspace/MarkdownEditor";
+import CommentsSidebar from "../../../../components/workspace/CommentsSidebar";
+import CommentComposerPopover from "../../../../components/workspace/CommentComposerPopover";
+import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   createCommentThread,
@@ -45,9 +47,9 @@ import {
   type FolderBreadcrumb,
   type PublicCartridgeItem,
   type WorkspaceCartridge,
-} from "../../../../../../lib/api";
-import type { CommentThread, Page } from "../../../../../../lib/types";
-import { subscribePageEvents } from "../../../../../../lib/pageEvents";
+} from "../../../../lib/api";
+import type { CommentThread, Page } from "../../../../lib/types";
+import { subscribePageEvents } from "../../../../lib/pageEvents";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -93,7 +95,6 @@ export default function StashPageView() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const workspaceId = params.workspaceId as string;
   const pageId = params.pageId as string;
   const { user, loading } = useAuth();
   // When ?stash=<slug> is present, the page is viewed through a stash —
@@ -102,6 +103,10 @@ export default function StashPageView() {
   const stashSlug = searchParams.get("stash");
 
   const [page, setPage] = useState<Page | null>(null);
+  // Empty until the page loads — every consumer below renders or fires
+  // only after that.
+  const workspaceId = page?.workspace_id ?? "";
+  useActiveWorkspaceId(workspaceId || null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
   const [stashFallback, setStashFallback] = useState<
@@ -157,7 +162,7 @@ export default function StashPageView() {
   const loadRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
-    if (!user || stashSlug) return;
+    if (!user || stashSlug || !workspaceId) return;
     return subscribePageEvents(workspaceId, (evt) => {
       if (evt.page_id !== pageId) return;
       const { isHtml, htmlEditMode } = liveViewRef.current;
@@ -181,14 +186,18 @@ export default function StashPageView() {
     `${workspaceId}/page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
 
-  const refreshThreads = useCallback(async () => {
-    try {
-      const res = await listCommentThreads(workspaceId, pageId);
-      setThreads(res.threads);
-    } catch {
-      // Comments are non-critical — never block page rendering.
-    }
-  }, [workspaceId, pageId]);
+  const refreshThreads = useCallback(
+    async (ws: string = workspaceId) => {
+      if (!ws) return;
+      try {
+        const res = await listCommentThreads(ws, pageId);
+        setThreads(res.threads);
+      } catch {
+        // Comments are non-critical — never block page rendering.
+      }
+    },
+    [workspaceId, pageId]
+  );
 
   const loadStashFallback = useCallback(async () => {
     if (!stashSlug) return false;
@@ -218,7 +227,7 @@ export default function StashPageView() {
   const load = useCallback(async () => {
     let p;
     try {
-      p = await getPage(workspaceId, pageId);
+      p = await getPage(pageId);
     } catch (e) {
       // Non-members of the workspace fall back to the stash payload when
       // a ?stash=<slug> hint is present. The stash's readability check is
@@ -241,18 +250,19 @@ export default function StashPageView() {
     setStashFallback(null);
     setStashAccessDenied(false);
     setError("");
-    listObjectStashes(workspaceId, "page", pageId)
+    recordRecent(p.workspace_id, pageId, "page");
+    listObjectStashes(p.workspace_id, "page", pageId)
       .then(setContainingStashes)
       .catch(() => {});
     if (p.folder_id) {
-      getFolderContents(workspaceId, p.folder_id)
+      getFolderContents(p.workspace_id, p.folder_id)
         .then((contents) => setFolderChain(contents.breadcrumbs))
         .catch(() => setFolderChain([]));
     } else {
       setFolderChain([]);
     }
-    refreshThreads().catch(() => {});
-  }, [workspaceId, pageId, refreshThreads, stashSlug, loadStashFallback]);
+    refreshThreads(p.workspace_id).catch(() => {});
+  }, [pageId, refreshThreads, stashSlug, loadStashFallback]);
 
   const reconcileAfterSave = useCallback(
     (savedContent: string, contentType: "markdown" | "html") => {
@@ -261,7 +271,7 @@ export default function StashPageView() {
           ? extractCommentIdsFromHtml(savedContent)
           : extractCommentIdsFromMarkdown(savedContent);
       reconcileCommentAnchors(workspaceId, pageId, ids)
-        .then(refreshThreads)
+        .then(() => refreshThreads())
         .catch(() => {});
     },
     [workspaceId, pageId, refreshThreads]

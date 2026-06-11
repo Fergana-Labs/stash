@@ -21,14 +21,16 @@ def test_cartridge_url_uses_web_app_url(monkeypatch) -> None:
     )
 
 
-def test_file_app_url_points_to_workspace_file_viewer(monkeypatch) -> None:
+def test_file_app_url_is_canonical_and_workspace_free(monkeypatch) -> None:
     workspace_id = uuid4()
     file_id = uuid4()
     monkeypatch.setattr(settings, "PUBLIC_URL", "https://app.example/")
 
+    # Canonical: the workspace is resolved server-side, so the URL must not
+    # embed it — that's what keeps shared file links from going stale.
     assert (
         _file_app_url({"workspace_id": workspace_id, "id": file_id})
-        == f"https://app.example/workspaces/{workspace_id}/f/{file_id}"
+        == f"https://app.example/f/{file_id}"
     )
 
 
