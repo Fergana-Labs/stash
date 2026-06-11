@@ -39,7 +39,10 @@ async def test_unhandled_errors_are_redacted_and_keep_security_headers(
     assert "secret-token" not in resp.text
     assert "customer transcript" not in resp.text
     assert captured_logs == [
-        ("Unhandled request failed method=%s exception_type=%s", ("GET", "RuntimeError"))
+        (
+            "Unhandled request failed method=%s path=%s exception_type=%s",
+            ("GET", "/__test_unhandled_error_redaction", "RuntimeError"),
+        )
     ]
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)

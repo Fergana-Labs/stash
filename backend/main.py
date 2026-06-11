@@ -155,8 +155,9 @@ async def add_security_headers(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         logger.error(
-            "Unhandled request failed method=%s exception_type=%s",
+            "Unhandled request failed method=%s path=%s exception_type=%s",
             request.method,
+            request.url.path,
             type(exc).__name__,
         )
         response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
