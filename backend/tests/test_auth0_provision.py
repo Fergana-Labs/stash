@@ -105,7 +105,10 @@ async def test_browser_session_provisioning_does_not_mint_api_key(pool):
 
 
 @pytest.mark.asyncio
-async def test_auth0_exchange_endpoint_does_not_mint_api_keys():
+async def test_auth0_exchange_endpoint_does_not_exist():
+    """The legacy exchange endpoint minted long-lived API keys for browser
+    sessions. It must stay removed — CLI keys come only from explicit
+    session approval."""
     app = FastAPI()
     app.include_router(auth0_router)
 
@@ -115,8 +118,7 @@ async def test_auth0_exchange_endpoint_does_not_mint_api_keys():
             headers={"Authorization": "Bearer auth0-token"},
         )
 
-    assert resp.status_code == 410
-    assert "API key exchange is disabled" in resp.json()["detail"]
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -228,6 +230,42 @@ async def test_managed_auth0_allows_approved_cli_device_keys(client, monkeypatch
     )
     assert me.status_code == 200
     assert me.json()["id"] == str(user["id"])
+
+
+@pytest.mark.asyncio
+async def test_managed_auth0_cli_key_cannot_approve_cli_sessions(client, monkeypatch):
+    """A leaked CLI key must not be able to mint sibling CLI keys via the
+    approve endpoint — that would let it outlive its own revocation. Only an
+    Auth0 browser session may approve."""
+    _user, headers = await _managed_auth0_headers(monkeypatch, name="Managed CLI Sibling User")
+
+    first = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "victim-laptop"},
+    )
+    approved = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{first.json()['session_id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    polled = await client.get(f"/api/v1/users/cli-auth/sessions/{first.json()['session_id']}")
+    cli_key = polled.json()["api_key"]
+
+    second = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "attacker-box"},
+    )
+    session_id = second.json()["session_id"]
+
+    sibling_approve = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session_id}/approve",
+        headers={"Authorization": f"Bearer {cli_key}"},
+    )
+
+    assert sibling_approve.status_code == 403
+    assert sibling_approve.json()["detail"] == "CLI approval requires a browser session"
+    repolled = await client.get(f"/api/v1/users/cli-auth/sessions/{session_id}")
+    assert repolled.json()["status"] == "pending"
 
 
 @pytest.mark.asyncio

@@ -297,6 +297,11 @@ async def approve_cli_auth_session(
     browser's own session key. Instead we mint a new named key scoped to this
     device, so each CLI install has its own revocable identity.
     """
+    # Under managed auth, only an Auth0 browser session (key_id is None) may
+    # approve. A CLI key must not be able to mint sibling CLI keys — that
+    # would let a leaked key outlive its own revocation.
+    if settings.AUTH0_ENABLED and current_user.get("key_id") is not None:
+        raise HTTPException(status_code=403, detail="CLI approval requires a browser session")
     pool = get_pool()
     await user_service.cleanup_expired_cli_auth_sessions()
     row = await pool.fetchrow(
