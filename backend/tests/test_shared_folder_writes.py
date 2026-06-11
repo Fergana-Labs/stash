@@ -3,6 +3,8 @@
 import pytest
 from httpx import AsyncClient
 
+from backend.services import storage_service
+
 from .conftest import unique_name
 
 
@@ -57,8 +59,15 @@ async def _share_folder(
 
 
 @pytest.mark.asyncio
-async def test_member_can_move_file_into_folder(client: AsyncClient, _db_pool):
+async def test_member_can_move_file_into_folder(client: AsyncClient, _db_pool, monkeypatch):
     """Regression: this PATCH 500'd (check_access called with a bad kwarg)."""
+
+    # The response serializer resolves a download URL; S3 isn't configured in CI.
+    async def _fake_url(storage_key: str) -> str:
+        return f"https://files.test/{storage_key}"
+
+    monkeypatch.setattr(storage_service, "get_file_url", _fake_url)
+
     api_key, _, user_id = await _register(client, "fmove_owner")
     ws = await _workspace(client, api_key)
     folder_id = await _folder(client, api_key, ws)
