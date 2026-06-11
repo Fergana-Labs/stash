@@ -385,7 +385,7 @@ async def _list_shared_skills(args: dict) -> dict:
             },
             "public_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "read"],
                 "default": "none",
             },
             "discoverable": {"type": "boolean", "default": False},
@@ -448,7 +448,7 @@ async def _create_shared_skill(args: dict) -> dict:
             },
             "public_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "read"],
             },
             "discoverable": {"type": "boolean"},
             "items": {
