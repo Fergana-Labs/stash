@@ -1227,7 +1227,7 @@ function TableEditorPageInner() {
 
         {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
-          <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto">
+          <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto overscroll-x-contain">
             <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
             {table.views.map((layout: TableView) => (
               <div key={layout.id} className="flex items-center group">
@@ -1271,7 +1271,7 @@ function TableEditorPageInner() {
 
         {/* Grid */}
         {table && (
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto overscroll-x-contain">
             <table className="w-full border-collapse min-w-max">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-surface border-b border-border">
