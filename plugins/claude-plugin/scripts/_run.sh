@@ -23,7 +23,12 @@ fi
 
 PY=""
 if command -v stash >/dev/null 2>&1; then
-  STASH_REAL="$(python3 -c "import os, shutil; print(os.path.realpath(shutil.which('stash')))" 2>/dev/null || true)"
+  # Resolve with bash's own PATH lookup, then only use python to follow the
+  # symlink. shutil.which inside python3 is wrong here: when python3 is a
+  # pyenv shim, pyenv prepends its version's bin dir to PATH, so a stale
+  # pip-installed `stash` in that dir shadows the real pipx/uv install.
+  STASH_BIN="$(command -v stash)"
+  STASH_REAL="$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$STASH_BIN" 2>/dev/null || true)"
   if [ -n "$STASH_REAL" ]; then
     CANDIDATE="$(dirname "$STASH_REAL")/python"
     if [ -x "$CANDIDATE" ]; then

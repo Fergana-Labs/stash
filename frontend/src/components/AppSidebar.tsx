@@ -23,7 +23,7 @@ import {
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 import AddSourceModal from "./integrations/AddSourceModal";
-import { labelForProvider, providerForSourceType } from "./integrations/connectors";
+import { connectorIcon, labelForProvider, providerForSourceType } from "./integrations/connectors";
 import {
   ActivityIcon,
   FileIcon,
@@ -47,6 +47,7 @@ interface WorkspaceNode extends Workspace {
 }
 
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
+const EXTERNAL_SOURCES_COLLAPSED_KEY = "stash_external_sources_collapsed";
 
 // A colored dot per source type, so the grouped Sources list reads as a set of
 // equal peers (matching the mockup). Falls back to neutral.
@@ -60,6 +61,7 @@ const SOURCE_DOT: Record<string, string> = {
   asana_project: "#f06a6a",
   gong_calls: "#7c3aed",
   snowflake: "#29b5e8",
+  twitter: "#0f1419",
 };
 
 function NavRow({
@@ -158,6 +160,18 @@ export default function AppSidebar({
   // Connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) for the active
   // workspace, keyed by workspace id. User-scoped — only the viewer's own.
   const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
+  // Collapses only the connected external sources; the native Agent Sessions
+  // and Files rows stay visible.
+  const [externalCollapsed, setExternalCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(EXTERNAL_SOURCES_COLLAPSED_KEY) === "1";
+  });
+
+  function toggleExternalCollapsed() {
+    const next = !externalCollapsed;
+    setExternalCollapsed(next);
+    localStorage.setItem(EXTERNAL_SOURCES_COLLAPSED_KEY, next ? "1" : "0");
+  }
 
   // The sidebar always renders a single workspace context. Priority:
   // (1) the workspace in the current URL, (2) the first owned workspace,
@@ -214,16 +228,21 @@ export default function AppSidebar({
       .catch(() => {});
   }, [activeWorkspaceKey]);
 
-  // The flat Sources list: the two native sources first, then the user's
-  // connected sources — every source an equal peer (per the mockup). Connected
-  // sources are managed on the integrations settings page.
-  const sourceRows = useMemo<SourceRow[]>(() => {
-    if (!activeWorkspaceKey) return [];
+  // The Sources list: the two native sources always visible, then the user's
+  // connected external sources behind a collapsible "External" header.
+  // Connected sources are managed on the integrations settings page.
+  const sourceRows = useMemo<{ native: SourceRow[]; connected: SourceRow[] }>(() => {
+    if (!activeWorkspaceKey) return { native: [], connected: [] };
     const ws = activeWorkspaceKey;
-    const filesActive = !!pathname.match(
-      new RegExp(`^/workspaces/${ws}/(files|folders|p|f)(?:/|$)`),
-    );
-    const sessionsActive = pathname.startsWith(`/workspaces/${ws}/sessions`);
+    // Canonical item paths (/p, /f, /sessions) carry no workspace; they
+    // count as active because the sidebar only renders them for the
+    // workspace the open item resolved to.
+    const filesActive =
+      !!pathname.match(new RegExp(`^/workspaces/${ws}/(files|folders)(?:/|$)`)) ||
+      !!pathname.match(/^\/(p|f)\//);
+    const sessionsActive =
+      pathname.startsWith(`/workspaces/${ws}/sessions`) ||
+      pathname.startsWith("/sessions/");
     const native: SourceRow[] = [
       {
         key: "sessions",
@@ -249,15 +268,22 @@ export default function AppSidebar({
       const provider = providerForSourceType[s.type] ?? s.type;
       if (seen.has(provider)) continue;
       seen.add(provider);
+      const logo = connectorIcon(provider);
       connected.push({
         key: provider,
         href: `/workspaces/${ws}/integrations/${provider}`,
         label: labelForProvider(provider),
-        icon: <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />,
+        icon: logo ? (
+          <span className="flex h-4 w-4 items-center justify-center [&_img]:h-4 [&_img]:w-4 [&_svg]:h-4 [&_svg]:w-4">
+            {logo}
+          </span>
+        ) : (
+          <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />
+        ),
         active: pathname.startsWith(`/workspaces/${ws}/integrations/${provider}`),
       });
     }
-    return [...native, ...connected];
+    return { native, connected };
   }, [activeWorkspaceKey, sourceMap, pathname]);
 
   const activeCartridgeSlug = pathname.match(/^\/cartridges\/([^/?#]+)/)?.[1] ?? null;
@@ -329,7 +355,7 @@ export default function AppSidebar({
           <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
             Sources
           </div>
-          {sourceRows.map((row) => (
+          {sourceRows.native.map((row) => (
             <NavRow
               key={row.key}
               href={row.href}
@@ -338,6 +364,31 @@ export default function AppSidebar({
               active={row.active}
             />
           ))}
+          {sourceRows.connected.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleExternalCollapsed}
+              className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+            >
+              <span
+                aria-hidden
+                className={`transition-transform ${externalCollapsed ? "-rotate-90" : ""}`}
+              >
+                ▾
+              </span>
+              External
+            </button>
+          )}
+          {!externalCollapsed &&
+            sourceRows.connected.map((row) => (
+              <NavRow
+                key={row.key}
+                href={row.href}
+                icon={row.icon}
+                label={row.label}
+                active={row.active}
+              />
+            ))}
           <button
             type="button"
             onClick={() => setAddSourceOpen(true)}

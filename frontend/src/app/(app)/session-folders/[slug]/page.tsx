@@ -62,7 +62,7 @@ export default function PublicSessionFolderPage({
           {sessions.map((s) => (
             <Link
               key={s.id}
-              href={`/workspaces/${folder.workspace_id}/sessions/${encodeURIComponent(s.session_id)}`}
+              href={`/sessions/${encodeURIComponent(s.session_id)}`}
               className="group flex items-center gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0 hover:bg-[var(--color-brand-50)]"
             >
               <span className="min-w-0 flex-1">

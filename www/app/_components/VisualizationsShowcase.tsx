@@ -183,25 +183,28 @@ export default function VisualizationsShowcase() {
             <span className="font-medium text-dim">actually visible.</span>
           </h2>
           <p className="max-w-[620px] text-[17px] leading-[1.55] text-dim">
-            Every session, page, and table gets embedded into one space. Stash
-            plots them so you can see how your team&apos;s knowledge clusters,
-            and which pages have become hubs the tree leans on.
+            Retrieval in Stash is hybrid: semantic search over embeddings, plus
+            a knowledge graph — the file tree your agents traverse. Both halves
+            are visual, so you can see how your team&apos;s knowledge clusters
+            by meaning, and which pages have become the hubs everything leans
+            on.
           </p>
         </div>
         <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div>
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">3D embedding projection.</span> Sessions,
-              pages, and tables projected with PCA. Clusters form
-              around topics — not folders.
+              <span className="text-ink">3D embedding projection — the semantic
+              half.</span> Sessions, pages, and tables embedded and projected
+              with PCA. Clusters form around topics — not folders.
             </p>
           </div>
           <div>
             <PageGraphMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">Files file tree.</span> Nodes are
-              pages, edges are <span className="font-mono text-brand">Stashes</span>.
+              <span className="text-ink">Knowledge graph — the structural
+              half.</span> The file tree your agents traverse: nodes are pages,
+              edges are <span className="font-mono text-brand">Stashes</span>.
               Orange nodes are the hubs your agents keep citing.
             </p>
           </div>
