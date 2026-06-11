@@ -49,7 +49,7 @@ async def publish(
             req.folder_id,
             current_user["id"],
             workspace_id=workspace_id,
-            require_write=True,
+            require="write",
         ):
             raise HTTPException(status_code=404, detail="Folder not found in this workspace")
         target_folder = folder

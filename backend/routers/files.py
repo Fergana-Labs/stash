@@ -239,7 +239,7 @@ async def upload_ws_file(
             folder_id,
             current_user["id"],
             workspace_id=workspace_id,
-            require_write=True,
+            require="write",
         )
         if not can_write_folder:
             raise HTTPException(status_code=404, detail="Folder not found")
@@ -423,7 +423,7 @@ async def update_ws_file(
             req.folder_id,
             current_user["id"],
             workspace_id=workspace_id,
-            require_write=True,
+            require="write",
         )
         if not can_write_folder:
             raise HTTPException(status_code=404, detail="Folder not found")
