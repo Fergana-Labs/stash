@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("Header account menu", () => {
-  it("shows the signed-in email and signs out", () => {
+  it("shows the signed-in email, username, and signs out", () => {
     const onLogout = vi.fn();
 
     render(<Header user={user} onLogout={onLogout} />);
@@ -41,6 +41,7 @@ describe("Header account menu", () => {
     fireEvent.click(screen.getByTitle("henry@example.com"));
 
     expect(screen.getByText("henry@example.com")).toBeInTheDocument();
+    expect(screen.getByText("@henry")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
 

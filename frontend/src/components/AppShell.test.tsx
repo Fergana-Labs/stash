@@ -203,7 +203,7 @@ describe("AppShell sidebar collapse", () => {
     expect(localStorage.getItem("stash_sidebar_width")).toBe("380");
   });
 
-  it("shows the signed-in email and signs out from the account menu", () => {
+  it("shows the signed-in email, username, and signs out from the account menu", () => {
     const onLogout = vi.fn();
 
     render(
@@ -220,6 +220,7 @@ describe("AppShell sidebar collapse", () => {
     fireEvent.click(screen.getByTitle("henry@example.com"));
 
     expect(screen.getByText("henry@example.com")).toBeInTheDocument();
+    expect(screen.getByText("@Henry")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
 

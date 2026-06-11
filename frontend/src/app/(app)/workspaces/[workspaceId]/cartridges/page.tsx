@@ -3,17 +3,26 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { StashesGridSkeleton } from "../../../../../components/SkeletonStates";
+import {
+  CardGridSkeleton,
+  StashesGridSkeleton,
+} from "../../../../../components/SkeletonStates";
 import { PinIcon, StashIcon } from "../../../../../components/StashIcons";
 import CartridgeCard from "../../../../../components/cartridge/CartridgeCard";
+import ForkCartridgeCardButton from "../../../../../components/cartridge/ForkCartridgeCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useShareModal } from "../../../../../lib/shareModalContext";
 import {
   addExternalCartridge,
   ApiError,
+  API_BASE,
   deleteCartridge,
+  dismissCartridgeInvite,
   displayVisibility,
+  listCartridgeInvites,
   listStashes,
+  type CartridgeInvite,
+  type PublicCartridgeCard,
   type WorkspaceCartridge,
 } from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
@@ -49,6 +58,8 @@ export default function WorkspaceStashesPage() {
   const pins = usePins("cartridges", workspaceId);
 
   const [cartridges, setStashes] = useState<WorkspaceCartridge[] | null>(null);
+  const [invites, setInvites] = useState<CartridgeInvite[]>([]);
+  const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<Visibility>("all");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
@@ -94,6 +105,24 @@ export default function WorkspaceStashesPage() {
   useEffect(() => {
     load();
   }, [load, shareVersion]);
+
+  // Pending invites are Cartridges others shared directly with you — surfaced in
+  // the "Shared with you" section. Non-critical: failure leaves the list empty.
+  useEffect(() => {
+    listCartridgeInvites()
+      .then(setInvites)
+      .catch(() => setInvites([]));
+  }, [shareVersion]);
+
+  async function dismissInvite(invite: CartridgeInvite) {
+    setBusyInviteId(invite.id);
+    try {
+      await dismissCartridgeInvite(invite.id);
+      setInvites((current) => current.filter((item) => item.id !== invite.id));
+    } finally {
+      setBusyInviteId(null);
+    }
+  }
 
   // Visibility filter applies across both axes; the section split (yours vs
   // forked) is the origin axis, kept independent of it.
@@ -163,11 +192,7 @@ export default function WorkspaceStashesPage() {
               Cartridges
             </h1>
             <p className="mt-0.5 text-[12.5px] text-muted">
-              Publishable bundles you own. Browse public ones in{" "}
-              <Link href="/discover" className="text-[var(--color-brand-600)] hover:underline">
-                Discover
-              </Link>
-              .
+              Your knowledge bundles — yours, shared with you, and the public library.
             </p>
           </div>
           <button
@@ -204,55 +229,62 @@ export default function WorkspaceStashesPage() {
           <CartridgeViewToggle view={view} onChange={setViewPersisted} />
         </div>
 
-        {cartridges.length === 0 ? (
-          <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
-            No Cartridges yet.
-          </div>
-        ) : (
-          <>
-            <CartridgeSection
-              title="Your Cartridges"
-              count={native.length}
-              emptyHint="None match this visibility."
-            >
-              <CartridgeCollection
-                cartridges={native}
-                startIndex={0}
-                view={view}
-                isPinned={isPinned}
-                onTogglePin={(s) => pins.toggle(s.id)}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-                embedded
-              />
-            </CartridgeSection>
+        <CartridgeSection
+          title="Your cartridges"
+          count={native.length}
+          emptyHint={cartridges.length === 0 ? "No cartridges yet." : "None match this visibility."}
+        >
+          <CartridgeCollection
+            cartridges={native}
+            startIndex={0}
+            view={view}
+            isPinned={isPinned}
+            onTogglePin={(s) => pins.toggle(s.id)}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            embedded
+          />
+        </CartridgeSection>
 
-            {/* Origin axis: Cartridges forked in from other workspaces. Kept a
-                separate section (not a peer filter) and always shown so the
-                add-by-link entry point stays reachable. */}
-            <CartridgeSection
-              title="Forked from others"
-              count={forked.length}
-              emptyHint={visibility === "all" ? null : "None match this visibility."}
-              action={
-                <ExternalCartridgeLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
-              }
-            >
-              {forked.length > 0 && (
-                <CartridgeCollection
-                  cartridges={forked}
-                  startIndex={native.length}
-                  view={view}
-                  isPinned={isPinned}
-                  onTogglePin={(s) => pins.toggle(s.id)}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelect}
-                  embedded
+        {/* Cartridges others gave you: forked-in copies plus pending invites
+            (view access shared directly with you). The add-by-link entry point
+            lives here too. */}
+        <CartridgeSection
+          title="Shared with you"
+          count={forked.length + invites.length}
+          emptyHint={visibility === "all" ? null : "None match this visibility."}
+          action={
+            <ExternalCartridgeLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
+          }
+        >
+          {invites.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {invites.map((invite) => (
+                <SharedInviteCard
+                  key={invite.id}
+                  invite={invite}
+                  busy={busyInviteId === invite.id}
+                  onDismiss={() => void dismissInvite(invite)}
                 />
-              )}
-            </CartridgeSection>
-          </>
-        )}
+              ))}
+            </div>
+          )}
+          {forked.length > 0 && (
+            <CartridgeCollection
+              cartridges={forked}
+              startIndex={native.length}
+              view={view}
+              isPinned={isPinned}
+              onTogglePin={(s) => pins.toggle(s.id)}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              embedded
+              className={invites.length > 0 ? "mt-3" : undefined}
+            />
+          )}
+        </CartridgeSection>
+
+        <DiscoverSection workspaceId={workspaceId} />
       </div>
 
       {selectedStashes.length > 0 && (
@@ -444,6 +476,222 @@ function PlusGlyph() {
   );
 }
 
+// A pending invite rendered as a grid peer of the Cartridge cards. View opens
+// the Cartridge; Dismiss removes the invite (the access stays — it can still be
+// reached by link). Mirrors the dismiss logic in CartridgeInviteCenter.
+function SharedInviteCard({
+  invite,
+  busy,
+  onDismiss,
+}: {
+  invite: CartridgeInvite;
+  busy: boolean;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="flex flex-col rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center gap-2">
+        <span className="text-[var(--color-brand-600)]">
+          <StashIcon className="text-[18px]" />
+        </span>
+        <h3 className="min-w-0 flex-1 truncate font-display text-[14px] font-semibold text-foreground">
+          {invite.cartridge_title}
+        </h3>
+        <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
+          INVITE
+        </span>
+      </div>
+      <p className="mt-2 line-clamp-2 flex-1 text-[12px] leading-relaxed text-muted">
+        {invite.cartridge_description || "No description."}
+      </p>
+      <p className="mt-2 text-[11px] text-muted">
+        Shared by {invite.invited_by_display_name} · from {invite.source_workspace_name}
+      </p>
+      <div className="mt-3 flex justify-end gap-1.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDismiss}
+          className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[12px] text-muted hover:text-foreground disabled:opacity-50"
+        >
+          Dismiss
+        </button>
+        <Link
+          href={`/cartridges/${invite.cartridge_slug}`}
+          className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+        >
+          View
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// --- Discover (public library), inline ---
+
+const DISCOVER_SORTS = ["trending", "newest", "popular"] as const;
+type DiscoverSort = (typeof DISCOVER_SORTS)[number];
+
+function discoverSortLabel(sort: DiscoverSort): string {
+  if (sort === "popular") return "Most viewed";
+  if (sort === "trending") return "Trending";
+  return "Newest";
+}
+
+async function fetchPublicCartridges(params: {
+  q?: string;
+  sort: DiscoverSort;
+}): Promise<PublicCartridgeCard[]> {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) qs.set(key, value);
+  }
+  const res = await fetch(`${API_BASE}/api/v1/discover/cartridges${qs.size ? `?${qs}` : ""}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.cartridges ?? [];
+}
+
+// The public marketplace as a section of the Cartridges page. Self-contained:
+// owns its own search/sort/fetch and isn't touched by the page's visibility
+// filter, view toggle, pins, or selection (those are for Cartridges you hold).
+function DiscoverSection({ workspaceId }: { workspaceId: string }) {
+  const [sort, setSort] = useState<DiscoverSort>("trending");
+  const [query, setQuery] = useState("");
+  const [cartridges, setCartridges] = useState<PublicCartridgeCard[]>([]);
+  const [fetching, setFetching] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFetching(true);
+    const handle = setTimeout(() => {
+      fetchPublicCartridges({ q: query || undefined, sort })
+        .then((list) => {
+          if (!cancelled) setCartridges(list);
+        })
+        .finally(() => {
+          if (!cancelled) setFetching(false);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [query, sort]);
+
+  return (
+    <section className="mt-8">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-baseline gap-2">
+          <h2 className="m-0 font-display text-[14px] font-semibold">Discover</h2>
+          <span className="sys-label" style={{ fontSize: 10.5 }}>
+            public library
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex w-[220px] items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
+            <SearchGlyph />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search public Cartridges…"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
+            />
+          </div>
+          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
+            {DISCOVER_SORTS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setSort(option)}
+                className={
+                  "rounded-md px-2.5 py-[3px] text-[12px] " +
+                  (sort === option
+                    ? "bg-raised font-semibold text-foreground"
+                    : "text-muted hover:text-foreground")
+                }
+              >
+                {discoverSortLabel(option)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {fetching ? (
+        <CardGridSkeleton />
+      ) : cartridges.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted">
+          No public Cartridges match.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cartridges.map((stash, i) => {
+            const trending = sort === "trending" && i < 2;
+            return (
+              <CartridgeCard
+                key={stash.id}
+                stash={{
+                  id: stash.id,
+                  slug: stash.slug,
+                  title: stash.title,
+                  description: stash.description,
+                  cover_image_url: stash.cover_image_url,
+                  access: "public",
+                  item_count: stash.item_count,
+                  updated_at: stash.updated_at,
+                }}
+                cover={COVERS[i % COVERS.length]}
+                badge={
+                  trending ? (
+                    <span className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white">
+                      ↗ trending
+                    </span>
+                  ) : undefined
+                }
+                cornerAction={
+                  stash.workspace_id === workspaceId ? undefined : (
+                    <ForkCartridgeCardButton
+                      slug={stash.slug}
+                      sourceWorkspaceId={stash.workspace_id}
+                    />
+                  )
+                }
+                footer={
+                  <>
+                    <span className="min-w-0 truncate">
+                      {stash.owner_display_name}
+                      {stash.workspace_name && (
+                        <>
+                          {" · "}
+                          <span className="font-mono text-dim">{stash.workspace_name}</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
+                      Open →
+                    </span>
+                  </>
+                }
+              />
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SearchGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
 
 function CartridgeCollection({
   cartridges,
@@ -454,6 +702,7 @@ function CartridgeCollection({
   selectedIds,
   onToggleSelect,
   embedded,
+  className,
 }: {
   cartridges: WorkspaceCartridge[];
   startIndex: number;
@@ -463,13 +712,16 @@ function CartridgeCollection({
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   embedded?: boolean;
+  className?: string;
 }) {
+  const extra = className ? ` ${className}` : "";
   if (view === "list") {
     return (
       <div
         className={
           (embedded ? "" : "mt-4 ") +
-          "overflow-hidden rounded-xl border border-border bg-surface"
+          "overflow-hidden rounded-xl border border-border bg-surface" +
+          extra
         }
       >
         {cartridges.map((stash) => (
@@ -490,7 +742,8 @@ function CartridgeCollection({
     <div
       className={
         (embedded ? "" : "mt-4 ") +
-        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" +
+        extra
       }
     >
       {cartridges.map((stash, i) => (

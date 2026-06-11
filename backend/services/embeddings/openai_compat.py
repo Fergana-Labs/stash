@@ -14,10 +14,9 @@ from .base import BaseEmbedder, TransientEmbeddingError
 
 logger = logging.getLogger(__name__)
 
-# OpenAI-compatible endpoints cap each input at 8192 tokens. We approximate
-# ~4 chars/token (matching the batch-sharding budget) and clip at 30k chars
-# (~7500 tokens) so one oversize transcript doesn't fail the whole batch.
-_PER_INPUT_CHAR_CAP = 30_000
+# OpenAI-compatible endpoints cap each input at 8192 tokens. Logs, code, and
+# IDs can get close to one token per char, so keep a real margin.
+_PER_INPUT_CHAR_CAP = 6_000
 
 
 class OpenAICompatEmbedder(BaseEmbedder):
