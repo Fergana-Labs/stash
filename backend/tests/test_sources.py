@@ -807,6 +807,32 @@ async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_slack_sync_without_channels_records_sync_error(client: AsyncClient):
+    from backend.tasks import sources as sources_task
+
+    # A Slack source with no channel allowlist must not report a successful
+    # sync that silently ingested nothing — the failure has to be visible.
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={},
+    )
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+
+    assert result["status"] == "failed"
+    sources = await source_service.list_sources(ws, owner_id)
+    slack = next(s for s in sources if s["type"] == "slack")
+    assert slack["sync_status"] == "failed"
+    assert "no allowed channels configured" in slack["sync_error"]
+
+
+@pytest.mark.asyncio
 async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     from backend.integrations.slack.indexer import ingest_slack_message
 
