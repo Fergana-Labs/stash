@@ -20,6 +20,7 @@ from ..models import (
     SkillPublicResponse,
     SkillResponse,
     SkillUpdateRequest,
+    UserSearchResult,
 )
 from ..services import (
     permission_service,
@@ -281,6 +282,32 @@ async def list_skill_members(
     await _require_can_manage_skill(skill_id, current_user["id"])
     members = await shared_skill_service.list_members(skill_id)
     return SkillMembersResponse(members=[SkillMemberResponse(**member) for member in members])
+
+
+@public_router.get("/{skill_id}/member-search", response_model=list[UserSearchResult])
+async def search_skill_member_candidates(
+    skill_id: UUID,
+    q: str = Query(..., min_length=1, max_length=64),
+    current_user: dict = Depends(get_current_user),
+):
+    """Candidate members for the share dialog: the skill's workspace members.
+    Authorized by skill admin rights, not workspace membership — a skill admin
+    from outside the workspace manages members too."""
+    skill = await _require_can_manage_skill(skill_id, current_user["id"])
+    rows = await get_pool().fetch(
+        "SELECT u.id, u.name, u.display_name "
+        "FROM workspace_members wm "
+        "JOIN users u ON u.id = wm.user_id "
+        "WHERE wm.workspace_id = $1 "
+        "AND (u.name ILIKE $2 OR u.display_name ILIKE $2) "
+        "AND u.id != $3 "
+        "ORDER BY u.display_name, u.name "
+        "LIMIT 20",
+        skill["workspace_id"],
+        f"%{q}%",
+        current_user["id"],
+    )
+    return [UserSearchResult(**dict(r)) for r in rows]
 
 
 @public_router.post("/{skill_id}/members", response_model=SkillMemberResponse, status_code=201)

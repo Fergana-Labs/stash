@@ -20,7 +20,7 @@ import {
   getMe,
   getPublicSkill,
   listSkillMembers,
-  searchUsers,
+  searchSkillMemberCandidates,
   updateSkill,
   type PublicSkillDetail,
 } from "../../../../lib/api";
@@ -70,7 +70,7 @@ vi.mock("../../../../lib/api", () => ({
   listMySessions: vi.fn(),
   listSkillMembers: vi.fn(),
   removeSkillMember: vi.fn(),
-  searchUsers: vi.fn(),
+  searchSkillMemberCandidates: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
   getActivityTimeline: vi.fn(),
@@ -188,7 +188,7 @@ describe("SkillPageClient sharing", () => {
         created_at: "2026-05-12T00:00:00Z",
       },
     ]);
-    vi.mocked(searchUsers).mockResolvedValue([
+    vi.mocked(searchSkillMemberCandidates).mockResolvedValue([
       { id: "user-3", name: "alex", display_name: "Alex" },
     ]);
     vi.mocked(updateSkill).mockImplementation(async (_skillId, updates) => ({
@@ -342,7 +342,7 @@ describe("SkillPageClient sharing", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Search" }));
     fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
 
-    expect(searchUsers).toHaveBeenCalledWith("alex", "workspace-1");
+    expect(searchSkillMemberCandidates).toHaveBeenCalledWith("skill-1", "alex");
     await waitFor(() =>
       expect(addSkillMember).toHaveBeenCalledWith("skill-1", "user-3", "read"),
     );

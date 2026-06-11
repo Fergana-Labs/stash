@@ -245,12 +245,6 @@ export async function createMyKey(name: string): Promise<ApiKeyCreated> {
   });
 }
 
-export async function searchUsers(query: string, workspaceId: string): Promise<UserSearchResult[]> {
-  return apiFetch(
-    `/api/v1/users/search?q=${encodeURIComponent(query)}&workspace_id=${workspaceId}`
-  );
-}
-
 // --- Workspaces ---
 
 export async function createWorkspace(name: string, description?: string): Promise<Workspace> {
@@ -1617,6 +1611,15 @@ export async function updateSkill(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+export async function searchSkillMemberCandidates(
+  skillId: string,
+  query: string
+): Promise<UserSearchResult[]> {
+  return apiFetch(
+    `/api/v1/skills/${skillId}/member-search?q=${encodeURIComponent(query)}`
+  );
 }
 
 export async function listSkillMembers(skillId: string): Promise<SkillMember[]> {

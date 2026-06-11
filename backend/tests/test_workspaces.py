@@ -83,9 +83,15 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_user_search_is_scoped_to_request_workspace(client: AsyncClient, pool):
-    owner_key, _ = await _register(client, "webflow_search_owner")
+async def test_skill_member_search_is_scoped_and_open_to_external_skill_admins(
+    client: AsyncClient, pool
+):
+    """Member search for the skill share dialog only returns the skill's
+    workspace members (no global user enumeration), and is authorized by skill
+    admin rights — a skill admin outside the workspace manages members too."""
+    owner_key, owner = await _register(client, "webflow_search_owner")
     teammate_key, teammate = await _register(client, "webflow_search_teammate")
+    external_key, external = await _register(client, "webflow_search_external")
     stranger_key, stranger = await _register(client, "webflow_search_stranger")
     workspace = (
         await client.post(
@@ -99,29 +105,55 @@ async def test_user_search_is_scoped_to_request_workspace(client: AsyncClient, p
         UUID(workspace["id"]),
         UUID(teammate["id"]),
     )
-
-    search = await client.get(
-        "/api/v1/users/search",
-        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+    skill = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/skills",
+            json={
+                "title": "Webflow demo",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [],
+            },
+            headers=_auth(owner_key),
+        )
+    ).json()
+    # The external admin is NOT a member of the skill's workspace.
+    granted = await client.post(
+        f"/api/v1/skills/{skill['id']}/members",
+        json={"user_id": external["id"], "permission": "admin"},
         headers=_auth(owner_key),
     )
+    assert granted.status_code == 201
+
+    owner_search = await client.get(
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
+        headers=_auth(owner_key),
+    )
+    external_search = await client.get(
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
+        headers=_auth(external_key),
+    )
     stranger_search = await client.get(
-        "/api/v1/users/search",
-        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
         headers=_auth(stranger_key),
     )
     teammate_search = await client.get(
-        "/api/v1/users/search",
-        params={"q": "webflow_search", "workspace_id": workspace["id"]},
+        f"/api/v1/skills/{skill['id']}/member-search",
+        params={"q": "webflow_search"},
         headers=_auth(teammate_key),
     )
 
-    assert search.status_code == 200
-    assert {row["id"] for row in search.json()} == {teammate["id"]}
-    assert stranger["id"] not in {row["id"] for row in search.json()}
-    assert stranger_search.status_code == 404
-    assert teammate_search.status_code == 200
-    assert {row["id"] for row in teammate_search.json()} == {workspace["creator_id"]}
+    assert owner_search.status_code == 200
+    assert {row["id"] for row in owner_search.json()} == {teammate["id"]}
+    assert external_search.status_code == 200
+    assert {row["id"] for row in external_search.json()} == {owner["id"], teammate["id"]}
+    assert stranger["id"] not in {row["id"] for row in external_search.json()}
+    # Non-admins (workspace member or stranger) cannot enumerate members.
+    assert stranger_search.status_code == 403
+    assert teammate_search.status_code == 403
 
 
 @pytest.mark.asyncio

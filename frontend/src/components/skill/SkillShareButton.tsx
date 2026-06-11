@@ -8,7 +8,7 @@ import {
   getMe,
   listSkillMembers,
   removeSkillMember,
-  searchUsers,
+  searchSkillMemberCandidates,
   updateSkill,
   type PublicSkillDetail,
   type SkillGeneralPermission,
@@ -269,7 +269,7 @@ export default function SkillShareButton({
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      setUserResults(await searchUsers(query, stash.workspace_id));
+      setUserResults(await searchSkillMemberCandidates(skill.id, query));
     } catch (e) {
       setMemberMessage(e instanceof Error ? e.message : "Could not search users.");
     } finally {
