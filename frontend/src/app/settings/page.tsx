@@ -206,7 +206,7 @@ function ActiveSessions() {
           <p className="text-xs text-muted mt-0.5">
             {AUTH0_ENABLED
               ? "CLI installs have their own revocable keys. Revoke anything you don't recognize."
-              : "Each browser tab and CLI install holds its own key. Create a personal key to use the Stash API or CLI directly, and revoke anything you don't recognize."}
+              : "Each browser tab and CLI install holds its own key. Create a personal key to use the Skill API or CLI directly, and revoke anything you don't recognize."}
           </p>
         </div>
         <button

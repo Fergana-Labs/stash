@@ -7,12 +7,10 @@ users, new Google-OAuth users silently skip onboarding.
 """
 
 import pytest
-from fastapi import FastAPI, HTTPException
-from httpx import ASGITransport, AsyncClient
+from fastapi import HTTPException
 from jose.exceptions import JWTError
 
 from backend.managed.auth0 import jwt as auth0_jwt
-from backend.managed.auth0 import router as auth0_router
 from backend.managed.auth0 import users as auth0_users
 from backend.managed.auth0.jwt import validate_auth0_token
 from backend.managed.auth0.users import get_or_create_user_row_from_auth0
@@ -83,21 +81,6 @@ async def test_browser_session_provisioning_does_not_mint_api_key(pool):
         user["id"],
     )
     assert key_count == 0
-
-
-@pytest.mark.asyncio
-async def test_auth0_exchange_endpoint_does_not_mint_api_keys():
-    app = FastAPI()
-    app.include_router(auth0_router)
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post(
-            "/api/v1/auth0/exchange",
-            headers={"Authorization": "Bearer auth0-token"},
-        )
-
-    assert resp.status_code == 410
-    assert "API key exchange is disabled" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio

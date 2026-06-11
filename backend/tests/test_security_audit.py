@@ -1,3 +1,4 @@
+import hashlib
 import json
 from uuid import UUID
 
@@ -7,6 +8,15 @@ from httpx import AsyncClient
 from backend.services import security_audit_service, source_service
 
 from .conftest import unique_name
+
+
+def test_hash_value_is_keyed_not_plain_sha256():
+    """Audited values are often low-entropy (emails, IPv4s). A plain SHA-256
+    can be reversed offline by hashing guesses, so redaction must be keyed."""
+    assert security_audit_service.hash_value(None) is None
+    assert (
+        security_audit_service.hash_value("127.0.0.1") != hashlib.sha256(b"127.0.0.1").hexdigest()
+    )
 
 
 def _auth(api_key: str) -> dict:
@@ -54,9 +64,17 @@ async def test_security_events_are_workspace_admin_only(
         f"/api/v1/workspaces/{ws}/security-events",
         headers=_auth(editor_key),
     )
+    # Non-members get 404 like every other workspace route, so the endpoint
+    # never confirms a workspace's existence to outsiders.
+    stranger_key, _ = await _register(client, "audit_stranger")
+    stranger_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=_auth(stranger_key),
+    )
 
     assert owner_resp.status_code == 200
     assert editor_resp.status_code == 403
+    assert stranger_resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -123,7 +141,7 @@ async def test_security_event_reads_are_audited_with_hashed_filters(
 
 
 @pytest.mark.asyncio
-async def test_cartridge_member_changes_are_audited_without_recipient_or_content(
+async def test_skill_member_changes_are_audited_without_recipient_or_content(
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_stash_owner")
@@ -155,7 +173,7 @@ async def test_cartridge_member_changes_are_audited_without_recipient_or_content
 
     stash_title = "Webflow managed product demo"
     stash_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges",
+        f"/api/v1/workspaces/{ws}/skills",
         json={
             "title": stash_title,
             "workspace_permission": "none",
@@ -168,12 +186,12 @@ async def test_cartridge_member_changes_are_audited_without_recipient_or_content
     stash_id = UUID(stash_resp.json()["id"])
 
     granted = await client.post(
-        f"/api/v1/cartridges/{stash_id}/members",
+        f"/api/v1/skills/{stash_id}/members",
         json={"user_id": str(recipient_id), "permission": "read"},
         headers=headers,
     )
     removed = await client.delete(
-        f"/api/v1/cartridges/{stash_id}/members/{recipient_id}",
+        f"/api/v1/skills/{stash_id}/members/{recipient_id}",
         headers=headers,
     )
     events_resp = await client.get(
@@ -186,19 +204,19 @@ async def test_cartridge_member_changes_are_audited_without_recipient_or_content
     assert events_resp.status_code == 200
 
     events = events_resp.json()["events"]
-    granted_event = next(event for event in events if event["action"] == "cartridge.member_granted")
-    removed_event = next(event for event in events if event["action"] == "cartridge.member_removed")
+    granted_event = next(event for event in events if event["action"] == "skill.member_granted")
+    removed_event = next(event for event in events if event["action"] == "skill.member_removed")
     recipient_hash = security_audit_service.hash_value(str(recipient_id))
 
     assert granted_event["actor_user_id"] == str(owner_id)
-    assert granted_event["target_type"] == "cartridge"
+    assert granted_event["target_type"] == "skill"
     assert granted_event["target_id"] == str(stash_id)
     assert granted_event["metadata"] == {
         "permission": "read",
         "recipient_user_hash": recipient_hash,
     }
     assert removed_event["actor_user_id"] == str(owner_id)
-    assert removed_event["target_type"] == "cartridge"
+    assert removed_event["target_type"] == "skill"
     assert removed_event["target_id"] == str(stash_id)
     assert removed_event["metadata"] == {"recipient_user_hash": recipient_hash}
 
@@ -569,11 +587,11 @@ async def test_workspace_invite_and_membership_changes_are_audited_without_token
         "removed_share_count": 0,
         "removed_granted_share_count": 0,
         "removed_share_invite_count": 0,
-        "removed_cartridge_member_count": 0,
-        "removed_granted_cartridge_member_count": 0,
-        "removed_cartridge_invite_count": 0,
-        "removed_sent_cartridge_invite_count": 0,
-        "removed_cartridge_count": 0,
+        "removed_skill_member_count": 0,
+        "removed_granted_skill_member_count": 0,
+        "removed_skill_invite_count": 0,
+        "removed_sent_skill_invite_count": 0,
+        "removed_skill_count": 0,
     }
     assert revoked_event["actor_user_id"] == str(owner_id)
     assert revoked_event["metadata"] == {"invite_token_id_hash": second_invite_hash}
@@ -650,6 +668,52 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient):
+    """Agent tools call source_service directly — the audit trail must cover
+    that front door too, not just the REST endpoints, or a prompt-injected
+    agent could exfiltrate source content without leaving a trace."""
+    api_key, user_id = await _register(client, "audit_agent")
+    ws = await _create_workspace(client, api_key)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "github_repo",
+            "external_ref": "webflow/confidential-roadmap",
+            "display_name": "webflow/confidential-roadmap",
+        },
+        headers=_auth(api_key),
+    )
+    assert added.status_code == 200
+    source_id = UUID(added.json()["id"])
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path="docs/launch.md",
+        name="launch.md",
+        content="secret launch plan",
+    )
+
+    results = await source_service.search_all(ws, user_id, "secret launch", source=str(source_id))
+    source_ok, doc = await source_service.source_document(
+        ws, user_id, str(source_id), "docs/launch.md"
+    )
+    assert results
+    assert source_ok and doc is not None
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=_auth(api_key),
+    )
+    events = events_resp.json()["events"]
+    search_event = next(event for event in events if event["action"] == "source.searched")
+    read_event = next(event for event in events if event["action"] == "source.document_read")
+    assert search_event["target_id"] == str(source_id)
+    assert read_event["target_id"] == str(source_id)
+
+
+@pytest.mark.asyncio
 async def test_integration_disconnect_audits_workspace_source_purge(
     client: AsyncClient,
     monkeypatch,
@@ -690,6 +754,13 @@ async def test_integration_disconnect_audits_workspace_source_purge(
     assert deleted["provider"] == "slack"
     assert deleted["source_type"] == "slack"
     assert deleted["metadata"] == {"reason": "integration_disconnect"}
+    # The credential revocation itself must be visible through the only read
+    # surface (per-workspace), not written as an unreadable NULL-workspace row.
+    disconnected_event = next(
+        event for event in events if event["action"] == "integration.disconnected"
+    )
+    assert disconnected_event["provider"] == "slack"
+    assert disconnected_event["metadata"] == {"removed_sources": 1}
 
 
 @pytest.mark.asyncio
@@ -789,3 +860,65 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
     assert "Webflow board notes" not in event_json
     assert "file-secret-key" not in event_json
     assert "artifact-secret-key" not in event_json
+
+
+@pytest.mark.asyncio
+async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
+    """Batch endpoints (and agent tools) call the services directly, skipping
+    the single-item routers — the audit trail must cover that front door too,
+    or a bulk deletion leaves no trace."""
+    api_key, owner_id = await _register(client, "audit_batch")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+
+    page = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": "Bulk target", "content": "doomed"},
+        headers=headers,
+    )
+    assert page.status_code == 201
+    page_id = page.json()["id"]
+    items = {"items": [{"object_type": "page", "object_id": page_id}]}
+
+    deleted = await client.post(
+        f"/api/v1/workspaces/{ws}/batch/delete", json=items, headers=headers
+    )
+    restored = await client.post(
+        f"/api/v1/workspaces/{ws}/batch/restore", json=items, headers=headers
+    )
+    assert deleted.status_code == 200 and not deleted.json()["errors"]
+    assert restored.status_code == 200 and not restored.json()["errors"]
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+    by_action = {event["action"]: event for event in events_resp.json()["events"]}
+    for action in ["content.page_deleted", "content.page_restored"]:
+        assert by_action[action]["target_id"] == page_id
+        assert by_action[action]["actor_user_id"] == str(owner_id)
+
+
+@pytest.mark.asyncio
+async def test_workspace_delete_records_purge_event(client: AsyncClient, _db_pool):
+    """Deleting a workspace destroys everything in it — the most destructive
+    action must leave an audit row. workspace_id stays NULL because the FK
+    cascade would otherwise erase the row with the workspace."""
+    api_key, owner_id = await _register(client, "audit_ws_purge")
+    ws = await _create_workspace(client, api_key)
+
+    deleted = await client.delete(f"/api/v1/workspaces/{ws}", headers=_auth(api_key))
+    assert deleted.status_code == 204
+
+    row = await _db_pool.fetchrow(
+        "SELECT workspace_id, actor_user_id, metadata FROM security_audit_events "
+        "WHERE action = 'content.workspace_purged' AND target_id = $1",
+        str(ws),
+    )
+    assert row is not None
+    assert row["workspace_id"] is None
+    assert row["actor_user_id"] == owner_id
+    metadata = row["metadata"]
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+    assert metadata == {"storage_key_count": 0}

@@ -1,4 +1,4 @@
-"""Sharing: grant a principal (user or cartridge) access to an object.
+"""Sharing: grant a principal (user or skill) access to an object.
 
 Primary path is sharing a folder/file/session with a person by email. Only the
 object's owner (its workspace member) may share it. Folder/session-folder shares
@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from ..database import get_pool
 from . import permission_service, security_audit_service, workspace_service
 
-_SHAREABLE = {"file", "page", "folder", "session", "session_folder"}
+_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table"}
 _PERMISSIONS = {"read", "comment", "write"}
 
 
@@ -144,8 +144,15 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
     if not email:
         return 0
     pool = get_pool()
+    # An invite that expired before signup must not grant anything — drop it.
+    await pool.execute(
+        "DELETE FROM share_invites WHERE lower(email) = lower($1) "
+        "AND expires_at IS NOT NULL AND expires_at <= now()",
+        email,
+    )
     invites = await pool.fetch(
-        "SELECT id, workspace_id, object_type, object_id, email, permission, created_by "
+        "SELECT id, workspace_id, object_type, object_id, email, permission, created_by, "
+        "expires_at "
         "FROM share_invites WHERE lower(email) = lower($1)",
         email,
     )
@@ -154,13 +161,15 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
         if inv["created_by"] == user_id:
             await pool.execute("DELETE FROM share_invites WHERE id = $1", inv["id"])
             continue
+        # The converted share keeps the invite's time bound; permission_service
+        # enforces shares.expires_at at read time.
         await pool.execute(
             """
             INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
-                                principal_id, permission, created_by)
-            VALUES ($1, $2, $3, 'user', $4, $5, $6)
+                                principal_id, permission, created_by, expires_at)
+            VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
             ON CONFLICT (object_type, object_id, principal_type, principal_id)
-            DO UPDATE SET permission = EXCLUDED.permission
+            DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
             """,
             inv["workspace_id"],
             inv["object_type"],
@@ -168,6 +177,7 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
             user_id,
             inv["permission"],
             inv["created_by"],
+            inv["expires_at"],
         )
         await pool.execute("DELETE FROM share_invites WHERE id = $1", inv["id"])
         await _record_share_event(
@@ -253,10 +263,10 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         SELECT s.principal_type, s.principal_id, s.permission, s.expires_at,
                (s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,
                u.name AS user_name, u.display_name AS user_display, u.email AS user_email,
-               c.title AS cartridge_title
+               c.title AS skill_title
         FROM shares s
         LEFT JOIN users u ON s.principal_type = 'user' AND u.id = s.principal_id
-        LEFT JOIN cartridges c ON s.principal_type = 'cartridge' AND c.id = s.principal_id
+        LEFT JOIN skills c ON s.principal_type = 'skill' AND c.id = s.principal_id
         WHERE s.object_type = $1 AND s.object_id = $2
         ORDER BY s.created_at
         """,
@@ -269,7 +279,7 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
             "principal_type": r["principal_type"],
             "principal_id": str(r["principal_id"]),
             "permission": r["permission"],
-            "label": r["user_display"] or r["user_name"] or r["cartridge_title"] or "",
+            "label": r["user_display"] or r["user_name"] or r["skill_title"] or "",
             "email": r["user_email"],
             "pending": False,
             "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,

@@ -1,7 +1,6 @@
 import secrets
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..auth import create_api_key, get_current_user, hash_api_key
 from ..config import settings
@@ -17,32 +16,13 @@ from ..models import (
     UserProfile,
     UserRegisterRequest,
     UserRegisterResponse,
-    UserSearchResult,
     UserUpdateRequest,
 )
-from ..services import invite_token_service, user_service, workspace_service
+from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
-_CLI_AUTH_TTL_INTERVAL = "10 minutes"
-
-
-async def _cleanup_expired_cli_auth_sessions(pool) -> None:
-    expired = await pool.fetch(
-        "SELECT api_key FROM cli_auth_sessions "
-        f"WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}' "
-        "AND api_key IS NOT NULL"
-    )
-    for row in expired:
-        await pool.execute(
-            "UPDATE user_api_keys SET revoked_at = now() "
-            "WHERE key_hash = $1 AND revoked_at IS NULL",
-            hash_api_key(row["api_key"]),
-        )
-
-    await pool.execute(
-        f"DELETE FROM cli_auth_sessions WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}'"
-    )
+_CLI_AUTH_TTL_INTERVAL = user_service.CLI_AUTH_TTL_INTERVAL
 
 
 def _require_password_auth() -> None:
@@ -144,35 +124,6 @@ async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_cur
     return UserProfile(**updated)
 
 
-@router.get("/search", response_model=list[UserSearchResult])
-async def search_users(
-    q: str = Query(..., min_length=1, max_length=64),
-    workspace_id: UUID = Query(...),
-    current_user: dict = Depends(get_current_user),
-):
-    """Search workspace members by name or display name."""
-    from ..database import get_pool
-
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
-
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT u.id, u.name, u.display_name "
-        "FROM workspace_members wm "
-        "JOIN users u ON u.id = wm.user_id "
-        "WHERE wm.workspace_id = $1 "
-        "AND (u.name ILIKE $2 OR u.display_name ILIKE $2) "
-        "AND u.id != $3 "
-        "ORDER BY u.display_name, u.name "
-        "LIMIT 20",
-        workspace_id,
-        f"%{q}%",
-        current_user["id"],
-    )
-    return [UserSearchResult(**dict(r)) for r in rows]
-
-
 # ---------------------------------------------------------------------------
 # API keys — list and revoke
 # ---------------------------------------------------------------------------
@@ -258,7 +209,7 @@ async def create_cli_auth_session(request: Request):
         device_name = str(body.get("device_name") or "")[:128]
     except Exception:
         pass
-    await _cleanup_expired_cli_auth_sessions(pool)
+    await user_service.cleanup_expired_cli_auth_sessions()
     await pool.execute(
         "INSERT INTO cli_auth_sessions (session_id, device_name) VALUES ($1, $2)",
         session_id,
@@ -272,17 +223,31 @@ async def create_cli_auth_session(request: Request):
 async def poll_cli_auth_session(request: Request, session_id: str):
     """Poll for CLI auth result. Returns pending or complete with api_key."""
     pool = get_pool()
-    await _cleanup_expired_cli_auth_sessions(pool)
-    row = await pool.fetchrow(
-        "SELECT api_key, username FROM cli_auth_sessions "
+    await user_service.cleanup_expired_cli_auth_sessions()
+    # DELETE ... RETURNING makes the claim atomic: a session row is consumed
+    # exactly once, either here (key delivered) or by the expiry cleanup (key
+    # revoked) — never both, so a delivered key can't be revoked at the TTL
+    # boundary by a concurrent cleanup.
+    claimed = await pool.fetchrow(
+        "DELETE FROM cli_auth_sessions "
+        "WHERE session_id = $1 AND api_key IS NOT NULL "
+        f"AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}' "
+        "RETURNING api_key, username",
+        session_id,
+    )
+    if claimed:
+        return {
+            "status": "complete",
+            "api_key": claimed["api_key"],
+            "username": claimed["username"],
+        }
+    pending = await pool.fetchval(
+        "SELECT 1 FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
         session_id,
     )
-    if not row:
+    if not pending:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-    if row["api_key"]:
-        await pool.execute("DELETE FROM cli_auth_sessions WHERE session_id = $1", session_id)
-        return {"status": "complete", "api_key": row["api_key"], "username": row["username"]}
     return {"status": "pending"}
 
 
@@ -322,7 +287,7 @@ async def approve_cli_auth_session(
     device, so each CLI install has its own revocable identity.
     """
     pool = get_pool()
-    await _cleanup_expired_cli_auth_sessions(pool)
+    await user_service.cleanup_expired_cli_auth_sessions()
     row = await pool.fetchrow(
         "SELECT device_name, api_key FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",

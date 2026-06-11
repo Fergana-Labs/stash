@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
-import { resetStashNavigationCache } from "../lib/stashNavigationCache";
+import { resetSkillNavigationCache } from "../lib/skillNavigationCache";
 import {
   getWorkspacePins,
   getWorkspaceSidebar,
@@ -64,7 +64,7 @@ const user = {
 
 const workspace = {
   id: "ws-1",
-  name: "Demo Stash",
+  name: "Demo Skill",
   description: "",
   creator_id: "user-1",
   invite_code: "invite",
@@ -82,14 +82,14 @@ function navLink(label: string): HTMLAnchorElement {
 beforeEach(() => {
   nav.pathname = "/workspaces/ws-1";
   localStorage.clear();
-  resetStashNavigationCache();
+  resetSkillNavigationCache();
   vi.mocked(listMyWorkspaces).mockResolvedValue({ workspaces: [workspace] });
   vi.mocked(getWorkspaceSidebar).mockResolvedValue({
     sessions: [],
     files: { folders: [], pages: [], files: [] },
-    cartridges: [],
+    skills: [],
   });
-  vi.mocked(getWorkspacePins).mockResolvedValue({ cartridges: [], sessions: [], files: [] });
+  vi.mocked(getWorkspacePins).mockResolvedValue({ skills: [], sessions: [], files: [] });
   vi.mocked(listWorkspaceSources).mockResolvedValue([]);
 });
 
@@ -99,12 +99,12 @@ afterEach(() => {
 });
 
 describe("AppSidebar workspace nav", () => {
-  it("links Cartridges, Sessions, and Files straight to their list pages", async () => {
+  it("links Skills, Sessions, and Files straight to their list pages", async () => {
     render(<AppSidebar user={user} />);
 
-    await waitFor(() => expect(navLink("Cartridges")).toBeTruthy());
+    await waitFor(() => expect(navLink("Skills")).toBeTruthy());
 
-    expect(navLink("Cartridges").getAttribute("href")).toBe("/workspaces/ws-1/cartridges");
+    expect(navLink("Skills").getAttribute("href")).toBe("/workspaces/ws-1/skills");
     expect(navLink("Agent Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
     expect(navLink("Files").getAttribute("href")).toBe("/workspaces/ws-1/files");
     expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");

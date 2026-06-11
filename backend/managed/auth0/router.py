@@ -1,7 +1,7 @@
 """Auth0 managed-session endpoints."""
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.config import settings
@@ -23,21 +23,6 @@ async def _fetch_userinfo(access_token: str) -> dict:
     if resp.status_code != 200:
         return {}
     return resp.json()
-
-
-@router.post("/exchange", status_code=status.HTTP_410_GONE)
-@limiter.limit("30/minute")
-async def exchange(
-    request: Request,
-    _credentials: HTTPAuthorizationCredentials = Depends(_security),
-):
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail=(
-            "Auth0 API key exchange is disabled. Use /api/v1/auth0/session "
-            "and explicit CLI session approval."
-        ),
-    )
 
 
 @router.post("/session", response_model=Auth0SessionResponse)

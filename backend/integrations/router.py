@@ -317,7 +317,7 @@ async def integration_callback(
                 )
                 account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
-            await security_audit_service.record_event(
+            await security_audit_service.record_user_event(
                 action="integration.connected",
                 actor_user_id=user_id,
                 target_type="integration",
@@ -335,8 +335,11 @@ async def integration_callback(
 
                 try:
                     await links.capture_from_user_token(user_id, token.access_token)
-                except Exception:
-                    logger.warning("slack: failed to capture user link", exc_info=True)
+                except Exception as exc:
+                    logger.warning(
+                        "slack: failed to capture user link exception_type=%s",
+                        type(exc).__name__,
+                    )
             # --- END Slack agent ---
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
@@ -361,18 +364,17 @@ async def integration_disconnect(
     current_user: dict = Depends(get_current_user),
 ):
     get_provider(provider)  # 404 if unknown
-    sources = await source_service.list_sources_for_provider(current_user["id"], provider)
-    removed_sources = await source_service.delete_sources_for_provider(current_user["id"], provider)
+    removed = await source_service.delete_sources_for_provider(current_user["id"], provider)
     await storage.revoke_stored(current_user["id"], provider)
-    await security_audit_service.record_event(
+    await security_audit_service.record_user_event(
         action="integration.disconnected",
         actor_user_id=current_user["id"],
         target_type="integration",
         target_id=provider,
         provider=provider,
-        metadata={"removed_sources": removed_sources},
+        metadata={"removed_sources": len(removed)},
     )
-    for source in sources:
+    for source in removed:
         await security_audit_service.record_event(
             action="source.deleted",
             actor_user_id=current_user["id"],
@@ -383,7 +385,7 @@ async def integration_disconnect(
             source_type=source["source_type"],
             metadata={"reason": "integration_disconnect"},
         )
-    return {"ok": True, "removed_sources": removed_sources}
+    return {"ok": True, "removed_sources": len(removed)}
 
 
 class CredentialConnectResponse(BaseModel):
@@ -405,11 +407,13 @@ async def integration_connect_with_credentials(
     _ensure_provider_enabled(provider)
     if getattr(p, "auth_kind", "oauth") != "api_key":
         raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
+    # Both handlers redact the exception message — provider errors can embed
+    # the pasted secrets, so only the exception type is logged.
     try:
         token, account = await p.connect_with_credentials(values)
-    except Exception as e:
+    except ValueError as e:
         logger.warning(
-            "Credential connection failed for provider %s (%s)",
+            "Credential connection rejected for provider %s (%s)",
             provider,
             type(e).__name__,
         )
@@ -417,8 +421,18 @@ async def integration_connect_with_credentials(
             status_code=400,
             detail=f"Could not connect {p.display_name}; check credentials",
         )
+    except Exception as e:
+        logger.warning(
+            "Credential connection failed for provider %s (%s)",
+            provider,
+            type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not connect {p.display_name}; upstream unavailable",
+        )
     await storage.store_token(current_user["id"], provider, token, account)
-    await security_audit_service.record_event(
+    await security_audit_service.record_user_event(
         action="integration.connected",
         actor_user_id=current_user["id"],
         target_type="integration",
