@@ -313,6 +313,12 @@ async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID)
             workspace_id,
             target_user_id,
         )
+        await _record_member_event(
+            action="workspace.member_removed",
+            actor_user_id=kicker_id,
+            workspace_id=workspace_id,
+            member_user_id=target_user_id,
+        )
         return True
     return False
 

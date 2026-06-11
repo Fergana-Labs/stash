@@ -219,7 +219,9 @@ async def test_admin_endpoint_access_is_audited_without_sensitive_values(
     )
     assert events[0]["metadata"]["status_code"] == 401
     assert events[0]["metadata"]["token_present"] is True
-    assert events[1]["metadata"]["status_code"] == 200
+    # The granted event must not claim a response status — the token check
+    # passes before the handler runs, so 200 would be a guess.
+    assert "status_code" not in events[1]["metadata"]
     assert events[1]["metadata"]["token_present"] is True
     assert "wrong-admin-token" not in event_text
     assert ADMIN_TOKEN not in event_text

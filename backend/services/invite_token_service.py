@@ -122,6 +122,21 @@ async def _pick_unique_username(base: str) -> str:
     return f"{cleaned}-{secrets.token_hex(3)}"
 
 
+async def _record_member_joined(workspace_id: UUID, user_id: UUID) -> None:
+    await security_audit_service.record_event(
+        action="workspace.member_joined",
+        actor_user_id=user_id,
+        workspace_id=workspace_id,
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={
+            "member_user_hash": security_audit_service.hash_value(str(user_id)),
+            "role": "editor",
+            "method": "invite_token",
+        },
+    )
+
+
 async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
     """Unauthenticated redeem: create a user, join workspace, return API key.
 
@@ -159,18 +174,7 @@ async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
                 token_row["workspace_id"],
                 user_row["id"],
             )
-    await security_audit_service.record_event(
-        action="workspace.member_joined",
-        actor_user_id=user_row["id"],
-        workspace_id=token_row["workspace_id"],
-        target_type="workspace",
-        target_id=str(token_row["workspace_id"]),
-        metadata={
-            "member_user_hash": security_audit_service.hash_value(str(user_row["id"])),
-            "role": "editor",
-            "method": "invite_token",
-        },
-    )
+    await _record_member_joined(token_row["workspace_id"], user_row["id"])
     api_key = await create_api_key(user_row["id"], name="invite redeem")
 
     ws = await workspace_service.get_workspace(token_row["workspace_id"])
@@ -217,16 +221,5 @@ async def redeem_as_existing_user(raw_token: str, user_id: UUID) -> dict | None:
             joined = inserted.endswith(" 1")
 
     if joined:
-        await security_audit_service.record_event(
-            action="workspace.member_joined",
-            actor_user_id=user_id,
-            workspace_id=token_row["workspace_id"],
-            target_type="workspace",
-            target_id=str(token_row["workspace_id"]),
-            metadata={
-                "member_user_hash": security_audit_service.hash_value(str(user_id)),
-                "role": "editor",
-                "method": "invite_token",
-            },
-        )
+        await _record_member_joined(token_row["workspace_id"], user_id)
     return await workspace_service.get_workspace(token_row["workspace_id"])
