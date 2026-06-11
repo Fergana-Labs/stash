@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import AppShell from "../../components/AppShell";
 import {
   ActivitySkeleton,
@@ -17,17 +17,27 @@ import {
 } from "../../components/StashIcons";
 import ContributorActivityTimeline from "../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../components/viz/EmbeddingSpaceExplorer";
+import KnowledgeDensityMap from "../../components/viz/KnowledgeDensityMap";
 import { useAuth } from "../../hooks/useAuth";
 import {
   getActivityTimeline,
   getEmbeddingProjection,
+  getKnowledgeDensity,
   getWorkspace,
+  getWorkspaceOverview,
   listActivity,
   listMyWorkspaces,
   listWorkspaceActivity,
+  listWorkspaceSources,
   type ActivityEvent,
+  type WorkspaceOverview,
+  type WorkspaceSource,
 } from "../../lib/api";
-import type { ActivityTimeline, EmbeddingProjection } from "../../lib/types";
+import type {
+  ActivityTimeline,
+  EmbeddingProjection,
+  KnowledgeDensity,
+} from "../../lib/types";
 
 type FilterKey = "all" | "sessions" | "pages" | "cartridges";
 
@@ -47,6 +57,10 @@ const AVATAR_CLASSES = [
   "av-teal",
   "av-lime",
 ];
+
+// Native handles ("files"/"sessions") are always present — the Sources vital
+// counts the connected integrations the brain draws from, not these.
+const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
 
 function avatarClassFor(name: string): string {
   let h = 5381;
@@ -85,6 +99,9 @@ function ActivityPageInner() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [density, setDensity] = useState<KnowledgeDensity | null>(null);
+  const [overview, setOverview] = useState<WorkspaceOverview | null>(null);
+  const [sources, setSources] = useState<WorkspaceSource[]>([]);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
@@ -113,8 +130,8 @@ function ActivityPageInner() {
     };
   }, [user, workspaceId]);
 
-  // Visualizations of what's been going on. They're workspace-scoped, so for
-  // the global view we resolve the user's own workspace.
+  // The brain's vitals + visualizations. All workspace-scoped, so for the
+  // global view we resolve the user's own workspace once and fan out.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -125,13 +142,19 @@ function ActivityPageInner() {
         if (!cancelled) setInsightsLoaded(true);
         return;
       }
-      const [t, p] = await Promise.allSettled([
+      const [t, p, d, o, s] = await Promise.allSettled([
         getActivityTimeline(30, "day", wsId),
         getEmbeddingProjection(500, undefined, wsId),
+        getKnowledgeDensity(12, wsId),
+        getWorkspaceOverview(wsId),
+        listWorkspaceSources(wsId),
       ]);
       if (cancelled) return;
       if (t.status === "fulfilled") setTimeline(t.value);
       if (p.status === "fulfilled") setProjection(p.value);
+      if (d.status === "fulfilled") setDensity(d.value);
+      if (o.status === "fulfilled") setOverview(o.value);
+      if (s.status === "fulfilled") setSources(s.value);
       setInsightsLoaded(true);
     })().catch(() => {
       if (!cancelled) setInsightsLoaded(true);
@@ -150,12 +173,31 @@ function ActivityPageInner() {
     const since = nowMs - dayMs;
     const recent = events.filter((e) => new Date(e.ts).getTime() >= since);
     return {
+      recent24h: recent.length,
       sessions24h: recent.filter((e) => e.kind === "session.uploaded").length,
       pages24h: recent.filter((e) => e.kind === "page.updated").length,
       files24h: recent.filter((e) => e.kind === "file.uploaded").length,
       total: events.length,
     };
   }, [events, nowMs]);
+
+  // Connected integrations the brain learns from, plus their freshness.
+  const sourceVitals = useMemo(() => {
+    const connected = sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
+    const syncing = connected.filter((s) => s.sync_status === "syncing").length;
+    const syncedAt = connected
+      .map((s) => s.last_synced_at)
+      .filter((v): v is string => !!v)
+      .sort()
+      .at(-1);
+    let hint = "—";
+    if (syncing > 0) hint = `${syncing} syncing`;
+    else if (syncedAt) hint = `synced ${relativeTime(syncedAt)}`;
+    else if (connected.length > 0) hint = "not synced yet";
+    return { count: connected.length, hint };
+  }, [sources]);
+
+  const knowledgePoints = projection?.stats.total_embeddings ?? 0;
 
   const filtered = useMemo(() => {
     if (filter === "all") return events;
@@ -180,59 +222,66 @@ function ActivityPageInner() {
     );
   }
 
+  const title = workspaceId ? workspaceName || "Your brain" : "Your brain";
+
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
-        {/* Header — a calm summary line, not a billboard. */}
+        {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          {workspaceId ? workspaceName || "Activity" : "Activity"}
+          {title}
         </h1>
         <p className="mt-1 text-[13.5px] text-muted">
-          {`${stats.sessions24h} session${stats.sessions24h === 1 ? "" : "s"}, ${stats.pages24h} page edit${stats.pages24h === 1 ? "" : "s"}, and ${stats.files24h} file upload${stats.files24h === 1 ? "" : "s"} in the last 24 hours.`}
+          {`${knowledgePoints.toLocaleString()} things learned across ${sourceVitals.count} connected source${sourceVitals.count === 1 ? "" : "s"} · ${stats.recent24h} new in the last 24 hours.`}
         </p>
 
-        {/* Stat strip */}
-        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <StatCard label="Sessions today" value={stats.sessions24h} tint="var(--color-agent)" />
-          <StatCard label="Pages edited" value={stats.pages24h} tint="var(--color-human)" />
-          <StatCard label="Files uploaded" value={stats.files24h} tint="#16A34A" />
-          <StatCard label="Total events" value={stats.total} tint="var(--text-muted)" />
+        {/* Brain map — the knowledge the brain holds, laid out in space. The
+            centerpiece visual. (Decorative.) */}
+        <VizCard label="Knowledge map" className="mt-6">
+          {!insightsLoaded ? (
+            <SkeletonBlock className="h-64 w-full" />
+          ) : projection && projection.points.length > 0 ? (
+            <EmbeddingSpaceExplorer data={projection} />
+          ) : (
+            <div className="px-2 py-12 text-center text-[12.5px] text-muted">
+              No embeddings indexed yet. Pages, table rows, and session events get
+              embedded as they&apos;re added.
+            </div>
+          )}
+        </VizCard>
+
+        {/* Vitals — the brain's current size and pulse. */}
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <VitalCard label="Knowledge points" value={knowledgePoints} tint="var(--color-brand-600)" />
+          <VitalCard label="Pages" value={overview?.files.pages.length ?? 0} tint="var(--color-human)" />
+          <VitalCard label="Files" value={overview?.files.files.length ?? 0} tint="#16A34A" />
+          <VitalCard label="Sessions" value={overview?.sessions.length ?? 0} tint="var(--color-agent)" />
+          <VitalCard label="Sources" value={sourceVitals.count} hint={sourceVitals.hint} tint="#7C3AED" />
+          <VitalCard label="Learned today" value={stats.recent24h} tint="var(--text-muted)" />
         </div>
 
-        {/* Visualizations — what's been going on, over time and across the
-            knowledge map. (Decorative; moved here from the workspace home.) */}
-        <section className="mt-7">
-          <div className="sys-label mb-1.5">Human / agent commits — last 30 days</div>
-          <div className="card-soft overflow-x-auto p-3">
-            {!insightsLoaded ? (
-              <SkeletonBlock className="h-40 w-full" />
-            ) : timeline && timeline.contributors.length > 0 ? (
-              <ContributorActivityTimeline data={timeline} />
-            ) : (
-              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No agent session commits yet. Push a transcript to populate this view.
-              </div>
-            )}
-          </div>
-        </section>
+        {/* What the brain knows — topic clusters. Hidden when there's nothing
+            to show, since it's an optional lens. */}
+        {density && density.clusters.length > 0 && (
+          <VizCard label="What your brain knows" className="mt-7">
+            <KnowledgeDensityMap data={density} />
+          </VizCard>
+        )}
 
-        <section className="mt-5">
-          <div className="sys-label mb-1.5">Embedding space — knowledge map</div>
-          <div className="card-soft p-3">
-            {!insightsLoaded ? (
-              <SkeletonBlock className="h-40 w-full" />
-            ) : projection && projection.points.length > 0 ? (
-              <EmbeddingSpaceExplorer data={projection} />
-            ) : (
-              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No embeddings indexed yet. Pages, table rows, and session events get embedded as
-                they&apos;re added.
-              </div>
-            )}
-          </div>
-        </section>
+        {/* Human / agent commits over time. (Decorative.) */}
+        <VizCard label="Human / agent commits — last 30 days" className="mt-5" scroll>
+          {!insightsLoaded ? (
+            <SkeletonBlock className="h-40 w-full" />
+          ) : timeline && timeline.contributors.length > 0 ? (
+            <ContributorActivityTimeline data={timeline} />
+          ) : (
+            <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+              No agent session commits yet. Push a transcript to populate this view.
+            </div>
+          )}
+        </VizCard>
 
-        {/* Filters */}
+        {/* Newsfeed — what the brain has been learning lately. */}
         <div className="mt-8 flex items-center justify-between border-b border-border pb-2">
           <div className="flex gap-1">
             {FILTERS.map((f) => {
@@ -253,15 +302,14 @@ function ActivityPageInner() {
               );
             })}
           </div>
-          <span className="sys-label">sorted · recent</span>
+          <span className="sys-label">Recent learnings · recent</span>
         </div>
 
-        {/* Feed */}
         <div className="mt-3.5 flex flex-col gap-2.5">
           {filtered.length === 0 ? (
             <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted">
               {events.length === 0
-                ? "No activity yet. Push a transcript, edit a page, or upload a file."
+                ? "Nothing learned yet. Push a transcript, edit a page, or upload a file."
                 : `No ${filter === "all" ? "" : filter + " "}activity matches this filter.`}
             </div>
           ) : (
@@ -279,13 +327,36 @@ function ActivityPageInner() {
   );
 }
 
-function StatCard({
+// A labeled visualization card — the repeated sys-label + card-soft shell used
+// by the map, topics, and timeline sections.
+function VizCard({
+  label,
+  className,
+  scroll,
+  children,
+}: {
+  label: string;
+  className?: string;
+  scroll?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className={className}>
+      <div className="sys-label mb-1.5">{label}</div>
+      <div className={`card-soft p-3${scroll ? " overflow-x-auto" : ""}`}>{children}</div>
+    </section>
+  );
+}
+
+function VitalCard({
   label,
   value,
+  hint,
   tint,
 }: {
   label: string;
   value: number;
+  hint?: string;
   tint: string;
 }) {
   return (
@@ -297,6 +368,7 @@ function StatCard({
         {value}
       </div>
       <div className="sys-label mt-0.5">{label}</div>
+      {hint && <div className="mt-0.5 text-[10.5px] text-muted">{hint}</div>}
     </div>
   );
 }

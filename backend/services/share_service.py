@@ -11,6 +11,7 @@ up — see `convert_pending_invites`, called from the register / Auth0 paths.
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -19,7 +20,7 @@ from ..database import get_pool
 from . import permission_service, security_audit_service, workspace_service
 
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder"}
-_PERMISSIONS = {"read", "write"}
+_PERMISSIONS = {"read", "comment", "write"}
 
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
@@ -56,11 +57,12 @@ async def share_with_user_by_email(
     email: str,
     permission: str,
     owner_id: UUID,
+    expires_at: datetime | None = None,
 ) -> dict:
     if object_type not in _SHAREABLE:
         raise HTTPException(status_code=400, detail=f"can't share a {object_type}")
     if permission not in _PERMISSIONS:
-        raise HTTPException(status_code=400, detail="permission must be read or write")
+        raise HTTPException(status_code=400, detail="permission must be read, comment, or write")
     workspace_id = await _require_owner(object_type, object_id, owner_id)
     normalized_email = email.strip().lower()
 
@@ -76,10 +78,10 @@ async def share_with_user_by_email(
         await pool.execute(
             """
             INSERT INTO share_invites (workspace_id, object_type, object_id, email,
-                                       permission, created_by)
-            VALUES ($1, $2, $3, lower($4), $5, $6)
+                                       permission, created_by, expires_at)
+            VALUES ($1, $2, $3, lower($4), $5, $6, $7)
             ON CONFLICT (object_type, object_id, email)
-            DO UPDATE SET permission = EXCLUDED.permission
+            DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
             """,
             workspace_id,
             object_type,
@@ -87,6 +89,7 @@ async def share_with_user_by_email(
             normalized_email,
             permission,
             owner_id,
+            expires_at,
         )
         await _record_share_event(
             action="share.invited",
@@ -105,10 +108,10 @@ async def share_with_user_by_email(
     row = await pool.fetchrow(
         """
         INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
-                            principal_id, permission, created_by)
-        VALUES ($1, $2, $3, 'user', $4, $5, $6)
+                            principal_id, permission, created_by, expires_at)
+        VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
         ON CONFLICT (object_type, object_id, principal_type, principal_id)
-        DO UPDATE SET permission = EXCLUDED.permission
+        DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
         RETURNING id
         """,
         workspace_id,
@@ -117,6 +120,7 @@ async def share_with_user_by_email(
         user["id"],
         permission,
         owner_id,
+        expires_at,
     )
     await _record_share_event(
         action="share.granted",
@@ -246,7 +250,8 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
     await _require_owner(object_type, object_id, owner_id)
     rows = await get_pool().fetch(
         """
-        SELECT s.principal_type, s.principal_id, s.permission,
+        SELECT s.principal_type, s.principal_id, s.permission, s.expires_at,
+               (s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,
                u.name AS user_name, u.display_name AS user_display, u.email AS user_email,
                c.title AS cartridge_title
         FROM shares s
@@ -258,6 +263,7 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         object_type,
         object_id,
     )
+    # Owner view keeps expired rows (flagged) so the owner can renew/revoke.
     shares = [
         {
             "principal_type": r["principal_type"],
@@ -266,12 +272,15 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
             "label": r["user_display"] or r["user_name"] or r["cartridge_title"] or "",
             "email": r["user_email"],
             "pending": False,
+            "expires_at": r["expires_at"].isoformat() if r["expires_at"] else None,
+            "expired": r["expired"],
         }
         for r in rows
     ]
     # Pending invites (shared to an email with no user yet) show as "invited".
     invites = await get_pool().fetch(
-        "SELECT email, permission FROM share_invites "
+        "SELECT email, permission, expires_at, "
+        "(expires_at IS NOT NULL AND expires_at <= now()) AS expired FROM share_invites "
         "WHERE object_type = $1 AND object_id = $2 ORDER BY created_at",
         object_type,
         object_id,
@@ -284,6 +293,8 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
             "label": inv["email"],
             "email": inv["email"],
             "pending": True,
+            "expires_at": inv["expires_at"].isoformat() if inv["expires_at"] else None,
+            "expired": inv["expired"],
         }
         for inv in invites
     )
@@ -315,6 +326,7 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
         JOIN workspaces w ON w.id = s.workspace_id
         LEFT JOIN users u ON u.id = s.created_by
         WHERE s.principal_type = 'user' AND s.principal_id = $1
+          AND (s.expires_at IS NULL OR s.expires_at > now())
         ORDER BY w.name, s.object_type, name
         """,
         user_id,

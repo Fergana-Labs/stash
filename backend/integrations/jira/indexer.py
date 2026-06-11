@@ -24,8 +24,36 @@ ACCESSIBLE_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-res
 # cloud_id -> site base url (e.g. https://acme.atlassian.net). Cached because the
 # site url never changes for a cloud and the lookup costs a network round-trip.
 _SITE_URL_CACHE: dict[str, str] = {}
-# Fields rendered for a full read (lazy fetch).
-ISSUE_FIELDS = "summary,status,assignee,updated,description,comment"
+# Fields rendered for a full read (lazy fetch). Keep this in sync with
+# `_render_issue` — every field here should have a corresponding render
+# branch, or the network round-trip is wasted.
+ISSUE_FIELDS = ",".join(
+    [
+        # core
+        "summary",
+        "status",
+        "priority",
+        "issuetype",
+        "assignee",
+        "reporter",
+        "created",
+        "updated",
+        "duedate",
+        # body + activity
+        "description",
+        "comment",
+        # taxonomy
+        "labels",
+        "components",
+        "fixVersions",
+        # graph (links + hierarchy)
+        "issuelinks",
+        "subtasks",
+        "parent",
+        # files
+        "attachment",
+    ]
+)
 PAGE_SIZE = 100
 MAX_ISSUES = 2000
 SEARCH_LIMIT = 25
@@ -55,31 +83,104 @@ def _adf_to_text(node: dict | None) -> str:
     return "".join(out).strip()
 
 
+def _name(obj: dict | None) -> str:
+    """Pull `.name` out of a nullable Jira reference (status, priority, etc)."""
+    return (obj or {}).get("name") or ""
+
+
+def _display_name(obj: dict | None) -> str:
+    return (obj or {}).get("displayName") or ""
+
+
 def _render_issue(issue: dict) -> str:
     fields = issue.get("fields", {})
     key = issue.get("key", "")
     summary = fields.get("summary") or ""
-    status = (fields.get("status") or {}).get("name") or ""
-    assignee = (fields.get("assignee") or {}).get("displayName") or "Unassigned"
-    description = _adf_to_text(fields.get("description"))
 
+    # Header metadata block.
+    meta_lines = [
+        f"Status: {_name(fields.get('status'))}",
+        f"Type: {_name(fields.get('issuetype'))}",
+        f"Priority: {_name(fields.get('priority'))}",
+        f"Assignee: {_display_name(fields.get('assignee')) or 'Unassigned'}",
+        f"Reporter: {_display_name(fields.get('reporter')) or 'Unknown'}",
+    ]
+    for field, label in (("created", "Created"), ("updated", "Updated"), ("duedate", "Due")):
+        value = fields.get(field)
+        if value:
+            meta_lines.append(f"{label}: {value}")
+
+    labels = fields.get("labels") or []
+    if labels:
+        meta_lines.append("Labels: " + ", ".join(labels))
+    components = [c.get("name", "") for c in (fields.get("components") or [])]
+    if components:
+        meta_lines.append("Components: " + ", ".join(components))
+    fix_versions = [v.get("name", "") for v in (fields.get("fixVersions") or [])]
+    if fix_versions:
+        meta_lines.append("Fix versions: " + ", ".join(fix_versions))
+
+    parent = fields.get("parent")
+    if parent:
+        parent_key = parent.get("key", "")
+        parent_summary = (parent.get("fields") or {}).get("summary", "")
+        meta_lines.append(f"Parent: {parent_key} {parent_summary}".rstrip())
+
+    parts = [f"# {key}: {summary}", "\n".join(meta_lines)]
+
+    description = _adf_to_text(fields.get("description"))
+    if description:
+        parts.append(f"\n{description}")
+
+    # Issue links: "blocks", "is blocked by", "relates to", etc.
+    link_lines: list[str] = []
+    for link in fields.get("issuelinks") or []:
+        link_type = link.get("type") or {}
+        if "outwardIssue" in link:
+            other = link["outwardIssue"]
+            relation = link_type.get("outward") or "links to"
+        elif "inwardIssue" in link:
+            other = link["inwardIssue"]
+            relation = link_type.get("inward") or "linked from"
+        else:
+            continue
+        other_key = other.get("key", "")
+        other_summary = (other.get("fields") or {}).get("summary", "")
+        link_lines.append(f"- {relation} {other_key}: {other_summary}")
+    if link_lines:
+        parts.append("\n## Links\n" + "\n".join(link_lines))
+
+    # Subtasks: key + summary + status.
+    subtask_lines: list[str] = []
+    for sub in fields.get("subtasks") or []:
+        sub_key = sub.get("key", "")
+        sub_fields = sub.get("fields") or {}
+        sub_summary = sub_fields.get("summary", "")
+        sub_status = _name(sub_fields.get("status"))
+        subtask_lines.append(f"- {sub_key} ({sub_status}): {sub_summary}")
+    if subtask_lines:
+        parts.append("\n## Subtasks\n" + "\n".join(subtask_lines))
+
+    # Attachments: filename + content URL (so the agent can fetch them).
+    attach_lines: list[str] = []
+    for att in fields.get("attachment") or []:
+        filename = att.get("filename", "")
+        url = att.get("content", "")
+        attach_lines.append(f"- [{filename}]({url})" if url else f"- {filename}")
+    if attach_lines:
+        parts.append("\n## Attachments\n" + "\n".join(attach_lines))
+
+    # Comments stay last — they tend to be the most verbose section.
     comments = (fields.get("comment") or {}).get("comments", []) or []
     rendered_comments = []
     for c in comments:
-        author = (c.get("author") or {}).get("displayName") or "Unknown"
+        author = _display_name(c.get("author")) or "Unknown"
         body = _adf_to_text(c.get("body"))
         if body:
             rendered_comments.append(f"{author}: {body}")
-
-    parts = [
-        f"# {key}: {summary}",
-        f"Status: {status}",
-        f"Assignee: {assignee}",
-    ]
-    if description:
-        parts.append(f"\n{description}")
     if rendered_comments:
         parts.append("\n## Comments\n" + "\n\n".join(rendered_comments))
+
     return "\n".join(parts)
 
 

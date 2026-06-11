@@ -1,13 +1,13 @@
 """Add per-source settings.
 
-Revision ID: 0094
-Revises: 0093
+Revision ID: 0101
+Revises: 0100
 """
 
 from alembic import op
 
-revision = "0094"
-down_revision = "0093"
+revision = "0101"
+down_revision = "0100"
 branch_labels = None
 depends_on = None
 

@@ -25,21 +25,31 @@ class SnowflakeIntegration:
     auth_kind = "api_key"
     credential_fields = [
         CredentialField(
-            "account", "Account", placeholder="orgname-account_name",
+            "account",
+            "Account",
+            placeholder="orgname-account_name",
             help="Your Snowflake account identifier (Admin → Accounts).",
         ),
         CredentialField("user", "User", placeholder="SVC_AGENT"),
         CredentialField(
-            "token", "Programmatic Access Token", secret=True, optional=True,
+            "token",
+            "Programmatic Access Token",
+            secret=True,
+            optional=True,
             placeholder="Recommended — a single token string",
             help="Easiest: ALTER USER <u> ADD PROGRAMMATIC ACCESS TOKEN … (needs a network policy on the account).",
         ),
         CredentialField(
-            "private_key", "Private Key (PEM)", secret=True, optional=True,
+            "private_key",
+            "Private Key (PEM)",
+            secret=True,
+            optional=True,
             placeholder="-----BEGIN PRIVATE KEY-----",
             help="Alternative to a token: key-pair auth.",
         ),
-        CredentialField("private_key_passphrase", "Private Key Passphrase", secret=True, optional=True),
+        CredentialField(
+            "private_key_passphrase", "Private Key Passphrase", secret=True, optional=True
+        ),
         CredentialField("warehouse", "Warehouse", optional=True, placeholder="COMPUTE_WH"),
         CredentialField("role", "Role", optional=True, placeholder="READ_ONLY"),
         CredentialField("database", "Database", optional=True, placeholder="(optional default)"),
