@@ -2,7 +2,7 @@
 
 A folder groups related sessions (one per project/repo, plus a per-workspace
 Default that catches chat-UI and un-targeted CLI sessions). Folders share the
-same access model as cartridges — a (workspace_permission, public_permission)
+same access model as skills — a (workspace_permission, public_permission)
 pair computed into private/workspace/public — and access cascades to the
 sessions inside (see permission_service). Public folders are reachable by slug
 without login, rendered by the same session viewer.

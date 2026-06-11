@@ -1125,12 +1125,12 @@ def test_source_document_url_builds_provider_deep_links():
     assert source_service.source_document_url("slack", "T123", "#eng/1.ts") is None
 
 
-# --- cartridge snapshot-on-add ----------------------------------------------
+# --- skill snapshot-on-add ----------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncClient, monkeypatch):
-    """Adding an index-only (Google Drive) source doc to a cartridge fetches its
+async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClient, monkeypatch):
+    """Adding an index-only (Google Drive) source doc to a skill fetches its
     body at add time and copies it in as a page, so the bundle is self-contained."""
     from backend.integrations.google import indexer
 
@@ -1159,16 +1159,16 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
 
     monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
 
-    cartridge = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges",
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
         json={"title": "Bundle", "public_permission": "read", "items": []},
         headers=_auth(api_key),
     )
-    assert cartridge.status_code == 201
-    cartridge_id = cartridge.json()["id"]
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges/{cartridge_id}/snapshot-source",
+        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "Auth"},
         headers=_auth(api_key),
     )
@@ -1178,8 +1178,8 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
     # The body was copied in (a point-in-time snapshot), not left as a live ref.
     assert "snapshot body for file-abc" in page["content_markdown"]
 
-    # And the page is now an item in the cartridge.
-    public = await client.get(f"/api/v1/cartridges/{cartridge.json()['slug']}")
+    # And the page is now an item in the skill.
+    public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
     item_ids = {i["object_id"] for i in public.json()["items"]}
     assert page["id"] in item_ids
 

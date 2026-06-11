@@ -63,7 +63,7 @@ class ImageFetcher:
 
         stash = _STASH_FILE_RE.match(src)
         if stash:
-            return await _download_cartridge_file(
+            return await _download_skill_file(
                 UUID(stash.group("wid")),
                 UUID(stash.group("fid")),
                 self.workspace_id,
@@ -115,7 +115,7 @@ def _svg_to_png(svg: bytes) -> bytes | None:
         return None
 
 
-async def _download_cartridge_file(
+async def _download_skill_file(
     url_workspace_id: UUID,
     file_id: UUID,
     export_workspace_id: UUID | None,
@@ -123,6 +123,7 @@ async def _download_cartridge_file(
 ) -> bytes | None:
     if export_workspace_id is None or user_id is None or url_workspace_id != export_workspace_id:
         return None
+
 
     pool = get_pool()
     row = await pool.fetchrow(

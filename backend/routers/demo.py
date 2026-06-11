@@ -19,13 +19,13 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..middleware import limiter
-from ..models import CartridgeItem
+from ..models import SkillItem
 from ..services import (
-    cartridge_service,
     demo_content,
     demo_service,
     files_tree_service,
     memory_service,
+    shared_skill_service,
 )
 from ..services.files_tree_service import DuplicatePageName
 
@@ -79,10 +79,10 @@ class DemoSessionCreate(BaseModel):
     cwd: str | None = Field(None, max_length=1024)
 
 
-class DemoCartridgeCreate(BaseModel):
+class DemoSkillCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    items: list[CartridgeItem] = Field(..., min_length=1)
+    items: list[SkillItem] = Field(..., min_length=1)
 
 
 # --- Static reads (skill / about / instructions) ---
@@ -109,7 +109,7 @@ async def about(request: Request) -> str:
     return demo_content.ABOUT_STASH_MARKDOWN
 
 
-# --- Writes (page / session / stash) ---
+# --- Writes (page / session / skill) ---
 
 
 @router.post("/pages", status_code=201)
@@ -205,11 +205,9 @@ async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -
     }
 
 
-@router.post("/cartridges", status_code=201)
+@router.post("/skills", status_code=201)
 @limiter.limit(_POST_LIMIT)
-async def create_cartridge(
-    request: Request, req: DemoCartridgeCreate = Body(...)
-) -> dict[str, Any]:
+async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> dict[str, Any]:
     workspace_id, owner_id = await demo_service.get_demo_workspace()
 
     items = list(req.items)
@@ -218,7 +216,7 @@ async def create_cartridge(
     kb_folder_id = await demo_service.get_kb_folder_id()
     if not any(item.object_type == "folder" and item.object_id == kb_folder_id for item in items):
         items.append(
-            CartridgeItem(
+            SkillItem(
                 object_type="folder",
                 object_id=kb_folder_id,
                 position=len(items),
@@ -230,7 +228,7 @@ async def create_cartridge(
         await _validate_item_belongs_to_demo(item, workspace_id)
 
     try:
-        stash = await cartridge_service.create_cartridge(
+        skill = await shared_skill_service.create_skill(
             workspace_id=workspace_id,
             owner_id=owner_id,
             title=req.title,
@@ -247,9 +245,9 @@ async def create_cartridge(
 
     base = settings.PUBLIC_URL.rstrip("/")
     return {
-        "cartridge_id": stash["id"],
-        "slug": stash["slug"],
-        "app_url": f"{base}/cartridges/{stash['slug']}",
+        "skill_id": skill["id"],
+        "slug": skill["slug"],
+        "app_url": f"{base}/skills/{skill['slug']}",
     }
 
 
@@ -267,7 +265,7 @@ def _unique_page_name(title: str) -> str:
     return f"{base} — {suffix}"
 
 
-async def _validate_item_belongs_to_demo(item: CartridgeItem, workspace_id) -> None:
+async def _validate_item_belongs_to_demo(item: SkillItem, workspace_id) -> None:
     """Reject attempts to bundle objects from outside the Demo workspace."""
     from ..services import permission_service
 
@@ -277,5 +275,5 @@ async def _validate_item_belongs_to_demo(item: CartridgeItem, workspace_id) -> N
     if item_workspace_id != workspace_id:
         raise HTTPException(
             status_code=400,
-            detail="Stash items must be in the demo workspace",
+            detail="Skill items must be in the demo workspace",
         )

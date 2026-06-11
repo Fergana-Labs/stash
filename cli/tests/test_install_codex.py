@@ -74,9 +74,7 @@ def test_preexisting_features_section_no_duplicate(monkeypatch, tmp_path: Path) 
     assert parsed["features"]["suppress_unstable_features_warning"] is True
 
 
-def test_preexisting_unmarked_cartridge_sections_do_not_duplicate(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_preexisting_unmarked_skill_sections_do_not_duplicate(monkeypatch, tmp_path: Path) -> None:
     """Older/manual installs may already contain the Stash sections without
     the current marker. Reinstalling must not append duplicate TOML tables."""
     codex_dir = tmp_path / ".codex"

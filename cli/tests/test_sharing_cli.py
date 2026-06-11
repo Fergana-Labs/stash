@@ -1,6 +1,6 @@
-"""The cartridge/sharing CLI commands are thin wrappers over client methods.
+"""The skill/sharing CLI commands are thin wrappers over client methods.
 These lock in the wiring: the right client call with the right arguments, so
-the per-person sharing model, cartridge members/invites, session folders, and
+the per-person sharing model, skill members/invites, session folders, and
 source snapshots all reach the server correctly."""
 
 from cli import main
@@ -28,28 +28,28 @@ class _FakeClient:
         self._calls.append(("list_shares", object_type, object_id))
         return [{"display_name": "Sam", "permission": "read", "principal_id": "u1"}]
 
-    # cartridge members + invites + snapshot
-    def add_cartridge_member(self, cartridge_id, user_id, permission="read"):
-        self._calls.append(("add_member", cartridge_id, user_id, permission))
+    # skill members + invites + snapshot
+    def add_skill_member(self, skill_id, user_id, permission="read"):
+        self._calls.append(("add_member", skill_id, user_id, permission))
         return {"user_id": user_id, "permission": permission}
 
-    def list_cartridge_members(self, cartridge_id):
-        self._calls.append(("members", cartridge_id))
+    def list_skill_members(self, skill_id):
+        self._calls.append(("members", skill_id))
         return [{"display_name": "Sam", "permission": "admin", "user_id": "u1"}]
 
-    def list_cartridge_invites(self):
+    def list_skill_invites(self):
         self._calls.append(("invites",))
         return [
             {
-                "cartridge_title": "Specs",
+                "skill_title": "Specs",
                 "invited_by_display_name": "Sam",
                 "permission": "read",
                 "id": "inv1",
             }
         ]
 
-    def snapshot_source_into_cartridge(self, workspace_id, cartridge_id, source_id, path):
-        self._calls.append(("snapshot", workspace_id, cartridge_id, source_id, path))
+    def snapshot_source_into_skill(self, workspace_id, skill_id, source_id, path):
+        self._calls.append(("snapshot", workspace_id, skill_id, source_id, path))
         return {"id": "page-1"}
 
     # session folders
@@ -82,12 +82,12 @@ def test_shares_add_and_remove(monkeypatch) -> None:
     assert ("unshare", "folder", "fold-1", "user", "u9") in calls
 
 
-def test_cartridge_members_and_invites_and_snapshot(monkeypatch) -> None:
+def test_skill_members_and_invites_and_snapshot(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.stashes_members("cart-1", as_json=True)
-    main.stashes_add_member("cart-1", "u1", permission="admin", as_json=True)
-    main.stashes_invites(as_json=True)
-    main.stashes_snapshot_source(
+    main.skills_members("cart-1", as_json=True)
+    main.skills_add_member("cart-1", "u1", permission="admin", as_json=True)
+    main.skills_invites(as_json=True)
+    main.skills_snapshot_source(
         "cart-1", source="src-1", path="specs/auth.md", workspace_id=None, as_json=True
     )
     assert ("members", "cart-1") in calls

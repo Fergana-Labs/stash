@@ -8,8 +8,8 @@ import DescriptionEditor, {
 } from "../../../../components/DescriptionEditor";
 import { seedWelcomePage } from "../../../../lib/onboarding/seedWelcome";
 import { WorkspaceHomeSkeleton } from "../../../../components/SkeletonStates";
-import CartridgeQuickAdd from "../../../../components/CartridgeQuickAdd";
-import { WorkspaceIcon } from "../../../../components/StashIcons";
+import SkillQuickAdd from "../../../../components/SkillQuickAdd";
+import { WorkspaceIcon } from "../../../../components/SkillIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   getWorkspace,
@@ -181,7 +181,7 @@ export default function WorkspaceHomePage() {
             <div className="sys-label mb-1.5">
               Quick add — paste a URL, drop a file, drop a .jsonl transcript
             </div>
-            <CartridgeQuickAdd workspaceId={workspaceId} onAdded={load} />
+            <SkillQuickAdd workspaceId={workspaceId} onAdded={load} />
           </section>
         )}
 

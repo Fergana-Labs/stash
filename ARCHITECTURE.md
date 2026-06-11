@@ -7,11 +7,11 @@ surfaces:
 - Files: the workspace's virtual filesystem — one tree with three kinds of
   node inside (folders, pages, files). Tables are a peer of Files at the
   workspace level.
-- Stashes: shareable bundles of sessions and Files entries. Stashes are also
+- Skills: shareable bundles of sessions and Files entries. Skills are also
   the privacy boundary for workspace content.
 
 Note: capital-F "Files" is the workspace category (peer of Sessions and
-Stashes); lowercase "file" is one of the three kinds of node inside that
+Skills); lowercase "file" is one of the three kinds of node inside that
 tree (an S3-backed binary, vs. an in-app-editable page, vs. a folder).
 
 ## Runtime
@@ -24,28 +24,28 @@ tree (an S3-backed binary, vs. an in-app-editable page, vs. a folder).
 
 ## Data Model
 
-- `workspaces` contain members, sessions, Files, tables, and Stashes.
+- `workspaces` contain members, sessions, Files, tables, and Skills.
 - `sessions` and `history_events` store agent transcript activity.
 - `folders`, `pages`, and `files` form the Files surface.
 - `tables` and `table_rows` store structured data that can be included in
-  Stashes.
-- `stashes` and `stash_items` define shareable bundles.
-- `stash_members` grants explicit access to private Stashes.
-- `external_stashes` attaches a public Stash from another workspace.
+  Skills.
+- `skills` and `skill_items` define shareable bundles.
+- `skill_members` grants explicit access to private Skills.
+- A forked Skill (`forked_from_skill_id`) attaches a public Skill from another workspace.
 
 Object-level privacy tables and page-link graph tables are intentionally not part
-of the current architecture. Privacy is mediated by Stashes.
+of the current architecture. Privacy is mediated by Skills.
 
 ## Access Rules
 
-- Content with no containing Stash is visible to workspace members.
-- Public Stashes are anonymously readable.
-- Workspace Stashes are readable to workspace members.
-- Private Stashes are readable only to their owner, workspace admins, and
-  explicit Stash members.
-- Items in a private Stash cannot also be included in workspace or public
-  Stashes.
-- Publishing is UI sugar for making a Stash public and returning its public URL.
+- Content with no containing Skill is visible to workspace members.
+- Public Skills are anonymously readable.
+- Workspace Skills are readable to workspace members.
+- Private Skills are readable only to their owner, workspace admins, and
+  explicit Skill members.
+- Items in a private Skill cannot also be included in workspace or public
+  Skills.
+- Publishing is UI sugar for making a Skill public and returning its public URL.
 
 ## Main Backend Routers
 
@@ -53,11 +53,11 @@ of the current architecture. Privacy is mediated by Stashes.
 - `backend/routers/files_tree.py`: Files folders and pages.
 - `backend/routers/files.py`: uploaded files and extraction.
 - `backend/routers/sessions.py`: session listing, upload, and materialization.
-- `backend/routers/stashes.py`: Stash CRUD, publish, public rendering, external
-  Stash attachment.
+- `backend/routers/skills.py`: Skill CRUD, publish, public rendering, fork
+  attachment.
 - `backend/routers/workspace_knowledge.py`: workspace home/sidebar payloads.
-- `backend/routers/publish.py`: Stash publish flow + public Stash URLs.
-- `backend/routers/discover.py`: public Stash catalog (search, trending,
+- `backend/routers/publish.py`: Skill publish flow + public Skill URLs.
+- `backend/routers/discover.py`: public Skill catalog (search, trending,
   fork-into-workspace).
 - `backend/routers/memory.py`: per-session event push, query, search.
 - `backend/routers/tables.py`: structured table CRUD + row search.
@@ -68,8 +68,8 @@ of the current architecture. Privacy is mediated by Stashes.
 
 Object-level privacy is enforced inline in each router that returns a
 resource — there is no separate permissions router. The `workspace_members`
-table gates everything inside a workspace; the `stash_members` table gates
-per-Stash sharing; the `visibility` column on stashes and pages controls
+table gates everything inside a workspace; the `skill_members` table gates
+per-Skill sharing; the `visibility` column on skills and pages controls
 public exposure.
 
 ## Frontend Shell
@@ -79,15 +79,15 @@ The product sidebar is organized as:
 - Home
 - Sessions
 - Files
-- Stashes
+- Skills
 
 Workspace home renders a newsfeed-like overview with quick actions to add
-sessions, pages/files, and Stashes. Public Stash pages render as mini workspaces
+sessions, pages/files, and Skills. Public Skill pages render as mini workspaces
 with their own home, sidebar, and grouped Files/Sessions/Tables sections.
 
 ## Agent Surface
 
 The CLI and MCP can create/read/update workspace resources, upload transcripts
-and files, search history/pages, and create/publish Stashes. Agents should use
-`stash files ...` for folders/pages and `stash stashes ...` for shareable
+and files, search history/pages, and create/publish Skills. Agents should use
+`stash files ...` for folders/pages and `stash skills ...` for shareable
 bundles.
