@@ -1575,7 +1575,9 @@ async def user_can_admin(skill_id: UUID, user_id: UUID) -> bool:
     row = await pool.fetchrow("SELECT workspace_id, owner_id FROM skills WHERE id = $1", skill_id)
     if not row:
         return False
-    if not await workspace_service.can_write(row["workspace_id"], user_id):
+    # Workspace viewers never get write/admin via skill membership; external
+    # skill admins (no workspace role) still manage the skill.
+    if await workspace_service.get_member_role(row["workspace_id"], user_id) == "viewer":
         return False
     if row["owner_id"] == user_id:
         return True
@@ -1673,6 +1675,8 @@ async def user_can_write(skill_id: UUID, user_id: UUID) -> bool:
     )
     if not row:
         return False
+    # Content writes are workspace-bound: only workspace editors/owners write,
+    # regardless of skill membership (external admins manage, never write).
     if not await workspace_service.can_write(row["workspace_id"], user_id):
         return False
     if row["owner_id"] == user_id:

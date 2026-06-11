@@ -360,10 +360,9 @@ async def add_skill_member(
             status_code=403,
             detail="Only workspace owners can share Skills outside the workspace",
         )
-    if (
-        req.permission in ("write", "admin")
-        and target_role not in workspace_service.ROLES_CAN_WRITE
-    ):
+    # Admin grants are fine for externals (admin = manage, never content
+    # write — user_can_write stays workspace-bound), but write grants are not.
+    if req.permission == "write" and target_role not in workspace_service.ROLES_CAN_WRITE:
         raise HTTPException(
             status_code=403,
             detail="Skill write access requires a workspace editor or owner",
