@@ -1294,6 +1294,12 @@ export async function getWorkspaceRecents(workspaceId: string): Promise<RecentEn
   return apiFetch(`/api/v1/workspaces/${workspaceId}/recents`);
 }
 
+// Recently-viewed objects across all workspaces (incl. shared items in
+// workspaces the user isn't a member of), most recent first.
+export async function getMyRecents(): Promise<RecentEntry[]> {
+  return apiFetch(`/api/v1/me/recents`);
+}
+
 export async function recordWorkspaceRecent(
   workspaceId: string,
   objectId: string,
