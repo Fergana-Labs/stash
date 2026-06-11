@@ -27,7 +27,7 @@ MAX_CALLS = 5000
 
 
 def _call_workspace_id(meta: dict) -> str:
-    return str(meta.get("workspaceId") or meta.get("workspace_id") or "")
+    return str(meta.get("workspaceId") or "")
 
 
 def _render_call(meta: dict, monologues: list[dict]) -> str:
@@ -93,9 +93,11 @@ async def index_gong(source: dict) -> str | None:
     owner_user_id = UUID(source["owner_user_id"])
     allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
     if not allowed_workspace_ids:
-        logger.info("gong source %s: no allowed workspaces configured", source_id)
+        # Purge anything indexed before the allowlist existed so unscoped
+        # transcripts stop being searchable, then fail loudly so the sync
+        # records a sync_error instead of reporting a successful no-op.
         await source_service.soft_delete_missing("gong_documents", source_id, [])
-        return None
+        raise RuntimeError("no allowed workspaces configured")
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
     headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
@@ -156,7 +158,9 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
         transcript_by_id = await _fetch_transcripts(client, from_dt, to_dt)
 
     refs: list[str] = []
-    for call_id, meta in list(meta_by_id.items())[:limit]:
+    for call_id, meta in meta_by_id.items():
+        if len(refs) >= limit:
+            break
         call_workspace_id = _call_workspace_id(meta)
         if call_workspace_id not in allowed_workspace_ids:
             continue

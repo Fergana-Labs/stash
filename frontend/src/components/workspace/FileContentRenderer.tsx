@@ -8,17 +8,17 @@ import { DocumentBodySkeleton, SkeletonBlock } from "../SkeletonStates";
 
 // Single source of truth for "show this file inline by content type."
 // Used from the workspace file viewer (/workspaces/{ws}/f/{fileId}) and
-// from the stash detail page's SingleFilePreview, so both surfaces render
+// from the skill detail page's SingleFilePreview, so both surfaces render
 // PDFs, images, markdown, and plain text the same way. CSV stays out of
 // scope — the workspace viewer redirects CSVs to /tables/{id}, and the
-// stash viewer doesn't ingest.
+// skill viewer doesn't ingest.
 
 interface Props {
   url: string;
   name: string;
   contentType: string;
   /** Layout for the markdown article. The workspace viewer wraps in
-   *  a flex container with overflow-auto; the stash detail page sits
+   *  a flex container with overflow-auto; the skill detail page sits
    *  inside a fixed-width column. Both want a centered article. */
   className?: string;
 }

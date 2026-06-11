@@ -4,7 +4,7 @@ import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
 import { ShellChromeProvider } from "../components/ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import CartridgeShareModal from "../components/share/CartridgeShareModal";
+import SkillShareModal from "../components/share/SkillShareModal";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -22,7 +22,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Stash",
+  title: "Skill",
   description:
     "One place for your agents to connect to all your data, plus an agent-native Drive in Markdown and HTML.",
   icons: {
@@ -48,7 +48,7 @@ export default function RootLayout({
           <ShellChromeProvider>
             <ShareModalProvider>
               {children}
-              <CartridgeShareModal />
+              <SkillShareModal />
             </ShareModalProvider>
           </ShellChromeProvider>
         </BreadcrumbProvider>

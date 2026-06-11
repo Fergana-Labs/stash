@@ -10,23 +10,23 @@ import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import {
   getWorkspaceSidebar,
-  getPublicCartridge,
+  getPublicSkill,
   getSessionEvents,
   listAllTables,
-  listStashes,
+  listSharedSkills,
   listMyWorkspaces,
   searchWorkspaceEvents,
   searchWorkspacePages,
-  type PublicCartridgeDetail,
+  type PublicSkillDetail,
   type SessionEvent,
   type WorkspaceHistoryEvent,
   type WorkspaceSidebar,
-  type WorkspaceCartridge,
+  type WorkspaceSkill,
   type WorkspaceFolder,
 } from "../../lib/api";
 import type { Page, TableWithWorkspace, Workspace } from "../../lib/types";
 
-type ContentScope = "all" | "sessions" | "pages" | "tables" | "cartridges";
+type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -40,7 +40,7 @@ function bucketCount(n: number): string {
 
 interface SearchResult {
   id: string;
-  kind: "Session" | "Page" | "Table" | "Stash";
+  kind: "Session" | "Page" | "Table" | "Skill";
   title: string;
   href: string;
   sourceName: string;
@@ -49,7 +49,7 @@ interface SearchResult {
   relevance: number;
 }
 
-interface SearchableCartridge extends WorkspaceCartridge {
+interface SearchableSkill extends WorkspaceSkill {
   workspace_name: string;
 }
 
@@ -57,13 +57,13 @@ const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
   { id: "all", label: "All" },
   { id: "sessions", label: "Sessions" },
   { id: "pages", label: "Pages" },
-  { id: "cartridges", label: "Cartridges" },
+  { id: "skills", label: "Skills" },
   { id: "tables", label: "Tables" },
 ];
 
 function initialContentScope(value: string | null, sessionId: string): ContentScope {
   if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "tables" || value === "cartridges") {
+  if (value === "sessions" || value === "pages" || value === "tables" || value === "skills") {
     return value;
   }
   return "all";
@@ -85,14 +85,14 @@ function SearchPageInner() {
   const { user, loading, logout } = useAuth();
   const initialSessionId = searchParams.get("session") ?? "";
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceStashes, setWorkspaceStashes] = useState<SearchableCartridge[]>([]);
+  const [workspaceSkills, setWorkspaceSkills] = useState<SearchableSkill[]>([]);
   const [sidebars, setSidebars] = useState<Record<string, WorkspaceSidebar>>({});
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(
     searchParams.get("workspace") ?? ""
   );
-  const [selectedProductCartridgeId, setSelectedProductCartridgeId] = useState("");
-  const [selectedProductCartridgeSlug, setSelectedProductCartridgeSlug] = useState(
-    searchParams.get("stash") ?? ""
+  const [selectedProductSkillId, setSelectedProductSkillId] = useState("");
+  const [selectedProductSkillSlug, setSelectedProductSkillSlug] = useState(
+    searchParams.get("skill") ?? ""
   );
   const [selectedFolderId, setSelectedFolderId] = useState(searchParams.get("folder") ?? "");
   const [selectedPageId, setSelectedPageId] = useState(searchParams.get("page") ?? "");
@@ -113,14 +113,14 @@ function SearchPageInner() {
     setError("");
     try {
       const data = await listMyWorkspaces();
-      const stashGroups = await Promise.all(
+      const skillGroups = await Promise.all(
         data.workspaces.map(async (workspace) => {
-          const workspaceStashes = await listStashes(workspace.id);
-          return workspaceStashes.map((stash) => ({ ...stash, workspace_name: workspace.name }));
+          const workspaceSkills = await listSharedSkills(workspace.id);
+          return workspaceSkills.map((skill) => ({ ...skill, workspace_name: workspace.name }));
         })
       );
       setWorkspaces(data.workspaces);
-      setWorkspaceStashes(stashGroups.flat());
+      setWorkspaceSkills(skillGroups.flat());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load workspace data");
     } finally {
@@ -159,41 +159,41 @@ function SearchPageInner() {
       : workspaces;
   }, [selectedWorkspaceId, workspaces]);
 
-  const searchedStashes = useMemo(() => {
+  const searchedSkills = useMemo(() => {
     const workspaceIds = new Set(searchedWorkspaces.map((workspace) => workspace.id));
-    return workspaceStashes.filter((stash) => {
-      if (internalOnly && stash.is_external) return false;
-      const containerWorkspaceId = stash.added_to_workspace_id ?? stash.workspace_id;
+    return workspaceSkills.filter((skill) => {
+      if (internalOnly && skill.is_external) return false;
+      const containerWorkspaceId = skill.added_to_workspace_id ?? skill.workspace_id;
       return workspaceIds.has(containerWorkspaceId);
     });
-  }, [internalOnly, searchedWorkspaces, workspaceStashes]);
+  }, [internalOnly, searchedWorkspaces, workspaceSkills]);
 
-  const selectedProductCartridge = useMemo(
+  const selectedProductSkill = useMemo(
     () =>
-      searchedStashes.find(
-        (stash) =>
-          stash.id === selectedProductCartridgeId ||
-          (selectedProductCartridgeSlug && stash.slug === selectedProductCartridgeSlug)
+      searchedSkills.find(
+        (skill) =>
+          skill.id === selectedProductSkillId ||
+          (selectedProductSkillSlug && skill.slug === selectedProductSkillSlug)
       ) ?? null,
-    [searchedStashes, selectedProductCartridgeId, selectedProductCartridgeSlug]
+    [searchedSkills, selectedProductSkillId, selectedProductSkillSlug]
   );
 
   useEffect(() => {
-    if (!selectedProductCartridgeId) return;
-    if (selectedProductCartridge) return;
-    setSelectedProductCartridgeId("");
-  }, [selectedProductCartridge, selectedProductCartridgeId]);
+    if (!selectedProductSkillId) return;
+    if (selectedProductSkill) return;
+    setSelectedProductSkillId("");
+  }, [selectedProductSkill, selectedProductSkillId]);
 
   useEffect(() => {
-    if (!selectedProductCartridgeSlug || !selectedProductCartridge || selectedProductCartridgeId) return;
-    setSelectedProductCartridgeId(selectedProductCartridge.id);
-  }, [selectedProductCartridge, selectedProductCartridgeId, selectedProductCartridgeSlug]);
+    if (!selectedProductSkillSlug || !selectedProductSkill || selectedProductSkillId) return;
+    setSelectedProductSkillId(selectedProductSkill.id);
+  }, [selectedProductSkill, selectedProductSkillId, selectedProductSkillSlug]);
 
   useEffect(() => {
-    if (!selectedProductCartridgeId && !selectedProductCartridgeSlug) return;
+    if (!selectedProductSkillId && !selectedProductSkillSlug) return;
     setSelectedFolderId("");
     setSelectedPageId("");
-  }, [selectedProductCartridgeId, selectedProductCartridgeSlug]);
+  }, [selectedProductSkillId, selectedProductSkillSlug]);
 
   const folderOptions = useMemo(() => {
     if (!selectedWorkspaceId) return [];
@@ -217,7 +217,7 @@ function SearchPageInner() {
       const includeSessions = contentScope === "all" || contentScope === "sessions";
       const includePages = contentScope === "all" || contentScope === "pages";
       const includeTables = contentScope === "all" || contentScope === "tables";
-      const includeStashes = contentScope === "all" || contentScope === "cartridges";
+      const includeSkills = contentScope === "all" || contentScope === "skills";
       const workspace =
         workspaces.find((item) => item.id === selectedWorkspaceId) ??
         searchedWorkspaces[0] ??
@@ -232,16 +232,16 @@ function SearchPageInner() {
         return;
       }
 
-      const selectedCartridgeSlug = selectedProductCartridge?.slug ?? selectedProductCartridgeSlug;
-      if (selectedCartridgeSlug) {
-        const detail = await getPublicCartridge(selectedCartridgeSlug);
-        if (includeStashes) {
+      const selectedSkillSlug = selectedProductSkill?.slug ?? selectedProductSkillSlug;
+      if (selectedSkillSlug) {
+        const detail = await getPublicSkill(selectedSkillSlug);
+        if (includeSkills) {
           nextResults.push(
-            ...searchStashes([{ ...detail.cartridge, workspace_name: detail.workspace_name }], q)
+            ...searchSkills([{ ...detail.skill, workspace_name: detail.workspace_name }], q)
           );
         }
         nextResults.push(
-          ...searchPublicCartridgeItems(detail, q, {
+          ...searchPublicSkillItems(detail, q, {
             includePages,
             includeSessions,
             includeTables,
@@ -251,8 +251,8 @@ function SearchPageInner() {
         return;
       }
 
-      if (includeStashes && !selectedFolderId && !selectedPageId) {
-        nextResults.push(...searchStashes(searchedStashes, q));
+      if (includeSkills && !selectedFolderId && !selectedPageId) {
+        nextResults.push(...searchSkills(searchedSkills, q));
       }
 
       if (includeSessions && !selectedFolderId && !selectedPageId) {
@@ -326,12 +326,12 @@ function SearchPageInner() {
   }, [
     contentScope,
     query,
-    searchedStashes,
+    searchedSkills,
     searchedWorkspaces,
     selectedFolderId,
     selectedPageId,
-    selectedProductCartridge,
-    selectedProductCartridgeSlug,
+    selectedProductSkill,
+    selectedProductSkillSlug,
     selectedSessionId,
     selectedWorkspaceId,
     workspaces,
@@ -364,11 +364,11 @@ function SearchPageInner() {
             Search
           </p>
           <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-            Search pages, sessions, tables, and Cartridges.
+            Search pages, sessions, tables, and Skills.
           </h1>
           <p className="mt-2 max-w-[700px] text-[14.5px] leading-relaxed text-muted">
-            Search one workspace, one Stash, a folder inside a workspace, or
-            internal knowledge only. Stash results are published bundles created from
+            Search one workspace, one Skill, a folder inside a workspace, or
+            internal knowledge only. Skill results are published bundles created from
             workspace pages, tables, and sessions.
           </p>
         </header>
@@ -391,8 +391,8 @@ function SearchPageInner() {
                     setSelectedWorkspaceId(next);
                     setSelectedFolderId("");
                     setSelectedPageId("");
-                    setSelectedProductCartridgeId("");
-                    setSelectedProductCartridgeSlug("");
+                    setSelectedProductSkillId("");
+                    setSelectedProductSkillSlug("");
                     setSelectedSessionId("");
                   }}
                   ariaLabel="Workspace"
@@ -402,21 +402,21 @@ function SearchPageInner() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Stash</span>
+                <span className="text-[12px] font-medium text-foreground">Skill</span>
                 <CustomSelect
-                  value={selectedProductCartridgeId}
+                  value={selectedProductSkillId}
                   options={[
-                    { value: "", label: "All Cartridges" },
-                    ...searchedStashes.map((stash) => ({
-                      value: stash.id,
-                      label: stash.title + (stash.forked_from_cartridge_id ? " (Fork)" : ""),
+                    { value: "", label: "All Skills" },
+                    ...searchedSkills.map((skill) => ({
+                      value: skill.id,
+                      label: skill.title + (skill.forked_from_skill_id ? " (Fork)" : ""),
                     })),
                   ]}
                   onChange={(next) => {
-                    setSelectedProductCartridgeId(next);
-                    setSelectedProductCartridgeSlug("");
+                    setSelectedProductSkillId(next);
+                    setSelectedProductSkillSlug("");
                   }}
-                  ariaLabel="Stash"
+                  ariaLabel="Skill"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
                 />
@@ -438,7 +438,7 @@ function SearchPageInner() {
                   options={[
                     {
                       value: "",
-                      label: selectedProductCartridgeId ? "Stash selected" : "Entire workspace",
+                      label: selectedProductSkillId ? "Skill selected" : "Entire workspace",
                     },
                     ...folderOptions.map((folder) => ({
                       value: folder.id,
@@ -449,7 +449,7 @@ function SearchPageInner() {
                     setSelectedFolderId(next);
                     if (next) setSelectedPageId("");
                   }}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductCartridgeId || selectedPageId)}
+                  disabled={!selectedWorkspaceId || Boolean(selectedProductSkillId || selectedPageId)}
                   ariaLabel="Folder"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
@@ -463,8 +463,8 @@ function SearchPageInner() {
                   options={[
                     {
                       value: "",
-                      label: selectedProductCartridgeId
-                        ? "Stash selected"
+                      label: selectedProductSkillId
+                        ? "Skill selected"
                         : selectedFolderId
                           ? "Folder selected"
                           : "Any page",
@@ -478,7 +478,7 @@ function SearchPageInner() {
                     setSelectedPageId(next);
                     if (next) setSelectedFolderId("");
                   }}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductCartridgeId || selectedFolderId)}
+                  disabled={!selectedWorkspaceId || Boolean(selectedProductSkillId || selectedFolderId)}
                   ariaLabel="Page"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
@@ -528,7 +528,7 @@ function SearchPageInner() {
             >
               <input
                 type="text"
-                placeholder="Search for a decision, transcript, table, Stash, or page..."
+                placeholder="Search for a decision, transcript, table, Skill, or page..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
@@ -644,27 +644,27 @@ function searchSingleSession(
   ];
 }
 
-function searchStashes(cartridges: SearchableCartridge[], query: string): SearchResult[] {
-  return cartridges
-    .map((stash) => {
+function searchSkills(skills: SearchableSkill[], query: string): SearchResult[] {
+  return skills
+    .map((skill) => {
       const relevance = scoreValues(query, [
-        { value: stash.title, weight: 8 },
-        { value: stash.description, weight: 3 },
-        { value: stash.workspace_name, weight: 1 },
+        { value: skill.title, weight: 8 },
+        { value: skill.description, weight: 3 },
+        { value: skill.workspace_name, weight: 1 },
       ]);
-      return { stash, relevance };
+      return { skill, relevance };
     })
     .filter(({ relevance }) => relevance > 0)
-    .map(({ stash, relevance }) => ({
-      id: stash.id,
-      kind: "Stash" as const,
-      title: stash.title,
-      href: `/cartridges/${stash.slug}`,
-      sourceName: stash.workspace_name,
+    .map(({ skill, relevance }) => ({
+      id: skill.id,
+      kind: "Skill" as const,
+      title: skill.title,
+      href: `/skills/${skill.slug}`,
+      sourceName: skill.workspace_name,
       detail:
-        (stash.forked_from_cartridge_id ? "Forked Stash" : "Stash") +
-        ` / ${stash.description || `${stash.items.length} items`}`,
-      updatedAt: stash.updated_at,
+        (skill.forked_from_skill_id ? "Forked Skill" : "Skill") +
+        ` / ${skill.description || `${skill.items.length} items`}`,
+      updatedAt: skill.updated_at,
       relevance,
     }));
 }
@@ -828,8 +828,8 @@ function descendantFolderIds(
   return ids;
 }
 
-function searchPublicCartridgeItems(
-  detail: PublicCartridgeDetail,
+function searchPublicSkillItems(
+  detail: PublicSkillDetail,
   query: string,
   scope: { includePages: boolean; includeSessions: boolean; includeTables: boolean }
 ): SearchResult[] {
@@ -851,8 +851,8 @@ function searchPublicCartridgeItems(
 }
 
 function searchPublicFolder(
-  detail: PublicCartridgeDetail,
-  item: PublicCartridgeDetail["items"][number],
+  detail: PublicSkillDetail,
+  item: PublicSkillDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -872,22 +872,22 @@ function searchPublicFolder(
       id: `${item.object_id}:${page.id}`,
       kind: "Page" as const,
       title: page.name,
-      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
-      sourceName: detail.cartridge.title,
+      href: `/skills/${detail.skill.slug}#item-${index}`,
+      sourceName: detail.skill.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.cartridge.updated_at,
+      updatedAt: page.updated_at || detail.skill.updated_at,
       relevance: scoreValues(query, [
         { value: page.name, weight: 8 },
         { value: page.content_markdown, weight: 2 },
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.cartridge.title, weight: 1 },
+        { value: detail.skill.title, weight: 1 },
       ]),
     }));
 }
 
 function searchPublicPage(
-  detail: PublicCartridgeDetail,
-  item: PublicCartridgeDetail["items"][number],
+  detail: PublicSkillDetail,
+  item: PublicSkillDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -909,23 +909,23 @@ function searchPublicPage(
       id: item.object_id,
       kind: "Page" as const,
       title: page.name,
-      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
-      sourceName: detail.cartridge.title,
+      href: `/skills/${detail.skill.slug}#item-${index}`,
+      sourceName: detail.skill.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.cartridge.updated_at,
+      updatedAt: page.updated_at || detail.skill.updated_at,
       relevance: scoreValues(query, [
         { value: page.name, weight: 8 },
         { value: page.content_markdown, weight: 2 },
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.cartridge.title, weight: 1 },
+        { value: detail.skill.title, weight: 1 },
       ]),
     },
   ];
 }
 
 function searchPublicSession(
-  detail: PublicCartridgeDetail,
-  item: PublicCartridgeDetail["items"][number],
+  detail: PublicSkillDetail,
+  item: PublicSkillDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -959,15 +959,15 @@ function searchPublicSession(
       id: session.id || item.object_id,
       kind: "Session" as const,
       title: sessionTitle(session),
-      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
-      sourceName: detail.cartridge.title,
+      href: `/skills/${detail.skill.slug}#item-${index}`,
+      sourceName: detail.skill.title,
       detail: sessionSnippet(session),
-      updatedAt: session.finished_at || session.started_at || detail.cartridge.updated_at,
+      updatedAt: session.finished_at || session.started_at || detail.skill.updated_at,
       relevance: scoreValues(query, [
         { value: session.session_id, weight: 5 },
         { value: session.agent_name, weight: 2 },
         { value: eventText, weight: 3 },
-        { value: detail.cartridge.title, weight: 1 },
+        { value: detail.skill.title, weight: 1 },
       ]),
     },
   ];
@@ -977,8 +977,8 @@ type PublicTableColumn = { name?: string | null };
 type PublicTableRow = { data?: Record<string, unknown> | null };
 
 function searchPublicTable(
-  detail: PublicCartridgeDetail,
-  item: PublicCartridgeDetail["items"][number],
+  detail: PublicSkillDetail,
+  item: PublicSkillDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -998,16 +998,16 @@ function searchPublicTable(
       id: item.object_id,
       kind: "Table" as const,
       title: item.label,
-      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
-      sourceName: detail.cartridge.title,
+      href: `/skills/${detail.skill.slug}#item-${index}`,
+      sourceName: detail.skill.title,
       detail: publicTableSnippet(inline.description, columns, rows, query),
-      updatedAt: detail.cartridge.updated_at,
+      updatedAt: detail.skill.updated_at,
       relevance: scoreValues(query, [
         { value: item.label, weight: 8 },
         { value: inline.description, weight: 3 },
         { value: columnText, weight: 2 },
         { value: rowsText, weight: 1 },
-        { value: detail.cartridge.title, weight: 1 },
+        { value: detail.skill.title, weight: 1 },
       ]),
     },
   ];
@@ -1059,7 +1059,7 @@ function textIncludes(query: string, ...values: (string | null | undefined)[]): 
 function pageSnippet(markdown?: string | null, html?: string | null): string {
   if (markdown?.trim()) return markdown.slice(0, 220);
   if (html?.trim()) return stripHtml(html).slice(0, 220);
-  return "Page in this cartridge";
+  return "Page in this skill";
 }
 
 function sessionSnippet(session: {
@@ -1067,7 +1067,7 @@ function sessionSnippet(session: {
   events?: { event_type: string; tool_name?: string | null; content: string }[];
 }): string {
   const firstEvent = session.events?.find((event) => event.content.trim());
-  if (!firstEvent) return `${session.agent_name || "Agent"} session in this cartridge`;
+  if (!firstEvent) return `${session.agent_name || "Agent"} session in this skill`;
   return firstEvent.content.slice(0, 220);
 }
 

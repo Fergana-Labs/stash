@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import StashPageView from "./PageClient";
+import SkillPageView from "./PageClient";
 
 const api = vi.hoisted(() => {
   class ApiError extends Error {
@@ -21,9 +21,9 @@ const api = vi.hoisted(() => {
     deleteCommentThread: vi.fn(),
     getFolderContents: vi.fn(),
     getPage: vi.fn(),
-    getPublicCartridge: vi.fn(),
+    getPublicSkill: vi.fn(),
     listCommentThreads: vi.fn(),
-    listObjectStashes: vi.fn(),
+    listObjectSkills: vi.fn(),
     reconcileCommentAnchors: vi.fn(),
     replyToCommentThread: vi.fn(),
     setCommentResolved: vi.fn(),
@@ -34,7 +34,7 @@ const api = vi.hoisted(() => {
 
 const route = vi.hoisted(() => ({
   push: vi.fn(),
-  search: "stash=private-stash",
+  search: "skill=private-skill",
 }));
 
 vi.mock("next/navigation", () => ({
@@ -79,8 +79,8 @@ vi.mock("../../../../hooks/useAuth", () => ({
 
 vi.mock("../../../../lib/api", () => api);
 
-vi.mock("../../../../cartridges/[slug]/CartridgeItemBodies", () => ({
-  PageBody: () => <div>Stash page body</div>,
+vi.mock("../../../../skills/[slug]/SkillItemBodies", () => ({
+  PageBody: () => <div>Skill page body</div>,
 }));
 
 vi.mock("../../../../components/DownloadMenu", () => ({
@@ -94,8 +94,8 @@ vi.mock("../../../../components/SkeletonStates", () => ({
   DocumentPageSkeleton: () => <div>Loading page</div>,
 }));
 
-vi.mock("../../../../components/StashIcons", () => ({
-  StashIcon: () => <span>Stash icon</span>,
+vi.mock("../../../../components/SkillIcons", () => ({
+  SkillIcon: () => <span>Skill icon</span>,
 }));
 
 vi.mock("../../../../components/workspace/HtmlPageView", () => ({
@@ -124,21 +124,21 @@ vi.mock("../../../../components/workspace/CommentComposerPopover", () => ({
   default: () => <div>Comment composer</div>,
 }));
 
-describe("StashPageView access fallback", () => {
+describe("SkillPageView access fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    route.search = "stash=private-stash";
+    route.search = "skill=private-skill";
     route.push.mockClear();
     api.getPage.mockRejectedValue(new api.ApiError(404, "Page not found"));
-    api.getPublicCartridge.mockRejectedValue(new Error("Stash not found"));
+    api.getPublicSkill.mockRejectedValue(new Error("Skill not found"));
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("shows a full-screen access denied page when the linked Stash is not readable", async () => {
-    render(<StashPageView />);
+  it("shows a full-screen access denied page when the linked Skill is not readable", async () => {
+    render(<SkillPageView />);
 
     expect(
       await screen.findByRole("heading", {
@@ -151,6 +151,6 @@ describe("StashPageView access fallback", () => {
       "/",
     );
     expect(screen.queryByText("Page not found")).not.toBeInTheDocument();
-    expect(screen.queryByText("This page is not in a Stash yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("This page is not in a Skill yet.")).not.toBeInTheDocument();
   });
 });

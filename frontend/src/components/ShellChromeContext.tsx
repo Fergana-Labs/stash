@@ -60,8 +60,8 @@ export function useShareAction(node: ReactNode | null) {
 }
 
 // Page-side hook: tells AppShell which workspace the current page belongs to
-// when the URL alone doesn't carry it (e.g. /cartridges/[slug] resolves its
-// workspace from the loaded stash).
+// when the URL alone doesn't carry it (e.g. /skills/[slug] resolves its
+// workspace from the loaded skill).
 export function useActiveWorkspaceId(id: string | null) {
   const { setActiveWorkspaceId } = useContext(ShellChromeContext);
   useEffect(() => {

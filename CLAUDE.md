@@ -41,16 +41,16 @@ Never commit screenshots, recordings, or other assets that exist only to support
 This repo uses [Stash](https://joinstash.ai) for shared agent Sessions and Files.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
-### What a Stash is
+### What a Skill is
 
-A Stash is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with its own access control and an optional public URL. Reach for one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
+A Skill is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with its own access control and an optional public URL. Reach for one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
 
-A Stash is **not** a wrapper to slap on every single file you happen to share. One-item Stashes clutter Discover and defeat the model. Pick the right tool:
+A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills clutter Discover and defeat the model. Pick the right tool:
 
 - Internal share of a single file → `stash files upload <path> --json`, hand over `app_url`.
-- Upload a folder/project → `stash upload <path> --json` (returns `app_url`, no Stash).
-- Publishing a curated bundle → `stash upload <path> --stash "<title>" --json`.
-- Composing from existing items → `stash stashes create "<title>" --items '<json>' --json`.
+- Upload a folder/project → `stash upload <path> --json` (returns `app_url`, no Skill).
+- Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
+- Composing from existing items → `stash skills create "<title>" --items '<json>' --json`.
 - Share a coding session → `stash share <session_id>`.
 
 Run `stash prompts agent-guidance` to reprint this guidance mid-session.

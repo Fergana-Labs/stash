@@ -54,9 +54,17 @@ async def test_security_events_are_workspace_admin_only(
         f"/api/v1/workspaces/{ws}/security-events",
         headers=_auth(editor_key),
     )
+    # Non-members get 404 like every other workspace route, so the endpoint
+    # never confirms a workspace's existence to outsiders.
+    stranger_key, _ = await _register(client, "audit_stranger")
+    stranger_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=_auth(stranger_key),
+    )
 
     assert owner_resp.status_code == 200
     assert editor_resp.status_code == 403
+    assert stranger_resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -120,6 +128,52 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient):
+    """Agent tools call source_service directly — the audit trail must cover
+    that front door too, not just the REST endpoints, or a prompt-injected
+    agent could exfiltrate source content without leaving a trace."""
+    api_key, user_id = await _register(client, "audit_agent")
+    ws = await _create_workspace(client, api_key)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "github_repo",
+            "external_ref": "webflow/confidential-roadmap",
+            "display_name": "webflow/confidential-roadmap",
+        },
+        headers=_auth(api_key),
+    )
+    assert added.status_code == 200
+    source_id = UUID(added.json()["id"])
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path="docs/launch.md",
+        name="launch.md",
+        content="secret launch plan",
+    )
+
+    results = await source_service.search_all(ws, user_id, "secret launch", source=str(source_id))
+    source_ok, doc = await source_service.source_document(
+        ws, user_id, str(source_id), "docs/launch.md"
+    )
+    assert results
+    assert source_ok and doc is not None
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=_auth(api_key),
+    )
+    events = events_resp.json()["events"]
+    search_event = next(event for event in events if event["action"] == "source.searched")
+    read_event = next(event for event in events if event["action"] == "source.document_read")
+    assert search_event["target_id"] == str(source_id)
+    assert read_event["target_id"] == str(source_id)
+
+
+@pytest.mark.asyncio
 async def test_integration_disconnect_audits_workspace_source_purge(
     client: AsyncClient,
     monkeypatch,
@@ -160,6 +214,13 @@ async def test_integration_disconnect_audits_workspace_source_purge(
     assert deleted["provider"] == "slack"
     assert deleted["source_type"] == "slack"
     assert deleted["metadata"] == {"reason": "integration_disconnect"}
+    # The credential revocation itself must be visible through the only read
+    # surface (per-workspace), not written as an unreadable NULL-workspace row.
+    disconnected_event = next(
+        event for event in events if event["action"] == "integration.disconnected"
+    )
+    assert disconnected_event["provider"] == "slack"
+    assert disconnected_event["metadata"] == {"removed_sources": 1}
 
 
 @pytest.mark.asyncio

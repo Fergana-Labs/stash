@@ -222,7 +222,7 @@ async def _session_detail_payload(
 
     No workspace-membership pre-gate: a session may be shared with a
     non-member. can_read_session enforces check_access (owner OR share OR
-    open cartridge).
+    open skill).
     """
     if not await memory_service.can_read_session(workspace_id, session_id, user_id):
         return None

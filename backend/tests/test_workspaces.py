@@ -343,7 +343,7 @@ async def test_editor_can_update_workspace(client: AsyncClient):
     ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
-    # Default role for joiners is editor; editors can rename/describe the stash.
+    # Default role for joiners is editor; editors can rename/describe the skill.
     resp = await client.patch(
         f"/api/v1/workspaces/{ws['id']}",
         json={"name": "Edited by member"},
@@ -408,6 +408,11 @@ async def test_delete_workspace_deletes_stored_files_and_session_artifacts(
     deleted_keys: list[str] = []
 
     async def fake_delete_file(storage_key: str) -> None:
+        # Blobs are purged only after the DB delete commits — a failed delete
+        # must never leave live rows pointing at destroyed storage objects.
+        assert (
+            await pool.fetchval("SELECT COUNT(*) FROM workspaces WHERE id = $1", workspace_id) == 0
+        )
         deleted_keys.append(storage_key)
 
     monkeypatch.setattr("backend.routers.workspaces.storage_service.delete_file", fake_delete_file)

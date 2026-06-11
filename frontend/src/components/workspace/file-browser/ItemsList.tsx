@@ -7,7 +7,7 @@ import {
   type FBDragPayload,
 } from "./WorkspaceFileBrowser";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { PinIcon } from "../../StashIcons";
+import { PinIcon } from "../../SkillIcons";
 import { KindIcon, tintFor, typeFor, type GridItem, type ItemKind } from "./kind";
 
 // Shared drag setup so single rows/tiles and multi-selections behave the same.

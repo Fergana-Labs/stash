@@ -2,7 +2,7 @@
 // react when an agent or another user edits a page on the backend. Uses
 // fetch+ReadableStream (not EventSource) so it can send the Bearer token.
 
-import { API_BASE, getToken } from "@/lib/api";
+import { API_BASE, getAuthToken } from "@/lib/api";
 
 export type PageUpdateEvent = {
   type: "page.updated";
@@ -23,10 +23,14 @@ export function subscribePageEvents(
   async function run() {
     while (!stopped) {
       try {
+        // Resolved per attempt so each reconnect gets a fresh Auth0 token.
+        const token = await getAuthToken();
         const res = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/pages/events`, {
-          headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+          headers: { Authorization: `Bearer ${token ?? ""}` },
           signal: controller.signal,
         });
+        // Unauthenticated — reconnecting would just hammer the endpoint.
+        if (res.status === 401) return;
         if (!res.ok || !res.body) throw new Error(`page events failed: ${res.status}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();

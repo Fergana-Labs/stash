@@ -1,4 +1,4 @@
-import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
+import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../SkillIcons";
 
 // "table" = a CSV/spreadsheet *file* linked to a table; "datatable" = a
 // standalone structured-data table (the `tables` entity). Both render with the

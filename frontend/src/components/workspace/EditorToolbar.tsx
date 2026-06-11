@@ -14,7 +14,7 @@ interface EditorToolbarProps {
   onStartComment?: () => void;
   /** "always" (default) shows the pill whenever the editor is editable.
    *  "when-focused" hides it unless the editor has focus — right for
-   *  inline editors like workspace + stash descriptions. */
+   *  inline editors like workspace + skill descriptions. */
   visibility?: "always" | "when-focused";
 }
 
