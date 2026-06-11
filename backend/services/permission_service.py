@@ -2,15 +2,21 @@
 
 Private by default. A user owns everything in their (single, implicit) workspace
 — workspace membership == ownership. Beyond that, access comes from the `shares`
-table: a row grants a principal (a user, or a cartridge) access to an object.
+table: a row grants a principal access to an object. Principals are a user, or
+'public' — the "anyone with the link" grant (sentinel PUBLIC_PRINCIPAL_ID).
 Folder / session-folder shares cascade to contents via the recursive folder chain.
-Cartridges are read-only bundles: anyone who can *open* a cartridge can read every
-object that cartridge contains (cartridge_items), but a cartridge never grants write.
+Cartridge access lives in the same table (object_type='stash'). Cartridges are
+read-only bundles: anyone who can *open* a cartridge can read every object that
+cartridge contains (cartridge_items), but a cartridge never grants write to them.
 """
 
 from uuid import UUID
 
 from ..database import get_pool
+
+# principal_id for principal_type='public' rows. A real column value (shares.
+# principal_id is NOT NULL) so the one-public-row-per-object UNIQUE holds.
+PUBLIC_PRINCIPAL_ID = UUID(int=0)
 
 _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
@@ -79,8 +85,9 @@ def _item_target_condition(object_type: str, object_alias: str, item_alias: str)
 
 def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
     """SQL predicate: may user ${user_arg} READ the content row at object_alias?
-    Owner (workspace member) OR a user share (direct/ancestor folder) OR the object
-    is in a cartridge the user can open."""
+    Owner (workspace member) OR a live share — user or public, direct or ancestor
+    folder — OR the object is in a cartridge the user can open. ${user_arg} may
+    bind NULL (anonymous): only public grants and public cartridges match then."""
     share_target = _item_target_condition(object_type, object_alias, "content_share")
     ci_target = _item_target_condition(object_type, object_alias, "content_ci")
     return f"""
@@ -92,8 +99,9 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
           )
           OR EXISTS (
             SELECT 1 FROM shares content_share
-            WHERE content_share.principal_type = 'user'
-              AND content_share.principal_id = ${user_arg}
+            WHERE ((content_share.principal_type = 'user'
+                    AND content_share.principal_id = ${user_arg})
+                   OR content_share.principal_type = 'public')
               AND (content_share.expires_at IS NULL OR content_share.expires_at > now())
               AND {share_target}
           )
@@ -101,14 +109,18 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
             SELECT 1
             FROM cartridge_items content_ci
             JOIN cartridges content_cartridge ON content_cartridge.id = content_ci.cartridge_id
-            LEFT JOIN cartridge_members content_cm
-              ON content_cm.cartridge_id = content_cartridge.id
-             AND content_cm.user_id = ${user_arg}
             WHERE {ci_target}
               AND (
                 content_cartridge.public_permission != 'none'
                 OR content_cartridge.owner_id = ${user_arg}
-                OR content_cm.user_id IS NOT NULL
+                OR EXISTS (
+                  SELECT 1 FROM shares stash_share
+                  WHERE stash_share.object_type = 'stash'
+                    AND stash_share.object_id = content_cartridge.id
+                    AND stash_share.principal_type = 'user'
+                    AND stash_share.principal_id = ${user_arg}
+                    AND (stash_share.expires_at IS NULL OR stash_share.expires_at > now())
+                )
               )
           )
         )
@@ -220,23 +232,25 @@ async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, 
     return [(object_type, object_id)]
 
 
-async def _user_share_grants(
-    object_type: str, object_id: UUID, user_id: UUID, require: str
+async def _share_grants(
+    object_type: str, object_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
-    """A live (unexpired) user share on the object or any ancestor folder that
-    meets the required permission level."""
+    """A live (unexpired) share on the object or any ancestor folder that meets
+    the required permission level. Matches the user's own grants plus any
+    'public' (anyone with the link) grant, so it works for anonymous viewers."""
     pool = get_pool()
     for target_type, target_id in await _object_targets(object_type, object_id):
-        row = await pool.fetchrow(
+        rows = await pool.fetch(
             "SELECT permission FROM shares "
-            "WHERE principal_type = 'user' AND principal_id = $1 "
+            "WHERE ((principal_type = 'user' AND principal_id = $1) "
+            "       OR principal_type = 'public') "
             "AND object_type = $2 AND object_id = $3 "
             "AND (expires_at IS NULL OR expires_at > now())",
             user_id,
             target_type,
             target_id,
         )
-        if row and _LEVELS[row["permission"]] >= _LEVELS[require]:
+        if any(_LEVELS[row["permission"]] >= _LEVELS[require] for row in rows):
             return True
     return False
 
@@ -259,26 +273,16 @@ async def _containing_cartridges(object_type: str, object_id: UUID) -> list[dict
     return rows
 
 
-async def _cartridge_member_permission(cartridge_id: UUID, user_id: UUID) -> str | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT permission FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
-        cartridge_id,
-        user_id,
-    )
-    return row["permission"] if row else None
-
-
 async def _cartridge_open(cartridge: dict, user_id: UUID | None) -> bool:
     """Can the user OPEN this cartridge (read its contents)? Cartridges are
-    read-only links: public, owned, or a cartridge member."""
+    read-only links: public, owned, or shared with the user."""
     if cartridge["public_permission"] != "none":
         return True
     if user_id is None:
         return False
     if cartridge["owner_id"] == user_id:
         return True
-    return await _cartridge_member_permission(cartridge["id"], user_id) is not None
+    return await _share_grants("stash", cartridge["id"], user_id, "read")
 
 
 async def _session_folder_open(
@@ -296,7 +300,7 @@ async def _session_folder_open(
         return False
     if folder["owner_user_id"] == user_id:
         return True
-    return await _user_share_grants("session_folder", folder_id, user_id, require)
+    return await _share_grants("session_folder", folder_id, user_id, require)
 
 
 async def check_access(
@@ -328,7 +332,11 @@ async def check_access(
         if not row:
             return False
         if require != "read":
-            return row["owner_id"] == user_id
+            if row["owner_id"] == user_id:
+                return True
+            return user_id is not None and await _share_grants(
+                "stash", object_id, user_id, require
+            )
         return await _cartridge_open(dict(row), user_id)
 
     # A session folder is a shareable bundle: public link, owner, or user share.
@@ -346,8 +354,9 @@ async def check_access(
     if object_type not in _CONTENT_TYPES:
         return False
 
-    # Direct or inherited user share.
-    if user_id is not None and await _user_share_grants(object_type, object_id, user_id, require):
+    # Direct or inherited share — the user's own, or a public (anyone with the
+    # link) grant, which also covers anonymous viewers.
+    if await _share_grants(object_type, object_id, user_id, require):
         return True
 
     # Read-only access via a public / shared session folder that contains it.
@@ -386,9 +395,12 @@ async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
-    """'public' if in any public cartridge, 'shared' if shared with anyone,
-    else 'private'."""
+    """'public' if anyone with the link can see it (a public grant, direct or
+    inherited, or a public cartridge), 'shared' if shared with anyone, else
+    'private'."""
     pool = get_pool()
+    if await _share_grants(object_type, object_id, None, "read"):
+        return "public"
     cartridges = await _containing_cartridges(object_type, object_id)
     if any(c["public_permission"] != "none" for c in cartridges):
         return "public"

@@ -65,7 +65,8 @@ _STASH_COLS = (
     "CASE WHEN v.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
     "v.workspace_permission, v.public_permission, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_cartridge_id, "
-    "(SELECT COUNT(*) FROM cartridge_members cm WHERE cm.cartridge_id = v.id) AS share_count, "
+    "(SELECT COUNT(*) FROM shares cs WHERE cs.object_type = 'stash' "
+    "AND cs.object_id = v.id AND cs.principal_type = 'user') AS share_count, "
     "v.created_at, v.updated_at"
 )
 _STASH_FROM = "FROM cartridges v JOIN users owner_user ON owner_user.id = v.owner_id"
@@ -1527,101 +1528,22 @@ async def user_can_manage(cartridge_id: UUID, user_id: UUID) -> bool:
     return await user_can_write(cartridge_id, user_id)
 
 
-async def user_can_admin(cartridge_id: UUID, user_id: UUID) -> bool:
+async def _share_permission(cartridge_id: UUID, user_id: UUID) -> str | None:
+    """The user's live share on this cartridge (object_type='stash')."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id FROM cartridges WHERE id = $1", cartridge_id
-    )
-    if not row:
-        return False
-    if row["owner_id"] == user_id:
-        return True
-    member = await pool.fetchrow(
-        "SELECT permission FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
+        "SELECT permission FROM shares "
+        "WHERE object_type = 'stash' AND object_id = $1 "
+        "AND principal_type = 'user' AND principal_id = $2 "
+        "AND (expires_at IS NULL OR expires_at > now())",
         cartridge_id,
         user_id,
     )
-    return bool(member and member["permission"] == "admin")
-
-
-async def list_members(cartridge_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT sm.user_id, u.name, u.display_name, sm.permission, sm.granted_by, sm.created_at "
-        "FROM cartridge_members sm "
-        "JOIN users u ON u.id = sm.user_id "
-        "WHERE sm.cartridge_id = $1 "
-        "ORDER BY sm.created_at, u.name",
-        cartridge_id,
-    )
-    return [dict(row) for row in rows]
-
-
-async def add_member(
-    cartridge_id: UUID,
-    user_id: UUID,
-    permission: str,
-    granted_by: UUID,
-) -> dict | None:
-    if permission not in {"read", "write", "admin"}:
-        raise ValueError("Invalid Stash permission")
-
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
-        "VALUES ($1, $2, $3, $4) "
-        "ON CONFLICT (cartridge_id, user_id) DO UPDATE "
-        "SET permission = EXCLUDED.permission, granted_by = EXCLUDED.granted_by "
-        "RETURNING user_id, permission, granted_by, created_at",
-        cartridge_id,
-        user_id,
-        permission,
-        granted_by,
-    )
-    if not row:
-        return None
-    await pool.execute("UPDATE cartridges SET updated_at = now() WHERE id = $1", cartridge_id)
-
-    user = await pool.fetchrow(
-        "SELECT name, display_name FROM users WHERE id = $1",
-        user_id,
-    )
-    if not user:
-        return None
-
-    from . import cartridge_invite_service
-
-    await cartridge_invite_service.create_or_update_invite(
-        cartridge_id=cartridge_id,
-        recipient_user_id=user_id,
-        invited_by_user_id=granted_by,
-        permission=permission,
-    )
-
-    member = dict(row)
-    member["name"] = user["name"]
-    member["display_name"] = user["display_name"]
-    return member
-
-
-async def remove_member(cartridge_id: UUID, user_id: UUID) -> bool:
-    pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
-        cartridge_id,
-        user_id,
-    )
-    removed = result == "DELETE 1"
-    if removed:
-        from . import cartridge_invite_service
-
-        await cartridge_invite_service.delete_pending_invite(cartridge_id, user_id)
-        await pool.execute("UPDATE cartridges SET updated_at = now() WHERE id = $1", cartridge_id)
-    return removed
+    return row["permission"] if row else None
 
 
 async def user_can_write(cartridge_id: UUID, user_id: UUID) -> bool:
-    """Stash writes require owner/admin, explicit write, or general edit access."""
+    """Stash writes require owner, a write share, or general edit access."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT workspace_id, owner_id, workspace_permission, public_permission "
@@ -1632,12 +1554,7 @@ async def user_can_write(cartridge_id: UUID, user_id: UUID) -> bool:
         return False
     if row["owner_id"] == user_id:
         return True
-    member = await pool.fetchrow(
-        "SELECT permission FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
-        cartridge_id,
-        user_id,
-    )
-    if member and member["permission"] in ("write", "admin"):
+    if await _share_permission(cartridge_id, user_id) == "write":
         return True
     role = await workspace_service.get_member_role(row["workspace_id"], user_id)
     if role is not None and row["workspace_permission"] == "write":
@@ -1660,14 +1577,8 @@ async def user_can_read(cartridge_id: UUID, user_id: UUID | None) -> bool:
         return False
     if row["owner_id"] == user_id:
         return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    member = await pool.fetchrow(
-        "SELECT 1 FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
-        cartridge_id,
-        user_id,
-    )
-    if member is not None:
+    if await _share_permission(cartridge_id, user_id) is not None:
         return True
     if row["workspace_permission"] != "none":
-        return role is not None
+        return await workspace_service.get_member_role(row["workspace_id"], user_id) is not None
     return False

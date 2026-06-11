@@ -455,9 +455,10 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
           (SELECT MAX(updated_at) FROM cartridges WHERE workspace_id = $1)            AS st,
-          (SELECT MAX(sm.created_at) FROM cartridge_members sm
-           JOIN cartridges s ON s.id = sm.cartridge_id
-           WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
+          (SELECT MAX(sm.created_at) FROM shares sm
+           JOIN cartridges s ON s.id = sm.object_id
+           WHERE sm.object_type = 'stash' AND sm.principal_type = 'user'
+             AND s.workspace_id = $1 AND sm.principal_id = $2)                    AS sm,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,
         workspace_id,

@@ -90,6 +90,16 @@ async def share_with_user_by_email(
         owner_id,
         expires_at,
     )
+    if object_type == "stash":
+        # Sharing a cartridge also rings the recipient's in-app invite bell.
+        from . import cartridge_invite_service
+
+        await cartridge_invite_service.create_or_update_invite(
+            cartridge_id=object_id,
+            recipient_user_id=user["id"],
+            invited_by_user_id=owner_id,
+            permission=permission,
+        )
     return {"id": str(row["id"]), "principal_type": "user", "principal_id": str(user["id"])}
 
 
@@ -141,6 +151,40 @@ async def unshare(
         object_id,
         principal_type,
         principal_id,
+    )
+    if object_type == "stash" and principal_type == "user":
+        from . import cartridge_invite_service
+
+        await cartridge_invite_service.delete_pending_invite(object_id, principal_id)
+
+
+async def set_public_access(*, object_type: str, object_id: UUID, enabled: bool, owner_id: UUID) -> None:
+    """Toggle the "anyone with the link" grant: one read-level shares row with
+    the public principal. Folder grants cascade to contents like any share."""
+    if object_type not in _PUBLICLY_SHAREABLE:
+        raise HTTPException(status_code=400, detail=f"a {object_type} can't have a public link")
+    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    pool = get_pool()
+    if not enabled:
+        await pool.execute(
+            "DELETE FROM shares WHERE object_type = $1 AND object_id = $2 "
+            "AND principal_type = 'public'",
+            object_type,
+            object_id,
+        )
+        return
+    await pool.execute(
+        """
+        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+                            principal_id, permission, created_by)
+        VALUES ($1, $2, $3, 'public', $4, 'read', $5)
+        ON CONFLICT (object_type, object_id, principal_type, principal_id) DO NOTHING
+        """,
+        workspace_id,
+        object_type,
+        object_id,
+        permission_service.PUBLIC_PRINCIPAL_ID,
+        owner_id,
     )
 
 

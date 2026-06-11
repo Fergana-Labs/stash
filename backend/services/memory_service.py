@@ -268,9 +268,6 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
                   LEFT JOIN workspace_members session_workspace_member
                     ON session_workspace_member.workspace_id = session_cartridge.workspace_id
                    AND session_workspace_member.user_id = ${user_arg}
-                  LEFT JOIN cartridge_members session_cartridge_member
-                    ON session_cartridge_member.cartridge_id = session_cartridge.id
-                   AND session_cartridge_member.user_id = ${user_arg}
                   WHERE session_cartridge_item.object_type = 'session'
                     AND session_cartridge_item.object_id = readable_session.id
                     AND (
@@ -280,7 +277,15 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
                         AND session_workspace_member.user_id IS NOT NULL
                       )
                       OR session_cartridge.owner_id = ${user_arg}
-                      OR session_cartridge_member.user_id IS NOT NULL
+                      OR EXISTS (
+                        SELECT 1 FROM shares session_cartridge_share
+                        WHERE session_cartridge_share.object_type = 'stash'
+                          AND session_cartridge_share.object_id = session_cartridge.id
+                          AND session_cartridge_share.principal_type = 'user'
+                          AND session_cartridge_share.principal_id = ${user_arg}
+                          AND (session_cartridge_share.expires_at IS NULL
+                               OR session_cartridge_share.expires_at > now())
+                      )
                     )
                 )
               )

@@ -8,13 +8,9 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
-from ..database import get_pool
 from ..models import (
     AddExternalCartridgeRequest,
     CartridgeCreateRequest,
-    CartridgeMemberRequest,
-    CartridgeMemberResponse,
-    CartridgeMembersResponse,
     CartridgePublicResponse,
     CartridgeResponse,
     CartridgeUpdateRequest,
@@ -230,65 +226,6 @@ async def delete_cartridge(
     deleted = await cartridge_service.delete_cartridge(cartridge_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Stash not found")
-
-
-async def _require_can_manage_cartridge(cartridge_id: UUID, user_id: UUID) -> None:
-    stash = await cartridge_service.get_cartridge(cartridge_id)
-    if not stash:
-        raise HTTPException(status_code=404, detail="Stash not found")
-    if not await cartridge_service.user_can_admin(cartridge_id, user_id):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this cartridge")
-
-
-@public_router.get("/{cartridge_id}/members", response_model=CartridgeMembersResponse)
-async def list_cartridge_members(
-    cartridge_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_manage_cartridge(cartridge_id, current_user["id"])
-    members = await cartridge_service.list_members(cartridge_id)
-    return CartridgeMembersResponse(
-        members=[CartridgeMemberResponse(**member) for member in members]
-    )
-
-
-@public_router.post(
-    "/{cartridge_id}/members", response_model=CartridgeMemberResponse, status_code=201
-)
-async def add_cartridge_member(
-    cartridge_id: UUID,
-    req: CartridgeMemberRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_manage_cartridge(cartridge_id, current_user["id"])
-
-    pool = get_pool()
-    user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    try:
-        member = await cartridge_service.add_member(
-            cartridge_id,
-            req.user_id,
-            req.permission,
-            current_user["id"],
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if not member:
-        raise HTTPException(status_code=404, detail="Stash not found")
-    return CartridgeMemberResponse(**member)
-
-
-@public_router.delete("/{cartridge_id}/members/{user_id}", status_code=204)
-async def remove_cartridge_member(
-    cartridge_id: UUID,
-    user_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_manage_cartridge(cartridge_id, current_user["id"])
-    await cartridge_service.remove_member(cartridge_id, user_id)
 
 
 @public_router.post("/{cartridge_id}/shared-pages", response_model=PageResponse, status_code=201)

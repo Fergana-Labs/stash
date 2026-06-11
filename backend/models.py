@@ -170,8 +170,8 @@ class CartridgeResponse(BaseModel):
     cover_image_url: str | None = None
     icon_url: str | None = None
     view_count: int
-    # Count of people invited to the cartridge (cartridge_members). Drives the
-    # "Shared · N" visibility label when the cartridge isn't public.
+    # Count of people the cartridge is shared with (user shares on the stash).
+    # Drives the "Shared · N" visibility label when the cartridge isn't public.
     share_count: int = 0
     items: list[CartridgeItem]
     is_external: bool = False
@@ -183,24 +183,6 @@ class CartridgeResponse(BaseModel):
 
 class CartridgeListResponse(BaseModel):
     cartridges: list[CartridgeResponse]
-
-
-class CartridgeMemberRequest(BaseModel):
-    user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
-
-
-class CartridgeMemberResponse(BaseModel):
-    user_id: UUID
-    name: str
-    display_name: str
-    permission: str
-    granted_by: UUID | None
-    created_at: datetime
-
-
-class CartridgeMembersResponse(BaseModel):
-    members: list[CartridgeMemberResponse]
 
 
 # Public renderer payload — items are inlined with their content where it
