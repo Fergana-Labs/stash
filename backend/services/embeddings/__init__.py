@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "BaseEmbedder",
+    "MAX_TEXT_CHARS",
+    "clip_text",
     "get_embedder",
     "set_embedder",
     "embed_text",
@@ -51,8 +53,13 @@ __all__ = [
 _MAX_ATTEMPTS = int(os.getenv("EMBEDDING_MAX_ATTEMPTS", "3"))
 _BASE_DELAY = float(os.getenv("EMBEDDING_RETRY_BASE_DELAY", "0.5"))
 _MAX_DELAY = float(os.getenv("EMBEDDING_RETRY_MAX_DELAY", "10.0"))
+MAX_TEXT_CHARS = 6_000
 
 _semaphore: asyncio.Semaphore | None = None
+
+
+def clip_text(text: str) -> str:
+    return text[:MAX_TEXT_CHARS]
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -104,6 +111,7 @@ async def _with_retry(coro_factory):
 async def embed_text(text: str) -> np.ndarray | None:
     """Embed a single text string."""
     embedder = get_embedder()
+    text = clip_text(text)
     try:
         return await _with_retry(lambda: embedder.embed_text(text))
     except TransientEmbeddingError:
@@ -140,6 +148,7 @@ async def embed_batch(texts: list[str]) -> list[np.ndarray] | None:
     don't blow up the embedding API."""
     if not texts:
         return []
+    texts = [clip_text(text) for text in texts]
     embedder = get_embedder()
     shards = _shard_by_chars(texts, _SHARD_CHAR_BUDGET)
     out: list[np.ndarray | None] = [None] * len(texts)

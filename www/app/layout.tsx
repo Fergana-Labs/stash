@@ -13,9 +13,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stash · Your team's AI work, compounding",
+  title: "Stash · One place your agents connect to all your data",
   description:
-    "Stash turns every coding-agent session into a shared, evolving asset, so your team stops running AI individually and starts compounding the work.",
+    "The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack and more — plus an agent-native Drive in Markdown and HTML to write the work back into.",
 };
 
 export default function RootLayout({

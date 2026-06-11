@@ -60,7 +60,6 @@ async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> No
         item.object_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=False,
     )
     if not can_read:
         raise HTTPException(status_code=403, detail="Not allowed to share one or more items")

@@ -10,6 +10,7 @@ import { apiFetch } from "./api";
 
 export type IntegrationProvider =
   | "google"
+  | "gmail"
   | "github"
   | "notion"
   | "slack"
@@ -28,6 +29,15 @@ export type CredentialField = {
   help?: string;
 };
 
+export type IntegrationAccount = {
+  account_key: string;
+  account_email: string | null;
+  account_display_name: string | null;
+  scopes: string[];
+  expires_at: string | null;
+  connected_at: string | null;
+};
+
 export type IntegrationStatus = {
   provider: string;
   display_name: string;
@@ -39,6 +49,7 @@ export type IntegrationStatus = {
   account_display_name: string | null;
   expires_at: string | null;
   connected_at: string | null;
+  accounts: IntegrationAccount[];
   // "oauth" (redirect flow), "mcp_oauth" (DCR+PKCE via an MCP server, e.g.
   // Granola), or "api_key" (pasted credentials, e.g. Gong).
   auth_kind: "oauth" | "mcp_oauth" | "api_key";

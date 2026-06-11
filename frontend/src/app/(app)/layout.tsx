@@ -26,10 +26,12 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
+  const isWorkspaceStashRoute =
+    pathname.startsWith("/workspaces/") && searchParams.has("stash");
   const isPublicCartridgeRoute =
     pathname.startsWith("/cartridges/") ||
     pathname.startsWith("/session-folders/") ||
-    (pathname.startsWith("/workspaces/") && searchParams.has("stash"));
+    isWorkspaceStashRoute;
 
   useEffect(() => {
     if (loading) return;
@@ -40,6 +42,10 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
 
   if (loading) {
     return isPublicCartridgeRoute ? <PublicCartridgeSkeleton /> : <AppShellSkeleton />;
+  }
+
+  if (isWorkspaceStashRoute) {
+    return <main className="min-h-screen bg-background">{children}</main>;
   }
 
   if (!user) {

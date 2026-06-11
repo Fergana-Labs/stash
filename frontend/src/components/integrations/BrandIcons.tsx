@@ -36,6 +36,24 @@ export function GoogleDriveIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function GmailIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 256 193"
+      aria-hidden
+    >
+      <path d="M58.18 192.05V93.14L27.5 65.08 0 49.5v127.34c0 8.84 7.16 16 16 16h42.18z" fill="#4285F4" />
+      <path d="M197.82 192.05H240c8.84 0 16-7.16 16-16V49.5l-28.68 16.42-29.5 27.22v98.91z" fill="#34A853" />
+      <path d="M58.18 93.14 53.9 54.8l4.28-37.3L128 69.87l69.82-52.37 4.67 35-4.67 40.64L128 145.5z" fill="#EA4335" />
+      <path d="M197.82 17.5v75.64L256 49.5V25.32C256 5.57 233.45-6.2 216.73 6z" fill="#FBBC04" />
+      <path d="M0 49.5 26.76 69.57l31.42 23.57V17.5L39.27 6C22.49-6.2 0 5.57 0 25.32z" fill="#C5221F" />
+    </svg>
+  );
+}
+
 export function ObsidianIcon({ className, size = defaultSize }: Props) {
   // Renders the official Obsidian logo SVG asset from /public.
   // Tip: use plain <img> here — next/image's optimizer would re-encode
