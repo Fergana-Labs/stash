@@ -249,7 +249,7 @@ export default function MarkdownEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none min-h-full px-12 pt-10 pb-24 focus:outline-none file-page-body" +
+          "prose prose-sm max-w-none min-h-full px-12 pt-16 pb-24 focus:outline-none file-page-body" +
           (canEdit ? " cursor-text" : ""),
         spellcheck: "false",
       },

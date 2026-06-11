@@ -41,4 +41,19 @@ describe("MarkdownEditor DOM", () => {
       );
     });
   });
+
+  it("keeps top document whitespace on the editable surface", async () => {
+    render(
+      <MarkdownEditor
+        workspaceId={null}
+        file={page}
+        onSave={vi.fn()}
+        collaborationUser={{ id: "user-1", name: "Test User" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".ProseMirror")).toHaveClass("pt-16");
+    });
+  });
 });

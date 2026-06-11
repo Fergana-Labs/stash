@@ -660,7 +660,10 @@ export default function SkillPageView() {
       />
       <div
         ref={pageLayoutRef}
-        className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]"
+        className={
+          "mx-auto grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]" +
+          (isHtml ? " mt-6" : "")
+        }
       >
         <main className="min-w-0">
           {externalEdit && (
