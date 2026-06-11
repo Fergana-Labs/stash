@@ -3,28 +3,26 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
-  addSkillMember,
   ApiError,
   getMe,
-  listSkillMembers,
-  removeSkillMember,
-  searchUsers,
+  listObjectShares,
+  shareObjectByEmail,
+  unshareObject,
   updateSkill,
+  type ObjectShare,
   type PublicSkillDetail,
   type SkillGeneralPermission,
-  type SkillMember,
-  type SkillMemberPermission,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
-import type { UserSearchResult } from "../../lib/types";
 
 type SkillVisibility = "private" | "workspace" | "public";
 type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
-const PERMISSION_OPTIONS: { value: SkillMemberPermission; label: string }[] = [
-  { value: "read", label: "Read" },
-  { value: "write", label: "Write" },
-  { value: "admin", label: "Admin" },
+type SharePermission = "read" | "write";
+
+const PERMISSION_OPTIONS: { value: SharePermission; label: string }[] = [
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
 ];
 
 const VISIBILITY_OPTIONS: { value: SkillVisibility; label: string }[] = [
@@ -106,16 +104,14 @@ export default function SkillShareButton({
   const [shareMessage, setShareMessage] = useState("");
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>("idle");
   const [handoffMessage, setHandoffMessage] = useState("");
-  const [members, setMembers] = useState<SkillMember[]>([]);
+  const [members, setMembers] = useState<ObjectShare[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
   const [canManageMembers, setCanManageMembers] = useState(false);
   const [memberBusy, setMemberBusy] = useState(false);
   const [memberMessage, setMemberMessage] = useState("");
-  const [userQuery, setUserQuery] = useState("");
-  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
-  const [newMemberPermission, setNewMemberPermission] =
-    useState<SkillMemberPermission>("read");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [newMemberPermission, setNewMemberPermission] = useState<SharePermission>("read");
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEscapeKey(open, () => setOpen(false));
@@ -130,15 +126,15 @@ export default function SkillShareButton({
     setMembersLoading(true);
     setMemberMessage("");
     try {
-      const [nextMembers, me] = await Promise.all([
-        listSkillMembers(skill.id),
+      const [shares, me] = await Promise.all([
+        listObjectShares("skill", skill.id),
         getMe(),
       ]);
-      setMembers(nextMembers);
+      setMembers(shares.filter((share) => share.principal_type === "user"));
       setMeId(me.id);
       setCanManageMembers(true);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 403) {
+      if (e instanceof ApiError && (e.status === 403 || e.status === 404)) {
         setMembers([]);
         setCanManageMembers(false);
         return;
@@ -166,8 +162,7 @@ export default function SkillShareButton({
 
     setShareMessage("");
     setMemberMessage("");
-    setUserQuery("");
-    setUserResults([]);
+    setMemberEmail("");
     setCopied(false);
     void loadMembers();
   }, [open, canWrite, loadMembers]);
@@ -263,30 +258,17 @@ export default function SkillShareButton({
     }
   }
 
-  async function searchForUsers(e: FormEvent) {
+  async function addMember(e: FormEvent) {
     e.preventDefault();
-    const query = userQuery.trim();
-    if (!query) return;
+    const email = memberEmail.trim();
+    if (!email) return;
 
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      setUserResults(await searchUsers(query));
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not search users.");
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  async function addMember(userId: string) {
-    setMemberBusy(true);
-    setMemberMessage("");
-    try {
-      await addSkillMember(skill.id, userId, newMemberPermission);
+      await shareObjectByEmail("skill", skill.id, email, newMemberPermission);
       await loadMembers();
-      setUserQuery("");
-      setUserResults([]);
+      setMemberEmail("");
       setMemberMessage("Added.");
       resetSkillNavigationCache();
     } catch (e) {
@@ -296,14 +278,13 @@ export default function SkillShareButton({
     }
   }
 
-  async function changeMemberPermission(
-    userId: string,
-    permission: SkillMemberPermission,
-  ) {
+  async function changeMemberPermission(share: ObjectShare, permission: SharePermission) {
+    if (!share.email) return;
+
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      await addSkillMember(skill.id, userId, permission);
+      await shareObjectByEmail("skill", skill.id, share.email, permission);
       await loadMembers();
       setMemberMessage("Updated.");
       resetSkillNavigationCache();
@@ -314,13 +295,14 @@ export default function SkillShareButton({
     }
   }
 
-  async function deleteMember(userId: string) {
-    if (!confirm("Remove this member from the skill?")) return;
+  async function deleteMember(share: ObjectShare) {
+    if (!share.principal_id) return;
+    if (!confirm("Remove this person from the skill?")) return;
 
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      await removeSkillMember(skill.id, userId);
+      await unshareObject("skill", skill.id, "user", share.principal_id);
       await loadMembers();
       resetSkillNavigationCache();
     } catch (e) {
@@ -451,36 +433,37 @@ export default function SkillShareButton({
                 {!membersLoading && canManageMembers && (
                   <>
                     <ul className="mt-2 max-h-44 overflow-y-auto pr-1">
-                      {members.map((member) => (
+                      {members.map((member, index) => (
                         <MemberRow
-                          key={member.user_id}
+                          key={member.principal_id ?? `${member.email}-${index}`}
                           member={member}
-                          isMe={member.user_id === meId}
+                          isMe={member.principal_id === meId}
                           busy={memberBusy}
                           onPermissionChange={(permission) =>
-                            void changeMemberPermission(member.user_id, permission)
+                            void changeMemberPermission(member, permission)
                           }
                           onRemove={
-                            meId && member.user_id !== meId
-                              ? () => void deleteMember(member.user_id)
+                            member.principal_id && member.principal_id !== meId
+                              ? () => void deleteMember(member)
                               : null
                           }
                         />
                       ))}
                       {members.length === 0 && (
                         <li className="py-2 text-[12px] text-muted">
-                          No explicit members yet.
+                          Not shared with anyone yet.
                         </li>
                       )}
                     </ul>
 
-                    <form onSubmit={searchForUsers} className="mt-3">
-                      <div className="sys-label mb-1">Add member</div>
+                    <form onSubmit={addMember} className="mt-3">
+                      <div className="sys-label mb-1">Share with people</div>
                       <div className="flex gap-1.5">
                         <input
-                          value={userQuery}
-                          onChange={(e) => setUserQuery(e.target.value)}
-                          placeholder="Search users"
+                          type="email"
+                          value={memberEmail}
+                          onChange={(e) => setMemberEmail(e.target.value)}
+                          placeholder="Add people by email"
                           className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
                         />
                         <PermissionSelect
@@ -491,41 +474,19 @@ export default function SkillShareButton({
                         />
                         <button
                           type="submit"
-                          disabled={memberBusy || !userQuery.trim()}
+                          disabled={memberBusy || !memberEmail.trim()}
                           className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised disabled:opacity-40"
                         >
-                          Search
+                          Invite
                         </button>
                       </div>
-                      {userResults.length > 0 && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {userResults.map((result) => (
-                            <button
-                              key={result.id}
-                              type="button"
-                              onClick={() => void addMember(result.id)}
-                              className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-raised"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-[13px] font-medium text-foreground">
-                                  {result.display_name || result.name}
-                                </span>
-                                <span className="block truncate text-[11.5px] text-muted">
-                                  @{result.name}
-                                </span>
-                              </span>
-                              <span className="text-[11.5px] text-muted">Add</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </form>
                   </>
                 )}
 
                 {!membersLoading && !canManageMembers && (
                   <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Only skill admins can manage members.
+                    Only workspace members can manage sharing.
                   </div>
                 )}
               </div>
@@ -556,7 +517,7 @@ function OwnerRow({ label, username }: { label: string; username: string }) {
         <span className="block truncate text-[11.5px] text-muted">@{username}</span>
       </span>
       <span className="rounded bg-base px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-        admin
+        owner
       </span>
     </div>
   );
@@ -569,13 +530,13 @@ function MemberRow({
   onPermissionChange,
   onRemove,
 }: {
-  member: SkillMember;
+  member: ObjectShare;
   isMe: boolean;
   busy: boolean;
-  onPermissionChange: (permission: SkillMemberPermission) => void;
+  onPermissionChange: (permission: SharePermission) => void;
   onRemove: (() => void) | null;
 }) {
-  const label = member.display_name || member.name;
+  const label = member.label || member.email || "Invited user";
 
   return (
     <li className="flex items-center gap-2.5 py-1 text-[13px]">
@@ -585,13 +546,15 @@ function MemberRow({
           {label}
           {isMe ? <span className="ml-1 text-[10px] text-muted">(you)</span> : null}
         </span>
-        <span className="block truncate text-[11.5px] text-muted">@{member.name}</span>
+        <span className="block truncate text-[11.5px] text-muted">
+          {member.pending ? "Invited" : member.email ?? ""}
+        </span>
       </span>
       <PermissionSelect
-        value={member.permission}
+        value={member.permission === "write" ? "write" : "read"}
         onChange={onPermissionChange}
-        ariaLabel={`Permission for ${member.name}`}
-        disabled={busy}
+        ariaLabel={`Permission for ${label}`}
+        disabled={busy || !member.email}
       />
       {onRemove && (
         <button
@@ -613,8 +576,8 @@ function PermissionSelect({
   ariaLabel,
   disabled,
 }: {
-  value: SkillMemberPermission;
-  onChange: (value: SkillMemberPermission) => void;
+  value: SharePermission;
+  onChange: (value: SharePermission) => void;
   ariaLabel: string;
   disabled: boolean;
 }) {
@@ -623,7 +586,7 @@ function PermissionSelect({
       aria-label={ariaLabel}
       value={value}
       disabled={disabled}
-      onChange={(e) => onChange(e.target.value as SkillMemberPermission)}
+      onChange={(e) => onChange(e.target.value as SharePermission)}
       className="h-7 rounded border border-border bg-base px-1.5 text-[11.5px] text-foreground outline-none focus:border-[var(--color-brand-400)] disabled:opacity-40"
     >
       {PERMISSION_OPTIONS.map((option) => (

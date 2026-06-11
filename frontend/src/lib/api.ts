@@ -1465,17 +1465,6 @@ export interface WorkspaceSkill {
   updated_at: string;
 }
 
-export type SkillMemberPermission = "read" | "write" | "admin";
-
-export interface SkillMember {
-  user_id: string;
-  name: string;
-  display_name: string;
-  permission: SkillMemberPermission;
-  granted_by: string | null;
-  created_at: string;
-}
-
 export interface PublicSkillItem {
   object_type: CollectableObjectType;
   object_id: string;
@@ -1555,28 +1544,6 @@ export async function updateSkill(
   });
 }
 
-export async function listSkillMembers(skillId: string): Promise<SkillMember[]> {
-  const data = await apiFetch<{ members: SkillMember[] }>(
-    `/api/v1/skills/${skillId}/members`
-  );
-  return data.members;
-}
-
-export async function addSkillMember(
-  skillId: string,
-  userId: string,
-  permission: SkillMemberPermission
-): Promise<SkillMember> {
-  return apiFetch(`/api/v1/skills/${skillId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeSkillMember(skillId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/skills/${skillId}/members/${userId}`, { method: "DELETE" });
-}
-
 export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
   return apiFetch(`/api/v1/skills/${slug}`);
 }
@@ -1635,7 +1602,7 @@ export interface SkillInvite {
   invited_by_user_id: string;
   invited_by_name: string;
   invited_by_display_name: string;
-  permission: SkillMemberPermission;
+  permission: string;
   created_at: string;
 }
 
@@ -2003,7 +1970,14 @@ export async function getFolderContents(
 
 // --- Shared with me ---
 
-export type SharedObjectType = "folder" | "session_folder" | "page" | "file" | "table" | "session";
+export type SharedObjectType =
+  | "folder"
+  | "session_folder"
+  | "page"
+  | "file"
+  | "table"
+  | "session"
+  | "skill";
 
 export interface SharedWithMeItem {
   object_type: SharedObjectType;
@@ -2038,6 +2012,8 @@ export interface ObjectShare {
   email: string | null;
   permission: GeneralPermission;
   pending: boolean;
+  expires_at: string | null;
+  expired: boolean;
 }
 
 export async function listObjectShares(
@@ -2076,6 +2052,17 @@ export async function unshareObject(
       principal_type: principalType,
       principal_id: principalId,
     }),
+  });
+}
+
+export async function setPublicAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+  enabled: boolean,
+): Promise<void> {
+  await apiFetch("/api/v1/share/public", {
+    method: "PUT",
+    body: JSON.stringify({ object_type: objectType, object_id: objectId, enabled }),
   });
 }
 

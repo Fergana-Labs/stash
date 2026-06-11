@@ -234,9 +234,11 @@ function TableEditorPageInner() {
   // skill payload (which the backend gates by skill readability). All
   // mutating UI is hidden in this mode.
   const skillSlug = searchParams.get("skill");
-  const readOnly = !!skillSlug;
-  const [skillTitle, setSkillTitle] = useState<string | null>(null);
   const { user, loading, logout } = useAuth();
+  // Read-only when sourcing from a skill payload, or for an anonymous viewer
+  // reading a publicly-shared table (anyone with the link).
+  const readOnly = !!skillSlug || (!loading && !user);
+  const [skillTitle, setSkillTitle] = useState<string | null>(null);
 
   // Core state. The workspace comes from the loaded table itself (the
   // canonical table endpoint resolves it server-side), not from the URL.
@@ -439,8 +441,15 @@ function TableEditorPageInner() {
       const loaded = await getTable(tableId);
       setResolvedWorkspaceId(loaded.workspace_id);
       setTable(loaded);
-    } catch { setError("Table not found"); }
-  }, [tableId, skillSlug]);
+    } catch {
+      // Anonymous viewers land here when the table has no public grant.
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+      setError("Table not found");
+    }
+  }, [tableId, skillSlug, user, router]);
 
   const buildRowParams = useCallback((pageOffset: number) => {
     const p: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] } = {
@@ -454,8 +463,9 @@ function TableEditorPageInner() {
   const loadRows = useCallback(async () => {
     // In skill mode the rows are already populated inline by loadTable
     // (the backend caps the inline payload at 500 rows). Search/filter
-    // happen client-side from that snapshot.
-    if (readOnly) return;
+    // happen client-side from that snapshot. Public anonymous viewers read
+    // rows from the workspace endpoint like members do.
+    if (skillSlug) return;
     try {
       if (searchQuery) {
         const res = await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
@@ -465,7 +475,7 @@ function TableEditorPageInner() {
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
-  }, [tableId, wsId, buildRowParams, searchQuery, readOnly]);
+  }, [tableId, wsId, buildRowParams, searchQuery, skillSlug]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -952,11 +962,7 @@ function TableEditorPageInner() {
     return "";
   };
 
-  // Skill-scoped readers can be anonymous when the skill is public; only
-  // redirect to /login in workspace mode.
-  useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
-  if (loading && !readOnly) return <TableEditorSkeleton />;
-  if (!user && !readOnly) return null;
+  if (loading) return <TableEditorSkeleton />;
   if (!table && !error) {
     if (readOnly || !user) {
       return (

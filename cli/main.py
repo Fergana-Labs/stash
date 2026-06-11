@@ -1780,63 +1780,6 @@ def skills_remove_fork(
     console.print(f"[green]Removed forked Skill[/green] {skill_id}")
 
 
-@skills_app.command("members")
-def skills_members(
-    skill_id: str = typer.Argument(..., help="Skill ID."),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List the people granted access to a Skill."""
-    with _client() as c:
-        try:
-            data = c.list_skill_members(skill_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No members.[/dim]")
-        return
-    for m in data:
-        console.print(
-            f"  [bold]{m.get('display_name') or m.get('name')}[/bold]  "
-            f"[dim]{m.get('permission')} — {m.get('user_id')}[/dim]"
-        )
-
-
-@skills_app.command("add-member")
-def skills_add_member(
-    skill_id: str = typer.Argument(...),
-    user_id: str = typer.Argument(..., help="The user to grant access."),
-    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Grant a user access to a Skill."""
-    with _client() as c:
-        try:
-            data = c.add_skill_member(skill_id, user_id, permission=permission)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    console.print(f"[green]Added member[/green] {user_id} ({permission})")
-
-
-@skills_app.command("remove-member")
-def skills_remove_member(
-    skill_id: str = typer.Argument(...),
-    user_id: str = typer.Argument(...),
-):
-    """Revoke a user's access to a Skill."""
-    with _client() as c:
-        try:
-            c.remove_skill_member(skill_id, user_id)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Removed member[/green] {user_id}")
-
-
 @skills_app.command("invites")
 def skills_invites(as_json: bool = typer.Option(False, "--json")):
     """List Skill invites pending for you (shared with you, awaiting action)."""

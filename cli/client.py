@@ -229,20 +229,6 @@ class StashClient:
             json={"source_id": source_id, "path": path},
         )
 
-    # --- Skill members (per-person access on a skill) ---
-
-    def list_skill_members(self, skill_id: str) -> list:
-        return self._list(f"/api/v1/skills/{skill_id}/members", "members")
-
-    def add_skill_member(self, skill_id: str, user_id: str, permission: str = "read") -> dict:
-        return self._post(
-            f"/api/v1/skills/{skill_id}/members",
-            json={"user_id": user_id, "permission": permission},
-        )
-
-    def remove_skill_member(self, skill_id: str, user_id: str) -> None:
-        self._delete(f"/api/v1/skills/{skill_id}/members/{user_id}")
-
     # --- Skill invites (pending invites awaiting the current user) ---
 
     def list_skill_invites(self) -> list:

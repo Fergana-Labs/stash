@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..models import (
     CommentReconcileRequest,
@@ -72,7 +72,7 @@ async def _check_content_access(
     object_type: str,
     object_id: UUID,
     workspace_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     require: str = "read",
 ) -> None:
@@ -197,10 +197,11 @@ async def create_folder(
 async def get_folder(
     workspace_id: UUID,
     folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
-    await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_content_access("folder", folder_id, workspace_id, viewer_id)
     return FolderResponse(**folder)
 
 
@@ -208,13 +209,16 @@ async def get_folder(
 async def get_folder_contents(
     workspace_id: UUID,
     folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Immediate children of a folder — subfolders, pages, files — plus
     the breadcrumb chain from workspace root down to this folder. Powers
-    the unified Files tree (sidebar lazy-expand + folder detail page)."""
+    the unified Files tree (sidebar lazy-expand + folder detail page).
+    Anonymous viewers pass when the folder carries a public grant; the
+    readable predicates below filter children the same way."""
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
-    await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_content_access("folder", folder_id, workspace_id, viewer_id)
     pool = get_pool()
 
     # Breadcrumb ancestry via recursive CTE
@@ -257,7 +261,7 @@ async def get_folder_contents(
         "ORDER BY name",
         folder_id,
         workspace_id,
-        current_user["id"],
+        viewer_id,
     )
     pages = await pool.fetch(
         "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
@@ -268,7 +272,7 @@ async def get_folder_contents(
         "ORDER BY name",
         folder_id,
         workspace_id,
-        current_user["id"],
+        viewer_id,
     )
     files = await pool.fetch(
         "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
@@ -278,7 +282,7 @@ async def get_folder_contents(
         "ORDER BY created_at DESC",
         folder_id,
         workspace_id,
-        current_user["id"],
+        viewer_id,
     )
     tables = await pool.fetch(
         "SELECT id, name, "
@@ -288,7 +292,7 @@ async def get_folder_contents(
         "ORDER BY name",
         folder_id,
         workspace_id,
-        current_user["id"],
+        viewer_id,
     )
     subfolders = [dict(r) for r in subfolders]
     pages = [dict(r) for r in pages]
@@ -523,11 +527,13 @@ async def search_pages(
 @canonical_router.get("/pages/{page_id}", response_model=PageResponse)
 async def get_page_by_id(
     page_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Any failure is a 404: an unscoped lookup must not confirm that a
-    page the caller can't read exists."""
-    page = await files_tree_service.get_page_by_id(page_id, current_user["id"])
+    page the caller can't read exists. Anonymous viewers pass when the page
+    carries a public (anyone with the link) grant."""
+    viewer_id = current_user["id"] if current_user else None
+    page = await files_tree_service.get_page_by_id(page_id, viewer_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)

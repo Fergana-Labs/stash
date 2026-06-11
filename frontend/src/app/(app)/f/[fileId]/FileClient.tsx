@@ -80,7 +80,9 @@ function FileViewerPageInner() {
   useActiveWorkspaceId(workspaceId || null);
 
   useBreadcrumbs(
-    readOnly
+    readOnly && !skillSlug
+      ? [{ label: file ? file.name : "File" }]
+      : readOnly
       ? [
           { label: "Skills", href: "/skills" },
           { label: skillTitle ?? "Skill", href: skillSlug ? `/skills/${skillSlug}` : "/skills" },
@@ -204,14 +206,27 @@ function FileViewerPageInner() {
     }
   }, [fileId, router, skillSlug, loadSkillFallback]);
 
-  useEffect(() => {
-    if (user) load();
-    else if (!loading && skillSlug) void loadSkillFallback();
-  }, [user, loading, load, loadSkillFallback, skillSlug]);
+  // Anonymous viewer, no skill hint: the file may carry a public (anyone
+  // with the link) grant. Try the canonical endpoint; bounce to login only
+  // when it 404s.
+  const loadPublic = useCallback(async () => {
+    try {
+      const f = await getFile(fileId);
+      setFile(f);
+      setFolderChain([]);
+      setReadOnly(true);
+      setError("");
+    } catch {
+      router.push("/login");
+    }
+  }, [fileId, router]);
 
   useEffect(() => {
-    if (!loading && !user && !skillSlug) router.push("/login");
-  }, [user, loading, router, skillSlug]);
+    if (loading) return;
+    if (user) load();
+    else if (skillSlug) void loadSkillFallback();
+    else void loadPublic();
+  }, [user, loading, load, loadSkillFallback, loadPublic, skillSlug]);
 
   const shareAction = useMemo(() => {
     if (!file || readOnly || !user) return null;
@@ -228,7 +243,6 @@ function FileViewerPageInner() {
   useShareAction(shareAction);
 
   if (loading) return <FileViewerSkeleton />;
-  if (!user && !skillSlug) return null;
   if (!file && !error) return <FileViewerSkeleton />;
 
   const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";

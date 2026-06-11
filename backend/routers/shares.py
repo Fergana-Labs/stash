@@ -33,6 +33,12 @@ class UnshareRequest(BaseModel):
     principal_id: UUID
 
 
+class PublicAccessRequest(BaseModel):
+    object_type: str
+    object_id: UUID
+    enabled: bool
+
+
 @router.post("")
 async def create_share(req: ShareRequest, current_user: dict = Depends(get_current_user)):
     return await share_service.share_with_user_by_email(
@@ -52,6 +58,20 @@ async def delete_share(req: UnshareRequest, current_user: dict = Depends(get_cur
         object_id=req.object_id,
         principal_type=req.principal_type,
         principal_id=req.principal_id,
+        owner_id=current_user["id"],
+    )
+    return {"ok": True}
+
+
+@router.put("/public")
+async def set_public_access(
+    req: PublicAccessRequest, current_user: dict = Depends(get_current_user)
+):
+    """Toggle the "anyone with the link" grant on a plain resource."""
+    await share_service.set_public_access(
+        object_type=req.object_type,
+        object_id=req.object_id,
+        enabled=req.enabled,
         owner_id=current_user["id"],
     )
     return {"ok": True}

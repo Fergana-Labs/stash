@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ResourceShareButton from "./ResourceShareButton";
 import {
   listObjectShares,
+  setPublicAccess,
   shareObjectByEmail,
   unshareObject,
 } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   listObjectShares: vi.fn(),
+  setPublicAccess: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unshareObject: vi.fn(),
 }));
@@ -39,8 +41,11 @@ describe("ResourceShareButton", () => {
         email: "ada@example.com",
         permission: "read",
         pending: false,
+        expires_at: null,
+        expired: false,
       },
     ]);
+    vi.mocked(setPublicAccess).mockResolvedValue(undefined);
     vi.mocked(shareObjectByEmail).mockResolvedValue(undefined);
     vi.mocked(unshareObject).mockResolvedValue(undefined);
   });
@@ -88,6 +93,8 @@ describe("ResourceShareButton", () => {
           email: "ada@example.com",
           permission: "write",
           pending: true,
+          expires_at: null,
+          expired: false,
         },
       ]);
 
@@ -122,5 +129,48 @@ describe("ResourceShareButton", () => {
     );
     expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByText("Invited")).toBeInTheDocument();
+  });
+
+  it("toggles anyone-with-the-link access from the general access select", async () => {
+    vi.mocked(listObjectShares)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          principal_type: "public",
+          principal_id: "00000000-0000-0000-0000-000000000000",
+          label: "Anyone with the link",
+          email: null,
+          permission: "read",
+          pending: false,
+          expires_at: null,
+          expired: false,
+        },
+      ]);
+
+    render(
+      <ResourceShareButton
+        objectType="page"
+        objectId="page-1"
+        resourceName="Roadmap"
+        resourceUrlPath="/p/page-1"
+        currentUser={currentUser}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByRole("dialog", { name: "Share Roadmap" });
+
+    const select = screen.getByLabelText("General access");
+    expect(select).toHaveValue("restricted");
+
+    fireEvent.change(select, { target: { value: "public" } });
+
+    await waitFor(() =>
+      expect(setPublicAccess).toHaveBeenCalledWith("page", "page-1", true),
+    );
+    await waitFor(() => expect(select).toHaveValue("public"));
+    expect(
+      screen.getByText("Anyone on the internet with the link can view"),
+    ).toBeInTheDocument();
   });
 });

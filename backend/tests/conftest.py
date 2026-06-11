@@ -111,7 +111,6 @@ _TRUNCATE_TABLES = [
     "documents",
     "files",
     "skill_invites",
-    "skill_members",
     "skill_items",
     "skills",
     "analytics_events",

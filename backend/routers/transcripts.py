@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..services import (
     memory_service,
@@ -215,12 +215,14 @@ async def get_transcript_metadata(
 async def get_transcript_events(
     workspace_id: UUID,
     session_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Chat-thread turns for a session, in render order. Sourced directly
-    from history_events — no JSONL serialization round-trip."""
-    await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
+    from history_events — no JSONL serialization round-trip. No membership
+    pre-gate: read_session_events enforces access (member, share recipient,
+    or anonymous viewer of a public session) and returns [] otherwise."""
+    viewer_id = current_user["id"] if current_user else None
+    events = await memory_service.read_session_events(workspace_id, session_id, viewer_id)
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
     return {"events": _events_to_viewer_shape(events)}

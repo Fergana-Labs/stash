@@ -1,9 +1,30 @@
-"""Tests for in-product Skill invite notifications."""
+"""Tests for in-product Skill invite notifications.
+
+Sharing a skill goes through the unified share endpoint (object_type='skill'),
+which also creates the invite notification.
+"""
+
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 
 from .conftest import unique_name
+
+
+async def _share_skill(client, owner_key, skill_id, email, permission="read"):
+    resp = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "skill",
+            "object_id": skill_id,
+            "email": email,
+            "permission": permission,
+        },
+        headers=_auth(owner_key),
+    )
+    assert resp.status_code == 200
+    return resp.json()
 
 
 async def _register(client: AsyncClient, name: str | None = None) -> tuple[str, dict]:
@@ -21,7 +42,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient):
+async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient, pool):
     owner_key, _owner = await _register(client, "skill_invite_owner")
     recipient_key, recipient = await _register(client, "skill_invite_recipient")
 
@@ -59,12 +80,11 @@ async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient
         )
     ).json()
 
-    added_member = await client.post(
-        f"/api/v1/skills/{stash['id']}/members",
-        json={"user_id": recipient["id"], "permission": "read"},
-        headers=_auth(owner_key),
+    await pool.execute(
+        "UPDATE users SET email = 'invite-recipient@example.com' WHERE id = $1",
+        UUID(recipient["id"]),
     )
-    assert added_member.status_code == 201
+    await _share_skill(client, owner_key, stash["id"], "invite-recipient@example.com")
 
     invites = await client.get("/api/v1/skill-invites", headers=_auth(recipient_key))
     assert invites.status_code == 200
@@ -100,7 +120,7 @@ async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_skill_invite_can_be_dismissed(client: AsyncClient):
+async def test_skill_invite_can_be_dismissed(client: AsyncClient, pool):
     owner_key, _owner = await _register(client, "stash_dismiss_owner")
     recipient_key, recipient = await _register(client, "stash_dismiss_recipient")
 
@@ -130,11 +150,11 @@ async def test_skill_invite_can_be_dismissed(client: AsyncClient):
             headers=_auth(owner_key),
         )
     ).json()
-    await client.post(
-        f"/api/v1/skills/{stash['id']}/members",
-        json={"user_id": recipient["id"], "permission": "read"},
-        headers=_auth(owner_key),
+    await pool.execute(
+        "UPDATE users SET email = 'dismiss-recipient@example.com' WHERE id = $1",
+        UUID(recipient["id"]),
     )
+    await _share_skill(client, owner_key, stash["id"], "dismiss-recipient@example.com")
 
     invites = (await client.get("/api/v1/skill-invites", headers=_auth(recipient_key))).json()
     invite_id = invites["invites"][0]["id"]

@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..services import (
     files_tree_service,
@@ -215,13 +215,13 @@ async def upsert_workspace_session(
 
 
 async def _session_detail_payload(
-    workspace_id: UUID, session_id: str, user_id: UUID
+    workspace_id: UUID, session_id: str, user_id: UUID | None
 ) -> dict | None:
-    """Full session detail if the user may read it, else None.
+    """Full session detail if the viewer may read it, else None.
 
     No workspace-membership pre-gate: a session may be shared with a
-    non-member. can_read_session enforces check_access (owner OR share OR
-    open skill).
+    non-member, or carry a public (anyone with the link) grant — user_id is
+    None for anonymous viewers. can_read_session enforces check_access.
     """
     if not await memory_service.can_read_session(workspace_id, session_id, user_id):
         return None
@@ -243,14 +243,15 @@ async def _session_detail_payload(
 @router.get("/sessions/{session_id}")
 async def get_session_canonical(
     session_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """session_id is unique per workspace, not globally; when the same
     session exists in several workspaces, return the newest one the caller
     can read. Any failure is a 404: an unscoped lookup must not confirm
     that an unreadable session exists."""
+    viewer_id = current_user["id"] if current_user else None
     for row in await session_service.list_sessions_for_session_id(session_id):
-        payload = await _session_detail_payload(row["workspace_id"], session_id, current_user["id"])
+        payload = await _session_detail_payload(row["workspace_id"], session_id, viewer_id)
         if payload:
             return payload
     raise HTTPException(status_code=404, detail="Session not found")
@@ -260,9 +261,10 @@ async def get_session_canonical(
 async def get_workspace_session(
     workspace_id: UUID,
     session_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    payload = await _session_detail_payload(workspace_id, session_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    payload = await _session_detail_payload(workspace_id, session_id, viewer_id)
     if not payload:
         raise HTTPException(status_code=404, detail="Session not found")
     return payload

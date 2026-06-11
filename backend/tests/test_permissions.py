@@ -186,10 +186,12 @@ def _permissions_for_access(access):
     return "read", "none"
 
 
-async def _add_skill_member(pool, skill_id, user_id, granted_by, permission="read"):
+async def _share_skill_with_user(pool, skill_id, user_id, granted_by, permission="read"):
     await pool.execute(
-        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
-        "VALUES ($1, $2, $3, $4)",
+        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "                    principal_id, permission, created_by) "
+        "SELECT c.workspace_id, 'skill', c.id, 'user', $2, $3, $4 "
+        "FROM skills c WHERE c.id = $1",
         skill_id,
         user_id,
         permission,
@@ -407,7 +409,7 @@ async def test_private_skill_member_reads_contents_not_write(pool):
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
     skill = await _make_skill(ws, owner, "private", "page", page)
-    await _add_skill_member(pool, skill["id"], member, owner, "read")
+    await _share_skill_with_user(pool, skill["id"], member, owner, "read")
     assert await permission_service.check_access("page", page, member)
     assert not await permission_service.check_access("page", page, member, require="write")
     assert not await permission_service.check_access("page", page, stranger)
@@ -803,3 +805,93 @@ async def test_overview_counts_span_shared_not_unshared(pool):
     assert owner_counts["pages"] >= 2
     assert friend_counts["pages"] == 1
     assert stranger_counts["pages"] == 0
+
+
+# --- Public (anyone with the link) grants ---
+
+
+@pytest.mark.asyncio
+async def test_public_grant_allows_anonymous_read_not_write(pool):
+    owner = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    page = await _make_page(pool, ws, owner, name="public-page")
+
+    assert not await permission_service.check_access("page", page, None)
+
+    await share_service.set_public_access(
+        object_type="page", object_id=page, enabled=True, owner_id=owner
+    )
+    assert await permission_service.check_access("page", page, None)
+    assert not await permission_service.check_access("page", page, None, require="write")
+    # A logged-in stranger gets the same read access as anonymous.
+    stranger = await _make_user(pool)
+    assert await permission_service.check_access("page", page, stranger)
+
+    await share_service.set_public_access(
+        object_type="page", object_id=page, enabled=False, owner_id=owner
+    )
+    assert not await permission_service.check_access("page", page, None)
+
+
+@pytest.mark.asyncio
+async def test_public_folder_grant_cascades_to_contents(pool):
+    owner = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await _make_folder(pool, ws, owner)
+    file = await _make_file(pool, ws, owner, folder_id=folder)
+    outside_file = await _make_file(pool, ws, owner, name="not-public")
+
+    await share_service.set_public_access(
+        object_type="folder", object_id=folder, enabled=True, owner_id=owner
+    )
+    assert await permission_service.check_access("file", file, None)
+    assert not await permission_service.check_access("file", outside_file, None)
+
+
+@pytest.mark.asyncio
+async def test_skill_and_session_folder_cannot_take_public_grant(pool):
+    from fastapi import HTTPException
+
+    owner = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    page = await _make_page(pool, ws, owner, name="bundled-for-public")
+    skill = await _make_skill(ws, owner, "private", "page", page)
+    with pytest.raises(HTTPException):
+        await share_service.set_public_access(
+            object_type="skill", object_id=skill["id"], enabled=True, owner_id=owner
+        )
+
+
+# --- Skill access through the unified shares table ---
+
+
+@pytest.mark.asyncio
+async def test_skill_share_grants_read_and_write_share_manages(pool):
+    owner = await _make_user(pool)
+    reader = await _make_user(pool)
+    editor = await _make_user(pool)
+    stranger = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    page = await _make_page(pool, ws, owner, name="bundled")
+    skill = await _make_skill(ws, owner, "private", "page", page)
+
+    await _share_skill_with_user(pool, skill["id"], reader, owner, "read")
+    await _share_skill_with_user(pool, skill["id"], editor, owner, "write")
+
+    assert await permission_service.check_access("skill", skill["id"], reader)
+    assert not await permission_service.check_access("skill", skill["id"], reader, require="write")
+    assert await permission_service.check_access("skill", skill["id"], editor, require="write")
+    assert not await permission_service.check_access("skill", skill["id"], stranger)
+    # Cartridge containment grants read-only access to the bundled page.
+    assert await permission_service.check_access("page", page, reader)
+    assert not await permission_service.check_access("page", page, reader, require="write")
+    assert not await permission_service.check_access("page", page, stranger)
+
+    # Revoking the share cuts content access too.
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type = 'skill' AND object_id = $1 "
+        "AND principal_id = $2",
+        skill["id"],
+        reader,
+    )
+    assert not await permission_service.check_access("page", page, reader)

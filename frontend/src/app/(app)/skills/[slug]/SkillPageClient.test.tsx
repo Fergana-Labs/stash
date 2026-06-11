@@ -14,13 +14,12 @@ import {
   useShellChromeValue,
 } from "../../../../components/ShellChromeContext";
 import {
-  addSkillMember,
   getActivityTimeline,
   getEmbeddingProjection,
   getMe,
   getPublicSkill,
-  listSkillMembers,
-  searchUsers,
+  listObjectShares,
+  shareObjectByEmail,
   updateSkill,
   type PublicSkillDetail,
 } from "../../../../lib/api";
@@ -60,7 +59,6 @@ vi.mock("../../../../lib/api", () => ({
     }
   },
   forkSkill: vi.fn(),
-  addSkillMember: vi.fn(),
   createPage: vi.fn(),
   getMe: vi.fn(),
   getPublicSkill: vi.fn(),
@@ -68,9 +66,9 @@ vi.mock("../../../../lib/api", () => ({
   listAllTables: vi.fn(),
   listFiles: vi.fn(),
   listMySessions: vi.fn(),
-  listSkillMembers: vi.fn(),
-  removeSkillMember: vi.fn(),
-  searchUsers: vi.fn(),
+  listObjectShares: vi.fn(),
+  shareObjectByEmail: vi.fn(),
+  unshareObject: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
   getActivityTimeline: vi.fn(),
@@ -178,31 +176,23 @@ describe("SkillPageClient sharing", () => {
     });
     vi.mocked(getMe).mockResolvedValue(authState.user!);
     vi.mocked(getPublicSkill).mockResolvedValue(skillDetail());
-    vi.mocked(listSkillMembers).mockResolvedValue([
+    vi.mocked(listObjectShares).mockResolvedValue([
       {
-        user_id: "user-2",
-        name: "sam",
-        display_name: "Sam",
+        principal_type: "user",
+        principal_id: "user-2",
+        label: "Sam",
+        email: "sam@example.com",
         permission: "write",
-        granted_by: "user-1",
-        created_at: "2026-05-12T00:00:00Z",
+        pending: false,
+        expires_at: null,
+        expired: false,
       },
-    ]);
-    vi.mocked(searchUsers).mockResolvedValue([
-      { id: "user-3", name: "alex", display_name: "Alex" },
     ]);
     vi.mocked(updateSkill).mockImplementation(async (_skillId, updates) => ({
       ...skillDetail().skill,
       ...updates,
     }));
-    vi.mocked(addSkillMember).mockResolvedValue({
-      user_id: "user-3",
-      name: "alex",
-      display_name: "Alex",
-      permission: "read",
-      granted_by: "user-1",
-      created_at: "2026-05-13T00:00:00Z",
-    });
+    vi.mocked(shareObjectByEmail).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -327,17 +317,21 @@ describe("SkillPageClient sharing", () => {
       name: "Share Shared Skill",
     });
 
-    expect(await within(dialog).findByText("@sam")).toBeInTheDocument();
-    expect(listSkillMembers).toHaveBeenCalledWith("skill-1");
+    expect(await within(dialog).findByText("Sam")).toBeInTheDocument();
+    expect(listObjectShares).toHaveBeenCalledWith("skill", "skill-1");
 
-    fireEvent.change(within(dialog).getByPlaceholderText("Search users"), {
-      target: { value: "alex" },
+    fireEvent.change(within(dialog).getByPlaceholderText("Add people by email"), {
+      target: { value: "alex@example.com" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Search" }));
-    fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Invite" }));
 
     await waitFor(() =>
-      expect(addSkillMember).toHaveBeenCalledWith("skill-1", "user-3", "read"),
+      expect(shareObjectByEmail).toHaveBeenCalledWith(
+        "skill",
+        "skill-1",
+        "alex@example.com",
+        "read",
+      ),
     );
   });
 

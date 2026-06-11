@@ -268,9 +268,6 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
                   LEFT JOIN workspace_members session_workspace_member
                     ON session_workspace_member.workspace_id = session_skill.workspace_id
                    AND session_workspace_member.user_id = ${user_arg}
-                  LEFT JOIN skill_members session_skill_member
-                    ON session_skill_member.skill_id = session_skill.id
-                   AND session_skill_member.user_id = ${user_arg}
                   WHERE session_skill_item.object_type = 'session'
                     AND session_skill_item.object_id = readable_session.id
                     AND (
@@ -280,7 +277,15 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
                         AND session_workspace_member.user_id IS NOT NULL
                       )
                       OR session_skill.owner_id = ${user_arg}
-                      OR session_skill_member.user_id IS NOT NULL
+                      OR EXISTS (
+                        SELECT 1 FROM shares session_skill_share
+                        WHERE session_skill_share.object_type = 'skill'
+                          AND session_skill_share.object_id = session_skill.id
+                          AND session_skill_share.principal_type = 'user'
+                          AND session_skill_share.principal_id = ${user_arg}
+                          AND (session_skill_share.expires_at IS NULL
+                               OR session_skill_share.expires_at > now())
+                      )
                     )
                 )
               )
@@ -289,7 +294,7 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """
 
 
-async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -> bool:
+async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID | None) -> bool:
     session = await session_service.get_session(workspace_id, session_id)
     if not session:
         return False
@@ -304,12 +309,12 @@ async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -
 async def read_session_events(
     workspace_id: UUID,
     session_id: str,
-    user_id: UUID | None = None,
+    user_id: UUID | None,
 ) -> list[dict]:
     """Ordered events for a session within a workspace. The canonical
     source for session-thread rendering — replaces reading the R2 transcript
-    blob."""
-    if user_id is not None and not await can_read_session(workspace_id, session_id, user_id):
+    blob. user_id=None is an anonymous viewer: only public grants pass."""
+    if not await can_read_session(workspace_id, session_id, user_id):
         return []
 
     pool = get_pool()

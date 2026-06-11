@@ -958,29 +958,8 @@ def stash_list_shares(object_type: str, object_id: str) -> str:
     return _json(client.list_object_shares(object_type, object_id))
 
 
-# ── Skill members + invites ───────────────────────────────────
-
-
-@mcp.tool()
-def stash_list_skill_members(skill_id: str) -> str:
-    """List the people granted access to a Skill."""
-    client, _ = _client()
-    return _json(client.list_skill_members(skill_id))
-
-
-@mcp.tool()
-def stash_add_skill_member(skill_id: str, user_id: str, permission: str = "read") -> str:
-    """Grant a user access to a Skill. permission: read | write | admin."""
-    client, _ = _client()
-    return _json(client.add_skill_member(skill_id, user_id, permission=permission))
-
-
-@mcp.tool()
-def stash_remove_skill_member(skill_id: str, user_id: str) -> str:
-    """Revoke a user's access to a Skill."""
-    client, _ = _client()
-    client.remove_skill_member(skill_id, user_id)
-    return _json({"removed": user_id})
+# ── Skill invites ─────────────────────────────────────────────────
+# Skill access goes through the generic share tools (object_type="skill").
 
 
 @mcp.tool()

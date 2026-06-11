@@ -168,8 +168,8 @@ class SkillResponse(BaseModel):
     cover_image_url: str | None = None
     icon_url: str | None = None
     view_count: int
-    # Count of people invited to the skill (skill_members). Drives the
-    # "Shared · N" visibility label when the skill isn't public.
+    # Count of people the skill is shared with (user shares on the skill).
+    # Drives the "Shared · N" visibility label when the skill isn't public.
     share_count: int = 0
     items: list[SkillItem]
     is_external: bool = False
@@ -181,24 +181,6 @@ class SkillResponse(BaseModel):
 
 class SkillListResponse(BaseModel):
     skills: list[SkillResponse]
-
-
-class SkillMemberRequest(BaseModel):
-    user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
-
-
-class SkillMemberResponse(BaseModel):
-    user_id: UUID
-    name: str
-    display_name: str
-    permission: str
-    granted_by: UUID | None
-    created_at: datetime
-
-
-class SkillMembersResponse(BaseModel):
-    members: list[SkillMemberResponse]
 
 
 # Public renderer payload — items are inlined with their content where it

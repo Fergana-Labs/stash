@@ -117,6 +117,8 @@ export default function SkillPageView() {
     { skill: WorkspaceSkill; item: PublicSkillItem } | null
   >(null);
   const [skillAccessDenied, setSkillAccessDenied] = useState(false);
+  // Anonymous viewer reading a publicly-shared page (anyone with the link).
+  const [publicView, setPublicView] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
   // Save responses can arrive out of order if a fast save fires while a
@@ -433,18 +435,29 @@ export default function SkillPageView() {
     [workspaceId, pageId, activeThreadId]
   );
 
-  useEffect(() => {
-    // Anonymous viewers can load this page when ?skill=<slug> is set —
-    // the skill payload is the read source. Authenticated viewers always
-    // try the workspace endpoint first.
-    if (user) load();
-    else if (!loading && skillSlug) void loadSkillFallback();
-  }, [user, loading, load, loadSkillFallback, skillSlug]);
+  // Anonymous viewer, no skill hint: the page may carry a public (anyone
+  // with the link) grant. Try the canonical endpoint; bounce to login only
+  // when it 404s.
+  const loadPublic = useCallback(async () => {
+    try {
+      const p = await getPage(pageId);
+      setPage(p);
+      setPublicView(true);
+      setError("");
+    } catch {
+      router.push("/login");
+    }
+  }, [pageId, router]);
 
   useEffect(() => {
-    // Only bounce to login if there's no skill fallback path available.
-    if (!loading && !user && !skillSlug) router.push("/login");
-  }, [user, loading, router, skillSlug]);
+    // Anonymous viewers can load this page via ?skill=<slug> (the skill
+    // payload is the read source) or via a public grant on the page itself.
+    // Authenticated viewers always try the workspace endpoint first.
+    if (loading) return;
+    if (user) load();
+    else if (skillSlug) void loadSkillFallback();
+    else void loadPublic();
+  }, [user, loading, load, loadSkillFallback, loadPublic, skillSlug]);
 
   const handleHtmlAnchorTops = useCallback((iframeAnchorTops: Record<string, number>) => {
     const layout = pageLayoutRef.current;
@@ -494,6 +507,9 @@ export default function SkillPageView() {
   }, [page]);
 
   if (loading) return <DocumentPageSkeleton />;
+  if (publicView && page) {
+    return <PublicPageView page={page} />;
+  }
   if (skillFallback) {
     return (
       <SkillFallbackPageView
@@ -507,8 +523,8 @@ export default function SkillPageView() {
     return <PageAccessDeniedScreen accountLabel={user?.email ?? user?.name ?? null} />;
   }
   if (!user) {
-    // Login bounce is already firing for the no-skill case.
-    if (!skillSlug) return null;
+    // Public-grant probe in flight, or the login bounce is already firing.
+    if (!skillSlug) return <DocumentPageSkeleton />;
     // Skill mode: waiting on the fallback to land, or it failed.
     if (!error) return <DocumentPageSkeleton />;
     return (
@@ -910,6 +926,30 @@ function HtmlGlyph() {
 // Read-only render for viewers who can't reach the workspace endpoint —
 // usually because they aren't a workspace member. The content comes from
 // the public-skill payload, gated by the skill's readability rules.
+function PublicPageView({ page }: { page: Page }) {
+  const item = {
+    object_type: "page",
+    object_id: page.id,
+    label: page.name,
+    inline: { page },
+  } as unknown as PublicSkillItem;
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <h1 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {page.name.replace(/\.(md|html)$/i, "")}
+        </h1>
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+          page · shared with link
+        </div>
+        <div className="mt-6">
+          <PageBody item={item} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SkillFallbackPageView({
   skillSlug,
   skillTitle,
