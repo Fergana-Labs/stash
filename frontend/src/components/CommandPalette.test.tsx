@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommandPalette from "./CommandPalette";
@@ -120,7 +120,7 @@ describe("CommandPalette search", () => {
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/p/page-1");
+    expect(router.push).toHaveBeenCalledWith("/p/page-1");
   });
 
   it("finds matching tables in the active workspace", async () => {
@@ -151,9 +151,14 @@ describe("CommandPalette search", () => {
 
     expect(await screen.findByText("Hiring Outreach CRM")).toBeInTheDocument();
 
+    // The window keydown listener re-subscribes in a passive effect after the
+    // table result lands; on a loaded runner findByText can resolve before that
+    // effect flushes, leaving ArrowDown bound to the stale one-result list.
+    await act(async () => {});
+
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(router.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-1");
+    expect(router.push).toHaveBeenCalledWith("/tables/table-1");
   });
 });

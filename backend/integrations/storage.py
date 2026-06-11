@@ -110,6 +110,17 @@ async def store_token(
     )
 
 
+_TOKEN_QUERY = """
+    SELECT access_token_encrypted, refresh_token_encrypted, expires_at
+    FROM user_integrations
+    WHERE user_id = $1 AND provider = $2 AND account_key = $3
+"""
+
+
+def _needs_refresh(expires_at: datetime | None) -> bool:
+    return expires_at is not None and expires_at < datetime.now(UTC) + timedelta(seconds=60)
+
+
 async def get_valid_token(
     user_id: UUID,
     provider: str,
@@ -117,57 +128,61 @@ async def get_valid_token(
 ) -> str:
     """Return a usable access token, refreshing if expired."""
     pool = get_pool()
-    row = await pool.fetchrow(
-        """
-        SELECT access_token_encrypted, refresh_token_encrypted, expires_at, scopes
-        FROM user_integrations
-        WHERE user_id = $1 AND provider = $2 AND account_key = $3
-        """,
-        user_id,
-        provider,
-        account_key,
-    )
+    row = await pool.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
     if row is None:
         raise HTTPException(
             status_code=401,
             detail=f"not connected to {provider}",
         )
-
-    expires_at = row["expires_at"]
-    needs_refresh = expires_at is not None and expires_at < datetime.now(UTC) + timedelta(
-        seconds=60
-    )
-    if not needs_refresh:
+    if not _needs_refresh(row["expires_at"]):
         return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]
 
-    refresh_token = _decrypt(row["refresh_token_encrypted"])
-    if not refresh_token:
-        # Expired but no refresh token — user must reconnect.
-        raise HTTPException(
-            status_code=401,
-            detail=f"{provider} token expired; reconnect required",
+    # Refresh under an advisory lock. Some providers (X) rotate refresh tokens
+    # single-use, so two concurrent refreshes invalidate each other's tokens
+    # and can kill the connection. Concurrent callers queue on the lock, then
+    # the re-read sees the winner's fresh token and returns it without a
+    # second provider call.
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"user_integrations:{user_id}:{provider}:{account_key}",
         )
+        row = await conn.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
+        if row is None:
+            raise HTTPException(
+                status_code=401,
+                detail=f"not connected to {provider}",
+            )
+        if not _needs_refresh(row["expires_at"]):
+            return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]
 
-    provider_impl = get_provider(provider)
-    new_token = await provider_impl.refresh(refresh_token)
-    await pool.execute(
-        """
-        UPDATE user_integrations SET
-            access_token_encrypted = $3,
-            refresh_token_encrypted = COALESCE($4, refresh_token_encrypted),
-            expires_at = $5,
-            updated_at = now()
-        WHERE user_id = $1 AND provider = $2
-          AND account_key = $6
-        """,
-        user_id,
-        provider,
-        _encrypt(new_token.access_token),
-        _encrypt(new_token.refresh_token),
-        new_token.expires_at,
-        account_key,
-    )
-    return new_token.access_token
+        refresh_token = _decrypt(row["refresh_token_encrypted"])
+        if not refresh_token:
+            # Expired but no refresh token — user must reconnect.
+            raise HTTPException(
+                status_code=401,
+                detail=f"{provider} token expired; reconnect required",
+            )
+
+        new_token = await get_provider(provider).refresh(refresh_token)
+        await conn.execute(
+            """
+            UPDATE user_integrations SET
+                access_token_encrypted = $3,
+                refresh_token_encrypted = COALESCE($4, refresh_token_encrypted),
+                expires_at = $5,
+                updated_at = now()
+            WHERE user_id = $1 AND provider = $2
+              AND account_key = $6
+            """,
+            user_id,
+            provider,
+            _encrypt(new_token.access_token),
+            _encrypt(new_token.refresh_token),
+            new_token.expires_at,
+            account_key,
+        )
+        return new_token.access_token
 
 
 async def revoke_stored(

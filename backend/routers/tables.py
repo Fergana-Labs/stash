@@ -1,4 +1,4 @@
-"""Table router: workspace and personal structured data tables."""
+"""Table router: workspace structured data tables."""
 
 import csv
 import io
@@ -27,6 +27,7 @@ from ..models import (
 from ..services import permission_service, table_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/tables", tags=["tables"])
+router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 
 
 # --- Shared auth helpers ---
@@ -87,13 +88,6 @@ async def _check_table_access(
     raise HTTPException(status_code=404, detail="Table not found")
 
 
-async def _check_table_owner(table_id: UUID, user_id: UUID) -> dict:
-    table = await table_service.get_table(table_id)
-    if not table or table.get("workspace_id") is not None or table.get("created_by") != user_id:
-        raise HTTPException(status_code=404, detail="Table not found")
-    return table
-
-
 def _parse_row_ids(body: dict) -> list[UUID]:
     raw = body.get("row_ids", [])
     if not raw:
@@ -105,6 +99,24 @@ def _parse_row_ids(body: dict) -> list[UUID]:
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail=f"Invalid UUID: {rid}")
     return result
+
+
+# ===== Canonical table endpoint =====
+
+
+@router.get("/{table_id}", response_model=TableResponse)
+async def get_table_by_id(
+    table_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Any failure is a 404: an unscoped lookup must not confirm that a
+    table the caller can't read exists."""
+    table = await table_service.get_table(table_id)
+    if not table or not table.get("workspace_id"):
+        raise HTTPException(status_code=404, detail="Table not found")
+    if not await workspace_service.is_member(table["workspace_id"], current_user["id"]):
+        raise HTTPException(status_code=404, detail="Table not found")
+    return TableResponse(**table)
 
 
 # ===== Workspace table endpoints =====

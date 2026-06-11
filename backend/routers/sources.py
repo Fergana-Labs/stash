@@ -101,6 +101,24 @@ async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
     return account, f"Snowflake ({account})"
 
 
+async def _resolve_twitter_source(user_id) -> tuple[str, str]:
+    """Twitter source external_ref is the connected X account's numeric user
+    id, resolved once here so reads never depend on /users/me (X's most
+    rate-limited endpoint). Caller-supplied refs are ignored — there are no
+    saved-query sources (they would burn the owner's X quota on a schedule)."""
+    from ..integrations.twitter.indexer import fetch_me
+
+    token = await integration_storage.get_valid_token(user_id, "twitter")
+    me = await fetch_me(token)
+    username = me.get("username")
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail="Reconnect Twitter / X before adding it as a source.",
+        )
+    return me["id"], f"Twitter / X (@{username})"
+
+
 @router.get("")
 async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
@@ -258,6 +276,9 @@ async def add_source(
     elif body.source_type == "snowflake" and not external_ref:
         external_ref, resolved_name = await _resolve_snowflake_source(current_user["id"])
         display_name = display_name or resolved_name
+    elif body.source_type == "twitter":
+        external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
+        display_name = resolved_name
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
@@ -279,8 +300,13 @@ async def sync_source_now(
 ):
     """Trigger an immediate re-index of an owned source."""
     await _require_member(workspace_id, current_user["id"])
-    if await source_service.get_owned_source(source_id, current_user["id"]) is None:
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
+    if source["source_type"] not in source_service.DEFAULT_SYNC_INTERVAL_S:
+        # Search-driven / queryable sources have no indexer; the queued task
+        # would no-op, so a 200 here would be a lie.
+        raise HTTPException(status_code=400, detail="This source type does not sync")
     task_id = str(uuid4())
     await task_service.register_task(
         task_id=task_id,
