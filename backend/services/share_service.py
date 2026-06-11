@@ -144,8 +144,15 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
     if not email:
         return 0
     pool = get_pool()
+    # An invite that expired before signup must not grant anything — drop it.
+    await pool.execute(
+        "DELETE FROM share_invites WHERE lower(email) = lower($1) "
+        "AND expires_at IS NOT NULL AND expires_at <= now()",
+        email,
+    )
     invites = await pool.fetch(
-        "SELECT id, workspace_id, object_type, object_id, email, permission, created_by "
+        "SELECT id, workspace_id, object_type, object_id, email, permission, created_by, "
+        "expires_at "
         "FROM share_invites WHERE lower(email) = lower($1)",
         email,
     )
@@ -154,13 +161,15 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
         if inv["created_by"] == user_id:
             await pool.execute("DELETE FROM share_invites WHERE id = $1", inv["id"])
             continue
+        # The converted share keeps the invite's time bound; permission_service
+        # enforces shares.expires_at at read time.
         await pool.execute(
             """
             INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
-                                principal_id, permission, created_by)
-            VALUES ($1, $2, $3, 'user', $4, $5, $6)
+                                principal_id, permission, created_by, expires_at)
+            VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
             ON CONFLICT (object_type, object_id, principal_type, principal_id)
-            DO UPDATE SET permission = EXCLUDED.permission
+            DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
             """,
             inv["workspace_id"],
             inv["object_type"],
@@ -168,6 +177,7 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
             user_id,
             inv["permission"],
             inv["created_by"],
+            inv["expires_at"],
         )
         await pool.execute("DELETE FROM share_invites WHERE id = $1", inv["id"])
         await _record_share_event(

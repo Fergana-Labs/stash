@@ -1264,6 +1264,101 @@ async def test_revoked_pending_share_invite_does_not_convert_on_signup(client: A
 
 
 @pytest.mark.asyncio
+async def test_expired_pending_share_invite_does_not_convert_on_signup(client: AsyncClient, pool):
+    """A time-bounded invite must not grant anything if the recipient signs up
+    after the expiry — otherwise an expired invite would silently become
+    permanent access."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "secret spec"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "late-newcomer@example.com",
+            "permission": "read",
+            "expires_at": "2020-01-01T00:00:00Z",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+    assert share.json()["pending"] is True
+
+    newcomer_key, _ = await _register_with_email(client, "late-newcomer@example.com")
+
+    assert (
+        await client.get(
+            f"/api/v1/workspaces/{ws}/pages/{page_id}",
+            headers=_auth(newcomer_key),
+        )
+    ).status_code == 404
+    # The expired invite is dropped, not left around to convert later.
+    remaining = await pool.fetchval(
+        "SELECT count(*) FROM share_invites WHERE lower(email) = 'late-newcomer@example.com'"
+    )
+    assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_converted_share_keeps_invite_expiry(client: AsyncClient, pool):
+    """When a pending invite converts on signup, the resulting share carries
+    the invite's expires_at — conversion must not upgrade a time-bounded grant
+    to a permanent one."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "secret spec"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "timed-newcomer@example.com",
+            "permission": "read",
+            "expires_at": "2099-01-01T00:00:00Z",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+    assert share.json()["pending"] is True
+
+    newcomer_key, newcomer = await _register_with_email(client, "timed-newcomer@example.com")
+
+    assert (
+        await client.get(
+            f"/api/v1/workspaces/{ws}/pages/{page_id}",
+            headers=_auth(newcomer_key),
+        )
+    ).status_code == 200
+    expires_at = await pool.fetchval(
+        "SELECT expires_at FROM shares WHERE object_type = 'page' AND object_id = $1 "
+        "AND principal_type = 'user' AND principal_id = $2",
+        uuid.UUID(page_id),
+        uuid.UUID(newcomer["id"]),
+    )
+    assert expires_at is not None
+    assert expires_at.year == 2099
+
+
+@pytest.mark.asyncio
 async def test_shared_with_me_lists_incoming_not_outgoing(pool):
     from backend.services import share_service
 
