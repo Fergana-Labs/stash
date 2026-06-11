@@ -53,7 +53,7 @@ from .services.row_validation import RowValidationError
 logger = logging.getLogger("stash")
 
 SECURITY_HEADERS = {
-    "Strict-Transport-Security": "max-age=31536000",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
