@@ -304,7 +304,7 @@ async def create_skill(
         public_permission,
         discoverable,
     ) and not await workspace_service.is_owner(workspace_id, owner_id):
-        raise ValueError("Only workspace owners can create workspace or public Stashes")
+        raise ValueError("Only workspace owners can create workspace or public Skills")
     access = _visibility_for_permissions(workspace_permission, public_permission)
 
     pool = get_pool()

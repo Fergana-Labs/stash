@@ -34,25 +34,6 @@ public_router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 _SKILL_ITEM_TYPES = {"folder", "page", "table", "file", "session"}
 
 
-def _workspace_or_public_stash(req: CartridgeCreateRequest) -> bool:
-    return req.workspace_permission != "none" or req.public_permission != "none" or req.discoverable
-
-
-async def _require_workspace_owner_for_stash_visibility(
-    workspace_id: UUID,
-    user_id: UUID,
-    req: CartridgeCreateRequest,
-) -> None:
-    if _workspace_or_public_stash(req) and not await workspace_service.is_owner(
-        workspace_id,
-        user_id,
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Only workspace owners can create workspace or public Stashes",
-        )
-
-
 async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> None:
     item_workspace_id = await permission_service.resolve_workspace_id(
         item.object_type, item.object_id
@@ -78,7 +59,6 @@ async def create_skill(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    await _require_workspace_owner_for_stash_visibility(workspace_id, current_user["id"], req)
     if req.discoverable and req.public_permission == "none":
         raise HTTPException(status_code=400, detail="Discover Skills must be public")
     for item in req.items:
@@ -110,8 +90,6 @@ async def publish_skill(
     """Create a public Skill and return its shareable URL."""
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    if not await workspace_service.is_owner(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only workspace owners can publish Stashes")
     if not req.items:
         raise HTTPException(status_code=400, detail="A shared bundle needs at least one item")
     if req.public_permission == "none":
