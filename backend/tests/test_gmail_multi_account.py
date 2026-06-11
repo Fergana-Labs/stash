@@ -3,6 +3,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.integrations import crypto as integration_crypto
 from backend.integrations import storage
 from backend.integrations.base import AccountInfo, TokenSet
 
@@ -51,8 +52,7 @@ async def _store_gmail(user_id: UUID, email: str, access_token: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _integration_encryption(monkeypatch):
-    monkeypatch.setattr(storage.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
-    monkeypatch.setattr(storage, "_fernet", None)
+    monkeypatch.setattr(integration_crypto.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
 
 
 @pytest.mark.asyncio

@@ -70,6 +70,7 @@ SOURCE_CAPABILITY = {
 PROVIDER_SOURCE_TYPES = {
     "github": ("github_repo",),
     "google": ("google_drive",),
+    "gmail": ("gmail",),
     "notion": ("notion",),
     "slack": ("slack",),
     "granola": ("granola",),

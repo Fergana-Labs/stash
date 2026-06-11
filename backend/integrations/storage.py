@@ -24,6 +24,7 @@ from .registry import get_provider
 
 DEFAULT_ACCOUNT_KEY = "default"
 
+
 def _encrypt(plaintext: str | None) -> bytes | None:
     if plaintext is None:
         return None
