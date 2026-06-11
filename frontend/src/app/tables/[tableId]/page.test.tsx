@@ -184,6 +184,29 @@ describe("TableEditorPage row creation", () => {
     );
   });
 
+  it("persists resized column widths", async () => {
+    api.updateTableColumn.mockResolvedValue({
+      ...table,
+      columns: [{ ...table.columns[0], width: 260 }],
+    });
+
+    render(<TableEditorPage />);
+
+    const handle = await screen.findByLabelText("Resize Name column");
+    await act(async () => {
+      fireEvent.pointerDown(handle, { clientX: 100 });
+      await Promise.resolve();
+    });
+    fireEvent.pointerMove(document, { clientX: 180 });
+    fireEvent.pointerUp(document, { clientX: 180 });
+
+    await waitFor(() =>
+      expect(api.updateTableColumn).toHaveBeenCalledWith("ws-1", "table-1", "name", {
+        width: 260,
+      }),
+    );
+  });
+
   it("keeps pagination in sync when appending a newly-created row", async () => {
     render(<TableEditorPage />);
 

@@ -675,7 +675,7 @@ export async function createTable(
   workspaceId: string | null,
   name: string,
   description?: string,
-  columns?: { name: string; type: string; options?: string[] }[]
+  columns?: { name: string; type: string; options?: string[]; width?: number }[]
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables`, {
     method: "POST",
@@ -715,7 +715,7 @@ export async function deleteTable(
 export async function addTableColumn(
   workspaceId: string | null,
   tableId: string,
-  column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[] }
+  column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[]; width?: number }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns`, {
     method: "POST", body: JSON.stringify(column),
@@ -726,7 +726,7 @@ export async function updateTableColumn(
   workspaceId: string | null,
   tableId: string,
   columnId: string,
-  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[] }
+  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[]; width?: number }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/${columnId}`, {
     method: "PATCH", body: JSON.stringify(updates),
