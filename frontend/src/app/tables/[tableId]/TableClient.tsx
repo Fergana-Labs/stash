@@ -98,6 +98,10 @@ const LINK_EDITOR_WIDTH = 320;
 
 const isDraftRowId = (rowId: string) => rowId.startsWith(DRAFT_ROW_PREFIX);
 const cloneTableRow = (row: TableRow): TableRow => ({ ...row, data: { ...row.data } });
+const patchTableRow = (row: TableRow, data: Record<string, unknown>): TableRow => ({
+  ...row,
+  data: { ...row.data, ...data },
+});
 
 function isTextEntryTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -293,6 +297,8 @@ function TableEditorPageInner() {
   const [linkHref, setLinkHref] = useState(LINK_EDITOR_DEFAULT_HREF);
   const undoStackRef = useRef<TableUndoAction[]>([]);
   const undoInFlightRef = useRef(false);
+  const rowMutationVersionRef = useRef(0);
+  const inFlightCellValuesRef = useRef<Map<string, unknown>>(new Map());
 
   // Row detail modal
   const [detailRow, setDetailRow] = useState<TableRow | null>(null);
@@ -376,6 +382,9 @@ function TableEditorPageInner() {
   const rememberUndo = useCallback((action: TableUndoAction) => {
     undoStackRef.current.push(action);
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+  }, []);
+  const markRowsMutated = useCallback(() => {
+    rowMutationVersionRef.current += 1;
   }, []);
 
   const undoLastTableAction = useCallback(async () => {
@@ -496,12 +505,15 @@ function TableEditorPageInner() {
     // (the backend caps the inline payload at 500 rows). Search/filter
     // happen client-side from that snapshot.
     if (readOnly) return;
+    const startedAtMutationVersion = rowMutationVersionRef.current;
     try {
       if (searchQuery) {
         const res = await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
+        if (startedAtMutationVersion !== rowMutationVersionRef.current) return;
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       } else {
         const res = await listTableRows(wsId, tableId, buildRowParams(0));
+        if (startedAtMutationVersion !== rowMutationVersionRef.current) return;
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
@@ -759,14 +771,38 @@ function TableEditorPageInner() {
       return;
     }
     const previousRow = rows.find((row) => row.id === rowId);
+    const patch = { [colId]: typedValue };
+    const cellKey = `${rowId}\u0000${colId}`;
+    if (Object.is(inFlightCellValuesRef.current.get(cellKey), typedValue)) {
+      setEditingCell(null);
+      return;
+    }
+    inFlightCellValuesRef.current.set(cellKey, typedValue);
+    if (previousRow) {
+      markRowsMutated();
+      setRows((prev) => prev.map((r) => (r.id === rowId ? patchTableRow(r, patch) : r)));
+      setDetailRow((prev) => (prev?.id === rowId ? patchTableRow(prev, patch) : prev));
+    }
+    setEditingCell(null);
     try {
-      const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue });
+      const updated = await updateTableRow(wsId, tableId, rowId, patch);
       setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r)));
+      setDetailRow((prev) => (prev?.id === rowId ? updated : prev));
       if (previousRow) rememberUndo({ kind: "row-update", row: cloneTableRow(previousRow) });
     }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
-    setEditingCell(null);
-  }, [cellValue, editingCell, rememberUndo, rows, table, tableId, wsId]);
+    catch (err) {
+      markRowsMutated();
+      if (previousRow) {
+        setRows((prev) => prev.map((r) => (r.id === rowId ? previousRow : r)));
+        setDetailRow((prev) => (prev?.id === rowId ? previousRow : prev));
+      }
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      if (Object.is(inFlightCellValuesRef.current.get(cellKey), typedValue)) {
+        inFlightCellValuesRef.current.delete(cellKey);
+      }
+    }
+  }, [cellValue, editingCell, markRowsMutated, rememberUndo, rows, table, tableId, wsId]);
   const cancelEdit = () => {
     setLinkEditor(null);
     setEditingCell(null);
@@ -846,8 +882,15 @@ function TableEditorPageInner() {
       return;
     }
 
-    if (e.key === "Enter") void commitEdit();
-    if (e.key === "Escape") cancelEdit();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void commitEdit();
+      return;
+    }
+    if (e.key === "Escape") {
+      cancelEdit();
+      return;
+    }
     if (e.key === "Tab") {
       e.preventDefault();
       void commitEdit();

@@ -292,6 +292,70 @@ describe("TableEditorPage row creation", () => {
     expect(screen.getByText("Alice")).toBeInTheDocument();
   });
 
+  it("keeps a committed cell edit visible while the save is in flight", async () => {
+    const editedRow = {
+      ...existingRows[0],
+      data: { name: "Alicia" },
+    };
+    let resolveUpdate: (row: typeof editedRow) => void = () => {};
+    const updatePromise = new Promise<typeof editedRow>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    api.updateTableRow.mockReturnValueOnce(updatePromise);
+
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    fireEvent.change(input, { target: { value: "Alicia" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.queryByLabelText("Edit row 1 Name")).not.toBeInTheDocument();
+    expect(screen.getByText("Alicia")).toBeInTheDocument();
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveUpdate(editedRow);
+      await updatePromise;
+    });
+
+    expect(screen.getByText("Alicia")).toBeInTheDocument();
+    expect(api.updateTableRow).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a stale row reload hide a committed cell edit", async () => {
+    const editedRow = {
+      ...existingRows[0],
+      data: { name: "Alicia" },
+    };
+    let resolveReload: (rows: { rows: typeof existingRows; total_count: number; has_more: boolean }) => void = () => {};
+    const staleReload = new Promise<{ rows: typeof existingRows; total_count: number; has_more: boolean }>((resolve) => {
+      resolveReload = resolve;
+    });
+    api.updateTableRow.mockResolvedValueOnce(editedRow);
+
+    render(<TableEditorPage />);
+
+    await screen.findByText("Alice");
+    api.listTableRows.mockReturnValueOnce(staleReload);
+    fireEvent.click(screen.getByText("Filter"));
+    await waitFor(() => expect(api.listTableRows).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    fireEvent.change(input, { target: { value: "Alicia" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText("Alicia")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveReload({ rows: existingRows, total_count: 2, has_more: false });
+      await staleReload;
+    });
+
+    expect(screen.getByText("Alicia")).toBeInTheDocument();
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+  });
+
   it("undoes a committed cell edit while another cell editor is focused", async () => {
     const editedRow = {
       ...existingRows[0],
@@ -307,6 +371,9 @@ describe("TableEditorPage row creation", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => expect(screen.getByText("Alicia")).toBeInTheDocument());
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     fireEvent.click(screen.getByText("Bob"));
     const nextInput = await screen.findByLabelText("Edit row 2 Name");
