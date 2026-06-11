@@ -115,46 +115,44 @@ class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
-# --- Cartridges (publishable subsets of a workspace) ---
+# --- Skills (publishable subsets of a workspace) ---
 
-CartridgeObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
-CartridgeGeneralPermission = str  # 'none' | 'read' | 'write'
+SkillObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
+SkillGeneralPermission = str  # 'none' | 'read' | 'write'
 
 
-class CartridgeItem(BaseModel):
-    object_type: CartridgeObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
+class SkillItem(BaseModel):
+    object_type: SkillObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
 
 
-class CartridgeCreateRequest(BaseModel):
+class SkillCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    workspace_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: CartridgeGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
+    workspace_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: SkillGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
-    items: list[CartridgeItem] = Field(default_factory=list)
+    items: list[SkillItem] = Field(default_factory=list)
 
 
-class CartridgeUpdateRequest(BaseModel):
+class SkillUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    workspace_permission: CartridgeGeneralPermission | None = Field(
+    workspace_permission: SkillGeneralPermission | None = Field(
         None, pattern=r"^(none|read|write)$"
     )
-    public_permission: CartridgeGeneralPermission | None = Field(
-        None, pattern=r"^(none|read|write)$"
-    )
+    public_permission: SkillGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
-    items: list[CartridgeItem] | None = None
+    items: list[SkillItem] | None = None
 
 
-class CartridgeResponse(BaseModel):
+class SkillResponse(BaseModel):
     id: UUID
     workspace_id: UUID
     slug: str
@@ -164,33 +162,33 @@ class CartridgeResponse(BaseModel):
     owner_name: str
     owner_display_name: str | None = None
     access: str
-    workspace_permission: CartridgeGeneralPermission
-    public_permission: CartridgeGeneralPermission
+    workspace_permission: SkillGeneralPermission
+    public_permission: SkillGeneralPermission
     discoverable: bool
     cover_image_url: str | None = None
     icon_url: str | None = None
     view_count: int
-    # Count of people invited to the cartridge (cartridge_members). Drives the
-    # "Shared · N" visibility label when the cartridge isn't public.
+    # Count of people invited to the skill (skill_members). Drives the
+    # "Shared · N" visibility label when the skill isn't public.
     share_count: int = 0
-    items: list[CartridgeItem]
+    items: list[SkillItem]
     is_external: bool = False
     added_to_workspace_id: UUID | None = None
-    forked_from_cartridge_id: UUID | None = None
+    forked_from_skill_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
-class CartridgeListResponse(BaseModel):
-    cartridges: list[CartridgeResponse]
+class SkillListResponse(BaseModel):
+    skills: list[SkillResponse]
 
 
-class CartridgeMemberRequest(BaseModel):
+class SkillMemberRequest(BaseModel):
     user_id: UUID
     permission: str = Field("read", pattern=r"^(read|write|admin)$")
 
 
-class CartridgeMemberResponse(BaseModel):
+class SkillMemberResponse(BaseModel):
     user_id: UUID
     name: str
     display_name: str
@@ -199,8 +197,8 @@ class CartridgeMemberResponse(BaseModel):
     created_at: datetime
 
 
-class CartridgeMembersResponse(BaseModel):
-    members: list[CartridgeMemberResponse]
+class SkillMembersResponse(BaseModel):
+    members: list[SkillMemberResponse]
 
 
 # Public renderer payload — items are inlined with their content where it
@@ -209,31 +207,31 @@ class CartridgeMembersResponse(BaseModel):
 # type/id/label plus an `inline` blob whose contents depend on the type.
 
 
-class CartridgeItemInlined(BaseModel):
-    object_type: CartridgeObjectType
+class SkillItemInlined(BaseModel):
+    object_type: SkillObjectType
     object_id: UUID
     position: int
     label: str
     inline: dict
 
 
-class CartridgePublicResponse(BaseModel):
-    cartridge: CartridgeResponse
+class SkillPublicResponse(BaseModel):
+    skill: SkillResponse
     workspace_name: str
-    items: list[CartridgeItemInlined]
+    items: list[SkillItemInlined]
     can_write: bool = False
 
 
-class AddExternalCartridgeRequest(BaseModel):
+class ForkSkillRequest(BaseModel):
     workspace_id: UUID
 
 
-class CartridgeInviteResponse(BaseModel):
+class SkillInviteResponse(BaseModel):
     id: UUID
-    cartridge_id: UUID
-    cartridge_slug: str
-    cartridge_title: str
-    cartridge_description: str
+    skill_id: UUID
+    skill_slug: str
+    skill_title: str
+    skill_description: str
     source_workspace_id: UUID
     source_workspace_name: str
     invited_by_user_id: UUID
@@ -243,8 +241,8 @@ class CartridgeInviteResponse(BaseModel):
     created_at: datetime
 
 
-class CartridgeInviteListResponse(BaseModel):
-    invites: list[CartridgeInviteResponse]
+class SkillInviteListResponse(BaseModel):
+    invites: list[SkillInviteResponse]
 
 
 class WorkspaceMember(BaseModel):
@@ -633,7 +631,7 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
-    default_cartridge_id: UUID | None = None
+    default_skill_id: UUID | None = None
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
@@ -644,7 +642,7 @@ class HistoryEventCreateRequest(BaseModel):
 
 class HistoryEventBatchRequest(BaseModel):
     events: list[HistoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
-    default_cartridge_id: UUID | None = None
+    default_skill_id: UUID | None = None
 
 
 class HistoryEventResponse(BaseModel):
@@ -689,8 +687,8 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    workspace_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    workspace_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     folder_id: UUID | None = None
 
 
@@ -699,11 +697,11 @@ class PublishResponse(BaseModel):
     folder_id: UUID | None
     workspace_id: UUID
     visibility: str
-    workspace_permission: CartridgeGeneralPermission
-    public_permission: CartridgeGeneralPermission
+    workspace_permission: SkillGeneralPermission
+    public_permission: SkillGeneralPermission
     url: str
-    cartridge_id: UUID | None = None
-    cartridge_slug: str | None = None
+    skill_id: UUID | None = None
+    skill_slug: str | None = None
 
 
 # --- Files ---

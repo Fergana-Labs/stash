@@ -28,7 +28,7 @@ import type {
   PageSummary,
   WorkspaceTree,
 } from "../../../lib/types";
-import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
+import { refreshWorkspaceSidebar } from "../../../lib/skillNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
 import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { useWorkspaceRecents } from "../../../lib/pins";
@@ -49,10 +49,10 @@ interface Props {
 // Mime type carried by drag events to identify a file-browser drag. Keeps the
 // browser's native file-from-OS drag (which also sets "Files") distinct from
 // our own intra-app reparent drags.
-export const FB_DRAG_MIME = "application/x-stash-fb-item";
+export const FB_DRAG_MIME = "application/x-skill-fb-item";
 // Set instead of FB_DRAG_MIME when dragging a multi-selection, so folder drop
 // targets know to move every selected item at once.
-export const FB_DRAG_MULTI_MIME = "application/x-stash-fb-items";
+export const FB_DRAG_MULTI_MIME = "application/x-skill-fb-items";
 
 export interface FBDragPayload {
   kind: ItemKind;

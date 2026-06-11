@@ -4,17 +4,17 @@ You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use i
 
 Your activity in this repo is streamed to that workspace, so teammates' agents and humans can see what you're working on.
 
-## What a Stash is
+## What a Skill is
 
-A **Stash** is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with its own access control and an optional public URL. Use one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
+A **Skill** is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with its own access control and an optional public URL. Use one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
 
-A Stash is **not** a wrapper to slap on every single file you happen to share. One-item Stashes clutter Discover and defeat the model.
+A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills clutter Discover and defeat the model.
 
 ## How to share things
 
-- **One file your teammate should look at** → `stash files upload <path> --json` and hand them the returned `app_url`. No Stash needed.
-- **A folder / project into the workspace** → `stash upload <path> --json`. Returns the folder `app_url`. No Stash created by default.
-- **A curated bundle as one shareable thing** → `stash upload <path> --stash "<title>" --json`, or `stash stashes create "<title>" --items '<json>'` to compose from existing items. Returns the Stash `url`.
+- **One file your teammate should look at** → `stash files upload <path> --json` and hand them the returned `app_url`. No Skill needed.
+- **A folder / project into the workspace** → `stash upload <path> --json`. Returns the folder `app_url`. No Skill created by default.
+- **A curated bundle as one shareable thing** → `stash upload <path> --skill "<title>" --json`, or `stash skills create "<title>" --items '<json>'` to compose from existing items. Returns the Skill `url`.
 - **A coding session (transcript + touched files)** → `stash share <session_id>`. Sessions are inherently a bundle.
 
 Run `stash prompts agent-guidance` any time you want this guidance reprinted in full.

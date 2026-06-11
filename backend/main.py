@@ -17,11 +17,10 @@ from .middleware import limiter
 from .routers import (
     admin,
     agent_chat,
+    agent_docs,
     aggregate,
     analytics,
     batch,
-    cartridge_invites,
-    cartridges,
     collab,
     demo,
     discover,
@@ -35,7 +34,8 @@ from .routers import (
     session_folders,
     sessions,
     shares,
-    skill,
+    skill_invites,
+    skills,
     sources,
     tables,
     tasks,
@@ -102,9 +102,9 @@ app.include_router(collab.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
-app.include_router(cartridge_invites.router)
-app.include_router(cartridges.ws_router)
-app.include_router(cartridges.public_router)
+app.include_router(skill_invites.router)
+app.include_router(skills.ws_router)
+app.include_router(skills.public_router)
 app.include_router(files_tree.router)
 app.include_router(files_tree.canonical_router)
 app.include_router(memory.ws_router)
@@ -115,7 +115,7 @@ app.include_router(files.canonical_router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)
 app.include_router(aggregate.router)
-app.include_router(skill.router)
+app.include_router(agent_docs.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(marketing.router)

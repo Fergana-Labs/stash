@@ -7,7 +7,7 @@ import { BasicPageSkeleton } from "../../../components/SkeletonStates";
 import { useAuth } from "../../../hooks/useAuth";
 import { track } from "../../../lib/analytics";
 import { createWorkspace } from "../../../lib/api";
-import { resetStashNavigationCache } from "../../../lib/stashNavigationCache";
+import { resetSkillNavigationCache } from "../../../lib/skillNavigationCache";
 
 export default function NewWorkspacePage() {
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function NewWorkspacePage() {
     try {
       const ws = await createWorkspace(name.trim(), description.trim());
       track("web.workspace_created", { workspace_id: ws.id });
-      resetStashNavigationCache();
+      resetSkillNavigationCache();
       router.push(`/workspaces/${ws.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create workspace");
@@ -47,8 +47,8 @@ export default function NewWorkspacePage() {
           Create a workspace
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-foreground/80">
-          A Stash Workspace is your team&apos;s shared home for agent work: sessions,
-          Drive, and the Cartridges you publish from it.
+          A Skill Workspace is your team&apos;s shared home for agent work: sessions,
+          Drive, and Skills.
         </p>
 
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
@@ -104,7 +104,7 @@ export default function NewWorkspacePage() {
           <ul className="mt-3 flex flex-col gap-2 text-[13px] text-dim">
             <li>
               📜 <strong className="text-foreground">Skills</strong> —{" "}
-              <code className="rounded bg-raised px-1 py-0.5 text-[12px]">stash skill add</code>{" "}
+              <code className="rounded bg-raised px-1 py-0.5 text-[12px]">stash skills add</code>{" "}
               uploads a local Claude Code skill folder.
             </li>
             <li>

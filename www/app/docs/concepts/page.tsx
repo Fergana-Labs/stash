@@ -51,7 +51,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     ),
   },
   {
-    name: "Cartridge",
+    name: "Skill",
     badge: "Bundle",
     badgeColor: "bg-purple-500/10 text-purple-500",
     desc: "A shareable bundle of pages, sessions, tables, and files — the unit you publish to a public link, list in Discover, or share with specific people. Formerly called a Stash; the resource was renamed but the CLI name is unchanged.",
@@ -60,7 +60,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Sharing",
     badge: "Access",
     badgeColor: "bg-rose-500/10 text-rose-500",
-    desc: "Resources are private by default. Grant a person access to a single folder, page, file, session, or table by email — pending invites convert automatically when they sign up — or bundle items into a Cartridge to share them together.",
+    desc: "Resources are private by default. Grant a person access to a single folder, page, file, session, or table by email — pending invites convert automatically when they sign up — or bundle items into a Skill to share them together.",
   },
   {
     name: "Search",

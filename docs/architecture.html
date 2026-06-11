@@ -29,7 +29,7 @@
 <body>
 <div class="wrap">
   <h1>Stash — Architecture</h1>
-  <div class="sub">One place your agent connects to see all your company data. Input pipes (sources) → output pipes (CLI, MCP, API, UI). This documents the information hierarchy, sharing model, database schema, API, and the surfaces / client support as of the Cartridges / user-scoped redesign.</div>
+  <div class="sub">One place your agent connects to see all your company data. Input pipes (sources) → output pipes (CLI, MCP, API, UI). This documents the information hierarchy, sharing model, database schema, API, and the surfaces / client support as of the Skills / user-scoped redesign.</div>
 
   <h2>1. Information hierarchy</h2>
   <p>Everything is scoped to a <b>user</b> (one implicit, private <b>workspace</b> per user — hidden from the UI; it remains the internal scoping key). Within it:</p>
@@ -44,31 +44,31 @@
    │  ├─ Notion         (connected)  index only; page/db data fetched lazily
    │  ├─ Slack          (connected)  full copy via webhook
    │  └─ Granola        (connected)  full copy via scheduled pull (API key)
-   └─ Cartridges                     read-only, disposable, curl-able bundles (PLG sharing)</div>
+   └─ Skills                     read-only, disposable, curl-able bundles (PLG sharing)</div>
   <p class="note">Native sources are workspace-scoped (owned by the user). Connected sources are user-scoped (only their owner sees them). The file system is "just another source."</p>
 
   <h2>2. Sharing &amp; permissions</h2>
   <p><b>Private by default.</b> A user owns everything in their workspace (workspace membership == ownership). Nobody else sees anything until a <code>shares</code> row exists.</p>
   <h3>The two-table model</h3>
   <ul>
-    <li><b><code>shares</code></b> — grants a <b>principal</b> (a <code>user</code>, or a <code>cartridge</code>) access to an object. This is the primary, team-collaboration path: <i>share a folder/file/session with a person by email</i>. Folder &amp; session-folder shares <b>cascade</b> to their contents.</li>
-    <li><b><code>cartridges</code> + <code>cartridge_members</code> + <code>cartridge_items</code></b> — a read-only bundle (what it contains + who can open it). Secondary, PLG: a link you hand to an agent (curl-able). Adding a source to a cartridge copies a <b>snapshot</b> in so it's self-contained.</li>
+    <li><b><code>shares</code></b> — grants a <b>principal</b> (a <code>user</code>, or a <code>skill</code>) access to an object. This is the primary, team-collaboration path: <i>share a folder/file/session with a person by email</i>. Folder &amp; session-folder shares <b>cascade</b> to their contents.</li>
+    <li><b><code>skills</code> + <code>skill_members</code> + <code>skill_items</code></b> — a read-only bundle (what it contains + who can open it). Secondary, PLG: a link you hand to an agent (curl-able). Adding a source to a skill copies a <b>snapshot</b> in so it's self-contained.</li>
   </ul>
   <h3>Access resolution — <code>check_access(object, user)</code></h3>
   <pre>owner (user is the workspace member)                         → read + write
 OR a user share on the object or an ancestor folder         → per share (read/write)
-OR the object is in a cartridge the user can open            → read only
+OR the object is in a skill the user can open            → read only
 else                                                         → denied</pre>
-  <p class="note">A cartridge is "openable" if it is public/unlisted, owned by the user, or the user is a cartridge member. Cartridges never grant write.</p>
+  <p class="note">A skill is "openable" if it is public/unlisted, owned by the user, or the user is a skill member. Skills never grant write.</p>
 
   <h2>3. Database schema</h2>
   <h3>Sharing &amp; bundles</h3>
   <table>
     <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
-    <tr><td><code>shares</code></td><td>object_type, object_id, principal_type (user|cartridge), principal_id, permission</td><td>Per-object access grants (the permission model).</td></tr>
-    <tr><td><code>cartridges</code></td><td>id, workspace_id, owner_id, slug, title, public_permission</td><td>Bundle metadata + public-link visibility. (Renamed from <code>stashes</code>.)</td></tr>
-    <tr><td><code>cartridge_members</code></td><td>cartridge_id, user_id, permission</td><td>Who can open a cartridge.</td></tr>
-    <tr><td><code>cartridge_items</code></td><td>cartridge_id, object_type, object_id</td><td>What a cartridge contains.</td></tr>
+    <tr><td><code>shares</code></td><td>object_type, object_id, principal_type (user|skill), principal_id, permission</td><td>Per-object access grants (the permission model).</td></tr>
+    <tr><td><code>skills</code></td><td>id, workspace_id, owner_id, slug, title, public_permission</td><td>Bundle metadata + public-link visibility. (Renamed from <code>stashes</code>.)</td></tr>
+    <tr><td><code>skill_members</code></td><td>skill_id, user_id, permission</td><td>Who can open a skill.</td></tr>
+    <tr><td><code>skill_items</code></td><td>skill_id, object_type, object_id</td><td>What a skill contains.</td></tr>
   </table>
   <h3>Sources</h3>
   <table>
@@ -86,7 +86,7 @@ else                                                         → denied</pre>
     <tr><td>Google Drive</td><td><code>drive_index</code></td><td><b>Index only.</b> Stores path/name + Drive file id; document body exported to markdown <b>lazily</b> at read time via the owner's token.</td></tr>
     <tr><td>Notion</td><td><code>notion_index</code></td><td><b>Index only.</b> Stores path/name + Notion page id; page blocks rendered to markdown lazily at read time.</td></tr>
   </table>
-  <p class="note">Search (FTS + embeddings) spans the copied-content tables; the index-only sources are navigable, not searched. <b>Snapshot-on-add</b> (<code>POST /cartridges/{id}/snapshot-source</code>) copies a point-in-time body into the cartridge as a page — Drive/Notion fetched at add time, others copied from our tables — so the bundle stays self-contained and curl-able.</p>
+  <p class="note">Search (FTS + embeddings) spans the copied-content tables; the index-only sources are navigable, not searched. <b>Snapshot-on-add</b> (<code>POST /skills/{id}/snapshot-source</code>) copies a point-in-time body into the skill as a page — Drive/Notion fetched at add time, others copied from our tables — so the bundle stays self-contained and curl-able.</p>
 
   <h2>4. The agent surface</h2>
   <p>The <code>/ask</code> agent (a direct Anthropic tool-use loop) reads across sources through one source-aware tool set, scoped to <code>_current_user()</code> + the sharing rules above:</p>
@@ -105,10 +105,10 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
     <tr><td><code>POST /api/v1/workspaces/{ws}/sources/{id}/sync</code></td><td>Re-index a source now.</td></tr>
     <tr><td><code>POST /api/v1/integrations/slack/events</code></td><td>Slack Events-API webhook (signature-verified).</td></tr>
     <tr><td><code>POST /api/v1/share</code> · <code>DELETE</code> · <code>GET</code></td><td>Share an object with a person by email (a pending invite if they're not a user yet, converting on signup); revoke; list shares.</td></tr>
-    <tr><td><code>POST /api/v1/workspaces/{ws}/cartridges/{id}/snapshot-source</code></td><td>Copy a source document into a cartridge as a self-contained page.</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/skills/{id}/snapshot-source</code></td><td>Copy a source document into a skill as a self-contained page.</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/session-folders</code> · <code>/assign</code></td><td>Create a session folder; assign sessions.</td></tr>
-    <tr><td><code>POST /api/v1/workspaces/{ws}/cartridges</code> · <code>/publish</code></td><td>Create / publish a cartridge bundle.</td></tr>
-    <tr><td><code>GET /stashes/{slug}.md</code> · <code>.json</code></td><td>Agent-readable cartridge (curl without the CLI).</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/skills</code> · <code>/publish</code></td><td>Create / publish a skill bundle.</td></tr>
+    <tr><td><code>GET /stashes/{slug}.md</code> · <code>.json</code></td><td>Agent-readable skill (curl without the CLI).</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/ask</code></td><td>SSE stream — ask the agent across sources.</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/agent-chat</code> · <code>GET .../{session_id}</code></td><td>Multi-turn agent chat (SSE); reload a chat by session id. Each turn is stored as a Session history event.</td></tr>
   </table>
@@ -118,10 +118,10 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
   <h3>The five surfaces</h3>
   <table>
     <tr><th>Surface</th><th>What it is</th><th>Auth</th><th>Primary user</th></tr>
-    <tr><td><b>MCP</b></td><td>70+ <code>stash_*</code> tools served by the CLI's MCP server (<code>cli/mcp_server.py</code>): <code>list_sources</code>, <code>browse_source</code>, <code>add_source</code>, <code>list_skills</code>, <code>read_skill</code>, pages, tables, cartridges…</td><td>CLI signin</td><td>agents, in any MCP client</td></tr>
-    <tr><td><b>CLI</b></td><td><code>stash</code> binary: <code>signin</code>, <code>install</code>, <code>hist import</code>, source/files/sessions/cartridges/tables verbs, hidden FUSE <code>mount</code> of the source VFS</td><td>device consent</td><td>setup, scripting, history import</td></tr>
+    <tr><td><b>MCP</b></td><td>70+ <code>stash_*</code> tools served by the CLI's MCP server (<code>cli/mcp_server.py</code>): <code>list_sources</code>, <code>browse_source</code>, <code>add_source</code>, <code>list_skills</code>, <code>read_skill</code>, pages, tables, skills…</td><td>CLI signin</td><td>agents, in any MCP client</td></tr>
+    <tr><td><b>CLI</b></td><td><code>stash</code> binary: <code>signin</code>, <code>install</code>, <code>hist import</code>, source/files/sessions/skills/tables verbs, hidden FUSE <code>mount</code> of the source VFS</td><td>device consent</td><td>setup, scripting, history import</td></tr>
     <tr><td><b>REST API</b></td><td><code>/api/v1/…</code> — the same endpoints the UI uses</td><td>personal API key</td><td>direct programmatic access</td></tr>
-    <tr><td><b>UI</b></td><td>browser: Agents chat tabs, Drive, Sessions, Cartridges</td><td>session login</td><td>humans</td></tr>
+    <tr><td><b>UI</b></td><td>browser: Agents chat tabs, Drive, Sessions, Skills</td><td>session login</td><td>humans</td></tr>
     <tr><td><b>Plugins</b></td><td>per-client packages that wire MCP + AGENTS.md + hooks in one <code>stash install</code></td><td>inherits CLI signin</td><td>one-command setup inside a specific agent</td></tr>
   </table>
   <h3>Per-client integration</h3>
@@ -137,7 +137,7 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
   <p class="note">Skills are themselves a portable plugin format: a Drive folder whose immediate child is a <code>SKILL.md</code> (the same convention Claude Code uses) is exposed over MCP (<code>stash_list_skills</code>/<code>stash_read_skill</code>) and drops straight into any agent's <code>~/.claude/skills/</code>. AGENTS.md is the cross-tool context file — Codex, OpenCode, and Cursor read it the way Claude Code reads CLAUDE.md.</p>
 
   <h2>7. Status</h2>
-  <p><span class="ok">Shipped:</span> Cartridge rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing, share-by-email with pending invites that convert on signup; session folders with a "By folder" view on the Sessions page; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola — Granola on its real key-based API, index-only + lazy read for Drive/Notion); cartridge snapshot-on-add for source content; Obsidian vault upload (lands in native Drive); multi-turn agent chat stored as Sessions; the add-source modal + flat Sources sidebar; cleanup of the legacy import UI.</p>
+  <p><span class="ok">Shipped:</span> Skill rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing, share-by-email with pending invites that convert on signup; session folders with a "By folder" view on the Sessions page; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola — Granola on its real key-based API, index-only + lazy read for Drive/Notion); skill snapshot-on-add for source content; Obsidian vault upload (lands in native Drive); multi-turn agent chat stored as Sessions; the add-source modal + flat Sources sidebar; cleanup of the legacy import UI.</p>
 </div>
 </body>
 </html>

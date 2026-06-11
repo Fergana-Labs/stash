@@ -18,14 +18,14 @@ export function generateCollabIntroMarkdown({
   const name = displayName.trim() || "there";
   return `# Welcome to your agent-native Drive, ${name}
 
-This is a real page in your Stash — start typing to make it yours, or delete it. Edits save automatically, and you and your agent can edit the same page at the same time (two cursors at once).
+This is a real page in your Skill — start typing to make it yours, or delete it. Edits save automatically, and you and your agent can edit the same page at the same time (two cursors at once).
 
 ## See your agent edit this page — right now
 
 Paste this into Claude Code, Codex, or Cursor — keep this tab open and watch the edit land live:
 
 \`\`\`
-Install the Stash CLI: bash -c "$(curl -fsSL https://joinstash.ai/install)"
+Install the Skill CLI: bash -c "$(curl -fsSL https://joinstash.ai/install)"
 Authenticate: export STASH_API_KEY=${apiKey}
 Read this page: stash files read-page ${pageId}
 Then append a short hello note at the bottom and save the full updated markdown with:
@@ -44,7 +44,7 @@ stash files edit-page ${pageId} --content "<full updated markdown>"
 Your whole Drive mounts as a virtual filesystem your agent can navigate and edit:
 
 - **CLI** — \`bash -c "$(curl -fsSL https://joinstash.ai/install)"\`, then your coding agent can \`ls\`, \`find\`, and \`rg\` across everything.
-- **MCP** — point Claude Code, Cursor, Codex, or OpenCode at the Stash MCP server and they read and write pages directly.
+- **MCP** — point Claude Code, Cursor, Codex, or OpenCode at the Skill MCP server and they read and write pages directly.
 - **API** — the same surface over HTTP for anything custom.
 
 ## Share it

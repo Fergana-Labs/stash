@@ -1,7 +1,7 @@
 # Design System — Stash
 
 ## Product Context
-- **What this is:** Real-time workspace platform where AI agents and humans collaborate as peers — sessions, files (folders + pages + binaries), tables, and shareable Stashes
+- **What this is:** Real-time workspace platform where AI agents and humans collaborate as peers — sessions, files (folders + pages + binaries), tables, and shareable Skills
 - **Who it's for:** Developers building with AI agents, technical teams running multi-agent workflows
 - **Space/industry:** AI collaboration tools, developer platforms (peers: Cursor, Linear, CrewAI, Notion)
 - **Project type:** Web app (Next.js 16 + Tailwind 4 frontend, Python/FastAPI backend)

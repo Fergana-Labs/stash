@@ -13,13 +13,13 @@ import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
-import CartridgeInviteCenter from "./CartridgeInviteCenter";
+import SkillInviteCenter from "./SkillInviteCenter";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { useShellChromeValue } from "./ShellChromeContext";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
-} from "../lib/stashNavigationCache";
+} from "../lib/skillNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { recordRecent } from "../lib/pins";
 
@@ -42,9 +42,9 @@ export interface SearchScope {
     | "page"
     | "folder"
     | "session"
-    | "stash"
+    | "skill"
     | "sessions"
-    | "cartridges";
+    | "skills";
   label: string;
   detail: string;
   params: Record<string, string>;
@@ -126,14 +126,14 @@ function inferSearchScope(
   activeWorkspace: Workspace | undefined,
   breadcrumbs: Crumb[] | null,
 ): SearchScope | null {
-  const stashMatch = pathname.match(/^\/cartridges\/([^/?#]+)/);
-  if (stashMatch) {
-    const slug = decodeURIComponent(stashMatch[1]);
+  const skillMatch = pathname.match(/^\/skills\/([^/?#]+)/);
+  if (skillMatch) {
+    const slug = decodeURIComponent(skillMatch[1]);
     return {
-      kind: "stash",
-      label: "this cartridge",
-      detail: "Search only in this cartridge",
-      params: { stash: slug },
+      kind: "skill",
+      label: "this skill",
+      detail: "Search only in this skill",
+      params: { skill: slug },
     };
   }
 
@@ -184,15 +184,15 @@ function inferSearchScope(
     };
   }
 
-  const stashesMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/cartridges(?:\/)?$/,
+  const skillsMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/skills(?:\/)?$/,
   );
-  if (stashesMatch) {
+  if (skillsMatch) {
     return {
-      kind: "cartridges",
-      label: "Cartridges",
-      detail: "Search Cartridges in this workspace",
-      params: { workspace: stashesMatch[1], content: "cartridges" },
+      kind: "skills",
+      label: "Skills",
+      detail: "Search Skills in this workspace",
+      params: { workspace: skillsMatch[1], content: "skills" },
     };
   }
 
@@ -418,7 +418,7 @@ export default function AppShell({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1">
-          <CartridgeInviteCenter />
+          <SkillInviteCenter />
           {shareAction}
           <UserMenu
             initial={initial}

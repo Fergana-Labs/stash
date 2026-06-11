@@ -95,13 +95,13 @@ function MarkdownScreen() {
               <ul>
                 <li><strong>Sessions</strong> — every agent transcript and its artifacts (e.g. a temporary <code>PLAN.md</code>).</li>
                 <li><strong>Drive</strong> — a real filesystem of pages, folders, and tables. No subpages, no blocks, no wiki-isms.</li>
-                <li><strong>Stashes</strong> — our novel unit. A user-curated bundle of sessions and pages with a single permission level (<code>workspace</code> / <code>private</code> / <code>public</code>). Stashes are how privacy works. They are also how things get shared.</li>
+                <li><strong>Skills</strong> — our novel unit. A user-curated bundle of sessions and pages with a single permission level (<code>workspace</code> / <code>private</code> / <code>public</code>). Skills are how privacy works. They are also how things get shared.</li>
               </ul>
 
-              <h2>Cartridges, not folders</h2>
+              <h2>Skills, not folders</h2>
               <blockquote>
                 We&apos;re betting that a stash is the right unit to share — better than a folder, better than a doc.
-                You hand someone a stash the way a character in <em>The Matrix</em> hands you a cartridge.
+                You hand someone a stash the way a character in <em>The Matrix</em> hands you a skill.
               </blockquote>
 
               <h2>Open questions</h2>
@@ -156,7 +156,7 @@ function MarkdownScreen() {
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
                 {[
                   ['Three primitives', 0],
-                  ['Cartridges, not folders', 0],
+                  ['Skills, not folders', 0],
                   ['Open questions', 0],
                   ['Out of scope', 0],
                 ].map(([t, indent], i) => (

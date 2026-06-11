@@ -31,7 +31,7 @@ interface FileViewerHeaderProps {
   readOnly?: boolean;
   /** Chip text in read-only mode. Defaults to "read-only". */
   readOnlyLabel?: string;
-  /** Back link rendered above the title (e.g. "← Demo Stash"). */
+  /** Back link rendered above the title (e.g. "← Demo Skill"). */
   backLink?: BackLink;
   /** Small label chips before the meta items. */
   tags?: Tag[];

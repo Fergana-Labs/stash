@@ -1,6 +1,6 @@
 """Session-folder endpoints.
 
-Folders are the shareable unit for sessions (same access model as cartridges).
+Folders are the shareable unit for sessions (same access model as skills).
 `ws_router` is the authenticated management surface; `public_router` serves a
 folder by slug to anyone the access rules allow (including anonymous viewers of
 a public folder), rendered by the same session viewer.
