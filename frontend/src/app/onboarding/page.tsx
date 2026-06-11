@@ -140,10 +140,10 @@ function OnboardingInner() {
   const finishToCollabDoc = useCallback(async () => {
     if (!workspaceId) return;
     track("onboarding.collab_path_chosen", {});
-    // The starter page embeds its own id and the user's API key in a
-    // copy-paste agent prompt, so we create it empty and fill it in after.
-    // The agent needs a persistent key — under managed Auth0 this mints one.
-    const apiKey = await getAgentApiKey();
+    // The starter page embeds its own id in a copy-paste agent prompt, so we
+    // create it empty and fill it in after. Self-hosted browsers hold a key
+    // to embed; under managed Auth0 the prompt says `stash login` instead.
+    const apiKey = getAgentApiKey();
     const page = await createPage(workspaceId, "Welcome to your Drive");
     const content = generateCollabIntroMarkdown({
       displayName: user?.display_name || user?.name || "",

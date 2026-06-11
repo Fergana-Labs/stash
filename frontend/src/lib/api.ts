@@ -85,20 +85,11 @@ export async function getAuth0AccessToken(): Promise<string | null> {
 }
 
 // The onboarding agent prompt needs a persistent API key — agents can't use
-// the browser's short-lived Auth0 access token. Under managed Auth0 we mint
-// one via the exchange endpoint; self-hosted browsers already hold their key.
-export async function getAgentApiKey(): Promise<string> {
-  const stored = getToken();
-  if (stored) return stored;
-  const auth0Token = await getAuth0AccessToken();
-  if (!auth0Token) throw new ApiError(401, "Not signed in");
-  const res = await fetch(`${API_BASE}/api/v1/auth0/exchange?device=onboarding`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth0Token}` },
-  });
-  if (!res.ok) throw new ApiError(res.status, "Could not create an API key");
-  const data = await res.json();
-  return data.api_key;
+// the browser's short-lived Auth0 access token. Self-hosted browsers already
+// hold their key; under managed Auth0 the browser never mints keys, so this
+// returns null and the agent prompt tells the user to run `stash login`.
+export function getAgentApiKey(): string | null {
+  return getToken();
 }
 
 export async function getAuthToken(): Promise<string | null> {
