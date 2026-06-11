@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
+import { useShareAction } from "../../../../../../components/ShellChromeContext";
 import { FileBrowserSkeleton } from "../../../../../../components/SkeletonStates";
+import ResourceShareButton from "../../../../../../components/share/ResourceShareButton";
 import WorkspaceFileBrowser from "../../../../../../components/workspace/file-browser/WorkspaceFileBrowser";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
@@ -31,6 +33,7 @@ export default function FolderDetailPage() {
   const [crumbs, setCrumbs] = useState<{ label: string; href?: string }[]>([
     { label: "Folder" },
   ]);
+  const [folderName, setFolderName] = useState<string | null>(null);
   const [stashFallback, setStashFallback] = useState<
     { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
@@ -62,6 +65,7 @@ export default function FolderDetailPage() {
       return;
     }
     let cancelled = false;
+    setFolderName(null);
     getFolderContents(workspaceId, folderId)
       .then((c) => {
         if (cancelled) return;
@@ -74,6 +78,7 @@ export default function FolderDetailPage() {
           ...trail,
           { label: c.folder.name },
         ]);
+        setFolderName(c.folder.name);
         setStashFallback(null);
       })
       .catch(async (e) => {
@@ -95,6 +100,20 @@ export default function FolderDetailPage() {
     crumbs,
     `${workspaceId}/files/${folderId}/${crumbs.map((c) => c.label).join("/")}`
   );
+
+  const shareAction = useMemo(() => {
+    if (!folderName || stashSlug || !user) return null;
+    return (
+      <ResourceShareButton
+        objectType="folder"
+        objectId={folderId}
+        resourceName={folderName}
+        resourceUrlPath={`/workspaces/${workspaceId}/folders/${folderId}`}
+        currentUser={user}
+      />
+    );
+  }, [folderId, folderName, stashSlug, user, workspaceId]);
+  useShareAction(shareAction);
 
   useEffect(() => {
     if (!loading && !user && !stashSlug) router.push("/login");

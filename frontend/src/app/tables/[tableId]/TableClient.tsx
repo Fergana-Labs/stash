@@ -5,6 +5,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type AnchorHTMLAttributes,
@@ -17,9 +18,10 @@ import Markdown from "react-markdown";
 import AppShell from "../../../components/AppShell";
 import CustomSelect from "../../../components/CustomSelect";
 import { downloadBlob } from "../../../components/DownloadMenu";
+import { useShareAction } from "../../../components/ShellChromeContext";
+import ResourceShareButton from "../../../components/share/ResourceShareButton";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
-import { useShareModal } from "../../../lib/shareModalContext";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
   fetchAuthed,
@@ -317,7 +319,19 @@ function TableEditorPageInner() {
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = rows.length < totalCount;
 
-  const shareModal = useShareModal();
+  const shareAction = useMemo(() => {
+    if (!table || readOnly || !user) return null;
+    return (
+      <ResourceShareButton
+        objectType="table"
+        objectId={table.id}
+        resourceName={table.name}
+        resourceUrlPath={`/tables/${table.id}`}
+        currentUser={user}
+      />
+    );
+  }, [readOnly, table, user]);
+  useShareAction(shareAction);
 
   const rememberUndo = useCallback((action: TableUndoAction) => {
     undoStackRef.current.push(action);
@@ -1135,19 +1149,6 @@ function TableEditorPageInner() {
             {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
             {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
             {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
-            {!readOnly && wsId && table && (
-              <button
-                onClick={() =>
-                  shareModal.open({
-                    workspaceId: wsId,
-                    initial: [{ object_type: "table", object_id: table.id, label_override: table.name }],
-                  })
-                }
-                className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
-              >
-                Share
-              </button>
-            )}
             {!readOnly && <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
           </>}
         </div>
