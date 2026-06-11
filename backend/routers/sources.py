@@ -23,6 +23,7 @@ from ..services import (
     security_audit_service,
     source_service,
     task_service,
+    workspace_service,
 )
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
@@ -37,7 +38,7 @@ async def _require_write(workspace_id: UUID, user_id: UUID) -> None:
     role = await permission_service.get_workspace_role(workspace_id, user_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    if role not in ("owner", "editor"):
+    if role not in workspace_service.ROLES_CAN_WRITE:
         raise HTTPException(status_code=403, detail="Viewers can read but not manage sources")
 
 
