@@ -295,11 +295,10 @@ CONTENT_TABLES = {
 # provider search coroutine, resolved lazily to avoid an import cycle.
 FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project", "twitter"}
 
-# Federated types excluded from UNSCOPED search fan-out. An unscoped search
-# would ship the raw query text to the provider (X has no business seeing a
-# workspace's internal search terms) and spend the owner's metered API quota
-# (X free tier: one recent-search per 15 minutes). Agents search these only by
-# explicitly scoping to the source handle.
+# Federated types excluded from UNSCOPED search fan-out: the owner's API quota
+# is metered (X free tier: one recent-search per 15 minutes), too scarce to
+# spend on searches that weren't aimed at the provider. Agents search these
+# only by explicitly scoping to the source handle.
 SCOPED_ONLY_SEARCH_TYPES = {"twitter"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can

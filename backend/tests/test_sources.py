@@ -305,9 +305,9 @@ async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient)
 
 @pytest.mark.asyncio
 async def test_unscoped_search_skips_scoped_only_federated_sources(client, monkeypatch):
-    """Unscoped fan-out must not ship the query text to X or spend its metered
-    quota; an explicitly scoped search does — and surfaces provider errors
-    instead of swallowing them into a misleading "no results"."""
+    """Unscoped fan-out must not spend X's metered quota; an explicitly scoped
+    search does — and surfaces provider errors instead of swallowing them into
+    a misleading "no results"."""
     from backend.integrations.twitter import indexer as twitter_indexer
 
     api_key, owner_id = await _register(client)
@@ -321,7 +321,7 @@ async def test_unscoped_search_skips_scoped_only_federated_sources(client, monke
         return [{"ref": "1", "name": "@stash - 2026-06-08", "snippet": "hello"}]
 
     monkeypatch.setattr(twitter_indexer, "search_twitter", fake_search)
-    await source_service.search_all(ws, owner_id, "internal roadmap secret")
+    await source_service.search_all(ws, owner_id, "anything at all")
     assert queries == []
 
     scoped = await source_service.search_all(ws, owner_id, "hello", source=src["id"])
