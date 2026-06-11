@@ -88,8 +88,8 @@ async def _audit_source_action(
 
 class AddSourceRequest(BaseModel):
     source_type: str
-    # Optional for Slack/Granola — their workspace id + name are resolved from
-    # the connected token (the user can't easily supply them).
+    # Optional for sources where the connected account resolves the target. For
+    # Gmail, pass the account email when more than one mailbox is connected.
     external_ref: str | None = None
     display_name: str | None = None
     settings: dict | None = None
@@ -113,12 +113,33 @@ async def _resolve_granola_source(user_id) -> tuple[str, str]:
     return "granola", "Granola"
 
 
-async def _resolve_gmail_source(user_id) -> tuple[str, str]:
-    """Gmail is one mailbox source per connected user."""
-    await integration_storage.get_valid_token(user_id, "gmail")
+async def _resolve_gmail_source(user_id, account_key: str | None) -> tuple[str, str]:
+    """Gmail source external_ref = the connected mailbox email."""
     status = await integration_storage.status(user_id, "gmail")
-    email = status.get("account_email")
-    return "me", f"Gmail ({email})" if email else "Gmail"
+    accounts = status.get("accounts", [])
+    if not accounts:
+        raise HTTPException(status_code=401, detail="not connected to gmail")
+
+    if not account_key:
+        if len(accounts) != 1:
+            raise HTTPException(status_code=400, detail="Choose a Gmail account to add.")
+        account = accounts[0]
+    else:
+        key = account_key.strip().lower()
+        account = next(
+            (
+                a
+                for a in accounts
+                if a["account_key"] == key or (a.get("account_email") or "").lower() == key
+            ),
+            None,
+        )
+        if account is None:
+            raise HTTPException(status_code=400, detail="Gmail account is not connected.")
+
+    email = account.get("account_email") or account["account_key"]
+    await integration_storage.get_valid_token(user_id, "gmail", account["account_key"])
+    return account["account_key"], f"Gmail ({email})"
 
 
 async def _resolve_gong_source(user_id) -> tuple[str, str]:
@@ -343,8 +364,8 @@ async def add_source(
     elif body.source_type == "granola" and not external_ref:
         external_ref, resolved_name = await _resolve_granola_source(current_user["id"])
         display_name = display_name or resolved_name
-    elif body.source_type == "gmail" and not external_ref:
-        external_ref, resolved_name = await _resolve_gmail_source(current_user["id"])
+    elif body.source_type == "gmail":
+        external_ref, resolved_name = await _resolve_gmail_source(current_user["id"], external_ref)
         display_name = display_name or resolved_name
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])

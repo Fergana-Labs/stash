@@ -3,14 +3,14 @@
 Gmail stores message metadata only in `gmail_index`. Search is federated to
 Gmail and message bodies are fetched lazily when a user opens a result.
 
-Revision ID: 0099
-Revises: 0098
+Revision ID: 0093
+Revises: 0092
 """
 
 from alembic import op
 
-revision = "0099"
-down_revision = "0098"
+revision = "0093"
+down_revision = "0092"
 branch_labels = None
 depends_on = None
 

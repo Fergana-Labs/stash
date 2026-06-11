@@ -9,6 +9,15 @@ import sys
 from adapt import adapt_session_start
 from config import DATA_DIR, get_config, get_stdin_data
 
+try:
+    from stashai.plugin.doctor import shadow_install_warning
+except ImportError:
+    # Plugin scripts can refresh a session before the stashai package
+    # auto-updates; skip the check until the package catches up.
+    def shadow_install_warning() -> None:
+        return None
+
+
 from stashai.plugin.hooks import (
     create_session_record,
     reset_session_record_state,
@@ -65,8 +74,9 @@ def main():
     state = load_state(DATA_DIR)
     if not uploads_enabled(cfg, event):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
-        if warning:
-            json.dump({"systemMessage": warning}, sys.stdout)
+        messages = [m for m in (warning, shadow_install_warning()) if m]
+        if messages:
+            json.dump({"systemMessage": "\n\n".join(messages)}, sys.stdout)
         return
 
     reset_session_record_state(state)
@@ -98,15 +108,16 @@ def main():
             session_row_id=state.get("session_row_id", ""),
         )
 
-    json.dump(
-        {
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": CONTEXT + session_context,
-            }
-        },
-        sys.stdout,
-    )
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": CONTEXT + session_context,
+        }
+    }
+    shadow_warning = shadow_install_warning()
+    if shadow_warning:
+        output["systemMessage"] = shadow_warning
+    json.dump(output, sys.stdout)
 
 
 if __name__ == "__main__":

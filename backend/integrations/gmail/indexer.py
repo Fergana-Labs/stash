@@ -113,7 +113,7 @@ async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
 async def index_gmail(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    token = await get_valid_token(owner_user_id, "gmail")
+    token = await get_valid_token(owner_user_id, "gmail", source["external_ref"])
 
     present: list[str] = []
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
@@ -133,7 +133,7 @@ async def index_gmail(source: dict) -> str | None:
 
 async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     owner_user_id = UUID(source["owner_user_id"])
-    token = await get_valid_token(owner_user_id, "gmail")
+    token = await get_valid_token(owner_user_id, "gmail", source["external_ref"])
 
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
         refs = await _list_message_refs(client, query, min(limit, SEARCH_LIMIT))
@@ -207,8 +207,8 @@ def _render_message(message: dict) -> str:
     return "\n".join(parts)
 
 
-async def fetch_gmail_content(owner_user_id: UUID, message_id: str) -> str:
-    token = await get_valid_token(owner_user_id, "gmail")
+async def fetch_gmail_content(owner_user_id: UUID, account_key: str, message_id: str) -> str:
+    token = await get_valid_token(owner_user_id, "gmail", account_key)
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
         resp = await client.get(
             MESSAGE_URL.format(message_id=message_id),

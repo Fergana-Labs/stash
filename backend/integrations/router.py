@@ -23,7 +23,7 @@ from uuid import UUID
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
@@ -72,6 +72,15 @@ def _safe_return_to(return_to: str | None) -> str | None:
     return return_to
 
 
+class IntegrationAccountItem(BaseModel):
+    account_key: str
+    account_email: str | None = None
+    account_display_name: str | None = None
+    scopes: list[str]
+    expires_at: str | None = None
+    connected_at: str | None = None
+
+
 class ProviderListItem(BaseModel):
     provider: str
     display_name: str
@@ -88,6 +97,7 @@ class ProviderListItem(BaseModel):
     account_display_name: str | None = None
     expires_at: str | None = None
     connected_at: str | None = None
+    accounts: list[IntegrationAccountItem] = Field(default_factory=list)
 
 
 class IntegrationsListResponse(BaseModel):
@@ -193,6 +203,7 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
                 connected_at=conn["connected_at"] if conn else None,
+                accounts=conn["accounts"] if conn else [],
             )
         )
     return IntegrationsListResponse(providers=items)
@@ -278,6 +289,19 @@ async def integration_callback(
                 provider=provider,
                 metadata={"auth_kind": getattr(p, "auth_kind", "oauth")},
             )
+
+            # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
+            # Capture the connecting user's Slack identity so the bot can map
+            # inbound mentions to this Stash user without relying on email.
+            # Best-effort: a failure here must not break the connection.
+            if provider == "slack":
+                from .slack import links
+
+                try:
+                    await links.capture_from_user_token(user_id, token.access_token)
+                except Exception:
+                    logger.warning("slack: failed to capture user link", exc_info=True)
+            # --- END Slack agent ---
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:

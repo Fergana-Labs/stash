@@ -6,7 +6,12 @@ import pytest
 from httpx import AsyncClient
 
 from backend.models import CartridgeItem
-from backend.services import cartridge_service, permission_service, session_folder_service
+from backend.services import (
+    cartridge_service,
+    permission_service,
+    session_folder_service,
+    share_service,
+)
 
 from .conftest import unique_name
 
@@ -219,7 +224,7 @@ async def test_owner_has_read_and_write(pool):
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
     assert await permission_service.check_access("page", page, owner)
-    assert await permission_service.check_access("page", page, owner, require_write=True)
+    assert await permission_service.check_access("page", page, owner, require="write")
 
 
 @pytest.mark.asyncio
@@ -231,7 +236,7 @@ async def test_viewer_workspace_member_can_read_not_write(pool):
     page = await _make_page(pool, ws, owner)
 
     assert await permission_service.check_access("page", page, viewer)
-    assert not await permission_service.check_access("page", page, viewer, require_write=True)
+    assert not await permission_service.check_access("page", page, viewer, require="write")
 
 
 @pytest.mark.asyncio
@@ -252,7 +257,7 @@ async def test_user_share_grants_read_not_write(pool):
     page = await _make_page(pool, ws, owner)
     await _share(pool, ws, "page", page, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
-    assert not await permission_service.check_access("page", page, friend, require_write=True)
+    assert not await permission_service.check_access("page", page, friend, require="write")
 
 
 @pytest.mark.asyncio
@@ -262,7 +267,67 @@ async def test_user_write_share_grants_write(pool):
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
     await _share(pool, ws, "page", page, friend, "write", by=owner)
-    assert await permission_service.check_access("page", page, friend, require_write=True)
+    assert await permission_service.check_access("page", page, friend, require="write")
+
+
+@pytest.mark.asyncio
+async def test_comment_tier_sits_between_read_and_write(pool):
+    """read < comment < write: a read share can't comment; a comment share can
+    comment but not write; a write share can do everything."""
+    owner = await _make_user(pool)
+    reader = await _make_user(pool)
+    commenter = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    page = await _make_page(pool, ws, owner)
+    await _share(pool, ws, "page", page, reader, "read", by=owner)
+    await _share(pool, ws, "page", page, commenter, "comment", by=owner)
+
+    # read share: can read, cannot comment, cannot write.
+    assert await permission_service.check_access("page", page, reader)
+    assert not await permission_service.check_access("page", page, reader, require="comment")
+    assert not await permission_service.check_access("page", page, reader, require="write")
+    # comment share: can read + comment, not write.
+    assert await permission_service.check_access("page", page, commenter, require="comment")
+    assert not await permission_service.check_access("page", page, commenter, require="write")
+
+
+@pytest.mark.asyncio
+async def test_expired_share_grants_nothing(pool):
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    page = await _make_page(pool, ws, owner)
+    await pool.execute(
+        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by, expires_at) "
+        "VALUES ($1,'page',$2,'user',$3,'write',$4, now() - interval '1 hour')",
+        ws,
+        page,
+        friend,
+        owner,
+    )
+    # Expired → no access, and absent from the readable predicate / with-me list.
+    assert not await permission_service.check_access("page", page, friend)
+    with_me = await share_service.list_shared_with_user(friend)
+    assert all(item["object_id"] != str(page) for item in with_me)
+
+
+@pytest.mark.asyncio
+async def test_future_expiry_still_grants(pool):
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    page = await _make_page(pool, ws, owner)
+    await pool.execute(
+        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by, expires_at) "
+        "VALUES ($1,'page',$2,'user',$3,'read',$4, now() + interval '1 day')",
+        ws,
+        page,
+        friend,
+        owner,
+    )
+    assert await permission_service.check_access("page", page, friend)
 
 
 @pytest.mark.asyncio
@@ -298,7 +363,7 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
     await _share(pool, ws, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("table", table, friend)
     # Read share is not a write grant, and the root table is outside the folder.
-    assert not await permission_service.check_access("table", table, friend, require_write=True)
+    assert not await permission_service.check_access("table", table, friend, require="write")
     assert not await permission_service.check_access("table", root_table, friend)
 
     # Upgrading the folder share to write cascades write to the table.
@@ -308,7 +373,7 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
         folder,
         friend,
     )
-    assert await permission_service.check_access("table", table, friend, require_write=True)
+    assert await permission_service.check_access("table", table, friend, require="write")
 
 
 @pytest.mark.asyncio
@@ -320,7 +385,7 @@ async def test_public_cartridge_grants_read_only(pool):
     await _make_cartridge(ws, owner, "public", "page", page)
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
-    assert not await permission_service.check_access("page", page, stranger, require_write=True)
+    assert not await permission_service.check_access("page", page, stranger, require="write")
 
 
 @pytest.mark.asyncio
@@ -339,10 +404,10 @@ async def test_public_session_folder_grants_read_only(pool):
     assert await permission_service.check_access("session_folder", folder_id, stranger)
     assert await permission_service.check_access("session_folder", folder_id, None)
     assert not await permission_service.check_access(
-        "session_folder", folder_id, stranger, require_write=True
+        "session_folder", folder_id, stranger, require="write"
     )
     assert not await permission_service.check_access(
-        "session_folder", folder_id, None, require_write=True
+        "session_folder", folder_id, None, require="write"
     )
 
 
@@ -356,7 +421,7 @@ async def test_private_cartridge_member_reads_contents_not_write(pool):
     cartridge = await _make_cartridge(ws, owner, "private", "page", page)
     await _add_cartridge_member(pool, cartridge["id"], member, owner, "read")
     assert await permission_service.check_access("page", page, member)
-    assert not await permission_service.check_access("page", page, member, require_write=True)
+    assert not await permission_service.check_access("page", page, member, require="write")
     assert not await permission_service.check_access("page", page, stranger)
 
 
@@ -1081,7 +1146,7 @@ async def test_downgraded_session_folder_owner_cannot_manage_folder(
         "session_folder",
         folder_id,
         uuid.UUID(editor["id"]),
-        require_write=True,
+        require="write",
     )
     assert update.status_code == 404
     assert delete.status_code == 404

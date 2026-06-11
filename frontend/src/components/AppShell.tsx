@@ -395,6 +395,7 @@ export default function AppShell({
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
   const initial = user.display_name[0].toUpperCase();
   const accountLabel = user.email ?? user.name;
+  const usernameLabel = `@${user.name}`;
   const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
   const shareInitial = inferShareInitial(pathname);
 
@@ -580,6 +581,7 @@ export default function AppShell({
           <UserMenu
             initial={initial}
             accountLabel={accountLabel}
+            usernameLabel={usernameLabel}
             onLogout={onLogout}
           />
         </div>
@@ -652,10 +654,12 @@ function sessionShareTitle(session: SessionDetail): string {
 function UserMenu({
   initial,
   accountLabel,
+  usernameLabel,
   onLogout,
 }: {
   initial: string;
   accountLabel: string;
+  usernameLabel: string;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -693,7 +697,12 @@ function UserMenu({
           className="absolute right-0 top-full z-40 mt-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
         >
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
-            Signed in as <span className="break-all text-foreground">{accountLabel}</span>
+            <div>
+              Signed in as <span className="break-all text-foreground">{accountLabel}</span>
+            </div>
+            <div className="mt-0.5">
+              Username <span className="break-all text-foreground">{usernameLabel}</span>
+            </div>
           </div>
           <Link
             href="/settings"

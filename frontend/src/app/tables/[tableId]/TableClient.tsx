@@ -957,7 +957,7 @@ function TableEditorPageInner() {
   if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
   if (!table && !error) {
-    if (!user) {
+    if (readOnly || !user) {
       return (
         <main className="flex min-h-screen flex-col bg-background">
           <TableEditorSkeleton />
@@ -1507,10 +1507,9 @@ function TableEditorPageInner() {
       </div>
   );
 
-  // Anonymous stash viewers don't have a workspace context to power the
-  // sidebar, so they get the bare table. Signed-in users see the full
-  // AppShell either way.
-  if (!user) {
+  // Stash-mode viewers are reading through the stash, not the workspace, so
+  // keep workspace chrome hidden even when they are signed in.
+  if (readOnly || !user) {
     return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
   }
   return (

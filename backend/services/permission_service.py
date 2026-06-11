@@ -27,6 +27,10 @@ _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
 _ROLES_CAN_READ = {"owner", "editor", "viewer"}
 _ROLES_CAN_WRITE = {"owner", "editor"}
 
+# Share permission levels, ordered. A grant satisfies a requirement when its
+# level is >= the required level: read < comment < write.
+_LEVELS = {"read": 0, "comment": 1, "write": 2}
+
 
 def _folder_chain_sql(folder_id_expr: str) -> str:
     return (
@@ -93,6 +97,7 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
             SELECT 1 FROM shares content_share
             WHERE content_share.principal_type = 'user'
               AND content_share.principal_id = ${user_arg}
+              AND (content_share.expires_at IS NULL OR content_share.expires_at > now())
               AND {share_target}
           )
           OR EXISTS (
@@ -206,20 +211,22 @@ async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, 
 
 
 async def _user_share_grants(
-    object_type: str, object_id: UUID, user_id: UUID, require_write: bool
+    object_type: str, object_id: UUID, user_id: UUID, require: str
 ) -> bool:
-    """A user share on the object or any ancestor folder."""
+    """A live (unexpired) user share on the object or any ancestor folder that
+    meets the required permission level."""
     pool = get_pool()
     for target_type, target_id in await _object_targets(object_type, object_id):
         row = await pool.fetchrow(
             "SELECT permission FROM shares "
             "WHERE principal_type = 'user' AND principal_id = $1 "
-            "AND object_type = $2 AND object_id = $3",
+            "AND object_type = $2 AND object_id = $3 "
+            "AND (expires_at IS NULL OR expires_at > now())",
             user_id,
             target_type,
             target_id,
         )
-        if row and (not require_write or row["permission"] == "write"):
+        if row and _LEVELS[row["permission"]] >= _LEVELS[require]:
             return True
     return False
 
@@ -265,12 +272,12 @@ async def _cartridge_open(cartridge: dict, user_id: UUID | None) -> bool:
 
 
 async def _session_folder_open(
-    folder: dict, folder_id: UUID, user_id: UUID | None, require_write: bool
+    folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
     """Can the user access this session folder? Public links are read-only.
     Workspace members are granted earlier in check_access."""
     public = folder["public_permission"]
-    if not require_write and public != "none":
+    if require == "read" and public != "none":
         return True
     if user_id is None:
         return False
@@ -281,7 +288,7 @@ async def _session_folder_open(
         return False
     if folder["owner_user_id"] == user_id:
         return True
-    return await _user_share_grants("session_folder", folder_id, user_id, require_write)
+    return await _user_share_grants("session_folder", folder_id, user_id, require)
 
 
 async def check_access(
@@ -289,16 +296,17 @@ async def check_access(
     object_id: UUID,
     user_id: UUID | None,
     workspace_id: UUID | None = None,
-    require_write: bool = False,
+    require: str = "read",
 ) -> bool:
+    """`require` is the permission level needed: read < comment < write."""
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
     if user_id is not None and workspace_id is not None:
         role = await get_workspace_role(workspace_id, user_id)
-        if require_write and role in _ROLES_CAN_WRITE:
+        if role in _ROLES_CAN_WRITE:
             return True
-        if not require_write and role in _ROLES_CAN_READ:
+        if require == "read" and role in _ROLES_CAN_READ:
             return True
 
     # The cartridge bundle itself: gated by cartridge access (read-only).
@@ -310,7 +318,7 @@ async def check_access(
         )
         if not row:
             return False
-        if require_write:
+        if require != "read":
             return row["owner_id"] == user_id
         return await _cartridge_open(dict(row), user_id)
 
@@ -324,19 +332,17 @@ async def check_access(
         )
         if not row:
             return False
-        return await _session_folder_open(dict(row), object_id, user_id, require_write)
+        return await _session_folder_open(dict(row), object_id, user_id, require)
 
     if object_type not in _CONTENT_TYPES:
         return False
 
     # Direct or inherited user share.
-    if user_id is not None and await _user_share_grants(
-        object_type, object_id, user_id, require_write
-    ):
+    if user_id is not None and await _user_share_grants(object_type, object_id, user_id, require):
         return True
 
     # Read-only access via a public / shared session folder that contains it.
-    if object_type == "session" and not require_write:
+    if object_type == "session" and require == "read":
         pool = get_pool()
         frow = await pool.fetchrow(
             "SELECT sf.id, sf.owner_user_id, sf.public_permission, sf.workspace_permission "
@@ -344,11 +350,11 @@ async def check_access(
             "WHERE s.id = $1",
             object_id,
         )
-        if frow and await _session_folder_open(dict(frow), frow["id"], user_id, False):
+        if frow and await _session_folder_open(dict(frow), frow["id"], user_id, "read"):
             return True
 
     # Read-only access via a cartridge that contains the object.
-    if not require_write:
+    if require == "read":
         for cartridge in await _containing_cartridges(object_type, object_id):
             if await _cartridge_open(cartridge, user_id):
                 return True
