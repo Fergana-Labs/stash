@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from backend.integrations.github import indexer as github_indexer
+from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.google import indexer as google_indexer
 from backend.integrations.granola import client as granola_client
@@ -160,6 +161,53 @@ async def test_google_drive_index_success_logs_internal_source_id_only(monkeypat
     assert "drive-root-secret" not in str(captured_logs)
     assert "drive-file-secret" not in str(captured_logs)
     assert "Webflow board plan" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_gmail_index_success_logs_internal_source_id_only(monkeypatch):
+    """Runs index_gmail end to end (with provider calls faked) so the sync
+    path — including the remove_missing_documents cleanup call — is exercised
+    by at least one test, and the success log stays free of message content."""
+    source = {**_source("account-webflow-secret@example.com"), "external_ref": "gmail-account-id"}
+    captured_logs = _capture_info(gmail_indexer.logger, monkeypatch)
+
+    class GmailClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def gmail_token(user_id, provider, external_ref):
+        return "provider-token"
+
+    async def list_refs(client, query, limit):
+        return [{"id": "msg-webflow-secret"}]
+
+    async def get_metadata(client, message_id):
+        return {
+            "id": message_id,
+            "payload": {"headers": [{"name": "Subject", "value": "Confidential launch plan"}]},
+        }
+
+    monkeypatch.setattr(gmail_indexer, "get_valid_token", gmail_token)
+    monkeypatch.setattr(gmail_indexer.httpx, "AsyncClient", lambda *args, **kwargs: GmailClient())
+    monkeypatch.setattr(gmail_indexer, "_list_message_refs", list_refs)
+    monkeypatch.setattr(gmail_indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(gmail_indexer.source_service, "upsert_index_row", _noop)
+    monkeypatch.setattr(gmail_indexer.source_service, "remove_missing_documents", _noop)
+
+    await gmail_indexer.index_gmail(source)
+
+    assert captured_logs == [
+        (
+            "gmail source %s: indexed %d message(s)",
+            (UUID(source["id"]), 1),
+            {},
+        )
+    ]
+    assert "msg-webflow-secret" not in str(captured_logs)
+    assert "Confidential launch plan" not in str(captured_logs)
 
 
 @pytest.mark.asyncio

@@ -126,7 +126,7 @@ async def index_gmail(source: dict) -> str | None:
             if message_id:
                 present.append(message_id)
 
-    await source_service.soft_delete_missing("gmail_index", source_id, present)
+    await source_service.remove_missing_documents("gmail_index", source_id, present)
     logger.info("gmail source %s: indexed %d message(s)", source_id, len(present))
     return None
 
