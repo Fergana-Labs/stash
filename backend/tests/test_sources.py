@@ -310,7 +310,7 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
 
     removed_sources = await source_service.delete_sources_for_provider(owner_id, provider)
 
-    assert removed_sources == 1
+    assert [UUID(removed["id"]) for removed in removed_sources] == [source_id]
     assert await source_service.get_owned_source(source_id, owner_id) is None
     table = source_service.SOURCE_TABLE.get(source_type)
     if table is not None:
@@ -1701,6 +1701,49 @@ async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
     assert rows[0]["path"] == "general/1717.0001"
     assert rows[0]["name"] == "#general"
     assert rows[0]["content"] == "updated confidential Slack message"
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_drops_edits_of_subtyped_messages(
+    client: AsyncClient,
+    pool,
+):
+    """Fresh subtyped messages (bot_message, thread_broadcast, ...) are never
+    ingested, so editing one must not sneak it in via message_changed either."""
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_bot_edit")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_BOT_EDIT",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+
+    ingested = await ingest_slack_message(
+        "T_BOT_EDIT",
+        {
+            "type": "message",
+            "subtype": "message_changed",
+            "channel": "C1",
+            "message": {
+                "type": "message",
+                "subtype": "bot_message",
+                "ts": "1717.0002",
+                "text": "edited bot message",
+            },
+        },
+    )
+
+    assert ingested == 0
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
+        == 0
+    )
 
 
 # --- index-only sources (drive): lazy read ----------------------------------

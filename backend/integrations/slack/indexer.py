@@ -224,6 +224,10 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         message = event.get("message") or {}
         if message.get("type") != "message" or not message.get("ts"):
             return 0
+        # Edits of subtyped messages (bot_message, thread_broadcast, ...) carry
+        # the subtype inside the nested message; drop them like fresh ones.
+        if message.get("subtype"):
+            return 0
         event = {**message, "channel": channel_id, "type": "message"}
     elif subtype:
         return 0
