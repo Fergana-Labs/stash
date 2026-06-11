@@ -195,3 +195,18 @@ export function SlackIcon({ className, size = defaultSize }: Props) {
     </svg>
   );
 }
+
+export function TwitterIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M13.9 10.47 22.04 1h-1.93l-7.07 8.23L7.4 1H.9l8.53 12.44L.9 23.37h1.93l7.46-8.68 5.96 8.68h6.5zm-2.64 3.07-.86-1.24L3.52 2.45h2.95l5.55 7.94.86 1.24 7.23 10.35h-2.95z" />
+    </svg>
+  );
+}

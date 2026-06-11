@@ -118,6 +118,19 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
     """
 
 
+def accessible_workspace_ids_sql(user_arg: int) -> str:
+    """Subquery: workspace ids whose content user ${user_arg} can possibly see —
+    workspaces they're a member of, plus workspaces that have shared something
+    with them. A coarse prefilter only: `readable_content_condition` still narrows
+    to the specific shared rows, so widening this set never over-exposes."""
+    return f"""(
+        SELECT workspace_id FROM workspace_members WHERE user_id = ${user_arg}
+        UNION
+        SELECT workspace_id FROM shares
+        WHERE principal_type = 'user' AND principal_id = ${user_arg}
+    )"""
+
+
 async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None:
     pool = get_pool()
     if object_type not in _WORKSPACE_LOOKUP:

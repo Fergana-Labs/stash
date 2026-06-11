@@ -58,11 +58,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("../../../../../../components/BreadcrumbContext", () => ({
+vi.mock("../../../../components/BreadcrumbContext", () => ({
   useBreadcrumbs: vi.fn(),
 }));
 
-vi.mock("../../../../../../hooks/useAuth", () => ({
+vi.mock("../../../../hooks/useAuth", () => ({
   useAuth: () => ({
     user: {
       id: "user-1",
@@ -77,50 +77,50 @@ vi.mock("../../../../../../hooks/useAuth", () => ({
   }),
 }));
 
-vi.mock("../../../../../../lib/api", () => api);
+vi.mock("../../../../lib/api", () => api);
 
 vi.mock("../../../../cartridges/[slug]/CartridgeItemBodies", () => ({
   PageBody: () => <div>Stash page body</div>,
 }));
 
-vi.mock("../../../../../../components/DownloadMenu", () => ({
+vi.mock("../../../../components/DownloadMenu", () => ({
   downloadBlob: vi.fn(),
   downloadRenderedPdf: vi.fn(),
   htmlToPdfBlocks: vi.fn(),
   markdownToPdfBlocks: vi.fn(),
 }));
 
-vi.mock("../../../../../../components/SkeletonStates", () => ({
+vi.mock("../../../../components/SkeletonStates", () => ({
   DocumentPageSkeleton: () => <div>Loading page</div>,
 }));
 
-vi.mock("../../../../../../components/StashIcons", () => ({
+vi.mock("../../../../components/StashIcons", () => ({
   StashIcon: () => <span>Stash icon</span>,
 }));
 
-vi.mock("../../../../../../components/workspace/HtmlPageView", () => ({
+vi.mock("../../../../components/workspace/HtmlPageView", () => ({
   default: () => <div>HTML page view</div>,
   extractCommentIdsFromHtml: vi.fn(() => []),
 }));
 
-vi.mock("../../../../../../components/export/ExportDeckButton", () => ({
+vi.mock("../../../../components/export/ExportDeckButton", () => ({
   default: () => <button>Export</button>,
 }));
 
-vi.mock("../../../../../../components/workspace/FileViewerHeader", () => ({
+vi.mock("../../../../components/workspace/FileViewerHeader", () => ({
   default: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
 
-vi.mock("../../../../../../components/workspace/MarkdownEditor", () => ({
+vi.mock("../../../../components/workspace/MarkdownEditor", () => ({
   default: () => <div>Markdown editor</div>,
   extractCommentIdsFromMarkdown: vi.fn(() => []),
 }));
 
-vi.mock("../../../../../../components/workspace/CommentsSidebar", () => ({
+vi.mock("../../../../components/workspace/CommentsSidebar", () => ({
   default: () => <aside>Comments</aside>,
 }));
 
-vi.mock("../../../../../../components/workspace/CommentComposerPopover", () => ({
+vi.mock("../../../../components/workspace/CommentComposerPopover", () => ({
   default: () => <div>Comment composer</div>,
 }));
 

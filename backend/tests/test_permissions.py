@@ -1451,3 +1451,31 @@ async def test_shared_session_folder_sessions_gated_on_share(pool):
     # A stranger with no share is denied.
     with pytest.raises(HTTPException):
         await share_service.list_shared_session_folder_sessions(sf, stranger)
+
+
+@pytest.mark.asyncio
+async def test_overview_counts_span_shared_not_unshared(pool):
+    """The "Your brain" vitals (analytics_service.get_overview_counts) span the
+    user's own content plus content shared with them — but a share only surfaces
+    the specific shared rows, never the whole sharing workspace, and an unrelated
+    user sees nothing. Guards the widened member∪shared prefilter against leaks."""
+    from backend.services import analytics_service
+
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)  # gets one folder shared
+    stranger = await _make_user(pool)  # gets nothing
+    ws = await _make_workspace(pool, owner)  # friend/stranger are NOT members
+    folder = await _make_folder(pool, ws, owner)
+    await _make_page(pool, ws, owner, folder_id=folder, name="shared-page")
+    await _make_page(pool, ws, owner, name="private-root-page")
+    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+
+    owner_counts = await analytics_service.get_overview_counts(owner)
+    friend_counts = await analytics_service.get_overview_counts(friend)
+    stranger_counts = await analytics_service.get_overview_counts(stranger)
+
+    # Owner sees both of its pages; friend sees only the page in the shared
+    # folder (not the un-shared root page); stranger sees neither.
+    assert owner_counts["pages"] >= 2
+    assert friend_counts["pages"] == 1
+    assert stranger_counts["pages"] == 0

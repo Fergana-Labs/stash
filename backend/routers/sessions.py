@@ -221,29 +221,57 @@ async def upsert_workspace_session(
     return _session_response(row)
 
 
-@router.get("/workspaces/{workspace_id}/sessions/{session_id}")
-async def get_workspace_session(
-    workspace_id: UUID,
-    session_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    # No workspace-membership pre-gate: a session may be shared with a
-    # non-member. can_read_session enforces check_access (owner OR share OR
-    # open cartridge).
-    if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
-        raise HTTPException(status_code=404, detail="Session not found")
+async def _session_detail_payload(
+    workspace_id: UUID, session_id: str, user_id: UUID
+) -> dict | None:
+    """Full session detail if the user may read it, else None.
+
+    No workspace-membership pre-gate: a session may be shared with a
+    non-member. can_read_session enforces check_access (owner OR share OR
+    open cartridge).
+    """
+    if not await memory_service.can_read_session(workspace_id, session_id, user_id):
+        return None
 
     session = await session_service.get_session(workspace_id, session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        return None
 
-    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
+    events = await memory_service.read_session_events(workspace_id, session_id, user_id)
     payload = _session_response(
         session,
         title=await session_title_service.title_for_events(workspace_id, session_id, events),
     )
     payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
+    return payload
+
+
+@router.get("/sessions/{session_id}")
+async def get_session_canonical(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """session_id is unique per workspace, not globally; when the same
+    session exists in several workspaces, return the newest one the caller
+    can read. Any failure is a 404: an unscoped lookup must not confirm
+    that an unreadable session exists."""
+    for row in await session_service.list_sessions_for_session_id(session_id):
+        payload = await _session_detail_payload(row["workspace_id"], session_id, current_user["id"])
+        if payload:
+            return payload
+    raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.get("/workspaces/{workspace_id}/sessions/{session_id}")
+async def get_workspace_session(
+    workspace_id: UUID,
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    payload = await _session_detail_payload(workspace_id, session_id, current_user["id"])
+    if not payload:
+        raise HTTPException(status_code=404, detail="Session not found")
     return payload
 
 

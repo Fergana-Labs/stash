@@ -58,6 +58,22 @@ async def get_session(workspace_id: UUID, session_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+async def list_sessions_for_session_id(session_id: str) -> list[dict]:
+    """All workspace rows for an external session id, newest first.
+
+    session_id is only unique per workspace — the same session can exist in
+    several workspaces (re-import, repo reconnected elsewhere). Callers pick
+    the first row the user is allowed to read.
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"SELECT {_SELECT_COLS} FROM sessions "
+        "WHERE session_id = $1 AND deleted_at IS NULL ORDER BY started_at DESC",
+        session_id,
+    )
+    return [dict(row) for row in rows]
+
+
 async def get_session_by_id(session_row_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(

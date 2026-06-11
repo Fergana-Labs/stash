@@ -635,7 +635,7 @@ function searchSingleSession(
       id: `${workspace.id}:${sessionId}`,
       kind: "Session",
       title: sessionId,
-      href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
+      href: `/sessions/${encodeURIComponent(sessionId)}`,
       sourceName: workspace.name,
       detail: sessionEventSnippet(bestMatch, query),
       updatedAt: latest.created_at ?? new Date().toISOString(),
@@ -692,7 +692,7 @@ function searchSessionsFromEvents(
         id,
         kind: "Session",
         title: event.session_id,
-        href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(event.session_id)}`,
+        href: `/sessions/${encodeURIComponent(event.session_id)}`,
         sourceName: workspace.name,
         detail: sessionSearchSnippet(event, query),
         updatedAt: event.created_at,
@@ -753,7 +753,7 @@ function searchPages(
         id: page.id,
         kind: "Page" as const,
         title: page.name,
-        href: `/workspaces/${workspace.id}/p/${page.id}`,
+        href: `/p/${page.id}`,
         sourceName: workspace.name,
         detail:
           page.content_type === "html"
@@ -790,8 +790,7 @@ function searchTables(tables: TableWithWorkspace[], query: string): SearchResult
 }
 
 function tableSearchHref(table: TableWithWorkspace): string {
-  if (!table.workspace_id) return `/tables/${table.id}`;
-  return `/tables/${table.id}?workspaceId=${table.workspace_id}`;
+  return `/tables/${table.id}`;
 }
 
 function tableSearchDetail(table: TableWithWorkspace): string {

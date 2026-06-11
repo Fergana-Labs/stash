@@ -44,6 +44,7 @@ from ..services.files_tree_service import (
 )
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["files"])
+canonical_router = APIRouter(prefix="/api/v1", tags=["files"])
 
 
 async def _check_ws_access(workspace_id: UUID, user_id: UUID) -> None:
@@ -518,6 +519,19 @@ async def search_pages(
     await _check_ws_access(workspace_id, current_user["id"])
     pages = await files_tree_service.search_pages_fts(workspace_id, q, limit, current_user["id"])
     return {"pages": pages}
+
+
+@canonical_router.get("/pages/{page_id}", response_model=PageResponse)
+async def get_page_by_id(
+    page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Any failure is a 404: an unscoped lookup must not confirm that a
+    page the caller can't read exists."""
+    page = await files_tree_service.get_page_by_id(page_id, current_user["id"])
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    return PageResponse(**page)
 
 
 @router.get("/pages/{page_id}", response_model=PageResponse)
