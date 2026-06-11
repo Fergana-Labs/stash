@@ -29,6 +29,7 @@ celery = Celery(
         "backend.tasks.session_titles",
         "backend.tasks.viz",
         "backend.tasks.demo_janitor",
+        "backend.tasks.cli_auth",
         "backend.tasks.sources",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
@@ -81,6 +82,10 @@ celery.conf.update(
         "sources-reconcile-due": {
             "task": "backend.tasks.sources.reconcile_due",
             "schedule": 120.0,
+        },
+        "cli-auth-cleanup-expired": {
+            "task": "backend.tasks.cli_auth.cleanup_expired_sessions",
+            "schedule": 300.0,
         },
     },
 )

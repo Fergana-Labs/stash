@@ -17,8 +17,8 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 
-from backend.models import CartridgeItem
-from backend.services import agent_runtime, cartridge_service, prompts
+from backend.models import SkillItem
+from backend.services import agent_runtime, prompts, shared_skill_service
 
 
 def test_tool_catalog_matches_prompts_set():
@@ -132,7 +132,7 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool):
+async def test_skill_tools_create_list_and_delete(workspace: UUID, _db_pool):
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     folder_id = uuid4()
     await _db_pool.execute(
@@ -146,14 +146,14 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        create_result = await agent_runtime._create_cartridge.handler(
+        create_result = await agent_runtime._create_shared_skill.handler(
             {
                 "title": "Launch bundle",
                 "description": "Published launch context",
                 "items": [{"object_type": "folder", "object_id": str(folder_id)}],
             }
         )
-        list_result = await agent_runtime._list_stashes.handler({})
+        list_result = await agent_runtime._list_shared_skills.handler({})
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)
@@ -167,15 +167,15 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        delete_result = await agent_runtime._delete_cartridge.handler(
-            {"cartridge_id": created["id"]}
+        delete_result = await agent_runtime._delete_shared_skill.handler(
+            {"skill_id": created["id"]}
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)
 
     deleted = json.loads(delete_result["content"][0]["text"])
-    assert deleted == {"deleted": True, "cartridge_id": created["id"]}
+    assert deleted == {"deleted": True, "skill_id": created["id"]}
 
 
 def test_page_tools_are_writable_surfaces_only():
@@ -505,13 +505,13 @@ async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_cartridge_tool_item_validation_redacts_raw_inputs(workspace: UUID, _db_pool):
+async def test_skill_tool_item_validation_redacts_raw_inputs(workspace: UUID, _db_pool):
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     sensitive_ref = "token=secret-token Webflow confidential page id"
     sensitive_label = "Webflow board transcript"
 
     result = await _run_tool(
-        agent_runtime._create_cartridge.handler,
+        agent_runtime._create_shared_skill.handler,
         workspace,
         user_id,
         {
@@ -526,7 +526,7 @@ async def test_cartridge_tool_item_validation_redacts_raw_inputs(workspace: UUID
         },
     )
 
-    assert result == {"error": "Invalid Stash item list"}
+    assert result == {"error": "Invalid Skill item list"}
     result_json = json.dumps(result)
     assert "secret-token" not in result_json
     assert "Webflow confidential page id" not in result_json
@@ -534,41 +534,39 @@ async def test_cartridge_tool_item_validation_redacts_raw_inputs(workspace: UUID
 
 
 @pytest.mark.asyncio
-async def test_cartridge_tool_id_validation_redacts_raw_inputs(workspace: UUID, _db_pool):
+async def test_skill_tool_id_validation_redacts_raw_inputs(workspace: UUID, _db_pool):
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
-    sensitive_id = "token=secret-token Webflow confidential Stash id"
+    sensitive_id = "token=secret-token Webflow confidential Skill id"
 
     updated = await _run_tool(
-        agent_runtime._update_cartridge.handler,
+        agent_runtime._update_shared_skill.handler,
         workspace,
         user_id,
-        {"cartridge_id": sensitive_id, "title": "ignored"},
+        {"skill_id": sensitive_id, "title": "ignored"},
     )
     deleted = await _run_tool(
-        agent_runtime._delete_cartridge.handler,
+        agent_runtime._delete_shared_skill.handler,
         workspace,
         user_id,
-        {"cartridge_id": sensitive_id},
+        {"skill_id": sensitive_id},
     )
 
-    assert updated == {"error": "invalid cartridge id"}
-    assert deleted == {"error": "invalid cartridge id"}
+    assert updated == {"error": "invalid skill id"}
+    assert deleted == {"error": "invalid skill id"}
     result_json = json.dumps([updated, deleted])
     assert "secret-token" not in result_json
-    assert "Webflow confidential Stash id" not in result_json
+    assert "Webflow confidential Skill id" not in result_json
 
 
 @pytest.mark.asyncio
-async def test_create_cartridge_tool_limits_workspace_visibility_to_owners(
-    workspace: UUID, _db_pool
-):
+async def test_create_skill_tool_limits_workspace_visibility_to_owners(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     editor_id = await _create_user(_db_pool, "agent_editor")
     await _add_workspace_member(_db_pool, workspace, editor_id, "editor")
     folder_id = await _create_folder(_db_pool, workspace, owner_id, "Private launch notes")
 
     workspace_visible = await _run_tool(
-        agent_runtime._create_cartridge.handler,
+        agent_runtime._create_shared_skill.handler,
         workspace,
         editor_id,
         {
@@ -577,7 +575,7 @@ async def test_create_cartridge_tool_limits_workspace_visibility_to_owners(
         },
     )
     private = await _run_tool(
-        agent_runtime._create_cartridge.handler,
+        agent_runtime._create_shared_skill.handler,
         workspace,
         editor_id,
         {
@@ -589,7 +587,7 @@ async def test_create_cartridge_tool_limits_workspace_visibility_to_owners(
     )
 
     assert workspace_visible == {
-        "error": "Only workspace owners can create workspace or public Stashes"
+        "error": "Only workspace owners can create workspace or public Skills"
     }
     assert private["title"] == "Private launch bundle"
     assert private["workspace_permission"] == "none"
@@ -598,14 +596,14 @@ async def test_create_cartridge_tool_limits_workspace_visibility_to_owners(
 
 
 @pytest.mark.asyncio
-async def test_create_cartridge_tool_rejects_viewers(workspace: UUID, _db_pool):
+async def test_create_skill_tool_rejects_viewers(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     viewer_id = await _create_user(_db_pool, "agent_viewer")
     await _add_workspace_member(_db_pool, workspace, viewer_id, "viewer")
     folder_id = await _create_folder(_db_pool, workspace, owner_id, "Viewer-visible notes")
 
     result = await _run_tool(
-        agent_runtime._create_cartridge.handler,
+        agent_runtime._create_shared_skill.handler,
         workspace,
         viewer_id,
         {
@@ -616,51 +614,51 @@ async def test_create_cartridge_tool_rejects_viewers(workspace: UUID, _db_pool):
         },
     )
 
-    assert result == {"error": "Viewers can read but not create Stashes"}
+    assert result == {"error": "Viewers can read but not create Skills"}
 
 
 @pytest.mark.asyncio
-async def test_update_cartridge_tool_limits_public_changes_to_owners(workspace: UUID, _db_pool):
+async def test_update_skill_tool_limits_public_changes_to_owners(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
-    editor_id = await _create_user(_db_pool, "agent_stash_admin")
+    editor_id = await _create_user(_db_pool, "agent_skill_admin")
     await _add_workspace_member(_db_pool, workspace, editor_id, "editor")
     folder_id = await _create_folder(_db_pool, workspace, owner_id, "Admin-only source")
-    stash = await cartridge_service.create_cartridge(
+    skill = await shared_skill_service.create_skill(
         workspace_id=workspace,
         owner_id=owner_id,
-        title="Private admin-managed Stash",
+        title="Private admin-managed Skill",
         description="",
         workspace_permission="none",
         public_permission="none",
         discoverable=False,
         cover_image_url=None,
-        items=[CartridgeItem(object_type="folder", object_id=folder_id, position=0)],
+        items=[SkillItem(object_type="folder", object_id=folder_id, position=0)],
     )
     await _db_pool.execute(
-        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
+        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
         "VALUES ($1, $2, 'admin', $3)",
-        stash["id"],
+        skill["id"],
         editor_id,
         owner_id,
     )
 
     result = await _run_tool(
-        agent_runtime._update_cartridge.handler,
+        agent_runtime._update_shared_skill.handler,
         workspace,
         editor_id,
-        {"cartridge_id": str(stash["id"]), "public_permission": "read"},
+        {"skill_id": str(skill["id"]), "public_permission": "read"},
     )
 
     public_permission = await _db_pool.fetchval(
-        "SELECT public_permission FROM cartridges WHERE id = $1",
-        stash["id"],
+        "SELECT public_permission FROM skills WHERE id = $1",
+        skill["id"],
     )
-    assert result == {"error": "Only workspace owners can make a Stash workspace or public"}
+    assert result == {"error": "Only workspace owners can make a Skill workspace or public"}
     assert public_permission == "none"
 
 
 @pytest.mark.asyncio
-async def test_cartridge_mutation_tools_stay_in_active_workspace(workspace: UUID, _db_pool):
+async def test_skill_mutation_tools_stay_in_active_workspace(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     other_workspace = uuid4()
     await _db_pool.execute(
@@ -671,10 +669,10 @@ async def test_cartridge_mutation_tools_stay_in_active_workspace(workspace: UUID
         other_workspace.hex[:12],
     )
     await _add_workspace_member(_db_pool, other_workspace, owner_id, "owner")
-    other_stash = await cartridge_service.create_cartridge(
+    other_skill = await shared_skill_service.create_skill(
         workspace_id=other_workspace,
         owner_id=owner_id,
-        title="Other workspace Stash",
+        title="Other workspace Skill",
         description="",
         workspace_permission="none",
         public_permission="none",
@@ -684,29 +682,29 @@ async def test_cartridge_mutation_tools_stay_in_active_workspace(workspace: UUID
     )
 
     update_result = await _run_tool(
-        agent_runtime._update_cartridge.handler,
+        agent_runtime._update_shared_skill.handler,
         workspace,
         owner_id,
-        {"cartridge_id": str(other_stash["id"]), "title": "Mutated from wrong workspace"},
+        {"skill_id": str(other_skill["id"]), "title": "Mutated from wrong workspace"},
     )
     delete_result = await _run_tool(
-        agent_runtime._delete_cartridge.handler,
+        agent_runtime._delete_shared_skill.handler,
         workspace,
         owner_id,
-        {"cartridge_id": str(other_stash["id"])},
+        {"skill_id": str(other_skill["id"])},
     )
 
     title = await _db_pool.fetchval(
-        "SELECT title FROM cartridges WHERE id = $1",
-        other_stash["id"],
+        "SELECT title FROM skills WHERE id = $1",
+        other_skill["id"],
     )
     assert update_result == {"error": "not found"}
     assert delete_result == {"error": "not found"}
-    assert title == "Other workspace Stash"
+    assert title == "Other workspace Skill"
 
 
 @pytest.mark.asyncio
-async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
+async def test_external_skill_is_workspace_fork(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     target_workspace = uuid4()
     page_id = uuid4()
@@ -752,7 +750,7 @@ async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
         "Copied session event",
         "session-external-source",
     )
-    source = await cartridge_service.create_cartridge(
+    source = await shared_skill_service.create_skill(
         workspace_id=workspace,
         owner_id=owner_id,
         title="Fork source Stash",
@@ -762,23 +760,23 @@ async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
         discoverable=False,
         cover_image_url=None,
         items=[
-            CartridgeItem(object_type="page", object_id=page_id, position=0),
-            CartridgeItem(object_type="session", object_id=session_row_id, position=1),
+            SkillItem(object_type="page", object_id=page_id, position=0),
+            SkillItem(object_type="session", object_id=session_row_id, position=1),
         ],
     )
 
-    attached = await cartridge_service.add_external_cartridge(
+    attached = await shared_skill_service.fork_skill(
         target_workspace, source["slug"], added_by=owner_id
     )
-    target_stashes = await cartridge_service.list_workspace_stashes(target_workspace, owner_id)
+    target_skills = await shared_skill_service.list_workspace_skills(target_workspace, owner_id)
 
     assert attached is not None
     assert attached["id"] != source["id"]
     assert attached["is_external"] is True
     assert attached["added_to_workspace_id"] == target_workspace
-    assert attached["forked_from_cartridge_id"] == source["id"]
-    assert [stash["id"] for stash in target_stashes] == [attached["id"]]
-    assert target_stashes[0]["workspace_id"] == target_workspace
+    assert attached["forked_from_skill_id"] == source["id"]
+    assert [skill["id"] for skill in target_skills] == [attached["id"]]
+    assert target_skills[0]["workspace_id"] == target_workspace
 
     fork_page_id = attached["items"][0]["object_id"]
     assert fork_page_id != page_id

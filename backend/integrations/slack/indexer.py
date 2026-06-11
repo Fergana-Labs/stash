@@ -44,8 +44,9 @@ async def index_slack(source: dict) -> str | None:
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
     if not allowed_channel_ids:
-        logger.info("slack source %s: no allowed channels configured", source_id)
-        return None
+        # Fail loudly so the sync records a sync_error instead of reporting a
+        # successful sync that ingested nothing.
+        raise RuntimeError("no allowed channels configured")
 
     token = await get_valid_token(owner_user_id, "slack")
     headers = {"Authorization": f"Bearer {token}"}
@@ -222,6 +223,10 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
     if subtype == "message_changed":
         message = event.get("message") or {}
         if message.get("type") != "message" or not message.get("ts"):
+            return 0
+        # Edits of subtyped messages (bot_message, thread_broadcast, ...) carry
+        # the subtype inside the nested message; drop them like fresh ones.
+        if message.get("subtype"):
             return 0
         event = {**message, "channel": channel_id, "type": "message"}
     elif subtype:

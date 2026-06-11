@@ -243,7 +243,7 @@ async def get_folder_contents(
         "       ("
         "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
         "         AND p.workspace_id = $2 "
-        "         AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
+        "         AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "         AND p.deleted_at IS NULL "
         f"         AND {readable_page}"
         "       ) AS page_count, "
@@ -263,7 +263,7 @@ async def get_folder_contents(
     pages = await pool.fetch(
         "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
         "AND p.workspace_id = $2 "
-        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY name",
@@ -542,7 +542,7 @@ async def get_page(
 ):
     # No workspace-membership pre-gate: a page may be shared with someone who
     # isn't a member (the primary collaboration path). get_page enforces
-    # check_access (owner OR share OR open cartridge) and returns None otherwise.
+    # check_access (owner OR share OR open skill) and returns None otherwise.
     page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -642,13 +642,6 @@ async def delete_page(
     deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="deleted",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="page",
-        target_id=page_id,
-    )
 
 
 @router.post("/pages/{page_id}/restore", status_code=204)
@@ -658,16 +651,9 @@ async def restore_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
-    restored = await files_tree_service.restore_page(page_id, workspace_id)
+    restored = await files_tree_service.restore_page(page_id, workspace_id, current_user["id"])
     if not restored:
         raise HTTPException(status_code=404, detail="Page not in trash")
-    await security_audit_service.record_content_lifecycle_event(
-        operation="restored",
-        actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
-        target_type="page",
-        target_id=page_id,
-    )
 
 
 @router.delete("/pages/{page_id}/purge", status_code=204)

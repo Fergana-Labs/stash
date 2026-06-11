@@ -111,11 +111,11 @@ export default function HtmlPageView({
     function onMessage(e: MessageEvent) {
       const data = e.data;
       if (!data || typeof data !== "object" || data.channel !== channel) return;
-      if (data.type === "stash:resize" && typeof data.height === "number") {
+      if (data.type === "skill:resize" && typeof data.height === "number") {
         if (layout === "responsive") setHeight(Math.max(0, Math.ceil(data.height)));
         return;
       }
-      if (data.type === "stash:selection") {
+      if (data.type === "skill:selection") {
         if (data.cleared) {
           onSelection?.(null);
           return;
@@ -134,11 +134,11 @@ export default function HtmlPageView({
         });
         return;
       }
-      if (data.type === "stash:thread-click" && typeof data.id === "string") {
+      if (data.type === "skill:thread-click" && typeof data.id === "string") {
         onActivateThread?.(data.id);
         return;
       }
-      if (data.type === "stash:anchor-tops" && data.anchorTops) {
+      if (data.type === "skill:anchor-tops" && data.anchorTops) {
         const anchorTops: Record<string, number> = {};
         for (const [id, top] of Object.entries(data.anchorTops)) {
           if (typeof top === "number") anchorTops[id] = top;
@@ -151,14 +151,14 @@ export default function HtmlPageView({
         onWrapComplete?.();
         return;
       }
-      if (data.type === "stash:navigate" && typeof data.href === "string") {
+      if (data.type === "skill:navigate" && typeof data.href === "string") {
         onNavigateLink?.(data.href);
         return;
       }
     }
     window.addEventListener("message", onMessage);
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "stash:probe", channel },
+      { type: "skill:probe", channel },
       "*",
     );
     return () => window.removeEventListener("message", onMessage);
@@ -179,7 +179,7 @@ export default function HtmlPageView({
   useEffect(() => {
     if (!pendingWrapId) return;
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "stash:wrap", channel, id: pendingWrapId },
+      { type: "skill:wrap", channel, id: pendingWrapId },
       "*",
     );
   }, [pendingWrapId, channel]);
@@ -187,7 +187,7 @@ export default function HtmlPageView({
   // Push active thread id to the iframe so it can style the matching span.
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "stash:active", channel, id: activeThreadId ?? null },
+      { type: "skill:active", channel, id: activeThreadId ?? null },
       "*",
     );
   }, [activeThreadId, channel]);
@@ -198,7 +198,7 @@ export default function HtmlPageView({
   useEffect(() => {
     if (!stripCommentToken) return;
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "stash:unwrap", channel, id: stripCommentToken.id },
+      { type: "skill:unwrap", channel, id: stripCommentToken.id },
       "*",
     );
   }, [stripCommentToken, channel]);
@@ -206,7 +206,7 @@ export default function HtmlPageView({
   // Push edit-mode to the iframe whenever it changes.
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "stash:set-editable", channel, enabled: editable },
+      { type: "skill:set-editable", channel, enabled: editable },
       "*",
     );
   }, [editable, channel]);
@@ -287,7 +287,7 @@ export default function HtmlPageView({
 
   function onIframeLoad() {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "stash:probe", channel },
+      { type: "skill:probe", channel },
       "*",
     );
   }
@@ -521,7 +521,7 @@ function injectResizeBootstrap(
         document.documentElement.scrollHeight,
         document.body ? document.body.scrollHeight : 0
       );
-      post({type:"stash:resize",height:h});
+      post({type:"skill:resize",height:h});
       reportAnchorTops();
     }
     function reportAnchorTops(){
@@ -536,7 +536,7 @@ function injectResizeBootstrap(
         var top=Math.max(0,Math.round(rect.top));
         if(anchorTops[id]===undefined || top<anchorTops[id]) anchorTops[id]=top;
       }
-      post({type:"stash:anchor-tops",anchorTops:anchorTops});
+      post({type:"skill:anchor-tops",anchorTops:anchorTops});
     }
     function injectStyle(){
       if(document.getElementById("__stash_comments_css__")) return;
@@ -567,18 +567,18 @@ function injectResizeBootstrap(
       // While editing, selections are caret moves — don't surface them
       // as comment targets.
       if(editable){
-        post({type:"stash:selection",cleared:true});
+        post({type:"skill:selection",cleared:true});
         return;
       }
       var sel=window.getSelection();
       if(!sel||sel.rangeCount===0||sel.isCollapsed){
-        post({type:"stash:selection",cleared:true});
+        post({type:"skill:selection",cleared:true});
         return;
       }
       var range=sel.getRangeAt(0);
       var text=sel.toString();
       if(!text||!text.trim()){
-        post({type:"stash:selection",cleared:true});
+        post({type:"skill:selection",cleared:true});
         return;
       }
       var rects=range.getClientRects();
@@ -592,7 +592,7 @@ function injectResizeBootstrap(
         suffix=pre.slice(idx+text.length,idx+text.length+32);
       }
       post({
-        type:"stash:selection",
+        type:"skill:selection",
         quoted_text:text,
         prefix:prefix,
         suffix:suffix,
@@ -691,7 +691,7 @@ function injectResizeBootstrap(
       while(t && t!==document){
         if(t.getAttribute && t.getAttribute("data-comment-id")){
           e.preventDefault();
-          post({type:"stash:thread-click",id:t.getAttribute("data-comment-id")});
+          post({type:"skill:thread-click",id:t.getAttribute("data-comment-id")});
           return;
         }
         t=t.parentNode;
@@ -704,7 +704,7 @@ function injectResizeBootstrap(
           if(href){
             if(href.charAt(0)==="#") return;
             e.preventDefault();
-            post({type:"stash:navigate",href:href});
+            post({type:"skill:navigate",href:href});
           }
           return;
         }
@@ -714,11 +714,11 @@ function injectResizeBootstrap(
     window.addEventListener("message",function(e){
       var d=e.data;
       if(!d || d.channel!==c) return;
-      if(d.type==="stash:probe") postResize();
-      else if(d.type==="stash:wrap") wrapSelection(String(d.id||""));
-      else if(d.type==="stash:unwrap") unwrap(String(d.id||""));
-      else if(d.type==="stash:active") applyActive(d.id||null);
-      else if(d.type==="stash:set-editable") setEditable(d.enabled);
+      if(d.type==="skill:probe") postResize();
+      else if(d.type==="skill:wrap") wrapSelection(String(d.id||""));
+      else if(d.type==="skill:unwrap") unwrap(String(d.id||""));
+      else if(d.type==="skill:active") applyActive(d.id||null);
+      else if(d.type==="skill:set-editable") setEditable(d.enabled);
     });
     postResize();
   })();</script>`;
@@ -866,7 +866,7 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
       var d=e.data;
       if(!d||typeof d!=='object'||d.channel!==c) return;
       if(d.type==='stash:slide-goto' && typeof d.index==='number') applyIndex(d.index);
-      else if(d.type==='stash:set-editable'){
+      else if(d.type==='skill:set-editable'){
         editable=!!d.enabled;
         if(document.body){
           if(editable){

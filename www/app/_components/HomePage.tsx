@@ -679,7 +679,7 @@ const FEATURES: Feature[] = [
       <>
         Plugins for Claude Code, Cursor, Codex, OpenCode, and Openclaw stream
         sessions in automatically. Any agent that speaks MCP can read pages,
-        query sessions, and publish Stashes from a terminal.
+        query sessions, and publish Skills from a terminal.
       </>
     ),
   },

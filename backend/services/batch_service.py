@@ -85,11 +85,13 @@ async def _delete_one(object_type: str, object_id: UUID, workspace_id: UUID, use
     raise ValueError(f"batch delete supports pages and files, not {object_type}")
 
 
-async def _restore_one(object_type: str, object_id: UUID, workspace_id: UUID) -> bool:
+async def _restore_one(
+    object_type: str, object_id: UUID, workspace_id: UUID, user_id: UUID
+) -> bool:
     if object_type == "page":
-        return await files_tree_service.restore_page(object_id, workspace_id)
+        return await files_tree_service.restore_page(object_id, workspace_id, user_id)
     if object_type == "file":
-        return await files_service.restore_file(object_id, workspace_id)
+        return await files_service.restore_file(object_id, workspace_id, user_id)
     raise ValueError(f"batch restore supports pages and files, not {object_type}")
 
 
@@ -148,6 +150,6 @@ async def batch_restore(workspace_id: UUID, user_id: UUID, items: list[dict]) ->
         # queries skip them); workspace membership + write is the gate.
         if not await permission_service.is_workspace_member(workspace_id, user_id):
             raise ValueError("no write access")
-        return await _restore_one(object_type, object_id, workspace_id)
+        return await _restore_one(object_type, object_id, workspace_id, user_id)
 
     return await _run(items, handler)

@@ -23,7 +23,7 @@ export const API_BASE = "";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 // Local trampoline so api.ts can fire analytics without importing analytics.ts
-// (which would create a cycle — analytics.ts reads the auth token).
+// (which would create a cycle — analytics.ts imports getAuthToken from here).
 function trackEvent(
   event: string,
   properties?: Record<string, unknown>,
@@ -52,12 +52,53 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// Legacy browser sign-ins stored a permanent mc_ API key in localStorage.
+// Revoke it server-side before discarding so the credential dies with the
+// session instead of staying valid forever.
+export async function revokeStoredApiKey(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const token = localStorage.getItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  if (!token) return;
+  await fetch(`${API_BASE}/api/v1/users/logout`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+}
+
+// Cached briefly so chatty views don't pay a serial round-trip to the
+// Next.js auth route before every backend call.
+const AUTH0_TOKEN_CACHE_MS = 60_000;
+let auth0TokenCache: { token: string; fetchedAt: number } | null = null;
+
 export async function getAuth0AccessToken(): Promise<string | null> {
   if (!AUTH0_ENABLED || typeof window === "undefined") return null;
+  if (auth0TokenCache && Date.now() - auth0TokenCache.fetchedAt < AUTH0_TOKEN_CACHE_MS) {
+    return auth0TokenCache.token;
+  }
   const res = await fetch("/auth/access-token", { credentials: "include" });
   if (!res.ok) return null;
   const body = await res.json().catch(() => ({}));
-  return typeof body.token === "string" && body.token ? body.token : null;
+  if (typeof body.token !== "string" || !body.token) return null;
+  auth0TokenCache = { token: body.token, fetchedAt: Date.now() };
+  return body.token;
+}
+
+// The onboarding agent prompt needs a persistent API key — agents can't use
+// the browser's short-lived Auth0 access token. Under managed Auth0 we mint
+// one via the exchange endpoint; self-hosted browsers already hold their key.
+export async function getAgentApiKey(): Promise<string> {
+  const stored = getToken();
+  if (stored) return stored;
+  const auth0Token = await getAuth0AccessToken();
+  if (!auth0Token) throw new ApiError(401, "Not signed in");
+  const res = await fetch(`${API_BASE}/api/v1/auth0/exchange?device=onboarding`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${auth0Token}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "Could not create an API key");
+  const data = await res.json();
+  return data.api_key;
 }
 
 export async function getAuthToken(): Promise<string | null> {
@@ -202,12 +243,6 @@ export async function createMyKey(name: string): Promise<ApiKeyCreated> {
     method: "POST",
     body: JSON.stringify({ name }),
   });
-}
-
-export async function searchUsers(query: string, workspaceId: string): Promise<UserSearchResult[]> {
-  return apiFetch(
-    `/api/v1/users/search?q=${encodeURIComponent(query)}&workspace_id=${workspaceId}`
-  );
 }
 
 // --- Workspaces ---
@@ -421,14 +456,14 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
 
 // --- Discover (public catalog, no auth required) ---
 
-export interface PublicCartridgeCard {
+export interface PublicSkillCard {
   id: string;
   slug: string;
   title: string;
   description: string;
-  access: CartridgeVisibility;
-  workspace_permission: CartridgeGeneralPermission;
-  public_permission: CartridgeGeneralPermission;
+  access: SkillVisibility;
+  workspace_permission: SkillGeneralPermission;
+  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   view_count: number;
@@ -666,10 +701,10 @@ export async function getActivityTimeline(
   days = 30,
   bucket = "day",
   workspaceId?: string | null,
-  stashId?: string | null,
+  skillId?: string | null,
 ): Promise<ActivityTimeline> {
   const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  const st = stashId ? `&stash_id=${stashId}` : "";
+  const st = skillId ? `&skill_id=${skillId}` : "";
   return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}${ws}${st}`);
 }
 
@@ -684,11 +719,11 @@ export async function getEmbeddingProjection(
   maxPoints = 500,
   source?: string,
   workspaceId?: string | null,
-  stashId?: string | null,
+  skillId?: string | null,
 ): Promise<EmbeddingProjection> {
   const src = source ? `&source=${source}` : "";
   const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  const st = stashId ? `&stash_id=${stashId}` : "";
+  const st = skillId ? `&skill_id=${skillId}` : "";
   return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${src}${ws}${st}`);
 }
 
@@ -1100,7 +1135,7 @@ export type SessionFolderVisibility = "private" | "public";
 export type DisplayVisibility = "private" | "shared" | "public";
 
 // The label to show: public link, else "shared" if anyone's been invited, else
-// private. Folders and cartridges both feed (access, count) in.
+// private. Folders and skills both feed (access, count) in.
 export function displayVisibility(
   access: "private" | "public",
   shareCount: number,
@@ -1287,10 +1322,10 @@ export async function materializeSession(
 
 // --- Pins + recents (per user, per workspace) ---
 
-export type PinKind = "cartridges" | "sessions" | "files";
+export type PinKind = "skills" | "sessions" | "files";
 
 export interface WorkspacePins {
-  cartridges: string[];
+  skills: string[];
   sessions: string[];
   files: string[];
 }
@@ -1336,21 +1371,21 @@ export async function recordWorkspaceRecent(
   });
 }
 
-// --- Cartridges (publishable bundles of pages, sessions, and files) ---
+// --- Skills (publishable bundles of pages, sessions, and files) ---
 
 export type CollectableObjectType = "folder" | "page" | "table" | "file" | "session";
 
-export interface CartridgeItemSpec {
+export interface SkillItemSpec {
   object_type: CollectableObjectType;
   object_id: string;
   position?: number;
   label_override?: string | null;
 }
 
-export type CartridgeVisibility = "private" | "public";
-export type CartridgeGeneralPermission = "none" | "read" | "write";
+export type SkillVisibility = "private" | "public";
+export type SkillGeneralPermission = "none" | "read" | "write";
 
-export interface CreatedCartridge {
+export interface CreatedSkill {
   id: string;
   workspace_id: string;
   slug: string;
@@ -1359,42 +1394,42 @@ export interface CreatedCartridge {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: CartridgeVisibility;
-  workspace_permission: CartridgeGeneralPermission;
-  public_permission: CartridgeGeneralPermission;
+  access: SkillVisibility;
+  workspace_permission: SkillGeneralPermission;
+  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
   share_count: number;
-  items: CartridgeItemSpec[];
+  items: SkillItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
-  forked_from_cartridge_id: string | null;
+  forked_from_skill_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface PublishedCartridgeResult {
-  cartridge: CreatedCartridge;
+export interface PublishedSkillResult {
+  skill: CreatedSkill;
   url: string;
-  cartridge_id: string;
-  cartridge_slug: string;
+  skill_id: string;
+  skill_slug: string;
 }
 
-export async function createCartridge(
+export async function createSkill(
   workspaceId: string,
   title: string,
-  items: CartridgeItemSpec[],
+  items: SkillItemSpec[],
   opts: {
     description?: string;
-    workspace_permission?: CartridgeGeneralPermission;
-    public_permission?: CartridgeGeneralPermission;
+    workspace_permission?: SkillGeneralPermission;
+    public_permission?: SkillGeneralPermission;
     discoverable?: boolean;
   } = {}
-): Promise<CreatedCartridge> {
-  const cartridge = await apiFetch<CreatedCartridge>(
-    `/api/v1/workspaces/${workspaceId}/cartridges`,
+): Promise<CreatedSkill> {
+  const skill = await apiFetch<CreatedSkill>(
+    `/api/v1/workspaces/${workspaceId}/skills`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -1413,28 +1448,28 @@ export async function createCartridge(
       }),
     },
   );
-  trackEvent("web.stash_created", {
+  trackEvent("web.skill_created", {
     workspace_id: workspaceId,
     item_count: items.length,
     public: (opts.public_permission ?? "none") !== "none",
     kind: "manual",
   });
-  return cartridge;
+  return skill;
 }
 
-export async function publishCartridge(
+export async function publishSkill(
   workspaceId: string,
   title: string,
-  items: CartridgeItemSpec[],
+  items: SkillItemSpec[],
   opts: {
     description?: string;
-    workspace_permission?: CartridgeGeneralPermission;
-    public_permission?: Exclude<CartridgeGeneralPermission, "none">;
+    workspace_permission?: SkillGeneralPermission;
+    public_permission?: Exclude<SkillGeneralPermission, "none">;
     discoverable?: boolean;
   } = {}
-): Promise<PublishedCartridgeResult> {
-  const result = await apiFetch<PublishedCartridgeResult>(
-    `/api/v1/workspaces/${workspaceId}/cartridges/publish`,
+): Promise<PublishedSkillResult> {
+  const result = await apiFetch<PublishedSkillResult>(
+    `/api/v1/workspaces/${workspaceId}/skills/publish`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -1453,7 +1488,7 @@ export async function publishCartridge(
       }),
     },
   );
-  trackEvent("web.stash_created", {
+  trackEvent("web.skill_created", {
     workspace_id: workspaceId,
     item_count: items.length,
     public: true,
@@ -1463,7 +1498,7 @@ export async function publishCartridge(
   return result;
 }
 
-export interface WorkspaceCartridge {
+export interface WorkspaceSkill {
   id: string;
   workspace_id: string;
   slug: string;
@@ -1472,34 +1507,34 @@ export interface WorkspaceCartridge {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: CartridgeVisibility;
-  workspace_permission: CartridgeGeneralPermission;
-  public_permission: CartridgeGeneralPermission;
+  access: SkillVisibility;
+  workspace_permission: SkillGeneralPermission;
+  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
   share_count: number;
-  items: CartridgeItemSpec[];
+  items: SkillItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
-  forked_from_cartridge_id: string | null;
+  forked_from_skill_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type CartridgeMemberPermission = "read" | "write" | "admin";
+export type SkillMemberPermission = "read" | "write" | "admin";
 
-export interface CartridgeMember {
+export interface SkillMember {
   user_id: string;
   name: string;
   display_name: string;
-  permission: CartridgeMemberPermission;
+  permission: SkillMemberPermission;
   granted_by: string | null;
   created_at: string;
 }
 
-export interface PublicCartridgeItem {
+export interface PublicSkillItem {
   object_type: CollectableObjectType;
   object_id: string;
   position: number;
@@ -1507,82 +1542,114 @@ export interface PublicCartridgeItem {
   inline: Record<string, unknown>;
 }
 
-export interface PublicCartridgeDetail {
-  cartridge: WorkspaceCartridge;
+export interface PublicSkillDetail {
+  skill: WorkspaceSkill;
   workspace_name: string;
-  items: PublicCartridgeItem[];
+  items: PublicSkillItem[];
   can_write: boolean;
 }
 
-export async function listStashes(workspaceId: string): Promise<WorkspaceCartridge[]> {
-  const data = await apiFetch<{ cartridges: WorkspaceCartridge[] }>(
-    `/api/v1/workspaces/${workspaceId}/cartridges`
-  );
-  return data.cartridges;
+// A local skill is a Files folder with a SKILL.md; a shared skill is a
+// publishable bundle. The workspace skills endpoint returns both, kind-tagged.
+export interface LocalSkill {
+  kind: "local";
+  name: string;
+  description: string;
+  when_to_use: string;
+  version: string;
+  mcp_exposed: boolean;
+  folder_id: string;
+  file_count: number;
+  updated_at: string;
 }
 
-export async function listObjectStashes(
+export type SharedSkill = WorkspaceSkill & { kind: "shared"; name: string };
+
+export type SkillListItem = LocalSkill | SharedSkill;
+
+export async function listSkills(workspaceId: string): Promise<SkillListItem[]> {
+  const data = await apiFetch<{ skills: SkillListItem[] }>(
+    `/api/v1/workspaces/${workspaceId}/skills`
+  );
+  return data.skills;
+}
+
+export async function listSharedSkills(workspaceId: string): Promise<SharedSkill[]> {
+  const skills = await listSkills(workspaceId);
+  return skills.filter((skill): skill is SharedSkill => skill.kind === "shared");
+}
+
+export async function listObjectSkills(
   workspaceId: string,
   objectType: CollectableObjectType,
   objectId: string
-): Promise<WorkspaceCartridge[]> {
-  const data = await apiFetch<{ cartridges: WorkspaceCartridge[] }>(
-    `/api/v1/workspaces/${workspaceId}/cartridges/objects/${objectType}/${objectId}`
+): Promise<WorkspaceSkill[]> {
+  const data = await apiFetch<{ skills: WorkspaceSkill[] }>(
+    `/api/v1/workspaces/${workspaceId}/skills/objects/${objectType}/${objectId}`
   );
-  return data.cartridges;
+  return data.skills;
 }
 
-export async function deleteCartridge(stashId: string): Promise<void> {
-  await apiFetch(`/api/v1/cartridges/${stashId}`, { method: "DELETE" });
+export async function deleteSkill(skillId: string): Promise<void> {
+  await apiFetch(`/api/v1/skills/${skillId}`, { method: "DELETE" });
 }
 
-export async function updateCartridge(
-  stashId: string,
+export async function updateSkill(
+  skillId: string,
   data: {
     title?: string;
     description?: string;
-    workspace_permission?: CartridgeGeneralPermission;
-    public_permission?: CartridgeGeneralPermission;
+    workspace_permission?: SkillGeneralPermission;
+    public_permission?: SkillGeneralPermission;
     discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
-    items?: CartridgeItemSpec[];
+    items?: SkillItemSpec[];
   }
-): Promise<WorkspaceCartridge> {
-  return apiFetch(`/api/v1/cartridges/${stashId}`, {
+): Promise<WorkspaceSkill> {
+  return apiFetch(`/api/v1/skills/${skillId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export async function listCartridgeMembers(stashId: string): Promise<CartridgeMember[]> {
-  const data = await apiFetch<{ members: CartridgeMember[] }>(
-    `/api/v1/cartridges/${stashId}/members`
+export async function searchSkillMemberCandidates(
+  skillId: string,
+  query: string
+): Promise<UserSearchResult[]> {
+  return apiFetch(
+    `/api/v1/skills/${skillId}/member-search?q=${encodeURIComponent(query)}`
+  );
+}
+
+export async function listSkillMembers(skillId: string): Promise<SkillMember[]> {
+  const data = await apiFetch<{ members: SkillMember[] }>(
+    `/api/v1/skills/${skillId}/members`
   );
   return data.members;
 }
 
-export async function addCartridgeMember(
-  stashId: string,
+export async function addSkillMember(
+  skillId: string,
   userId: string,
-  permission: CartridgeMemberPermission
-): Promise<CartridgeMember> {
-  return apiFetch(`/api/v1/cartridges/${stashId}/members`, {
+  permission: SkillMemberPermission
+): Promise<SkillMember> {
+  return apiFetch(`/api/v1/skills/${skillId}/members`, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, permission }),
   });
 }
 
-export async function removeCartridgeMember(stashId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/cartridges/${stashId}/members/${userId}`, { method: "DELETE" });
+export async function removeSkillMember(skillId: string, userId: string): Promise<void> {
+  await apiFetch(`/api/v1/skills/${skillId}/members/${userId}`, { method: "DELETE" });
 }
 
-export async function getPublicCartridge(slug: string): Promise<PublicCartridgeDetail> {
-  return apiFetch(`/api/v1/cartridges/${slug}`);
+export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
+  return apiFetch(`/api/v1/skills/${slug}`);
 }
 
-export async function createSharedCartridgePage(
-  stashId: string,
+export async function createSharedSkillPage(
+  skillId: string,
   data: {
     name: string;
     content: string;
@@ -1591,7 +1658,7 @@ export async function createSharedCartridgePage(
     html_layout?: "responsive" | "fixed-aspect";
   }
 ): Promise<Page> {
-  return apiFetch(`/api/v1/cartridges/${stashId}/shared-pages`, {
+  return apiFetch(`/api/v1/skills/${skillId}/shared-pages`, {
     method: "POST",
     body: JSON.stringify({
       name: data.name,
@@ -1603,49 +1670,49 @@ export async function createSharedCartridgePage(
   });
 }
 
-export async function addExternalCartridge(
+export async function forkSkill(
   slug: string,
   workspaceId: string
-): Promise<WorkspaceCartridge> {
-  return apiFetch(`/api/v1/cartridges/${slug}/add-to-workspace`, {
+): Promise<WorkspaceSkill> {
+  return apiFetch(`/api/v1/skills/${slug}/add-to-workspace`, {
     method: "POST",
     body: JSON.stringify({ workspace_id: workspaceId }),
   });
 }
 
-export async function removeExternalCartridge(
+export async function removeForkedSkill(
   workspaceId: string,
-  stashId: string
+  skillId: string
 ): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/external-cartridges/${stashId}`, {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/external-skills/${skillId}`, {
     method: "DELETE",
   });
 }
 
-// --- Stash invites ---
+// --- Skill invites ---
 
-export interface CartridgeInvite {
+export interface SkillInvite {
   id: string;
-  cartridge_id: string;
-  cartridge_slug: string;
-  cartridge_title: string;
-  cartridge_description: string;
+  skill_id: string;
+  skill_slug: string;
+  skill_title: string;
+  skill_description: string;
   source_workspace_id: string;
   source_workspace_name: string;
   invited_by_user_id: string;
   invited_by_name: string;
   invited_by_display_name: string;
-  permission: CartridgeMemberPermission;
+  permission: SkillMemberPermission;
   created_at: string;
 }
 
-export async function listCartridgeInvites(): Promise<CartridgeInvite[]> {
-  const data = await apiFetch<{ invites: CartridgeInvite[] }>("/api/v1/cartridge-invites");
+export async function listSkillInvites(): Promise<SkillInvite[]> {
+  const data = await apiFetch<{ invites: SkillInvite[] }>("/api/v1/skill-invites");
   return data.invites;
 }
 
-export async function dismissCartridgeInvite(inviteId: string): Promise<void> {
-  await apiFetch(`/api/v1/cartridge-invites/${inviteId}/dismiss`, { method: "POST" });
+export async function dismissSkillInvite(inviteId: string): Promise<void> {
+  await apiFetch(`/api/v1/skill-invites/${inviteId}/dismiss`, { method: "POST" });
 }
 
 // --- Workspace-wide page index ---
@@ -1869,7 +1936,7 @@ export async function uploadTranscript(
   return resp.json();
 }
 
-// --- Workspace overview, sessions, files, and cartridges ---
+// --- Workspace overview, sessions, files, and skills ---
 
 export interface WorkspaceSidebarSession {
   id: string | null;
@@ -1891,7 +1958,6 @@ export interface WorkspaceFolder {
   parent_folder_id: string | null;
   page_count: number;
   file_count: number;
-  has_skill: boolean;
 }
 export interface WorkspacePage {
   id: string;
@@ -1916,27 +1982,27 @@ export interface WorkspaceFiles {
   files: WorkspaceFile[];
 }
 
-export interface WorkspaceSidebarCartridge {
+export interface WorkspaceSidebarSkill {
   id: string;
   workspace_id: string;
   slug: string;
   title: string;
   description: string;
-  access: CartridgeVisibility;
-  workspace_permission: CartridgeGeneralPermission;
-  public_permission: CartridgeGeneralPermission;
+  access: SkillVisibility;
+  workspace_permission: SkillGeneralPermission;
+  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   is_external: boolean;
-  forked_from_cartridge_id: string | null;
+  forked_from_skill_id: string | null;
   item_count: number;
-  items?: CartridgeItemSpec[];
+  items?: SkillItemSpec[];
   updated_at: string;
 }
 
 export interface WorkspaceOverview {
   sessions: WorkspaceSidebarSession[];
   files: WorkspaceFiles;
-  cartridges?: WorkspaceSidebarCartridge[];
+  skills?: WorkspaceSidebarSkill[];
 }
 
 export async function getWorkspaceOverview(workspaceId: string): Promise<WorkspaceOverview> {
@@ -1946,7 +2012,7 @@ export async function getWorkspaceOverview(workspaceId: string): Promise<Workspa
 export interface WorkspaceSidebar {
   sessions: WorkspaceSidebarSession[];
   files: WorkspaceFiles;
-  cartridges?: WorkspaceSidebarCartridge[];
+  skills?: WorkspaceSidebarSkill[];
 }
 
 // In-memory store for the last ETag seen per workspace, so navigating between

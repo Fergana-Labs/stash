@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
-type Search = { session?: string; device?: string };
+type Search = { session?: string };
 
 // Server-side gate: confirm Auth0 session, then render the client
 // component which shows an explicit "Authorize CLI" confirmation before
@@ -20,7 +20,7 @@ export default async function ConnectTokenPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  const { session: sessionId, device } = await searchParams;
+  const { session: sessionId } = await searchParams;
 
   if (!AUTH0_ENABLED) {
     return (
@@ -50,7 +50,6 @@ export default async function ConnectTokenPage({
 
   const { auth0 } = await import("@managed/auth0/client");
   const qs = new URLSearchParams({ session: sessionId });
-  if (device) qs.set("device", device);
   const returnTo = `/connect-token?${qs.toString()}`;
 
   const session = await auth0.getSession();
@@ -84,7 +83,6 @@ export default async function ConnectTokenPage({
       <ConnectTokenClient
         apiUrl={API_URL}
         sessionId={sessionId}
-        device={device}
         userName={userName}
         accessToken={accessToken}
       />

@@ -4,13 +4,13 @@ import { Suspense } from "react";
 import { SessionDetailSkeleton } from "../../../../components/SkeletonStates";
 import {
   firstSearchParam,
-  metadataForPublicCartridgeItem,
-} from "../../../../lib/cartridgeMetadata";
+  metadataForPublicSkillItem,
+} from "../../../../lib/skillMetadata";
 import SessionClient from "./SessionClient";
 
 type PageProps = {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ stash?: string | string[] }>;
+  searchParams: Promise<{ skill?: string | string[] }>;
 };
 
 export async function generateMetadata({
@@ -18,15 +18,15 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const [{ sessionId: encodedSessionId }, query] = await Promise.all([params, searchParams]);
-  const slug = firstSearchParam(query.stash);
+  const slug = firstSearchParam(query.skill);
   if (!slug) return { title: "Session - Stash" };
 
   const sessionId = decodeURIComponent(encodedSessionId);
-  return metadataForPublicCartridgeItem({
+  return metadataForPublicSkillItem({
     slug,
     itemType: "session",
     itemId: sessionId,
-    path: `/sessions/${encodeURIComponent(sessionId)}?stash=${encodeURIComponent(slug)}`,
+    path: `/sessions/${encodeURIComponent(sessionId)}?skill=${encodeURIComponent(slug)}`,
   });
 }
 

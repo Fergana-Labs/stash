@@ -9,7 +9,7 @@ import {
   listSharedWithMe,
   listTables,
 } from "../../../lib/api";
-import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
+import { refreshWorkspaceSidebar } from "../../../lib/skillNavigationCache";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock("../../../lib/api", () => ({
   uploadFileOrPage: vi.fn(),
 }));
 
-vi.mock("../../../lib/stashNavigationCache", () => ({
+vi.mock("../../../lib/skillNavigationCache", () => ({
   refreshWorkspaceSidebar: vi.fn(),
 }));
 
@@ -85,7 +85,7 @@ beforeEach(() => {
   vi.mocked(refreshWorkspaceSidebar).mockResolvedValue({
     sessions: [],
     files: { folders: [], pages: [], files: [] },
-    cartridges: [],
+    skills: [],
   });
 });
 

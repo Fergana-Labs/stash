@@ -10,33 +10,31 @@ from ..services import admin_analytics_service, cohort_service, security_audit_s
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
-def _admin_target_id(request: Request) -> str:
-    route = request.scope.get("route")
-    route_path = getattr(route, "path", None)
-    return route_path or request.url.path
-
-
 async def _record_admin_access(
     request: Request,
     *,
     action: str,
-    status_code: int,
     token_present: bool,
+    status_code: int | None = None,
 ) -> None:
     client_host = request.client.host if request.client else None
     query_string = request.url.query or None
+    metadata = {
+        "client_host_hash": security_audit_service.hash_value(client_host),
+        "query_hash": security_audit_service.hash_value(query_string),
+        "token_present": token_present,
+    }
+    # Granted events omit status_code: the token check passes before the
+    # handler runs, so the final response status is unknown here.
+    if status_code is not None:
+        metadata["status_code"] = status_code
     await security_audit_service.record_event(
         action=action,
         actor_user_id=None,
         workspace_id=None,
         target_type="admin_endpoint",
-        target_id=_admin_target_id(request),
-        metadata={
-            "client_host_hash": security_audit_service.hash_value(client_host),
-            "query_hash": security_audit_service.hash_value(query_string),
-            "status_code": status_code,
-            "token_present": token_present,
-        },
+        target_id=request.scope["route"].path,
+        metadata=metadata,
     )
 
 
@@ -65,7 +63,6 @@ async def require_admin_token(
     await _record_admin_access(
         request,
         action="admin.access_granted",
-        status_code=200,
         token_present=True,
     )
 

@@ -101,8 +101,8 @@ def parse_integration_encryption_key(enabled: bool) -> str | None:
 
 def parse_auth0_domain(enabled: bool) -> str | None:
     value = parse_required_when_enabled("AUTH0_DOMAIN", enabled, "AUTH0_ENABLED")
-    if not value:
-        return None
+    if not value or not enabled:
+        return value
     if "://" in value or "/" in value or any(ch.isspace() for ch in value):
         raise RuntimeError("AUTH0_DOMAIN must be a hostname without scheme, path, or spaces")
     return value
@@ -188,6 +188,15 @@ class Settings:
     # browser. Leave unset to disable admin endpoints entirely.
     ADMIN_PASSWORD: str | None = parse_optional_secret("ADMIN_PASSWORD")
 
+    # --- Security audit ---
+    # Key for HMAC-redacting low-entropy identifiers (emails, client IPs) in
+    # security_audit_events. Without the key, a log/DB reader cannot recover
+    # the original value by hashing guesses offline. Required when managed.
+    AUDIT_HASH_KEY: str = (
+        parse_required_when_enabled("AUDIT_HASH_KEY", AUTH0_ENABLED, "AUTH0_ENABLED")
+        or "stash-local-dev-audit-hash-key"
+    )
+
     # --- Background tasks (Celery + Redis) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -248,7 +257,9 @@ class Settings:
 
     TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
     TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
-    TWITTER_OAUTH_REDIRECT_URI: str | None = os.getenv("TWITTER_OAUTH_REDIRECT_URI")
+    TWITTER_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "TWITTER_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     # Granola connects through its official MCP server over OAuth 2.0 with
     # Dynamic Client Registration + PKCE — no pre-shared client_id/secret. We

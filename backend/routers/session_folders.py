@@ -1,6 +1,6 @@
 """Session-folder endpoints.
 
-Folders are the shareable unit for sessions (same access model as cartridges).
+Folders are the shareable unit for sessions (same access model as skills).
 `ws_router` is the authenticated management surface; `public_router` serves a
 folder by slug to anyone the access rules allow (including anonymous viewers of
 a public folder), rendered by the same session viewer.
@@ -41,24 +41,18 @@ class CreateFolderRequest(BaseModel):
     discoverable: bool = False
 
 
-def _workspace_or_public_folder(body: CreateFolderRequest) -> bool:
-    return (
-        body.workspace_permission != "none" or body.public_permission != "none" or body.discoverable
-    )
-
-
 async def _require_workspace_owner_for_folder_visibility(
     workspace_id: UUID,
     user_id: UUID,
     body: CreateFolderRequest,
 ) -> None:
-    if _workspace_or_public_folder(body) and not await workspace_service.is_owner(
-        workspace_id,
-        user_id,
-    ):
+    """Workspace-visible folders are the everyday default any editor may create;
+    only publishing a folder beyond the workspace is owner-gated."""
+    is_public = body.public_permission != "none" or body.discoverable
+    if is_public and not await workspace_service.is_owner(workspace_id, user_id):
         raise HTTPException(
             status_code=403,
-            detail="Only workspace owners can create workspace or public session folders",
+            detail="Only workspace owners can create public session folders",
         )
 
 
@@ -139,15 +133,14 @@ async def assign_sessions(
 ):
     await _require_member(workspace_id, current_user["id"])
     await _require_write(workspace_id, current_user["id"])
-    for session_row_id in body.session_row_ids:
-        assigned = await session_folder_service.assign_session(
-            workspace_id,
-            current_user["id"],
-            session_row_id,
-            body.folder_id,
-        )
-        if not assigned:
-            raise HTTPException(status_code=404, detail="Session or folder not found")
+    assigned = await session_folder_service.assign_sessions(
+        workspace_id,
+        current_user["id"],
+        body.session_row_ids,
+        body.folder_id,
+    )
+    if not assigned:
+        raise HTTPException(status_code=404, detail="Session or folder not found")
     return {"ok": True, "moved": len(body.session_row_ids)}
 
 

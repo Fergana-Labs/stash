@@ -2,30 +2,29 @@
 
 Private by default. Workspace roles grant baseline access: owners/editors can
 read and write, viewers can read only. Beyond that, access comes from the
-`shares` table: a row grants a principal (a user, or a cartridge) access to an
+`shares` table: a row grants a principal (a user, or a skill) access to an
 object. Folder / session-folder shares cascade to contents via the recursive
-folder chain. Cartridges are read-only bundles: anyone who can *open* a cartridge
-can read every object that cartridge contains (cartridge_items), but a cartridge
+folder chain. Skills are read-only bundles: anyone who can *open* a skill
+can read every object that skill contains (skill_items), but a skill
 never grants write.
 """
 
 from uuid import UUID
 
 from ..database import get_pool
+from . import workspace_service
 
 _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
     "session": ("sessions", "workspace_id"),
     "session_folder": ("session_folders", "workspace_id"),
-    "stash": ("cartridges", "workspace_id"),
+    "skill": ("skills", "workspace_id"),
     "folder": ("folders", "workspace_id"),
     "page": ("pages", "workspace_id"),
 }
 
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
-_ROLES_CAN_READ = {"owner", "editor", "viewer"}
-_ROLES_CAN_WRITE = {"owner", "editor"}
 
 # Share permission levels, ordered. A grant satisfies a requirement when its
 # level is >= the required level: read < comment < write.
@@ -45,7 +44,7 @@ def _folder_chain_sql(folder_id_expr: str) -> str:
 
 
 def _item_target_condition(object_type: str, object_alias: str, item_alias: str) -> str:
-    """Does a (object_type, object_id) row in `item_alias` (shares OR cartridge_items)
+    """Does a (object_type, object_id) row in `item_alias` (shares OR skill_items)
     target the object at `object_alias`? Page/file also match a share/item on any
     ancestor folder (inheritance)."""
     if object_type == "folder":
@@ -83,7 +82,7 @@ def _item_target_condition(object_type: str, object_alias: str, item_alias: str)
 def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
     """SQL predicate: may user ${user_arg} READ the content row at object_alias?
     Owner (workspace member) OR a user share (direct/ancestor folder) OR the object
-    is in a cartridge the user can open."""
+    is in a skill the user can open."""
     share_target = _item_target_condition(object_type, object_alias, "content_share")
     ci_target = _item_target_condition(object_type, object_alias, "content_ci")
     return f"""
@@ -102,15 +101,15 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
           )
           OR EXISTS (
             SELECT 1
-            FROM cartridge_items content_ci
-            JOIN cartridges content_cartridge ON content_cartridge.id = content_ci.cartridge_id
-            LEFT JOIN cartridge_members content_cm
-              ON content_cm.cartridge_id = content_cartridge.id
+            FROM skill_items content_ci
+            JOIN skills content_skill ON content_skill.id = content_ci.skill_id
+            LEFT JOIN skill_members content_cm
+              ON content_cm.skill_id = content_skill.id
              AND content_cm.user_id = ${user_arg}
             WHERE {ci_target}
               AND (
-                content_cartridge.public_permission != 'none'
-                OR content_cartridge.owner_id = ${user_arg}
+                content_skill.public_permission != 'none'
+                OR content_skill.owner_id = ${user_arg}
                 OR content_cm.user_id IS NOT NULL
               )
           )
@@ -244,7 +243,7 @@ async def _user_share_grants(
     return False
 
 
-async def _containing_cartridges(object_type: str, object_id: UUID) -> list[dict]:
+async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
     if object_type not in _CONTENT_TYPES:
         return []
     pool = get_pool()
@@ -252,8 +251,8 @@ async def _containing_cartridges(object_type: str, object_id: UUID) -> list[dict
     for target_type, target_id in await _object_targets(object_type, object_id):
         target_rows = await pool.fetch(
             "SELECT c.id, c.workspace_id, c.owner_id, c.public_permission "
-            "FROM cartridges c "
-            "JOIN cartridge_items ci ON ci.cartridge_id = c.id "
+            "FROM skills c "
+            "JOIN skill_items ci ON ci.skill_id = c.id "
             "WHERE ci.object_type = $1 AND ci.object_id = $2",
             target_type,
             target_id,
@@ -262,33 +261,34 @@ async def _containing_cartridges(object_type: str, object_id: UUID) -> list[dict
     return rows
 
 
-async def _cartridge_member_permission(cartridge_id: UUID, user_id: UUID) -> str | None:
+async def _skill_member_permission(skill_id: UUID, user_id: UUID) -> str | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT permission FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
-        cartridge_id,
+        "SELECT permission FROM skill_members WHERE skill_id = $1 AND user_id = $2",
+        skill_id,
         user_id,
     )
     return row["permission"] if row else None
 
 
-async def _cartridge_open(cartridge: dict, user_id: UUID | None) -> bool:
-    """Can the user OPEN this cartridge (read its contents)? Cartridges are
-    read-only links: public, owned, or a cartridge member."""
-    if cartridge["public_permission"] != "none":
+async def _skill_open(skill: dict, user_id: UUID | None) -> bool:
+    """Can the user OPEN this skill (read its contents)? Skills are
+    read-only links: public, owned, or a skill member."""
+    if skill["public_permission"] != "none":
         return True
     if user_id is None:
         return False
-    if cartridge["owner_id"] == user_id:
+    if skill["owner_id"] == user_id:
         return True
-    return await _cartridge_member_permission(cartridge["id"], user_id) is not None
+    return await _skill_member_permission(skill["id"], user_id) is not None
 
 
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
-    """Can the user access this session folder? Public links are read-only.
-    Workspace members are granted earlier in check_access."""
+    """Can the user access this session folder? Mirrors _skill_open: public
+    link (read-only), owner, or an explicit user share. Workspace members are
+    granted earlier in check_access (the workspace is the trust boundary)."""
     public = folder["public_permission"]
     if require == "read" and public != "none":
         return True
@@ -315,25 +315,27 @@ async def check_access(
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
+    # Workspace roles grant baseline access: owners/editors get everything,
+    # viewers can read and comment but never write.
     if user_id is not None and workspace_id is not None:
         role = await get_workspace_role(workspace_id, user_id)
-        if role in _ROLES_CAN_WRITE:
+        if role in workspace_service.ROLES_CAN_WRITE:
             return True
-        if require == "read" and role in _ROLES_CAN_READ:
+        if require in ("read", "comment") and role in workspace_service.ROLES_CAN_READ:
             return True
 
-    # The cartridge bundle itself: gated by cartridge access (read-only).
-    if object_type == "stash":
+    # The skill bundle itself: gated by skill access (read-only).
+    if object_type == "skill":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, workspace_id, owner_id, public_permission FROM cartridges WHERE id = $1",
+            "SELECT id, workspace_id, owner_id, public_permission FROM skills WHERE id = $1",
             object_id,
         )
         if not row:
             return False
         if require != "read":
             return row["owner_id"] == user_id
-        return await _cartridge_open(dict(row), user_id)
+        return await _skill_open(dict(row), user_id)
 
     # A session folder is a shareable bundle: public link, owner, or user share.
     if object_type == "session_folder":
@@ -366,10 +368,10 @@ async def check_access(
         if frow and await _session_folder_open(dict(frow), frow["id"], user_id, "read"):
             return True
 
-    # Read-only access via a cartridge that contains the object.
+    # Read-only access via a skill that contains the object.
     if require == "read":
-        for cartridge in await _containing_cartridges(object_type, object_id):
-            if await _cartridge_open(cartridge, user_id):
+        for skill in await _containing_skills(object_type, object_id):
+            if await _skill_open(skill, user_id):
                 return True
 
     return False
@@ -390,17 +392,17 @@ async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
-    """'public' if in any public cartridge, 'shared' if shared with anyone,
+    """'public' if in any public skill, 'shared' if shared with anyone,
     else 'private'."""
     pool = get_pool()
-    cartridges = await _containing_cartridges(object_type, object_id)
-    if any(c["public_permission"] != "none" for c in cartridges):
+    skills = await _containing_skills(object_type, object_id)
+    if any(c["public_permission"] != "none" for c in skills):
         return "public"
     shared = await pool.fetchrow(
         "SELECT 1 FROM shares WHERE object_type = $1 AND object_id = $2 LIMIT 1",
         object_type,
         object_id,
     )
-    if shared or cartridges:
+    if shared or skills:
         return "shared"
     return "private"

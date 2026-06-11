@@ -310,7 +310,7 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
 
     removed_sources = await source_service.delete_sources_for_provider(owner_id, provider)
 
-    assert removed_sources == 1
+    assert [UUID(removed["id"]) for removed in removed_sources] == [source_id]
     assert await source_service.get_owned_source(source_id, owner_id) is None
     table = source_service.SOURCE_TABLE.get(source_type)
     if table is not None:
@@ -1533,6 +1533,34 @@ async def test_slack_indexer_backfills_only_allowed_channels(
 
 
 @pytest.mark.asyncio
+async def test_slack_sync_without_channels_records_sync_error(client: AsyncClient):
+    from backend.tasks import sources as sources_task
+
+    # A Slack source with no channel allowlist must not report a successful
+    # sync that silently ingested nothing — the failure has to be visible.
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={},
+    )
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+
+    assert result["status"] == "failed"
+    sources = await source_service.list_sources(ws, owner_id)
+    slack = next(s for s in sources if s["type"] == "slack")
+    assert slack["sync_status"] == "failed"
+    # The stored error is a redacted constant — raw exception text could carry
+    # secrets, so the detail lives only in server logs.
+    assert slack["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
+
+
+@pytest.mark.asyncio
 async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     from backend.integrations.slack.indexer import ingest_slack_message
 
@@ -1748,6 +1776,49 @@ async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
     assert rows[0]["path"] == "general/1717.0001"
     assert rows[0]["name"] == "#general"
     assert rows[0]["content"] == "updated confidential Slack message"
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_drops_edits_of_subtyped_messages(
+    client: AsyncClient,
+    pool,
+):
+    """Fresh subtyped messages (bot_message, thread_broadcast, ...) are never
+    ingested, so editing one must not sneak it in via message_changed either."""
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_bot_edit")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_BOT_EDIT",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+
+    ingested = await ingest_slack_message(
+        "T_BOT_EDIT",
+        {
+            "type": "message",
+            "subtype": "message_changed",
+            "channel": "C1",
+            "message": {
+                "type": "message",
+                "subtype": "bot_message",
+                "ts": "1717.0002",
+                "text": "edited bot message",
+            },
+        },
+    )
+
+    assert ingested == 0
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
+        == 0
+    )
 
 
 # --- index-only sources (drive): lazy read ----------------------------------
@@ -2222,12 +2293,12 @@ def test_source_document_url_builds_provider_deep_links():
     assert source_service.source_document_url("slack", "T123", "#eng/1.ts") is None
 
 
-# --- cartridge snapshot-on-add ----------------------------------------------
+# --- skill snapshot-on-add ----------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncClient, monkeypatch):
-    """Adding an index-only (Google Drive) source doc to a cartridge fetches its
+async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClient, monkeypatch):
+    """Adding an index-only (Google Drive) source doc to a skill fetches its
     body at add time and copies it in as a page, so the bundle is self-contained."""
     from backend.integrations.google import indexer
 
@@ -2256,16 +2327,16 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
 
     monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
 
-    cartridge = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges",
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
         json={"title": "Bundle", "public_permission": "read", "items": []},
         headers=_auth(api_key),
     )
-    assert cartridge.status_code == 201
-    cartridge_id = cartridge.json()["id"]
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws}/cartridges/{cartridge_id}/snapshot-source",
+        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "Auth"},
         headers=_auth(api_key),
     )
@@ -2275,14 +2346,14 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
     # The body was copied in (a point-in-time snapshot), not left as a live ref.
     assert "snapshot body for file-abc" in page["content_markdown"]
 
-    # And the page is now an item in the cartridge.
-    public = await client.get(f"/api/v1/cartridges/{cartridge.json()['slug']}")
+    # And the page is now an item in the skill.
+    public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
     item_ids = {i["object_id"] for i in public.json()["items"]}
     assert page["id"] in item_ids
 
 
 @pytest.mark.asyncio
-async def test_snapshot_source_into_cartridge_requires_same_workspace(client: AsyncClient, pool):
+async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncClient, pool):
     api_key, owner_id = await _register(client)
     ws_a = await _create_workspace(client, api_key)
     ws_b = await _create_workspace(client, api_key)
@@ -2305,24 +2376,24 @@ async def test_snapshot_source_into_cartridge_requires_same_workspace(client: As
         external_ref="C1:1",
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
-    cartridge = await client.post(
-        f"/api/v1/workspaces/{ws_b}/cartridges",
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws_b}/skills",
         json={"title": "Bundle", "workspace_permission": "none", "items": []},
         headers=_auth(api_key),
     )
-    assert cartridge.status_code == 201
-    cartridge_id = cartridge.json()["id"]
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws_b}/cartridges/{cartridge_id}/snapshot-source",
+        f"/api/v1/workspaces/{ws_b}/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "eng/1"},
         headers=_auth(api_key),
     )
     copied_pages = await pool.fetchval(
         "SELECT COUNT(*) FROM pages "
-        "WHERE workspace_id = $1 AND metadata->>'shared_in_cartridge_id' = $2",
+        "WHERE workspace_id = $1 AND metadata->>'shared_in_skill_id' = $2",
         ws_b,
-        cartridge_id,
+        skill_id,
     )
 
     assert snap.status_code == 404

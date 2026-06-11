@@ -1,7 +1,7 @@
 """Sharing endpoints: grant/revoke/list access to an object.
 
 Primary path: share a folder/file/session with a person by email. Adding an object
-to a cartridge (the cartridge-principal share) is handled on the cartridge router.
+to a skill (the skill-principal share) is handled on the skill router.
 """
 
 from __future__ import annotations

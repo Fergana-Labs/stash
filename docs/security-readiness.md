@@ -79,7 +79,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.
 - Credentialed CORS must reject wildcard origins.
 - API and Next.js responses must include baseline security headers.
-- Next.js routes must deny framing except for explicit published Stash embed routes.
+- Next.js routes must deny cross-origin framing except for explicit published Skill embed routes.
 - Admin secrets and cookie secrets must be at least 32 characters.
 
 ## Continuous Checks

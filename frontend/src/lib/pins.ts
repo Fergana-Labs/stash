@@ -14,9 +14,9 @@ import {
 // Pins + recents live on the server, scoped per user. A small module cache
 // keeps the sidebar dropdowns and the page views in sync within the tab: a
 // toggle updates the cache and broadcasts an event so every hook re-reads.
-const PINS_EVENT = "stash-pins-change";
-const RECENTS_EVENT = "stash-recents-change";
-const EMPTY_PINS: WorkspacePins = { cartridges: [], sessions: [], files: [] };
+const PINS_EVENT = "skill-pins-change";
+const RECENTS_EVENT = "skill-recents-change";
+const EMPTY_PINS: WorkspacePins = { skills: [], sessions: [], files: [] };
 
 const pinsCache = new Map<string, WorkspacePins>();
 const pinsInflight = new Map<string, Promise<WorkspacePins>>();

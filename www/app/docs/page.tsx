@@ -19,7 +19,7 @@ export default function DocsOverview() {
       <P>
         Stash auto-uploads coding agent transcripts to a shared store, indexes them,
         and makes those transcripts accessible to every other coding agent using the repo.
-        Durable knowledge lives in the workspace files, and Cartridges let you
+        Durable knowledge lives in the workspace files, and Skills let you
         publish or share useful combinations of sessions, pages, and files.
       </P>
 

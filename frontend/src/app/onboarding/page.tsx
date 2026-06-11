@@ -6,7 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { createPage, getToken, listMyWorkspaces, updateMe, updatePage } from "../../lib/api";
+import {
+  createPage,
+  getAgentApiKey,
+  listMyWorkspaces,
+  updateMe,
+  updatePage,
+} from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
@@ -136,11 +142,13 @@ function OnboardingInner() {
     track("onboarding.collab_path_chosen", {});
     // The starter page embeds its own id and the user's API key in a
     // copy-paste agent prompt, so we create it empty and fill it in after.
+    // The agent needs a persistent key — under managed Auth0 this mints one.
+    const apiKey = await getAgentApiKey();
     const page = await createPage(workspaceId, "Welcome to your Drive");
     const content = generateCollabIntroMarkdown({
       displayName: user?.display_name || user?.name || "",
       pageId: page.id,
-      apiKey: getToken() ?? "",
+      apiKey,
     });
     await updatePage(workspaceId, page.id, { content });
     router.push(`/p/${page.id}`);

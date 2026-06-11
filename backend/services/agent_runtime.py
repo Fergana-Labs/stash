@@ -30,13 +30,13 @@ from claude_agent_sdk import (
 )
 
 from ..config import settings
-from ..models import CartridgeItem
+from ..models import SkillItem
 from . import (
-    cartridge_service,
     files_tree_service,
     memory_service,
     permission_service,
     prompts,
+    shared_skill_service,
     skill_service,
     source_service,
     table_service,
@@ -87,7 +87,7 @@ def _text_result(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
-def _cartridge_item_to_dict(item: dict) -> dict:
+def _skill_item_to_dict(item: dict) -> dict:
     return {
         "object_type": item["object_type"],
         "object_id": str(item["object_id"]),
@@ -96,42 +96,42 @@ def _cartridge_item_to_dict(item: dict) -> dict:
     }
 
 
-def _cartridge_to_dict(stash: dict) -> dict:
+def _skill_to_dict(skill: dict) -> dict:
     return {
-        "id": str(stash["id"]),
-        "workspace_id": str(stash["workspace_id"]),
-        "slug": stash["slug"],
-        "title": stash["title"],
-        "description": stash["description"],
-        "access": stash["access"],
-        "workspace_permission": stash["workspace_permission"],
-        "public_permission": stash["public_permission"],
-        "discoverable": bool(stash["discoverable"]),
-        "view_count": stash["view_count"],
-        "items": [_cartridge_item_to_dict(item) for item in stash.get("items", [])],
-        "created_at": str(stash["created_at"]),
-        "updated_at": str(stash["updated_at"]),
+        "id": str(skill["id"]),
+        "workspace_id": str(skill["workspace_id"]),
+        "slug": skill["slug"],
+        "title": skill["title"],
+        "description": skill["description"],
+        "access": skill["access"],
+        "workspace_permission": skill["workspace_permission"],
+        "public_permission": skill["public_permission"],
+        "discoverable": bool(skill["discoverable"]),
+        "view_count": skill["view_count"],
+        "items": [_skill_item_to_dict(item) for item in skill.get("items", [])],
+        "created_at": str(skill["created_at"]),
+        "updated_at": str(skill["updated_at"]),
     }
 
 
-async def _parse_cartridge_items(
+async def _parse_skill_items(
     raw_items: list[dict],
     *,
     workspace_id: UUID,
     user_id: UUID,
-) -> list[CartridgeItem]:
+) -> list[SkillItem]:
     items = []
     for item in raw_items:
         try:
-            items.append(CartridgeItem(**item))
+            items.append(SkillItem(**item))
         except (TypeError, ValueError):
-            raise ValueError("Invalid Stash item list") from None
+            raise ValueError("Invalid Skill item list") from None
     for item in items:
         item_workspace_id = await permission_service.resolve_workspace_id(
             item.object_type, item.object_id
         )
         if item_workspace_id != workspace_id:
-            raise ValueError("Stash items must be in the active workspace")
+            raise ValueError("Skill items must be in the active workspace")
         can_share = await permission_service.check_access(
             item.object_type,
             item.object_id,
@@ -152,7 +152,7 @@ def _workspace_or_public_stash(
     return workspace_permission != "none" or public_permission != "none" or discoverable
 
 
-def _cartridge_id_arg(value) -> UUID | None:
+def _skill_id_arg(value) -> UUID | None:
     try:
         return UUID(value)
     except (TypeError, ValueError):
@@ -394,20 +394,20 @@ async def _read_skill(args: dict) -> dict:
 
 
 @tool(
-    "list_stashes",
-    "List Cartridges from the active Stash Workspace.",
+    "list_shared_skills",
+    "List Skills from the active Stash Workspace.",
     {"type": "object", "properties": {}},
 )
-async def _list_stashes(args: dict) -> dict:
+async def _list_shared_skills(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    cartridges = await cartridge_service.list_workspace_stashes(workspace_id, user_id)
-    return _text_result(json.dumps([_cartridge_to_dict(stash) for stash in cartridges]))
+    skills = await shared_skill_service.list_workspace_skills(workspace_id, user_id)
+    return _text_result(json.dumps([_skill_to_dict(skill) for skill in skills]))
 
 
 @tool(
-    "create_cartridge",
-    "Create a Stash from workspace items.",
+    "create_shared_skill",
+    "Create a shared skill — a publishable bundle of workspace items.",
     {
         "type": "object",
         "properties": {
@@ -445,31 +445,31 @@ async def _list_stashes(args: dict) -> dict:
         "required": ["title"],
     },
 )
-async def _create_cartridge(args: dict) -> dict:
+async def _create_shared_skill(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
     workspace_permission = args.get("workspace_permission") or "read"
     public_permission = args.get("public_permission") or "none"
     discoverable = bool(args.get("discoverable", False))
     if not await workspace_service.can_write(workspace_id, user_id):
-        return _text_result(json.dumps({"error": "Viewers can read but not create Stashes"}))
+        return _text_result(json.dumps({"error": "Viewers can read but not create Skills"}))
     if _workspace_or_public_stash(
         workspace_permission,
         public_permission,
         discoverable,
     ) and not await workspace_service.is_owner(workspace_id, user_id):
         return _text_result(
-            json.dumps({"error": "Only workspace owners can create workspace or public Stashes"})
+            json.dumps({"error": "Only workspace owners can create workspace or public Skills"})
         )
     if discoverable and public_permission == "none":
-        return _text_result(json.dumps({"error": "Discover Cartridges must be public"}))
+        return _text_result(json.dumps({"error": "Discover Skills must be public"}))
     try:
-        items = await _parse_cartridge_items(
+        items = await _parse_skill_items(
             args.get("items") or [],
             workspace_id=workspace_id,
             user_id=user_id,
         )
-        stash = await cartridge_service.create_cartridge(
+        skill = await shared_skill_service.create_skill(
             workspace_id=workspace_id,
             owner_id=user_id,
             title=args["title"],
@@ -482,16 +482,16 @@ async def _create_cartridge(args: dict) -> dict:
         )
     except ValueError as exc:
         return _text_result(json.dumps({"error": str(exc)}))
-    return _text_result(json.dumps(_cartridge_to_dict(stash)))
+    return _text_result(json.dumps(_skill_to_dict(skill)))
 
 
 @tool(
-    "update_cartridge",
-    "Update Stash metadata or replace its item list.",
+    "update_shared_skill",
+    "Update a shared skill's metadata or replace its item list.",
     {
         "type": "object",
         "properties": {
-            "cartridge_id": {"type": "string"},
+            "skill_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
             "workspace_permission": {
@@ -520,19 +520,19 @@ async def _create_cartridge(args: dict) -> dict:
                 },
             },
         },
-        "required": ["cartridge_id"],
+        "required": ["skill_id"],
     },
 )
-async def _update_cartridge(args: dict) -> dict:
+async def _update_shared_skill(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    cartridge_id = _cartridge_id_arg(args.get("cartridge_id"))
-    if cartridge_id is None:
-        return _text_result(json.dumps({"error": "invalid cartridge id"}))
-    current_stash = await cartridge_service.get_cartridge(cartridge_id)
-    if not current_stash or current_stash["workspace_id"] != workspace_id:
+    skill_id = _skill_id_arg(args.get("skill_id"))
+    if skill_id is None:
+        return _text_result(json.dumps({"error": "invalid skill id"}))
+    current_skill = await shared_skill_service.get_skill(skill_id)
+    if not current_skill or current_skill["workspace_id"] != workspace_id:
         return _text_result(json.dumps({"error": "not found"}))
-    if not await cartridge_service.user_can_manage(cartridge_id, user_id):
+    if not await shared_skill_service.user_can_manage(skill_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
     updates = {
@@ -548,7 +548,7 @@ async def _update_cartridge(args: dict) -> dict:
     }
     if "items" in args:
         try:
-            updates["items"] = await _parse_cartridge_items(
+            updates["items"] = await _parse_skill_items(
                 args.get("items") or [],
                 workspace_id=workspace_id,
                 user_id=user_id,
@@ -556,40 +556,40 @@ async def _update_cartridge(args: dict) -> dict:
         except ValueError as exc:
             return _text_result(json.dumps({"error": str(exc)}))
     try:
-        stash = await cartridge_service.update_cartridge(
-            cartridge_id,
+        skill = await shared_skill_service.update_skill(
+            skill_id,
             user_id,
             updates,
         )
     except ValueError as exc:
         return _text_result(json.dumps({"error": str(exc)}))
-    if not stash:
+    if not skill:
         return _text_result(json.dumps({"error": "not found"}))
-    return _text_result(json.dumps(_cartridge_to_dict(stash)))
+    return _text_result(json.dumps(_skill_to_dict(skill)))
 
 
 @tool(
-    "delete_cartridge",
-    "Delete a Stash by id.",
+    "delete_shared_skill",
+    "Delete a shared skill by id.",
     {
         "type": "object",
-        "properties": {"cartridge_id": {"type": "string"}},
-        "required": ["cartridge_id"],
+        "properties": {"skill_id": {"type": "string"}},
+        "required": ["skill_id"],
     },
 )
-async def _delete_cartridge(args: dict) -> dict:
+async def _delete_shared_skill(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    cartridge_id = _cartridge_id_arg(args.get("cartridge_id"))
-    if cartridge_id is None:
-        return _text_result(json.dumps({"error": "invalid cartridge id"}))
-    stash = await cartridge_service.get_cartridge(cartridge_id)
-    if not stash or stash["workspace_id"] != workspace_id:
+    skill_id = _skill_id_arg(args.get("skill_id"))
+    if skill_id is None:
+        return _text_result(json.dumps({"error": "invalid skill id"}))
+    skill = await shared_skill_service.get_skill(skill_id)
+    if not skill or skill["workspace_id"] != workspace_id:
         return _text_result(json.dumps({"error": "not found"}))
-    if not await cartridge_service.user_can_manage(cartridge_id, user_id):
+    if not await shared_skill_service.user_can_manage(skill_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
-    deleted = await cartridge_service.delete_cartridge(cartridge_id, user_id)
-    return _text_result(json.dumps({"deleted": deleted, "cartridge_id": str(cartridge_id)}))
+    deleted = await shared_skill_service.delete_skill(skill_id, user_id)
+    return _text_result(json.dumps({"deleted": deleted, "skill_id": str(skill_id)}))
 
 
 # --- Source-aware tools ----------------------------------------------------
@@ -699,8 +699,9 @@ async def _search(args: dict) -> dict:
     "query_source",
     "Run a read-only SQL query against a queryable source (e.g. Snowflake). "
     "`source` is the handle from list_sources; use list_source to see its tables "
-    "and read_source on a table to see its columns first. Only SELECT/WITH/SHOW/"
-    "DESCRIBE/EXPLAIN are allowed and rows are capped.",
+    "and read_source on a table to see its columns first. Only SELECT/SHOW/"
+    "DESCRIBE/EXPLAIN are allowed and rows are capped. WITH (CTEs) is rejected — "
+    "rewrite CTEs as subqueries.",
     {
         "type": "object",
         "properties": {
@@ -1284,10 +1285,10 @@ _TOOLS_BY_NAME = {
     "query_table": _query_table,
     "list_skills": _list_skills,
     "read_skill": _read_skill,
-    "list_stashes": _list_stashes,
-    "create_cartridge": _create_cartridge,
-    "update_cartridge": _update_cartridge,
-    "delete_cartridge": _delete_cartridge,
+    "list_shared_skills": _list_shared_skills,
+    "create_shared_skill": _create_shared_skill,
+    "update_shared_skill": _update_shared_skill,
+    "delete_shared_skill": _delete_shared_skill,
     "list_sources": _list_sources,
     "list_source": _list_source,
     "read_source": _read_source,
@@ -1301,7 +1302,7 @@ def _build_options(*, system: str) -> ClaudeAgentOptions:
     tools = [_TOOLS_BY_NAME[name] for name in prompts.STASH_TOOL_SET]
     mcp_server = create_sdk_mcp_server(name="stash", version="1.0.0", tools=tools)
     # The SDK exposes MCP tools as `mcp__{server}__{tool_name}` in allowed_tools.
-    allowed = [f"mcp__cartridge__{name}" for name in prompts.STASH_TOOL_SET]
+    allowed = [f"mcp__stash__{name}" for name in prompts.STASH_TOOL_SET]
     return ClaudeAgentOptions(
         system_prompt=system,
         model=settings.ANTHROPIC_MODEL,
@@ -1346,8 +1347,8 @@ async def stream_agent(
                         # Strip the SDK's MCP prefix so the wire format
                         # stays readable in the UI.
                         name = block.name
-                        if name.startswith("mcp__cartridge__"):
-                            name = name[len("mcp__cartridge__") :]
+                        if name.startswith("mcp__stash__"):
+                            name = name[len("mcp__stash__") :]
                         yield _sse(
                             {
                                 "type": "tool",

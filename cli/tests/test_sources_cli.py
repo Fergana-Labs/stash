@@ -4,7 +4,7 @@ called with the source-optional arguments, so search-everything and
 search-one-source both reach the server correctly."""
 
 from cli import main
-from cli.client import CartridgeClient
+from cli.client import StashClient
 
 
 class _FakeClient:
@@ -83,7 +83,7 @@ def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
         requests.append((method, url, kwargs.get("params")))
         return _Resp()
 
-    client = CartridgeClient("http://test")
+    client = StashClient("http://test")
     monkeypatch.setattr(client, "_request", fake_request)
     entries = client.list_source_entries("ws-1", "src-9", path="specs/")
     assert entries == [{"path": "a.md"}]

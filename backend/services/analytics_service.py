@@ -59,20 +59,20 @@ def _activity_bucket_step(bucket: str) -> timedelta:
     return timedelta(days=1)
 
 
-# Shared CTE for workspace / stash access filtering on history_events.
-# Exactly one of ws_idx and cartridge_idx may be passed (caller responsibility):
+# Shared CTE for workspace / skill access filtering on history_events.
+# Exactly one of ws_idx and skill_idx may be passed (caller responsibility):
 #   ws_idx    -> narrow to a single workspace's events (caller has already
 #                authorized membership).
-#   cartridge_idx -> narrow to events whose session is bundled into the stash
-#                (caller has already authorized stash readability).
+#   skill_idx -> narrow to events whose session is bundled into the skill
+#                (caller has already authorized skill readability).
 # Neither -> every event the user can see across all their workspaces.
 def _accessible_events_cte(
     ws_idx: int | None = None,
     user_idx: int = 1,
-    cartridge_idx: int | None = None,
+    skill_idx: int | None = None,
 ) -> str:
     readable_events = memory_service.readable_session_event_condition("he", user_idx)
-    if cartridge_idx is not None:
+    if skill_idx is not None:
         return f"""
         WITH accessible_events AS (
             SELECT he.id AS event_id
@@ -81,10 +81,10 @@ def _accessible_events_cte(
               AND EXISTS (
                 SELECT 1
                 FROM sessions s
-                JOIN cartridge_items si
+                JOIN skill_items si
                   ON si.object_type = 'session'
                  AND si.object_id = s.id
-                WHERE si.cartridge_id = ${cartridge_idx}
+                WHERE si.skill_id = ${skill_idx}
                   AND s.session_id = he.session_id
                   AND s.workspace_id = he.workspace_id
                   AND s.deleted_at IS NULL
@@ -115,18 +115,18 @@ def _accessible_events_cte(
 def _accessible_pages_cte(
     ws_idx: int | None = None,
     user_idx: int = 1,
-    cartridge_idx: int | None = None,
+    skill_idx: int | None = None,
 ) -> str:
     readable_pages = permission_service.readable_content_condition("page", "p", user_idx)
-    if cartridge_idx is not None:
-        # Stash items can be direct pages OR folders that contain pages. The
-        # recursive CTE expands every folder in the stash to all descendant
-        # folders, so any page anywhere underneath counts as "in the stash."
+    if skill_idx is not None:
+        # Skill items can be direct pages OR folders that contain pages. The
+        # recursive CTE expands every folder in the skill to all descendant
+        # folders, so any page anywhere underneath counts as "in the skill."
         return f"""
         WITH RECURSIVE stash_folder_descendants AS (
             SELECT object_id::uuid AS folder_id
-            FROM cartridge_items
-            WHERE cartridge_id = ${cartridge_idx}
+            FROM skill_items
+            WHERE skill_id = ${skill_idx}
               AND object_type = 'folder'
             UNION
             SELECT f.id
@@ -137,12 +137,12 @@ def _accessible_pages_cte(
         accessible_pages AS (
             SELECT p.id AS page_id
             FROM pages p
-            WHERE COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+            WHERE COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
               AND {readable_pages}
               AND (
                 p.id IN (
-                    SELECT object_id::uuid FROM cartridge_items
-                    WHERE cartridge_id = ${cartridge_idx}
+                    SELECT object_id::uuid FROM skill_items
+                    WHERE skill_id = ${skill_idx}
                       AND object_type = 'page'
                 )
                 OR p.folder_id IN (SELECT folder_id FROM stash_folder_descendants)
@@ -155,7 +155,7 @@ def _accessible_pages_cte(
             SELECT p.id AS page_id
             FROM pages p
             WHERE p.workspace_id = ${ws_idx}
-              AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+              AND COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
               AND {readable_pages}
         )
         """
@@ -164,7 +164,7 @@ def _accessible_pages_cte(
         SELECT p.id AS page_id
         FROM pages p
         WHERE p.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
-          AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+          AND COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
           AND {readable_pages}
     )
     """
@@ -173,18 +173,18 @@ def _accessible_pages_cte(
 def _accessible_tables_cte(
     ws_idx: int | None = None,
     user_idx: int = 1,
-    cartridge_idx: int | None = None,
+    skill_idx: int | None = None,
 ) -> str:
     readable_tables = permission_service.readable_content_condition("table", "t", user_idx)
-    if cartridge_idx is not None:
+    if skill_idx is not None:
         return f"""
         WITH accessible_tables AS (
             SELECT t.id AS table_id
             FROM tables t
-            JOIN cartridge_items si
+            JOIN skill_items si
               ON si.object_type = 'table'
              AND si.object_id = t.id
-            WHERE si.cartridge_id = ${cartridge_idx}
+            WHERE si.skill_id = ${skill_idx}
               AND {readable_tables}
         )
         """
@@ -211,17 +211,17 @@ def _accessible_tables_cte(
 def _accessible_files_cte(
     ws_idx: int | None = None,
     user_idx: int = 1,
-    cartridge_idx: int | None = None,
+    skill_idx: int | None = None,
 ) -> str:
     readable_files = permission_service.readable_content_condition("file", "f", user_idx)
-    if cartridge_idx is not None:
-        # Same folder-expansion pattern as pages: a stash can list files
+    if skill_idx is not None:
+        # Same folder-expansion pattern as pages: a skill can list files
         # directly, or wrap them in a folder, so walk descendant folders.
         return f"""
         WITH RECURSIVE stash_folder_descendants AS (
             SELECT object_id::uuid AS folder_id
-            FROM cartridge_items
-            WHERE cartridge_id = ${cartridge_idx}
+            FROM skill_items
+            WHERE skill_id = ${skill_idx}
               AND object_type = 'folder'
             UNION
             SELECT fld.id
@@ -236,8 +236,8 @@ def _accessible_files_cte(
               AND {readable_files}
               AND (
                 f.id IN (
-                    SELECT object_id::uuid FROM cartridge_items
-                    WHERE cartridge_id = ${cartridge_idx}
+                    SELECT object_id::uuid FROM skill_items
+                    WHERE skill_id = ${skill_idx}
                       AND object_type = 'file'
                 )
                 OR f.folder_id IN (SELECT folder_id FROM stash_folder_descendants)
@@ -270,11 +270,11 @@ async def get_activity_timeline(
     days: int = 30,
     bucket: str = "day",
     workspace_id: UUID | None = None,
-    cartridge_id: UUID | None = None,
+    skill_id: UUID | None = None,
 ) -> dict:
     """Human + coding-agent session commits bucketed by time.
 
-    Pass ``workspace_id`` to scope to one workspace, or ``cartridge_id`` to scope
+    Pass ``workspace_id`` to scope to one workspace, or ``skill_id`` to scope
     to the sessions bundled into a specific Stash. The two are mutually
     exclusive — the router rejects the combination."""
     pool = get_pool()
@@ -288,16 +288,16 @@ async def get_activity_timeline(
 
     args: list = [user_id, bucket, cutoff, end_exclusive]
     ws_idx = None
-    cartridge_idx = None
-    if cartridge_id is not None:
-        args.append(cartridge_id)
-        cartridge_idx = 5
+    skill_idx = None
+    if skill_id is not None:
+        args.append(skill_id)
+        skill_idx = 5
     elif workspace_id is not None:
         args.append(workspace_id)
         ws_idx = 5
 
     rows = await pool.fetch(
-        _accessible_events_cte(ws_idx=ws_idx, cartridge_idx=cartridge_idx) + """
+        _accessible_events_cte(ws_idx=ws_idx, skill_idx=skill_idx) + """
         , timeline_events AS (
             SELECT
                 me.workspace_id,
@@ -514,7 +514,7 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             SELECT
                 (SELECT COUNT(*) FROM pages p
                  WHERE p.workspace_id = $2
-                   AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+                   AND COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
                    AND """
             + permission_service.readable_content_condition("page", "p", 1)
@@ -542,7 +542,7 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             SELECT
                 (SELECT COUNT(*) FROM pages p
                  WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-                   AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+                   AND COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
                    AND """
             + permission_service.readable_content_condition("page", "p", 1)
@@ -583,7 +583,7 @@ async def get_overview_counts(user_id: UUID) -> dict:
             (SELECT COUNT(*) FROM pages p
              WHERE p.workspace_id IN {accessible_ws}
                AND p.deleted_at IS NULL
-               AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = ''
+               AND COALESCE(p.metadata->>'shared_in_skill_id', '') = ''
                AND {readable_pages}) AS pages,
             (SELECT COUNT(*) FROM files f
              WHERE f.workspace_id IN {accessible_ws}
@@ -823,11 +823,11 @@ async def get_embedding_projection(
     max_points: int = 500,
     source: str | None = None,
     workspace_id: UUID | None = None,
-    cartridge_id: UUID | None = None,
+    skill_id: UUID | None = None,
 ) -> dict:
     """3D PCA projection of embeddings for the space explorer.
 
-    Pass ``workspace_id`` to scope to one workspace, or ``cartridge_id`` to scope
+    Pass ``workspace_id`` to scope to one workspace, or ``skill_id`` to scope
     to the items bundled into a specific Stash (mutually exclusive — the
     router rejects the combination).
 
@@ -841,25 +841,29 @@ async def get_embedding_projection(
 
     content_count_args = [user_id]
     content_count_ws_idx = None
-    content_count_cartridge_idx = None
-    if cartridge_id is not None:
-        content_count_args.append(cartridge_id)
-        content_count_cartridge_idx = 2
+    content_count_skill_idx = None
+    if skill_id is not None:
+        content_count_args.append(skill_id)
+        content_count_skill_idx = 2
     elif workspace_id is not None:
         content_count_args.append(workspace_id)
         content_count_ws_idx = 2
     event_count_args = [user_id]
     event_ws_idx = None
-    event_cartridge_idx = None
-    if cartridge_id is not None:
-        event_count_args.append(cartridge_id)
-        event_cartridge_idx = 2
+    event_skill_idx = None
+    if skill_id is not None:
+        event_count_args.append(skill_id)
+        event_skill_idx = 2
     elif workspace_id is not None:
         event_count_args.append(workspace_id)
         event_ws_idx = 2
 
+    # Cache row keyed by (user_id, source_type, workspace_id), workspace
+    # scopes only: user-wide results depend on the user's current memberships
+    # and must be recomputed (offboarding). Stash-scoped requests bypass the
+    # cache too (no skill_id column).
     cache = None
-    use_cache = workspace_id is not None and cartridge_id is None
+    use_cache = workspace_id is not None and skill_id is None
     if use_cache:
         cache = await pool.fetchrow(
             "SELECT points, embedding_count, computed_at FROM embedding_projections "
@@ -874,9 +878,7 @@ async def get_embedding_projection(
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_pages_cte(
-                ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx
-            )
+            _accessible_pages_cte(ws_idx=content_count_ws_idx, skill_idx=content_count_skill_idx)
             + """
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
@@ -888,9 +890,7 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         row = await pool.fetchval(
-            _accessible_tables_cte(
-                ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx
-            )
+            _accessible_tables_cte(ws_idx=content_count_ws_idx, skill_idx=content_count_skill_idx)
             + """
             SELECT COUNT(*) FROM table_rows tr
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
@@ -902,7 +902,7 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _accessible_events_cte(ws_idx=event_ws_idx, cartridge_idx=event_cartridge_idx) + """
+            _accessible_events_cte(ws_idx=event_ws_idx, skill_idx=event_skill_idx) + """
             SELECT COUNT(*) FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
@@ -913,9 +913,7 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         row = await pool.fetchval(
-            _accessible_files_cte(
-                ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx
-            )
+            _accessible_files_cte(ws_idx=content_count_ws_idx, skill_idx=content_count_skill_idx)
             + """
             SELECT COUNT(*) FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)
@@ -945,28 +943,26 @@ async def get_embedding_projection(
     per_source_limit = max_points if source else max(max_points // 4, 1)
     content_fetch_args = [user_id, per_source_limit]
     content_fetch_ws_idx = None
-    content_fetch_cartridge_idx = None
-    if cartridge_id is not None:
-        content_fetch_args.append(cartridge_id)
-        content_fetch_cartridge_idx = 3
+    content_fetch_skill_idx = None
+    if skill_id is not None:
+        content_fetch_args.append(skill_id)
+        content_fetch_skill_idx = 3
     elif workspace_id is not None:
         content_fetch_args.append(workspace_id)
         content_fetch_ws_idx = 3
     event_fetch_args = [user_id, per_source_limit]
     event_fetch_ws_idx = None
-    event_fetch_cartridge_idx = None
-    if cartridge_id is not None:
-        event_fetch_args.append(cartridge_id)
-        event_fetch_cartridge_idx = 3
+    event_fetch_skill_idx = None
+    if skill_id is not None:
+        event_fetch_args.append(skill_id)
+        event_fetch_skill_idx = 3
     elif workspace_id is not None:
         event_fetch_args.append(workspace_id)
         event_fetch_ws_idx = 3
 
     if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_pages_cte(
-                ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx
-            )
+            _accessible_pages_cte(ws_idx=content_fetch_ws_idx, skill_idx=content_fetch_skill_idx)
             + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
             FROM pages np
@@ -990,9 +986,7 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
-            _accessible_tables_cte(
-                ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx
-            )
+            _accessible_tables_cte(ws_idx=content_fetch_ws_idx, skill_idx=content_fetch_skill_idx)
             + """
             SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
             FROM table_rows tr
@@ -1017,10 +1011,7 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(
-                ws_idx=event_fetch_ws_idx, cartridge_idx=event_fetch_cartridge_idx
-            )
-            + """
+            _accessible_events_cte(ws_idx=event_fetch_ws_idx, skill_idx=event_fetch_skill_idx) + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -1043,9 +1034,7 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         rows = await pool.fetch(
-            _accessible_files_cte(
-                ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx
-            )
+            _accessible_files_cte(ws_idx=content_fetch_ws_idx, skill_idx=content_fetch_skill_idx)
             + """
             SELECT f.id, f.name AS label, f.embedding, f.created_at
             FROM files f
