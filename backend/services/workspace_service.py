@@ -131,25 +131,16 @@ async def update_workspace(
     return await get_workspace(workspace_id)
 
 
-async def delete_workspace(workspace_id: UUID, user_id: UUID) -> bool:
-    """Delete workspace. Only owner can delete."""
+async def delete_workspace(workspace_id: UUID, user_id: UUID) -> list[str] | None:
+    """Delete a workspace (owner only; None when refused). Returns the storage
+    keys its rows referenced so the caller can purge the blobs — collected
+    before, but purged only after, the DB delete, so a failed delete can never
+    leave live rows pointing at destroyed storage objects."""
     pool = get_pool()
-    role = await get_member_role(workspace_id, user_id)
-    if role != "owner":
-        return False
-    result = await pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
-    return result == "DELETE 1"
-
-
-async def list_workspace_storage_keys_for_delete(
-    workspace_id: UUID,
-    user_id: UUID,
-) -> list[str] | None:
     role = await get_member_role(workspace_id, user_id)
     if role != "owner":
         return None
 
-    pool = get_pool()
     rows = await pool.fetch(
         """
         SELECT storage_key
@@ -167,6 +158,9 @@ async def list_workspace_storage_keys_for_delete(
         """,
         workspace_id,
     )
+    result = await pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
+    if result != "DELETE 1":
+        return None
     return [row["storage_key"] for row in rows]
 
 
