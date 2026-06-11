@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../../components/SessionUpload";
 import { SessionsListSkeleton } from "../../../../../components/SkeletonStates";
@@ -58,6 +58,36 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
 ];
 
+// Drag payload: the DB row ids (sessions.id) of the dragged sessions. Dragging
+// a selected row carries the whole selection, like the file browser.
+const SESSION_DRAG_MIME = "application/x-stash-sessions";
+
+// Drag wiring threaded down to session rows: whether rows can be dragged at
+// all (off inside shared folders), the row ids the current selection would
+// carry, and a signal so drop targets can reveal themselves mid-drag.
+interface SessionDrag {
+  canDrag: boolean;
+  selectedRowIds: string[];
+  onActiveChange: (active: boolean) => void;
+}
+
+const NO_DRAG: SessionDrag = {
+  canDrag: false,
+  selectedRowIds: [],
+  onActiveChange: () => {},
+};
+
+function readSessionDrop(e: DragEvent<HTMLElement>): string[] {
+  const raw = e.dataTransfer.getData(SESSION_DRAG_MIME);
+  if (!raw) return [];
+  try {
+    const ids = JSON.parse(raw);
+    return Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function CartridgeSessionsPage() {
   const params = useParams();
   const router = useRouter();
@@ -74,6 +104,7 @@ export default function CartridgeSessionsPage() {
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [dragActive, setDragActive] = useState(false);
 
   function toggleSelect(sessionId: string) {
     setSelectedIds((current) => {
@@ -138,6 +169,13 @@ export default function CartridgeSessionsPage() {
   const selectedSessions = (sorted ?? []).filter((s) =>
     selectedIds.has(s.session_id),
   );
+  const drag: SessionDrag = {
+    canDrag: true,
+    selectedRowIds: selectedSessions
+      .filter((s) => s.id)
+      .map((s) => s.id!),
+    onActiveChange: setDragActive,
+  };
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -199,6 +237,18 @@ export default function CartridgeSessionsPage() {
     }
   }
 
+  // Drop handler: move the dragged session row ids into a folder.
+  async function moveRowsToFolder(rowIds: string[], folderId: string) {
+    if (rowIds.length === 0) return;
+    try {
+      await assignSessionFolder(workspaceId, rowIds, folderId);
+      clearSelection();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not move sessions");
+    }
+  }
+
   async function newFolder() {
     const name = window.prompt("New folder name")?.trim();
     if (!name) return;
@@ -249,6 +299,7 @@ export default function CartridgeSessionsPage() {
               onTogglePin={pins.toggle}
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
+              drag={drag}
             />
           </section>
         )}
@@ -273,6 +324,9 @@ export default function CartridgeSessionsPage() {
             onTogglePin={pins.toggle}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
+            drag={drag}
+            dragActive={dragActive}
+            onDropSessions={moveRowsToFolder}
           />
         ) : (
           <FoldersSection
@@ -282,6 +336,7 @@ export default function CartridgeSessionsPage() {
             onOpen={setOpenFolder}
             onNewFolder={newFolder}
             onShare={(f) => setShareFolder(f)}
+            onDropSessions={moveRowsToFolder}
           />
         )}
       </div>
@@ -347,6 +402,7 @@ function SessionsView({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  drag,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
@@ -355,6 +411,7 @@ function SessionsView({
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
+  drag: SessionDrag;
 }) {
   if (sessions.length === 0) {
     return (
@@ -372,6 +429,7 @@ function SessionsView({
         onTogglePin={onTogglePin}
         selectedIds={selectedIds}
         onToggleSelect={onToggleSelect}
+        drag={drag}
       />
     );
   }
@@ -389,6 +447,7 @@ function SessionsView({
             onTogglePin={onTogglePin}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
+            drag={drag}
           />
         ))}
       </div>
@@ -414,6 +473,7 @@ function SessionsView({
           onTogglePin={onTogglePin}
           selectedIds={selectedIds}
           onToggleSelect={onToggleSelect}
+          drag={drag}
         />
       ))}
     </div>
@@ -427,6 +487,7 @@ function DayGroup({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  drag,
 }: {
   group: SessionDayGroup;
   initialOpen: boolean;
@@ -434,6 +495,7 @@ function DayGroup({
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
+  drag: SessionDrag;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -460,6 +522,7 @@ function DayGroup({
                 onTogglePin={onTogglePin}
                 selectedIds={selectedIds}
                 onToggleSelect={onToggleSelect}
+                drag={drag}
               />
             </div>
           ))}
@@ -476,6 +539,7 @@ function FlatGroup({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  drag,
 }: {
   group: SessionFlatGroup;
   initialOpen: boolean;
@@ -483,6 +547,7 @@ function FlatGroup({
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
+  drag: SessionDrag;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -506,6 +571,7 @@ function FlatGroup({
             onTogglePin={onTogglePin}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
+            drag={drag}
           />
         </div>
       )}
@@ -575,12 +641,14 @@ function SessionsTable({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  drag = NO_DRAG,
 }: {
   sessions: SessionSummary[];
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
+  drag?: SessionDrag;
 }) {
   if (sessions.length === 0) {
     return (
@@ -610,6 +678,7 @@ function SessionsTable({
           onTogglePin={onTogglePin}
           selected={selectedIds.has(session.session_id)}
           onToggleSelect={onToggleSelect}
+          drag={drag}
         />
       ))}
     </div>
@@ -622,12 +691,14 @@ function SessionTableRow({
   onTogglePin,
   selected,
   onToggleSelect,
+  drag,
 }: {
   session: SessionSummary;
   pinned: boolean;
   onTogglePin: (sessionId: string) => void;
   selected: boolean;
   onToggleSelect: (sessionId: string) => void;
+  drag: SessionDrag;
 }) {
   const user = requireSessionUserName(session.user_name);
   const agent = session.agent_name || "agent";
@@ -637,6 +708,18 @@ function SessionTableRow({
   return (
     <Link
       href={`/sessions/${encodeURIComponent(session.session_id)}`}
+      draggable={drag.canDrag && !!session.id}
+      onDragStart={(e: DragEvent<HTMLAnchorElement>) => {
+        if (!session.id) return;
+        const ids =
+          selected && drag.selectedRowIds.length > 1
+            ? drag.selectedRowIds
+            : [session.id];
+        e.dataTransfer.setData(SESSION_DRAG_MIME, JSON.stringify(ids));
+        e.dataTransfer.effectAllowed = "move";
+        drag.onActiveChange(true);
+      }}
+      onDragEnd={() => drag.onActiveChange(false)}
       className={
         "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]")
@@ -847,6 +930,7 @@ function FoldersSection({
   onOpen,
   onNewFolder,
   onShare,
+  onDropSessions,
 }: {
   ownFolders: SessionFolder[];
   sharedFolders: SharedWithMeItem[];
@@ -854,6 +938,7 @@ function FoldersSection({
   onOpen: (f: OpenFolder) => void;
   onNewFolder: () => void;
   onShare: (f: SessionFolder) => void;
+  onDropSessions: (rowIds: string[], folderId: string) => void;
 }) {
   return (
     <section>
@@ -874,6 +959,7 @@ function FoldersSection({
             folder={f}
             onClick={() => onOpen({ id: f.id, name: f.name, workspaceId, shared: false, folder: f })}
             onShare={() => onShare(f)}
+            onDropSessions={(rowIds) => onDropSessions(rowIds, f.id)}
           />
         ))}
         {sharedFolders.map((f) => (
@@ -895,18 +981,38 @@ function FolderCard({
   folder,
   onClick,
   onShare,
+  onDropSessions,
 }: {
   folder: SessionFolder;
   onClick: () => void;
   onShare: () => void;
+  onDropSessions: (rowIds: string[]) => void;
 }) {
+  const [over, setOver] = useState(false);
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick()}
-      className="group flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false);
+        const rowIds = readSessionDrop(e);
+        if (rowIds.length === 0) return;
+        e.preventDefault();
+        onDropSessions(rowIds);
+      }}
+      className={
+        "group flex cursor-pointer items-start gap-2.5 rounded-lg border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50 " +
+        (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
+      }
     >
       <span aria-hidden className="mt-0.5 text-[18px]">
         {folder.is_default ? "🗃️" : "📁"}
@@ -990,6 +1096,9 @@ function FolderDrill({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  drag,
+  dragActive,
+  onDropSessions,
 }: {
   folder: OpenFolder;
   sessions: SessionSummary[];
@@ -1006,6 +1115,9 @@ function FolderDrill({
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
+  drag: SessionDrag;
+  dragActive: boolean;
+  onDropSessions: (rowIds: string[], folderId: string) => void;
 }) {
   const [shared, setShared] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");
@@ -1062,6 +1174,24 @@ function FolderDrill({
         )}
       </div>
       {error ? <p className="text-[13px] text-rose-500">{error}</p> : null}
+      {/* Other folders surface as drop targets only while a session drag is in
+          flight — the drill view otherwise has no folder list to drop onto. */}
+      {dragActive && !folder.shared && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[var(--color-brand-300)] bg-[var(--color-brand-50)]/40 px-3 py-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Move to
+          </span>
+          {folders
+            .filter((f) => f.id !== folder.id)
+            .map((f) => (
+              <FolderDropChip
+                key={f.id}
+                folder={f}
+                onDrop={(rowIds) => onDropSessions(rowIds, f.id)}
+              />
+            ))}
+        </div>
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
         <SegmentedControl
           label="View"
@@ -1087,9 +1217,48 @@ function FolderDrill({
           onTogglePin={onTogglePin}
           selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
           onToggleSelect={folder.shared ? noop : onToggleSelect}
+          drag={folder.shared ? NO_DRAG : drag}
         />
       )}
     </div>
+  );
+}
+
+// A folder pill that lights up while a session drag hovers it.
+function FolderDropChip({
+  folder,
+  onDrop,
+}: {
+  folder: SessionFolder;
+  onDrop: (rowIds: string[]) => void;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <span
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false);
+        const rowIds = readSessionDrop(e);
+        if (rowIds.length === 0) return;
+        e.preventDefault();
+        onDrop(rowIds);
+      }}
+      className={
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] " +
+        (over
+          ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)] font-semibold text-foreground"
+          : "border-border bg-base text-dim")
+      }
+    >
+      <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
+      {folder.name}
+    </span>
   );
 }
 

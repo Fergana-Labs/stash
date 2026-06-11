@@ -631,6 +631,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
                 onOpen={navigateTo}
                 isPinned={(item) => pins.isPinned(item.id)}
                 onTogglePin={(item) => pins.toggle(item.id)}
+                onReparent={reparent}
+                onReparentMany={reparentMany}
               />
             )}
 
