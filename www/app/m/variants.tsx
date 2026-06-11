@@ -28,8 +28,8 @@ export const VARIANTS: Record<string, VariantCopy> = {
       steps: [
         {
           n: "01",
-          pill: "Files",
-          title: "Agent-native files.",
+          pill: "Drive",
+          title: "Agent-native Drive.",
           body: "Markdown, HTML, dashboards — even AI-native slide decks. And when an agent builds an HTML page, you edit the result visually in a WYSIWYG editor, no markup required.",
           viz: <FilesViz />,
         },

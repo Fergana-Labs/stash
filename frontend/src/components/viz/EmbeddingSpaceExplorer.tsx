@@ -10,13 +10,13 @@ interface Props {
 
 const SOURCE_COLORS: Record<string, string> = {
   history_events: "#F97316",  // orange — sessions
-  pages: "#22C55E",           // green — files
+  pages: "#22C55E",           // green — pages
   table_rows: "#3B82F6",      // blue
 };
 
 const SOURCE_LABELS: Record<string, string> = {
   history_events: "Sessions",
-  pages: "Files",
+  pages: "Pages",
   table_rows: "Tables",
 };
 

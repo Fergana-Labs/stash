@@ -418,7 +418,7 @@ export interface PublicCartridgeCard {
   updated_at: string;
 }
 
-// --- Files: folders (nested) and pages ---
+// --- Drive: folders (nested) and pages ---
 
 export async function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/tree`);
@@ -1860,7 +1860,7 @@ export interface WorkspaceSidebarSession {
   updated_at: string;
 }
 
-// Unified Files tree. Folders, pages, and files
+// Unified Drive tree. Folders, pages, and files
 // each carry their parent so the frontend can build the hierarchy.
 export interface WorkspaceFolder {
   id: string;

@@ -9,7 +9,7 @@ type GraphNode = {
   degree: number;
 };
 
-// Files file tree for "memory_reading_store". Positions are hand-chosen to
+// Drive file tree for "memory_reading_store". Positions are hand-chosen to
 // resemble a force-directed layout; degree drives node size + color.
 const GRAPH_NODES: GraphNode[] = [
   { id: "pgvector-howto", x: 295, y: 170, degree: 7 },
@@ -82,7 +82,7 @@ function PageGraphMock() {
           viewBox={`0 0 ${width} ${height}`}
           className="absolute inset-0 h-full w-full"
           role="img"
-          aria-label="Files file tree"
+          aria-label="Drive file tree"
         >
           <defs>
             <pattern

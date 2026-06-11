@@ -13,7 +13,7 @@ export default function WorkspaceFilesPage() {
   const workspaceId = params.workspaceId as string;
   const { user, loading } = useAuth();
 
-  useBreadcrumbs([{ label: "Files" }], `${workspaceId}/files`);
+  useBreadcrumbs([{ label: "Drive" }], `${workspaceId}/files`);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");

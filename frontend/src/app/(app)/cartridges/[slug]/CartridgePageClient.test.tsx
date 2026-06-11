@@ -92,7 +92,7 @@ vi.mock("../../../../hooks/useAuth", () => ({
 }));
 
 vi.mock("./AddToWorkspaceButton", () => ({
-  default: () => <button type="button">Add to my files</button>,
+  default: () => <button type="button">Add to my Drive</button>,
 }));
 
 // Mirrors how AppShell consumes the ShellChromeContext: pulls the page-
@@ -438,7 +438,7 @@ describe("CartridgePageClient sharing", () => {
     const image = await screen.findByRole("img", { name: "shot.png" });
     expect(image).toHaveAttribute("src", "https://files.test/shot.png");
     expect(screen.getByText("1 item")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Files" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Drive" })).not.toBeInTheDocument();
     expect(getActivityTimeline).not.toHaveBeenCalled();
     expect(getEmbeddingProjection).not.toHaveBeenCalled();
   });
@@ -476,6 +476,6 @@ describe("CartridgePageClient sharing", () => {
     renderCartridge(<CartridgePageClient slug="shared-stash" />);
 
     expect(await screen.findByText("2 items")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Drive" })).toBeInTheDocument();
   });
 });

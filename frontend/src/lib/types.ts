@@ -32,7 +32,7 @@ export interface Workspace {
   is_primary?: boolean;
 }
 
-// --- Files: folders (nested) and pages ---
+// --- Drive: folders (nested) and pages ---
 
 export type PageContentType = "markdown" | "html";
 

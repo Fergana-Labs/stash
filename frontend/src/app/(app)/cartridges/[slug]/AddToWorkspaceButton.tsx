@@ -94,20 +94,20 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
         disabled={busy}
         className="rounded-lg border border-brand bg-brand px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? "Adding..." : "Add to my files"}
+        {busy ? "Adding..." : "Add to my Drive"}
       </button>
 
       {open ? (
         <div className="absolute right-0 top-12 z-20 w-[300px] rounded-lg border border-border-subtle bg-surface p-3 text-left shadow-lg">
           {attached ? (
             <div className="space-y-2">
-              <p className="text-[13px] font-medium text-foreground">Added to your files</p>
+              <p className="text-[13px] font-medium text-foreground">Added to your Drive</p>
               <button
                 type="button"
                 onClick={() => router.push(`/workspaces/${attached.added_to_workspace_id}`)}
                 className="w-full rounded-md border border-border-subtle px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
               >
-                Open files
+                Open Drive
               </button>
             </div>
           ) : eligibleWorkspaces.length > 0 ? (

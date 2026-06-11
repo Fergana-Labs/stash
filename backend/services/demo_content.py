@@ -40,12 +40,12 @@ other agent had already tried.
   calls, artifacts — into a shared workspace as it happens. Every
   teammate's agent gets context from every other teammate's agent.
 
-- **Files.** Markdown pages, HTML pages (including slide decks),
+- **Drive.** Markdown pages, HTML pages (including slide decks),
   tables, PDFs, raw uploads. Humans edit them in the web app; agents
   edit them via the CLI or MCP server. Both sides see updates in
   real time.
 
-- **Cartridges.** A shareable bundle of files and sessions. Public link,
+- **Cartridges.** A shareable bundle of Drive items and sessions. Public link,
   workspace-scoped, or private. Forkable into someone else's
   workspace. The unit of "I want to share this slice of what we
   know."

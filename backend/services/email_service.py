@@ -59,7 +59,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
 
 <ul>
   <li><strong>Cartridges</strong> &mdash; virtual sub-workspaces. Bundle any subset of your workspace into a Stash, share it publicly, or keep it private. Use them for teams, workstreams, or projects (LinkedIn marketing, backend infra, kernel reading group).</li>
-  <li><strong>Files</strong> &mdash; a filesystem for documents (markdown, HTML, PDF, CSV, images). Built so agents can read and edit it natively.</li>
+  <li><strong>Drive</strong> &mdash; a filesystem for pages, uploaded files, folders, and tables. Built so agents can read and edit it natively.</li>
   <li><strong>Sessions</strong> &mdash; every conversation between you and your coding agent (Claude Code, Codex, OpenCode), automatically pushed and indexed.</li>
 </ul>
 

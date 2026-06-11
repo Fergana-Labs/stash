@@ -94,7 +94,7 @@ function MarkdownScreen() {
               <p>The whole product is just three things, and we keep them llm-legible:</p>
               <ul>
                 <li><strong>Sessions</strong> — every agent transcript and its artifacts (e.g. a temporary <code>PLAN.md</code>).</li>
-                <li><strong>Files</strong> — a real filesystem of pages, folders, and tables. No subpages, no blocks, no wiki-isms.</li>
+                <li><strong>Drive</strong> — a real filesystem of pages, folders, and tables. No subpages, no blocks, no wiki-isms.</li>
                 <li><strong>Stashes</strong> — our novel unit. A user-curated bundle of sessions and pages with a single permission level (<code>workspace</code> / <code>private</code> / <code>public</code>). Stashes are how privacy works. They are also how things get shared.</li>
               </ul>
 

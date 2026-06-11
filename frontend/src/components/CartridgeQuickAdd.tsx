@@ -71,7 +71,7 @@ export default function CartridgeQuickAdd({
     await updateCartridge(stashId, { items: merged });
   }
 
-  const targetLabel = stashId ? "Stash" : "Files";
+  const targetLabel = stashId ? "Stash" : "Drive";
 
   async function handleTextSubmit(e: FormEvent) {
     e.preventDefault();
@@ -111,7 +111,7 @@ export default function CartridgeQuickAdd({
     try {
       for (const f of list) {
         // .jsonl transcripts are sessions, not files — same drop target,
-        // different code path. Anything else goes to Files.
+        // different code path. Anything else goes to Drive.
         if (f.name.toLowerCase().endsWith(".jsonl")) {
           const sessionId = f.name.replace(/\.jsonl$/i, "").trim() || "session";
           await uploadTranscript(workspaceId, f, sessionId, "manual-upload");

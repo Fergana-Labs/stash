@@ -238,7 +238,7 @@ function ObsidianSourceCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-medium text-foreground">Obsidian vault</div>
-          <div className="truncate text-[11.5px] text-muted">Upload a vault into Files.</div>
+          <div className="truncate text-[11.5px] text-muted">Upload a vault into Drive.</div>
         </div>
         <button type="button" onClick={() => setOpen((value) => !value)} className={secondaryButton()}>
           {open ? "Hide" : "Upload vault"}

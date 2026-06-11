@@ -1,8 +1,8 @@
-"""Skill service — skills are Files folders containing a SKILL.md file.
+"""Skill service — skills are Drive folders containing a SKILL.md file.
 
 Detection rule: any folder whose immediate children include a page named
-``SKILL.md``. Skills are derived from the Files tree; reads/writes still go
-through the Files API. The derived shape feeds the sidebar and the Ask agent's
+``SKILL.md``. Skills are derived from the Drive tree; reads/writes still go
+through the files API. The derived shape feeds the sidebar and the Ask agent's
 tool surface.
 """
 

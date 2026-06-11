@@ -285,7 +285,7 @@ export default function AppShell({
     if (m?.[1]) setActiveWorkspaceId(m[1]);
   }, [pathname]);
 
-  // Record per-user "recently viewed" whenever a folder opens, so the Files
+  // Record per-user "recently viewed" whenever a folder opens, so the Drive
   // Recent strip reflects this user's activity (not global mtime). Pages and
   // files record from their own clients — their canonical URLs don't carry
   // the workspace, so only the loaded resource knows it.

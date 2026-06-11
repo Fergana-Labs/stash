@@ -38,7 +38,7 @@
 ## How it works
 
 - **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — to a shared workspace.
-- **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. Humans and agents both write here; both sides see edits in real time.
+- **Drive and sessions live side by side.** Markdown, HTML, tables, PDFs. Humans and agents both write here; both sides see edits in real time.
 - **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose the workspace to any agent. Semantic and keyword search across pages, sessions, and tables.
 - **Stashes are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.
 

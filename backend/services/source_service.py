@@ -709,7 +709,7 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "source": NATIVE_FILES,
             "type": "native_files",
             "capability": "navigable",
-            "display_name": "Files",
+            "display_name": "Drive",
         },
         {
             "source": NATIVE_SESSIONS,

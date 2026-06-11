@@ -161,7 +161,7 @@ export default function AppSidebar({
   // workspace, keyed by workspace id. User-scoped — only the viewer's own.
   const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
   // Collapses only the connected external sources; the native Agent Sessions
-  // and Files rows stay visible.
+  // and Drive rows stay visible.
   const [externalCollapsed, setExternalCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(EXTERNAL_SOURCES_COLLAPSED_KEY) === "1";
@@ -254,7 +254,7 @@ export default function AppSidebar({
       {
         key: "files",
         href: `/workspaces/${ws}/files`,
-        label: "Files",
+        label: "Drive",
         icon: <span className="text-muted"><FileIcon /></span>,
         active: filesActive,
       },

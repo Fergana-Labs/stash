@@ -48,12 +48,12 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
 
   parts.push(`<h2>How Stash works</h2>`);
   parts.push(
-    `<p>Stash is built around <strong>sources</strong> your agents read and write, the <strong>folders and files</strong> you share, and the <strong>agents</strong> you talk to over all of it.</p>
+    `<p>Stash is built around <strong>sources</strong> your agents read and write, the <strong>Drive items</strong> you share, and the <strong>agents</strong> you talk to over all of it.</p>
     <ul>
       <li><strong>Sources</strong> — everything your agents produce or consume, all searchable:
         <ul>
           <li><strong>Agent Sessions</strong> — the history of your agent conversations, automatically pushed in from Claude Code, Codex, and friends.</li>
-          <li><strong>Files</strong> — a file system for documents (markdown, HTML, images, PDF, CSV, tables), plus connected sources like Notion, Google Drive, Slack, Twitter / X, and GitHub. Built so agents can use it natively.</li>
+          <li><strong>Drive</strong> — a file system for pages, uploaded files, folders, and tables. Built so agents can use it natively.</li>
         </ul>
       </li>
       <li><strong>Sharing</strong> — share any folder, page, or file with a link, or give specific people access — so teammates and their agents work from the same docs.</li>

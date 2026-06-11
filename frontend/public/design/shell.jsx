@@ -215,7 +215,7 @@ function Sidebar({ activeSection, activePage }) {
       {/* Filesystem */}
       <div>
         <div className="side-section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Files</span>
+          <span>Drive</span>
           <button className="btn-ghost" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
             <Icon name="Plus" />
           </button>

@@ -175,7 +175,7 @@ export default function WorkspaceHomePage() {
         />
 
         {/* Quick-add: paste URL or drop a file. .jsonl files route to
-              session-transcript upload; anything else uploads to Files. */}
+              session-transcript upload; anything else uploads to Drive. */}
         {isMember && (
           <section className="mt-6">
             <div className="sys-label mb-1.5">
@@ -242,4 +242,3 @@ function WorkspaceDescriptionEditor({
     </section>
   );
 }
-

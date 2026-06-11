@@ -19,7 +19,7 @@ type Props = {
 // recursive walk via webkitGetAsEntry (drop) or webkitRelativePath
 // (browse), parents-first folder creation, files routed to
 // uploadFileOrPage which makes .md/.html into pages and lands others
-// in Files.
+// in Drive.
 export default function ObsidianVaultDropZone({ workspaceId, onUploaded }: Props) {
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<VaultStatus>({ kind: "idle" });

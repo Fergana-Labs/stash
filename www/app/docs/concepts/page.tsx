@@ -14,19 +14,19 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
   },
   {
-    name: "Files",
-    badge: "Files",
+    name: "Drive",
+    badge: "Drive",
     badgeColor: "bg-green-500/10 text-green-600",
     desc: (
       <>
-        Markdown and HTML pages organized in folders, scoped to a workspace. Rich-text editor with
-        autosave, semantic search, and file attachments.
+        Folders, editable Markdown and HTML pages, uploaded files, and tables, scoped to a
+        workspace. Agents can browse and edit it through the CLI and MCP.
       </>
     ),
   },
   {
     name: "Table",
-    badge: "Files",
+    badge: "Drive",
     badgeColor: "bg-green-500/10 text-green-600",
     desc: "Structured data with typed columns (text, number, date, select, etc.). Filters, sorting, views, CSV import/export. Optional row embeddings for semantic search — configure which columns to embed.",
   },
@@ -34,7 +34,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "File",
     badge: "Attachment",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable as attachments via the API or files editor.",
+    desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable as attachments via the API or Drive editor.",
   },
   {
     name: "Source",

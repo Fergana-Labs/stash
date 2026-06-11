@@ -199,7 +199,7 @@ export default function EmbeddingProjection3D() {
         <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-md border border-border-subtle bg-background/85 px-2.5 py-2 backdrop-blur">
           {[
             { src: "sessions", label: "Sessions" },
-            { src: "files", label: "Files" },
+            { src: "files", label: "Drive" },
             { src: "table", label: "Tables" },
           ].map((row) => (
             <div

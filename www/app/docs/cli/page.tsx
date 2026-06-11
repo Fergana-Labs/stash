@@ -177,7 +177,11 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         ]}
       />
 
-      <H2>Files</H2>
+      <H2>Drive</H2>
+      <P>
+        The CLI command group is still <Code>stash files</Code>, but these commands operate on
+        the workspace Drive: folders, editable pages, and uploaded files.
+      </P>
 
       <CommandRef
         command="stash files pages"
@@ -201,7 +205,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <CommandRef
         command="stash files create-folder"
         args="<name> [--ws ID] [--parent FOLDER_ID]"
-        description="Create a folder in the files."
+        description="Create a folder in Drive."
         params={[
           { name: "<name>", type: "string", desc: "Folder name.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -212,7 +216,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <CommandRef
         command="stash files add-page"
         args="<name> [--ws ID] [--folder FOLDER_ID] [--content '...']"
-        description="Add a new page to the files."
+        description="Add a new page to Drive."
         params={[
           { name: "<name>", type: "string", desc: "Page title.", required: true },
           { name: "--folder", type: "string", desc: "Folder ID." },
@@ -331,7 +335,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <H2>Sources &amp; search</H2>
       <P>
         A <strong>source</strong> is anything the agent can read, exposed as a virtual file
-        system: the two native sources — <Code>files</Code> and <Code>sessions</Code> — plus your
+        system: the two native sources — <Code>files</Code> (displayed as Drive) and <Code>sessions</Code> — plus your
         connected sources (GitHub, Google Drive, Gmail, Notion, Slack, Granola). Pick a source like a
         drive, browse it by path, read a document, or search one source — or everything at once.
       </P>
@@ -339,7 +343,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <CommandRef
         command="stash sources ls"
         args="[--ws ID]"
-        description="List every source you can read here: the native files and sessions sources plus your connected sources. Each row prints a source handle to use with the other commands."
+        description="List every source you can read here: the native Drive and sessions sources plus your connected sources. Each row prints a source handle to use with the other commands."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}

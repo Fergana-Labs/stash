@@ -74,7 +74,7 @@ export default function FolderDetailPage() {
           href: `/workspaces/${workspaceId}/folders/${cr.id}`,
         }));
         setCrumbs([
-          { label: "Files", href: `/workspaces/${workspaceId}/files` },
+          { label: "Drive", href: `/workspaces/${workspaceId}/files` },
           ...trail,
           { label: c.folder.name },
         ]);

@@ -37,7 +37,7 @@ const NAV: NavSection[] = [
           { href: "/docs/cli#virtual-filesystem", label: "Virtual filesystem" },
           { href: "/docs/cli#authentication", label: "Authentication" },
           { href: "/docs/cli#workspaces", label: "Workspaces" },
-          { href: "/docs/cli#files", label: "Files" },
+          { href: "/docs/cli#drive", label: "Drive" },
           { href: "/docs/cli#sessions", label: "Sessions" },
           { href: "/docs/cli#tables", label: "Tables" },
           { href: "/docs/cli#uploaded-files", label: "Uploaded Files" },

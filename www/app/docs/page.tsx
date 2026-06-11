@@ -158,7 +158,7 @@ export default function DocsOverview() {
                 <div>6 Things:</div>
                 <div className="pl-2 text-zinc-600 space-y-0.5">
                   <div>• Page tree: d3-force stabilization, pan/zoom/drag, hover links</div>
-                  <div>• Files navigation: browser back/forward, URL sync</div>
+                  <div>• Drive navigation: browser back/forward, URL sync</div>
                   <div>• ID-based page links with autocomplete</div>
                   <div>• Fixed embedding space click/drag, loading blink</div>
                   <div>• Workspace dropdown separated from workspace-home link</div>
@@ -206,7 +206,7 @@ export default function DocsOverview() {
                 <div className="pl-2 space-y-0.5">
                   <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From git:</div>
                   <div className="text-zinc-600">• Page tree: d3-force stabilization, pan/zoom/drag, hover links</div>
-                  <div className="text-zinc-600">• Files navigation: browser back/forward, URL sync</div>
+                  <div className="text-zinc-600">• Drive navigation: browser back/forward, URL sync</div>
                   <div className="text-zinc-600">• ID-based page links with autocomplete</div>
                   <div className="text-zinc-600">• Fixed embedding space click/drag, loading blink</div>
                   <div className="text-zinc-600">• Workspace dropdown separated from workspace-home link</div>

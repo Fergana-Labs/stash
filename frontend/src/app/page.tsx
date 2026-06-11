@@ -37,7 +37,7 @@ function EmptyHome({
         Your workspace home
       </h1>
       <p className="max-w-[720px] text-[14.5px] leading-relaxed text-muted">
-        Workspaces are the home for agent sessions, Files, and Cartridges.
+        Workspaces are the home for agent sessions, Drive, and Cartridges.
         Create one to get started or join one with an invite code.
       </p>
 

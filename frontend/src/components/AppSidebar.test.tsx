@@ -99,32 +99,32 @@ afterEach(() => {
 });
 
 describe("AppSidebar workspace nav", () => {
-  it("links Cartridges, Sessions, and Files straight to their list pages", async () => {
+  it("links Cartridges, Sessions, and Drive straight to their list pages", async () => {
     render(<AppSidebar user={user} />);
 
     await waitFor(() => expect(navLink("Cartridges")).toBeTruthy());
 
     expect(navLink("Cartridges").getAttribute("href")).toBe("/workspaces/ws-1/cartridges");
     expect(navLink("Agent Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
-    expect(navLink("Files").getAttribute("href")).toBe("/workspaces/ws-1/files");
+    expect(navLink("Drive").getAttribute("href")).toBe("/workspaces/ws-1/files");
     expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");
   });
 
   it("does not render native <details> trees for the sections", async () => {
     const { container } = render(<AppSidebar user={user} />);
 
-    await waitFor(() => expect(navLink("Files")).toBeTruthy());
+    await waitFor(() => expect(navLink("Drive")).toBeTruthy());
 
     expect(container.querySelector("details")).toBeNull();
   });
 
-  it("marks the Files section active when viewing a file route", async () => {
+  it("marks the Drive section active when viewing a file route", async () => {
     nav.pathname = "/workspaces/ws-1/folders/folder-1";
     render(<AppSidebar user={user} />);
 
-    await waitFor(() => expect(navLink("Files")).toBeTruthy());
+    await waitFor(() => expect(navLink("Drive")).toBeTruthy());
 
-    expect(navLink("Files").className).toContain("color-brand-800");
+    expect(navLink("Drive").className).toContain("color-brand-800");
     expect(navLink("Agent Sessions").className).not.toContain("color-brand-800");
   });
 });

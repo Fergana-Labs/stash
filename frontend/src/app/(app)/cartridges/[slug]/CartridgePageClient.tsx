@@ -320,12 +320,12 @@ function CartridgePageBody({
             {/* Compact item lists by kind. Items deep-link to the editor /
                 viewer in the owning workspace — no inline rendering. */}
             <div className="mt-6 flex flex-col gap-6">
-              {/* Two high-level taxonomies: Files (folders + pages + files +
+              {/* Two high-level taxonomies: Drive (folders + pages + files +
                   tables — anything you could drop into Drive) and Sessions
                   (agent transcripts). Tables are a structured kind of file,
-                  so they live under Files rather than as a separate section. */}
+                  so they live under Drive rather than as a separate section. */}
               <CartridgeItemSection
-                title="Files"
+                title="Drive"
                 items={[
                   ...(groups.folder ?? []),
                   ...(groups.page ?? []),

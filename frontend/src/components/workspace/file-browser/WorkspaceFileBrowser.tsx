@@ -591,7 +591,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
                 />
               </h1>
             ) : (
-              // Root: the breadcrumb + sidebar already say "Files"; no redundant title.
+              // Root: the breadcrumb + sidebar already say "Drive"; no redundant title.
               <div />
             )}
             <div className="flex flex-wrap items-center gap-2">
@@ -731,10 +731,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   );
 }
 
-// Drive-style root selector: your workspace's files vs items shared with you.
+// Root selector: your Drive items vs items shared with you.
 function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) => void }) {
   const tabs: { key: Scope; label: string }[] = [
-    { key: "mine", label: "My files" },
+    { key: "mine", label: "My Drive" },
     { key: "shared", label: "Shared with me" },
   ];
   return (
