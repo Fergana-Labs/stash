@@ -76,6 +76,12 @@ async def _claim_for_processing(file_id: UUID) -> bool:
 
 
 async def _mark_failed_externally(file_id: UUID, error: str) -> None:
+    """Record a failure only if the child died without reporting one.
+
+    When the child persists its own redacted error it also moves the row
+    out of 'processing', so the guard keeps us from overwriting it with
+    a bare exit-code marker.
+    """
     pool = get_pool()
     await pool.execute(
         f"""
@@ -87,6 +93,7 @@ async def _mark_failed_externally(file_id: UUID, error: str) -> None:
             extraction_error = $2,
             locked_at = NULL
         WHERE id = $1
+          AND extraction_status = 'processing'
         """,
         file_id,
         error[:2000],
