@@ -264,7 +264,7 @@ async def rename_workspace_session(
         session["id"],
         current_user["id"],
         workspace_id=workspace_id,
-        require_write=True,
+        require="write",
     )
     if not can_write:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -298,7 +298,7 @@ async def _check_session_write(
         session_row_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=True,
+        require="write",
     )
     if not can_write:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -387,7 +387,7 @@ async def upload_session_artifact(
         session_row_id,
         current_user["id"],
         workspace_id=workspace_id,
-        require_write=True,
+        require="write",
     )
     if not can_write:
         raise HTTPException(status_code=404, detail="Session not found")
