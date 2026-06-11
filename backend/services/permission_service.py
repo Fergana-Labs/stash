@@ -296,7 +296,8 @@ async def _session_folder_open(
         return False
     if (
         require == "write"
-        and await get_workspace_role(folder["workspace_id"], user_id) not in _ROLES_CAN_WRITE
+        and await get_workspace_role(folder["workspace_id"], user_id)
+        not in workspace_service.ROLES_CAN_WRITE
     ):
         return False
     if folder["owner_user_id"] == user_id:
