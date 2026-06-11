@@ -54,6 +54,7 @@ def _tool_json(result: dict):
 def _external_ref_for_source_type(source_type: str) -> str:
     refs = {
         "github_repo": "acme/widgets",
+        "gmail": "cleanup@example.com",
         "google_drive": "drive-root",
         "notion": "notion-root",
         "slack": "T123",
