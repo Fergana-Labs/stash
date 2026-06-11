@@ -160,8 +160,8 @@ export default function AppSidebar({
   // Connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) for the active
   // workspace, keyed by workspace id. User-scoped — only the viewer's own.
   const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
-  // Collapses only the connected external sources; the native Agent Sessions
-  // and Files rows stay visible.
+  // Collapses only the connected external sources; the native Sessions,
+  // Files, and Skills rows stay visible.
   const [externalCollapsed, setExternalCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(EXTERNAL_SOURCES_COLLAPSED_KEY) === "1";
@@ -228,7 +228,7 @@ export default function AppSidebar({
       .catch(() => {});
   }, [activeWorkspaceKey]);
 
-  // The Sources list: the two native sources always visible, then the user's
+  // The Sources list: the native sources always visible, then the user's
   // connected external sources behind a collapsible "External" header.
   // Connected sources are managed on the integrations settings page.
   const sourceRows = useMemo<{ native: SourceRow[]; connected: SourceRow[] }>(() => {
@@ -243,6 +243,9 @@ export default function AppSidebar({
     const sessionsActive =
       pathname.startsWith(`/workspaces/${ws}/sessions`) ||
       pathname.startsWith("/sessions/");
+    const skillsActive =
+      pathname.startsWith(`/workspaces/${ws}/skills`) ||
+      pathname.startsWith("/skills/");
     const native: SourceRow[] = [
       {
         key: "sessions",
@@ -257,6 +260,13 @@ export default function AppSidebar({
         label: "Files",
         icon: <span className="text-muted"><FileIcon /></span>,
         active: filesActive,
+      },
+      {
+        key: "skills",
+        href: `/workspaces/${ws}/skills`,
+        label: "Skills",
+        icon: <span aria-hidden>❏</span>,
+        active: skillsActive,
       },
     ];
     // One row per INTEGRATION (provider), not per source: collapse the
@@ -335,17 +345,6 @@ export default function AppSidebar({
             icon={<span aria-hidden>✦</span>}
             label="Agents"
             active={pathname.startsWith(`/workspaces/${activeWorkspace.id}/agents`)}
-          />
-        ) : null}
-        {activeWorkspace ? (
-          <NavRow
-            href={`/workspaces/${activeWorkspace.id}/skills`}
-            icon={<span aria-hidden>❏</span>}
-            label="Skills"
-            active={
-              pathname.startsWith(`/workspaces/${activeWorkspace.id}/skills`) ||
-              pathname.startsWith("/skills/")
-            }
           />
         ) : null}
       </nav>
