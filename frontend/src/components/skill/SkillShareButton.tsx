@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useConfirm } from "../ConfirmDialog";
 import {
   publishSkillFolder,
   unpublishSkill,
@@ -39,6 +40,7 @@ export default function SkillShareButton({
   publish: SkillPublishInfo | null;
   onPublishChange?: (publish: SkillPublishInfo | null) => void;
 }) {
+  const confirm = useConfirm();
   const [publish, setPublish] = useState<SkillPublishInfo | null>(publishProp);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -147,7 +149,12 @@ export default function SkillShareButton({
 
   async function unpublish() {
     if (!publish) return;
-    if (!confirm("Unpublish this skill? Its public link will stop working.")) return;
+    const ok = await confirm({
+      title: "Unpublish this skill?",
+      body: "Its public link will stop working.",
+      confirmLabel: "Unpublish",
+    });
+    if (!ok) return;
 
     setBusy(true);
     setMessage("");

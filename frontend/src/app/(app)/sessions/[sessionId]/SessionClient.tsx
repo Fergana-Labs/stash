@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
   useActiveWorkspaceId,
   useShareAction,
@@ -121,6 +122,7 @@ export default function SessionViewerPage() {
   const router = useRouter();
   const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading } = useAuth();
+  const confirm = useConfirm();
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
@@ -261,12 +263,11 @@ export default function SessionViewerPage() {
                           label: "Delete",
                           destructive: true,
                           onSelect: async () => {
-                            if (
-                              !window.confirm(
-                                `Move session "${sessionId}" to trash?`
-                              )
-                            )
-                              return;
+                            const ok = await confirm({
+                              title: `Move session "${sessionId}" to trash?`,
+                              confirmLabel: "Delete",
+                            });
+                            if (!ok) return;
                             try {
                               await trashItem(workspaceId, "session", sessionDetail.id);
                               router.push(`/workspaces/${workspaceId}/sessions`);

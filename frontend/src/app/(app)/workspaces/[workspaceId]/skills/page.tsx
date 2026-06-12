@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import {
   CardGridSkeleton,
   SkillsGridSkeleton,
@@ -55,6 +56,7 @@ export default function WorkspaceSkillsPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const pins = usePins("skills", workspaceId);
+  const confirm = useConfirm();
 
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [sharedSkills, setSharedSkills] = useState<SharedSkill[]>([]);
@@ -148,10 +150,12 @@ export default function WorkspaceSkillsPage() {
 
   async function bulkDeleteSkills() {
     if (selectedSkills.length === 0) return;
-    const yes = window.confirm(
-      `Delete ${selectedSkills.length} skill${selectedSkills.length === 1 ? "" : "s"} and their files?`,
-    );
-    if (!yes) return;
+    const ok = await confirm({
+      title: `Delete ${selectedSkills.length} skill${selectedSkills.length === 1 ? "" : "s"}?`,
+      body: "Their files will be deleted too. This can't be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       for (const skill of selectedSkills) {
         await deleteFolder(workspaceId, skill.folder_id);

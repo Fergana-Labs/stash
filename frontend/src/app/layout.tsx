@@ -3,6 +3,7 @@ import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
 import { ShellChromeProvider } from "../components/ShellChromeContext";
+import { ConfirmDialogProvider } from "../components/ConfirmDialog";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -43,7 +44,9 @@ export default function RootLayout({
         className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} antialiased min-h-screen`}
       >
         <BreadcrumbProvider>
-          <ShellChromeProvider>{children}</ShellChromeProvider>
+          <ShellChromeProvider>
+            <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+          </ShellChromeProvider>
         </BreadcrumbProvider>
       </body>
     </html>

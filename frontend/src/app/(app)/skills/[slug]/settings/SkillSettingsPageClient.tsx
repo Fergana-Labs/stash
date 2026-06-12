@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import { useActiveWorkspaceId } from "../../../../../components/ShellChromeContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -28,6 +29,7 @@ import { resetSkillNavigationCache } from "../../../../../lib/skillNavigationCac
 export default function SkillSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const confirm = useConfirm();
   const [data, setData] = useState<PublicSkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
@@ -212,12 +214,12 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
 
   async function handleStopSharing() {
     if (!skill) return;
-    if (
-      !confirm(
-        `Stop sharing "${skill.title}"? The share link stops working; the skill folder and its files stay in your workspace.`
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Stop sharing "${skill.title}"?`,
+      body: "The share link stops working; the skill folder and its files stay in your workspace.",
+      confirmLabel: "Stop sharing",
+    });
+    if (!ok) return;
 
     setSaving("unpublish");
     setError("");

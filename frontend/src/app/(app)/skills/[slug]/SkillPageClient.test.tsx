@@ -13,6 +13,7 @@ import {
   ShellChromeProvider,
   useShellChromeValue,
 } from "../../../../components/ShellChromeContext";
+import { ConfirmDialogProvider } from "../../../../components/ConfirmDialog";
 import {
   getPublicSkill,
   listObjectShares,
@@ -81,10 +82,12 @@ vi.mock("./AddToWorkspaceButton", () => ({
 // Lets us assert that share buttons surface in the app chrome.
 function ShellChromeHarness({ children }: { children: ReactNode }) {
   return (
-    <ShellChromeProvider>
-      <SharedHeader />
-      <main>{children}</main>
-    </ShellChromeProvider>
+    <ConfirmDialogProvider>
+      <ShellChromeProvider>
+        <SharedHeader />
+        <main>{children}</main>
+      </ShellChromeProvider>
+    </ConfirmDialogProvider>
   );
 }
 

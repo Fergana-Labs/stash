@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../../components/ConfirmDialog";
 import { useShareAction } from "../../../../../../components/ShellChromeContext";
 import { FileBrowserSkeleton } from "../../../../../../components/SkeletonStates";
 import ResourceShareButton from "../../../../../../components/share/ResourceShareButton";
@@ -28,6 +29,7 @@ export default function SkillFolderClient() {
   const workspaceId = params.workspaceId as string;
   const folderId = params.folderId as string;
   const { user, loading } = useAuth();
+  const confirm = useConfirm();
 
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [publish, setPublish] = useState<SkillPublishInfo | null>(null);
@@ -106,9 +108,11 @@ export default function SkillFolderClient() {
     const publishedWarning = publish
       ? " Its share link will stop working."
       : "";
-    const yes = window.confirm(
-      `Convert "${contents.folder.name}" back to a plain folder? This deletes its SKILL.md.${publishedWarning}`,
-    );
+    const yes = await confirm({
+      title: `Convert "${contents.folder.name}" back to a plain folder?`,
+      body: `This deletes its SKILL.md.${publishedWarning}`,
+      confirmLabel: "Convert",
+    });
     if (!yes) return;
     const skillMd = contents.pages.find((p) => p.name === SKILL_MD);
     if (!skillMd) {
@@ -122,7 +126,7 @@ export default function SkillFolderClient() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Convert failed");
     }
-  }, [contents, publish, workspaceId, folderId, router]);
+  }, [contents, publish, workspaceId, folderId, router, confirm]);
 
   // Skill actions live on the skill root; subfolders are plain browsing.
   const isSkillRoot = !!contents?.folder.is_skill;
