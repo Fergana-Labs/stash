@@ -4882,7 +4882,7 @@ def mount_command(
 
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
+        console.print("[red]Not signed in. Run [bold]stash login[/bold] first.[/red]")
         raise typer.Exit(1)
 
     client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
@@ -4913,7 +4913,7 @@ def vfs_command(
 
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
+        console.print("[red]Not signed in. Run [bold]stash login[/bold] first.[/red]")
         raise typer.Exit(1)
 
     client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])

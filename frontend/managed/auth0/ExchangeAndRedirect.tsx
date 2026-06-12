@@ -89,7 +89,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-      if (!approveRes.ok) throw new Error("CLI session expired. Re-run `stash signin`.");
+      if (!approveRes.ok) throw new Error("CLI session expired. Re-run `stash login`.");
       onCliApproved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not authorize CLI");

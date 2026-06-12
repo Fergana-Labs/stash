@@ -66,7 +66,8 @@ export default function ConnectTokenClient({ apiUrl, sessionId, userName, access
           CLI authorized as {userName}
         </p>
         <p className="mt-4 max-w-[560px] text-[16px] leading-[1.6] text-dim">
-          Head back to your terminal — <code>stash signin</code> has the token and will finish
+          Head back to your terminal — the <code>stash</code>{" "}
+          CLI has the token and will finish
           wiring up your workspace. You can close this tab.
         </p>
       </div>

@@ -183,7 +183,7 @@ function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
               <Code>{`bash -c "$(curl -fsSL https://joinstash.ai/install)"`}</Code>
             </SetupStep>
             <SetupStep n={2} title="Sign in">
-              <Code>stash signin</Code>
+              <Code>stash login</Code>
             </SetupStep>
             <SetupStep n={3} title="Point your agent at Skill">
               <a

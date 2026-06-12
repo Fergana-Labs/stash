@@ -503,7 +503,7 @@ function TryItOutStep({
       >
         <div className="space-y-2">
           <CommandBlock command={CLI_INSTALL_COMMAND} />
-          <CommandBlock command="stash signin" />
+          <CommandBlock command="stash login" />
         </div>
       </TryOption>
     </div>
