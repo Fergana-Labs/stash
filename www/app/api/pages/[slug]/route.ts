@@ -35,3 +35,18 @@ export async function PATCH(
     headers: { "Content-Type": "application/json" },
   });
 }
+
+// Agent-facing delete, reached as
+// `curl -X DELETE "joinstash.ai/pages/{slug}?token=…"` via the proxy rewrite.
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const { slug } = await params;
+  const token = request.nextUrl.searchParams.get("token") ?? "";
+  const res = await fetch(
+    `${API_URL}/api/v1/pastes/${encodeURIComponent(slug)}?token=${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+  );
+  return new NextResponse(null, { status: res.status });
+}

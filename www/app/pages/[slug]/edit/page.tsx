@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import DeletePasteButton from "../../_components/DeletePasteButton";
 import EditPageClient from "../../_components/EditPageClient";
 import { fetchComments, fetchPaste } from "../../_lib/paste";
 
@@ -41,6 +42,7 @@ export default async function PasteEditPage({
           <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink">
             Editing: {paste.title}
           </span>
+          <DeletePasteButton slug={paste.slug} token={token} />
           <Link
             href={`/pages/${paste.slug}`}
             className="shrink-0 text-[12.5px] font-medium text-dim hover:text-ink"

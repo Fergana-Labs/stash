@@ -81,6 +81,13 @@ async def update_paste(request: Request, slug: str, token: str, body: PasteUpdat
     return paste
 
 
+@router.delete("/{slug}", status_code=204)
+@limiter.limit("30/minute")
+async def delete_paste(request: Request, slug: str, token: str) -> None:
+    if not await paste_service.delete_paste(slug, token):
+        raise HTTPException(status_code=404, detail="Paste not found")
+
+
 @router.get("/{slug}/comments")
 @limiter.limit("120/minute")
 async def list_comments(request: Request, slug: str) -> dict:

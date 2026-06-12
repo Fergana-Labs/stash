@@ -27,6 +27,10 @@ Always hand the human **both** links: the view_url to share, and the edit_url to
 
 \`PATCH <edit_url>\` with the new content as the body — raw markdown/HTML, or JSON \`{"content": "..."}\`.
 
+## Delete a page
+
+\`DELETE <view_url>?token=<edit_token>\` — the token is the one in the edit_url. Deletes the page and its comments permanently.
+
 ## Example
 
 \`\`\`

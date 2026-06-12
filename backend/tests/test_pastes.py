@@ -180,6 +180,34 @@ async def test_comment_requires_body(client: AsyncClient):
     assert resp.status_code == 422
 
 
+async def test_delete_paste_with_token(client: AsyncClient):
+    paste = await _create(client)
+    resp = await client.delete(f"/api/v1/pastes/{paste['slug']}?token={paste['edit_token']}")
+    assert resp.status_code == 204
+    gone = await client.get(f"/api/v1/pastes/{paste['slug']}")
+    assert gone.status_code == 404
+
+
+async def test_delete_paste_wrong_token_404(client: AsyncClient):
+    paste = await _create(client)
+    resp = await client.delete(f"/api/v1/pastes/{paste['slug']}?token=wrong")
+    assert resp.status_code == 404
+    # Still readable — the bad-token delete didn't go through.
+    still = await client.get(f"/api/v1/pastes/{paste['slug']}")
+    assert still.status_code == 200
+
+
+async def test_delete_cascades_comments(client: AsyncClient):
+    paste = await _create(client)
+    await client.post(
+        f"/api/v1/pastes/{paste['slug']}/comments", json={"body": "doomed comment"}
+    )
+    await client.delete(f"/api/v1/pastes/{paste['slug']}?token={paste['edit_token']}")
+    # Comments endpoint on a deleted paste returns an empty list, not the orphan.
+    listed = await client.get(f"/api/v1/pastes/{paste['slug']}/comments")
+    assert listed.json()["comments"] == []
+
+
 async def test_collab_authorize_paste(client: AsyncClient):
     paste = await _create(client)
     resp = await client.post(
