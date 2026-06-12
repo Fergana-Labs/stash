@@ -1241,6 +1241,130 @@ async def source_entries(
     return entries
 
 
+# --- sources tree: the whole workspace as one filesystem ---------------------
+
+# Per-source row budget when building the tree. ORDER BY path means a source
+# bigger than this shows a path-ordered slice; the per-directory caps below
+# keep the rendered tree honest about what's hidden.
+TREE_DOC_LIMIT = 5000
+
+
+def build_entry_tree(entries: list[dict], depth: int, per_dir: int) -> list[dict]:
+    """Nest flat path-keyed entries ({path, name, kind}) into a tree trimmed to
+    `depth` levels, with at most `per_dir` children per directory. Directories
+    are synthesized from path segments; a capped directory gets a final
+    {"kind": "truncated", "hidden": n} child so renderers can say '+n more'."""
+    root: dict[str, dict] = {}
+    for entry in entries:
+        parts = [part for part in entry["path"].split("/") if part]
+        if not parts:
+            continue
+        children = root
+        for index, part in enumerate(parts[:depth]):
+            is_entry = index == len(parts) - 1
+            node = children.get(part)
+            if node is None:
+                node = {"name": part, "kind": "folder", "children": {}}
+                children[part] = node
+            if is_entry:
+                node["kind"] = entry["kind"]
+                node["path"] = entry["path"]
+            children = node["children"]
+    return _finalize_tree(root, per_dir)
+
+
+def _finalize_tree(children: dict[str, dict], per_dir: int) -> list[dict]:
+    nodes = []
+    names = sorted(children)
+    for name in names[:per_dir]:
+        node = children[name]
+        out = {"name": node["name"], "kind": node["kind"]}
+        if "path" in node:
+            out["path"] = node["path"]
+        kids = _finalize_tree(node["children"], per_dir)
+        if kids:
+            out["children"] = kids
+        nodes.append(out)
+    hidden = len(names) - per_dir
+    if hidden > 0:
+        nodes.append({"name": "", "kind": "truncated", "hidden": hidden})
+    return nodes
+
+
+def _capped_flat_tree(entries: list[dict], per_dir: int) -> list[dict]:
+    nodes = entries[:per_dir]
+    hidden = len(entries) - per_dir
+    if hidden > 0:
+        nodes.append({"name": "", "kind": "truncated", "hidden": hidden})
+    return nodes
+
+
+async def sources_tree(
+    workspace_id: UUID, user_id: UUID, depth: int = 3, per_dir: int = 50
+) -> list[dict]:
+    """Every source the user can see, each with a nested entry tree — one call
+    renders the whole workspace as a filesystem (`stash ls`)."""
+    from .files_tree_service import list_workspace_pages
+    from .memory_service import list_workspace_sessions
+
+    depth = max(1, min(depth, 10))
+    pages = await list_workspace_pages(workspace_id, user_id)
+    sessions = await list_workspace_sessions(workspace_id, user_id)
+    out = [
+        {
+            "source": NATIVE_FILES,
+            "type": "native_files",
+            "display_name": "Files",
+            "tree": _capped_flat_tree(
+                [{"name": p["name"], "kind": "page", "ref": str(p["id"])} for p in pages],
+                per_dir,
+            ),
+        },
+        {
+            "source": NATIVE_SESSIONS,
+            "type": "native_sessions",
+            "display_name": "Session transcripts",
+            "tree": _capped_flat_tree(
+                [
+                    {
+                        "name": s.get("agent_name") or "session",
+                        "kind": "session",
+                        "ref": s["session_id"],
+                    }
+                    for s in sessions
+                ],
+                per_dir,
+            ),
+        },
+    ]
+
+    for source in await list_connected_sources(workspace_id, user_id):
+        item = {
+            "source": source["id"],
+            "type": source["source_type"],
+            "display_name": source["display_name"],
+            "sync_status": source["sync_status"],
+            "last_synced_at": source["last_synced_at"],
+        }
+        if source["capability"] == "queryable":
+            # Live-query source (Snowflake): no document table to walk.
+            item["tree"] = []
+        else:
+            entries = await list_documents(source, limit=TREE_DOC_LIMIT)
+            item["tree"] = build_entry_tree(entries, depth, per_dir)
+        out.append(item)
+
+    await _audit_source_read(
+        action="source.tree_listed",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=None,
+        connected=None,
+        metadata={"source_count": len(out)},
+    )
+    return out
+
+
 def source_document_url(
     source_type: str,
     external_ref: str | None,

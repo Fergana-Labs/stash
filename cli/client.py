@@ -604,6 +604,9 @@ class StashClient:
     def delete_source(self, workspace_id: str, source_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/sources/{source_id}")
 
+    def sources_tree(self, workspace_id: str, depth: int = 3) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sources/tree", "sources", depth=depth)
+
     def list_source_entries(self, workspace_id: str, source: str, path: str = "") -> list:
         return self._list(
             f"/api/v1/workspaces/{workspace_id}/sources/{source}/entries", "entries", path=path
