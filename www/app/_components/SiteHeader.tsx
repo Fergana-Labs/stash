@@ -35,6 +35,12 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
             Agent-native Drive
           </Link>
           <Link
+            href="/#pricing"
+            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
+          >
+            Pricing
+          </Link>
+          <Link
             href="/docs"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
           >

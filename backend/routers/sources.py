@@ -19,6 +19,7 @@ from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
 from ..services import (
+    billing_service,
     permission_service,
     security_audit_service,
     source_service,
@@ -300,6 +301,9 @@ async def add_source(
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
+    await billing_service.ensure_can_add_source(
+        current_user["id"], workspace_id, body.source_type, external_ref
+    )
     try:
         created = await source_service.create_source(
             workspace_id=workspace_id,

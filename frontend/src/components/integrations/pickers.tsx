@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { addWorkspaceSource } from "@/lib/api";
+import { addWorkspaceSource, ApiError } from "@/lib/api";
 import {
   type IntegrationAccount,
   listAsanaProjects,
@@ -55,11 +55,13 @@ export function AddSourceControls({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [paymentRequired, setPaymentRequired] = useState(false);
   const [gongWorkspaceIds, setGongWorkspaceIds] = useState("");
 
   async function add(body?: AddSourceBody) {
     setBusy(true);
     setError("");
+    setPaymentRequired(false);
     try {
       await addWorkspaceSource(workspaceId, {
         source_type: connector.sourceType,
@@ -69,6 +71,7 @@ export function AddSourceControls({
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add source");
+      setPaymentRequired(e instanceof ApiError && e.status === 402);
       return false;
     } finally {
       setBusy(false);
@@ -76,7 +79,17 @@ export function AddSourceControls({
   }
 
   const errorRow = error ? (
-    <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
+    <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">
+      {error}
+      {paymentRequired && (
+        <>
+          {" "}
+          <a href="/settings" className="font-semibold underline">
+            Upgrade to Pro
+          </a>
+        </>
+      )}
+    </div>
   ) : null;
 
   if (connector.kind === "github") {

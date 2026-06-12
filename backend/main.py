@@ -21,6 +21,7 @@ from .routers import (
     aggregate,
     analytics,
     batch,
+    billing,
     collab,
     demo,
     discover,
@@ -139,6 +140,7 @@ app.include_router(session_folders.ws_router)
 app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
+app.include_router(billing.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 
