@@ -160,6 +160,22 @@ async def search_sources(
     return {"results": results}
 
 
+@router.get("/tree")
+async def sources_tree(
+    workspace_id: UUID,
+    depth: int = 3,
+    current_user: dict = Depends(get_current_user),
+):
+    """The whole workspace as one filesystem: every source the user can see,
+    each with a nested entry tree trimmed to `depth` levels."""
+    await _require_member(workspace_id, current_user["id"])
+    return {
+        "sources": await source_service.sources_tree(
+            workspace_id, current_user["id"], depth=depth
+        )
+    }
+
+
 @router.get("/{source}/entries")
 async def list_source_entries(
     workspace_id: UUID,
