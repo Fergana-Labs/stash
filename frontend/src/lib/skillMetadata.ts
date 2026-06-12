@@ -49,7 +49,7 @@ export async function metadataForPublicSkillItem({
   const data = await loadPublicSkillPreview(slug);
   if (!data) return { title: "Skill - Skill" };
 
-  const item = findSkillItem(data.items, itemType, itemId);
+  const item = findSkillItem(data.contents, itemType, itemId);
   if (!item) return metadataForPublicSkill({ slug, path: `/skills/${slug}` });
 
   const title = itemMetadataTitle(data, item);

@@ -22,89 +22,70 @@ function detail(): SkillPreviewData {
       owner_display_name: "Henry",
     },
     workspace_name: "Product",
-    items: [
-      {
-        object_type: "page",
-        object_id: "page-1",
-        position: 0,
-        label: "Announcement Draft",
-        inline: {
-          page: {
-            name: "Announcement Draft",
-            content_type: "markdown",
-            content_markdown:
-              "The beta launch targets design partners first. The public rollout follows after onboarding metrics settle.",
-          },
+    folder_name: "Launch Plan",
+    contents: {
+      subfolders: [],
+      pages: [
+        {
+          id: "page-1",
+          name: "Announcement Draft",
+          content_type: "markdown",
+          content_markdown:
+            "The beta launch targets design partners first. The public rollout follows after onboarding metrics settle.",
+          content_html: "",
+          folder_path: [],
         },
-      },
-      {
-        object_type: "file",
-        object_id: "file-1",
-        position: 1,
-        label: "pricing.pdf",
-        inline: {
+      ],
+      files: [
+        {
+          id: "file-1",
           name: "pricing.pdf",
           content_type: "application/pdf",
           size_bytes: 2048,
+          folder_path: [],
         },
-      },
-      {
-        object_type: "session",
-        object_id: "session-row-1",
-        position: 2,
-        label: "Launch research",
-        inline: {
-          session: {
-            session_id: "agent-session-1",
-            agent_name: "codex",
-            events: [
-              {
-                agent_name: "codex",
-                event_type: "assistant_message",
-                content: "I found three prior launch notes and summarized the risk areas.",
-              },
-            ],
-          },
-        },
-      },
-    ],
+      ],
+      tables: [],
+    },
   };
 }
 
 describe("skill preview metadata", () => {
-  it("builds skill-level titles and descriptions from item counts", () => {
+  it("builds skill-level titles and descriptions from content counts", () => {
     const data = detail();
 
     expect(skillMetadataTitle(data)).toBe("Launch Plan - Skill");
     expect(skillMetadataDescription(data)).toBe(
-      "A Skill with 3 items: 1 page, 1 file, 1 session from Product.",
+      "A Skill with 2 files: 1 page, 1 file from Product.",
     );
   });
 
   it("builds item metadata from inlined page contents", () => {
     const data = detail();
-    const item = data.items[0];
+    const item = findSkillItem(data.contents, "page", "page-1");
 
-    expect(itemMetadataTitle(data, item)).toBe(
+    expect(item).not.toBeNull();
+    expect(itemMetadataTitle(data, item!)).toBe(
       "Announcement Draft - Launch Plan - Skill",
     );
-    expect(itemMetadataDescription(data, item)).toContain(
+    expect(itemMetadataDescription(data, item!)).toContain(
       "The beta launch targets design partners first",
     );
   });
 
-  it("matches session routes by session_id", () => {
+  it("finds files in the contents payload by id", () => {
     const data = detail();
 
-    expect(findSkillItem(data.items, "session", "agent-session-1")?.label).toBe(
-      "Launch research",
-    );
+    const item = findSkillItem(data.contents, "file", "file-1");
+    expect(item?.item.name).toBe("pricing.pdf");
+    expect(findSkillItem(data.contents, "file", "missing")).toBeNull();
   });
 
   it("builds preview cards with content lines", () => {
     const data = detail();
     const skillCard = buildSkillPreviewCard(data);
-    const itemCard = buildItemPreviewCard(data, data.items[0]);
+    const pageItem = findSkillItem(data.contents, "page", "page-1")!;
+    const itemCard = buildItemPreviewCard(data, pageItem);
 
     expect(skillCard.lines.map((line) => line.label)).toContain("Announcement Draft");
     expect(itemCard.lines[0].excerpt).toContain("The beta launch targets");
@@ -112,22 +93,18 @@ describe("skill preview metadata", () => {
 
   it("uses visible HTML content for the product-style preview body", () => {
     const data = detail();
-    const item = {
-      object_type: "page" as const,
-      object_id: "html-page-1",
-      position: 0,
-      label: "HTML Share",
-      inline: {
-        page: {
-          name: "HTML Share",
-          content_type: "html",
-          content_html:
-            "<html><head><title>Head Title</title><style>body{}</style></head><body><h1>Visible Heading</h1><p>Visible body copy.</p></body></html>",
-          updated_at: "2026-06-02T06:53:17.953882+00:00",
-        },
-      },
-    };
+    data.contents.pages.push({
+      id: "html-page-1",
+      name: "HTML Share",
+      content_type: "html",
+      content_markdown: "",
+      content_html:
+        "<html><head><title>Head Title</title><style>body{}</style></head><body><h1>Visible Heading</h1><p>Visible body copy.</p></body></html>",
+      updated_at: "2026-06-02T06:53:17.953882+00:00",
+      folder_path: [],
+    });
 
+    const item = findSkillItem(data.contents, "page", "html-page-1")!;
     const card = buildItemPreviewCard(data, item);
 
     expect(card.contentBadge).toBe("HTML");

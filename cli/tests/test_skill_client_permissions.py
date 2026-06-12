@@ -1,4 +1,4 @@
-from cli.client import StashClient, skill_permissions_for_access
+from cli.client import StashClient
 
 
 def _post_stub_client():
@@ -13,78 +13,36 @@ def _post_stub_client():
     return client, calls
 
 
-def test_skill_permissions_for_access() -> None:
-    assert skill_permissions_for_access("public") == {
-        "workspace_permission": "read",
-        "public_permission": "read",
-    }
-    assert skill_permissions_for_access("workspace") == {
-        "workspace_permission": "read",
-        "public_permission": "none",
-    }
-    assert skill_permissions_for_access("private") == {
-        "workspace_permission": "none",
-        "public_permission": "none",
-    }
-
-
-def test_create_skill_uses_permission_fields() -> None:
+def test_publish_skill_folder_publishes_publicly() -> None:
     client, calls = _post_stub_client()
 
-    client.create_skill("WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}])
+    client.publish_skill_folder("WS", "F1", title="Launch notes", discoverable=True)
 
     assert calls == [
         (
             "/api/v1/workspaces/WS/skills",
             {
-                "title": "Launch notes",
+                "folder_id": "F1",
                 "description": "",
-                "workspace_permission": "read",
-                "public_permission": "none",
-                "discoverable": False,
-                "items": [{"object_type": "folder", "object_id": "F1"}],
+                "discoverable": True,
+                "title": "Launch notes",
             },
         )
     ]
 
 
-def test_publish_skill_uses_public_permission_fields() -> None:
+def test_publish_skill_folder_defaults() -> None:
     client, calls = _post_stub_client()
 
-    client.publish_skill("WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}])
+    client.publish_skill_folder("WS", "F1")
 
     assert calls == [
         (
-            "/api/v1/workspaces/WS/skills/publish",
+            "/api/v1/workspaces/WS/skills",
             {
-                "title": "Launch notes",
+                "folder_id": "F1",
                 "description": "",
-                "workspace_permission": "read",
-                "public_permission": "read",
                 "discoverable": False,
-                "items": [{"object_type": "folder", "object_id": "F1"}],
-            },
-        )
-    ]
-
-
-def test_publish_maps_audience_to_permission_fields() -> None:
-    # The /publish API has no `audience` field — sending one would be silently
-    # dropped and the server would apply its private defaults.
-    client, calls = _post_stub_client()
-
-    client.publish("WS", "Draft", "# hi", audience="private")
-
-    assert calls == [
-        (
-            "/api/v1/publish",
-            {
-                "workspace_id": "WS",
-                "title": "Draft",
-                "content": "# hi",
-                "content_type": "markdown",
-                "workspace_permission": "none",
-                "public_permission": "none",
             },
         )
     ]

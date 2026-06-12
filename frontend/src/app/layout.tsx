@@ -3,8 +3,7 @@ import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
 import { ShellChromeProvider } from "../components/ShellChromeContext";
-import { ShareModalProvider } from "../lib/shareModalContext";
-import SkillShareModal from "../components/share/SkillShareModal";
+import { ConfirmDialogProvider } from "../components/ConfirmDialog";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -46,10 +45,7 @@ export default function RootLayout({
       >
         <BreadcrumbProvider>
           <ShellChromeProvider>
-            <ShareModalProvider>
-              {children}
-              <SkillShareModal />
-            </ShareModalProvider>
+            <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
           </ShellChromeProvider>
         </BreadcrumbProvider>
       </body>

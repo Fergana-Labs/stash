@@ -60,6 +60,7 @@ async def create_table(
         if not col.get("id"):
             col["id"] = f"col_{secrets.token_hex(6)}"
         col["order"] = i
+        col.setdefault("width", 180)
     row = await pool.fetchrow(
         "INSERT INTO tables (workspace_id, folder_id, name, description, columns, created_by, updated_by) "
         "VALUES ($1, $2, $3, $4, $5, $6, $6) "
@@ -216,6 +217,7 @@ async def add_column(table_id: UUID, column: dict, updated_by: UUID) -> dict:
         "required": column.get("required", False),
         "default": column.get("default"),
         "options": column.get("options"),
+        "width": column.get("width", 180),
     }
     cols.append(new_col)
     row = await pool.fetchrow(
@@ -243,7 +245,7 @@ async def update_column(
     found = False
     for col in cols:
         if col["id"] == column_id:
-            for key in ("name", "type", "required", "default", "options"):
+            for key in ("name", "type", "required", "default", "options", "width"):
                 if key in updates and updates[key] is not None:
                     col[key] = updates[key]
             found = True

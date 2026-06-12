@@ -23,7 +23,6 @@ from ..database import get_pool
 from ..services import (
     memory_service,
     session_service,
-    shared_skill_service,
     transcript_import,
     workspace_service,
 )
@@ -57,7 +56,6 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
-    default_skill_id: UUID | None = Form(None),
     replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
 ):
@@ -99,16 +97,6 @@ async def upload_transcript(
                 cwd=cwd,
                 created_by=current_user["id"],
             )
-            if default_skill_id:
-                try:
-                    await shared_skill_service.add_sessions_to_skill(
-                        skill_id=default_skill_id,
-                        workspace_id=workspace_id,
-                        user_id=current_user["id"],
-                        session_ids=[session_id],
-                    )
-                except ValueError as e:
-                    raise HTTPException(status_code=400, detail=str(e))
             return {
                 "session_id": session_id,
                 "imported": 0,
@@ -133,16 +121,6 @@ async def upload_transcript(
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
     inserted = await memory_service.push_events_batch(workspace_id, current_user["id"], events)
-    if default_skill_id:
-        try:
-            await shared_skill_service.add_sessions_to_skill(
-                skill_id=default_skill_id,
-                workspace_id=workspace_id,
-                user_id=current_user["id"],
-                session_ids=[session_id],
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
     return {
         "session_id": session_id,
         "imported": len(inserted),
