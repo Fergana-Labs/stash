@@ -28,6 +28,7 @@ interface Props {
   /** Hands the Tiptap instance to the parent — the create flow uses it
    *  to serialize the doc on Publish instead of waiting for autosave. */
   onEditor?: (editor: Editor | null) => void;
+  toolbarVisibility?: "always" | "when-focused";
 }
 
 // The product app's MarkdownEditor (Tiptap) without the workspace-only
@@ -39,6 +40,7 @@ export default function PasteMarkdownEditor({
   onSave,
   onSaveStatusChange,
   onEditor,
+  toolbarVisibility = "always",
 }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(initialMarkdown);
@@ -153,7 +155,7 @@ export default function PasteMarkdownEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <EditorToolbar editor={editor} />
+      <EditorToolbar editor={editor} visibility={toolbarVisibility} />
       <div className="relative flex-1 overflow-y-auto">
         <div className="mx-auto min-h-full w-full max-w-[920px]">
           <EditorContent editor={editor} className="min-h-full" />

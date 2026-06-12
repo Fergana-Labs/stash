@@ -6,7 +6,6 @@ export type Paste = {
   content_type: "markdown" | "html";
   content: string;
   visibility: "public" | "unlisted";
-  public_edit: boolean;
   view_count: number;
   created_at: string;
   updated_at: string;

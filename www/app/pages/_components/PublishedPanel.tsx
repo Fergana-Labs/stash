@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 import CopyButton from "../../_components/CopyButton";
 import type { PasteVisibility } from "../actions";
 
@@ -9,38 +7,32 @@ interface Props {
   slug: string;
   editToken: string;
   visibility: PasteVisibility;
-  publicEdit: boolean;
+  onReset: () => void;
 }
 
-// The shown-once panel after publishing. The edit URL is the only place
-// the edit token ever appears — when the page is publicly editable there
-// is no token in the URL, the plain /edit route works for everyone.
-export default function PublishedPanel({ slug, editToken, visibility, publicEdit }: Props) {
+// The shown-once panel after publishing: the public view link and the
+// private edit link. The edit URL is the only place the token ever
+// appears, so this panel is the one chance to save it.
+export default function PublishedPanel({ slug, editToken, visibility, onReset }: Props) {
   const origin = window.location.origin;
   const viewUrl = `${origin}/pages/${slug}`;
-  const editUrl = publicEdit ? `${viewUrl}/edit` : `${viewUrl}/edit?token=${editToken}`;
-  const rawUrl = `${viewUrl}/raw`;
+  const editUrl = `${viewUrl}/edit?token=${editToken}`;
 
   return (
     <div className="rounded-xl border border-border bg-surface p-6">
       <h2 className="font-display text-[20px] font-semibold text-ink">Your page is live.</h2>
-      <p className="mt-1 text-[14px] text-dim">
-        {visibility === "unlisted"
-          ? "It's unlisted — only people with the link can find it."
-          : "It's public — anyone with the link can see it, and it shows in the feed."}
-        {publicEdit && " Anyone with the link can also edit it."}
-      </p>
-      <div className="mt-5 space-y-3">
-        <UrlRow label="View" url={viewUrl} />
-        <UrlRow label="Edit" url={editUrl} />
-        <UrlRow label="Raw" url={rawUrl} />
+      <div className="mt-4 space-y-3">
+        <UrlRow label="View" hint="share this" url={viewUrl} />
+        <UrlRow label="Edit" hint="keep this private" url={editUrl} />
       </div>
-      {!publicEdit && (
-        <p className="mt-3 text-[13px] font-medium text-brand-ink">
-          Save the edit link — it&apos;s the only way to edit this page and it won&apos;t be
-          shown again.
-        </p>
-      )}
+      <p className="mt-3 text-[13px] text-dim">
+        {visibility === "unlisted"
+          ? "Unlisted — anyone with the view link can read it, but it won't appear in the feed."
+          : "Anyone with the view link can read it."}{" "}
+        <span className="font-medium text-brand-ink">
+          The edit link is the only way to change this page and won&apos;t be shown again.
+        </span>
+      </p>
       <div className="mt-5 flex items-center gap-4">
         <a
           href={viewUrl}
@@ -48,18 +40,21 @@ export default function PublishedPanel({ slug, editToken, visibility, publicEdit
         >
           View your page →
         </a>
-        <Link href="/pages" className="text-[14px] text-dim hover:text-ink">
+        <button type="button" onClick={onReset} className="text-[14px] text-dim hover:text-ink">
           Publish another
-        </Link>
+        </button>
       </div>
     </div>
   );
 }
 
-function UrlRow({ label, url }: { label: string; url: string }) {
+function UrlRow({ label, hint, url }: { label: string; hint: string; url: string }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-10 shrink-0 font-mono text-[12px] text-muted">{label}</span>
+      <span className="w-24 shrink-0 font-mono text-[12px] text-muted">
+        {label}
+        <span className="block text-[10px] text-muted/80">{hint}</span>
+      </span>
       <input
         type="text"
         readOnly

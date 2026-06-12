@@ -7,16 +7,40 @@ import { Editor } from "@tiptap/react";
 // Copy of the product app's EditorToolbar minus the workspace-only
 // affordances (file upload, comments). Fixed pill toolbar centered along
 // the viewport bottom, rendered via a portal so it floats above any
-// flex/scroll ancestor.
-export default function EditorToolbar({ editor }: { editor: Editor | null }) {
+// flex/scroll ancestor. visibility="when-focused" hides it unless the
+// editor has focus — right for the inline composer on the landing page.
+export default function EditorToolbar({
+  editor,
+  visibility = "always",
+}: {
+  editor: Editor | null;
+  visibility?: "always" | "when-focused";
+}) {
   const [, forceRender] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const tableBtnRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Track editor focus for visibility="when-focused". The pill stays
+  // alive while the toolbar itself is interacted with because every
+  // toolbar button preventDefaults mousedown, so the editor keeps focus.
+  useEffect(() => {
+    if (!editor) return;
+    setIsFocused(editor.isFocused);
+    const onFocus = () => setIsFocused(true);
+    const onBlur = () => setIsFocused(editor.isFocused);
+    editor.on("focus", onFocus);
+    editor.on("blur", onBlur);
+    return () => {
+      editor.off("focus", onFocus);
+      editor.off("blur", onBlur);
+    };
+  }, [editor]);
 
   // Close the table menu on outside click / Escape.
   useEffect(() => {
@@ -57,6 +81,7 @@ export default function EditorToolbar({ editor }: { editor: Editor | null }) {
   }, [tableMenuOpen, inTable]);
 
   if (!editor || !editor.isEditable || !mounted) return null;
+  if (visibility === "when-focused" && !isFocused && !tableMenuOpen) return null;
 
   function promptLink() {
     if (!editor) return;

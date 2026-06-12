@@ -1,11 +1,11 @@
 """Anonymous public pastes — the joinstash.ai/pages pastebin.
 
 Each row is a standalone published page (markdown or mini HTML site)
-created without an account. The plaintext ``edit_token`` is the only
-write credential; it is returned once at create time and never read
-back out through the public API. ``visibility`` controls the public
-feed (unlisted pages stay link-only); ``public_edit`` makes the page
-editable by anyone with the link, no token required. Private pages
+created without an account. Publishing always yields two URLs: the
+public view link and a private edit link carrying the plaintext
+``edit_token`` — the only write credential, returned once at create
+time and never read back out through the public API. ``visibility``
+controls the public feed (unlisted pages stay link-only). Private pages
 don't exist here — that's the signup gate into the product.
 
 Revision ID: 0111
@@ -34,7 +34,6 @@ def upgrade() -> None:
             visibility VARCHAR(8) NOT NULL DEFAULT 'public'
                 CONSTRAINT pastes_visibility_check
                 CHECK (visibility IN ('public', 'unlisted')),
-            public_edit BOOLEAN NOT NULL DEFAULT false,
             view_count INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

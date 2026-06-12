@@ -20,7 +20,6 @@ export async function createPaste(input: {
   content: string;
   content_type: PasteContentType;
   visibility: PasteVisibility;
-  public_edit: boolean;
 }): Promise<CreatePasteResult> {
   const res = await fetch(`${API_URL}/api/v1/pastes`, {
     method: "POST",

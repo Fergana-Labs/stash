@@ -14,11 +14,11 @@ export const metadata: Metadata = {
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{ token?: string }>;
 
-// The edit page. Markdown gets the Tiptap WYSIWYG editor full-page; HTML
-// gets the View | Edit | Raw workbench. Reached via the secret token link,
-// or tokenless when the page was published with public_edit. The token is
-// only checked on save (a bad one surfaces as "Invalid edit link") — no
-// eager validation endpoint to act as a token oracle.
+// The private edit page, reached only via the secret token link. Markdown
+// gets the Tiptap WYSIWYG editor full-page; HTML gets the View | Edit | Raw
+// workbench. The token is only checked on save (a bad one surfaces as
+// "Invalid edit link") — no eager validation endpoint to act as a token
+// oracle.
 export default async function PasteEditPage({
   params,
   searchParams,
@@ -27,9 +27,9 @@ export default async function PasteEditPage({
   searchParams: SearchParams;
 }) {
   const { slug } = await params;
-  const { token = "" } = await searchParams;
+  const { token } = await searchParams;
   const paste = await fetchPaste(slug);
-  if (!paste || (!token && !paste.public_edit)) notFound();
+  if (!paste || !token) notFound();
 
   return (
     <main className="min-h-screen bg-background text-foreground">

@@ -128,22 +128,3 @@ async def test_private_visibility_rejected(client: AsyncClient):
         json={"content": "x", "content_type": "markdown", "visibility": "private"},
     )
     assert resp.status_code == 422
-
-
-async def test_public_edit_allows_tokenless_patch(client: AsyncClient):
-    paste = await _create(client, public_edit=True)
-    resp = await client.patch(
-        f"/api/v1/pastes/{paste['slug']}",
-        json={"content": "# Edited by a stranger"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["content"] == "# Edited by a stranger"
-
-
-async def test_tokenless_patch_404s_without_public_edit(client: AsyncClient):
-    paste = await _create(client)
-    resp = await client.patch(
-        f"/api/v1/pastes/{paste['slug']}",
-        json={"content": "# Hijacked"},
-    )
-    assert resp.status_code == 404

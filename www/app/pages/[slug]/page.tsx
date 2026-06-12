@@ -50,14 +50,6 @@ export default async function PasteReadPage({ params }: { params: Params }) {
           <span className="shrink-0 text-[12.5px] text-muted">
             {paste.view_count} {paste.view_count === 1 ? "view" : "views"}
           </span>
-          {paste.public_edit && (
-            <Link
-              href={`/pages/${paste.slug}/edit`}
-              className="shrink-0 font-mono text-[12px] text-dim underline-offset-2 hover:text-ink hover:underline"
-            >
-              Edit
-            </Link>
-          )}
           <a
             href={`/pages/${paste.slug}/raw`}
             className="shrink-0 font-mono text-[12px] text-dim underline-offset-2 hover:text-ink hover:underline"

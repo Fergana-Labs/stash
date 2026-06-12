@@ -1,10 +1,10 @@
 """Public pastes router — the joinstash.ai/pages pastebin.
 
 Fully anonymous: creation and edits are IP rate-limited rather than
-authenticated. The edit token minted at create time is the only write
-credential, passed as a ``?token=`` query param so the www edit URL can
-forward it verbatim. Reads support ``?format=raw`` so agents can curl
-the source directly.
+authenticated. Publishing returns two URLs — the public view link and a
+private edit link whose token is the only write credential, passed as a
+``?token=`` query param so the www edit URL can forward it verbatim.
+Reads support ``?format=raw`` so agents can curl the source directly.
 """
 
 from fastapi import APIRouter, HTTPException, Request
@@ -26,8 +26,6 @@ class PasteCreateRequest(BaseModel):
     # 'public' shows in the feed; 'unlisted' is link-only. There is no
     # 'private' — that's the signup gate into the product.
     visibility: str = Field("public", pattern=r"^(public|unlisted)$")
-    # When true, anyone with the link can edit — no token needed.
-    public_edit: bool = False
 
 
 class PasteUpdateRequest(BaseModel):
@@ -39,7 +37,7 @@ class PasteUpdateRequest(BaseModel):
 @limiter.limit("10/minute")
 async def create_paste(request: Request, body: PasteCreateRequest) -> dict:
     return await paste_service.create_paste(
-        body.title, body.content, body.content_type, body.visibility, body.public_edit
+        body.title, body.content, body.content_type, body.visibility
     )
 
 
@@ -63,9 +61,7 @@ async def get_paste(request: Request, slug: str, format: str = ""):
 
 @router.patch("/{slug}")
 @limiter.limit("30/minute")
-async def update_paste(
-    request: Request, slug: str, body: PasteUpdateRequest, token: str = ""
-) -> dict:
+async def update_paste(request: Request, slug: str, token: str, body: PasteUpdateRequest) -> dict:
     paste = await paste_service.update_paste(slug, token, body.title, body.content)
     if not paste:
         raise HTTPException(status_code=404, detail="Paste not found")

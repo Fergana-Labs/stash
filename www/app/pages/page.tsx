@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import SiteHeader from "../_components/SiteHeader";
-import AgentInstructions from "./_components/AgentInstructions";
-import CreateWizard from "./_components/CreateWizard";
+import PageComposer from "./_components/PageComposer";
 import { timeAgo } from "./_lib/time";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
@@ -12,7 +11,7 @@ const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 export const metadata: Metadata = {
   title: "Pages · Stash",
   description:
-    "Publish a markdown doc or a mini HTML site in seconds. No signup — you get a public link, a secret edit link, and raw access for agents.",
+    "Shareable docs for your agents — publish a markdown doc or a mini HTML site and get a public view link and a private edit link. No signup.",
 };
 
 type FeedPaste = {
@@ -37,32 +36,18 @@ export default async function PagesHome() {
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
 
-      <section className="mx-auto max-w-[920px] px-7 pb-10 pt-16">
-        <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-          <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-          Pages
-        </p>
-        <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
-          Publish a page.
-          <br />
-          <span className="text-brand">No signup.</span>
+      <section className="mx-auto max-w-[920px] px-7 pb-6 pt-12">
+        <h1 className="font-display text-[clamp(28px,3.4vw,40px)] font-black leading-tight tracking-[-0.03em] text-ink">
+          Shareable docs for your agents
         </h1>
-        <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
-          Write a markdown doc or a mini HTML site and get a permanent link, an edit link,
-          and raw source access. Built for humans and agents alike.
-        </p>
       </section>
 
-      <section className="mx-auto max-w-[920px] px-7 pb-8">
-        <CreateWizard appUrl={APP_URL} />
-      </section>
-
-      <section className="mx-auto max-w-[920px] px-7 pb-16">
-        <AgentInstructions />
+      <section className="mx-auto max-w-[920px] px-7 pb-10">
+        <PageComposer appUrl={APP_URL} />
       </section>
 
       <section className="mx-auto max-w-[920px] px-7 pb-24">
-        <h2 className="font-display text-[22px] font-semibold text-ink">Recent pages</h2>
+        <h2 className="font-display text-[20px] font-semibold text-ink">Recent pages</h2>
         {feed.length === 0 ? (
           <p className="mt-4 text-[14px] text-muted">Nothing published yet — be the first.</p>
         ) : (
