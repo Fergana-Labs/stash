@@ -11,6 +11,10 @@ import { consumeManualAuth0Logout } from "../../lib/authLogout";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
+// Dev-only: set in frontend/.env.local to land on /onboarding after every
+// login (not just first registration), so the wizard can be iterated on.
+const FORCE_ONBOARDING = process.env.NEXT_PUBLIC_FORCE_ONBOARDING === "true";
+
 // FastAPI returns `detail` as either a string or an array of validation errors
 // like [{ loc, msg, type }]. Flatten to a human-readable string.
 function formatApiError(detail: unknown, fallback: string): string {
@@ -50,7 +54,7 @@ function LoginPageInner() {
   useEffect(() => {
     if (loading || !user || cliSession) return;
 
-    if (justRegistered) {
+    if (justRegistered || FORCE_ONBOARDING) {
       router.push("/onboarding");
       return;
     }

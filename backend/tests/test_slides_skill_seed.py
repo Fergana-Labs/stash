@@ -66,7 +66,7 @@ async def test_seeded_workspace_has_slides_skill(client: AsyncClient, enable_see
     )
     assert resp.status_code == 200
     skills = resp.json()["skills"]
-    names = [s["name"] for s in skills if s["kind"] == "local"]
+    names = [s["name"] for s in skills]
     assert "slides" in names, f"slides skill missing after seed: {names}"
 
 

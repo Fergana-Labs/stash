@@ -154,7 +154,7 @@ export default function MemoryAskStep({
         abortRef.current = null;
         // Fire after the stream finishes so has_results reflects what we
         // actually rendered, not whether the request started.
-        track("web.ask_stash", {
+        track("web.ask_skill", {
           workspace_id: workspaceId,
           has_results: citationsRef.current.length > 0,
         });

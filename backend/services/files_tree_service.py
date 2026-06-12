@@ -15,7 +15,7 @@ import asyncpg
 import nh3
 
 from ..database import get_pool
-from . import page_events, permission_service, security_audit_service
+from . import page_events, permission_service, security_audit_service, skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -91,11 +91,9 @@ def _sanitize_html(html: str) -> str:
     )
 
 
-# Workspace-owned page (excludes the read-only stash mirror rows).
-_OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_skill_id', '') = ''"
-# All "live" reads filter both stash-mirror and trash. Every SELECT on
-# pages that wants the active set uses this.
-_WORKSPACE_PAGE_FILTER = f"{_OWNED_PAGE_PRED} AND deleted_at IS NULL"
+# All "live" reads filter trash. Every SELECT on pages that wants the
+# active set uses this.
+_WORKSPACE_PAGE_FILTER = "deleted_at IS NULL"
 
 
 async def _filter_readable(
@@ -696,7 +694,7 @@ async def delete_page(page_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bo
     pool = get_pool()
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NOW(), deleted_by = $3 "
-        f"WHERE id = $1 AND workspace_id = $2 AND {_OWNED_PAGE_PRED} "
+        "WHERE id = $1 AND workspace_id = $2  "
         "AND deleted_at IS NULL",
         page_id,
         workspace_id,
@@ -719,7 +717,7 @@ async def restore_page(page_id: UUID, workspace_id: UUID, restored_by: UUID) -> 
     pool = get_pool()
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
-        f"WHERE id = $1 AND workspace_id = $2 AND {_OWNED_PAGE_PRED} "
+        "WHERE id = $1 AND workspace_id = $2  "
         "AND deleted_at IS NOT NULL",
         page_id,
         workspace_id,
@@ -740,8 +738,7 @@ async def purge_page(page_id: UUID, workspace_id: UUID) -> bool:
     """Permanent delete — only callable on a page already in trash."""
     pool = get_pool()
     result = await pool.execute(
-        f"DELETE FROM pages WHERE id = $1 AND workspace_id = $2 AND {_OWNED_PAGE_PRED} "
-        "AND deleted_at IS NOT NULL",
+        "DELETE FROM pages WHERE id = $1 AND workspace_id = $2  " "AND deleted_at IS NOT NULL",
         page_id,
         workspace_id,
     )
@@ -761,7 +758,7 @@ async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, deleted_at, deleted_by "
-        f"FROM pages WHERE workspace_id = $1 AND {_OWNED_PAGE_PRED} "
+        "FROM pages WHERE workspace_id = $1  "
         "AND deleted_at IS NOT NULL "
         "ORDER BY deleted_at DESC",
         workspace_id,
@@ -969,14 +966,11 @@ async def copy_folder(
 
 
 async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) -> list[dict]:
-    """Flat list of every page in a workspace with its folder path."""
+    """Flat list of every page in a workspace with its folder path. Pages
+    inside skill folders are excluded (they belong to the Skills surface)."""
     pool = get_pool()
     args: list = [workspace_id]
-    where = (
-        "p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
-        "AND p.deleted_at IS NULL"
-    )
+    where = "p.workspace_id = $1 AND p.deleted_at IS NULL"
     if user_id is not None:
         args.append(user_id)
         where += " AND " + permission_service.readable_content_condition("page", "p", 2)
@@ -996,7 +990,8 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
         "ORDER BY c.path NULLS FIRST, p.name",
         *args,
     )
-    return [dict(r) for r in rows]
+    hidden = await skill_service.skill_subtree_folder_ids(workspace_id)
+    return [dict(r) for r in rows if r["folder_id"] is None or r["folder_id"] not in hidden]
 
 
 async def list_user_pages(user_id: UUID) -> list[dict]:
@@ -1021,25 +1016,31 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "JOIN member_workspaces mw ON mw.workspace_id = p.workspace_id "
         "JOIN workspaces w ON w.id = p.workspace_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
-        "WHERE COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
-        "AND p.deleted_at IS NULL "
+        "WHERE p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY w.name, c.path NULLS FIRST, p.name",
         user_id,
     )
-    return [dict(r) for r in rows]
+    pages = [dict(r) for r in rows]
+    hidden_by_ws: dict[UUID, set[UUID]] = {}
+    for page in pages:
+        ws = page["workspace_id"]
+        if ws not in hidden_by_ws:
+            hidden_by_ws[ws] = await skill_service.skill_subtree_folder_ids(ws)
+    return [
+        p
+        for p in pages
+        if p["folder_id"] is None or p["folder_id"] not in hidden_by_ws[p["workspace_id"]]
+    ]
 
 
 async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -> dict:
-    """Nested folder tree with pages attached at each level."""
+    """Nested folder tree with pages attached at each level. Skill subtrees are
+    excluded — Files and Skills are MECE; skill folders live in the Skills UI."""
     folders = await list_folders(workspace_id, user_id)
     pool = get_pool()
     args: list = [workspace_id]
-    where = (
-        "p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
-        "AND p.deleted_at IS NULL"
-    )
+    where = "p.workspace_id = $1 AND p.deleted_at IS NULL"
     if user_id is not None:
         args.append(user_id)
         where += " AND " + permission_service.readable_content_condition("page", "p", 2)
@@ -1049,6 +1050,10 @@ async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -
         *args,
     )
     pages = [dict(row) for row in page_rows]
+
+    hidden = await skill_service.skill_subtree_folder_ids(workspace_id)
+    folders = [f for f in folders if f["id"] not in hidden]
+    pages = [p for p in pages if p["folder_id"] is None or p["folder_id"] not in hidden]
 
     folder_by_id: dict[UUID, dict] = {}
     for f in folders:

@@ -60,7 +60,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Sharing",
     badge: "Access",
     badgeColor: "bg-rose-500/10 text-rose-500",
-    desc: "Resources are private by default. Grant a person access to a single folder, page, file, session, or table by email — pending invites convert automatically when they sign up — or bundle items into a Skill to share them together.",
+    desc: "Resources are private by default. Grant a person access to a single folder, page, file, session, or table by email — pending invites convert automatically when they sign up — or convert a folder into a Skill to share everything in it together.",
   },
   {
     name: "Search",

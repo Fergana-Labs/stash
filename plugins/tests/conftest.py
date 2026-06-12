@@ -11,4 +11,5 @@ def _scope_wide_open(monkeypatch):
     # Only patch the binding that hooks.py uses. Tests that import
     # scope.cwd_in_scope directly (scope.py's own tests) get the real thing.
     from stashai.plugin import hooks
+
     monkeypatch.setattr(hooks, "cwd_in_scope", lambda cwd: True)

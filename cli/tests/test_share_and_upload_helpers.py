@@ -32,10 +32,11 @@ def test_file_app_url_is_canonical_and_workspace_free(monkeypatch) -> None:
     )
 
 
-def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) -> None:
+def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> None:
     uploaded = tmp_path / "shot.png"
     uploaded.write_bytes(b"png")
-    published_items = []
+    published: dict = {}
+    created_pages: list[str] = []
 
     class FakeClient:
         def __enter__(self):
@@ -48,19 +49,18 @@ def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) 
             assert parent_folder_id is None
             return {"id": "folder-1", "name": name}
 
-        def upload_ws_file(self, _workspace_id, path):
+        def upload_ws_file(self, _workspace_id, path, folder_id=None):
             assert path == str(uploaded)
             return {"id": "file-1", "name": uploaded.name, "url": "https://files.test/shot.png"}
 
-        def create_page(self, *_args, **_kwargs):
-            return {"id": "page-1"}
+        def create_page(self, _workspace_id, name, content="", folder_id=None, content_type=None):
+            created_pages.append(name)
+            return {"id": f"page-{len(created_pages)}"}
 
-        def publish_skill(self, _workspace_id, title, description, items):
-            published_items.extend(items)
-            return {
-                "skill": {"id": "stash-1", "slug": "shot"},
-                "url": "https://app.example/skills/shot",
-            }
+        def publish_skill_folder(self, _workspace_id, folder_id, **kwargs):
+            published["folder_id"] = folder_id
+            published["kwargs"] = kwargs
+            return {"id": "skill-1", "slug": "shot", "title": "shot"}
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
@@ -68,20 +68,16 @@ def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) 
 
     main.upload(str(uploaded), name="", workspace_id=None, skill="shot", public=True, as_json=False)
 
-    assert published_items == [
-        {
-            "object_type": "file",
-            "object_id": "file-1",
-            "position": 0,
-            "label_override": "shot.png",
-        }
-    ]
+    # --skill makes the folder a skill (SKILL.md) and --public publishes it.
+    assert "SKILL.md" in created_pages
+    assert published["folder_id"] == "folder-1"
 
 
-def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) -> None:
+def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> None:
     uploaded = tmp_path / "notes.md"
     uploaded.write_text("# Notes")
-    published_items = []
+    published: dict = {}
+    created_pages: list[str] = []
 
     class FakeClient:
         def __enter__(self):
@@ -94,32 +90,23 @@ def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) 
             assert parent_folder_id is None
             return {"id": "folder-1", "name": name}
 
-        def create_page(self, _workspace_id, name, content, folder_id):
-            assert name == "notes.md"
-            assert content == "# Notes"
+        def create_page(self, _workspace_id, name, content="", folder_id=None, content_type=None):
+            created_pages.append(name)
             assert folder_id == "folder-1"
-            return {"id": "page-1"}
+            return {"id": f"page-{len(created_pages)}"}
 
-        def publish_skill(self, _workspace_id, title, description, items):
-            published_items.extend(items)
-            return {
-                "skill": {"id": "stash-1", "slug": "notes"},
-                "url": "https://app.example/skills/notes",
-            }
+        def publish_skill_folder(self, _workspace_id, folder_id, **kwargs):
+            published["folder_id"] = folder_id
+            return {"id": "skill-1", "slug": "notes", "title": "notes"}
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
     main.upload(
-        str(uploaded), name="", workspace_id=None, skill="notes", public=True, as_json=False
+        str(uploaded), name="", workspace_id=None, skill="notes", public=False, as_json=False
     )
 
-    assert published_items == [
-        {
-            "object_type": "page",
-            "object_id": "page-1",
-            "position": 0,
-            "label_override": "notes.md",
-        }
-    ]
+    # Private: the folder becomes a skill (SKILL.md) but nothing is published.
+    assert "SKILL.md" in created_pages
+    assert published == {}

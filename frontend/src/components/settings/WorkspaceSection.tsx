@@ -10,6 +10,7 @@ import {
   uploadFile,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
+import { useConfirm } from "../ConfirmDialog";
 import type { Workspace } from "../../lib/types";
 
 // The sidebar remembers the last workspace the user was in; the unified
@@ -19,6 +20,7 @@ const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
 
 export default function WorkspaceSection() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [error, setError] = useState("");
 
@@ -56,7 +58,12 @@ export default function WorkspaceSection() {
 
   async function handleDelete() {
     if (!workspace) return;
-    if (!confirm(`Delete "${workspace.name}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete "${workspace.name}"?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     await deleteWorkspace(workspace.id);
     resetSkillNavigationCache();
     router.push("/");

@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
   useActiveWorkspaceId,
   useShareAction,
@@ -18,7 +19,6 @@ import {
   markdownToPdfBlocks,
 } from "../../../../components/DownloadMenu";
 import { DocumentPageSkeleton } from "../../../../components/SkeletonStates";
-import { SkillIcon } from "../../../../components/SkillIcons";
 import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
@@ -36,24 +36,25 @@ import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   createCommentThread,
+  createPage,
   deleteCommentMessage,
   deleteCommentThread,
   getFolderContents,
   getPage,
   getPublicSkill,
   listCommentThreads,
-  listObjectSkills,
   reconcileCommentAnchors,
   replyToCommentThread,
   setCommentResolved,
   trashItem,
   updatePage,
   type FolderBreadcrumb,
-  type PublicSkillItem,
-  type WorkspaceSkill,
+  type PublicSkillPage,
 } from "../../../../lib/api";
+import { findInSkillContents } from "../../../../lib/localSkill";
 import type { CommentThread, Page } from "../../../../lib/types";
 import { subscribePageEvents } from "../../../../lib/pageEvents";
+import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -99,6 +100,7 @@ export default function SkillPageView() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const pageId = params.pageId as string;
   const { user, loading } = useAuth();
   // When ?skill=<slug> is present, the page is viewed through a skill —
@@ -112,9 +114,8 @@ export default function SkillPageView() {
   const workspaceId = page?.workspace_id ?? "";
   useActiveWorkspaceId(workspaceId || null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
-  const [containingSkills, setContainingSkills] = useState<WorkspaceSkill[]>([]);
   const [skillFallback, setSkillFallback] = useState<
-    { skill: WorkspaceSkill; item: PublicSkillItem } | null
+    { skillTitle: string; page: PublicSkillPage } | null
   >(null);
   const [skillAccessDenied, setSkillAccessDenied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
@@ -222,16 +223,14 @@ export default function SkillPageView() {
     if (!skillSlug) return false;
     try {
       const data = await getPublicSkill(skillSlug);
-      const item = data.items.find(
-        (it) => it.object_type === "page" && it.object_id === pageId,
-      );
-      if (!item) {
+      const page = findInSkillContents(data.contents, "page", pageId);
+      if (!page) {
         setSkillFallback(null);
         setSkillAccessDenied(true);
         setError("");
         return true;
       }
-      setSkillFallback({ skill: data.skill, item });
+      setSkillFallback({ skillTitle: data.skill.title, page });
       setSkillAccessDenied(false);
       setError("");
       return true;
@@ -270,9 +269,6 @@ export default function SkillPageView() {
     setSkillAccessDenied(false);
     setError("");
     recordRecent(p.workspace_id, pageId, "page");
-    listObjectSkills(p.workspace_id, "page", pageId)
-      .then(setContainingSkills)
-      .catch(() => {});
     if (p.folder_id) {
       getFolderContents(p.workspace_id, p.folder_id)
         .then((contents) => setFolderChain(contents.breadcrumbs))
@@ -498,8 +494,8 @@ export default function SkillPageView() {
     return (
       <SkillFallbackPageView
         skillSlug={skillSlug ?? ""}
-        skillTitle={skillFallback.skill.title}
-        item={skillFallback.item}
+        skillTitle={skillFallback.skillTitle}
+        page={skillFallback.page}
       />
     );
   }
@@ -535,6 +531,17 @@ export default function SkillPageView() {
 
   const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
   const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
+
+  async function handleNewPage() {
+    if (!page) return;
+    try {
+      const created = await createPage(workspaceId, "Untitled", page.folder_id);
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/p/${created.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create page");
+    }
+  }
 
   // Provenance: when an agent made the last content edit, link the page back to
   // the chat session that produced it.
@@ -576,22 +583,31 @@ export default function SkillPageView() {
         meta={metaItems.length ? metaItems : undefined}
         saveStatus={page && !isHtml ? saveStatus : null}
         rightExtras={
-          isHtml ? (
+          page ? (
             <div className="flex items-center gap-2">
-              {page && (
+              <button
+                type="button"
+                onClick={handleNewPage}
+                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+              >
+                + New page
+              </button>
+              {isHtml && (
                 <ExportDeckButton
                   pageId={page.id}
                   layout={page.html_layout}
                   contentType={page.content_type}
                 />
               )}
-              <button
-                type="button"
-                onClick={() => setHtmlEditMode((v) => !v)}
-                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
-              >
-                {htmlEditMode ? "Done" : "Edit"}
-              </button>
+              {isHtml && (
+                <button
+                  type="button"
+                  onClick={() => setHtmlEditMode((v) => !v)}
+                  className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+                >
+                  {htmlEditMode ? "Done" : "Edit"}
+                </button>
+              )}
             </div>
           ) : undefined
         }
@@ -645,7 +661,11 @@ export default function SkillPageView() {
                   label: "Delete",
                   destructive: true,
                   onSelect: async () => {
-                    if (!window.confirm(`Move "${page.name}" to trash?`)) return;
+                    const ok = await confirm({
+                      title: `Move "${page.name}" to trash?`,
+                      confirmLabel: "Move to trash",
+                    });
+                    if (!ok) return;
                     try {
                       await trashItem(workspaceId, "page", pageId);
                       router.push(`/workspaces/${workspaceId}`);
@@ -779,9 +799,6 @@ export default function SkillPageView() {
             onDeleteThread={handleDeleteThread}
             onDeleteMessage={handleDeleteMessage}
           />
-          <div className={threads.length > 0 ? "mt-6" : "mt-20"}>
-            <SkillAside skills={containingSkills} />
-          </div>
         </div>
       </div>
     </div>
@@ -851,41 +868,6 @@ function AccessPageGlyph({ large = false }: { large?: boolean }) {
   );
 }
 
-function SkillAside({ skills }: { skills: WorkspaceSkill[] }) {
-  return (
-    <aside>
-      <div className="card-soft p-3.5">
-        <div className="sys-label">In Skills</div>
-        {skills.length > 0 ? (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {skills.map((skill) => (
-              <Link
-                key={skill.id}
-                href={`/skills/${skill.slug}`}
-                className="linkrow px-2 py-1.5"
-              >
-                <span className="text-[var(--color-brand-600)]">
-                  <SkillIcon />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-                  {skill.title}
-                </span>
-                <span className="sys-label" style={{ fontSize: 10 }}>
-                  {skill.items.length}
-                </span>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-2 text-[12px] leading-relaxed text-muted">
-            This page is not in a Skill yet.
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-}
-
 function PageGlyph() {
   return (
     <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -913,11 +895,11 @@ function HtmlGlyph() {
 function SkillFallbackPageView({
   skillSlug,
   skillTitle,
-  item,
+  page,
 }: {
   skillSlug: string;
   skillTitle: string;
-  item: PublicSkillItem;
+  page: PublicSkillPage;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -929,13 +911,13 @@ function SkillFallbackPageView({
           ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-          {item.label || "(untitled)"}
+          {page.name || "(untitled)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
           page · read-only via Skill
         </div>
         <div className="mt-6">
-          <PageBody item={item} />
+          <PageBody page={page} />
         </div>
       </div>
     </div>

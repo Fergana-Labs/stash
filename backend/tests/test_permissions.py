@@ -5,7 +5,6 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from backend.models import SkillItem
 from backend.services import (
     permission_service,
     session_folder_service,
@@ -168,41 +167,7 @@ async def _make_history_event(
     )
 
 
-async def _make_skill(workspace_id, owner_id, access, object_type, object_id):
-    workspace_permission, public_permission = _permissions_for_access(access)
-    return await shared_skill_service.create_skill(
-        workspace_id=workspace_id,
-        owner_id=owner_id,
-        title=f"{access} Skill",
-        description="",
-        workspace_permission=workspace_permission,
-        public_permission=public_permission,
-        discoverable=False,
-        cover_image_url=None,
-        items=[SkillItem(object_type=object_type, object_id=object_id)],
-    )
-
-
-def _permissions_for_access(access):
-    if access == "private":
-        return "none", "none"
-    if access == "public":
-        return "read", "read"
-    return "read", "none"
-
-
-async def _add_skill_member(pool, skill_id, user_id, granted_by, permission="read"):
-    await pool.execute(
-        "INSERT INTO skill_members (skill_id, user_id, permission, granted_by) "
-        "VALUES ($1, $2, $3, $4)",
-        skill_id,
-        user_id,
-        permission,
-        granted_by,
-    )
-
-
-# --- New model: private by default; owner + shares + skill-open ---
+# --- New model: private by default; owner + shares + publish record ---
 
 
 async def _share(pool, ws_id, object_type, object_id, user_id, permission="read", by=None):
@@ -407,12 +372,15 @@ async def test_table_share_by_email_grants_direct_read(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_skill_grants_read_only(pool):
+async def test_published_skill_grants_read_only(pool):
+    """A publish record's existence makes the skill folder publicly readable —
+    stranger and anonymous alike — but is never a write grant."""
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _make_skill(ws, owner, "public", "page", page)
+    folder = await _make_folder(pool, ws, owner, name="public-skill")
+    page = await _make_page(pool, ws, owner, folder_id=folder)
+    await shared_skill_service.publish_folder(ws, owner, folder, title="Public Skill")
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -442,16 +410,20 @@ async def test_public_session_folder_grants_read_only(pool):
 
 
 @pytest.mark.asyncio
-async def test_private_skill_member_reads_contents_not_write(pool):
+async def test_skill_folder_share_grants_friend_read_of_nested_contents(pool):
+    """Person-to-person skill access rides generic folder shares: an unpublished
+    skill folder shared with a friend grants them read of the nested contents
+    (read share, so no write), while strangers stay locked out."""
     owner = await _make_user(pool)
-    member = await _make_user(pool)
+    friend = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    skill = await _make_skill(ws, owner, "private", "page", page)
-    await _add_skill_member(pool, skill["id"], member, owner, "read")
-    assert await permission_service.check_access("page", page, member)
-    assert not await permission_service.check_access("page", page, member, require="write")
+    folder = await _make_folder(pool, ws, owner, name="private-skill")
+    await _make_page(pool, ws, owner, folder_id=folder, name="SKILL.md")
+    page = await _make_page(pool, ws, owner, folder_id=folder)
+    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    assert await permission_service.check_access("page", page, friend)
+    assert not await permission_service.check_access("page", page, friend, require="write")
     assert not await permission_service.check_access("page", page, stranger)
 
 
@@ -694,7 +666,7 @@ async def test_non_owner_workspace_member_cannot_share_page_over_http(
 
 
 @pytest.mark.asyncio
-async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
+async def test_non_owner_workspace_member_cannot_publish_skill_folder(
     client: AsyncClient,
     pool,
 ):
@@ -704,10 +676,10 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
         "workspaces"
     ][0]["id"]
     await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
-    page_id = (
+    folder_id = (
         await client.post(
-            f"/api/v1/workspaces/{ws}/pages/new",
-            json={"name": "Spec", "content": "confidential"},
+            f"/api/v1/workspaces/{ws}/folders",
+            json={"name": "Internal Skill"},
             headers=_auth(owner_key),
         )
     ).json()["id"]
@@ -715,8 +687,8 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
     create = await client.post(
         f"/api/v1/workspaces/{ws}/skills",
         json={
-            "title": "Internal bundle",
-            "items": [{"object_type": "page", "object_id": page_id}],
+            "folder_id": folder_id,
+            "title": "Internal Skill",
         },
         headers=_auth(editor_key),
     )
@@ -726,169 +698,34 @@ async def test_non_owner_workspace_member_cannot_create_workspace_visible_stash(
 
 
 @pytest.mark.asyncio
-async def test_skill_admin_can_edit_metadata_of_already_public_skill(
-    client: AsyncClient,
-    pool,
-):
-    # The owner gate guards visibility escalation only; metadata edits of an
-    # already-shared Skill stay open to any skill admin.
-    owner_key, owner = await _register(client)
-    admin_key, admin = await _register(client)
+async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient):
+    owner_key, _ = await _register(client)
     ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
         "workspaces"
     ][0]["id"]
-    skill_id = (
+    folder_id = (
         await client.post(
-            f"/api/v1/workspaces/{ws}/skills",
-            json={"title": "Handbook", "workspace_permission": "none", "public_permission": "read"},
+            f"/api/v1/workspaces/{ws}/folders",
+            json={"name": "Handbook"},
             headers=_auth(owner_key),
         )
     ).json()["id"]
-    await _add_skill_member(
-        pool,
-        uuid.UUID(skill_id),
-        uuid.UUID(admin["id"]),
-        granted_by=uuid.UUID(owner["id"]),
-        permission="admin",
-    )
+    skill_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/skills",
+            json={"folder_id": folder_id, "title": "Handbook"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
 
     rename = await client.patch(
         f"/api/v1/skills/{skill_id}",
         json={"title": "Handbook v2"},
-        headers=_auth(admin_key),
+        headers=_auth(owner_key),
     )
 
     assert rename.status_code == 200
     assert rename.json()["title"] == "Handbook v2"
-
-
-@pytest.mark.asyncio
-async def test_skill_admin_cannot_escalate_skill_visibility(client: AsyncClient, pool):
-    owner_key, owner = await _register(client)
-    admin_key, admin = await _register(client)
-    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
-        "workspaces"
-    ][0]["id"]
-    skill_id = (
-        await client.post(
-            f"/api/v1/workspaces/{ws}/skills",
-            json={"title": "Drafts", "workspace_permission": "none", "public_permission": "none"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    await _add_skill_member(
-        pool,
-        uuid.UUID(skill_id),
-        uuid.UUID(admin["id"]),
-        granted_by=uuid.UUID(owner["id"]),
-        permission="admin",
-    )
-
-    publish = await client.patch(
-        f"/api/v1/skills/{skill_id}",
-        json={"public_permission": "read"},
-        headers=_auth(admin_key),
-    )
-
-    assert publish.status_code == 400
-    assert "workspace owners" in publish.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_public_write_skill_requests_are_rejected(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
-        "workspaces"
-    ][0]["id"]
-    page_id = (
-        await client.post(
-            f"/api/v1/workspaces/{ws}/pages/new",
-            json={"name": "Spec", "content": "confidential"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    item = {"object_type": "page", "object_id": page_id}
-
-    create = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
-        json={"title": "Editable link", "public_permission": "write", "items": [item]},
-        headers=_auth(owner_key),
-    )
-    publish = await client.post(
-        f"/api/v1/workspaces/{ws}/skills/publish",
-        json={"title": "Editable link", "public_permission": "write", "items": [item]},
-        headers=_auth(owner_key),
-    )
-    skill = (
-        await client.post(
-            f"/api/v1/workspaces/{ws}/skills",
-            json={"title": "Read-only link", "public_permission": "read", "items": [item]},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    update = await client.patch(
-        f"/api/v1/skills/{skill['id']}",
-        json={"public_permission": "write"},
-        headers=_auth(owner_key),
-    )
-
-    assert create.status_code == 422
-    assert publish.status_code == 422
-    assert update.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_workspace_write_stash_does_not_let_viewers_create_pages(
-    client: AsyncClient,
-    pool,
-):
-    owner_key, _ = await _register(client)
-    viewer_key, viewer = await _register(client)
-    editor_key, editor = await _register(client)
-    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
-        "workspaces"
-    ][0]["id"]
-    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(viewer["id"]), role="viewer")
-    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
-    page_id = (
-        await client.post(
-            f"/api/v1/workspaces/{ws}/pages/new",
-            json={"name": "Spec", "content": "confidential"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    stash = (
-        await client.post(
-            f"/api/v1/workspaces/{ws}/skills",
-            json={
-                "title": "Workspace Write",
-                "workspace_permission": "write",
-                "items": [{"object_type": "page", "object_id": page_id}],
-            },
-            headers=_auth(owner_key),
-        )
-    ).json()
-
-    viewer_create = await client.post(
-        f"/api/v1/skills/{stash['id']}/shared-pages",
-        json={"name": "Viewer Draft", "content": "viewer should not write"},
-        headers=_auth(viewer_key),
-    )
-    created_by_viewer = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages "
-        "WHERE workspace_id = $1 AND metadata->>'shared_in_skill_id' = $2",
-        uuid.UUID(ws),
-        stash["id"],
-    )
-    editor_create = await client.post(
-        f"/api/v1/skills/{stash['id']}/shared-pages",
-        json={"name": "Editor Draft", "content": "editor can write"},
-        headers=_auth(editor_key),
-    )
-
-    assert viewer_create.status_code == 403
-    assert created_by_viewer == 0
-    assert editor_create.status_code == 201
 
 
 @pytest.mark.asyncio

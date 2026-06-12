@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import {
   FB_DRAG_MIME,
   FB_DRAG_MULTI_MIME,
@@ -133,39 +134,58 @@ export default function ItemsList({
   selectedDragPayloads,
 }: Props) {
   const [sort, setSort] = useState<Sort>(() => readSort());
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
-  function toggleSort(key: SortKey) {
-    setSort((current) => {
-      // First click on a column: name/type ascend, modified shows newest first.
-      const next: Sort =
-        current && current.key === key
-          ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
-          : { key, dir: key === "modified" ? "desc" : "asc" };
-      try {
-        window.localStorage.setItem(SORT_STORAGE_KEY, `${next.key}:${next.dir}`);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+  function applySort(next: NonNullable<Sort>) {
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, `${next.key}:${next.dir}`);
+    } catch {
+      /* ignore */
+    }
+    setSort(next);
   }
 
+  function toggleSort(key: SortKey) {
+    // First click on a column: name/type ascend, modified shows newest first.
+    const next: NonNullable<Sort> =
+      sort && sort.key === key
+        ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: key === "modified" ? "desc" : "asc" };
+    applySort(next);
+  }
+
+  // Options come from the unfiltered items so every type stays pickable
+  // while a filter is active.
+  const typeOptions = useMemo(
+    () => Array.from(new Set(items.map(typeFor))).sort(),
+    [items],
+  );
+
   const sortedItems = useMemo(() => {
-    if (!sort) return items;
-    const arr = [...items].sort((a, b) => compareItems(a, b, sort.key));
+    const visible = typeFilter ? items.filter((item) => typeFor(item) === typeFilter) : items;
+    if (!sort) return visible;
+    const arr = [...visible].sort((a, b) => compareItems(a, b, sort.key));
     if (sort.dir === "desc") arr.reverse();
     return arr;
-  }, [items, sort]);
+  }, [items, sort, typeFilter]);
 
   return (
-    <div className="scroll-thin overflow-hidden rounded-xl border border-border bg-surface">
+    // No overflow-hidden here: the Type menu must be able to extend past the
+    // card bottom when the list is short. Rows round their own bottom corners.
+    <div className="rounded-xl border border-border bg-surface">
       <div
-        className="grid items-center gap-3 border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted"
+        className="grid items-center gap-3 rounded-t-xl border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted"
         style={{ gridTemplateColumns: LIST_GRID_COLS }}
       >
         <SortHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
         <SortHeader label="Modified" sortKey="modified" sort={sort} onSort={toggleSort} />
-        <SortHeader label="Type" sortKey="type" sort={sort} onSort={toggleSort} />
+        <TypeHeader
+          sort={sort}
+          onSort={(dir) => applySort({ key: "type", dir })}
+          filter={typeFilter}
+          options={typeOptions}
+          onFilter={setTypeFilter}
+        />
         <span />
       </div>
       <div>
@@ -186,7 +206,7 @@ export default function ItemsList({
         ))}
         {sortedItems.length === 0 && (
           <div className="px-4 py-10 text-center text-[12.5px] text-muted">
-            Empty folder.
+            {typeFilter ? `No ${typeFilter} items here.` : "Empty folder."}
           </div>
         )}
       </div>
@@ -219,6 +239,101 @@ function SortHeader({
       <span className={"text-[9px] " + (active ? "opacity-100" : "opacity-0")}>
         {active && sort?.dir === "desc" ? "▼" : "▲"}
       </span>
+    </button>
+  );
+}
+
+// The Type header is a dropdown instead of a plain sort toggle: alongside
+// A→Z/Z→A it lists every type present in the folder so the list can be
+// narrowed to just PNGs, Tables, etc.
+function TypeHeader({
+  sort,
+  onSort,
+  filter,
+  options,
+  onFilter,
+}: {
+  sort: Sort;
+  onSort: (dir: "asc" | "desc") => void;
+  filter: string | null;
+  options: string[];
+  onFilter: (type: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEscapeKey(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [open]);
+
+  const sortActive = sort?.key === "type";
+
+  function choose(action: () => void) {
+    setOpen(false);
+    action();
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={
+          "flex items-center gap-1 text-left uppercase tracking-wide transition-colors hover:text-foreground " +
+          (sortActive || filter ? "text-foreground" : "")
+        }
+      >
+        {filter ? `Type: ${filter}` : "Type"}
+        {sortActive && <span className="text-[9px]">{sort?.dir === "desc" ? "▼" : "▲"}</span>}
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] font-normal normal-case tracking-normal shadow-lg">
+          <MenuItem label="Sort A → Z" checked={sortActive && sort?.dir === "asc"} onSelect={() => choose(() => onSort("asc"))} />
+          <MenuItem label="Sort Z → A" checked={sortActive && sort?.dir === "desc"} onSelect={() => choose(() => onSort("desc"))} />
+          <div className="my-1 border-t border-border" />
+          <MenuItem label="All types" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
+          {options.map((type) => (
+            <MenuItem key={type} label={type} checked={filter === type} onSelect={() => choose(() => onFilter(type))} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  label,
+  checked,
+  onSelect,
+}: {
+  label: string;
+  checked: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
+    >
+      <span className="truncate">{label}</span>
+      {checked && (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      )}
     </button>
   );
 }
@@ -279,7 +394,7 @@ function Row({
         handleFolderDrop(e, item.id, onReparent, onReparentMany);
       }}
       className={
-        "group grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
+        "group grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:rounded-b-xl last:border-b-0 " +
         (selected
           ? "bg-[var(--color-brand-50)] "
           : "hover:bg-[var(--color-brand-50)]/50 ") +
