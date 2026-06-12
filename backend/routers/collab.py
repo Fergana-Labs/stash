@@ -2,11 +2,11 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import files_tree_service, permission_service, workspace_service
+from ..services import files_tree_service, paste_service, permission_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/collab", tags=["collaboration"])
 
@@ -65,4 +65,32 @@ async def authorize_collab_document(
             display_name=current_user["display_name"],
         ),
         can_write=can_write,
+    )
+
+
+def _parse_paste_document_name(document_name: str) -> str:
+    parts = document_name.split(":")
+    if len(parts) != 2 or parts[0] != "paste" or not parts[1]:
+        raise HTTPException(status_code=400, detail="Unsupported collaboration document")
+    return parts[1]
+
+
+@router.post("/authorize-paste", response_model=CollabAuthorizeResponse)
+async def authorize_collab_paste(
+    req: CollabAuthorizeRequest,
+    authorization: str = Header(""),
+):
+    """Anonymous-paste rooms: the Bearer token is the paste's edit token,
+    the only write credential a paste has. No valid token, no socket —
+    paste collab rooms exist solely for the edit page."""
+    slug = _parse_paste_document_name(req.document_name)
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Edit token required")
+    paste = await paste_service.authorize_collab(slug, token)
+    if not paste:
+        raise HTTPException(status_code=404, detail="Paste not found")
+    return CollabAuthorizeResponse(
+        user=CollabUser(id=paste["id"], name="editor", display_name="Editor"),
+        can_write=True,
     )

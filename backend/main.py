@@ -30,6 +30,7 @@ from .routers import (
     files_tree,
     marketing,
     memory,
+    pastes,
     pins,
     publish,
     security_audit,
@@ -127,6 +128,7 @@ app.include_router(agent_docs.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(marketing.router)
+app.include_router(pastes.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
