@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import EditComments from "../../_components/EditComments";
-import HtmlEditWorkbench from "../../_components/HtmlEditWorkbench";
-import MarkdownEditClient from "../../_components/MarkdownEditClient";
+import EditPageClient from "../../_components/EditPageClient";
 import { fetchComments, fetchPaste } from "../../_lib/paste";
 
 export const metadata: Metadata = {
@@ -52,29 +50,8 @@ export default async function PasteEditPage({
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-6 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-7">
-        <div className="min-w-0">
-          {paste.content_type === "html" ? (
-            <HtmlEditWorkbench
-              slug={paste.slug}
-              token={token}
-              title={paste.title}
-              initialHtml={paste.content}
-            />
-          ) : (
-            <MarkdownEditClient slug={paste.slug} token={token} initialMarkdown={paste.content} />
-          )}
-        </div>
-        <aside className="mt-8 lg:mt-0">
-          <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto">
-            <EditComments
-              slug={paste.slug}
-              token={token}
-              initialComments={comments}
-              initialEnabled={paste.comments_enabled}
-            />
-          </div>
-        </aside>
+      <div className="mx-auto max-w-[1280px] px-6 py-6">
+        <EditPageClient paste={paste} token={token} initialComments={comments} />
       </div>
     </main>
   );

@@ -77,6 +77,21 @@ async def get_paste(slug: str) -> dict | None:
     return dict(row) if row else None
 
 
+async def authorize_collab(slug: str, token: str) -> dict | None:
+    """Resolve a paste for a live-editing socket: valid edit token plus
+    markdown content (HTML pages don't have collab, same as the app)."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id FROM pastes
+        WHERE slug = $1 AND edit_token = $2 AND content_type = 'markdown'
+        """,
+        slug,
+        token,
+    )
+    return dict(row) if row else None
+
+
 async def update_paste(
     slug: str,
     token: str,
@@ -98,7 +113,7 @@ async def update_paste(
             comments_enabled = COALESCE($3, comments_enabled),
             updated_at = now()
         WHERE slug = $4 AND edit_token = $5
-        RETURNING {_PUBLIC_COLS}
+        RETURNING id, {_PUBLIC_COLS}
         """,
         content,
         title.strip(),
@@ -106,7 +121,19 @@ async def update_paste(
         slug,
         token,
     )
-    return dict(row) if row else None
+    if not row:
+        return None
+    paste = dict(row)
+    if content:
+        # A content write makes any persisted Y.Doc state stale — an agent
+        # PATCH would otherwise be silently reverted the next time someone
+        # opens the live editor. Live sessions are unaffected (the doc is
+        # in collab-server memory and re-persists on its own debounce).
+        await pool.execute(
+            "DELETE FROM paste_collab_documents WHERE paste_id = $1", paste["id"]
+        )
+    paste.pop("id")
+    return paste
 
 
 _COMMENT_COLS = "id, author_name, body, quoted_text, prefix, suffix, created_at"

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { addComment } from "../actions";
 import { timeAgo } from "../_lib/time";
 import type { PasteComment } from "../_lib/paste";
 
@@ -9,15 +10,31 @@ import type { PasteComment } from "../_lib/paste";
 // unanchored composer. Anchored comments arrive from the page's
 // selection flow (the pill popover); this rail just displays them.
 export default function CommentsRail({
+  slug,
   comments,
-  onSubmit,
+  onCommentAdded,
   headerExtra,
 }: {
+  slug: string;
   comments: PasteComment[];
-  onSubmit: (input: { author_name: string; body: string }) => Promise<string>;
+  onCommentAdded: (comment: PasteComment) => void;
   headerExtra?: React.ReactNode;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
+
+  async function submit(input: { author_name: string; body: string }) {
+    const result = await addComment(slug, {
+      author_name: input.author_name,
+      body: input.body,
+      quoted_text: "",
+      prefix: "",
+      suffix: "",
+    });
+    if (result.status === "error") return result.message;
+    onCommentAdded(result.comment as PasteComment);
+    setComposerOpen(false);
+    return "";
+  }
 
   return (
     <div>
@@ -61,7 +78,7 @@ export default function CommentsRail({
       </ul>
       {composerOpen && (
         <div className="mt-3">
-          <CommentComposer quoted="" onCancel={() => setComposerOpen(false)} onSubmit={onSubmit} />
+          <CommentComposer quoted="" onCancel={() => setComposerOpen(false)} onSubmit={submit} />
         </div>
       )}
     </div>

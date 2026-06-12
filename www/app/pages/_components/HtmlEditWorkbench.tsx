@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import CopyButton from "../../_components/CopyButton";
-import HtmlFrame from "./HtmlFrame";
+import HtmlFrame, { type HtmlSelectionInfo } from "./HtmlFrame";
+import SelectionCommentLayer from "./SelectionCommentLayer";
 import { updatePaste } from "../actions";
+import type { PasteComment } from "../_lib/paste";
 
 type Mode = "view" | "edit" | "raw";
 
@@ -13,13 +15,22 @@ interface Props {
   token: string;
   title: string;
   initialHtml: string;
+  onCommentAdded: (comment: PasteComment) => void;
 }
 
 // The HTML edit page's three-mode selector. View renders the page, Edit is
 // the app's contenteditable-iframe pattern (in-place text edits, saved on
 // each debounced mutation), Raw is the full source for structural changes
 // (scripts/styles) that contenteditable can't reach.
-export default function HtmlEditWorkbench({ slug, token, title, initialHtml }: Props) {
+export default function HtmlEditWorkbench({
+  slug,
+  token,
+  title,
+  initialHtml,
+  onCommentAdded,
+}: Props) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [frameSelection, setFrameSelection] = useState<HtmlSelectionInfo | null>(null);
   const [mode, setMode] = useState<Mode>("edit");
   const [html, setHtml] = useState(initialHtml);
   // Remount key for the frames: bumped on raw saves so View/Edit pick up
@@ -69,7 +80,10 @@ export default function HtmlEditWorkbench({ slug, token, title, initialHtml }: P
             <button
               key={m}
               type="button"
-              onClick={() => setMode(m)}
+              onClick={() => {
+                setMode(m);
+                setFrameSelection(null);
+              }}
               className={
                 "rounded px-3 py-1 text-[13px] capitalize transition " +
                 (mode === m ? "bg-ink text-white" : "text-dim hover:text-ink")
@@ -86,8 +100,23 @@ export default function HtmlEditWorkbench({ slug, token, title, initialHtml }: P
       </div>
       {error && <p className="mt-2 text-[13px] text-red-600">{error}</p>}
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-border bg-white">
-        {mode === "view" && <HtmlFrame key={`view-${version}`} html={html} title={title} />}
+      <div ref={wrapRef} className="relative mt-4 overflow-hidden rounded-xl border border-border bg-white">
+        {mode === "view" && (
+          <HtmlFrame
+            key={`view-${version}`}
+            html={html}
+            title={title}
+            onSelection={setFrameSelection}
+          />
+        )}
+        {mode === "view" && (
+          <SelectionCommentLayer
+            slug={slug}
+            wrapRef={wrapRef}
+            frameSelection={frameSelection}
+            onCommentAdded={onCommentAdded}
+          />
+        )}
         {mode === "edit" && (
           <HtmlFrame
             key={`edit-${version}`}

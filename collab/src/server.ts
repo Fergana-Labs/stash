@@ -31,6 +31,13 @@ type PageDocument = {
   pageId: string;
 };
 
+// Rooms come in two flavors: workspace pages (authenticated users) and
+// anonymous pastes from joinstash.ai/pages, where the paste's edit token
+// is the only credential.
+type CollabDocument =
+  | { kind: "page"; page: PageDocument }
+  | { kind: "paste"; slug: string };
+
 type CollabContext = {
   userId?: string;
   canWrite?: boolean;
@@ -105,8 +112,12 @@ const server = new Server<CollabContext>({
   quiet: process.env.COLLAB_QUIET !== "false",
 
   async onAuthenticate(data) {
-    const page = parsePageDocument(data.documentName);
-    const auth = await authorize(data.documentName, data.token);
+    const doc = parseDocument(data.documentName);
+    const auth = await authorize(
+      doc.kind === "paste" ? "/api/v1/collab/authorize-paste" : "/api/v1/collab/authorize",
+      data.documentName,
+      data.token,
+    );
     if (!auth.can_write) {
       data.connectionConfig.readOnly = true;
     }
@@ -118,13 +129,16 @@ const server = new Server<CollabContext>({
     return {
       userId: auth.user.id,
       canWrite: auth.can_write,
-      pageId: page.pageId,
+      pageId: doc.kind === "page" ? doc.page.pageId : undefined,
     };
   },
 
   async onLoadDocument({ documentName }) {
-    const page = parsePageDocument(documentName);
-    const persisted = await loadPersistedState(page.pageId);
+    const doc = parseDocument(documentName);
+    const persisted =
+      doc.kind === "paste"
+        ? await loadPersistedPasteState(doc.slug)
+        : await loadPersistedState(doc.page.pageId);
     if (persisted) {
       debug("loaded persisted document", {
         documentName,
@@ -132,7 +146,10 @@ const server = new Server<CollabContext>({
       });
       return persisted;
     }
-    const document = await bootstrapPageDocument(page);
+    const document =
+      doc.kind === "paste"
+        ? await bootstrapPasteDocument(doc.slug)
+        : await bootstrapPageDocument(doc.page);
     debug("bootstrapped document", {
       documentName,
       fields: Array.from(document.share.keys()),
@@ -142,12 +159,24 @@ const server = new Server<CollabContext>({
   },
 
   async onStoreDocument({ document, documentName }) {
-    const page = parsePageDocument(documentName);
+    const doc = parseDocument(documentName);
     const state = Buffer.from(Y.encodeStateAsUpdate(document));
     debug("stored document", {
       documentName,
       bytes: state.byteLength,
     });
+    if (doc.kind === "paste") {
+      await pool.query(
+        `
+        INSERT INTO paste_collab_documents (paste_id, yjs_state)
+        SELECT id, $2 FROM pastes WHERE slug = $1
+        ON CONFLICT (paste_id)
+        DO UPDATE SET yjs_state = EXCLUDED.yjs_state, updated_at = now()
+        `,
+        [doc.slug, state],
+      );
+      return;
+    }
     await pool.query(
       `
       INSERT INTO page_collab_documents (page_id, workspace_id, yjs_state)
@@ -155,7 +184,7 @@ const server = new Server<CollabContext>({
       ON CONFLICT (page_id)
       DO UPDATE SET yjs_state = EXCLUDED.yjs_state, updated_at = now()
       `,
-      [page.pageId, page.workspaceId, state],
+      [doc.page.pageId, doc.page.workspaceId, state],
     );
   },
 });
@@ -183,22 +212,22 @@ function debug(message: string, data: Record<string, unknown>): void {
   console.log(`[collab] ${message}`, JSON.stringify(data));
 }
 
-function parsePageDocument(documentName: string): PageDocument {
+function parseDocument(documentName: string): CollabDocument {
   const parts = documentName.split(":");
-  if (parts.length !== 4 || parts[0] !== "workspace" || parts[2] !== "page") {
-    throw new Error("Unsupported collaboration document");
+  if (parts.length === 2 && parts[0] === "paste" && parts[1]) {
+    return { kind: "paste", slug: parts[1] };
   }
-  return {
-    workspaceId: parts[1],
-    pageId: parts[3],
-  };
+  if (parts.length === 4 && parts[0] === "workspace" && parts[2] === "page") {
+    return { kind: "page", page: { workspaceId: parts[1], pageId: parts[3] } };
+  }
+  throw new Error("Unsupported collaboration document");
 }
 
-async function authorize(documentName: string, token: string): Promise<CollabAuth> {
+async function authorize(path: string, documentName: string, token: string): Promise<CollabAuth> {
   if (!token) {
     throw new Error("Authentication token is required");
   }
-  const response = await fetch(`${backendUrl}/api/v1/collab/authorize`, {
+  const response = await fetch(`${backendUrl}${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -219,6 +248,34 @@ async function loadPersistedState(pageId: string): Promise<Uint8Array | null> {
   );
   const state = result.rows[0]?.yjs_state;
   return state ? new Uint8Array(state) : null;
+}
+
+async function loadPersistedPasteState(slug: string): Promise<Uint8Array | null> {
+  const result = await pool.query<{ yjs_state: Buffer }>(
+    `
+    SELECT pc.yjs_state
+    FROM paste_collab_documents pc
+    JOIN pastes p ON p.id = pc.paste_id
+    WHERE p.slug = $1
+    `,
+    [slug],
+  );
+  const state = result.rows[0]?.yjs_state;
+  return state ? new Uint8Array(state) : null;
+}
+
+async function bootstrapPasteDocument(slug: string): Promise<Y.Doc> {
+  const result = await pool.query<{ content: string }>(
+    "SELECT content FROM pastes WHERE slug = $1 AND content_type = 'markdown'",
+    [slug],
+  );
+  const markdownSource = result.rows[0]?.content;
+  if (markdownSource === undefined) {
+    throw new Error("Paste not found");
+  }
+  const html = markdown.render(markdownSource);
+  const json = generateJSON(html, editorExtensions);
+  return TiptapTransformer.toYdoc(json, "default", editorExtensions);
 }
 
 async function bootstrapPageDocument(page: PageDocument): Promise<Y.Doc> {

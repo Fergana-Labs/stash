@@ -56,8 +56,20 @@ def upgrade() -> None:
         )
         """)
     op.execute("CREATE INDEX idx_paste_comments_paste ON paste_comments (paste_id, created_at)")
+    # Persisted Y.Doc state for live markdown editing, mirroring
+    # page_collab_documents. Deleted whenever content is written through
+    # the PATCH API so external edits aren't reverted by stale CRDT state.
+    op.execute("""
+        CREATE TABLE paste_collab_documents (
+            paste_id UUID PRIMARY KEY REFERENCES pastes(id) ON DELETE CASCADE,
+            yjs_state BYTEA NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """)
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE paste_collab_documents")
     op.execute("DROP TABLE paste_comments")
     op.execute("DROP TABLE pastes")
