@@ -245,45 +245,22 @@ async def _upsert_sessions_for_events(
 
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
+    # Sessions cannot live in skills anymore — visibility is just "the session
+    # exists and isn't trashed". The 19 call sites still bind a user argument
+    # at ${user_arg}, so the SQL must keep one (no-op) reference to it or
+    # asyncpg rejects the spare parameter.
     return f"""
         (
-          {event_alias}.session_id IS NULL
-          OR EXISTS (
-            SELECT 1
-            FROM sessions readable_session
-            WHERE readable_session.workspace_id = {event_alias}.workspace_id
-              AND readable_session.session_id = {event_alias}.session_id
-              AND readable_session.deleted_at IS NULL
-              AND (
-                NOT EXISTS (
-                  SELECT 1
-                  FROM skill_items session_skill_item
-                  WHERE session_skill_item.object_type = 'session'
-                    AND session_skill_item.object_id = readable_session.id
-                )
-                OR EXISTS (
-                  SELECT 1
-                  FROM skill_items session_skill_item
-                  JOIN skills session_skill ON session_skill.id = session_skill_item.skill_id
-                  LEFT JOIN workspace_members session_workspace_member
-                    ON session_workspace_member.workspace_id = session_skill.workspace_id
-                   AND session_workspace_member.user_id = ${user_arg}
-                  LEFT JOIN skill_members session_skill_member
-                    ON session_skill_member.skill_id = session_skill.id
-                   AND session_skill_member.user_id = ${user_arg}
-                  WHERE session_skill_item.object_type = 'session'
-                    AND session_skill_item.object_id = readable_session.id
-                    AND (
-                      session_skill.public_permission != 'none'
-                      OR (
-                        session_skill.workspace_permission != 'none'
-                        AND session_workspace_member.user_id IS NOT NULL
-                      )
-                      OR session_skill.owner_id = ${user_arg}
-                      OR session_skill_member.user_id IS NOT NULL
-                    )
-                )
-              )
+          ${user_arg}::uuid IS NOT DISTINCT FROM ${user_arg}::uuid
+          AND (
+            {event_alias}.session_id IS NULL
+            OR EXISTS (
+              SELECT 1
+              FROM sessions readable_session
+              WHERE readable_session.workspace_id = {event_alias}.workspace_id
+                AND readable_session.session_id = {event_alias}.session_id
+                AND readable_session.deleted_at IS NULL
+            )
           )
         )
     """

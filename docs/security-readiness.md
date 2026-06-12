@@ -33,9 +33,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
 - User-wide analytics visualizations must not serve cached workspace-derived labels or topics after membership changes; only explicit workspace-scoped visualization results may use persistent caches.
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
-- Stash creation, item replacement, shared-page creation, and Stash write/admin grants must require workspace editor or owner membership.
-- Non-owner Stash admins must not grant Stash access to users outside the workspace; external Stash read grants require a workspace owner.
-- Agent runtime Stash tools must enforce the same workspace write, workspace owner, active-workspace, and item-write checks as backend Stash routes.
+- Skill publishing and forking must require the same workspace write/owner gates as creating workspace content; viewers are read-only.
 - Public, discoverable, or non-default workspace-readable session folders must require workspace owner membership; private session-folder management and session assignment must require current workspace write access.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.

@@ -158,11 +158,13 @@ def normalize_source_settings(source_type: str, settings: dict | None) -> dict:
     if unsupported:
         raise ValueError(f"unsupported Slack setting: {sorted(unsupported)[0]}")
 
-    return {
-        "allowed_channel_ids": _clean_string_list(
-            settings.get("allowed_channel_ids", []), "allowed_channel_ids"
-        )
-    }
+    allowed_channel_ids = _clean_string_list(
+        settings.get("allowed_channel_ids", []), "allowed_channel_ids"
+    )
+    if not allowed_channel_ids:
+        raise ValueError("allowed_channel_ids must include at least one Slack channel")
+
+    return {"allowed_channel_ids": allowed_channel_ids}
 
 
 def slack_allowed_channel_ids(source: dict) -> list[str]:

@@ -55,9 +55,7 @@ def test_worktree_resolves_to_main_repo_manifest(tmp_path, monkeypatch):
     worktree = tmp_path / "worktree-checkout"
     worktree.mkdir()
 
-    monkeypatch.setattr(
-        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
-    )
+    monkeypatch.setattr(scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo))
 
     manifest = scope_mod.find_manifest(str(worktree))
     assert manifest is not None
@@ -75,9 +73,7 @@ def test_worktree_manifest_beats_global(tmp_path, monkeypatch):
     worktree = tmp_path / "worktrees" / "feature"
     worktree.mkdir(parents=True)
 
-    monkeypatch.setattr(
-        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
-    )
+    monkeypatch.setattr(scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo))
 
     manifest = scope_mod.find_manifest(str(worktree))
     assert manifest is not None
@@ -94,17 +90,15 @@ def test_main_repo_manifest_beats_worktree_local(tmp_path, monkeypatch):
     worktree.mkdir()
     (worktree / ".stash").write_text('{"workspace_id": "local"}')
 
-    monkeypatch.setattr(
-        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
-    )
+    monkeypatch.setattr(scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo))
 
     manifest = scope_mod.find_manifest(str(worktree))
     assert manifest is not None
     assert manifest["workspace_id"] == "main"
 
 
-
 # --- Regression: the gate must short-circuit live events -------------------
+
 
 class _RecordingClient:
     def __init__(self):
@@ -119,19 +113,31 @@ def test_out_of_scope_blocks_live_events(monkeypatch):
     from stashai.plugin import hooks
     from stashai.plugin import scope as s
     from stashai.plugin.hooks import stream_user_message
+
     monkeypatch.setattr(s, "cwd_in_scope", lambda cwd: False)
     monkeypatch.setattr(hooks, "cwd_in_scope", lambda cwd: False)
 
     c = _RecordingClient()
-    stream_user_message(c, {"workspace_id": "ws1", "agent_name": "a"}, {"session_id": "s"},
-                        "hello", HookEvent(kind="prompt", cwd="/other"))
+    stream_user_message(
+        c,
+        {"workspace_id": "ws1", "agent_name": "a"},
+        {"session_id": "s"},
+        "hello",
+        HookEvent(kind="prompt", cwd="/other"),
+    )
     assert c.calls == []
 
 
 def test_in_scope_allows_live_events(monkeypatch):
     from stashai.plugin.hooks import stream_user_message
+
     # Autouse fixture in conftest already patches cwd_in_scope → True.
     c = _RecordingClient()
-    stream_user_message(c, {"workspace_id": "ws1", "agent_name": "a"}, {"session_id": "s"},
-                        "hello", HookEvent(kind="prompt", cwd="/anywhere"))
+    stream_user_message(
+        c,
+        {"workspace_id": "ws1", "agent_name": "a"},
+        {"session_id": "s"},
+        "hello",
+        HookEvent(kind="prompt", cwd="/anywhere"),
+    )
     assert len(c.calls) == 1

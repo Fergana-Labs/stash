@@ -14,10 +14,16 @@ from stashai.plugin.event import HookEvent
 
 # Claude PascalCase tool names -> canonical lowercase
 _TOOL_MAP = {
-    "Edit": "edit", "Write": "write", "Read": "read",
-    "Bash": "bash", "Glob": "glob", "Grep": "grep",
-    "Agent": "agent", "Task": "agent",
-    "WebFetch": "webfetch", "WebSearch": "websearch",
+    "Edit": "edit",
+    "Write": "write",
+    "Read": "read",
+    "Bash": "bash",
+    "Glob": "glob",
+    "Grep": "grep",
+    "Agent": "agent",
+    "Task": "agent",
+    "WebFetch": "webfetch",
+    "WebSearch": "websearch",
     "NotebookEdit": "edit",
 }
 

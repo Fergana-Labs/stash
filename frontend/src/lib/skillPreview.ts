@@ -1,11 +1,13 @@
-export type SkillItemType = "folder" | "page" | "table" | "file" | "session";
+export type SkillItemType = "folder" | "page" | "table" | "file";
 
-export type SkillPreviewItem = {
-  object_type: SkillItemType;
-  object_id: string;
-  position: number;
-  label: string;
-  inline: Record<string, unknown>;
+// Loosely-typed contents payload: OG/social previews must never crash on a
+// partial or older-shaped response, so every field read goes through the
+// defensive value helpers at the bottom.
+export type SkillPreviewContents = {
+  subfolders: Record<string, unknown>[];
+  pages: Record<string, unknown>[];
+  files: Record<string, unknown>[];
+  tables: Record<string, unknown>[];
 };
 
 export type SkillPreviewData = {
@@ -22,8 +24,14 @@ export type SkillPreviewData = {
     updated_at?: string;
   };
   workspace_name: string;
-  items: SkillPreviewItem[];
+  folder_name?: string;
+  contents: SkillPreviewContents;
   can_write?: boolean;
+};
+
+export type SkillPreviewItem = {
+  type: SkillItemType;
+  item: Record<string, unknown>;
 };
 
 export type PreviewLine = {
@@ -49,26 +57,27 @@ export type PreviewCard = {
   lines: PreviewLine[];
 };
 
-const ITEM_TYPES = new Set(["folder", "page", "table", "file", "session"]);
+const ITEM_TYPES = new Set(["folder", "page", "table", "file"]);
 
 export function isSkillItemType(value: string | null): value is SkillItemType {
   return !!value && ITEM_TYPES.has(value);
 }
 
 export function findSkillItem(
-  items: SkillPreviewItem[],
-  objectType: SkillItemType,
-  objectId: string,
+  contents: SkillPreviewContents,
+  type: SkillItemType,
+  id: string,
 ): SkillPreviewItem | null {
-  return (
-    items.find((item) => {
-      if (item.object_type !== objectType) return false;
-      if (String(item.object_id) === objectId) return true;
-      if (objectType !== "session") return false;
-      const session = objectValue(item.inline.session);
-      return stringValue(session.session_id) === objectId;
-    }) ?? null
-  );
+  const list =
+    type === "page"
+      ? contents.pages
+      : type === "file"
+        ? contents.files
+        : type === "table"
+          ? contents.tables
+          : contents.subfolders;
+  const item = (list ?? []).find((entry) => stringValue(entry.id) === id);
+  return item ? { type, item } : null;
 }
 
 export function skillMetadataTitle(data: SkillPreviewData): string {
@@ -79,18 +88,21 @@ export function skillMetadataDescription(data: SkillPreviewData): string {
   const description = cleanText(data.skill.description);
   if (description) return truncateText(description, 220);
 
-  const itemCount = data.items.length;
-  const plural = itemCount === 1 ? "" : "s";
-  const counts = itemTypeCounts(data.items).join(", ");
-  const countDetail = counts ? `: ${counts}` : "";
-  return `A Skill with ${itemCount} item${plural}${countDetail} from ${data.workspace_name}.`;
+  const counts = contentsTypeCounts(data.contents);
+  const total =
+    (data.contents.pages?.length ?? 0) +
+    (data.contents.files?.length ?? 0) +
+    (data.contents.tables?.length ?? 0);
+  const plural = total === 1 ? "" : "s";
+  const countDetail = counts.length ? `: ${counts.join(", ")}` : "";
+  return `A Skill with ${total} file${plural}${countDetail} from ${data.workspace_name}.`;
 }
 
 export function itemMetadataTitle(
   data: SkillPreviewData,
   item: SkillPreviewItem,
 ): string {
-  const label = item.label || formatItemType(item.object_type);
+  const label = itemName(item) || formatItemType(item.type);
   return `${label} - ${data.skill.title} - Skill`;
 }
 
@@ -99,7 +111,7 @@ export function itemMetadataDescription(
   item: SkillPreviewItem,
 ): string {
   const summary = itemSummary(item);
-  const prefix = `${formatItemType(item.object_type)} in ${data.skill.title}`;
+  const prefix = `${formatItemType(item.type)} in ${data.skill.title}`;
   return truncateText(summary ? `${prefix}: ${summary}` : prefix, 220);
 }
 
@@ -120,9 +132,9 @@ export function buildSkillPreviewCard(data: SkillPreviewData): PreviewCard {
   const description = skillMetadataDescription(data);
   const stats = [
     data.workspace_name,
-    ...itemTypeCounts(data.items).slice(0, 3),
+    ...contentsTypeCounts(data.contents).slice(0, 3),
   ].filter(Boolean);
-  const lines = data.items.slice(0, 4).map(itemPreviewLine);
+  const lines = contentsPreviewLines(data.contents);
 
   return {
     kind: "skill",
@@ -135,7 +147,7 @@ export function buildSkillPreviewCard(data: SkillPreviewData): PreviewCard {
     coverImageUrl: data.skill.cover_image_url ?? null,
     iconUrl: data.skill.icon_url ?? null,
     contentBadge: "SKILL",
-    bodyTitle: data.items.length > 0 ? "Contents" : "No items yet",
+    bodyTitle: lines.length > 0 ? "Contents" : "Nothing here yet",
     bodyText: description,
     stats,
     lines,
@@ -146,10 +158,10 @@ export function buildItemPreviewCard(
   data: SkillPreviewData,
   item: SkillPreviewItem,
 ): PreviewCard {
-  const label = item.label || formatItemType(item.object_type);
+  const label = itemName(item) || formatItemType(item.type);
   const body = itemPreviewBody(item, label);
   return {
-    kind: item.object_type,
+    kind: item.type,
     title: label,
     description: itemMetadataDescription(data, item),
     workspaceName: data.workspace_name,
@@ -161,107 +173,67 @@ export function buildItemPreviewCard(
     contentBadge: itemContentBadge(item),
     bodyTitle: body.title,
     bodyText: body.text,
-    stats: [data.workspace_name, data.skill.title, formatItemType(item.object_type)],
-    lines: itemPreviewLines(item),
+    stats: [data.workspace_name, data.skill.title, formatItemType(item.type)],
+    lines: itemPreviewLines(item, label),
   };
 }
 
 export function formatItemType(type: SkillItemType): string {
-  if (type === "session") return "Session";
   return type[0].toUpperCase() + type.slice(1);
 }
 
-export function itemPreviewLine(item: SkillPreviewItem): PreviewLine {
-  return {
-    label: item.label || formatItemType(item.object_type),
-    meta: itemMeta(item),
-    excerpt: itemSummary(item),
-  };
-}
-
 export function itemSummary(item: SkillPreviewItem): string {
-  const inline = item.inline ?? {};
-
-  if (item.object_type === "folder") {
-    const pages = arrayValue(inline.pages);
-    const files = arrayValue(inline.files);
-    const firstPage = objectValue(pages[0]);
-    const firstPageText = pageText(firstPage);
-    if (firstPageText) return truncateText(firstPageText, 180);
-    return `${pages.length} page${pages.length === 1 ? "" : "s"}, ${files.length} file${
-      files.length === 1 ? "" : "s"
-    }`;
+  if (item.type === "page") {
+    return truncateText(pageText(item.item) || "Page", 220);
   }
 
-  if (item.object_type === "page") {
-    const page = objectValue(inline.page);
-    return truncateText(pageText(page) || "Page", 220);
-  }
-
-  if (item.object_type === "table") {
-    const description = cleanText(stringValue(inline.description));
+  if (item.type === "table") {
+    const description = cleanText(stringValue(item.item.description));
     if (description) return truncateText(description, 180);
-    const columns = arrayValue(inline.columns);
-    const rows = arrayValue(inline.rows);
+    const columns = arrayValue(item.item.columns);
+    const rows = arrayValue(item.item.rows);
     return `${columns.length} column${columns.length === 1 ? "" : "s"}, ${rows.length} row${
       rows.length === 1 ? "" : "s"
     }`;
   }
 
-  if (item.object_type === "file") {
-    const contentType = stringValue(inline.content_type) || "file";
-    const size = numberValue(inline.size_bytes);
+  if (item.type === "file") {
+    const contentType = stringValue(item.item.content_type) || "file";
+    const size = numberValue(item.item.size_bytes);
     return size == null ? contentType : `${contentType}, ${formatBytes(size)}`;
   }
 
-  if (item.object_type === "session") {
-    const session = objectValue(inline.session);
-    const events = arrayValue(session.events);
-    const firstEvent = events
-      .map(objectValue)
-      .map((event) => cleanText(stringValue(event.content)))
-      .find(Boolean);
-    if (firstEvent) return truncateText(firstEvent, 180);
-    const agent = stringValue(session.agent_name) || "Agent";
-    return `${agent} session, ${events.length} event${events.length === 1 ? "" : "s"}`;
-  }
-
-  return item.label;
+  return itemName(item);
 }
 
-function itemPreviewLines(item: SkillPreviewItem): PreviewLine[] {
-  const inline = item.inline ?? {};
+function itemName(item: SkillPreviewItem): string {
+  return stringValue(item.item.name);
+}
 
-  if (item.object_type === "folder") {
-    const pages = arrayValue(inline.pages);
-    const files = arrayValue(inline.files);
-    const pageLines = pages.slice(0, 3).map((page) => {
-      const pageObject = objectValue(page);
-      return {
-        label: stringValue(pageObject.name) || "Page",
-        meta: "Page",
-        excerpt: truncateText(pageText(pageObject) || "Page", 150),
-      };
-    });
-    const fileLines = files.slice(0, Math.max(0, 3 - pageLines.length)).map((file) => {
-      const fileObject = objectValue(file);
-      return {
-        label: stringValue(fileObject.name) || "File",
-        meta: stringValue(fileObject.content_type) || "File",
-        excerpt: fileSummary(fileObject),
-      };
-    });
-    return [...pageLines, ...fileLines];
+function contentsPreviewLines(contents: SkillPreviewContents): PreviewLine[] {
+  const pageLines = (contents.pages ?? []).slice(0, 4).map((page) => ({
+    label: stringValue(page.name) || "Page",
+    meta: "Page",
+    excerpt: truncateText(pageText(page) || "Page", 150),
+  }));
+  const fileLines = (contents.files ?? [])
+    .slice(0, Math.max(0, 4 - pageLines.length))
+    .map((file) => ({
+      label: stringValue(file.name) || "File",
+      meta: stringValue(file.content_type) || "File",
+      excerpt: fileSummary(file),
+    }));
+  return [...pageLines, ...fileLines];
+}
+
+function itemPreviewLines(item: SkillPreviewItem, label: string): PreviewLine[] {
+  if (item.type === "page") {
+    return textLines(pageText(item.item), label);
   }
 
-  if (item.object_type === "page") {
-    const page = objectValue(inline.page);
-    return textLines(pageText(page), "Excerpt");
-  }
-
-  if (item.object_type === "table") {
-    const columns = arrayValue(inline.columns).map(objectValue);
-    const rows = arrayValue(inline.rows).map(objectValue);
+  if (item.type === "table") {
+    const columns = arrayValue(item.item.columns).map(objectValue);
+    const rows = arrayValue(item.item.rows).map(objectValue);
     const columnNames = columns
       .map((column) => stringValue(column.name))
       .filter(Boolean)
@@ -281,59 +253,26 @@ function itemPreviewLines(item: SkillPreviewItem): PreviewLine[] {
     ];
   }
 
-  if (item.object_type === "file") {
-    return [
-      {
-        label: item.label || stringValue(inline.name) || "File",
-        meta: stringValue(inline.content_type) || "File",
-        excerpt: fileSummary(inline),
-      },
-    ];
-  }
-
-  if (item.object_type === "session") {
-    const session = objectValue(inline.session);
-    const events = arrayValue(session.events).map(objectValue);
-    const eventLines = events
-      .map((event) => ({
-        label: stringValue(event.agent_name) || stringValue(session.agent_name) || "Agent",
-        meta: stringValue(event.event_type) || "Event",
-        excerpt: truncateText(cleanText(stringValue(event.content)), 150),
-      }))
-      .filter((line) => line.excerpt)
-      .slice(0, 3);
-    if (eventLines.length > 0) return eventLines;
-  }
-
-  return [itemPreviewLine(item)];
+  return [
+    {
+      label,
+      meta: formatItemType(item.type),
+      excerpt: itemSummary(item),
+    },
+  ];
 }
 
 function itemPreviewBody(
   item: SkillPreviewItem,
   fallbackTitle: string,
 ): { title: string; text: string } {
-  const inline = item.inline ?? {};
-
-  if (item.object_type === "page") {
-    const page = objectValue(inline.page);
-    return pagePreviewBody(page, fallbackTitle);
+  if (item.type === "page") {
+    return pagePreviewBody(item.item, fallbackTitle);
   }
 
-  if (item.object_type === "session") {
-    const session = objectValue(inline.session);
-    const events = arrayValue(session.events).map(objectValue);
-    const firstEvent = events
-      .map((event) => cleanText(stringValue(event.content)))
-      .find(Boolean);
-    return {
-      title: fallbackTitle,
-      text: firstEvent ? truncateText(firstEvent, 260) : itemSummary(item),
-    };
-  }
-
-  if (item.object_type === "table") {
-    const columns = arrayValue(inline.columns).map(objectValue);
-    const rows = arrayValue(inline.rows).map(objectValue);
+  if (item.type === "table") {
+    const columns = arrayValue(item.item.columns).map(objectValue);
+    const rows = arrayValue(item.item.rows).map(objectValue);
     return {
       title: fallbackTitle,
       text: `${columns.length} columns, ${rows.length} rows. ${firstTableRow(columns, rows)}`,
@@ -395,14 +334,12 @@ function htmlPreviewBody(
 }
 
 function itemContentBadge(item: SkillPreviewItem): string {
-  const inline = item.inline ?? {};
-  if (item.object_type === "page") {
-    const page = objectValue(inline.page);
-    const contentType = stringValue(page.content_type);
+  if (item.type === "page") {
+    const contentType = stringValue(item.item.content_type);
     return contentType.toLowerCase() === "html" ? "HTML" : "PAGE";
   }
-  if (item.object_type === "file") return fileContentBadge(inline);
-  return formatItemType(item.object_type).toUpperCase();
+  if (item.type === "file") return fileContentBadge(item.item);
+  return formatItemType(item.type).toUpperCase();
 }
 
 function fileContentBadge(file: Record<string, unknown>): string {
@@ -415,34 +352,9 @@ function fileContentBadge(file: Record<string, unknown>): string {
 }
 
 function itemUpdatedAt(item: SkillPreviewItem): string | null {
-  const inline = item.inline ?? {};
-  if (item.object_type === "page") {
-    return stringValue(objectValue(inline.page).updated_at) || null;
-  }
-  if (item.object_type === "file") return stringValue(inline.created_at) || null;
-  if (item.object_type === "session") {
-    const session = objectValue(inline.session);
-    return stringValue(session.finished_at) || stringValue(session.started_at) || null;
-  }
+  if (item.type === "page") return stringValue(item.item.updated_at) || null;
+  if (item.type === "file") return stringValue(item.item.created_at) || null;
   return null;
-}
-
-function itemMeta(item: SkillPreviewItem): string {
-  const inline = item.inline ?? {};
-  if (item.object_type === "folder") {
-    const pages = arrayValue(inline.pages).length;
-    const files = arrayValue(inline.files).length;
-    return `${pages} page${pages === 1 ? "" : "s"} - ${files} file${files === 1 ? "" : "s"}`;
-  }
-  if (item.object_type === "table") {
-    return `${arrayValue(inline.columns).length} columns - ${arrayValue(inline.rows).length} rows`;
-  }
-  if (item.object_type === "file") return stringValue(inline.content_type) || "File";
-  if (item.object_type === "session") {
-    const session = objectValue(inline.session);
-    return `${stringValue(session.agent_name) || "Agent"} session`;
-  }
-  return formatItemType(item.object_type);
 }
 
 function firstTableRow(columns: Record<string, unknown>[], rows: Record<string, unknown>[]): string {
@@ -488,15 +400,15 @@ function pageText(page: Record<string, unknown>): string {
   return stripHtml(stringValue(page.content_html));
 }
 
-function itemTypeCounts(items: SkillPreviewItem[]): string[] {
-  const counts = new Map<SkillItemType, number>();
-  for (const item of items) {
-    counts.set(item.object_type, (counts.get(item.object_type) ?? 0) + 1);
-  }
-  return Array.from(counts.entries()).map(([type, count]) => {
-    const label = type === "session" ? "session" : type;
-    return `${count} ${label}${count === 1 ? "" : "s"}`;
-  });
+function contentsTypeCounts(contents: SkillPreviewContents): string[] {
+  const counts: [string, number][] = [
+    ["page", contents.pages?.length ?? 0],
+    ["file", contents.files?.length ?? 0],
+    ["table", contents.tables?.length ?? 0],
+  ];
+  return counts
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${count} ${label}${count === 1 ? "" : "s"}`);
 }
 
 function stripHtml(html: string): string {
@@ -571,7 +483,7 @@ function objectValue(value: unknown): Record<string, unknown> {
 }
 
 function arrayValue(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
+  return Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
 }
 
 function stringValue(value: unknown): string {

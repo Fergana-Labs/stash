@@ -22,7 +22,6 @@ class Manifest(TypedDict, total=False):
     # The session folder this repo's agent sessions are pushed into. Omitted →
     # they land in the workspace's Default folder.
     session_folder_id: str
-    default_skill_id: str
     base_url: str
 
 

@@ -13,15 +13,15 @@ import {
   getPublicSkill,
   getSessionEvents,
   listAllTables,
-  listSharedSkills,
+  listSkills,
   listMyWorkspaces,
   searchWorkspaceEvents,
   searchWorkspacePages,
   type PublicSkillDetail,
   type SessionEvent,
+  type Skill,
   type WorkspaceHistoryEvent,
   type WorkspaceSidebar,
-  type WorkspaceSkill,
   type WorkspaceFolder,
 } from "../../lib/api";
 import type { Page, TableWithWorkspace, Workspace } from "../../lib/types";
@@ -49,7 +49,8 @@ interface SearchResult {
   relevance: number;
 }
 
-interface SearchableSkill extends WorkspaceSkill {
+interface SearchableSkill extends Skill {
+  workspace_id: string;
   workspace_name: string;
 }
 
@@ -100,7 +101,6 @@ function SearchPageInner() {
   const [contentScope, setContentScope] = useState<ContentScope>(
     () => initialContentScope(searchParams.get("content"), initialSessionId)
   );
-  const [internalOnly, setInternalOnly] = useState(false);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchedQuery, setSearchedQuery] = useState("");
@@ -115,8 +115,12 @@ function SearchPageInner() {
       const data = await listMyWorkspaces();
       const skillGroups = await Promise.all(
         data.workspaces.map(async (workspace) => {
-          const workspaceSkills = await listSharedSkills(workspace.id);
-          return workspaceSkills.map((skill) => ({ ...skill, workspace_name: workspace.name }));
+          const workspaceSkills = await listSkills(workspace.id);
+          return workspaceSkills.map((skill) => ({
+            ...skill,
+            workspace_id: workspace.id,
+            workspace_name: workspace.name,
+          }));
         })
       );
       setWorkspaces(data.workspaces);
@@ -161,21 +165,24 @@ function SearchPageInner() {
 
   const searchedSkills = useMemo(() => {
     const workspaceIds = new Set(searchedWorkspaces.map((workspace) => workspace.id));
-    return workspaceSkills.filter((skill) => {
-      if (internalOnly && skill.is_external) return false;
-      const containerWorkspaceId = skill.added_to_workspace_id ?? skill.workspace_id;
-      return workspaceIds.has(containerWorkspaceId);
-    });
-  }, [internalOnly, searchedWorkspaces, workspaceSkills]);
+    return workspaceSkills.filter((skill) => workspaceIds.has(skill.workspace_id));
+  }, [searchedWorkspaces, workspaceSkills]);
+
+  // Skill-scoped item search reads through the public-skill payload, so the
+  // picker only offers published skills (the ones with a slug).
+  const publishedSkills = useMemo(
+    () => searchedSkills.filter((skill) => skill.published !== null),
+    [searchedSkills]
+  );
 
   const selectedProductSkill = useMemo(
     () =>
-      searchedSkills.find(
+      publishedSkills.find(
         (skill) =>
-          skill.id === selectedProductSkillId ||
-          (selectedProductSkillSlug && skill.slug === selectedProductSkillSlug)
+          skill.published!.id === selectedProductSkillId ||
+          (selectedProductSkillSlug && skill.published!.slug === selectedProductSkillSlug)
       ) ?? null,
-    [searchedSkills, selectedProductSkillId, selectedProductSkillSlug]
+    [publishedSkills, selectedProductSkillId, selectedProductSkillSlug]
   );
 
   useEffect(() => {
@@ -186,7 +193,7 @@ function SearchPageInner() {
 
   useEffect(() => {
     if (!selectedProductSkillSlug || !selectedProductSkill || selectedProductSkillId) return;
-    setSelectedProductSkillId(selectedProductSkill.id);
+    setSelectedProductSkillId(selectedProductSkill.published!.id);
   }, [selectedProductSkill, selectedProductSkillId, selectedProductSkillSlug]);
 
   useEffect(() => {
@@ -232,20 +239,15 @@ function SearchPageInner() {
         return;
       }
 
-      const selectedSkillSlug = selectedProductSkill?.slug ?? selectedProductSkillSlug;
+      const selectedSkillSlug =
+        selectedProductSkill?.published?.slug ?? selectedProductSkillSlug;
       if (selectedSkillSlug) {
         const detail = await getPublicSkill(selectedSkillSlug);
         if (includeSkills) {
-          nextResults.push(
-            ...searchSkills([{ ...detail.skill, workspace_name: detail.workspace_name }], q)
-          );
+          nextResults.push(...searchPublicSkillRecord(detail, q));
         }
         nextResults.push(
-          ...searchPublicSkillItems(detail, q, {
-            includePages,
-            includeSessions,
-            includeTables,
-          })
+          ...searchPublicSkillItems(detail, q, { includePages, includeTables })
         );
         setResults(sortResults(nextResults));
         return;
@@ -407,9 +409,9 @@ function SearchPageInner() {
                   value={selectedProductSkillId}
                   options={[
                     { value: "", label: "All Skills" },
-                    ...searchedSkills.map((skill) => ({
-                      value: skill.id,
-                      label: skill.title + (skill.forked_from_skill_id ? " (Fork)" : ""),
+                    ...publishedSkills.map((skill) => ({
+                      value: skill.published!.id,
+                      label: skill.name,
                     })),
                   ]}
                   onChange={(next) => {
@@ -505,16 +507,6 @@ function SearchPageInner() {
                   ))}
                 </div>
               </div>
-
-              <label className="flex items-center gap-2 text-[13px] text-foreground">
-                <input
-                  type="checkbox"
-                  checked={internalOnly}
-                  onChange={(event) => setInternalOnly(event.target.checked)}
-                  className="accent-[var(--color-brand-600)]"
-                />
-                Internal only
-              </label>
             </div>
           </aside>
 
@@ -648,7 +640,7 @@ function searchSkills(skills: SearchableSkill[], query: string): SearchResult[] 
   return skills
     .map((skill) => {
       const relevance = scoreValues(query, [
-        { value: skill.title, weight: 8 },
+        { value: skill.name, weight: 8 },
         { value: skill.description, weight: 3 },
         { value: skill.workspace_name, weight: 1 },
       ]);
@@ -656,17 +648,38 @@ function searchSkills(skills: SearchableSkill[], query: string): SearchResult[] 
     })
     .filter(({ relevance }) => relevance > 0)
     .map(({ skill, relevance }) => ({
-      id: skill.id,
+      id: skill.folder_id,
       kind: "Skill" as const,
-      title: skill.title,
-      href: `/skills/${skill.slug}`,
+      title: skill.name,
+      href: `/workspaces/${skill.workspace_id}/skills/${skill.folder_id}`,
       sourceName: skill.workspace_name,
-      detail:
-        (skill.forked_from_skill_id ? "Forked Skill" : "Skill") +
-        ` / ${skill.description || `${skill.items.length} items`}`,
+      detail: `Skill / ${skill.description || `${skill.file_count} files`}`,
       updatedAt: skill.updated_at,
       relevance,
     }));
+}
+
+// The published skill record itself, scored as a result when a skill is the
+// selected search scope.
+function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): SearchResult[] {
+  const relevance = scoreValues(query, [
+    { value: detail.skill.title, weight: 8 },
+    { value: detail.skill.description, weight: 3 },
+    { value: detail.workspace_name, weight: 1 },
+  ]);
+  if (relevance <= 0) return [];
+  return [
+    {
+      id: detail.skill.id,
+      kind: "Skill" as const,
+      title: detail.skill.title,
+      href: `/skills/${detail.skill.slug}`,
+      sourceName: detail.workspace_name,
+      detail: `Skill / ${detail.skill.description || `${detail.contents.pages.length} pages`}`,
+      updatedAt: detail.skill.updated_at,
+      relevance,
+    },
+  ];
 }
 
 function searchSessionsFromEvents(
@@ -831,187 +844,61 @@ function descendantFolderIds(
 function searchPublicSkillItems(
   detail: PublicSkillDetail,
   query: string,
-  scope: { includePages: boolean; includeSessions: boolean; includeTables: boolean }
+  scope: { includePages: boolean; includeTables: boolean }
 ): SearchResult[] {
-  return detail.items.flatMap((item, index) => {
-    if (item.object_type === "folder" && scope.includePages) {
-      return searchPublicFolder(detail, item, index, query);
+  const results: SearchResult[] = [];
+  const slug = encodeURIComponent(detail.skill.slug);
+
+  if (scope.includePages) {
+    for (const page of detail.contents.pages) {
+      if (!textIncludes(query, page.name, page.content_markdown, page.content_html)) continue;
+      results.push({
+        id: page.id,
+        kind: "Page",
+        title: page.name,
+        href: `/p/${page.id}?skill=${slug}`,
+        sourceName: detail.skill.title,
+        detail: pageSnippet(page.content_markdown, page.content_html),
+        updatedAt: page.updated_at || detail.skill.updated_at,
+        relevance: scoreValues(query, [
+          { value: page.name, weight: 8 },
+          { value: page.content_markdown, weight: 2 },
+          { value: stripHtml(page.content_html ?? ""), weight: 2 },
+          { value: detail.skill.title, weight: 1 },
+        ]),
+      });
     }
-    if (item.object_type === "page" && scope.includePages) {
-      return searchPublicPage(detail, item, index, query);
-    }
-    if (item.object_type === "session" && scope.includeSessions) {
-      return searchPublicSession(detail, item, index, query);
-    }
-    if (item.object_type === "table" && scope.includeTables) {
-      return searchPublicTable(detail, item, index, query);
-    }
-    return [];
-  });
-}
-
-function searchPublicFolder(
-  detail: PublicSkillDetail,
-  item: PublicSkillDetail["items"][number],
-  index: number,
-  query: string
-): SearchResult[] {
-  const inline = item.inline as {
-    pages?: {
-      id: string;
-      name: string;
-      content_markdown?: string | null;
-      content_html?: string | null;
-      updated_at?: string | null;
-    }[];
-  };
-
-  return (inline.pages ?? [])
-    .filter((page) => textIncludes(query, page.name, page.content_markdown, page.content_html))
-    .map((page) => ({
-      id: `${item.object_id}:${page.id}`,
-      kind: "Page" as const,
-      title: page.name,
-      href: `/skills/${detail.skill.slug}#item-${index}`,
-      sourceName: detail.skill.title,
-      detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.skill.updated_at,
-      relevance: scoreValues(query, [
-        { value: page.name, weight: 8 },
-        { value: page.content_markdown, weight: 2 },
-        { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.skill.title, weight: 1 },
-      ]),
-    }));
-}
-
-function searchPublicPage(
-  detail: PublicSkillDetail,
-  item: PublicSkillDetail["items"][number],
-  index: number,
-  query: string
-): SearchResult[] {
-  const inline = item.inline as {
-    page?: {
-      id: string;
-      name: string;
-      content_markdown?: string | null;
-      content_html?: string | null;
-      updated_at?: string | null;
-    };
-  };
-  const page = inline.page;
-  if (!page) return [];
-  if (!textIncludes(query, page.name, page.content_markdown, page.content_html)) return [];
-
-  return [
-    {
-      id: item.object_id,
-      kind: "Page" as const,
-      title: page.name,
-      href: `/skills/${detail.skill.slug}#item-${index}`,
-      sourceName: detail.skill.title,
-      detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.skill.updated_at,
-      relevance: scoreValues(query, [
-        { value: page.name, weight: 8 },
-        { value: page.content_markdown, weight: 2 },
-        { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.skill.title, weight: 1 },
-      ]),
-    },
-  ];
-}
-
-function searchPublicSession(
-  detail: PublicSkillDetail,
-  item: PublicSkillDetail["items"][number],
-  index: number,
-  query: string
-): SearchResult[] {
-  const inline = item.inline as {
-    session?: {
-      id?: string;
-      session_id: string;
-      agent_name?: string | null;
-      started_at?: string | null;
-      finished_at?: string | null;
-      events?: {
-        event_type: string;
-        tool_name?: string | null;
-        content: string;
-        created_at: string;
-      }[];
-    };
-  };
-  const session = inline.session;
-  if (!session) return [];
-
-  const eventText = (session.events ?? [])
-    .map((event) => [event.event_type, event.tool_name, event.content].filter(Boolean).join(" "))
-    .join(" ");
-  if (!textIncludes(query, session.session_id, session.agent_name, eventText)) {
-    return [];
   }
 
-  return [
-    {
-      id: session.id || item.object_id,
-      kind: "Session" as const,
-      title: sessionTitle(session),
-      href: `/skills/${detail.skill.slug}#item-${index}`,
-      sourceName: detail.skill.title,
-      detail: sessionSnippet(session),
-      updatedAt: session.finished_at || session.started_at || detail.skill.updated_at,
-      relevance: scoreValues(query, [
-        { value: session.session_id, weight: 5 },
-        { value: session.agent_name, weight: 2 },
-        { value: eventText, weight: 3 },
-        { value: detail.skill.title, weight: 1 },
-      ]),
-    },
-  ];
+  if (scope.includeTables) {
+    for (const table of detail.contents.tables) {
+      const columnText = table.columns.map((column) => column.name ?? "").join(" ");
+      const rowsText = table.rows.map(tableRowText).join(" ");
+      if (!textIncludes(query, table.name, table.description, columnText, rowsText)) continue;
+      results.push({
+        id: table.id,
+        kind: "Table",
+        title: table.name,
+        href: `/tables/${table.id}?skill=${slug}`,
+        sourceName: detail.skill.title,
+        detail: publicTableSnippet(table.description, table.columns, table.rows, query),
+        updatedAt: detail.skill.updated_at,
+        relevance: scoreValues(query, [
+          { value: table.name, weight: 8 },
+          { value: table.description, weight: 3 },
+          { value: columnText, weight: 2 },
+          { value: rowsText, weight: 1 },
+          { value: detail.skill.title, weight: 1 },
+        ]),
+      });
+    }
+  }
+
+  return results;
 }
 
 type PublicTableColumn = { name?: string | null };
 type PublicTableRow = { data?: Record<string, unknown> | null };
-
-function searchPublicTable(
-  detail: PublicSkillDetail,
-  item: PublicSkillDetail["items"][number],
-  index: number,
-  query: string
-): SearchResult[] {
-  const inline = item.inline as {
-    description?: string | null;
-    columns?: PublicTableColumn[];
-    rows?: PublicTableRow[];
-  };
-  const columns = inline.columns ?? [];
-  const rows = inline.rows ?? [];
-  const columnText = columns.map((column) => column.name ?? "").join(" ");
-  const rowsText = rows.map(tableRowText).join(" ");
-  if (!textIncludes(query, item.label, inline.description, columnText, rowsText)) return [];
-
-  return [
-    {
-      id: item.object_id,
-      kind: "Table" as const,
-      title: item.label,
-      href: `/skills/${detail.skill.slug}#item-${index}`,
-      sourceName: detail.skill.title,
-      detail: publicTableSnippet(inline.description, columns, rows, query),
-      updatedAt: detail.skill.updated_at,
-      relevance: scoreValues(query, [
-        { value: item.label, weight: 8 },
-        { value: inline.description, weight: 3 },
-        { value: columnText, weight: 2 },
-        { value: rowsText, weight: 1 },
-        { value: detail.skill.title, weight: 1 },
-      ]),
-    },
-  ];
-}
 
 function publicTableSnippet(
   description: string | null | undefined,
@@ -1060,24 +947,6 @@ function pageSnippet(markdown?: string | null, html?: string | null): string {
   if (markdown?.trim()) return markdown.slice(0, 220);
   if (html?.trim()) return stripHtml(html).slice(0, 220);
   return "Page in this skill";
-}
-
-function sessionSnippet(session: {
-  agent_name?: string | null;
-  events?: { event_type: string; tool_name?: string | null; content: string }[];
-}): string {
-  const firstEvent = session.events?.find((event) => event.content.trim());
-  if (!firstEvent) return `${session.agent_name || "Agent"} session in this skill`;
-  return firstEvent.content.slice(0, 220);
-}
-
-function sessionTitle(session: {
-  session_id: string;
-  events?: { content: string }[];
-}): string {
-  const firstEvent = session.events?.find((event) => event.content.trim());
-  if (!firstEvent) return session.session_id;
-  return firstEvent.content.split(/\r?\n/)[0]?.trim().slice(0, 80) || session.session_id;
 }
 
 function sortResults(results: SearchResult[]): SearchResult[] {
