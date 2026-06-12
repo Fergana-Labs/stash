@@ -14,6 +14,7 @@ from cryptography.fernet import Fernet
 from httpx import AsyncClient
 from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 
+from backend.integrations import crypto as integration_crypto
 from backend.integrations import storage
 from backend.integrations.base import AccountInfo, TokenSet
 from backend.integrations.render import provider as render_provider
@@ -31,8 +32,9 @@ UPSTREAM_TOOLS = [
 
 @pytest.fixture(autouse=True)
 def _integration_encryption(monkeypatch):
-    monkeypatch.setattr(storage.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
-    monkeypatch.setattr(storage, "_fernet", None)
+    monkeypatch.setattr(
+        integration_crypto.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY
+    )
 
 
 class FakeUpstreamSession:
