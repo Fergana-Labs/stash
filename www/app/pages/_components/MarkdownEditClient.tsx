@@ -14,7 +14,13 @@ interface Props {
   onCommentAdded: (comment: PasteComment) => void;
 }
 
-const COLLAB_URL = process.env.NEXT_PUBLIC_COLLAB_URL || "ws://localhost:3458";
+// Live collab needs an explicitly configured server. Without one (e.g.
+// prod before the env is set) the editor must run in plain autosave mode
+// — binding Collaboration to a provider that never connects would source
+// content from an empty Y.Doc and the page would render blank.
+const COLLAB_URL =
+  process.env.NEXT_PUBLIC_COLLAB_URL ||
+  (process.env.NODE_ENV === "development" ? "ws://localhost:3458" : "");
 
 const STATUS_LABELS: Record<SaveStatus, string> = {
   saved: "Saved",
@@ -52,7 +58,7 @@ export default function MarkdownEditClient({
           initialMarkdown={initialMarkdown}
           onSave={save}
           onSaveStatusChange={setStatus}
-          collab={{ url: COLLAB_URL, room: `paste:${slug}`, token }}
+          collab={COLLAB_URL ? { url: COLLAB_URL, room: `paste:${slug}`, token } : undefined}
         />
         <SelectionCommentLayer
           slug={slug}

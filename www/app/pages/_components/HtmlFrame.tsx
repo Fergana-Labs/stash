@@ -23,6 +23,9 @@ type Props = {
   /** Surfaces text selections inside the iframe so the parent can show
    *  a Comment pill anchored to them. */
   onSelection?: (info: HtmlSelectionInfo | null) => void;
+  /** Comment anchors to highlight: the iframe finds each quoted string
+   *  in its rendered text and wraps it in a [data-comment-id] span. */
+  highlights?: { id: string; quoted: string }[];
 };
 
 // Minimal port of the product app's HtmlPageView: sandboxed srcDoc iframe
@@ -35,6 +38,7 @@ export default function HtmlFrame({
   editable = false,
   onHtmlMutated,
   onSelection,
+  highlights,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
@@ -89,11 +93,25 @@ export default function HtmlFrame({
     );
   }, [editable, channel]);
 
+  useEffect(() => {
+    if (!highlights?.length) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "stash:highlight", channel, items: highlights },
+      "*",
+    );
+  }, [highlights, channel]);
+
   function onIframeLoad() {
     iframeRef.current?.contentWindow?.postMessage({ type: "skill:probe", channel }, "*");
     if (editable) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: "skill:set-editable", channel, enabled: true },
+        "*",
+      );
+    }
+    if (highlights?.length) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "stash:highlight", channel, items: highlights },
         "*",
       );
     }
@@ -124,7 +142,7 @@ function injectBootstrap(html: string, channel: string): string {
   );
   const script = `<script id="__stash_resize_script__">(function(){
     var c=${JSON.stringify(channel)};
-    var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}";
+    var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}[data-comment-id]{background:rgba(254,240,138,.45);border-radius:2px;}";
     var editable=false;
     var mutateTimer=null;
     function post(o){parent.postMessage(Object.assign({channel:c},o),"*");}
@@ -149,6 +167,16 @@ function injectBootstrap(html: string, channel: string): string {
       var junk=clone.querySelectorAll("#__stash_edit_css__, #__stash_resize_script__");
       for(var i=0;i<junk.length;i++){
         if(junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
+      }
+      // Comment highlights are presentation-only — unwrap them so they
+      // never bake into the saved HTML.
+      var marks=clone.querySelectorAll("[data-comment-id]");
+      for(var j=0;j<marks.length;j++){
+        var m=marks[j];
+        var p=m.parentNode;
+        if(!p) continue;
+        while(m.firstChild) p.insertBefore(m.firstChild,m);
+        p.removeChild(m);
       }
       var cb=clone.querySelector("body");
       if(cb){
@@ -212,6 +240,42 @@ function injectBootstrap(html: string, channel: string): string {
         rect:{top:last.top,left:last.left,right:last.right,bottom:last.bottom}
       });
     }
+    // Find each comment's quoted text in the rendered DOM and wrap it in
+    // a [data-comment-id] span — highlights are presentation-only and
+    // serializeClean's clone never includes them... they live only in the
+    // live DOM, recreated on every load.
+    function applyHighlights(items){
+      for(var i=0;i<items.length;i++){
+        var it=items[i];
+        if(!it||!it.quoted||!it.id) continue;
+        if(document.querySelector('[data-comment-id="'+it.id+'"]')) continue;
+        wrapFirst(String(it.quoted),String(it.id));
+      }
+    }
+    function wrapFirst(quoted,id){
+      var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
+      var nodes=[],starts=[],full="";
+      var t;
+      while((t=walker.nextNode())){starts.push(full.length);nodes.push(t);full+=t.textContent||"";}
+      var idx=full.indexOf(quoted);
+      if(idx<0) return;
+      function loc(pos,isEnd){
+        var probe=isEnd?pos-1:pos;
+        for(var i=nodes.length-1;i>=0;i--){
+          if(starts[i]<=probe) return {node:nodes[i],offset:pos-starts[i]};
+        }
+        return null;
+      }
+      var s=loc(idx,false),e=loc(idx+quoted.length,true);
+      if(!s||!e) return;
+      var range=document.createRange();
+      range.setStart(s.node,s.offset);
+      range.setEnd(e.node,e.offset);
+      var span=document.createElement("span");
+      span.setAttribute("data-comment-id",id);
+      try{range.surroundContents(span);}
+      catch(err){span.appendChild(range.extractContents());range.insertNode(span);}
+    }
     if(document.body){
       document.body.removeAttribute("contenteditable");
       document.body.removeAttribute("spellcheck");
@@ -226,6 +290,7 @@ function injectBootstrap(html: string, channel: string): string {
       if(!d || d.channel!==c) return;
       if(d.type==="skill:probe") postResize();
       else if(d.type==="skill:set-editable") setEditable(d.enabled);
+      else if(d.type==="stash:highlight") applyHighlights(d.items||[]);
     });
     postResize();
   })();</script>`;

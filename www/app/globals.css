@@ -154,6 +154,17 @@ html, body {
   margin-bottom: 0;
 }
 
+/* Comment anchors — wraps the quoted range a comment is attached to,
+   same marker + treatment as the app. The span is injected at runtime,
+   so this lives in @layer base to survive Tailwind v4's purge (a bare
+   runtime-only attribute selector gets dropped from the build). */
+@layer base {
+  [data-comment-id] {
+    background: rgba(254, 240, 138, 0.45);
+    border-radius: 2px;
+  }
+}
+
 /* Live-collaboration carets (same classes the app styles) */
 .collaboration-cursor__caret {
   border-left: 1px solid #0d0d0d;
