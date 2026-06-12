@@ -127,14 +127,12 @@ function DiscoverGrid({
         return (
           <SkillCard
             key={skill.id}
+            href={`/skills/${skill.slug}`}
             skill={{
-              id: skill.id,
-              slug: skill.slug,
               title: skill.title,
               description: skill.description,
               cover_image_url: skill.cover_image_url,
-              access: "public",
-              item_count: skill.item_count,
+              file_count: skill.item_count,
               updated_at: skill.updated_at,
             }}
             cover={COVERS[i % COVERS.length]}

@@ -14,10 +14,12 @@ from pathlib import Path
 from stashai.plugin.scope import find_manifest
 from stashai.plugin.stash_client import StashClient
 
-DATA_DIR = Path(os.environ.get(
-    "CLAUDE_PLUGIN_DATA",
-    Path.home() / ".claude/plugins/data/stash",
-))
+DATA_DIR = Path(
+    os.environ.get(
+        "CLAUDE_PLUGIN_DATA",
+        Path.home() / ".claude/plugins/data/stash",
+    )
+)
 
 PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
@@ -64,7 +66,9 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", PRODUCTION_BASE_URL),
+        "api_endpoint": os.environ.get(
+            "CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", PRODUCTION_BASE_URL
+        ),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),

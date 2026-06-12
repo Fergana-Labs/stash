@@ -17,7 +17,7 @@ from ..models import (
     HistoryEventListResponse,
     HistoryEventResponse,
 )
-from ..services import memory_service, shared_skill_service, workspace_service
+from ..services import memory_service, workspace_service
 from ..tasks.session_titles import generate_session_title
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sessions", tags=["sessions"])
@@ -56,16 +56,6 @@ async def push_ws_event(
         attachments=attachments,
         created_at=req.created_at,
     )
-    if req.default_skill_id and req.session_id:
-        try:
-            await shared_skill_service.add_sessions_to_skill(
-                skill_id=req.default_skill_id,
-                workspace_id=workspace_id,
-                user_id=current_user["id"],
-                session_ids=[req.session_id],
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
     if settings.ANTHROPIC_API_KEY and req.session_id and req.event_type in _TITLE_EVENT_TYPES:
         generate_session_title.delay(str(workspace_id), req.session_id)
     return HistoryEventResponse(**event)
@@ -80,17 +70,6 @@ async def push_ws_events_batch(
     await _check_member(workspace_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(workspace_id, current_user["id"], events_data)
-    if req.default_skill_id:
-        session_ids = sorted({event.session_id for event in req.events if event.session_id})
-        try:
-            await shared_skill_service.add_sessions_to_skill(
-                skill_id=req.default_skill_id,
-                workspace_id=workspace_id,
-                user_id=current_user["id"],
-                session_ids=session_ids,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
     title_session_ids = sorted(
         {
             event.session_id

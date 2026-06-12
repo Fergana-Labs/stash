@@ -299,15 +299,17 @@ export default function AppSidebar({
   const activeSkillSlug = pathname.match(/^\/skills\/([^/?#]+)/)?.[1] ?? null;
   const activeSkill =
     activeWorkspace && activeSkillSlug
-      ? spines[activeWorkspace.id]?.skills?.find((skill) => skill.slug === activeSkillSlug)
+      ? spines[activeWorkspace.id]?.skills?.find(
+          (skill) => skill.published?.slug === activeSkillSlug,
+        )
       : null;
-  // Workspace settings now live on the unified /settings page; only Skills
-  // keep their own settings route.
-  const settingsHref = activeSkill
-    ? `/skills/${activeSkill.slug}/settings`
+  // Workspace settings now live on the unified /settings page; only published
+  // Skills keep their own settings route.
+  const settingsHref = activeSkill?.published
+    ? `/skills/${activeSkill.published.slug}/settings`
     : "/settings";
-  const settingsActive = activeSkill
-    ? pathname === `/skills/${activeSkill.slug}/settings`
+  const settingsActive = activeSkill?.published
+    ? pathname === `/skills/${activeSkill.published.slug}/settings`
     : pathname === "/settings";
 
   return (
@@ -330,13 +332,13 @@ export default function AppSidebar({
               : pathname === "/"
           }
         />
-        {/* "Your brain" is the revamped activity view — your accumulated
+        {/* "Index" is the revamped activity view — your accumulated
             knowledge, status, and newsfeed. Global (workspace-resolved within
             the page), so it sits up top next to Home. */}
         <NavRow
           href="/activity"
           icon={<ActivityIcon />}
-          label="Your brain"
+          label="Index"
           active={pathname.startsWith("/activity")}
         />
         {activeWorkspace ? (
@@ -350,9 +352,10 @@ export default function AppSidebar({
       </nav>
 
       {activeWorkspace ? (
+        <>
         <nav className="mt-4 px-2 text-[13px]">
           <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-            Sources
+            Your Brain
           </div>
           {sourceRows.native.map((row) => (
             <NavRow
@@ -363,21 +366,21 @@ export default function AppSidebar({
               active={row.active}
             />
           ))}
-          {sourceRows.connected.length > 0 && (
-            <button
-              type="button"
-              onClick={toggleExternalCollapsed}
-              className="flex w-full items-center gap-1 px-2 pb-1 pt-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+        </nav>
+        <nav className="mt-4 px-2 text-[13px]">
+          <button
+            type="button"
+            onClick={toggleExternalCollapsed}
+            className="flex w-full items-center gap-1 px-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+          >
+            <span
+              aria-hidden
+              className={`transition-transform ${externalCollapsed ? "-rotate-90" : ""}`}
             >
-              <span
-                aria-hidden
-                className={`transition-transform ${externalCollapsed ? "-rotate-90" : ""}`}
-              >
-                ▾
-              </span>
-              External
-            </button>
-          )}
+              ▾
+            </span>
+            External Sources
+          </button>
           {!externalCollapsed &&
             sourceRows.connected.map((row) => (
               <NavRow
@@ -399,6 +402,7 @@ export default function AppSidebar({
             <span className="min-w-0 flex-1 truncate">Add a new source</span>
           </button>
         </nav>
+        </>
       ) : (
         <div className="mt-4 px-3 py-1.5 text-[12px] italic text-muted">
           No workspaces yet.

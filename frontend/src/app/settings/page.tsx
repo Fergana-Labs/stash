@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "../../components/ConfirmDialog";
 import Header from "../../components/Header";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import WorkspaceSection from "../../components/settings/WorkspaceSection";
@@ -148,6 +149,7 @@ function TextField({
 }
 
 function ActiveSessions() {
+  const confirm = useConfirm();
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [error, setError] = useState("");
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -170,7 +172,12 @@ function ActiveSessions() {
   }, [load]);
 
   async function handleRevoke(keyId: string) {
-    if (!confirm("Revoke this session? Any CLI or browser using it will be signed out.")) return;
+    const ok = await confirm({
+      title: "Revoke this session?",
+      body: "Any CLI or browser using it will be signed out.",
+      confirmLabel: "Revoke",
+    });
+    if (!ok) return;
     setRevoking(keyId);
     try {
       await revokeMyKey(keyId);

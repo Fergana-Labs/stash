@@ -33,8 +33,7 @@ def _iter_tracked_files(root: Path):
 def test_every_agent_has_shipped_assets():
     for agent in AGENTS:
         assert (DST_DIR / agent).is_dir(), (
-            f"Missing shipped assets for {agent!r}: "
-            f"expected {DST_DIR / agent} to exist"
+            f"Missing shipped assets for {agent!r}: " f"expected {DST_DIR / agent} to exist"
         )
 
 

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
+import { useConfirm } from "../../ConfirmDialog";
 import {
   ApiError,
   createTable,
@@ -44,6 +45,9 @@ import { type GridItem, type ItemKind } from "./kind";
 interface Props {
   workspaceId: string;
   folderId: string | null;
+  // Base path for folder links. Defaults to the plain Files folder route;
+  // the skill browser passes its own route so navigation stays in skill-land.
+  folderHrefBase?: string;
 }
 
 // Mime type carried by drag events to identify a file-browser drag. Keeps the
@@ -66,8 +70,9 @@ type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
-export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
+export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHrefBase }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
 
   const [tree, setTree] = useState<WorkspaceTree | null>(null);
   const [contents, setContents] = useState<FolderContents | null>(null);
@@ -374,7 +379,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
 
   function hrefForItem(item: GridItem): string {
     if (item.kind === "folder") {
-      return `/workspaces/${workspaceId}/folders/${item.id}`;
+      return `${folderHrefBase ?? `/workspaces/${workspaceId}/folders`}/${item.id}`;
     }
     if (item.kind === "page" || item.kind === "html") {
       return `/p/${item.id}`;
@@ -456,7 +461,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
 
   async function handleDelete(item: GridItem) {
     if (item.kind === "folder") {
-      const yes = window.confirm(`Delete folder "${item.name}"? This can't be undone.`);
+      const yes = await confirm({
+        title: `Delete folder "${item.name}"?`,
+        body: "This can't be undone.",
+        confirmLabel: "Delete",
+      });
       if (!yes) return;
       try {
         await deleteFolder(workspaceId, item.id);
@@ -468,7 +477,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
     if (item.kind === "datatable") {
       // Standalone tables have no trash — hard delete behind a confirm.
-      const yes = window.confirm(`Delete table "${item.name}"? This can't be undone.`);
+      const yes = await confirm({
+        title: `Delete table "${item.name}"?`,
+        body: "This can't be undone.",
+        confirmLabel: "Delete",
+      });
       if (!yes) return;
       try {
         await deleteTable(workspaceId, item.id);
@@ -493,12 +506,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   async function bulkDelete(targets: GridItem[]) {
     if (targets.length === 0) return;
     const hasFolder = targets.some((t) => t.kind === "folder");
-    const detail = hasFolder
-      ? " Folders are deleted permanently."
-      : "";
-    const yes = window.confirm(
-      `Delete ${targets.length} item${targets.length === 1 ? "" : "s"}?${detail}`
-    );
+    const yes = await confirm({
+      title: `Delete ${targets.length} item${targets.length === 1 ? "" : "s"}?`,
+      body: hasFolder ? "Folders are deleted permanently." : undefined,
+      confirmLabel: "Delete",
+    });
     if (!yes) return;
     try {
       for (const item of targets) {

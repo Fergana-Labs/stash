@@ -11,20 +11,25 @@ import {
   type ReactNode,
 } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import { useActiveWorkspaceId } from "../../../../../components/ShellChromeContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
-  deleteSkill,
   getPublicSkill,
+  unpublishSkill,
   updateSkill,
   uploadFile,
   type PublicSkillDetail,
 } from "../../../../../lib/api";
 import { resetSkillNavigationCache } from "../../../../../lib/skillNavigationCache";
 
+// Settings for the publish record of a skill. The skill's contents live in
+// its folder (edited through the workspace); this page only manages how the
+// published version presents and whether it stays shared.
 export default function SkillSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const confirm = useConfirm();
   const [data, setData] = useState<PublicSkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
@@ -191,18 +196,39 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     }
   }
 
-  async function handleDelete() {
+  async function toggleDiscoverable(nextDiscoverable: boolean) {
     if (!skill) return;
-    if (!confirm(`Delete "${skill.title}"? This cannot be undone.`)) return;
 
-    setSaving("delete");
+    setSaving("discover");
     setError("");
     try {
-      await deleteSkill(skill.id);
+      const updated = await updateSkill(skill.id, { discoverable: nextDiscoverable });
+      setData((current) => (current ? { ...current, skill: updated } : current));
+      resetSkillNavigationCache();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update Discover");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function handleStopSharing() {
+    if (!skill) return;
+    const ok = await confirm({
+      title: `Stop sharing "${skill.title}"?`,
+      body: "The share link stops working; the skill folder and its files stay in your workspace.",
+      confirmLabel: "Stop sharing",
+    });
+    if (!ok) return;
+
+    setSaving("unpublish");
+    setError("");
+    try {
+      await unpublishSkill(skill.id);
       resetSkillNavigationCache();
       router.push(`/workspaces/${skill.workspace_id}/skills`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete Skill");
+      setError(e instanceof Error ? e.message : "Could not stop sharing");
       setSaving("");
     }
   }
@@ -263,6 +289,28 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
             </form>
           </Section>
 
+          <Section title="Sharing">
+            <div className="rounded-lg border border-border bg-base px-3 py-3 text-[13px] text-foreground">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted">URL</span>
+                <span className="truncate font-mono text-[12px]">/skills/{skill.slug}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-muted">Views</span>
+                <span>{skill.view_count}</span>
+              </div>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
+                <input
+                  type="checkbox"
+                  checked={skill.discoverable}
+                  disabled={saving === "discover"}
+                  onChange={(e) => void toggleDiscoverable(e.target.checked)}
+                />
+                <span className="text-[12px] text-foreground">List on Discover</span>
+              </label>
+            </div>
+          </Section>
+
           <Section title="Branding">
             <ImageField
               label="Banner"
@@ -285,11 +333,11 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
           <Section title="Danger zone">
             <button
               type="button"
-              onClick={handleDelete}
-              disabled={saving === "delete"}
+              onClick={handleStopSharing}
+              disabled={saving === "unpublish"}
               className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
             >
-              {saving === "delete" ? "Deleting..." : "Delete this skill"}
+              {saving === "unpublish" ? "Stopping..." : "Stop sharing"}
             </button>
           </Section>
         </div>

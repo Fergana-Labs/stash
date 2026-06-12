@@ -1,13 +1,13 @@
 """Store Gong workspace id on cached calls.
 
-Revision ID: 0106
-Revises: 0105
+Revision ID: 0108
+Revises: 0107
 """
 
 from alembic import op
 
-revision = "0106"
-down_revision = "0105"
+revision = "0108"
+down_revision = "0107"
 branch_labels = None
 depends_on = None
 

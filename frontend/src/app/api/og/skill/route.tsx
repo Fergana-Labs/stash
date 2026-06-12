@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const itemType = request.nextUrl.searchParams.get("type");
   const itemId = request.nextUrl.searchParams.get("id");
   const item =
-    isSkillItemType(itemType) && itemId ? findSkillItem(data.items, itemType, itemId) : null;
+    isSkillItemType(itemType) && itemId ? findSkillItem(data.contents, itemType, itemId) : null;
   const card = item ? buildItemPreviewCard(data, item) : buildSkillPreviewCard(data);
 
   return new ImageResponse(<PreviewImage card={card} />, {
@@ -511,18 +511,6 @@ function KindIcon({ kind, size }: { kind: PreviewCard["kind"]; size: number }) {
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <path
           d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-      </svg>
-    );
-  }
-
-  if (kind === "session") {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <path
-          d="M21 12c0 4.4-4 8-9 8-1.4 0-2.8-.3-4-.8L3 21l1.5-4C3.6 15.7 3 13.9 3 12c0-4.4 4-8 9-8s9 3.6 9 8z"
           stroke="currentColor"
           strokeWidth="1.8"
         />
