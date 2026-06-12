@@ -21,9 +21,9 @@ import SourceConnectorList from "../../components/integrations/SourceConnectorLi
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
-// The linear flow: a few questions about the user, explain Stash, install the
-// CLI, try an entry point, then ask the agent a real question, then launch.
-const STEP_NAMES = ["about", "intro", "cli", "try", "ask"] as const;
+// The linear flow: a few questions about the user, explain Stash, try an
+// entry point, install the CLI, then ask the agent a real question, then launch.
+const STEP_NAMES = ["about", "intro", "try", "cli", "ask"] as const;
 
 const CLI_INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 
@@ -162,11 +162,11 @@ function OnboardingInner() {
     );
   }
 
-  // 0 = about, 1 = intro, 2 = cli, 3 = try it out, 4 = ask.
+  // 0 = about, 1 = intro, 2 = try it out, 3 = cli, 4 = ask.
   const isAbout = stepIdx <= 0;
   const isIntro = stepIdx === 1;
-  const isCli = stepIdx === 2;
-  const isTryItOut = stepIdx === 3;
+  const isTryItOut = stepIdx === 2;
+  const isCli = stepIdx === 3;
   const isAsk = stepIdx >= 4;
 
   const continueLabel = isIntro
@@ -223,7 +223,6 @@ function OnboardingInner() {
             />
           )}
           {isIntro && <IntroStep />}
-          {isCli && <CliStep />}
           {isTryItOut && (
             <TryItOutStep
               workspaceId={workspaceId}
@@ -234,6 +233,7 @@ function OnboardingInner() {
               onContinue={() => goToStep(stepIdx + 1)}
             />
           )}
+          {isCli && <CliStep />}
           {isAsk && (
             <AskStep workspaceId={workspaceId} onAnswered={() => setAnswered(true)} />
           )}
@@ -566,7 +566,7 @@ function TryItOutStep({
         <div className="space-y-3">
           <SourceConnectorList
             workspaceId={workspaceId}
-            returnTo="/onboarding?step=4"
+            returnTo="/onboarding?step=3"
             onSourceCountChange={onSourceCountChange}
             onObsidianUploaded={onObsidianAdded}
           />
@@ -658,7 +658,7 @@ function AskStep({
 }
 
 function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["About you", "Welcome", "Install CLI", "Try it out", "Ask"];
+  const labels = ["About you", "Welcome", "Try it out", "Install CLI", "Ask"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, i) => {
