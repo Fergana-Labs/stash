@@ -19,6 +19,7 @@ from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
 from ..services import (
+    billing_service,
     permission_service,
     security_audit_service,
     source_service,
@@ -158,6 +159,20 @@ async def search_sources(
     if results is None:
         raise HTTPException(status_code=404, detail="Source not found")
     return {"results": results}
+
+
+@router.get("/tree")
+async def sources_tree(
+    workspace_id: UUID,
+    depth: int = 3,
+    current_user: dict = Depends(get_current_user),
+):
+    """The whole workspace as one filesystem: every source the user can see,
+    each with a nested entry tree trimmed to `depth` levels."""
+    await _require_member(workspace_id, current_user["id"])
+    return {
+        "sources": await source_service.sources_tree(workspace_id, current_user["id"], depth=depth)
+    }
 
 
 @router.get("/{source}/entries")
@@ -300,6 +315,9 @@ async def add_source(
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
+    await billing_service.ensure_can_add_source(
+        current_user["id"], workspace_id, body.source_type, external_ref
+    )
     try:
         created = await source_service.create_source(
             workspace_id=workspace_id,

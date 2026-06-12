@@ -1269,7 +1269,7 @@ async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncCli
         headers=_auth(owner_key),
     )
     assert share.status_code == 200
-    assert share.json()["pending"] is True
+    assert share.json()["ok"] is True
 
     # The owner sees it listed as a pending invite.
     listing = await client.get(
@@ -1290,6 +1290,40 @@ async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncCli
     rows = after.json()["shares"]
     assert all(not s["pending"] for s in rows)
     assert any(s["email"] == "newcomer@example.com" for s in rows)
+
+
+@pytest.mark.asyncio
+async def test_share_response_does_not_reveal_account_existence(client: AsyncClient):
+    """The share response must be identical for known and unknown emails —
+    a per-branch difference would let any workspace owner probe which
+    addresses have Stash accounts (a user-enumeration oracle)."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "secret spec"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    await _register_with_email(client, "has-account@example.com")
+
+    async def _share(email: str):
+        return await client.post(
+            "/api/v1/share",
+            json={"object_type": "page", "object_id": page_id, "email": email},
+            headers=_auth(owner_key),
+        )
+
+    known = await _share("has-account@example.com")
+    unknown = await _share("no-account@example.com")
+
+    assert known.status_code == 200
+    assert unknown.status_code == 200
+    assert known.json() == {"ok": True, "email": "has-account@example.com"}
+    assert unknown.json() == {"ok": True, "email": "no-account@example.com"}
 
 
 @pytest.mark.asyncio
@@ -1336,7 +1370,7 @@ async def test_revoked_pending_share_invite_does_not_convert_on_signup(client: A
     )
 
     assert share.status_code == 200
-    assert share.json()["pending"] is True
+    assert share.json()["ok"] is True
     assert revoked.status_code == 200
     assert listing.status_code == 200
     assert listing.json()["shares"] == []
@@ -1377,7 +1411,7 @@ async def test_expired_pending_share_invite_does_not_convert_on_signup(client: A
         headers=_auth(owner_key),
     )
     assert share.status_code == 200
-    assert share.json()["pending"] is True
+    assert share.json()["ok"] is True
 
     newcomer_key, _ = await _register_with_email(client, "late-newcomer@example.com")
 
@@ -1423,7 +1457,7 @@ async def test_converted_share_keeps_invite_expiry(client: AsyncClient, pool):
         headers=_auth(owner_key),
     )
     assert share.status_code == 200
-    assert share.json()["pending"] is True
+    assert share.json()["ok"] is True
 
     newcomer_key, newcomer = await _register_with_email(client, "timed-newcomer@example.com")
 

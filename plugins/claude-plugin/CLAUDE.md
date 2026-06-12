@@ -26,6 +26,15 @@ Run `stash prompts agent-guidance` to reprint this rule mid-session.
 
 Most things are plain `stash` CLI subcommands. Always use `--json` for machine-readable output when parsing results.
 
+### Everything as a filesystem
+`stash ls` renders everything Stash can reach as one tree — workspace files, session transcripts, and every connected integration (GitHub, Slack, Gong, Gmail, Drive, Notion, …). When asked what you have access to, run it and show the tree.
+```bash
+stash ls                           # The whole company as a filesystem
+stash ls gong                      # One integration's contents
+stash ls my-repo/docs              # Drill into a directory
+stash ls -L 3 --json               # Deeper tree, machine-readable
+```
+
 ### Virtual filesystem
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS. It accepts bash-shaped commands over the virtual Stash tree:
 ```bash

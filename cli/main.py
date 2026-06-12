@@ -8,6 +8,7 @@ import textwrap
 import time
 from pathlib import Path
 
+import httpx
 import questionary
 import typer
 from rich.align import Align
@@ -2577,7 +2578,7 @@ def hist_import(
                     replace=replace,
                 )
                 imported += 1
-            except StashError:
+            except (StashError, httpx.HTTPError):
                 errors += 1
             progress.advance(task)
 
@@ -2830,6 +2831,126 @@ def sources_search(
     _print_search(query, source, workspace_id, limit, as_json)
 
 
+def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
+    """Stable filesystem-style directory name per source. Natives keep their
+    handle ('files', 'sessions'); connected sources slug their display name,
+    with -2/-3 suffixes on collisions."""
+    import re as _re
+
+    names: dict[str, dict] = {}
+    for s in sources:
+        if s["type"].startswith("native_"):
+            name = s["source"]
+        else:
+            name = _re.sub(r"[^a-z0-9._-]+", "-", s["display_name"].lower()).strip("-") or "source"
+        candidate = name
+        suffix = 2
+        while candidate in names:
+            candidate = f"{name}-{suffix}"
+            suffix += 1
+        names[candidate] = s
+    return names
+
+
+def _source_annotation(s: dict) -> str:
+    note = f"  [dim]({s['type']})[/dim]"
+    if s.get("sync_status") == "failed":
+        note += "  [red]sync failed[/red]"
+    elif s.get("sync_status") == "syncing":
+        note += "  [yellow]syncing…[/yellow]"
+    return note
+
+
+def _add_ls_branch(branch, nodes: list[dict]) -> None:
+    for node in nodes:
+        if node["kind"] == "truncated":
+            branch.add(f"[dim]… +{node['hidden']} more[/dim]")
+        elif node.get("children") or node["kind"] == "folder":
+            child = branch.add(f"[bold]{node['name']}/[/bold]")
+            _add_ls_branch(child, node.get("children") or [])
+        else:
+            branch.add(node["name"])
+
+
+@app.command("ls")
+def ls_cmd(
+    path: str = typer.Argument(
+        "", help="Source or path to list, e.g. 'gong' or 'my-repo/docs'. Omit for everything."
+    ),
+    workspace_id: str = typer.Option(None, "--ws"),
+    depth: int = typer.Option(2, "-L", "--depth", help="How many levels deep to render."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Everything Stash can reach, as one filesystem — files, session
+    transcripts, and every connected integration (GitHub, Slack, Gong, …)."""
+    telemetry.record("ls")
+    _require_auth()
+    ws = workspace_id or _resolve_workspace()
+
+    with _client() as c:
+        try:
+            sources = c.sources_tree(ws, depth=depth)
+            if not path:
+                _print_ls_overview(sources, as_json)
+                return
+            _print_ls_path(c, ws, sources, path, as_json)
+        except StashError as e:
+            _err(e)
+
+
+def _print_ls_overview(sources: list[dict], as_json: bool) -> None:
+    if _use_json(as_json):
+        output_json({"sources": sources})
+        return
+    from rich.tree import Tree as RichTree
+
+    root = RichTree("[bold]stash:/[/bold]")
+    for name, s in _source_dir_names(sources).items():
+        branch = root.add(f"[bold]{name}/[/bold]{_source_annotation(s)}")
+        _add_ls_branch(branch, s.get("tree") or [])
+    console.print(root)
+
+
+def _print_ls_path(c: StashClient, ws: str, sources: list[dict], path: str, as_json: bool) -> None:
+    dir_name, _, rest = path.strip("/").partition("/")
+    source = _source_dir_names(sources).get(dir_name)
+    if source is None:
+        console.print(f"[red]No source named '{dir_name}'. Run `stash ls` to see them.[/red]")
+        raise typer.Exit(1)
+
+    entries = c.list_source_entries(ws, source["source"], path=rest)
+    if _use_json(as_json):
+        output_json({"entries": entries})
+        return
+
+    if source["type"].startswith("native_"):
+        for entry in entries:
+            console.print(f"  {entry['name']}  [dim]({entry.get('id', '')})[/dim]")
+        return
+
+    # Entries are a recursive prefix listing; collapse to this directory's
+    # immediate children.
+    base = f"{rest}/" if rest else ""
+    children: dict[str, str] = {}
+    for entry in entries:
+        entry_path = entry.get("path") or ""
+        if entry_path == rest:
+            children[entry_path.rsplit("/", 1)[-1]] = entry.get("kind", "file")
+            continue
+        if not entry_path.startswith(base):
+            continue
+        name, _, remainder = entry_path[len(base) :].partition("/")
+        if remainder or entry.get("kind") == "folder":
+            children[name] = "folder"
+        else:
+            children.setdefault(name, entry.get("kind", "file"))
+    if not children:
+        console.print("[dim]Empty.[/dim]")
+        return
+    for name in sorted(children):
+        console.print(f"  [bold]{name}/[/bold]" if children[name] == "folder" else f"  {name}")
+
+
 # ===========================================================================
 # Shares — grant a person access to a folder/page/file/session by email
 # ===========================================================================
@@ -2885,10 +3006,10 @@ def shares_add(
     if _use_json(as_json):
         output_json(data)
         return
-    if data.get("pending"):
-        console.print(f"[green]Invite pending[/green] for {email} (converts on signup).")
-    else:
-        console.print(f"[green]Shared[/green] with {email} ({permission}).")
+    console.print(
+        f"[green]Shared[/green] with {email} ({permission}). "
+        "If they don't have an account yet, it converts when they sign up."
+    )
 
 
 @shares_app.command("rm")
@@ -4109,20 +4230,16 @@ def login_cmd():
         console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
         return
 
-    # --- Step 3: Upload or just read? ---
-    _reserve_bottom_padding(6)
-    usage_mode = questionary.select(
-        "Do you want to upload transcripts, or just read?",
-        choices=[
-            questionary.Choice("Upload transcripts", value="upload"),
-            questionary.Choice("Just read", value="read"),
-        ],
-        use_shortcuts=True,
+    # --- Step 3: Share transcripts? ---
+    _reserve_bottom_padding(4)
+    share_transcripts = questionary.confirm(
+        "Do you want to share your coding agent transcripts to Stash?",
+        default=True,
     ).ask()
-    if usage_mode is None:
+    if share_transcripts is None:
         raise typer.Exit(1)
 
-    if usage_mode == "read":
+    if not share_transcripts:
         _show_setup_complete_splash()
         return
 
@@ -4153,12 +4270,12 @@ def login_cmd():
         save_enabled_agents([])
 
     # --- Step 5: Which repo? ---
-    repo_root = _git_toplevel()
-    repo_name = repo_root.name if repo_root else None
+    # Outside a git repo, treat the current directory as the repo root: the
+    # .stash manifest lands there and the workspace is named after it.
+    repo_root = _git_toplevel() or Path.cwd()
 
-    this_repo_label = f"This repo ({repo_name})" if repo_name else "This repo"
     repo_choices = [
-        questionary.Choice(this_repo_label, value="this"),
+        questionary.Choice(f"This repo ({repo_root.name})", value="this"),
         questionary.Choice("Another repo", value="other"),
         questionary.Choice("Done", value="done"),
     ]
@@ -4166,22 +4283,17 @@ def login_cmd():
     answer = questionary.select(
         "Which repo do you want to upload transcripts in?",
         choices=repo_choices,
-        default=repo_choices[0] if repo_root else repo_choices[2],
+        default=repo_choices[0],
         use_shortcuts=True,
     ).ask()
     if answer is None:
         raise typer.Exit(1)
 
     if answer == "this":
-        if not repo_root:
-            console.print(
-                "[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]"
-            )
-        else:
-            try:
-                _auto_connect_repo(repo_root, cfg)
-            except StashError as e:
-                console.print(f"[red]Could not connect repo: {e.detail}[/red]")
+        try:
+            _auto_connect_repo(repo_root, cfg)
+        except StashError as e:
+            console.print(f"[red]Could not connect repo: {e.detail}[/red]")
     elif answer == "other":
         _reserve_bottom_padding(4)
         repo_path = typer.prompt("Path to repo").strip()
@@ -4478,7 +4590,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
             try:
                 upload_conversation(c, ws, conv)
                 imported += 1
-            except StashError as e:
+            except (StashError, httpx.HTTPError) as e:
                 errors += 1
                 last_error = str(e)
             progress.advance(task)
@@ -5078,6 +5190,12 @@ Commands to reach for
 
 Browsing Stash
 --------------
+
+`stash ls` shows everything Stash can reach as one filesystem — workspace
+files, session transcripts, and every connected integration (GitHub, Slack,
+Gong, Gmail, Drive, Notion, …). When asked what you have access to, run it
+and show the tree. Drill in with `stash ls <source>/<path>` and read
+documents with `stash sources read`.
 
 Use `stash vfs` when you want to browse Stash like a filesystem without
 mounting anything into the OS. It accepts bash-shaped commands over the

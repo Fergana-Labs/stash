@@ -28,3 +28,4 @@ playwright>=1.49
 Pillow>=10.0
 pillow-heif>=0.19
 snowflake-connector-python>=3.12
+stripe>=12.0

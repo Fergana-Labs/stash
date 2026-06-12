@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useConfirm } from "../../components/ConfirmDialog";
 import Header from "../../components/Header";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
+import SubscriptionSection from "../../components/settings/SubscriptionSection";
 import WorkspaceSection from "../../components/settings/WorkspaceSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
@@ -52,6 +53,7 @@ export default function SettingsPage() {
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
+          <SubscriptionSection />
           <WorkspaceSection />
           <IntegrationsSettings embedded />
           <ActiveSessions />

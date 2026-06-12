@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { addWorkspaceSource } from "@/lib/api";
+import { addWorkspaceSource, ApiError } from "@/lib/api";
 import {
   type IntegrationAccount,
   listAsanaProjects,
@@ -19,6 +19,7 @@ import {
   type SlackChannelSummary,
 } from "@/lib/integrations";
 
+import PaywallModal from "../PaywallModal";
 import { AsanaIcon, GitHubIcon, JiraIcon, NotionIcon, SlackIcon } from "./BrandIcons";
 import type { Connector } from "./connectors";
 
@@ -55,11 +56,13 @@ export function AddSourceControls({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [paymentRequired, setPaymentRequired] = useState(false);
   const [gongWorkspaceIds, setGongWorkspaceIds] = useState("");
 
   async function add(body?: AddSourceBody) {
     setBusy(true);
     setError("");
+    setPaymentRequired(false);
     try {
       await addWorkspaceSource(workspaceId, {
         source_type: connector.sourceType,
@@ -69,6 +72,7 @@ export function AddSourceControls({
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add source");
+      setPaymentRequired(e instanceof ApiError && e.status === 402);
       return false;
     } finally {
       setBusy(false);
@@ -76,7 +80,10 @@ export function AddSourceControls({
   }
 
   const errorRow = error ? (
-    <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
+    <>
+      <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
+      {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
+    </>
   ) : null;
 
   if (connector.kind === "github") {

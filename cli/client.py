@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -487,19 +488,28 @@ class StashClient:
         name = os.path.basename(transcript_path)
         if not name.endswith(".gz"):
             name += ".gz"
-        resp = self._request(
-            "POST",
-            f"/api/v1/workspaces/{workspace_id}/transcripts",
-            data={
-                "session_id": session_id,
-                "agent_name": agent_name,
-                "cwd": cwd,
-                "replace": str(replace).lower(),
-            },
-            files={"file": (name, body, "application/gzip")},
-            timeout=120,
-        )
-        return resp.json()
+        # History imports send thousands of sequential uploads, so transient
+        # network blips are expected; retry a couple times before giving up.
+        # Resending is safe: the server skips sessions that already exist.
+        for attempt in range(3):
+            try:
+                resp = self._request(
+                    "POST",
+                    f"/api/v1/workspaces/{workspace_id}/transcripts",
+                    data={
+                        "session_id": session_id,
+                        "agent_name": agent_name,
+                        "cwd": cwd,
+                        "replace": str(replace).lower(),
+                    },
+                    files={"file": (name, body, "application/gzip")},
+                    timeout=120,
+                )
+                return resp.json()
+            except httpx.TransportError:
+                if attempt == 2:
+                    raise
+                time.sleep(1 + attempt)
 
     # --- Files ---
 
@@ -603,6 +613,9 @@ class StashClient:
 
     def delete_source(self, workspace_id: str, source_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/sources/{source_id}")
+
+    def sources_tree(self, workspace_id: str, depth: int = 3) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sources/tree", "sources", depth=depth)
 
     def list_source_entries(self, workspace_id: str, source: str, path: str = "") -> list:
         return self._list(

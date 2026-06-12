@@ -71,6 +71,10 @@ async def share_with_user_by_email(
         "SELECT id FROM users WHERE lower(email) = $1",
         normalized_email,
     )
+    # Both branches below return an identical body. A different response for a
+    # known vs unknown email would let any workspace owner probe which
+    # addresses have Stash accounts (a user-enumeration oracle). Owners see
+    # invite-vs-share state via the shares listing instead.
     if not user:
         # No user with that email yet — stash a pending invite that converts on
         # their signup. We can't validate the address, so this never fails the
@@ -102,17 +106,16 @@ async def share_with_user_by_email(
                 "recipient_email_hash": security_audit_service.hash_value(normalized_email),
             },
         )
-        return {"pending": True, "email": normalized_email}
+        return {"ok": True, "email": normalized_email}
     if user["id"] == owner_id:
         raise HTTPException(status_code=400, detail="You already own this")
-    row = await pool.fetchrow(
+    await pool.execute(
         """
         INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by, expires_at)
         VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
         ON CONFLICT (object_type, object_id, principal_type, principal_id)
         DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
-        RETURNING id
         """,
         workspace_id,
         object_type,
@@ -134,7 +137,7 @@ async def share_with_user_by_email(
             "recipient_user_hash": security_audit_service.hash_value(str(user["id"])),
         },
     )
-    return {"id": str(row["id"]), "principal_type": "user", "principal_id": str(user["id"])}
+    return {"ok": True, "email": normalized_email}
 
 
 async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
