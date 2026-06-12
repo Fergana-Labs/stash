@@ -36,9 +36,7 @@ def require_billing_enabled() -> None:
 
 
 async def get_subscription(user_id: UUID) -> dict | None:
-    row = await get_pool().fetchrow(
-        "SELECT * FROM user_subscriptions WHERE user_id = $1", user_id
-    )
+    row = await get_pool().fetchrow("SELECT * FROM user_subscriptions WHERE user_id = $1", user_id)
     return dict(row) if row else None
 
 
