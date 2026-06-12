@@ -9,9 +9,11 @@ import { track } from "../../lib/analytics";
 import {
   createPage,
   getAgentApiKey,
+  listMyKeys,
   listMyWorkspaces,
   updateMe,
   updatePage,
+  type ApiKeyInfo,
 } from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
@@ -19,9 +21,9 @@ import SourceConnectorList from "../../components/integrations/SourceConnectorLi
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
-// The linear flow: a few questions about the user, explain Stash, try one of
-// the three entry points, then ask the agent a real question, then launch.
-const STEP_NAMES = ["about", "intro", "try", "ask"] as const;
+// The linear flow: a few questions about the user, explain Stash, install the
+// CLI, try an entry point, then ask the agent a real question, then launch.
+const STEP_NAMES = ["about", "intro", "cli", "try", "ask"] as const;
 
 const CLI_INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 
@@ -160,11 +162,12 @@ function OnboardingInner() {
     );
   }
 
-  // 0 = about, 1 = intro, 2 = try it out, 3 = ask.
+  // 0 = about, 1 = intro, 2 = cli, 3 = try it out, 4 = ask.
   const isAbout = stepIdx <= 0;
   const isIntro = stepIdx === 1;
-  const isTryItOut = stepIdx === 2;
-  const isAsk = stepIdx >= 3;
+  const isCli = stepIdx === 2;
+  const isTryItOut = stepIdx === 3;
+  const isAsk = stepIdx >= 4;
 
   const continueLabel = isIntro
     ? "Get started"
@@ -220,6 +223,7 @@ function OnboardingInner() {
             />
           )}
           {isIntro && <IntroStep />}
+          {isCli && <CliStep />}
           {isTryItOut && (
             <TryItOutStep
               workspaceId={workspaceId}
@@ -426,6 +430,90 @@ function IntroPoint({ title, children }: { title: string; children: React.ReactN
   );
 }
 
+function CliStep() {
+  const [cliKey, setCliKey] = useState<ApiKeyInfo | null>(null);
+
+  // `stash login` mints an API key named "CLI (<device>)" the moment the user
+  // approves the browser sign-in, so polling for one tells us the install
+  // worked without the user having to confirm anything.
+  useEffect(() => {
+    if (cliKey) return;
+    let firstCheck = true;
+    let cancelled = false;
+    const check = () => {
+      const preexisting = firstCheck;
+      firstCheck = false;
+      listMyKeys()
+        .then((keys) => {
+          if (cancelled) return;
+          const key = keys.find((k) => k.name.startsWith("CLI ("));
+          if (!key) return;
+          setCliKey(key);
+          track("onboarding.cli_connected", { preexisting });
+        })
+        .catch(() => {});
+    };
+    check();
+    const interval = setInterval(check, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [cliKey]);
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
+          Connect your coding agent
+        </h1>
+        <p className="text-sm text-dim max-w-lg">
+          One command installs the Stash CLI and signs you in. This is how Stash
+          compounds: your agents read this workspace, and everything they do flows
+          back into it.
+        </p>
+      </div>
+      <ul className="space-y-3">
+        <IntroPoint title="Every session is captured">
+          Prompts, tool calls, and artifacts from Claude Code, Codex, Cursor, and
+          OpenCode stream in as they happen — nothing evaporates when a session
+          closes.
+        </IntroPoint>
+        <IntroPoint title="Your agents can read everything">
+          The CLI gives every agent you run access to your whole workspace —
+          connected sources, files, and past sessions.
+        </IntroPoint>
+      </ul>
+      <div className="space-y-2">
+        <CommandBlock command={CLI_INSTALL_COMMAND} />
+        <p className="text-[12px] text-muted">
+          Already have the CLI? Run{" "}
+          <code className="font-mono text-foreground/80">stash login</code> instead.
+        </p>
+      </div>
+      <CliConnectedStatus cliKey={cliKey} />
+    </div>
+  );
+}
+
+function CliConnectedStatus({ cliKey }: { cliKey: ApiKeyInfo | null }) {
+  if (cliKey) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-brand/40 bg-brand/5 px-3.5 py-2.5 text-[13px] text-foreground">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+        Connected — <span className="font-medium">{cliKey.name}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-[13px] text-dim">
+      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-muted" />
+      Waiting for the CLI to connect — this updates by itself once you run the
+      command.
+    </div>
+  );
+}
+
 function TryItOutStep({
   workspaceId,
   onCollabDoc,
@@ -448,7 +536,7 @@ function TryItOutStep({
           Try it out
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Three ways to start — pick whichever fits.
+          Two ways to start — pick whichever fits.
         </p>
       </div>
       <TryOption
@@ -478,7 +566,7 @@ function TryItOutStep({
         <div className="space-y-3">
           <SourceConnectorList
             workspaceId={workspaceId}
-            returnTo="/onboarding?step=3"
+            returnTo="/onboarding?step=4"
             onSourceCountChange={onSourceCountChange}
             onObsidianUploaded={onObsidianAdded}
           />
@@ -495,15 +583,6 @@ function TryItOutStep({
               Continue
             </button>
           </div>
-        </div>
-      </TryOption>
-      <TryOption
-        badge="Capture"
-        lead="Run this in your terminal — every Claude Code / Codex session streams into Stash automatically."
-      >
-        <div className="space-y-2">
-          <CommandBlock command={CLI_INSTALL_COMMAND} />
-          <CommandBlock command="stash login" />
         </div>
       </TryOption>
     </div>
@@ -533,10 +612,26 @@ function TryOption({
 }
 
 function CommandBlock({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(command).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
   return (
-    <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
-      {command}
-    </pre>
+    <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+      <pre className="flex-1 overflow-x-auto font-mono text-[11.5px] text-foreground">
+        {command}
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        className="shrink-0 text-[11px] text-muted hover:text-foreground transition-colors"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
   );
 }
 
@@ -563,7 +658,7 @@ function AskStep({
 }
 
 function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["About you", "Welcome", "Try it out", "Ask"];
+  const labels = ["About you", "Welcome", "Install CLI", "Try it out", "Ask"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, i) => {
