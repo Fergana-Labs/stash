@@ -345,8 +345,11 @@ async def integration_callback(
 
                 try:
                     await links.capture_from_user_token(user_id, token.access_token)
-                except Exception:
-                    logger.warning("slack: failed to capture user link", exc_info=True)
+                except Exception as exc:
+                    logger.warning(
+                        "slack: failed to capture user link exception_type=%s",
+                        type(exc).__name__,
+                    )
             # --- END Slack agent ---
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)

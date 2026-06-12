@@ -27,10 +27,21 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
 - Stored file access must use signed URLs. Raw storage URLs must not be returned to clients.
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
+- Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
+- OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
+- Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
+- File download and table ingest failures must not log storage keys, bucket names, tokens, parser exception text, or workbook-derived content.
+- Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
+- Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
+- Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
+- Integration indexer logs must not include external source references, provider resource identifiers, tool response text, customer document names, meeting IDs, or query text.
+- Embedding failures must not log provider response bodies, exception messages, tokens, transcript text, copied integration content, or table row content.
+- Export image failures must not log raw image sources, signed URLs, storage keys, or provider exception text.
+- Email delivery failures must not log provider response bodies, recipient addresses, subjects, tokens, or customer text.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.

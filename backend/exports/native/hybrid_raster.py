@@ -145,11 +145,11 @@ async def rasterize_targets(
                                             }""",
                                             sel,
                                         )
-                            except Exception:
-                                logger.exception(
-                                    "raster screenshot failed for %s on slide %s",
-                                    sel,
+                            except Exception as exc:
+                                logger.warning(
+                                    "raster screenshot failed slide=%s exception_type=%s",
                                     slide_idx,
+                                    type(exc).__name__,
                                 )
                     finally:
                         await page.close()

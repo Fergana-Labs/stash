@@ -37,6 +37,17 @@ def _mock_success_result(monkeypatch: pytest.MonkeyPatch, result: dict) -> list[
     return calls
 
 
+def _mock_failure_result(monkeypatch: pytest.MonkeyPatch, result: Exception) -> list[str]:
+    calls = []
+
+    def fake_async_result(task_id: str):
+        calls.append(task_id)
+        return SimpleNamespace(state="FAILURE", result=result)
+
+    monkeypatch.setattr(tasks_router.celery, "AsyncResult", fake_async_result)
+    return calls
+
+
 @pytest.mark.asyncio
 async def test_task_status_requires_task_owner(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -60,6 +71,37 @@ async def test_task_status_requires_task_owner(
     assert owner_response.json()["result"] == {"download_url": "https://example.test/file"}
     assert stranger_response.status_code == 404
     assert unknown_response.status_code == 404
+    assert calls == [task_id]
+
+
+@pytest.mark.asyncio
+async def test_task_failure_errors_are_redacted(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    owner_key, owner = await _register(client)
+    task_id = "task-failed"
+    await task_service.register_task(
+        task_id=task_id,
+        user_id=UUID(owner["id"]),
+        workspace_id=None,
+        task_type="test",
+    )
+    calls = _mock_failure_result(
+        monkeypatch,
+        RuntimeError("token=secret-token and customer transcript"),
+    )
+
+    response = await client.get(f"/api/v1/tasks/{task_id}", headers=_auth(owner_key))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "task_id": task_id,
+        "state": "FAILURE",
+        "result": None,
+        "error": "Task failed",
+    }
+    assert "secret-token" not in response.text
+    assert "customer transcript" not in response.text
     assert calls == [task_id]
 
 

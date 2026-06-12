@@ -92,8 +92,8 @@ async def get_or_create_user_row_from_auth0(
         try:
             first_name = (name or "").split()[0] if name else None
             send_welcome_email(email, first_name=first_name)
-        except Exception:
-            logger.exception("Failed to send welcome email to %s", email)
+        except Exception as exc:
+            logger.warning("welcome email failed exception_type=%s", type(exc).__name__)
 
     return user, True
 

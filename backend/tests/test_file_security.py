@@ -3,6 +3,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from backend.routers import files as files_router
 from backend.services import storage_service
 
 from .conftest import unique_name
@@ -63,7 +64,13 @@ async def test_file_download_storage_errors_are_redacted(client: AsyncClient, po
     async def fail_download(storage_key):
         raise RuntimeError(f"bucket=stash-prod key={storage_key} token=secret-value")
 
+    captured_logs: list[tuple[str, tuple, dict]] = []
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args, kwargs))
+
     monkeypatch.setattr(storage_service, "download_file", fail_download)
+    monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.get(
         f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
         headers=_auth(api_key),
@@ -73,6 +80,15 @@ async def test_file_download_storage_errors_are_redacted(client: AsyncClient, po
     assert resp.json()["detail"] == "File storage download failed"
     assert "stash-prod" not in resp.text
     assert "secret-value" not in resp.text
+    assert captured_logs == [
+        (
+            "file storage download failed operation=%s exception_type=%s",
+            ("file download", "RuntimeError"),
+            {},
+        )
+    ]
+    assert "customer/webflow" not in str(captured_logs)
+    assert "secret-value" not in str(captured_logs)
 
 
 @pytest.mark.asyncio
@@ -90,7 +106,13 @@ async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool
     async def fail_download(storage_key):
         raise RuntimeError(f"bucket=stash-prod key={storage_key} token=secret-value")
 
+    captured_logs: list[tuple[str, tuple, dict]] = []
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args, kwargs))
+
     monkeypatch.setattr(storage_service, "download_file", fail_download)
+    monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.post(
         f"/api/v1/workspaces/{workspace_id}/files/{file_id}/ingest-csv",
         headers=_auth(api_key),
@@ -100,6 +122,15 @@ async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool
     assert resp.json()["detail"] == "File storage download failed"
     assert "stash-prod" not in resp.text
     assert "secret-value" not in resp.text
+    assert captured_logs == [
+        (
+            "file storage download failed operation=%s exception_type=%s",
+            ("csv ingest", "RuntimeError"),
+            {},
+        )
+    ]
+    assert "customer/webflow" not in str(captured_logs)
+    assert "secret-value" not in str(captured_logs)
 
 
 @pytest.mark.asyncio
@@ -117,7 +148,17 @@ async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeyp
     async def download_invalid_workbook(storage_key):
         return b"not an xlsx containing secret worksheet metadata"
 
+    async def fail_ingest_xlsx_bytes(**kwargs):
+        raise RuntimeError("secret worksheet metadata from workbook parser")
+
+    captured_logs: list[tuple[str, tuple, dict]] = []
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args, kwargs))
+
     monkeypatch.setattr(storage_service, "download_file", download_invalid_workbook)
+    monkeypatch.setattr(files_router, "ingest_xlsx_bytes", fail_ingest_xlsx_bytes)
+    monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.post(
         f"/api/v1/workspaces/{workspace_id}/files/{file_id}/ingest-xlsx",
         headers=_auth(api_key),
@@ -126,6 +167,14 @@ async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeyp
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Could not read workbook"
     assert "secret worksheet metadata" not in resp.text
+    assert captured_logs == [
+        (
+            "xlsx ingest failed file_id=%s exception_type=%s",
+            (file_id, "RuntimeError"),
+            {},
+        )
+    ]
+    assert "secret worksheet metadata" not in str(captured_logs)
 
 
 @pytest.mark.asyncio

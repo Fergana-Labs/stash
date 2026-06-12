@@ -72,7 +72,7 @@ def _get_semaphore() -> asyncio.Semaphore:
     return _semaphore
 
 
-async def _with_retry(coro_factory):
+async def _with_retry(coro_factory, *, provider_name: str, operation: str):
     """Run an async call with bounded concurrency + retry on transient errors.
 
     `coro_factory` is a zero-arg callable returning a fresh coroutine each
@@ -94,10 +94,12 @@ async def _with_retry(coro_factory):
                 delay = min(delay, _MAX_DELAY)
                 delay += random.uniform(0, delay * 0.25)
                 logger.info(
-                    "Embedding provider transient failure (attempt %d/%d): %s — retrying in %.2fs",
+                    "Embedding provider transient failure provider=%s operation=%s attempt=%d/%d exception_type=%s retry_delay=%.2fs",
+                    provider_name,
+                    operation,
                     attempt + 1,
                     _MAX_ATTEMPTS,
-                    exc,
+                    type(exc).__name__,
                     delay,
                 )
         await asyncio.sleep(delay)
@@ -113,9 +115,17 @@ async def embed_text(text: str) -> np.ndarray | None:
     embedder = get_embedder()
     text = clip_text(text)
     try:
-        return await _with_retry(lambda: embedder.embed_text(text))
-    except TransientEmbeddingError:
-        logger.warning("Embedding provider failed after retries", exc_info=True)
+        return await _with_retry(
+            lambda: embedder.embed_text(text),
+            provider_name=embedder.name,
+            operation="embed_text",
+        )
+    except TransientEmbeddingError as exc:
+        logger.warning(
+            "Embedding provider failed after retries provider=%s operation=embed_text exception_type=%s",
+            embedder.name,
+            type(exc).__name__,
+        )
         return None
 
 
@@ -155,13 +165,21 @@ async def embed_batch(texts: list[str]) -> list[np.ndarray] | None:
     try:
         for shard in shards:
             batch = [texts[i] for i in shard]
-            vecs = await _with_retry(lambda b=batch: embedder.embed_batch(b))
+            vecs = await _with_retry(
+                lambda b=batch: embedder.embed_batch(b),
+                provider_name=embedder.name,
+                operation="embed_batch",
+            )
             if vecs is None:
                 return None
             for idx, vec in zip(shard, vecs):
                 out[idx] = vec
-    except TransientEmbeddingError:
-        logger.warning("Embedding provider failed after retries", exc_info=True)
+    except TransientEmbeddingError as exc:
+        logger.warning(
+            "Embedding provider failed after retries provider=%s operation=embed_batch exception_type=%s",
+            embedder.name,
+            type(exc).__name__,
+        )
         return None
     return out  # type: ignore[return-value]
 

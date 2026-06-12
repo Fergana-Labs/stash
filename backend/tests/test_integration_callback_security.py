@@ -7,7 +7,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.integrations import router as integration_router
-from backend.integrations.base import TokenSet
+from backend.integrations.base import AccountInfo, TokenSet
 
 from .conftest import unique_name
 
@@ -56,6 +56,22 @@ class FailingProfileProvider:
 
     async def fetch_account(self, access_token: str):
         raise RuntimeError(f"profile failure for access_token={access_token}")
+
+
+class SlackProvider:
+    name = "slack"
+    auth_kind = "oauth"
+
+    async def exchange_code(self, code: str):
+        return TokenSet(
+            access_token="xoxp-should-not-be-logged",
+            refresh_token=None,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+            scopes=["read"],
+        )
+
+    async def fetch_account(self, access_token: str):
+        return AccountInfo(email=None, display_name=None)
 
 
 class FailingCredentialProvider:
@@ -127,6 +143,47 @@ async def test_oauth_profile_failure_does_not_log_tokens(
     assert response.headers["location"] == f"{PUBLIC_URL}/settings?connected=profile"
     assert "at_should_not_be_logged" not in caplog.text
     assert "rt_should_not_be_logged" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_slack_user_link_capture_failure_logs_only_exception_type(
+    client: AsyncClient,
+    monkeypatch,
+):
+    """Slack auth.test failures raise with raw provider error text; the
+    best-effort user-link capture must not break the connection and must
+    log only the exception class."""
+    from backend.integrations.slack import links
+
+    provider = SlackProvider()
+    _configure_callback(monkeypatch, provider)
+    user_id = await _register(client)
+    state = integration_router._encode_state(user_id, provider.name, "/settings")
+
+    async def fail_capture(uid, access_token):
+        raise RuntimeError("Slack auth.test error: invalid_auth token=xoxp-secret")
+
+    captured_logs: list[tuple[str, tuple]] = []
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(links, "capture_from_user_token", fail_capture)
+    monkeypatch.setattr(integration_router.logger, "warning", capture_warning)
+
+    response = await client.get(
+        "/api/v1/integrations/slack/callback",
+        params={"code": "ok", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == f"{PUBLIC_URL}/settings?connected=slack"
+    assert captured_logs == [
+        ("slack: failed to capture user link exception_type=%s", ("RuntimeError",))
+    ]
+    assert "invalid_auth" not in str(captured_logs)
+    assert "xoxp-secret" not in str(captured_logs)
 
 
 # Bad credentials (ValueError) are the caller's fault (400); anything else —

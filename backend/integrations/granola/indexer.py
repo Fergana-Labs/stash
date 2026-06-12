@@ -146,13 +146,11 @@ async def index_granola(source: dict) -> str | None:
     async with granola_session(access_token) as session:
         tools = (await session.list_tools()).tools
         names = [t.name for t in tools]
-        # Log the real tool surface — names aren't documented, so this is how we
-        # learn (and adjust) what Granola actually exposes.
-        logger.info("granola MCP tools: %s", names)
+        logger.info("granola source %s: discovered %d MCP tool(s)", source_id, len(names))
 
         list_tool = _pick_tool(names, _LIST_HINTS)
         if not list_tool:
-            logger.warning("granola: no meetings-list tool among %s", names)
+            logger.warning("granola source %s: no meetings-list tool found", source_id)
             return None
         transcript_tool = _pick_tool([n for n in names if n != list_tool], _TRANSCRIPT_HINTS)
 
@@ -163,7 +161,7 @@ async def index_granola(source: dict) -> str | None:
             meetings = _parse_meetings_text(data)
         else:
             meetings = _as_list(data, "meetings", "results", "items", "documents", "notes", "data")
-        logger.info("granola: '%s' returned %d meeting(s)", list_tool, len(meetings))
+        logger.info("granola source %s: listed %d meeting(s)", source_id, len(meetings))
 
         for meeting in meetings[:MAX_MEETINGS]:
             if not isinstance(meeting, dict):
@@ -180,8 +178,12 @@ async def index_granola(source: dict) -> str | None:
                         if isinstance(td, str)
                         else _as_list(td, "transcript", "segments", "entries")
                     )
-                except Exception:
-                    logger.info("granola: transcript fetch failed for %s", meeting_id)
+                except Exception as exc:
+                    logger.info(
+                        "granola transcript fetch failed source=%s exception_type=%s",
+                        source_id,
+                        type(exc).__name__,
+                    )
             await source_service.upsert_content_document(
                 table="granola_notes",
                 source_id=source_id,

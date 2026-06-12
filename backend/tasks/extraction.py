@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import sys
 from uuid import UUID
 
@@ -30,23 +31,22 @@ CHILD_TIMEOUT_SECONDS = 180
 MAX_ATTEMPTS = 3
 
 
-async def _run_child(file_id: UUID) -> tuple[int, str]:
+async def _run_child(file_id: UUID) -> int:
     proc = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
         "backend.workers.extract_one",
         str(file_id),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     try:
-        stdout_b, _ = await asyncio.wait_for(proc.communicate(), timeout=CHILD_TIMEOUT_SECONDS)
+        await asyncio.wait_for(proc.communicate(), timeout=CHILD_TIMEOUT_SECONDS)
     except TimeoutError:
         proc.kill()
         await proc.wait()
-        return -1, "timeout"
-    tail = (stdout_b or b"").decode("utf-8", errors="replace")[-2000:]
-    return proc.returncode or 0, tail
+        return -1
+    return proc.returncode or 0
 
 
 async def _claim_for_processing(file_id: UUID) -> bool:
@@ -76,6 +76,12 @@ async def _claim_for_processing(file_id: UUID) -> bool:
 
 
 async def _mark_failed_externally(file_id: UUID, error: str) -> None:
+    """Record a failure only if the child died without reporting one.
+
+    When the child persists its own redacted error it also moves the row
+    out of 'processing', so the guard keeps us from overwriting it with
+    a bare exit-code marker.
+    """
     pool = get_pool()
     await pool.execute(
         f"""
@@ -87,6 +93,7 @@ async def _mark_failed_externally(file_id: UUID, error: str) -> None:
             extraction_error = $2,
             locked_at = NULL
         WHERE id = $1
+          AND extraction_status = 'processing'
         """,
         file_id,
         error[:2000],
@@ -97,14 +104,13 @@ async def _extract(file_id: UUID) -> str:
     if not await _claim_for_processing(file_id):
         return "skipped"
 
-    code, tail = await _run_child(file_id)
+    code = await _run_child(file_id)
     if code == 0:
         return "ok"
 
     reason = "oom_or_kill" if code in (-9, 137, -1) else f"exit_{code}"
-    error = f"{reason}: {tail[-500:]}".strip()
-    logger.warning("extraction child failed file=%s %s", file_id, error[:200])
-    await _mark_failed_externally(file_id, error)
+    logger.warning("extraction child failed file=%s reason=%s", file_id, reason)
+    await _mark_failed_externally(file_id, reason)
     return "failed"
 
 

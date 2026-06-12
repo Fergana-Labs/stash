@@ -127,7 +127,7 @@ async def index_gong(source: dict) -> str | None:
         present.append(call_id)
 
     await source_service.soft_delete_missing("gong_documents", source_id, present)
-    logger.info("gong source: indexed %d call(s)", len(present))
+    logger.info("gong source %s: indexed %d call(s)", source_id, len(present))
     return None
 
 

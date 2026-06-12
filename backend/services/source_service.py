@@ -861,10 +861,15 @@ async def _federated_search(
         else:
             return []
         hits = await fn(source, query, limit)
-    except Exception as e:
+    except Exception as exc:
         if not swallow_errors:
-            raise _scoped_search_error(source, e) from e
-        logger.warning("federated search failed for source %s", source["id"], exc_info=True)
+            raise _scoped_search_error(source, exc) from exc
+        logger.warning(
+            "federated search failed source=%s source_type=%s exception_type=%s",
+            source["id"],
+            source_type,
+            type(exc).__name__,
+        )
         return []
     return [
         {
@@ -1244,8 +1249,12 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
 
         try:
             base = await site_url(source)
-        except Exception:
-            logger.warning("jira site_url lookup failed for source %s", source["id"], exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "jira site_url lookup failed source=%s exception_type=%s",
+                source["id"],
+                type(exc).__name__,
+            )
             return None
         if not base:
             return None

@@ -66,7 +66,7 @@ class OpenAICompatEmbedder(BaseEmbedder):
                 },
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            raise TransientEmbeddingError(f"network error: {exc}") from exc
+            raise TransientEmbeddingError("network error from embedding API") from exc
 
         if resp.status_code == 429 or 500 <= resp.status_code < 600:
             retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
@@ -75,9 +75,7 @@ class OpenAICompatEmbedder(BaseEmbedder):
                 retry_after=retry_after,
             )
         if resp.status_code >= 400:
-            logger.warning(
-                "OpenAI-compat embedding rejected: %s %s", resp.status_code, resp.text[:200]
-            )
+            logger.warning("OpenAI-compat embedding rejected status_code=%s", resp.status_code)
             return None
 
         data = resp.json()

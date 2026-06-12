@@ -150,7 +150,16 @@ if settings.AUTH0_ENABLED:
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        logger.error(
+            "Unhandled request failed method=%s path=%s exception_type=%s",
+            request.method,
+            request.url.path,
+            type(exc).__name__,
+        )
+        response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
     for key, value in SECURITY_HEADERS.items():
         if key not in response.headers:
             response.headers[key] = value

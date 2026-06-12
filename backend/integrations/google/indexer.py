@@ -101,7 +101,7 @@ async def index_google_drive(source: dict) -> str | None:
         await _walk(root, "", 0)
 
     await source_service.soft_delete_missing("drive_index", source_id, present)
-    logger.info("google drive source %s: indexed %d file(s)", root, len(present))
+    logger.info("google drive source %s: indexed %d file(s)", source_id, len(present))
     return None
 
 

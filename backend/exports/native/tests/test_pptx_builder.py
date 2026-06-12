@@ -31,6 +31,11 @@ class _StubFetcher(ImageFetcher):
         return None
 
 
+class _BadImageFetcher(ImageFetcher):
+    async def fetch(self, src):  # type: ignore[override]
+        return b"not an image"
+
+
 def _build(specs: list[SlideSpec]) -> bytes:
     return asyncio.run(
         build_pptx(specs, html="<html><body></body></html>", image_fetcher=_StubFetcher())
@@ -112,6 +117,43 @@ def test_solid_background_lands_on_slide():
     with zipfile.ZipFile(io.BytesIO(pptx)) as z:
         slide_xml = z.read("ppt/slides/slide1.xml").decode("utf-8")
     assert "0F172A" in slide_xml
+
+
+def test_image_insert_failures_do_not_log_source(monkeypatch):
+    from backend.exports.native import pptx_builder
+
+    captured_logs: list[tuple[str, tuple]] = []
+    secret_src = "https://cdn.example.test/customer/webflow/logo.png?token=secret-token"
+
+    def capture_error(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(pptx_builder.logger, "error", capture_error)
+    spec = SlideSpec(
+        index=0,
+        shapes=[
+            ShapeSpec(
+                kind="image",
+                bbox=BBox(x=10, y=20, w=300, h=200),
+                src=secret_src,
+            )
+        ],
+    )
+
+    pptx = asyncio.run(
+        build_pptx(
+            [spec],
+            html="<html><body></body></html>",
+            image_fetcher=_BadImageFetcher(),
+        )
+    )
+
+    assert pptx.startswith(b"PK")
+    assert len(captured_logs) == 1
+    assert captured_logs[0][0] == "add_picture failed src_type=%s exception_type=%s"
+    assert captured_logs[0][1][0] == "remote_url"
+    assert "secret-token" not in str(captured_logs)
+    assert "customer/webflow/logo.png" not in str(captured_logs)
 
 
 def test_multiple_slides_get_distinct_xml():

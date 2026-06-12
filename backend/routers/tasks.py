@@ -38,6 +38,5 @@ async def get_task_status(
     if state == "SUCCESS":
         return TaskStatus(task_id=task_id, state=state, result=async_result.result)
     if state == "FAILURE":
-        # `.result` on FAILURE is the exception; coerce to a readable string.
-        return TaskStatus(task_id=task_id, state=state, error=str(async_result.result))
+        return TaskStatus(task_id=task_id, state=state, error="Task failed")
     return TaskStatus(task_id=task_id, state=state)

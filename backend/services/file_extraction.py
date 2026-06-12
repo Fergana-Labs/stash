@@ -168,6 +168,10 @@ def extract_text(content: bytes, content_type: str) -> str | None:
             return _sanitize_for_postgres(text) if text else None
 
         return None
-    except Exception:
-        logger.exception("file_extraction: extract_text failed for %s", content_type)
+    except Exception as exc:
+        logger.warning(
+            "file_extraction: extract_text failed content_type=%s exception_type=%s",
+            content_type,
+            type(exc).__name__,
+        )
         return None
