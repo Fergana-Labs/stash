@@ -5,15 +5,16 @@ import { useState } from "react";
 type Props = {
   apiUrl: string;
   sessionId: string;
+  device?: string;
   userName: string;
   accessToken: string;
 };
 
-// Client-side "Authorize CLI" confirmation. Explicit click provisions the
+// Client-side authorize confirmation. Explicit click provisions the
 // backend Auth0 user row, then approves the CLI session with the Auth0 access
 // token. Without this gate, the CLI would silently receive a token any time a
 // user with an active Auth0 session loaded this URL.
-export default function ConnectTokenClient({ apiUrl, sessionId, userName, accessToken }: Props) {
+export default function ConnectTokenClient({ apiUrl, sessionId, device, userName, accessToken }: Props) {
   const [state, setState] = useState<
     | { kind: "idle" }
     | { kind: "submitting" }
@@ -45,7 +46,7 @@ export default function ConnectTokenClient({ apiUrl, sessionId, userName, access
       if (!approveRes.ok) {
         const detail = await approveRes.text().catch(() => "");
         throw Object.assign(
-          new Error("Could not hand the token to your CLI — your CLI session may have expired."),
+          new Error("Could not hand the token over — the sign-in link may have expired."),
           { detail: detail.slice(0, 500) },
         );
       }
@@ -63,12 +64,17 @@ export default function ConnectTokenClient({ apiUrl, sessionId, userName, access
       <div className="mt-6">
         <p className="inline-flex items-center gap-2 rounded-full bg-raised px-3 py-1.5 text-[13px] font-mono text-ink">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          CLI authorized as {userName}
+          Connected as {userName}
         </p>
         <p className="mt-4 max-w-[560px] text-[16px] leading-[1.6] text-dim">
-          Head back to your terminal — the <code>stash</code>{" "}
-          CLI has the token and will finish
-          wiring up your workspace. You can close this tab.
+          {device ? (
+            <>{device} now has its token. You can close this tab.</>
+          ) : (
+            <>
+              Head back to your terminal — the <code>stash</code> CLI has the token and will
+              finish wiring up your workspace. You can close this tab.
+            </>
+          )}
         </p>
       </div>
     );
@@ -82,7 +88,7 @@ export default function ConnectTokenClient({ apiUrl, sessionId, userName, access
         disabled={state.kind === "submitting"}
         className="rounded-xl bg-brand px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:bg-brand-hover disabled:opacity-60"
       >
-        {state.kind === "submitting" ? "Authorizing..." : "Authorize CLI"}
+        {state.kind === "submitting" ? "Authorizing..." : `Authorize ${device || "CLI"}`}
       </button>
       {state.kind === "error" && (
         <div className="max-w-[560px]">

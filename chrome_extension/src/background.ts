@@ -7,7 +7,10 @@
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
-const CONNECT_POLL_TIMEOUT_MS = 180_000;
+// Auth sessions live 15 min server-side. The poll loop covers most of that,
+// and checkPendingConnect() collects an approval that lands after the loop
+// gave up (e.g. MV3 suspended the worker mid-wait).
+const CONNECT_POLL_TIMEOUT_MS = 600_000;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handle(message)
@@ -23,12 +26,16 @@ async function handle(message: any): Promise<any> {
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':
-      await chrome.storage.local.remove(['apiKey', 'username', 'workspaceId', 'workspaceName', 'workspaces', 'lastSync', 'lastError']);
+      await chrome.storage.local.remove(['apiKey', 'username', 'workspaceId', 'workspaceName', 'workspaces', 'folderId', 'folderName', 'folders', 'lastSync', 'lastError']);
       return { ok: true };
     case 'GET_STATUS':
       return getStatus();
     case 'SET_WORKSPACE':
-      await chrome.storage.local.set({ workspaceId: message.id, workspaceName: message.name });
+      await chrome.storage.local.set({ workspaceId: message.id, workspaceName: message.name, folderId: null, folderName: null, folders: [] });
+      await refreshFolders();
+      return { ok: true };
+    case 'SET_FOLDER':
+      await chrome.storage.local.set({ folderId: message.id, folderName: message.name });
       return { ok: true };
     case 'SET_API_BASE':
       // Changing backends invalidates the key, workspaces, and dedup state.
@@ -46,7 +53,7 @@ async function handle(message: any): Promise<any> {
 // ---------------------------------------------------------------------------
 
 async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
-  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'workspaceId']);
+  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'workspaceId', 'folderId']);
   if (!cfg.apiKey || !cfg.workspaceId) {
     await setBadge('!', 'Not connected to Stash — click to sign in');
     return { ok: false, error: 'not_connected' };
@@ -62,13 +69,35 @@ async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
     return { ok: true, skipped: true };
   }
 
+  const apiBase = cfg.apiBase || DEFAULT_API_BASE;
+
+  // Upsert the session into the chosen folder before uploading events.
+  // The transcript endpoint's own upsert doesn't assign a folder; this one
+  // does (the backend falls back to the workspace's Default folder when
+  // folderId is unset). A folder is only set once server-side, so manual
+  // re-homing in the app sticks across later syncs.
+  const upsert = await fetch(`${apiBase}/api/v1/workspaces/${cfg.workspaceId}/sessions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      agent_name: snapshot.platform,
+      ...(cfg.folderId ? { session_folder_id: cfg.folderId } : {}),
+    }),
+  });
+  if (!upsert.ok) {
+    const detail = (await upsert.text()).slice(0, 200);
+    await chrome.storage.local.set({ lastError: `Session upsert failed (${upsert.status}): ${detail}` });
+    await setBadge('!', `Stash sync failing (${upsert.status}) — click for details`);
+    return { ok: false, error: `upsert_failed_${upsert.status}` };
+  }
+
   const form = new FormData();
   form.append('file', new Blob([jsonl], { type: 'application/jsonl' }), `${sessionId}.jsonl`);
   form.append('session_id', sessionId);
   form.append('agent_name', snapshot.platform);
   form.append('replace', 'true');
 
-  const apiBase = cfg.apiBase || DEFAULT_API_BASE;
   const res = await fetch(`${apiBase}/api/v1/workspaces/${cfg.workspaceId}/transcripts`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
@@ -130,24 +159,48 @@ async function connect(): Promise<any> {
   }
   const { session_id } = await created.json();
 
+  await chrome.storage.local.set({ pendingConnect: { sessionId: session_id, apiBase } });
   await chrome.tabs.create({
     url: `${signinPage(apiBase)}?session=${session_id}&device=${encodeURIComponent('Chrome extension')}`,
   });
 
   const deadline = Date.now() + CONNECT_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const res = await fetch(`${apiBase}/api/v1/users/cli-auth/sessions/${session_id}`);
-    if (!res.ok) continue;
-    const data = await res.json();
-    if (data.status === 'complete') {
-      await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, lastError: null });
-      await setBadge('', 'Stash Chat Sync');
-      await refreshWorkspaces();
-      return { ok: true, username: data.username };
+    await new Promise((r) => setTimeout(r, 2000));
+    if (await checkPendingConnect()) {
+      const { username } = await chrome.storage.local.get(['username']);
+      return { ok: true, username };
     }
+    const { pendingConnect } = await chrome.storage.local.get(['pendingConnect']);
+    if (!pendingConnect) return { ok: false, error: 'Sign-in link expired — click Connect again' };
   }
   return { ok: false, error: 'Timed out waiting for sign-in' };
+}
+
+// One poll of the pending auth session. Completes the connect if the user
+// has approved; clears the pending state if the link expired. Called from
+// the connect() loop and from getStatus(), so an approval that happens
+// after the loop ends is still collected the next time the popup opens.
+async function checkPendingConnect(): Promise<boolean> {
+  const { pendingConnect } = await chrome.storage.local.get(['pendingConnect']);
+  if (!pendingConnect) return false;
+
+  const res = await fetch(
+    `${pendingConnect.apiBase}/api/v1/users/cli-auth/sessions/${pendingConnect.sessionId}`
+  );
+  if (res.status === 404) {
+    await chrome.storage.local.remove(['pendingConnect']);
+    return false;
+  }
+  if (!res.ok) return false;
+  const data = await res.json();
+  if (data.status !== 'complete') return false;
+
+  await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, lastError: null });
+  await chrome.storage.local.remove(['pendingConnect']);
+  await setBadge('', 'Stash Chat Sync');
+  await refreshWorkspaces();
+  return true;
 }
 
 async function refreshWorkspaces(): Promise<void> {
@@ -170,6 +223,33 @@ async function refreshWorkspaces(): Promise<void> {
     const pick = workspaces.find((w: any) => w.isPrimary) || workspaces[0];
     updates.workspaceId = pick.id;
     updates.workspaceName = pick.name;
+    updates.folderId = null;
+    updates.folderName = null;
+  }
+  await chrome.storage.local.set(updates);
+  await refreshFolders();
+}
+
+async function refreshFolders(): Promise<void> {
+  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'workspaceId', 'folderId']);
+  if (!cfg.apiKey || !cfg.workspaceId) return;
+  const apiBase = cfg.apiBase || DEFAULT_API_BASE;
+  const res = await fetch(`${apiBase}/api/v1/workspaces/${cfg.workspaceId}/session-folders`, {
+    headers: { Authorization: `Bearer ${cfg.apiKey}` },
+  });
+  if (!res.ok) return;
+  const data = await res.json();
+  const folders = (data.folders || []).map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    isDefault: Boolean(f.is_default),
+  }));
+  const updates: Record<string, any> = { folders };
+  const current = folders.find((f: any) => f.id === cfg.folderId);
+  if (!current && folders.length > 0) {
+    const pick = folders.find((f: any) => f.isDefault) || folders[0];
+    updates.folderId = pick.id;
+    updates.folderName = pick.name;
   }
   await chrome.storage.local.set(updates);
 }
@@ -179,6 +259,7 @@ async function refreshWorkspaces(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function getStatus(): Promise<any> {
+  await checkPendingConnect();
   await refreshWorkspaces();
   const cfg = await chrome.storage.local.get([
     'apiBase',
@@ -187,6 +268,9 @@ async function getStatus(): Promise<any> {
     'workspaceId',
     'workspaceName',
     'workspaces',
+    'folderId',
+    'folderName',
+    'folders',
     'lastSync',
     'lastError',
   ]);
@@ -197,6 +281,8 @@ async function getStatus(): Promise<any> {
     username: cfg.username || null,
     workspaceId: cfg.workspaceId || null,
     workspaces: cfg.workspaces || [],
+    folderId: cfg.folderId || null,
+    folders: cfg.folders || [],
     lastSync: cfg.lastSync || null,
     lastError: cfg.lastError || null,
   };

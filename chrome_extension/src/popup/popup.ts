@@ -58,6 +58,7 @@ async function render(): Promise<void> {
       onchange: async () => {
         const picked = status.workspaces.find((w: any) => w.id === workspaceSelect.value);
         await send({ type: 'SET_WORKSPACE', id: picked.id, name: picked.name });
+        await render();
       },
     });
     for (const w of status.workspaces) {
@@ -66,9 +67,22 @@ async function render(): Promise<void> {
       );
     }
 
+    const folderSelect = el('select', {
+      onchange: async () => {
+        const picked = status.folders.find((f: any) => f.id === folderSelect.value);
+        await send({ type: 'SET_FOLDER', id: picked.id, name: picked.name });
+      },
+    });
+    for (const f of status.folders) {
+      folderSelect.append(
+        el('option', { value: f.id, textContent: f.name, selected: f.id === status.folderId })
+      );
+    }
+
     app.append(
       el('p', {}, ['Connected as ', el('strong', { textContent: status.username || '?' })]),
-      el('div', { className: 'row' }, [el('label', { textContent: 'Save chats to workspace' }), workspaceSelect])
+      el('div', { className: 'row' }, [el('label', { textContent: 'Save chats to workspace' }), workspaceSelect]),
+      el('div', { className: 'row' }, [el('label', { textContent: 'Session folder' }), folderSelect])
     );
 
     if (status.lastSync) {
