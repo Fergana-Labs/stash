@@ -470,6 +470,12 @@ export interface PublicSkillCard {
   updated_at: string;
 }
 
+// Skills imported from GitHub are owned by the curator account, but credit
+// belongs to the repo owner — derive it from the attribution URL.
+export function githubOwner(sourceGithubUrl: string): string {
+  return sourceGithubUrl.replace("https://github.com/", "").split("/")[0];
+}
+
 // --- Files: folders (nested) and pages ---
 
 export async function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {

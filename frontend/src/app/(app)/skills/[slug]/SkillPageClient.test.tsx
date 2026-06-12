@@ -59,6 +59,8 @@ vi.mock("../../../../lib/api", () => ({
   },
   forkSkill: vi.fn(),
   getPublicSkill: vi.fn(),
+  githubOwner: (url: string) =>
+    url.replace("https://github.com/", "").split("/")[0],
   listObjectShares: vi.fn(),
   publishSkillFolder: vi.fn(),
   shareObjectByEmail: vi.fn(),
@@ -303,6 +305,8 @@ describe("SkillPageClient", () => {
     expect(link.getAttribute("href")).toBe(
       "https://github.com/acme/skills/tree/main/cooking"
     );
+    // Credit goes to the repo owner, not the curator account that imported it.
+    expect(screen.getByText("by acme")).toBeInTheDocument();
 
     cleanup();
     vi.mocked(getPublicSkill).mockResolvedValueOnce(skillDetail());

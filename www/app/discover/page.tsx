@@ -119,7 +119,10 @@ function SortBar({ current, query }: { current: string; query?: string }) {
 }
 
 function Card({ skill }: { skill: PublicSkillCard }) {
-  const owner = skill.owner_display_name || skill.owner_name;
+  // GitHub-imported skills credit the repo owner, not the curator account.
+  const owner = skill.source_github_url
+    ? skill.source_github_url.replace("https://github.com/", "").split("/")[0]
+    : skill.owner_display_name || skill.owner_name;
   const updated = relativeTime(skill.updated_at);
 
   // The whole card is clickable via a stretched link; the GitHub source

@@ -9,7 +9,7 @@ import { GitHubIcon } from "../../components/integrations/BrandIcons";
 import ForkSkillCardButton from "../../components/skill/ForkSkillCardButton";
 import SkillCard from "../../components/skill/SkillCard";
 import { useAuth } from "../../hooks/useAuth";
-import { API_BASE, type PublicSkillCard } from "../../lib/api";
+import { API_BASE, githubOwner, type PublicSkillCard } from "../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
@@ -133,7 +133,9 @@ function DiscoverGrid({
               description: skill.description,
               cover_image_url: skill.cover_image_url,
               owner_name: skill.owner_name,
-              owner_display_name: skill.owner_display_name,
+              owner_display_name: skill.source_github_url
+                ? githubOwner(skill.source_github_url)
+                : skill.owner_display_name,
               updated_at: skill.updated_at,
             }}
             cover={COVERS[i % COVERS.length]}
