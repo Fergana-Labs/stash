@@ -54,6 +54,21 @@ export function GmailIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function RenderIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M18.263.007c-3.121-.147-5.744 2.109-6.192 5.082-.018.138-.045.272-.067.405-.696 3.703-3.936 6.507-7.827 6.507-1.388 0-2.691-.356-3.825-.979a.2024.2024 0 0 0-.302.178V24H12v-8.999c0-1.656 1.338-3.001 2.987-3.001h2.988c3.439 0 6.193-2.926 5.985-6.422C23.773 2.493 21.35.153 18.263.007Z" />
+    </svg>
+  );
+}
+
 export function ObsidianIcon({ className, size = defaultSize }: Props) {
   // Renders the official Obsidian logo SVG asset from /public.
   // Tip: use plain <img> here — next/image's optimizer would re-encode
