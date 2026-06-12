@@ -104,6 +104,43 @@ ensure_integrations_encryption_key() {
 
 ensure_integrations_encryption_key
 
+ensure_python_deps() {
+    if python -c 'import uvicorn, alembic, asyncpg' >/dev/null 2>&1; then
+        return
+    fi
+
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "[deps]    Python dependencies are missing and uv is not installed."
+        echo "[deps]    Install uv (https://docs.astral.sh/uv/), then rerun ./start.sh."
+        exit 1
+    fi
+
+    if [ -z "${VIRTUAL_ENV:-}" ]; then
+        if [ ! -d "$PROJECT_ROOT/.venv" ]; then
+            echo "[deps]    Creating Python virtualenv at .venv..."
+            uv venv -p 3.12 "$PROJECT_ROOT/.venv"
+        fi
+        # shellcheck disable=SC1091
+        source "$PROJECT_ROOT/.venv/bin/activate"
+    fi
+
+    echo "[deps]    Installing backend Python dependencies..."
+    uv pip install -r "$PROJECT_ROOT/backend/requirements.txt" -r "$PROJECT_ROOT/backend/requirements-dev.txt"
+}
+
+ensure_node_deps() {
+    local dir
+    for dir in frontend collab; do
+        # Reinstall when node_modules is missing or the lockfile changed since
+        # the last install (npm ci recreates node_modules, refreshing its mtime).
+        if [ ! -d "$PROJECT_ROOT/$dir/node_modules" ] || \
+           [ "$PROJECT_ROOT/$dir/package-lock.json" -nt "$PROJECT_ROOT/$dir/node_modules" ]; then
+            echo "[deps]    Installing $dir dependencies..."
+            (cd "$PROJECT_ROOT/$dir" && npm ci)
+        fi
+    done
+}
+
 BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
 COLLAB_PORT="${COLLAB_PORT:-$DEFAULT_COLLAB_PORT}"
@@ -309,6 +346,10 @@ wait_for_services() {
 
 echo "Starting Stash services..."
 echo "================================"
+
+# --- Dependencies ---
+ensure_python_deps
+ensure_node_deps
 
 # --- Database ---
 ensure_local_database
