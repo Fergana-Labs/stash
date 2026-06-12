@@ -109,7 +109,7 @@ export default function HtmlEditWorkbench({
             onSelection={setFrameSelection}
           />
         )}
-        {mode === "view" && (
+        {mode !== "raw" && (
           <SelectionCommentLayer
             slug={slug}
             wrapRef={wrapRef}
@@ -124,6 +124,7 @@ export default function HtmlEditWorkbench({
             title={title}
             editable
             onHtmlMutated={onMutated}
+            onSelection={setFrameSelection}
           />
         )}
         {mode === "raw" && (

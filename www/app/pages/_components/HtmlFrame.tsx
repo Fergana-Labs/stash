@@ -183,11 +183,6 @@ function injectBootstrap(html: string, channel: string): string {
       },500);
     }
     function reportSelection(){
-      // While editing, selections are caret moves — not comment targets.
-      if(editable){
-        post({type:"skill:selection",cleared:true});
-        return;
-      }
       var sel=window.getSelection();
       if(!sel||sel.rangeCount===0||sel.isCollapsed){
         post({type:"skill:selection",cleared:true});
