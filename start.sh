@@ -174,6 +174,14 @@ ensure_local_database() {
 
     remove_orphaned_dev_databases
 
+    # The host port is baked in at creation time, and another process can grab
+    # it while the container is stopped. Recreate the container on a fresh port
+    # in that case; the data volume is separate and survives.
+    if container_exists && ! container_is_running && ! port_is_free "$(dev_db_host_port)"; then
+        echo "[db]      Host port $(dev_db_host_port) was taken while the container was stopped; recreating it on a free port..."
+        docker rm "$DEV_DB_CONTAINER" >/dev/null
+    fi
+
     if container_exists; then
         if container_is_running; then
             echo "[db]      This worktree's dev database container is already running."
