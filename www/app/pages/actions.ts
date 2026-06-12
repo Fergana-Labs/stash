@@ -43,6 +43,35 @@ export async function createPaste(input: {
   };
 }
 
+export type AddCommentResult =
+  | { status: "ok"; comment: unknown }
+  | { status: "error"; message: string };
+
+export async function addComment(
+  slug: string,
+  input: {
+    author_name: string;
+    body: string;
+    quoted_text: string;
+    prefix: string;
+    suffix: string;
+  },
+): Promise<AddCommentResult> {
+  const res = await fetch(`${API_URL}/api/v1/pastes/${encodeURIComponent(slug)}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const message =
+      res.status === 429
+        ? "Too many comments — try again in a minute."
+        : "Could not post the comment. Try again.";
+    return { status: "error", message };
+  }
+  return { status: "ok", comment: await res.json() };
+}
+
 export type UpdatePasteResult = { status: "ok" } | { status: "error"; message: string };
 
 export async function updatePaste(

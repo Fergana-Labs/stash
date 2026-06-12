@@ -128,3 +128,38 @@ async def test_private_visibility_rejected(client: AsyncClient):
         json={"content": "x", "content_type": "markdown", "visibility": "private"},
     )
     assert resp.status_code == 422
+
+
+async def test_comments_roundtrip(client: AsyncClient):
+    paste = await _create(client)
+    resp = await client.post(
+        f"/api/v1/pastes/{paste['slug']}/comments",
+        json={
+            "author_name": "Sam",
+            "body": "Love this part",
+            "quoted_text": "world",
+            "prefix": "# Hello\n\n",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["body"] == "Love this part"
+
+    listed = await client.get(f"/api/v1/pastes/{paste['slug']}/comments")
+    comments = listed.json()["comments"]
+    assert len(comments) == 1
+    assert comments[0]["author_name"] == "Sam"
+    assert comments[0]["quoted_text"] == "world"
+
+
+async def test_comment_on_unknown_paste_404(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/pastes/nope-000000/comments",
+        json={"body": "hello?"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_comment_requires_body(client: AsyncClient):
+    paste = await _create(client)
+    resp = await client.post(f"/api/v1/pastes/{paste['slug']}/comments", json={"body": ""})
+    assert resp.status_code == 422

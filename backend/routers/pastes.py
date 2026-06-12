@@ -33,6 +33,14 @@ class PasteUpdateRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=_CONTENT_MAX)
 
 
+class CommentCreateRequest(BaseModel):
+    author_name: str = Field("", max_length=60)
+    body: str = Field(..., min_length=1, max_length=5_000)
+    quoted_text: str = Field("", max_length=500)
+    prefix: str = Field("", max_length=100)
+    suffix: str = Field("", max_length=100)
+
+
 @router.post("", status_code=201)
 @limiter.limit("10/minute")
 async def create_paste(request: Request, body: PasteCreateRequest) -> dict:
@@ -66,3 +74,20 @@ async def update_paste(request: Request, slug: str, token: str, body: PasteUpdat
     if not paste:
         raise HTTPException(status_code=404, detail="Paste not found")
     return paste
+
+
+@router.get("/{slug}/comments")
+@limiter.limit("120/minute")
+async def list_comments(request: Request, slug: str) -> dict:
+    return {"comments": await paste_service.list_comments(slug)}
+
+
+@router.post("/{slug}/comments", status_code=201)
+@limiter.limit("10/minute")
+async def add_comment(request: Request, slug: str, body: CommentCreateRequest) -> dict:
+    comment = await paste_service.add_comment(
+        slug, body.author_name, body.body, body.quoted_text, body.prefix, body.suffix
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Paste not found")
+    return comment

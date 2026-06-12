@@ -2,6 +2,15 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+export type HtmlSelectionInfo = {
+  quoted_text: string;
+  prefix: string;
+  suffix: string;
+  /** Bounding rect of the selection's last line, in iframe viewport
+   *  coords — the parent anchors the Comment pill to it. */
+  rect: { top: number; left: number; right: number; bottom: number };
+};
+
 type Props = {
   html: string;
   title: string;
@@ -11,13 +20,22 @@ type Props = {
    *  `html` prop changes, so the caret survives the save round-trip. */
   editable?: boolean;
   onHtmlMutated?: (nextHtml: string) => void;
+  /** Surfaces text selections inside the iframe so the parent can show
+   *  a Comment pill anchored to them. */
+  onSelection?: (info: HtmlSelectionInfo | null) => void;
 };
 
 // Minimal port of the product app's HtmlPageView: sandboxed srcDoc iframe
 // with a postMessage bootstrap for height auto-resize and in-place editing.
 // `sandbox="allow-scripts"` (no allow-same-origin) keeps user HTML in an
 // opaque origin — scripts run but can't touch our cookies or DOM.
-export default function HtmlFrame({ html, title, editable = false, onHtmlMutated }: Props) {
+export default function HtmlFrame({
+  html,
+  title,
+  editable = false,
+  onHtmlMutated,
+  onSelection,
+}: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
   const channel = `stash-resize-${useId()}`;
@@ -38,12 +56,31 @@ export default function HtmlFrame({ html, title, editable = false, onHtmlMutated
       }
       if (data.type === "stash:html-mutated" && typeof data.html === "string") {
         onHtmlMutated?.(data.html);
+        return;
+      }
+      if (data.type === "skill:selection") {
+        if (data.cleared) {
+          onSelection?.(null);
+          return;
+        }
+        const r = data.rect ?? {};
+        onSelection?.({
+          quoted_text: String(data.quoted_text ?? ""),
+          prefix: String(data.prefix ?? ""),
+          suffix: String(data.suffix ?? ""),
+          rect: {
+            top: Number(r.top ?? 0),
+            left: Number(r.left ?? 0),
+            right: Number(r.right ?? 0),
+            bottom: Number(r.bottom ?? 0),
+          },
+        });
       }
     }
     window.addEventListener("message", onMessage);
     iframeRef.current?.contentWindow?.postMessage({ type: "skill:probe", channel }, "*");
     return () => window.removeEventListener("message", onMessage);
-  }, [channel, onHtmlMutated]);
+  }, [channel, onHtmlMutated, onSelection]);
 
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage(
@@ -145,6 +182,41 @@ function injectBootstrap(html: string, channel: string): string {
         post({type:"stash:html-mutated",html:serializeClean()});
       },500);
     }
+    function reportSelection(){
+      // While editing, selections are caret moves — not comment targets.
+      if(editable){
+        post({type:"skill:selection",cleared:true});
+        return;
+      }
+      var sel=window.getSelection();
+      if(!sel||sel.rangeCount===0||sel.isCollapsed){
+        post({type:"skill:selection",cleared:true});
+        return;
+      }
+      var range=sel.getRangeAt(0);
+      var text=sel.toString();
+      if(!text||!text.trim()){
+        post({type:"skill:selection",cleared:true});
+        return;
+      }
+      var rects=range.getClientRects();
+      var last=rects[rects.length-1]||range.getBoundingClientRect();
+      // 32-char context window on each side, lifted from the rendered text.
+      var pre=document.body?document.body.innerText:"";
+      var idx=pre.indexOf(text);
+      var prefix="",suffix="";
+      if(idx>=0){
+        prefix=pre.slice(Math.max(0,idx-32),idx);
+        suffix=pre.slice(idx+text.length,idx+text.length+32);
+      }
+      post({
+        type:"skill:selection",
+        quoted_text:text,
+        prefix:prefix,
+        suffix:suffix,
+        rect:{top:last.top,left:last.left,right:last.right,bottom:last.bottom}
+      });
+    }
     if(document.body){
       document.body.removeAttribute("contenteditable");
       document.body.removeAttribute("spellcheck");
@@ -153,6 +225,7 @@ function injectBootstrap(html: string, channel: string): string {
     new ResizeObserver(postResize).observe(document.documentElement);
     if(document.body) new ResizeObserver(postResize).observe(document.body);
     document.addEventListener("input",scheduleMutate);
+    document.addEventListener("selectionchange",reportSelection);
     window.addEventListener("message",function(e){
       var d=e.data;
       if(!d || d.channel!==c) return;

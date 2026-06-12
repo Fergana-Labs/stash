@@ -96,6 +96,48 @@ async def update_paste(slug: str, token: str, title: str, content: str) -> dict 
     return dict(row) if row else None
 
 
+_COMMENT_COLS = "id, author_name, body, quoted_text, prefix, suffix, created_at"
+
+
+async def add_comment(
+    slug: str,
+    author_name: str,
+    body: str,
+    quoted_text: str,
+    prefix: str,
+    suffix: str,
+) -> dict | None:
+    """None means the paste doesn't exist."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"""
+        INSERT INTO paste_comments (paste_id, author_name, body, quoted_text, prefix, suffix)
+        SELECT id, $2, $3, $4, $5, $6 FROM pastes WHERE slug = $1
+        RETURNING {_COMMENT_COLS}
+        """,
+        slug,
+        author_name.strip(),
+        body,
+        quoted_text,
+        prefix,
+        suffix,
+    )
+    return dict(row) if row else None
+
+
+async def list_comments(slug: str) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"""
+        SELECT {_COMMENT_COLS} FROM paste_comments
+        WHERE paste_id = (SELECT id FROM pastes WHERE slug = $1)
+        ORDER BY created_at
+        """,
+        slug,
+    )
+    return [dict(r) for r in rows]
+
+
 async def list_recent(limit: int = 30) -> list[dict]:
     """Public pages ranked HN-style: views buoy a page, age sinks it."""
     pool = get_pool()

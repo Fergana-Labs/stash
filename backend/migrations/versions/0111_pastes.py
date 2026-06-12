@@ -40,7 +40,23 @@ def upgrade() -> None:
         )
         """)
     op.execute("CREATE INDEX idx_pastes_created ON pastes (created_at DESC)")
+    # Anonymous selection-anchored comments. quoted/prefix/suffix capture
+    # the selected range app-style, without mutating the page content.
+    op.execute("""
+        CREATE TABLE paste_comments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            paste_id UUID NOT NULL REFERENCES pastes(id) ON DELETE CASCADE,
+            author_name TEXT NOT NULL DEFAULT '',
+            body TEXT NOT NULL,
+            quoted_text TEXT NOT NULL DEFAULT '',
+            prefix TEXT NOT NULL DEFAULT '',
+            suffix TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """)
+    op.execute("CREATE INDEX idx_paste_comments_paste ON paste_comments (paste_id, created_at)")
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE paste_comments")
     op.execute("DROP TABLE pastes")

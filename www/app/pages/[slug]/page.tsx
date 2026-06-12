@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import HtmlFrame from "../_components/HtmlFrame";
-import MarkdownView from "../_components/MarkdownView";
-import { fetchPaste } from "../_lib/paste";
+import PasteViewer from "../_components/PasteViewer";
+import { fetchComments, fetchPaste } from "../_lib/paste";
 import { timeAgo } from "../_lib/time";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
@@ -27,6 +26,7 @@ export default async function PasteReadPage({ params }: { params: Params }) {
   const { slug } = await params;
   const paste = await fetchPaste(slug);
   if (!paste) notFound();
+  const comments = await fetchComments(slug);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -47,9 +47,6 @@ export default async function PasteReadPage({ params }: { params: Params }) {
             </span>
           )}
           <span className="shrink-0 text-[12.5px] text-muted">{timeAgo(paste.created_at)}</span>
-          <span className="shrink-0 text-[12.5px] text-muted">
-            {paste.view_count} {paste.view_count === 1 ? "view" : "views"}
-          </span>
           <a
             href={`/pages/${paste.slug}/raw`}
             className="shrink-0 font-mono text-[12px] text-dim underline-offset-2 hover:text-ink hover:underline"
@@ -75,13 +72,7 @@ export default async function PasteReadPage({ params }: { params: Params }) {
       </div>
 
       <div className="mx-auto max-w-[1100px] px-6 py-6">
-        {paste.content_type === "html" ? (
-          <div className="overflow-hidden rounded-xl border border-border bg-white">
-            <HtmlFrame html={paste.content} title={paste.title} />
-          </div>
-        ) : (
-          <MarkdownView content={paste.content} />
-        )}
+        <PasteViewer paste={paste} initialComments={comments} />
       </div>
     </main>
   );

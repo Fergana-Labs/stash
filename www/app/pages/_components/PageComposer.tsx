@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/react";
 
 import CopyButton from "../../_components/CopyButton";
@@ -24,6 +25,7 @@ const HTML_PLACEHOLDER = `<!doctype html>
 // private edit link. "Private" visibility is the signup gate, surfaced
 // as a modal.
 export default function PageComposer({ appUrl }: { appUrl: string }) {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState<PasteContentType>("markdown");
   const [visibility, setVisibility] = useState<PasteVisibility | "private">("public");
@@ -78,6 +80,9 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
       return;
     }
     setPublished({ slug: result.slug, editToken: result.edit_token, visibility });
+    // The feed below is server-rendered; refresh so the new page shows
+    // up in Recent without a manual reload.
+    router.refresh();
   }
 
   // Publishing unmounts the editor (panel takes its place), so reset just
