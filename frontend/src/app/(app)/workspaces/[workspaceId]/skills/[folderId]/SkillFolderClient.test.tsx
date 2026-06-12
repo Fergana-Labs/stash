@@ -1,8 +1,14 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render as renderBase, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillFolderClient from "./SkillFolderClient";
 import { getFolderContents, listSkills } from "../../../../../../lib/api";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
+import { ConfirmDialogProvider } from "../../../../../../components/ConfirmDialog";
+
+function render(ui: ReactNode) {
+  return renderBase(ui, { wrapper: ConfirmDialogProvider });
+}
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
