@@ -35,6 +35,14 @@ def test_build_entry_tree_keeps_entry_kind_and_path_on_leaves():
     assert leaf["path"] == "#eng/2026-06-01/1717.ts"
 
 
+def test_build_entry_tree_leaves_display_document_name_not_path_segment():
+    # Gmail-style: the path is an opaque message id; the name is the subject.
+    entries = [{"path": "19eb2b5141a3bbed", "name": "Q3 board deck", "kind": "message"}]
+    tree = build_entry_tree(entries, depth=3, per_dir=50)
+    assert tree[0]["name"] == "Q3 board deck"
+    assert tree[0]["path"] == "19eb2b5141a3bbed"
+
+
 def test_build_entry_tree_trims_to_depth():
     entries = [{"path": "a/b/c/d.md", "name": "d.md", "kind": "file"}]
     tree = build_entry_tree(entries, depth=2, per_dir=50)
@@ -74,7 +82,14 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         return [{"id": "p1", "name": "Welcome"}]
 
     async def fake_sessions(workspace_id, user_id):
-        return [{"session_id": "s1", "agent_name": "claude"}]
+        return [
+            {
+                "session_id": "s1",
+                "agent_name": "claude",
+                "title_source": "  Fix the onboarding\nwizard  ",
+            },
+            {"session_id": "s2", "agent_name": "claude", "title_source": None},
+        ]
 
     async def fake_connected(workspace_id, user_id):
         return [github, snowflake]
@@ -105,6 +120,8 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         "stash",
         "warehouse",
     ]
+    session_names = [n["name"] for n in sources[1]["tree"]]
+    assert session_names == ["Fix the onboarding wizard", "claude"]
     assert sources[2]["tree"][0]["name"] == "docs"
     assert sources[3]["tree"] == []
     assert audits[0]["action"] == "source.tree_listed"
