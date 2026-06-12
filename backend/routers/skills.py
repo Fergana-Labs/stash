@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -17,6 +17,8 @@ from ..models import (
     SkillUpdateRequest,
 )
 from ..services import (
+    files_tree_service,
+    permission_service,
     security_audit_service,
     shared_skill_service,
     skill_service,
@@ -84,6 +86,65 @@ async def get_local_skill(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill
+
+
+async def _require_skill_folder(workspace_id: UUID, folder_id: UUID, user_id: UUID) -> dict:
+    folder = await files_tree_service.get_folder(folder_id)
+    if not folder or folder["workspace_id"] != workspace_id:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if not await permission_service.check_access(
+        "folder", folder_id, user_id, workspace_id=workspace_id
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to read this folder")
+    return folder
+
+
+@ws_router.get("/{workspace_id}/skills/{folder_id}/contents")
+async def get_skill_contents(
+    workspace_id: UUID,
+    folder_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """The skill folder's full subtree, inlined — same shape as the public
+    skill payload, but for workspace members on unpublished skills. This is
+    what `stash skills sync` pulls."""
+    await _require_member(workspace_id, current_user["id"])
+    folder = await _require_skill_folder(workspace_id, folder_id, current_user["id"])
+    contents = await shared_skill_service.folder_contents({"folder_id": folder_id})
+    return {"folder_id": str(folder_id), "folder_name": folder["name"], "contents": contents}
+
+
+@ws_router.put("/{workspace_id}/skills/{folder_id}/contents")
+async def replace_skill_contents(
+    workspace_id: UUID,
+    folder_id: UUID,
+    files: list[UploadFile],
+    current_user: dict = Depends(get_current_user),
+):
+    """Replace the skill folder's contents with the uploaded file set — each
+    upload's filename is its path relative to the skill folder. This is what
+    `stash skills sync` pushes."""
+    await _require_member(workspace_id, current_user["id"])
+    await _require_skill_folder(workspace_id, folder_id, current_user["id"])
+    if not await permission_service.check_access(
+        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require="write"
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to write this folder")
+
+    payload: list[tuple[str, bytes]] = []
+    for f in files:
+        rel_path = (f.filename or "").strip("/")
+        if not rel_path or ".." in rel_path.split("/"):
+            raise HTTPException(status_code=400, detail=f"Bad file path: {f.filename!r}")
+        payload.append((rel_path, await f.read()))
+    if not any(path == "SKILL.md" for path, _blob in payload):
+        raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
+
+    await files_tree_service.clear_folder_contents(folder_id)
+    written = await files_tree_service.write_folder_files(
+        workspace_id, current_user["id"], folder_id, payload
+    )
+    return {"folder_id": str(folder_id), "items": written}
 
 
 me_router = APIRouter(prefix="/api/v1/me", tags=["skills"])

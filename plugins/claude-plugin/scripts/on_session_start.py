@@ -4,6 +4,7 @@ and inject context."""
 
 import json
 import os
+import subprocess
 import sys
 
 from adapt import adapt_session_start
@@ -70,6 +71,32 @@ SESSION_CONTEXT = (
 )
 
 
+def spawn_skills_sync(cfg: dict, workspace_id: str) -> None:
+    """Sync the workspace's skills into ~/.claude/skills in the background so
+    the agent has them without blocking session start. Detached and silent —
+    a failed sync must never break a session."""
+    cmd = ["stash", "skills", "sync"]
+    if workspace_id:
+        cmd += ["--workspace", workspace_id]
+    env = dict(os.environ)
+    if cfg.get("api_endpoint"):
+        env["STASH_URL"] = cfg["api_endpoint"]
+    if cfg.get("api_key"):
+        env["STASH_API_KEY"] = cfg["api_key"]
+    try:
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+            env=env,
+        )
+    except Exception:
+        pass
+
+
 def main():
     event = adapt_session_start(get_stdin_data())
     cfg = get_config()
@@ -96,6 +123,10 @@ def main():
             session_url = create_session_record(client, cfg, state, event, DATA_DIR)
     except Exception:
         session_url = None
+
+    spawn_skills_sync(
+        cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", "")
+    )
 
     if session_url:
         session_context = "\n" + SESSION_CONTEXT.format(url=session_url)

@@ -12,7 +12,6 @@ Run via scripts/import_github_skills.py.
 from __future__ import annotations
 
 import logging
-import mimetypes
 import os
 import re
 import secrets
@@ -22,7 +21,7 @@ import httpx
 
 from ..auth import hash_password
 from ..database import get_pool
-from . import files_tree_service, shared_skill_service, skill_service, storage_service
+from . import files_tree_service, shared_skill_service, skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -201,8 +200,8 @@ async def import_skill(
         "SELECT id, folder_id FROM skills WHERE source_github_url = $1", source_url
     )
     if existing:
-        await _clear_folder_contents(existing["folder_id"])
-        await _write_contents(workspace_id, owner_id, existing["folder_id"], files)
+        await files_tree_service.clear_folder_contents(existing["folder_id"])
+        await files_tree_service.write_folder_files(workspace_id, owner_id, existing["folder_id"], files)
         await pool.execute(
             "UPDATE skills SET title = $1, description = $2, updated_at = now() WHERE id = $3",
             title,
@@ -212,7 +211,7 @@ async def import_skill(
         return "updated"
 
     folder_id = await _create_root_folder(workspace_id, owner_id, title)
-    await _write_contents(workspace_id, owner_id, folder_id, files)
+    await files_tree_service.write_folder_files(workspace_id, owner_id, folder_id, files)
     await shared_skill_service.publish_folder(
         workspace_id,
         owner_id,
@@ -240,92 +239,3 @@ async def _create_root_folder(workspace_id: UUID, owner_id: UUID, title: str) ->
     raise ValueError(f"Could not find a free folder name for {title!r}")
 
 
-async def _write_contents(
-    workspace_id: UUID,
-    owner_id: UUID,
-    root_folder_id: UUID,
-    files: list[tuple[str, bytes]],
-) -> None:
-    pool = get_pool()
-    folder_ids: dict[str, UUID] = {"": root_folder_id}
-
-    async def ensure_dir(path: str) -> UUID:
-        if path in folder_ids:
-            return folder_ids[path]
-        parent, _, name = path.rpartition("/")
-        parent_id = await ensure_dir(parent)
-        folder = await files_tree_service.create_folder(
-            workspace_id=workspace_id,
-            name=name,
-            created_by=owner_id,
-            parent_folder_id=parent_id,
-        )
-        folder_ids[path] = folder["id"]
-        return folder["id"]
-
-    for rel_path, blob in files:
-        dir_path, _, filename = rel_path.rpartition("/")
-        folder_id = await ensure_dir(dir_path)
-        page_kind = files_tree_service.detect_page_kind(filename, "")
-        if page_kind is not None:
-            # Keep the full filename — skill detection requires a page named
-            # literally SKILL.md, and skill bodies link companion docs by
-            # their filenames.
-            text = blob.decode("utf-8", errors="replace")
-            await files_tree_service.create_page(
-                workspace_id=workspace_id,
-                name=filename,
-                created_by=owner_id,
-                folder_id=folder_id,
-                content=text if page_kind == "markdown" else "",
-                content_html=text if page_kind == "html" else "",
-                content_type=page_kind,
-            )
-            continue
-        if not storage_service.is_configured():
-            logger.warning("file storage not configured; skipping binary %s", rel_path)
-            continue
-        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        storage_key = await storage_service.upload_file(
-            str(workspace_id), filename, blob, content_type
-        )
-        await pool.execute(
-            "INSERT INTO files (workspace_id, folder_id, name, content_type, size_bytes, "
-            "storage_key, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            workspace_id,
-            folder_id,
-            filename,
-            content_type,
-            len(blob),
-            storage_key,
-            owner_id,
-        )
-
-
-_SUBTREE = (
-    "WITH RECURSIVE subtree AS ("
-    "  SELECT id FROM folders WHERE id = $1"
-    "  UNION ALL"
-    "  SELECT f.id FROM folders f JOIN subtree s ON f.parent_folder_id = s.id"
-    ") SELECT id FROM subtree"
-)
-
-
-async def _clear_folder_contents(root_folder_id: UUID) -> None:
-    """Hard-delete everything inside the skill folder, keeping the root —
-    skills.folder_id cascades on folder delete, so dropping the root would
-    unpublish the skill. Pages/files folder FKs are ON DELETE SET NULL, so
-    their rows must be deleted explicitly or they'd orphan into the
-    workspace root."""
-    pool = get_pool()
-    if storage_service.is_configured():
-        rows = await pool.fetch(
-            f"SELECT storage_key FROM files WHERE folder_id IN ({_SUBTREE})", root_folder_id
-        )
-        for row in rows:
-            await storage_service.delete_file(row["storage_key"])
-    await pool.execute(f"DELETE FROM files WHERE folder_id IN ({_SUBTREE})", root_folder_id)
-    await pool.execute(f"DELETE FROM pages WHERE folder_id IN ({_SUBTREE})", root_folder_id)
-    await pool.execute(
-        f"DELETE FROM folders WHERE id IN ({_SUBTREE}) AND id <> $1", root_folder_id
-    )

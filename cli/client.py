@@ -179,6 +179,26 @@ class StashClient:
     def get_public_skill(self, slug: str) -> dict:
         return self._get(f"/api/v1/skills/{slug}")
 
+    def get_skill_contents(self, workspace_id: str, folder_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents")
+
+    def replace_skill_contents(
+        self, workspace_id: str, folder_id: str, files: list[tuple[str, bytes]]
+    ) -> dict:
+        """files is (path relative to the skill folder, bytes) pairs; the
+        server replaces the folder's whole subtree with this set."""
+        parts = [
+            ("files", (path, blob, mimetypes.guess_type(path)[0] or "application/octet-stream"))
+            for path, blob in files
+        ]
+        resp = self._request(
+            "PUT",
+            f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+            files=parts,
+            timeout=300,
+        )
+        return resp.json()
+
     def get_skill_text(self, slug: str) -> str:
         resp = self._request("GET", f"/api/v1/skills/{slug}", params={"format": "text"})
         return resp.text
