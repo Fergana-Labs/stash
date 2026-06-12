@@ -4153,12 +4153,12 @@ def login_cmd():
         save_enabled_agents([])
 
     # --- Step 5: Which repo? ---
-    repo_root = _git_toplevel()
-    repo_name = repo_root.name if repo_root else None
+    # Outside a git repo, treat the current directory as the repo root: the
+    # .stash manifest lands there and the workspace is named after it.
+    repo_root = _git_toplevel() or Path.cwd()
 
-    this_repo_label = f"This repo ({repo_name})" if repo_name else "This repo"
     repo_choices = [
-        questionary.Choice(this_repo_label, value="this"),
+        questionary.Choice(f"This repo ({repo_root.name})", value="this"),
         questionary.Choice("Another repo", value="other"),
         questionary.Choice("Done", value="done"),
     ]
@@ -4166,22 +4166,17 @@ def login_cmd():
     answer = questionary.select(
         "Which repo do you want to upload transcripts in?",
         choices=repo_choices,
-        default=repo_choices[0] if repo_root else repo_choices[2],
+        default=repo_choices[0],
         use_shortcuts=True,
     ).ask()
     if answer is None:
         raise typer.Exit(1)
 
     if answer == "this":
-        if not repo_root:
-            console.print(
-                "[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]"
-            )
-        else:
-            try:
-                _auto_connect_repo(repo_root, cfg)
-            except StashError as e:
-                console.print(f"[red]Could not connect repo: {e.detail}[/red]")
+        try:
+            _auto_connect_repo(repo_root, cfg)
+        except StashError as e:
+            console.print(f"[red]Could not connect repo: {e.detail}[/red]")
     elif answer == "other":
         _reserve_bottom_padding(4)
         repo_path = typer.prompt("Path to repo").strip()
