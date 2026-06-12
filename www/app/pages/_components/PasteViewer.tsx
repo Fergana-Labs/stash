@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CommentsRail from "./CommentsRail";
 import HtmlFrame, { type HtmlSelectionInfo } from "./HtmlFrame";
 import MarkdownView from "./MarkdownView";
 import SelectionCommentLayer from "./SelectionCommentLayer";
+import { highlightQuotes } from "../_lib/highlight";
 import type { Paste, PasteComment } from "../_lib/paste";
 
 // The interactive read view. Selecting text (in the markdown article, or
@@ -27,6 +28,21 @@ export default function PasteViewer({
   const isHtml = paste.content_type === "html";
   const commentsEnabled = paste.comments_enabled;
 
+  const anchors = useMemo(
+    () =>
+      comments
+        .filter((c) => c.quoted_text)
+        .map((c) => ({ id: c.id, quoted: c.quoted_text })),
+    [comments],
+  );
+
+  // Markdown renders in our own DOM, so highlighting is a direct DOM
+  // pass; HTML pages get their anchors via the iframe bridge instead.
+  useEffect(() => {
+    if (isHtml || !commentsEnabled || !wrapRef.current) return;
+    highlightQuotes(wrapRef.current, anchors);
+  }, [isHtml, commentsEnabled, anchors]);
+
   const onFrameSelection = useCallback((info: HtmlSelectionInfo | null) => {
     setFrameSelection(info);
   }, []);
@@ -43,6 +59,7 @@ export default function PasteViewer({
             html={paste.content}
             title={paste.title}
             onSelection={commentsEnabled ? onFrameSelection : undefined}
+            highlights={commentsEnabled ? anchors : undefined}
           />
         </div>
       ) : (

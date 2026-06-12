@@ -16,6 +16,7 @@ interface Props {
   title: string;
   initialHtml: string;
   onCommentAdded: (comment: PasteComment) => void;
+  highlights: { id: string; quoted: string }[];
 }
 
 // The HTML edit page's three-mode selector. View renders the page, Edit is
@@ -28,6 +29,7 @@ export default function HtmlEditWorkbench({
   title,
   initialHtml,
   onCommentAdded,
+  highlights,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [frameSelection, setFrameSelection] = useState<HtmlSelectionInfo | null>(null);
@@ -107,6 +109,7 @@ export default function HtmlEditWorkbench({
             html={html}
             title={title}
             onSelection={setFrameSelection}
+            highlights={highlights}
           />
         )}
         {mode !== "raw" && (

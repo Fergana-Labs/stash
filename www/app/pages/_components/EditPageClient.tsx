@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import CommentsRail from "./CommentsRail";
 import HtmlEditWorkbench from "./HtmlEditWorkbench";
@@ -29,6 +29,14 @@ export default function EditPageClient({
     setComments((cur) => [...cur, comment]);
   }, []);
 
+  const anchors = useMemo(
+    () =>
+      comments
+        .filter((c) => c.quoted_text)
+        .map((c) => ({ id: c.id, quoted: c.quoted_text })),
+    [comments],
+  );
+
   async function toggle(next: boolean) {
     setEnabled(next);
     setToggleError("");
@@ -47,6 +55,7 @@ export default function EditPageClient({
         title={paste.title}
         initialHtml={paste.content}
         onCommentAdded={addLocal}
+        highlights={anchors}
       />
     ) : (
       <MarkdownEditClient
