@@ -36,8 +36,8 @@ export default async function PagesHome() {
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
 
-      <section className="mx-auto max-w-[920px] px-7 pb-6 pt-12">
-        <h1 className="font-display text-[clamp(28px,3.4vw,40px)] font-black leading-tight tracking-[-0.03em] text-ink">
+      <section className="mx-auto max-w-[920px] px-7 pb-5 pt-12">
+        <h1 className="font-display text-[20px] font-semibold text-ink">
           Shareable docs for your agents
         </h1>
       </section>
@@ -61,9 +61,6 @@ export default async function PagesHome() {
                   <TypeBadge contentType={paste.content_type} />
                   <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink">
                     {paste.title}
-                  </span>
-                  <span className="shrink-0 text-[12.5px] text-muted">
-                    {paste.view_count} {paste.view_count === 1 ? "view" : "views"}
                   </span>
                   <span className="w-16 shrink-0 text-right text-[12.5px] text-muted">
                     {timeAgo(paste.created_at)}

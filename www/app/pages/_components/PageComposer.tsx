@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Editor } from "@tiptap/react";
 
+import CopyButton from "../../_components/CopyButton";
 import HtmlFrame from "./HtmlFrame";
 import PasteMarkdownEditor from "./PasteMarkdownEditor";
 import PublishedPanel from "./PublishedPanel";
@@ -25,8 +26,13 @@ const HTML_PLACEHOLDER = `<!doctype html>
 export default function PageComposer({ appUrl }: { appUrl: string }) {
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState<PasteContentType>("markdown");
-  const [visibility, setVisibility] = useState<PasteVisibility>("public");
+  const [visibility, setVisibility] = useState<PasteVisibility | "private">("public");
   const [privateModal, setPrivateModal] = useState(false);
+  const [agentDocsUrl, setAgentDocsUrl] = useState("https://joinstash.ai/pages/agents");
+
+  useEffect(() => {
+    setAgentDocsUrl(`${window.location.origin}/pages/agents`);
+  }, []);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [htmlDraft, setHtmlDraft] = useState("");
   const [htmlTab, setHtmlTab] = useState<"code" | "edit">("code");
@@ -35,7 +41,11 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
   const [htmlEditVersion, setHtmlEditVersion] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
-  const [published, setPublished] = useState<{ slug: string; editToken: string } | null>(null);
+  const [published, setPublished] = useState<{
+    slug: string;
+    editToken: string;
+    visibility: PasteVisibility;
+  } | null>(null);
   const [, setEditTick] = useState(0);
 
   // The editor instance is destroyed while the published panel is up
@@ -54,6 +64,11 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
 
   async function publish() {
     if (!canPublish) return;
+    // The signup gate: private pages only exist in the product.
+    if (visibility === "private") {
+      setPrivateModal(true);
+      return;
+    }
     setPublishing(true);
     setError("");
     const result = await createPaste({ title, content, content_type: contentType, visibility });
@@ -62,7 +77,7 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
       setError(result.message);
       return;
     }
-    setPublished({ slug: result.slug, editToken: result.edit_token });
+    setPublished({ slug: result.slug, editToken: result.edit_token, visibility });
   }
 
   // Publishing unmounts the editor (panel takes its place), so reset just
@@ -80,7 +95,7 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
       <PublishedPanel
         slug={published.slug}
         editToken={published.editToken}
-        visibility={visibility}
+        visibility={published.visibility}
         onReset={reset}
       />
     );
@@ -112,13 +127,7 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
             { value: "private", label: "Private" },
           ]}
           value={visibility}
-          onChange={(v) => {
-            if (v === "private") {
-              setPrivateModal(true);
-              return;
-            }
-            setVisibility(v as PasteVisibility);
-          }}
+          onChange={(v) => setVisibility(v as PasteVisibility | "private")}
         />
       </div>
 
@@ -197,12 +206,23 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
           >
             {publishing ? "Publishing…" : "Create page"}
           </button>
-          <Link
-            href="/pages/agents"
-            className="text-[13px] text-dim underline-offset-2 hover:text-ink hover:underline"
-          >
-            Have an agent do this instead →
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/pages/agents"
+              className="text-[13px] text-dim underline-offset-2 hover:text-ink hover:underline"
+            >
+              Have an agent do this instead →
+            </Link>
+            <CopyButton
+              value={agentDocsUrl}
+              label="Copy link"
+              copiedLabel="Copied"
+              className="rounded border border-border bg-white px-2 py-0.5 text-[11.5px] font-medium text-dim transition hover:text-ink"
+            />
+          </div>
+          <p className="text-[11.5px] text-muted">
+            Copy the link and paste it to your agent — it explains everything.
+          </p>
         </div>
       </div>
 
@@ -212,7 +232,7 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
           onClick={() => setPrivateModal(false)}
         >
           <div
-            className="w-full max-w-sm rounded-xl border border-border bg-white p-6 shadow-xl"
+            className="w-full max-w-[300px] rounded-xl border border-border bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="font-display text-[18px] font-semibold text-ink">

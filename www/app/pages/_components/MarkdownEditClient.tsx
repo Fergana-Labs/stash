@@ -36,7 +36,7 @@ export default function MarkdownEditClient({ slug, token, initialMarkdown }: Pro
         {error && <span className="text-[13px] text-red-600">{error}</span>}
         <span className="text-[13px] text-muted">{STATUS_LABELS[status]}</span>
       </div>
-      <div className="mt-4 rounded-xl border border-border bg-white">
+      <div className="mt-2">
         <PasteMarkdownEditor
           initialMarkdown={initialMarkdown}
           onSave={save}

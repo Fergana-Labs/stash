@@ -97,12 +97,16 @@ async def update_paste(slug: str, token: str, title: str, content: str) -> dict 
 
 
 async def list_recent(limit: int = 30) -> list[dict]:
+    """Public pages ranked HN-style: views buoy a page, age sinks it."""
     pool = get_pool()
     rows = await pool.fetch(
         f"""
         SELECT {_FEED_COLS} FROM pastes
         WHERE visibility = 'public'
-        ORDER BY created_at DESC LIMIT $1
+        ORDER BY (view_count + 1)
+                 / POWER(EXTRACT(EPOCH FROM (now() - created_at)) / 3600 + 2, 1.5)
+                 DESC
+        LIMIT $1
         """,
         limit,
     )
