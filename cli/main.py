@@ -8,6 +8,7 @@ import textwrap
 import time
 from pathlib import Path
 
+import httpx
 import questionary
 import typer
 from rich.align import Align
@@ -2577,7 +2578,7 @@ def hist_import(
                     replace=replace,
                 )
                 imported += 1
-            except StashError:
+            except (StashError, httpx.HTTPError):
                 errors += 1
             progress.advance(task)
 
@@ -4589,7 +4590,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
             try:
                 upload_conversation(c, ws, conv)
                 imported += 1
-            except StashError as e:
+            except (StashError, httpx.HTTPError) as e:
                 errors += 1
                 last_error = str(e)
             progress.advance(task)
