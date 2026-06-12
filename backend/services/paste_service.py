@@ -134,6 +134,18 @@ async def update_paste(
     return paste
 
 
+async def delete_paste(slug: str, token: str) -> bool:
+    """True when a paste matched slug+token and was deleted. Comments and
+    collab state cascade via their FK ON DELETE CASCADE."""
+    pool = get_pool()
+    result = await pool.execute(
+        "DELETE FROM pastes WHERE slug = $1 AND edit_token = $2",
+        slug,
+        token,
+    )
+    return result.endswith(" 1")
+
+
 _COMMENT_COLS = "id, author_name, body, quoted_text, prefix, suffix, created_at"
 
 

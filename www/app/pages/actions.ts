@@ -74,6 +74,20 @@ export async function addComment(
 
 export type UpdatePasteResult = { status: "ok" } | { status: "error"; message: string };
 
+export async function deletePaste(slug: string, token: string): Promise<UpdatePasteResult> {
+  const res = await fetch(
+    `${API_URL}/api/v1/pastes/${encodeURIComponent(slug)}?token=${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+  );
+  if (res.status === 404) {
+    return { status: "error", message: "Invalid edit link — could not delete." };
+  }
+  if (!res.ok) {
+    return { status: "error", message: "Delete failed. Try again." };
+  }
+  return { status: "ok" };
+}
+
 export async function updatePaste(
   slug: string,
   token: string,

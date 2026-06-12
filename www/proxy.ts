@@ -12,14 +12,15 @@ export async function proxy(request: NextRequest) {
   // Agent API for /pages: a page.tsx and route.ts can't share a segment,
   // so writes rewrite to /api/pages route handlers.
   //   curl -X POST joinstash.ai/pages -d '# Hello'
-  //   curl -X PATCH "joinstash.ai/pages/{slug}?token=…" -d '…'
+  //   curl -X PATCH  "joinstash.ai/pages/{slug}?token=…" -d '…'
+  //   curl -X DELETE "joinstash.ai/pages/{slug}?token=…"
   // (Server-action POSTs to /pages carry a Next-Action header — those
   // belong to the composer UI, not the agent API.)
   if (pathname === "/pages" && request.method === "POST" && !request.headers.get("next-action")) {
     return NextResponse.rewrite(new URL("/api/pages", request.url));
   }
   const pasteSlug = pathname.match(/^\/pages\/([^/]+)$/)?.[1];
-  if (pasteSlug && request.method === "PATCH") {
+  if (pasteSlug && (request.method === "PATCH" || request.method === "DELETE")) {
     return NextResponse.rewrite(new URL(`/api/pages/${pasteSlug}${request.nextUrl.search}`, request.url));
   }
   // Content negotiation on the canonical URL: curl/agents (Accept without
