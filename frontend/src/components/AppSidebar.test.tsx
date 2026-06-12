@@ -110,6 +110,17 @@ describe("AppSidebar workspace nav", () => {
     expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");
   });
 
+  it("labels the top nav Index and splits Your Brain from External Sources", async () => {
+    render(<AppSidebar user={user} />);
+
+    await waitFor(() => expect(navLink("Index")).toBeTruthy());
+
+    expect(navLink("Index").getAttribute("href")).toBe("/activity");
+    expect(screen.getByText("Your Brain")).toBeTruthy();
+    // The External Sources header renders even with no connected sources.
+    expect(screen.getByText("External Sources")).toBeTruthy();
+  });
+
   it("does not render native <details> trees for the sections", async () => {
     const { container } = render(<AppSidebar user={user} />);
 

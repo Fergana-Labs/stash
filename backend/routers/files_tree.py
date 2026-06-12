@@ -34,6 +34,7 @@ from ..services import (
     files_tree_service,
     page_events,
     permission_service,
+    skill_service,
     workspace_service,
 )
 from ..services.files_tree_service import (
@@ -227,11 +228,17 @@ async def get_folder_contents(
           SELECT f.id, f.name, f.parent_folder_id, c.depth + 1
           FROM folders f JOIN chain c ON c.parent_folder_id = f.id
         )
-        SELECT id, name FROM chain ORDER BY depth DESC
+        SELECT id, name,
+               EXISTS(SELECT 1 FROM pages skp WHERE skp.folder_id = chain.id
+                      AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL) AS is_skill
+        FROM chain ORDER BY depth DESC
         """,
         folder_id,
     )
-    breadcrumbs = [{"id": str(r["id"]), "name": r["name"]} for r in ancestry_rows]
+    breadcrumbs = [
+        {"id": str(r["id"]), "name": r["name"], "is_skill": bool(r["is_skill"])}
+        for r in ancestry_rows
+    ]
 
     readable_folder = permission_service.readable_content_condition("folder", "f", 3)
     readable_page = permission_service.readable_content_condition("page", "p", 3)
@@ -242,7 +249,6 @@ async def get_folder_contents(
         "       ("
         "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
         "         AND p.workspace_id = $2 "
-        "         AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "         AND p.deleted_at IS NULL "
         f"         AND {readable_page}"
         "       ) AS page_count, "
@@ -254,6 +260,7 @@ async def get_folder_contents(
         "       ) AS file_count "
         "FROM folders f WHERE f.parent_folder_id = $1 AND f.workspace_id = $2 "
         f"AND {readable_folder} "
+        f"AND {skill_service.not_skill_folder_pred('f')} "
         "ORDER BY name",
         folder_id,
         workspace_id,
@@ -262,7 +269,6 @@ async def get_folder_contents(
     pages = await pool.fetch(
         "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
         "AND p.workspace_id = $2 "
-        "AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY name",
@@ -315,6 +321,7 @@ async def get_folder_contents(
             "parent_folder_id": (
                 str(folder["parent_folder_id"]) if folder["parent_folder_id"] else None
             ),
+            "is_skill": bool(breadcrumbs and breadcrumbs[-1]["is_skill"]),
         },
         "breadcrumbs": breadcrumbs,
         "subfolders": [

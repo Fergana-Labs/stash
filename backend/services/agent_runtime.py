@@ -30,7 +30,6 @@ from claude_agent_sdk import (
 )
 
 from ..config import settings
-from ..models import SkillItem
 from . import (
     files_tree_service,
     memory_service,
@@ -86,42 +85,19 @@ def _text_result(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
-def _skill_item_to_dict(item: dict) -> dict:
-    return {
-        "object_type": item["object_type"],
-        "object_id": str(item["object_id"]),
-        "position": item["position"],
-        "label_override": item.get("label_override"),
-    }
-
-
 def _skill_to_dict(skill: dict) -> dict:
     return {
         "id": str(skill["id"]),
         "workspace_id": str(skill["workspace_id"]),
+        "folder_id": str(skill["folder_id"]),
         "slug": skill["slug"],
         "title": skill["title"],
         "description": skill["description"],
-        "access": skill["access"],
-        "workspace_permission": skill["workspace_permission"],
-        "public_permission": skill["public_permission"],
         "discoverable": bool(skill["discoverable"]),
         "view_count": skill["view_count"],
-        "items": [_skill_item_to_dict(item) for item in skill.get("items", [])],
         "created_at": str(skill["created_at"]),
         "updated_at": str(skill["updated_at"]),
     }
-
-
-async def _parse_skill_items(raw_items: list[dict], workspace_id: UUID) -> list[SkillItem]:
-    items = [SkillItem(**item) for item in raw_items]
-    for item in items:
-        item_workspace_id = await permission_service.resolve_workspace_id(
-            item.object_type, item.object_id
-        )
-        if item_workspace_id != workspace_id:
-            raise ValueError("Skill items must be in the active workspace")
-    return items
 
 
 # --- Tool implementations --------------------------------------------------
@@ -326,7 +302,8 @@ async def _query_table(args: dict) -> dict:
 
 @tool(
     "list_skills",
-    "List skills (folders with SKILL.md frontmatter) defined in this Stash Workspace.",
+    "List skills (folders with SKILL.md) in this Stash Workspace, with their "
+    "publish info when shared.",
     {"type": "object", "properties": {}},
 )
 async def _list_skills(args: dict) -> dict:
@@ -334,10 +311,16 @@ async def _list_skills(args: dict) -> dict:
     user_id = _current_user()
     skills = await skill_service.list_skills(workspace_id, user_id)
     out = [
-        {"name": s["name"], "description": s["description"], "files": s["file_count"]}
+        {
+            "name": s["name"],
+            "description": s["description"],
+            "folder_id": s["folder_id"],
+            "files": s["file_count"],
+            "published": s["published"],
+        }
         for s in skills
     ]
-    return _text_result(json.dumps(out))
+    return _text_result(json.dumps(out, default=str))
 
 
 @tool(
@@ -359,163 +342,126 @@ async def _read_skill(args: dict) -> dict:
 
 
 @tool(
-    "list_shared_skills",
-    "List Skills from the active Stash Workspace.",
-    {"type": "object", "properties": {}},
-)
-async def _list_shared_skills(args: dict) -> dict:
-    workspace_id = _current_workspace()
-    user_id = _current_user()
-    skills = await shared_skill_service.list_workspace_skills(workspace_id, user_id)
-    return _text_result(json.dumps([_skill_to_dict(skill) for skill in skills]))
-
-
-@tool(
-    "create_shared_skill",
-    "Create a shared skill — a publishable bundle of workspace items.",
+    "create_skill",
+    "Create a skill: a folder with a SKILL.md (frontmatter name/description + "
+    "markdown body) and optional sibling markdown files.",
     {
         "type": "object",
         "properties": {
-            "title": {"type": "string"},
-            "description": {"type": "string", "default": ""},
-            "workspace_permission": {
+            "name": {"type": "string"},
+            "skill_md": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
-                "default": "read",
+                "description": "Full SKILL.md content including frontmatter.",
             },
-            "public_permission": {
-                "type": "string",
-                "enum": ["none", "read", "write"],
-                "default": "none",
-            },
-            "discoverable": {"type": "boolean", "default": False},
-            "items": {
+            "files": {
                 "type": "array",
                 "default": [],
                 "items": {
                     "type": "object",
                     "properties": {
-                        "object_type": {
-                            "type": "string",
-                            "enum": ["folder", "page", "table", "file", "session"],
-                        },
-                        "object_id": {"type": "string"},
-                        "position": {"type": "integer", "default": 0},
-                        "label_override": {"type": "string"},
+                        "name": {"type": "string"},
+                        "content": {"type": "string"},
                     },
-                    "required": ["object_type", "object_id"],
+                    "required": ["name", "content"],
                 },
             },
         },
-        "required": ["title"],
+        "required": ["name", "skill_md"],
     },
 )
-async def _create_shared_skill(args: dict) -> dict:
+async def _create_skill(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    workspace_permission = args.get("workspace_permission") or "read"
-    public_permission = args.get("public_permission") or "none"
-    discoverable = bool(args.get("discoverable", False))
-    if discoverable and public_permission == "none":
-        return _text_result(json.dumps({"error": "Discover Skills must be public"}))
-    items = await _parse_skill_items(args.get("items") or [], workspace_id)
-    skill = await shared_skill_service.create_skill(
-        workspace_id=workspace_id,
-        owner_id=user_id,
-        title=args["title"],
-        description=args.get("description") or "",
-        workspace_permission=workspace_permission,
-        public_permission=public_permission,
-        discoverable=discoverable,
-        cover_image_url=None,
-        items=items,
+    folder = await files_tree_service.create_folder(workspace_id, args["name"], user_id)
+    await files_tree_service.create_page(
+        workspace_id,
+        "SKILL.md",
+        user_id,
+        folder_id=folder["id"],
+        content=args["skill_md"],
+        content_type="markdown",
     )
-    return _text_result(json.dumps(_skill_to_dict(skill)))
+    for extra in args.get("files") or []:
+        await files_tree_service.create_page(
+            workspace_id,
+            extra["name"],
+            user_id,
+            folder_id=folder["id"],
+            content=extra["content"],
+            content_type="markdown",
+        )
+    return _text_result(json.dumps({"folder_id": str(folder["id"]), "name": args["name"]}))
 
 
 @tool(
-    "update_shared_skill",
-    "Update a shared skill's metadata or replace its item list.",
+    "publish_skill",
+    "Publish a skill folder: make it publicly readable at /skills/<slug> and " "return the URL.",
+    {
+        "type": "object",
+        "properties": {
+            "folder_id": {"type": "string"},
+            "discoverable": {"type": "boolean", "default": False},
+        },
+        "required": ["folder_id"],
+    },
+)
+async def _publish_skill(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    try:
+        skill = await shared_skill_service.publish_folder(
+            workspace_id,
+            user_id,
+            UUID(args["folder_id"]),
+            discoverable=bool(args.get("discoverable", False)),
+        )
+    except (ValueError, PermissionError) as e:
+        return _text_result(json.dumps({"error": str(e)}))
+    out = _skill_to_dict(skill)
+    out["url"] = f"{settings.PUBLIC_URL.rstrip('/')}/skills/{skill['slug']}"
+    return _text_result(json.dumps(out))
+
+
+@tool(
+    "update_skill",
+    "Update a published skill's share settings (title, description, access, " "Discover listing).",
     {
         "type": "object",
         "properties": {
             "skill_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
-            "workspace_permission": {
-                "type": "string",
-                "enum": ["none", "read", "write"],
-            },
-            "public_permission": {
-                "type": "string",
-                "enum": ["none", "read", "write"],
-            },
             "discoverable": {"type": "boolean"},
-            "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "object_type": {
-                            "type": "string",
-                            "enum": ["folder", "page", "table", "file", "session"],
-                        },
-                        "object_id": {"type": "string"},
-                        "position": {"type": "integer", "default": 0},
-                        "label_override": {"type": "string"},
-                    },
-                    "required": ["object_type", "object_id"],
-                },
-            },
         },
         "required": ["skill_id"],
     },
 )
-async def _update_shared_skill(args: dict) -> dict:
-    workspace_id = _current_workspace()
+async def _update_skill(args: dict) -> dict:
     user_id = _current_user()
     skill_id = UUID(args["skill_id"])
     if not await shared_skill_service.user_can_manage(skill_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
-    updates = {
-        key: args[key]
-        for key in (
-            "title",
-            "description",
-            "workspace_permission",
-            "public_permission",
-            "discoverable",
-        )
-        if key in args
-    }
-    if "items" in args:
-        updates["items"] = await _parse_skill_items(args.get("items") or [], workspace_id)
-    skill = await shared_skill_service.update_skill(
-        skill_id,
-        user_id,
-        updates,
-    )
+    updates = {key: args[key] for key in ("title", "description", "discoverable") if key in args}
+    skill = await shared_skill_service.update_skill(skill_id, user_id, updates)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps(_skill_to_dict(skill)))
 
 
 @tool(
-    "delete_shared_skill",
-    "Delete a shared skill by id.",
+    "unpublish_skill",
+    "Stop sharing a skill: delete its publish record. The folder keeps the skill.",
     {
         "type": "object",
         "properties": {"skill_id": {"type": "string"}},
         "required": ["skill_id"],
     },
 )
-async def _delete_shared_skill(args: dict) -> dict:
+async def _unpublish_skill(args: dict) -> dict:
     user_id = _current_user()
     skill_id = UUID(args["skill_id"])
-    if not await shared_skill_service.user_can_manage(skill_id, user_id):
-        return _text_result(json.dumps({"error": "not allowed"}))
-    deleted = await shared_skill_service.delete_skill(skill_id, user_id)
+    deleted = await shared_skill_service.unpublish_skill(skill_id, user_id)
     return _text_result(json.dumps({"deleted": deleted, "skill_id": str(skill_id)}))
 
 
@@ -1211,10 +1157,10 @@ _TOOLS_BY_NAME = {
     "query_table": _query_table,
     "list_skills": _list_skills,
     "read_skill": _read_skill,
-    "list_shared_skills": _list_shared_skills,
-    "create_shared_skill": _create_shared_skill,
-    "update_shared_skill": _update_shared_skill,
-    "delete_shared_skill": _delete_shared_skill,
+    "create_skill": _create_skill,
+    "publish_skill": _publish_skill,
+    "update_skill": _update_skill,
+    "unpublish_skill": _unpublish_skill,
     "list_sources": _list_sources,
     "list_source": _list_source,
     "read_source": _read_source,

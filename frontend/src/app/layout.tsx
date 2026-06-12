@@ -3,8 +3,6 @@ import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
 import { ShellChromeProvider } from "../components/ShellChromeContext";
-import { ShareModalProvider } from "../lib/shareModalContext";
-import SkillShareModal from "../components/share/SkillShareModal";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -45,12 +43,7 @@ export default function RootLayout({
         className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} antialiased min-h-screen`}
       >
         <BreadcrumbProvider>
-          <ShellChromeProvider>
-            <ShareModalProvider>
-              {children}
-              <SkillShareModal />
-            </ShareModalProvider>
-          </ShellChromeProvider>
+          <ShellChromeProvider>{children}</ShellChromeProvider>
         </BreadcrumbProvider>
       </body>
     </html>

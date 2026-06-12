@@ -20,13 +20,13 @@ from ..services import (
     llm,
     memory_service,
     session_title_service,
-    shared_skill_service,
+    skill_service,
     workspace_service,
 )
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-skills-rename-v3"
+SIDEBAR_ETAG_VERSION = "sidebar-skill-folders-v4"
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +65,6 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
             "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
-            "        AND COALESCE(p.metadata->>'shared_in_skill_id', '') = '' "
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
             "        AND fi.deleted_at IS NULL) AS file_count "
@@ -74,7 +73,6 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
         ),
         pool.fetch(
             "SELECT id, name, content_type, folder_id FROM pages WHERE workspace_id = $1 "
-            "AND COALESCE(metadata->>'shared_in_skill_id', '') = '' "
             "AND deleted_at IS NULL ORDER BY name",
             workspace_id,
         ),
@@ -86,6 +84,11 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
             workspace_id,
         ),
     )
+
+    hidden = await skill_service.skill_subtree_folder_ids(workspace_id)
+    folder_rows = [r for r in folder_rows if r["id"] not in hidden]
+    page_rows = [r for r in page_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
+    file_rows = [r for r in file_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
 
     folders = await files_tree_service._filter_readable(
         [dict(r) for r in folder_rows],
@@ -144,34 +147,9 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
     }
 
 
-async def _list_shared_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
-    skills = await shared_skill_service.list_workspace_skills(workspace_id, user_id)
-    return [
-        {
-            "id": str(skill["id"]),
-            "workspace_id": str(skill["workspace_id"]),
-            "slug": skill["slug"],
-            "title": skill["title"],
-            "description": skill["description"],
-            "access": skill["access"],
-            "workspace_permission": skill["workspace_permission"],
-            "public_permission": skill["public_permission"],
-            "discoverable": skill["discoverable"],
-            "is_external": skill["is_external"],
-            "item_count": len(skill.get("items", [])),
-            "items": [
-                {
-                    "object_type": item["object_type"],
-                    "object_id": str(item["object_id"]),
-                    "position": item["position"],
-                    "label_override": item.get("label_override"),
-                }
-                for item in skill.get("items", [])
-            ],
-            "updated_at": skill["updated_at"],
-        }
-        for skill in skills
-    ]
+async def _list_sidebar_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
+    """Skill folders (+ publish info when shared) for the sidebar/overview."""
+    return await skill_service.list_skills(workspace_id, user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +320,7 @@ async def get_workspace_overview(
     sessions, files, skills = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
-        _list_shared_skills(workspace_id, current_user["id"]),
+        _list_sidebar_skills(workspace_id, current_user["id"]),
     )
     return {"sessions": sessions, "files": files, "skills": skills}
 
@@ -365,7 +343,7 @@ async def get_workspace_sidebar(
     sessions, files, skills = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
-        _list_shared_skills(workspace_id, current_user["id"]),
+        _list_sidebar_skills(workspace_id, current_user["id"]),
     )
     return Response(
         content=json.dumps(
@@ -391,7 +369,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         f"""
         SELECT
           (SELECT MAX(updated_at) FROM pages
-            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_skill_id', '') = ''
+            WHERE workspace_id = $1
             AND deleted_at IS NULL) AS p,
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
@@ -426,9 +404,9 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
           (SELECT MAX(updated_at) FROM skills WHERE workspace_id = $1)            AS st,
-          (SELECT MAX(sm.created_at) FROM skill_members sm
-           JOIN skills s ON s.id = sm.skill_id
-           WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
+          (SELECT MAX(sh.created_at) FROM shares sh
+           WHERE sh.workspace_id = $1 AND sh.principal_type = 'user'
+             AND sh.principal_id = $2)                                            AS sm,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,
         workspace_id,

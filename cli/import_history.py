@@ -579,7 +579,6 @@ def upload_conversation(
     client,
     workspace_id: str,
     conv: ConversationInfo,
-    default_skill_id: str = "",
     replace: bool = False,
 ) -> dict:
     """Upload a single conversation transcript + push a summary event."""
@@ -599,7 +598,6 @@ def upload_conversation(
             transcript_path=transcript_path,
             agent_name=conv.agent,
             cwd=conv.cwd,
-            default_skill_id=default_skill_id,
             replace=replace,
         )
     finally:
@@ -612,7 +610,6 @@ def upload_conversation(
         event_type="session_end",
         content=f"Imported historical session ({_fmt_size(conv.size_bytes)})",
         session_id=conv.session_id,
-        default_skill_id=default_skill_id,
         metadata={
             "cwd": conv.cwd,
             "imported": True,

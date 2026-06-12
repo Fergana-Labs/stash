@@ -33,7 +33,7 @@ ALLOWED_EVENT_NAMES = {
     "web.page_created",
     "web.page_edited",
     "web.file_uploaded",
-    "web.skill_created",
+    "web.skill_published",
     "web.session_shared",
     "web.search_query",
     "web.ask_skill",

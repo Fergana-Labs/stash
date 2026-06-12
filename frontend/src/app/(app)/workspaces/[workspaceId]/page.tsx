@@ -8,7 +8,6 @@ import DescriptionEditor, {
 } from "../../../../components/DescriptionEditor";
 import { seedWelcomePage } from "../../../../lib/onboarding/seedWelcome";
 import { WorkspaceHomeSkeleton } from "../../../../components/SkeletonStates";
-import SkillQuickAdd from "../../../../components/SkillQuickAdd";
 import { WorkspaceIcon } from "../../../../components/SkillIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
@@ -173,18 +172,6 @@ export default function WorkspaceHomePage() {
           canEdit={isMember}
           onSaved={(updated) => setWorkspace(updated)}
         />
-
-        {/* Quick-add: paste URL or drop a file. .jsonl files route to
-              session-transcript upload; anything else uploads to Files. */}
-        {isMember && (
-          <section className="mt-6">
-            <div className="sys-label mb-1.5">
-              Quick add — paste a URL, drop a file, drop a .jsonl transcript
-            </div>
-            <SkillQuickAdd workspaceId={workspaceId} onAdded={load} />
-          </section>
-        )}
-
 
       </div>
     </div>

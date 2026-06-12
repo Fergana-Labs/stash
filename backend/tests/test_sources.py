@@ -52,6 +52,26 @@ def _tool_json(result: dict):
     return json.loads(result["content"][0]["text"])
 
 
+async def _insert_slack_source_without_channels(ws: UUID, owner_id: UUID) -> dict:
+    from backend.database import get_pool
+
+    row = await get_pool().fetchrow(
+        """
+        INSERT INTO workspace_sources (
+            workspace_id, owner_user_id, source_type, external_ref,
+            display_name, capability, sync_interval_s, sync_enabled, settings
+        )
+        VALUES ($1, $2, 'slack', 'T1', 'Slack', 'searchable', 21600, true, '{}'::jsonb)
+        RETURNING id
+        """,
+        ws,
+        owner_id,
+    )
+    source = await source_service.get_source_for_sync(row["id"])
+    assert source is not None
+    return source
+
+
 # --- registry endpoints -----------------------------------------------------
 
 
@@ -131,12 +151,76 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
     assert added.status_code == 200
     assert added.json()["settings"] == {"allowed_channel_ids": ["C1", "C2"]}
 
+    missing = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={"source_type": "slack"},
+        headers=_auth(api_key),
+    )
+    assert missing.status_code == 400
+    assert "allowed_channel_ids" in missing.json()["detail"]
+
     invalid = await client.post(
         f"/api/v1/workspaces/{ws}/sources",
         json={"source_type": "slack", "settings": {"allowed_channel_ids": "C1"}},
         headers=_auth(api_key),
     )
     assert invalid.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_slack_channel_picker_lists_conversations(client: AsyncClient, monkeypatch):
+    from backend.integrations import router as integrations_router
+
+    api_key, _ = await _register(client)
+
+    async def fake_get_valid_token(user_id, provider):
+        assert provider == "slack"
+        return "slack-token"
+
+    class FakeSlackResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "ok": True,
+                "channels": [
+                    {"id": "C1", "name": "general", "is_private": False},
+                    {"id": "G1", "name": "leadership", "is_private": True},
+                    {"id": "D1", "user": "U1"},
+                ],
+            }
+
+    class FakeSlackClient:
+        def __init__(self, *, timeout, headers):
+            assert timeout == 30.0
+            assert headers["Authorization"] == "Bearer slack-token"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, params):
+            assert url == integrations_router.SLACK_CONVERSATIONS_LIST_URL
+            assert params == {
+                "types": integrations_router.SLACK_CHANNEL_TYPES,
+                "limit": integrations_router.SLACK_CHANNEL_LIMIT,
+            }
+            return FakeSlackResponse()
+
+    monkeypatch.setattr(integrations_router.storage, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(integrations_router.httpx, "AsyncClient", FakeSlackClient)
+
+    resp = await client.get("/api/v1/integrations/slack/channels", headers=_auth(api_key))
+
+    assert resp.status_code == 200
+    assert resp.json() == [
+        {"id": "C1", "name": "general", "is_private": False},
+        {"id": "G1", "name": "leadership", "is_private": True},
+        {"id": "D1", "name": "U1", "is_private": False},
+    ]
 
 
 # --- user-scoping (the access-control invariant) ----------------------------
@@ -691,13 +775,7 @@ async def test_slack_webhook_rejects_bad_signature(client: AsyncClient, monkeypa
 async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
-    unconfigured = await source_service.create_source(
-        workspace_id=ws,
-        owner_user_id=owner_id,
-        source_type="slack",
-        external_ref="T1",
-        display_name="Slack",
-    )
+    unconfigured = await _insert_slack_source_without_channels(ws, owner_id)
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(unconfigured["id"]),
@@ -810,18 +888,11 @@ async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient
 async def test_slack_sync_without_channels_records_sync_error(client: AsyncClient):
     from backend.tasks import sources as sources_task
 
-    # A Slack source with no channel allowlist must not report a successful
-    # sync that silently ingested nothing — the failure has to be visible.
+    # A malformed Slack source with no channel allowlist must not report a
+    # successful sync that silently ingested nothing.
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
-    src = await source_service.create_source(
-        workspace_id=ws,
-        owner_user_id=owner_id,
-        source_type="slack",
-        external_ref="T1",
-        display_name="Slack",
-        settings={},
-    )
+    src = await _insert_slack_source_without_channels(ws, owner_id)
 
     result = await sources_task._sync_source(UUID(src["id"]))
 
@@ -1185,9 +1256,15 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
 
     monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
 
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Bundle"},
+        headers=_auth(api_key),
+    )
+    assert folder.status_code == 201
     skill = await client.post(
         f"/api/v1/workspaces/{ws}/skills",
-        json={"title": "Bundle", "public_permission": "read", "items": []},
+        json={"folder_id": folder.json()["id"], "title": "Bundle"},
         headers=_auth(api_key),
     )
     assert skill.status_code == 201
@@ -1204,10 +1281,10 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     # The body was copied in (a point-in-time snapshot), not left as a live ref.
     assert "snapshot body for file-abc" in page["content_markdown"]
 
-    # And the page is now an item in the skill.
+    # And the snapshot page landed inside the skill's folder.
     public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
-    item_ids = {i["object_id"] for i in public.json()["items"]}
-    assert page["id"] in item_ids
+    page_ids = {p["id"] for p in public.json()["contents"]["pages"]}
+    assert page["id"] in page_ids
 
 
 # --- VFS REST endpoints (browse / read / search) ----------------------------

@@ -4,6 +4,7 @@ import WorkspaceFileBrowser from "./WorkspaceFileBrowser";
 import {
   createTable,
   deleteTable,
+  getFolderContents,
   getWorkspaceTree,
   listFiles,
   listSharedWithMe,
@@ -93,6 +94,50 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("WorkspaceFileBrowser folder links", () => {
+  function folderContents() {
+    return {
+      folder: {
+        id: "folder-1",
+        name: "Skill folder",
+        parent_folder_id: null,
+        is_skill: true,
+      },
+      breadcrumbs: [{ id: "folder-1", name: "Skill folder", is_skill: true }],
+      subfolders: [{ id: "folder-2", name: "Nested", page_count: 0, file_count: 0 }],
+      pages: [],
+      files: [],
+      tables: [],
+    };
+  }
+
+  it("routes folder navigation through folderHrefBase when provided", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(
+      <WorkspaceFileBrowser
+        workspaceId="ws-1"
+        folderId="folder-1"
+        folderHrefBase="/workspaces/ws-1/skills"
+      />
+    );
+
+    fireEvent.click(await screen.findByText("Nested"));
+
+    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/skills/folder-2");
+  });
+
+  it("defaults folder navigation to the Files folder route", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(<WorkspaceFileBrowser workspaceId="ws-1" folderId="folder-1" />);
+
+    fireEvent.click(await screen.findByText("Nested"));
+
+    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/folders/folder-2");
+  });
 });
 
 describe("WorkspaceFileBrowser table creation", () => {
