@@ -21,6 +21,8 @@ Run `stash prompts agent-guidance` any time you want this guidance reprinted in 
 
 ## Browsing
 
+`stash ls` shows everything Stash can reach as one filesystem — workspace files, session transcripts, and every connected integration (GitHub, Slack, Gong, Gmail, Drive, Notion, …). When asked what you have access to, run it and show the tree; drill in with `stash ls <source>/<path>`.
+
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS. It accepts bash-shaped commands over the virtual Stash tree:
 - `stash vfs ls /`
 - `stash vfs "find /workspaces -maxdepth 3 -type f"`

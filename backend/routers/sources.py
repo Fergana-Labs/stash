@@ -170,9 +170,7 @@ async def sources_tree(
     each with a nested entry tree trimmed to `depth` levels."""
     await _require_member(workspace_id, current_user["id"])
     return {
-        "sources": await source_service.sources_tree(
-            workspace_id, current_user["id"], depth=depth
-        )
+        "sources": await source_service.sources_tree(workspace_id, current_user["id"], depth=depth)
     }
 
 
