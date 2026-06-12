@@ -102,15 +102,18 @@ async def _get_or_create_customer_id(user: dict) -> str:
     return customer.id
 
 
-async def create_checkout_session(user: dict) -> str:
+async def create_checkout_session(user: dict, interval: str) -> str:
     customer_id = await _get_or_create_customer_id(user)
+    price_id = (
+        settings.STRIPE_MONTHLY_PRICE_ID if interval == "month" else settings.STRIPE_ANNUAL_PRICE_ID
+    )
     session = await asyncio.to_thread(
         stripe.checkout.Session.create,
         api_key=settings.STRIPE_SECRET_KEY,
         mode="subscription",
         customer=customer_id,
         client_reference_id=str(user["id"]),
-        line_items=[{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
+        line_items=[{"price": price_id, "quantity": 1}],
         success_url=f"{settings.PUBLIC_URL}/settings?billing=success",
         cancel_url=f"{settings.PUBLIC_URL}/settings",
     )

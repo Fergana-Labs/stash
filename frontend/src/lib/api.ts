@@ -254,8 +254,11 @@ export async function getBilling(): Promise<BillingInfo> {
   return apiFetch("/api/v1/billing/me");
 }
 
-export async function startCheckout(): Promise<{ url: string }> {
-  return apiFetch("/api/v1/billing/checkout", { method: "POST" });
+export async function startCheckout(interval: "month" | "year"): Promise<{ url: string }> {
+  return apiFetch("/api/v1/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ interval }),
+  });
 }
 
 export async function openBillingPortal(): Promise<{ url: string }> {

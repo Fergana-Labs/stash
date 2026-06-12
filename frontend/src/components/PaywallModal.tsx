@@ -12,11 +12,11 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
 
   useEscapeKey(true, onClose);
 
-  async function upgrade() {
+  async function upgrade(interval: "month" | "year") {
     setBusy(true);
     setError("");
     try {
-      const { url } = await startCheckout();
+      const { url } = await startCheckout(interval);
       window.location.href = url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start checkout");
@@ -45,7 +45,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
           for $20/month.
         </div>
         {error && <div className="mt-2 text-[12px] text-error">{error}</div>}
-        <div className="mt-4 flex justify-end gap-1.5">
+        <div className="mt-4 flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={onClose}
@@ -57,12 +57,20 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
             type="button"
             autoFocus
             disabled={busy}
-            onClick={upgrade}
+            onClick={() => upgrade("month")}
             className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
           >
             {busy ? "Redirecting…" : "Upgrade — $20/month"}
           </button>
         </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => upgrade("year")}
+          className="mt-2 block w-full text-right text-[11.5px] text-muted underline hover:text-foreground disabled:opacity-60"
+        >
+          or $200/year — 2 months free
+        </button>
       </div>
     </div>
   );

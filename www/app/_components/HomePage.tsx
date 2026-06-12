@@ -870,6 +870,7 @@ const PRICING_TIERS = [
       "Unlimited connected sources",
       "GitHub, Slack, Gmail, Drive, Notion, and more",
       "Everything in Free",
+      "$200/year — 2 months free",
     ],
     cta: { label: "Upgrade in app →", href: APP_URL },
     highlight: true,

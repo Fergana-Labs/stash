@@ -66,14 +66,24 @@ export default function SubscriptionSection() {
             {busy ? "Opening…" : "Manage subscription"}
           </button>
         ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => redirectTo(startCheckout)}
-            className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            {busy ? "Redirecting…" : "Upgrade to Pro"}
-          </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => redirectTo(() => startCheckout("month"))}
+              className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              {busy ? "Redirecting…" : "Upgrade — $20/month"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => redirectTo(() => startCheckout("year"))}
+              className="text-xs text-muted hover:text-foreground underline disabled:opacity-60"
+            >
+              or $200/year — 2 months free
+            </button>
+          </div>
         )}
       </div>
 

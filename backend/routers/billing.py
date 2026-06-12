@@ -5,9 +5,11 @@ signature, mirroring the Slack webhook pattern in webhooks.py."""
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..config import settings
@@ -31,10 +33,14 @@ async def my_billing(current_user: dict = Depends(get_current_user)):
     }
 
 
+class CheckoutRequest(BaseModel):
+    interval: Literal["month", "year"] = "month"
+
+
 @router.post("/checkout")
-async def start_checkout(current_user: dict = Depends(get_current_user)):
+async def start_checkout(body: CheckoutRequest, current_user: dict = Depends(get_current_user)):
     billing_service.require_billing_enabled()
-    return {"url": await billing_service.create_checkout_session(current_user)}
+    return {"url": await billing_service.create_checkout_session(current_user, body.interval)}
 
 
 @router.post("/portal")

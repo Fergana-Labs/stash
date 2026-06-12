@@ -283,8 +283,9 @@ class Settings:
     # default): billing endpoints 404 and the source pay gate is not enforced.
     STRIPE_SECRET_KEY: str | None = os.getenv("STRIPE_SECRET_KEY")
     STRIPE_WEBHOOK_SECRET: str | None = os.getenv("STRIPE_WEBHOOK_SECRET")
-    # The recurring $20/mo Pro price (price_...).
-    STRIPE_PRICE_ID: str | None = os.getenv("STRIPE_PRICE_ID")
+    # The recurring Pro prices (price_...): $20/month and $200/year.
+    STRIPE_MONTHLY_PRICE_ID: str | None = os.getenv("STRIPE_MONTHLY_PRICE_ID")
+    STRIPE_ANNUAL_PRICE_ID: str | None = os.getenv("STRIPE_ANNUAL_PRICE_ID")
 
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
