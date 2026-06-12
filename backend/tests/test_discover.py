@@ -103,6 +103,8 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     # Live count of the folder subtree: the content page + the auto-minted SKILL.md.
     assert skills[0]["item_count"] == 2
     assert skills[0]["workspace_name"] == workspace["name"]
+    # GitHub attribution is import-only; organic publishes carry null.
+    assert skills[0]["source_github_url"] is None
 
     detail = await client.get(f"/api/v1/skills/{slug}")
     assert detail.status_code == 200

@@ -121,6 +121,14 @@ describe("AppSidebar workspace nav", () => {
     expect(screen.getByText("External Sources")).toBeTruthy();
   });
 
+  it("links Discover in the global nav", async () => {
+    render(<AppSidebar user={user} />);
+
+    await waitFor(() => expect(navLink("Discover")).toBeTruthy());
+
+    expect(navLink("Discover").getAttribute("href")).toBe("/discover");
+  });
+
   it("does not render native <details> trees for the sections", async () => {
     const { container } = render(<AppSidebar user={user} />);
 

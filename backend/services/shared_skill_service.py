@@ -72,7 +72,7 @@ def _content_hash(content: str) -> str:
 _SKILL_COLS = (
     "v.id, v.workspace_id, v.folder_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
+    "v.discoverable, v.cover_image_url, v.icon_url, v.source_github_url, v.view_count, "
     "v.created_at, v.updated_at"
 )
 _SKILL_FROM = "FROM skills v JOIN users owner_user ON owner_user.id = v.owner_id"
@@ -149,6 +149,7 @@ async def publish_folder(
     discoverable: bool = False,
     cover_image_url: str | None = None,
     icon_url: str | None = None,
+    source_github_url: str | None = None,
 ) -> dict:
     """Mint the publish record for a skill folder — the folder becomes
     publicly readable at /skills/<slug>. Creates the SKILL.md template if the
@@ -180,8 +181,8 @@ async def publish_folder(
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (workspace_id, folder_id, slug, title, description, owner_id, "
-            "discoverable, cover_image_url, icon_url) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+            "discoverable, cover_image_url, icon_url, source_github_url) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
             workspace_id,
             folder_id,
             _slugify(title),
@@ -191,6 +192,7 @@ async def publish_folder(
             discoverable,
             cover_image_url,
             icon_url,
+            source_github_url,
         )
     except asyncpg.UniqueViolationError:
         raise ValueError("Skill is already published") from None
@@ -333,6 +335,7 @@ async def list_public_skills(
                 "description": skill["description"],
                 "discoverable": skill["discoverable"],
                 "cover_image_url": skill["cover_image_url"],
+                "source_github_url": skill["source_github_url"],
                 "view_count": skill["view_count"],
                 "owner_name": skill.get("owner_name"),
                 "owner_display_name": skill.get("owner_display_name"),
