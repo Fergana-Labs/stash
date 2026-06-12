@@ -223,6 +223,9 @@ function LoginPageInner() {
       }
     >
       <FormCard>{formBody}</FormCard>
+      <p className="text-center text-[11px] text-muted">
+        You&apos;re seeing this because you&apos;re running in self-hosted/dev mode.
+      </p>
     </AuthShell>
   );
 }
