@@ -8,14 +8,14 @@ time and never read back out through the public API. ``visibility``
 controls the public feed (unlisted pages stay link-only). Private pages
 don't exist here — that's the signup gate into the product.
 
-Revision ID: 0111
-Revises: 0110
+Revision ID: 0112
+Revises: 0111
 """
 
 from alembic import op
 
-revision = "0111"
-down_revision = "0110"
+revision = "0112"
+down_revision = "0111"
 branch_labels = None
 depends_on = None
 

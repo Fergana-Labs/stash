@@ -129,9 +129,7 @@ async def update_paste(
         # PATCH would otherwise be silently reverted the next time someone
         # opens the live editor. Live sessions are unaffected (the doc is
         # in collab-server memory and re-persists on its own debounce).
-        await pool.execute(
-            "DELETE FROM paste_collab_documents WHERE paste_id = $1", paste["id"]
-        )
+        await pool.execute("DELETE FROM paste_collab_documents WHERE paste_id = $1", paste["id"])
     paste.pop("id")
     return paste
 
