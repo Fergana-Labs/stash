@@ -1,0 +1,63 @@
+"""Public pastes router — the joinstash.ai/pages pastebin.
+
+Fully anonymous: creation and edits are IP rate-limited rather than
+authenticated. The edit token minted at create time is the only write
+credential, passed as a ``?token=`` query param so the www edit URL can
+forward it verbatim. Reads support ``?format=raw`` so agents can curl
+the source directly.
+"""
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
+
+from ..middleware import limiter
+from ..services import paste_service
+
+router = APIRouter(prefix="/api/v1/pastes", tags=["pastes"])
+
+_CONTENT_MAX = 512_000
+
+
+class PasteCreateRequest(BaseModel):
+    title: str = Field("", max_length=200)
+    content: str = Field(..., min_length=1, max_length=_CONTENT_MAX)
+    content_type: str = Field(..., pattern=r"^(markdown|html)$")
+
+
+class PasteUpdateRequest(BaseModel):
+    title: str = Field("", max_length=200)
+    content: str = Field(..., min_length=1, max_length=_CONTENT_MAX)
+
+
+@router.post("", status_code=201)
+@limiter.limit("10/minute")
+async def create_paste(request: Request, body: PasteCreateRequest) -> dict:
+    return await paste_service.create_paste(body.title, body.content, body.content_type)
+
+
+@router.get("")
+@limiter.limit("60/minute")
+async def list_pastes(request: Request) -> dict:
+    return {"pastes": await paste_service.list_recent()}
+
+
+@router.get("/{slug}")
+@limiter.limit("120/minute")
+async def get_paste(request: Request, slug: str, format: str = ""):
+    paste = await paste_service.get_paste(slug)
+    if not paste:
+        raise HTTPException(status_code=404, detail="Paste not found")
+    if format == "raw":
+        media_type = "text/markdown" if paste["content_type"] == "markdown" else "text/plain"
+        return PlainTextResponse(paste["content"], media_type=media_type)
+    return paste
+
+
+@router.patch("/{slug}")
+@limiter.limit("30/minute")
+async def update_paste(request: Request, slug: str, token: str, body: PasteUpdateRequest) -> dict:
+    paste = await paste_service.update_paste(slug, token, body.title, body.content)
+    if not paste:
+        raise HTTPException(status_code=404, detail="Paste not found")
+    return paste

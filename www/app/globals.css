@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --bg-base: #FFFFFF;
@@ -65,6 +66,92 @@ html, body {
 ::selection {
   background: var(--brand);
   color: #FFFFFF;
+}
+
+/* ---------------------------------------------------------------
+ * Markdown typography for /pages — same approach as the product app:
+ * `@tailwindcss/typography` (the `prose` class) is the base, with its
+ * CSS-variable palette pinned to www's tokens so rendered pastes and
+ * the Tiptap editor match the site's look.
+ * --------------------------------------------------------------- */
+.prose {
+  --tw-prose-body: var(--text);
+  --tw-prose-headings: var(--text-strong);
+  --tw-prose-lead: var(--text-dim);
+  --tw-prose-links: var(--brand);
+  --tw-prose-bold: var(--text-strong);
+  --tw-prose-counters: var(--text-muted);
+  --tw-prose-bullets: var(--text-muted);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--text-dim);
+  --tw-prose-quote-borders: var(--brand);
+  --tw-prose-captions: var(--text-muted);
+  --tw-prose-code: var(--brand-ink);
+  --tw-prose-pre-code: var(--text);
+  --tw-prose-pre-bg: var(--bg-raised);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border-subtle);
+  color: var(--tw-prose-body);
+  max-width: none;
+}
+.prose :where(h1, h2, h3, h4):not(:where([class~="not-prose"] *)) {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+.prose :where(code):not(:where([class~="not-prose"] *, pre *)) {
+  background: var(--brand-soft);
+  border: 1px solid rgba(249, 115, 22, 0.18);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-weight: inherit;
+}
+.prose :where(code):not(:where([class~="not-prose"] *, pre *))::before,
+.prose :where(code):not(:where([class~="not-prose"] *, pre *))::after {
+  content: "";
+}
+.prose :where(blockquote):not(:where([class~="not-prose"] *)) {
+  background: rgba(249, 115, 22, 0.05);
+  border-radius: 0 6px 6px 0;
+  padding: 0.4em 1em;
+  font-style: italic;
+}
+
+/* Tiptap editor (the markdown edit page) */
+.tiptap p.is-editor-empty:first-child::before {
+  color: var(--text-muted);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Page body — readable but compact, matching the app's page editor. */
+.file-page-body {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/* Editor rhythm: prose-sm's ~1.14em paragraph margins read as
+   double-spacing while typing; tighten to match the rendered view. */
+.ProseMirror.file-page-body p {
+  margin: 0.3em 0;
+}
+.ProseMirror.file-page-body ul,
+.ProseMirror.file-page-body ol {
+  margin: 0.35em 0;
+}
+.ProseMirror.file-page-body li {
+  margin: 0.15em 0;
+}
+.ProseMirror.file-page-body blockquote {
+  margin: 0.5em 0;
+}
+.ProseMirror.file-page-body > :first-child {
+  margin-top: 0;
+}
+.ProseMirror.file-page-body > :last-child {
+  margin-bottom: 0;
 }
 
 @keyframes live-pulse {
