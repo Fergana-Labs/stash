@@ -3,8 +3,10 @@ set -euo pipefail
 
 # -------------------------------------------------------
 # start.sh — Start all Stash services locally
-# Starts a local pgvector database when DATABASE_URL points
-# at localhost:5432 and no database is reachable yet.
+# Each worktree gets its own pgvector database container,
+# created on demand and garbage-collected after the
+# worktree is deleted. Set DATABASE_URL to use your own
+# database instead.
 # -------------------------------------------------------
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -13,14 +15,16 @@ PIDS=()
 DEFAULT_BACKEND_PORT=3456
 DEFAULT_FRONTEND_PORT=3457
 DEFAULT_COLLAB_PORT=3458
-LOCAL_DATABASE_URL="postgresql://stash:stash@localhost:5432/stash"
-DEV_DB_CONTAINER="stash-dev-postgres"
 DEV_DB_IMAGE="pgvector/pgvector:pg16"
-DEV_DB_VOLUME="stash_dev_postgres_data"
+# Containers carry this label (set to the absolute worktree path) so databases
+# of deleted worktrees can be garbage-collected on every start.
+DEV_DB_WORKTREE_LABEL="ai.joinstash.dev-db-worktree"
+# Short path hash so worktrees with the same directory name don't collide.
+DEV_DB_CONTAINER="stash-dev-pg-$(basename "$PROJECT_ROOT")-$(printf '%s' "$PROJECT_ROOT" | shasum | cut -c1-6)"
+DEV_DB_VOLUME="${DEV_DB_CONTAINER}-data"
 DEV_DB_USER="stash"
 DEV_DB_PASSWORD="stash"
 DEV_DB_NAME="stash"
-DEV_DB_PORT="5432"
 STARTED_DEV_DB=false
 
 cleanup() {
@@ -100,7 +104,6 @@ ensure_integrations_encryption_key() {
 
 ensure_integrations_encryption_key
 
-export DATABASE_URL="${DATABASE_URL:-$LOCAL_DATABASE_URL}"
 BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
 COLLAB_PORT="${COLLAB_PORT:-$DEFAULT_COLLAB_PORT}"
@@ -122,17 +125,6 @@ asyncio.run(main())
 PY
 }
 
-uses_local_dev_database() {
-    case "$DATABASE_URL" in
-        postgresql://*@localhost:5432/*|postgresql://*@127.0.0.1:5432/*|postgres://*@localhost:5432/*|postgres://*@127.0.0.1:5432/*)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
 container_exists() {
     docker container inspect "$DEV_DB_CONTAINER" >/dev/null 2>&1
 }
@@ -141,15 +133,32 @@ container_is_running() {
     [ "$(docker inspect -f '{{.State.Running}}' "$DEV_DB_CONTAINER" 2>/dev/null)" = "true" ]
 }
 
-ensure_local_database() {
-    if database_is_ready; then
-        echo "[db]      PostgreSQL is reachable."
-        return
-    fi
+remove_orphaned_dev_databases() {
+    docker ps -a --filter "label=$DEV_DB_WORKTREE_LABEL" \
+        --format "{{.Names}} {{.Label \"$DEV_DB_WORKTREE_LABEL\"}}" |
+    while read -r container worktree; do
+        if [ ! -d "$worktree" ]; then
+            echo "[db]      Removing dev database of deleted worktree ${worktree}..."
+            docker rm -f "$container" >/dev/null
+            docker volume rm "${container}-data" >/dev/null 2>&1 || true
+        fi
+    done
+}
 
-    if ! uses_local_dev_database; then
-        echo "[db]      DATABASE_URL is not reachable."
-        echo "[db]      Start the configured database, then rerun ./start.sh."
+dev_db_host_port() {
+    docker inspect -f '{{(index (index .HostConfig.PortBindings "5432/tcp") 0).HostPort}}' "$DEV_DB_CONTAINER"
+}
+
+ensure_local_database() {
+    # An explicit DATABASE_URL means the caller owns the database; never
+    # substitute a local container for it.
+    if [ -n "${DATABASE_URL:-}" ]; then
+        if database_is_ready; then
+            echo "[db]      Using DATABASE_URL from the environment."
+            return
+        fi
+        echo "[db]      DATABASE_URL is set but not reachable."
+        echo "[db]      Start that database (or unset DATABASE_URL for a local dev container), then rerun ./start.sh."
         exit 1
     fi
 
@@ -163,30 +172,31 @@ ensure_local_database() {
         exit 1
     fi
 
+    remove_orphaned_dev_databases
+
     if container_exists; then
         if container_is_running; then
-            echo "[db]      Dev database container is already running."
+            echo "[db]      This worktree's dev database container is already running."
         else
-            echo "[db]      Starting existing dev database container..."
+            echo "[db]      Starting this worktree's dev database container..."
             docker start "$DEV_DB_CONTAINER" >/dev/null
             STARTED_DEV_DB=true
         fi
     else
-        echo "[db]      Creating dev database container..."
-        if ! docker run -d \
+        echo "[db]      Creating a dev database container for this worktree..."
+        docker run -d \
             --name "$DEV_DB_CONTAINER" \
+            --label "${DEV_DB_WORKTREE_LABEL}=${PROJECT_ROOT}" \
             -e POSTGRES_USER="$DEV_DB_USER" \
             -e POSTGRES_PASSWORD="$DEV_DB_PASSWORD" \
             -e POSTGRES_DB="$DEV_DB_NAME" \
-            -p "$DEV_DB_PORT:5432" \
+            -p "$(find_free_port 5432):5432" \
             -v "$DEV_DB_VOLUME:/var/lib/postgresql/data" \
-            "$DEV_DB_IMAGE" >/dev/null; then
-            echo "[db]      Failed to start the dev database container."
-            echo "[db]      Check whether port ${DEV_DB_PORT} is already in use."
-            exit 1
-        fi
+            "$DEV_DB_IMAGE" >/dev/null
         STARTED_DEV_DB=true
     fi
+
+    export DATABASE_URL="postgresql://${DEV_DB_USER}:${DEV_DB_PASSWORD}@localhost:$(dev_db_host_port)/${DEV_DB_NAME}"
 
     echo "[db]      Waiting for PostgreSQL..."
     for _ in {1..60}; do
@@ -339,6 +349,7 @@ echo "All services started. Press Ctrl+C to stop."
 echo "  Backend  -> http://localhost:${BACKEND_PORT}"
 echo "  Collab   -> ws://localhost:${COLLAB_PORT}"
 echo "  Frontend -> http://localhost:${FRONTEND_PORT}"
+echo "  Database -> ${DATABASE_URL}"
 echo "================================"
 
 # Wait for both app processes; if either exits, stop the other one too.
