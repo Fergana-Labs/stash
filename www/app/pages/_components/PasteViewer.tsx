@@ -2,19 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import CommentsRail, { CommentComposer } from "./CommentsRail";
 import HtmlFrame, { type HtmlSelectionInfo } from "./HtmlFrame";
 import MarkdownView from "./MarkdownView";
 import { addComment } from "../actions";
-import { timeAgo } from "../_lib/time";
 import type { Paste, PasteComment } from "../_lib/paste";
 
 const ANCHOR_CONTEXT_CHARS = 32;
 
-// The interactive read view: renders the page and carries the app-style
-// comment flow — select text, a Comment pill appears, a popover composer
-// posts the comment anchored to the quoted selection. Anchors are stored
-// as quoted text + context (never written into the page content, which
-// stays token-protected), and threads render below the page.
+// The interactive read view: the page on the left, a Google-Docs-style
+// comments rail on the right. Selecting text (in the markdown article,
+// or inside the sandboxed iframe) surfaces a Comment pill whose popover
+// posts a comment anchored to the quoted selection. Anchors are stored
+// as quoted text + context — never written into the page content, which
+// stays token-protected. The page owner can turn the whole thing off
+// for view mode (comments_enabled).
 export default function PasteViewer({
   paste,
   initialComments,
@@ -35,14 +37,14 @@ export default function PasteViewer({
     prefix: string;
     suffix: string;
   } | null>(null);
-  const [generalOpen, setGeneralOpen] = useState(false);
 
   const isHtml = paste.content_type === "html";
+  const commentsEnabled = paste.comments_enabled;
 
   // Markdown selections happen in our own DOM — same quoted/prefix/suffix
   // capture the iframe bootstrap does for HTML pages.
   useEffect(() => {
-    if (isHtml) return;
+    if (isHtml || !commentsEnabled) return;
     function onSelectionChange() {
       const wrap = wrapRef.current;
       const sel = window.getSelection();
@@ -68,7 +70,8 @@ export default function PasteViewer({
       setSelection({
         quoted_text: text,
         prefix: idx >= 0 ? full.slice(Math.max(0, idx - ANCHOR_CONTEXT_CHARS), idx) : "",
-        suffix: idx >= 0 ? full.slice(idx + text.length, idx + text.length + ANCHOR_CONTEXT_CHARS) : "",
+        suffix:
+          idx >= 0 ? full.slice(idx + text.length, idx + text.length + ANCHOR_CONTEXT_CHARS) : "",
         rect: {
           top: last.top - wrapRect.top,
           left: last.left - wrapRect.left,
@@ -79,13 +82,16 @@ export default function PasteViewer({
     }
     document.addEventListener("selectionchange", onSelectionChange);
     return () => document.removeEventListener("selectionchange", onSelectionChange);
-  }, [isHtml]);
+  }, [isHtml, commentsEnabled]);
 
   // HTML selections arrive from the iframe in iframe-viewport coords; the
   // iframe fills the wrapper, so they're already wrapper-relative.
-  const onFrameSelection = useCallback((info: HtmlSelectionInfo | null) => {
-    setSelection(info);
-  }, []);
+  const onFrameSelection = useCallback(
+    (info: HtmlSelectionInfo | null) => {
+      if (commentsEnabled) setSelection(info);
+    },
+    [commentsEnabled],
+  );
 
   async function submit(input: { author_name: string; body: string }) {
     const result = await addComment(paste.slug, {
@@ -98,170 +104,71 @@ export default function PasteViewer({
     if (result.status === "error") return result.message;
     setComments((cur) => [...cur, result.comment as PasteComment]);
     setComposer(null);
-    setGeneralOpen(false);
     setSelection(null);
     window.getSelection()?.removeAllRanges();
     return "";
   }
 
-  return (
-    <div>
-      <div ref={wrapRef} className="relative">
-        {isHtml ? (
-          <div className="overflow-hidden rounded-xl border border-border bg-white">
-            <HtmlFrame html={paste.content} title={paste.title} onSelection={onFrameSelection} />
-          </div>
-        ) : (
-          <MarkdownView content={paste.content} />
-        )}
-
-        {selection && !composer && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-              setComposer({
-                top: selection.rect.bottom + 10,
-                left: Math.max(8, (selection.rect.left + selection.rect.right) / 2 - 140),
-                quoted_text: selection.quoted_text,
-                prefix: selection.prefix,
-                suffix: selection.suffix,
-              })
-            }
-            className="absolute z-30 inline-flex -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-full bg-ink px-3 py-1.5 text-[12px] font-medium text-white shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-ink/90"
-            style={{
-              top: selection.rect.top - 8,
-              left: (selection.rect.left + selection.rect.right) / 2,
-            }}
-          >
-            <CommentIcon />
-            Comment
-          </button>
-        )}
-
-        {composer && (
-          <div className="absolute z-40" style={{ top: composer.top, left: composer.left }}>
-            <CommentComposer
-              quoted={composer.quoted_text}
-              onCancel={() => setComposer(null)}
-              onSubmit={submit}
-            />
-          </div>
-        )}
-      </div>
-
-      <section className="mx-auto mt-8 max-w-[920px]">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-[17px] font-semibold text-ink">
-            Comments{comments.length > 0 && ` (${comments.length})`}
-          </h2>
-          {!generalOpen && (
-            <button
-              type="button"
-              onClick={() => setGeneralOpen(true)}
-              className="text-[13px] font-medium text-dim hover:text-ink"
-            >
-              Add a comment
-            </button>
-          )}
+  const content = (
+    <div ref={wrapRef} className="relative min-w-0">
+      {isHtml ? (
+        <div className="overflow-hidden rounded-xl border border-border bg-white">
+          <HtmlFrame
+            html={paste.content}
+            title={paste.title}
+            onSelection={commentsEnabled ? onFrameSelection : undefined}
+          />
         </div>
-        {comments.length === 0 && !generalOpen && (
-          <p className="mt-2 text-[13.5px] text-muted">
-            No comments yet. Select any text on the page to comment on it.
-          </p>
-        )}
-        <ul className="mt-3 space-y-3">
-          {comments.map((comment) => (
-            <li key={comment.id} className="rounded-lg border border-border bg-surface p-3.5">
-              <p className="flex items-baseline gap-2 text-[12.5px] text-muted">
-                <span className="font-medium text-ink">
-                  {comment.author_name || "Anonymous"}
-                </span>
-                {timeAgo(comment.created_at)}
-              </p>
-              {comment.quoted_text && (
-                <p className="mt-1.5 truncate border-l-2 border-brand/60 pl-2 text-[12.5px] italic text-dim">
-                  {comment.quoted_text}
-                </p>
-              )}
-              <p className="mt-1.5 whitespace-pre-wrap text-[14px] text-foreground">
-                {comment.body}
-              </p>
-            </li>
-          ))}
-        </ul>
-        {generalOpen && (
-          <div className="mt-3">
-            <CommentComposer quoted="" onCancel={() => setGeneralOpen(false)} onSubmit={submit} />
-          </div>
-        )}
-      </section>
+      ) : (
+        <MarkdownView content={paste.content} />
+      )}
+
+      {selection && !composer && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() =>
+            setComposer({
+              top: selection.rect.bottom + 10,
+              left: Math.max(8, (selection.rect.left + selection.rect.right) / 2 - 140),
+              quoted_text: selection.quoted_text,
+              prefix: selection.prefix,
+              suffix: selection.suffix,
+            })
+          }
+          className="absolute z-30 inline-flex -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-full bg-ink px-3 py-1.5 text-[12px] font-medium text-white shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-ink/90"
+          style={{
+            top: selection.rect.top - 8,
+            left: (selection.rect.left + selection.rect.right) / 2,
+          }}
+        >
+          <CommentIcon />
+          Comment
+        </button>
+      )}
+
+      {composer && (
+        <div className="absolute z-40" style={{ top: composer.top, left: composer.left }}>
+          <CommentComposer
+            quoted={composer.quoted_text}
+            onCancel={() => setComposer(null)}
+            onSubmit={submit}
+          />
+        </div>
+      )}
     </div>
   );
-}
 
-function CommentComposer({
-  quoted,
-  onCancel,
-  onSubmit,
-}: {
-  quoted: string;
-  onCancel: () => void;
-  onSubmit: (input: { author_name: string; body: string }) => Promise<string>;
-}) {
-  const [name, setName] = useState("");
-  const [body, setBody] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-
-  async function send() {
-    if (!body.trim() || sending) return;
-    setSending(true);
-    const message = await onSubmit({ author_name: name, body });
-    setSending(false);
-    setError(message);
-  }
+  if (!commentsEnabled) return content;
 
   return (
-    <div className="w-[280px] rounded-lg border border-border bg-white p-3 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.25)]">
-      {quoted && (
-        <p className="mb-2 truncate border-l-2 border-brand/60 pl-2 text-[12px] italic text-dim">
-          {quoted}
-        </p>
-      )}
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Name (optional)"
-        maxLength={60}
-        className="h-8 w-full rounded-md border border-border bg-white px-2.5 text-[13px] text-ink placeholder:text-muted focus:border-brand focus:outline-none"
-      />
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Add a comment…"
-        autoFocus
-        className="mt-2 min-h-[64px] w-full resize-y rounded-md border border-border bg-white p-2.5 text-[13px] text-ink placeholder:text-muted focus:border-brand focus:outline-none"
-      />
-      {error && <p className="mt-1 text-[12px] text-red-600">{error}</p>}
-      <div className="mt-2 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-[13px] text-dim hover:text-ink"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={send}
-          disabled={!body.trim() || sending}
-          className="inline-flex h-8 items-center rounded-md bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {sending ? "Posting…" : "Comment"}
-        </button>
-      </div>
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-7">
+      {content}
+      <aside className="mt-8 lg:mt-0">
+        <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto">
+          <CommentsRail comments={comments} onSubmit={submit} />
+        </div>
+      </aside>
     </div>
   );
 }

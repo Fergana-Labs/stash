@@ -22,7 +22,7 @@ export default function MarkdownEditClient({ slug, token, initialMarkdown }: Pro
   const [error, setError] = useState("");
 
   async function save(markdown: string) {
-    const result = await updatePaste(slug, token, markdown);
+    const result = await updatePaste(slug, token, { content: markdown });
     if (result.status === "error") {
       setError(result.message);
       throw new Error(result.message);

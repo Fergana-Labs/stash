@@ -34,6 +34,7 @@ def upgrade() -> None:
             visibility VARCHAR(8) NOT NULL DEFAULT 'public'
                 CONSTRAINT pastes_visibility_check
                 CHECK (visibility IN ('public', 'unlisted')),
+            comments_enabled BOOLEAN NOT NULL DEFAULT true,
             view_count INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

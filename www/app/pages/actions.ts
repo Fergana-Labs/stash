@@ -77,14 +77,14 @@ export type UpdatePasteResult = { status: "ok" } | { status: "error"; message: s
 export async function updatePaste(
   slug: string,
   token: string,
-  content: string,
+  input: { content?: string; comments_enabled?: boolean },
 ): Promise<UpdatePasteResult> {
   const res = await fetch(
     `${API_URL}/api/v1/pastes/${encodeURIComponent(slug)}?token=${encodeURIComponent(token)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(input),
     },
   );
   if (res.status === 404) {

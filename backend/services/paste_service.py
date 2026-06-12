@@ -19,7 +19,8 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _TITLE_MAX = 80
 
 _PUBLIC_COLS = (
-    "slug, title, content_type, content, visibility, view_count, created_at, updated_at"
+    "slug, title, content_type, content, visibility, comments_enabled, "
+    "view_count, created_at, updated_at"
 )
 _FEED_COLS = "slug, title, content_type, view_count, created_at"
 
@@ -76,20 +77,32 @@ async def get_paste(slug: str) -> dict | None:
     return dict(row) if row else None
 
 
-async def update_paste(slug: str, token: str, title: str, content: str) -> dict | None:
-    """None means unknown slug *or* bad token — callers 404 both, no token oracle."""
+async def update_paste(
+    slug: str,
+    token: str,
+    title: str,
+    content: str,
+    comments_enabled: bool | None,
+) -> dict | None:
+    """None means unknown slug *or* bad token — callers 404 both, no token oracle.
+
+    Empty title/content and a None comments_enabled mean "keep as is", so
+    the settings toggle and content saves share this one write path.
+    """
     pool = get_pool()
     row = await pool.fetchrow(
         f"""
         UPDATE pastes
-        SET content = $1,
+        SET content = COALESCE(NULLIF($1, ''), content),
             title = COALESCE(NULLIF($2, ''), title),
+            comments_enabled = COALESCE($3, comments_enabled),
             updated_at = now()
-        WHERE slug = $3 AND edit_token = $4
+        WHERE slug = $4 AND edit_token = $5
         RETURNING {_PUBLIC_COLS}
         """,
         content,
         title.strip(),
+        comments_enabled,
         slug,
         token,
     )

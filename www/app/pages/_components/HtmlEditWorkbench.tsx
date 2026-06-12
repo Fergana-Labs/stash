@@ -38,7 +38,7 @@ export default function HtmlEditWorkbench({ slug, token, title, initialHtml }: P
   async function save(nextHtml: string) {
     setStatus("Saving…");
     setError("");
-    const result = await updatePaste(slug, token, nextHtml);
+    const result = await updatePaste(slug, token, { content: nextHtml });
     if (result.status === "error") {
       setStatus("");
       setError(result.message);

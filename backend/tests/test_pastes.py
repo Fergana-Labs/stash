@@ -130,6 +130,21 @@ async def test_private_visibility_rejected(client: AsyncClient):
     assert resp.status_code == 422
 
 
+async def test_toggle_comments_enabled(client: AsyncClient):
+    paste = await _create(client)
+    assert paste["comments_enabled"] is True
+
+    resp = await client.patch(
+        f"/api/v1/pastes/{paste['slug']}?token={paste['edit_token']}",
+        json={"comments_enabled": False},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["comments_enabled"] is False
+    # The toggle-only PATCH must not touch the content.
+    assert body["content"] == "# Hello\n\nworld"
+
+
 async def test_comments_roundtrip(client: AsyncClient):
     paste = await _create(client)
     resp = await client.post(

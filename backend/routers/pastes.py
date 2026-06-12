@@ -29,8 +29,11 @@ class PasteCreateRequest(BaseModel):
 
 
 class PasteUpdateRequest(BaseModel):
+    # Empty fields mean "leave unchanged" so content saves and the
+    # comments toggle share one endpoint.
     title: str = Field("", max_length=200)
-    content: str = Field(..., min_length=1, max_length=_CONTENT_MAX)
+    content: str = Field("", max_length=_CONTENT_MAX)
+    comments_enabled: bool | None = None
 
 
 class CommentCreateRequest(BaseModel):
@@ -70,7 +73,9 @@ async def get_paste(request: Request, slug: str, format: str = ""):
 @router.patch("/{slug}")
 @limiter.limit("30/minute")
 async def update_paste(request: Request, slug: str, token: str, body: PasteUpdateRequest) -> dict:
-    paste = await paste_service.update_paste(slug, token, body.title, body.content)
+    paste = await paste_service.update_paste(
+        slug, token, body.title, body.content, body.comments_enabled
+    )
     if not paste:
         raise HTTPException(status_code=404, detail="Paste not found")
     return paste
