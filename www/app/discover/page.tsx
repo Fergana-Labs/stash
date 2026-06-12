@@ -140,19 +140,12 @@ function Card({ skill }: { skill: PublicSkillCard }) {
       <p className="mt-2 line-clamp-2 text-[14px] leading-[1.5] text-dim">
         {skill.description || "No description yet."}
       </p>
-      <p className="mt-3 font-mono text-[11px] uppercase tracking-wider text-muted">
-        {skill.item_count} item{skill.item_count === 1 ? "" : "s"} /{" "}
-        {skill.view_count} view{skill.view_count === 1 ? "" : "s"}
-      </p>
       <div className="mt-auto flex items-center justify-between pt-4 text-[12px] text-dim">
         <span className="flex items-center gap-2">
           by {owner}
           {skill.source_github_url && <GitHubSourceLink href={skill.source_github_url} />}
         </span>
-        <span className="flex items-center gap-3">
-          <span>{skill.workspace_name}</span>
-          <span>{updated}</span>
-        </span>
+        <span>{updated}</span>
       </div>
     </div>
   );
