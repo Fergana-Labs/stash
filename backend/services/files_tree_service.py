@@ -15,7 +15,7 @@ import asyncpg
 import nh3
 
 from ..database import get_pool
-from . import page_events, permission_service, skill_service
+from . import page_events, permission_service, security_audit_service, skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -700,10 +700,20 @@ async def delete_page(page_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bo
         workspace_id,
         deleted_by,
     )
-    return result == "UPDATE 1"
+    if result != "UPDATE 1":
+        return False
+    # Audited here so every front door (REST, batch, agent tools) leaves a trail.
+    await security_audit_service.record_content_lifecycle_event(
+        operation="deleted",
+        actor_user_id=deleted_by,
+        workspace_id=workspace_id,
+        target_type="page",
+        target_id=page_id,
+    )
+    return True
 
 
-async def restore_page(page_id: UUID, workspace_id: UUID) -> bool:
+async def restore_page(page_id: UUID, workspace_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
@@ -712,7 +722,16 @@ async def restore_page(page_id: UUID, workspace_id: UUID) -> bool:
         page_id,
         workspace_id,
     )
-    return result == "UPDATE 1"
+    if result != "UPDATE 1":
+        return False
+    await security_audit_service.record_content_lifecycle_event(
+        operation="restored",
+        actor_user_id=restored_by,
+        workspace_id=workspace_id,
+        target_type="page",
+        target_id=page_id,
+    )
+    return True
 
 
 async def purge_page(page_id: UUID, workspace_id: UUID) -> bool:

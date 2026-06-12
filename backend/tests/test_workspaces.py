@@ -187,6 +187,72 @@ async def test_rotate_invite_code_member_forbidden(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_managed_auth_disables_legacy_invite_codes(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    from backend.routers import workspaces as workspaces_router
+
+    owner_key, _ = await _register(client)
+    joiner_key, _ = await _register(client)
+    monkeypatch.setattr(workspaces_router.settings, "AUTH0_ENABLED", True)
+
+    created = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "Managed Team"},
+        headers=_auth(owner_key),
+    )
+    assert created.status_code == 201
+    workspace = created.json()
+    assert workspace["invite_code"] == ""
+
+    legacy_invite_code = await pool.fetchval(
+        "SELECT invite_code FROM workspaces WHERE id = $1",
+        UUID(workspace["id"]),
+    )
+    assert legacy_invite_code
+
+    listed = await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))
+    assert listed.status_code == 200
+    assert listed.json()["workspaces"][0]["invite_code"] == ""
+
+    fetched = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}",
+        headers=_auth(owner_key),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["invite_code"] == ""
+
+    legacy_join = await client.post(
+        f"/api/v1/workspaces/join/{legacy_invite_code}",
+        headers=_auth(joiner_key),
+    )
+    assert legacy_join.status_code == 404
+
+    rotate = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/invite-code/rotate",
+        headers=_auth(owner_key),
+    )
+    assert rotate.status_code == 404
+
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/invite-tokens",
+        json={"max_uses": 1, "ttl_days": 7},
+        headers=_auth(owner_key),
+    )
+    assert invite.status_code == 201
+
+    redeemed = await client.post(
+        "/api/v1/workspaces/redeem-invite",
+        json={"token": invite.json()["token"]},
+        headers=_auth(joiner_key),
+    )
+    assert redeemed.status_code == 200
+    assert redeemed.json()["invite_code"] == ""
+
+
+@pytest.mark.asyncio
 @pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
 async def test_magic_invite_redeem_assigns_editor_role(client: AsyncClient):
     owner_key, _ = await _register(client)

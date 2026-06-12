@@ -221,3 +221,164 @@ async def test_integration_disconnect_audits_workspace_source_purge(
     )
     assert disconnected_event["provider"] == "slack"
     assert disconnected_event["metadata"] == {"removed_sources": 1}
+
+
+@pytest.mark.asyncio
+async def test_content_lifecycle_audit_records_delete_restore_and_purge(
+    client: AsyncClient,
+    _db_pool,
+    monkeypatch,
+):
+    api_key, owner_id = await _register(client, "audit_content")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+
+    page = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": "Webflow Roadmap", "content": "secret launch plan"},
+        headers=headers,
+    )
+    assert page.status_code == 201
+    page_id = UUID(page.json()["id"])
+
+    file_id = await _db_pool.fetchval(
+        "INSERT INTO files "
+        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "VALUES ($1, $2, 'text/plain', 12, $3, $4) RETURNING id",
+        ws,
+        "Webflow board notes.txt",
+        "customer/webflow/file-secret-key",
+        owner_id,
+    )
+
+    session = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "webflow-session", "agent_name": "codex"},
+        headers=headers,
+    )
+    assert session.status_code == 201
+    session_row_id = UUID(session.json()["id"])
+    await _db_pool.execute(
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+        "VALUES ($1, 'screenshots/home.png', $2, 32)",
+        session_row_id,
+        "customer/webflow/artifact-secret-key",
+    )
+
+    deleted_storage_keys: list[str] = []
+
+    async def fake_delete_file(storage_key: str) -> None:
+        deleted_storage_keys.append(storage_key)
+
+    monkeypatch.setattr("backend.routers.files.storage_service.delete_file", fake_delete_file)
+    monkeypatch.setattr("backend.routers.sessions.storage_service.delete_file", fake_delete_file)
+
+    for object_type, object_id, base_url in [
+        ("page", page_id, f"/api/v1/workspaces/{ws}/pages/{page_id}"),
+        ("file", file_id, f"/api/v1/workspaces/{ws}/files/{file_id}"),
+        ("session", session_row_id, f"/api/v1/workspaces/{ws}/sessions/{session_row_id}"),
+    ]:
+        deleted = await client.delete(base_url, headers=headers)
+        restored = await client.post(f"{base_url}/restore", headers=headers)
+        deleted_again = await client.delete(base_url, headers=headers)
+        purged = await client.delete(f"{base_url}/purge", headers=headers)
+
+        assert deleted.status_code == 204, object_type
+        assert restored.status_code == 204, object_type
+        assert deleted_again.status_code == 204, object_type
+        assert purged.status_code == 204, object_type
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    by_action = {event["action"]: event for event in events}
+
+    for object_type, object_id in [
+        ("page", page_id),
+        ("file", file_id),
+        ("session", session_row_id),
+    ]:
+        for operation in ["deleted", "restored", "purged"]:
+            action = f"content.{object_type}_{operation}"
+            assert by_action[action]["target_type"] == object_type
+            assert by_action[action]["target_id"] == str(object_id)
+            assert by_action[action]["actor_user_id"] == str(owner_id)
+
+    assert by_action["content.file_purged"]["metadata"] == {"storage_key_count": 1}
+    assert by_action["content.session_purged"]["metadata"] == {"storage_key_count": 1}
+    assert deleted_storage_keys == [
+        "customer/webflow/file-secret-key",
+        "customer/webflow/artifact-secret-key",
+    ]
+
+    event_json = json.dumps(events)
+    assert "Webflow Roadmap" not in event_json
+    assert "secret launch plan" not in event_json
+    assert "Webflow board notes" not in event_json
+    assert "file-secret-key" not in event_json
+    assert "artifact-secret-key" not in event_json
+
+
+@pytest.mark.asyncio
+async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
+    """Batch endpoints (and agent tools) call the services directly, skipping
+    the single-item routers — the audit trail must cover that front door too,
+    or a bulk deletion leaves no trace."""
+    api_key, owner_id = await _register(client, "audit_batch")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+
+    page = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": "Bulk target", "content": "doomed"},
+        headers=headers,
+    )
+    assert page.status_code == 201
+    page_id = page.json()["id"]
+    items = {"items": [{"object_type": "page", "object_id": page_id}]}
+
+    deleted = await client.post(
+        f"/api/v1/workspaces/{ws}/batch/delete", json=items, headers=headers
+    )
+    restored = await client.post(
+        f"/api/v1/workspaces/{ws}/batch/restore", json=items, headers=headers
+    )
+    assert deleted.status_code == 200 and not deleted.json()["errors"]
+    assert restored.status_code == 200 and not restored.json()["errors"]
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+    by_action = {event["action"]: event for event in events_resp.json()["events"]}
+    for action in ["content.page_deleted", "content.page_restored"]:
+        assert by_action[action]["target_id"] == page_id
+        assert by_action[action]["actor_user_id"] == str(owner_id)
+
+
+@pytest.mark.asyncio
+async def test_workspace_delete_records_purge_event(client: AsyncClient, _db_pool):
+    """Deleting a workspace destroys everything in it — the most destructive
+    action must leave an audit row. workspace_id stays NULL because the FK
+    cascade would otherwise erase the row with the workspace."""
+    api_key, owner_id = await _register(client, "audit_ws_purge")
+    ws = await _create_workspace(client, api_key)
+
+    deleted = await client.delete(f"/api/v1/workspaces/{ws}", headers=_auth(api_key))
+    assert deleted.status_code == 204
+
+    row = await _db_pool.fetchrow(
+        "SELECT workspace_id, actor_user_id, metadata FROM security_audit_events "
+        "WHERE action = 'content.workspace_purged' AND target_id = $1",
+        str(ws),
+    )
+    assert row is not None
+    assert row["workspace_id"] is None
+    assert row["actor_user_id"] == owner_id
+    metadata = row["metadata"]
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+    assert metadata == {"storage_key_count": 0}

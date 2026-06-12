@@ -21,7 +21,7 @@ ONBOARDING_FUNNEL_STAGES: list[tuple[str, str]] = [
 ]
 
 
-async def get_onboarding_funnel(*, days: int = 30) -> dict:
+async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> dict:
     """Distinct-user counts per stage in the canonical onboarding order.
 
     A user 'enters' a stage if they emitted *any* event of that name in the
@@ -35,10 +35,12 @@ async def get_onboarding_funnel(*, days: int = 30) -> dict:
         SELECT event_name, COUNT(DISTINCT user_id) AS users
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = ANY($2::text[])
+          AND ($3::text IS NULL OR properties->>'path' = $3)
         GROUP BY event_name
         """,
         since,
         [name for _, name in ONBOARDING_FUNNEL_STAGES],
+        path,
     )
     counts = {r["event_name"]: r["users"] for r in rows}
 
@@ -59,7 +61,43 @@ async def get_onboarding_funnel(*, days: int = 30) -> dict:
 
     return {
         "days": days,
+        "path": path,
         "stages": stages,
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
+    """Onboarding starts by path, counting one viewed event per start."""
+    if bucket not in ("day", "week"):
+        raise ValueError(f"unknown bucket: {bucket}")
+    trunc = "day" if bucket == "day" else "week"
+    pool = get_pool()
+    since = datetime.now(UTC) - timedelta(days=days)
+
+    rows = await pool.fetch(
+        f"""
+        SELECT date_trunc('{trunc}', created_at) AS ts,
+               CASE
+                   WHEN NULLIF(properties->>'path', '') IS NOT NULL THEN properties->>'path'
+                   WHEN properties->>'has_path' = 'false' THEN 'linear'
+                   ELSE 'unknown'
+               END AS path_key,
+               COUNT(*) AS n
+        FROM analytics_events
+        WHERE created_at >= $1 AND event_name = 'onboarding.viewed'
+        GROUP BY 1, 2
+        ORDER BY ts ASC
+        """,
+        since,
+    )
+
+    return {
+        "days": days,
+        "bucket": bucket,
+        "rows": [
+            {"ts": r["ts"].isoformat(), "path": r["path_key"], "count": int(r["n"])} for r in rows
+        ],
         "generated_at": datetime.now(UTC).isoformat(),
     }
 

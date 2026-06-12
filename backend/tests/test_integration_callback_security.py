@@ -24,6 +24,16 @@ async def _register(client: AsyncClient) -> UUID:
     return UUID(response.json()["id"])
 
 
+async def _register_with_key(client: AsyncClient) -> tuple[UUID, str]:
+    response = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("oauth"), "password": "securepassword1"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    return UUID(body["id"]), body["api_key"]
+
+
 class FailingExchangeProvider:
     name = "leaky"
     auth_kind = "oauth"
@@ -46,6 +56,18 @@ class FailingProfileProvider:
 
     async def fetch_account(self, access_token: str):
         raise RuntimeError(f"profile failure for access_token={access_token}")
+
+
+class FailingCredentialProvider:
+    name = "leakycredentials"
+    display_name = "Leaky Credentials"
+    auth_kind = "api_key"
+
+    def __init__(self, exc_type):
+        self.exc_type = exc_type
+
+    async def connect_with_credentials(self, values: dict[str, str]):
+        raise self.exc_type(f"upstream failed with token={values['token']} and customer transcript")
 
 
 def _configure_callback(monkeypatch, provider):
@@ -105,3 +127,40 @@ async def test_oauth_profile_failure_does_not_log_tokens(
     assert response.headers["location"] == f"{PUBLIC_URL}/settings?connected=profile"
     assert "at_should_not_be_logged" not in caplog.text
     assert "rt_should_not_be_logged" not in caplog.text
+
+
+# Bad credentials (ValueError) are the caller's fault (400); anything else —
+# upstream outage, provider bug — must surface as a server-side 502, not blame
+# the user's credentials. Both paths must redact the raw exception message.
+@pytest.mark.parametrize(
+    ("exc_type", "expected_status", "expected_detail"),
+    [
+        (ValueError, 400, "Could not connect Leaky Credentials; check credentials"),
+        (RuntimeError, 502, "Could not connect Leaky Credentials; upstream unavailable"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_credential_connect_failure_does_not_return_or_log_secrets(
+    client: AsyncClient,
+    monkeypatch,
+    caplog,
+    exc_type,
+    expected_status,
+    expected_detail,
+):
+    provider = FailingCredentialProvider(exc_type)
+    _configure_callback(monkeypatch, provider)
+    _user_id, api_key = await _register_with_key(client)
+
+    response = await client.post(
+        f"/api/v1/integrations/{provider.name}/credentials",
+        json={"token": "secret-token"},
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == expected_detail
+    assert "secret-token" not in response.text
+    assert "customer transcript" not in response.text
+    assert "secret-token" not in caplog.text
+    assert "customer transcript" not in caplog.text

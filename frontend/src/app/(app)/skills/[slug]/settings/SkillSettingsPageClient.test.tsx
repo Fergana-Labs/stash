@@ -150,9 +150,12 @@ describe("SkillSettingsPageClient", () => {
   it("saves title changes only", async () => {
     render(<SkillSettingsPageClient slug="shared-skill" />);
 
-    fireEvent.change(await screen.findByLabelText("Title"), {
+    const titleInput = await screen.findByLabelText("Title");
+    fireEvent.change(titleInput, {
       target: { value: "Better Skill" },
     });
+    await waitFor(() => expect(titleInput).toHaveValue("Better Skill"));
+
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() =>

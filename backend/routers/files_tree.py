@@ -34,6 +34,7 @@ from ..services import (
     files_tree_service,
     page_events,
     permission_service,
+    security_audit_service,
     skill_service,
     workspace_service,
 )
@@ -657,7 +658,7 @@ async def restore_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_content_access("page", page_id, workspace_id, current_user["id"], require="write")
-    restored = await files_tree_service.restore_page(page_id, workspace_id)
+    restored = await files_tree_service.restore_page(page_id, workspace_id, current_user["id"])
     if not restored:
         raise HTTPException(status_code=404, detail="Page not in trash")
 
@@ -673,6 +674,13 @@ async def purge_page(
     purged = await files_tree_service.purge_page(page_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Page not in trash")
+    await security_audit_service.record_content_lifecycle_event(
+        operation="purged",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="page",
+        target_id=page_id,
+    )
 
 
 # --- Page comments ---

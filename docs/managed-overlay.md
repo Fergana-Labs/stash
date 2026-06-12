@@ -34,6 +34,28 @@ APP_BASE_URL=https://www.joinstash.ai
 
 NEXT_PUBLIC_AUTH0_ENABLED=true
 NEXT_PUBLIC_API_URL=https://api.joinstash.ai
+
+# Required for managed uploads and copied integration artifacts.
+S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+S3_BUCKET=<bucket>
+S3_ACCESS_KEY=<access key>
+S3_SECRET_KEY=<secret key>
+S3_REGION=auto
+
+# Required for OAuth state and integration tokens. Keep old keys after the
+# current primary key while rotating.
+INTEGRATIONS_ENCRYPTION_KEY=<fernet primary>,<fernet previous>
 ```
+
+When `AUTH0_ENABLED=true`, the backend rejects non-HTTPS `PUBLIC_URL` and
+`CORS_ORIGINS` values. The Next.js managed Auth0 client also rejects
+non-HTTPS `APP_BASE_URL` values. Use HTTPS origins without paths, queries, or
+fragments. Managed backend startup also rejects missing or invalid
+`INTEGRATIONS_ENCRYPTION_KEY`, incomplete S3 config, and non-HTTPS
+`S3_ENDPOINT`. Any configured `*_OAUTH_REDIRECT_URI` must be an HTTPS callback
+URL without path params, query strings, or fragments. Localhost redirect URIs
+are only for non-managed local development. Managed mode also hides and disables
+legacy permanent workspace invite codes; use `/invite-tokens` magic links for
+TTL-bounded workspace onboarding.
 
 `start.sh` runs the managed alembic chain (`backend/managed/alembic.ini`) automatically when `AUTH0_ENABLED=true`.

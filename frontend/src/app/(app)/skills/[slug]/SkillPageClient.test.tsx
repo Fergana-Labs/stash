@@ -182,6 +182,9 @@ describe("SkillPageClient", () => {
         `${window.location.origin}/skills/shared-skill`,
       ),
     );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
+    );
   });
 
   it("copies an agent-readable handoff link from the app header", async () => {
@@ -196,6 +199,11 @@ describe("SkillPageClient", () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
         `${window.location.origin}/api/v1/skills/shared-skill?format=text`,
       ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Copy agent handoff link" }),
+      ).toHaveTextContent("Copied"),
     );
   });
 

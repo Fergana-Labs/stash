@@ -63,6 +63,25 @@ async def record_event(
     )
 
 
+async def record_content_lifecycle_event(
+    *,
+    operation: str,
+    actor_user_id: UUID,
+    workspace_id: UUID,
+    target_type: str,
+    target_id: UUID,
+    metadata: dict | None = None,
+) -> None:
+    await record_event(
+        action=f"content.{target_type}_{operation}",
+        actor_user_id=actor_user_id,
+        workspace_id=workspace_id,
+        target_type=target_type,
+        target_id=str(target_id),
+        metadata=metadata,
+    )
+
+
 async def record_user_event(
     *,
     action: str,
