@@ -115,6 +115,7 @@ async def _insert_representative_source_document(
         extra=extra,
     )
 
+
 async def _insert_slack_source_without_channels(ws: UUID, owner_id: UUID) -> dict:
     from backend.database import get_pool
 
@@ -2299,7 +2300,6 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
 
     assert snap.status_code == 404
     assert copied_pages == 0
-
 
 
 # --- VFS REST endpoints (browse / read / search) ----------------------------
