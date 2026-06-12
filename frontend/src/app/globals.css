@@ -348,16 +348,12 @@ details > summary::-webkit-details-marker {
   font-style: italic;
 }
 
-/* Horizontal rule: fade out the line so it looks intentional. */
+/* Horizontal rule: --border-color is too faint against the page
+   background, so use the muted text token instead. */
 .prose :where(hr):not(:where([class~="not-prose"] *)) {
   border: none;
   height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--border-color, rgba(0, 0, 0, 0.12)),
-    transparent
-  );
+  background: var(--text-muted);
 }
 
 /* Tables — match the rounded-outer, light-inner-border look. */
