@@ -2885,10 +2885,10 @@ def shares_add(
     if _use_json(as_json):
         output_json(data)
         return
-    if data.get("pending"):
-        console.print(f"[green]Invite pending[/green] for {email} (converts on signup).")
-    else:
-        console.print(f"[green]Shared[/green] with {email} ({permission}).")
+    console.print(
+        f"[green]Shared[/green] with {email} ({permission}). "
+        "If they don't have an account yet, it converts when they sign up."
+    )
 
 
 @shares_app.command("rm")

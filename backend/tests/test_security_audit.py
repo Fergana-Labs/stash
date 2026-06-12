@@ -280,7 +280,7 @@ async def test_pending_share_invite_conversion_is_audited_without_email_or_conte
     )
 
     assert invited.status_code == 200
-    assert invited.json() == {"pending": True, "email": recipient_email}
+    assert invited.json() == {"ok": True, "email": recipient_email}
     assert recipient_resp.status_code == 201
     assert events_resp.status_code == 200
 
@@ -363,7 +363,7 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
     )
 
     assert invited.status_code == 200
-    assert invited.json() == {"pending": True, "email": recipient_email}
+    assert invited.json() == {"ok": True, "email": recipient_email}
     assert revoked.status_code == 200
     assert events_resp.status_code == 200
 

@@ -19,7 +19,7 @@ class _FakeClient:
     # object sharing
     def share_object(self, object_type, object_id, email, permission="read", expires_at=None):
         self._calls.append(("share", object_type, object_id, email, permission))
-        return {"pending": True, "email": email}
+        return {"ok": True, "email": email}
 
     def unshare_object(self, object_type, object_id, principal_type, principal_id):
         self._calls.append(("unshare", object_type, object_id, principal_type, principal_id))
