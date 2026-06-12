@@ -23,6 +23,7 @@ from . import (
     granola,  # noqa: F401
     jira,  # noqa: F401
     notion,  # noqa: F401
+    render,  # noqa: F401
     slack,  # noqa: F401
     snowflake,  # noqa: F401
     twitter,  # noqa: F401

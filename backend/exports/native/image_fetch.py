@@ -1,9 +1,8 @@
 """Resolve image URLs to bytes for native PPTX picture shapes.
 
-Supports three flavours we see in agent-authored decks:
+Supports two flavours we see in agent-authored decks:
     - `data:image/...;base64,…` URIs (inline)
     - `/api/v1/workspaces/{wid}/files/{fid}/download` (local Stash files)
-    - Arbitrary http(s) URLs (CDN, R2, etc.)
 
 The fetcher is per-run: instantiate once at the top of pptx_builder.build
 so a deck that uses the same image on multiple slides only downloads it
@@ -17,10 +16,8 @@ import logging
 import re
 from uuid import UUID
 
-import httpx
-
 from ...database import get_pool
-from ...services import storage_service
+from ...services import permission_service, storage_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +30,6 @@ _STASH_FILE_RE = re.compile(
 )
 
 _MAX_BYTES = 25 * 1024 * 1024  # 25 MB hard cap per image
-_HTTP_TIMEOUT_S = 10.0
 
 
 class ImageFetchError(Exception):
@@ -43,7 +39,9 @@ class ImageFetchError(Exception):
 class ImageFetcher:
     """Per-run cache so the same URL is fetched at most once per export."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: UUID | None = None, user_id: UUID | None = None) -> None:
+        self.workspace_id = workspace_id
+        self.user_id = user_id
         self._cache: dict[str, bytes | None] = {}
 
     async def fetch(self, src: str | None) -> bytes | None:
@@ -65,14 +63,17 @@ class ImageFetcher:
 
         stash = _STASH_FILE_RE.match(src)
         if stash:
-            return await _download_skill_file(UUID(stash.group("fid")))
+            return await _download_skill_file(
+                UUID(stash.group("wid")),
+                UUID(stash.group("fid")),
+                self.workspace_id,
+                self.user_id,
+            )
 
         if src.startswith("http://") or src.startswith("https://"):
-            return await _download_http(src)
+            logger.info("skipping remote image src during export: %s", src[:120])
+            return None
 
-        # Protocol-relative or root-relative — try as http(s) on a best-effort
-        # basis. PUBLIC_URL would be the right base; agents shouldn't be
-        # emitting these in well-formed decks.
         logger.info("skipping unrecognised image src: %s", src[:120])
         return None
 
@@ -81,6 +82,8 @@ def _decode_data_uri(uri: str) -> bytes | None:
     m = _DATA_URI_RE.match(uri)
     if m:
         raw = base64.b64decode(m.group("b64"))
+        if len(raw) > _MAX_BYTES:
+            raise ImageFetchError(f"image exceeds {_MAX_BYTES} byte cap")
         # python-pptx / PIL can't decode SVG — rasterize it via Pillow
         # if we recognise the prefix. Fall through to None otherwise so
         # the builder can skip rather than crash.
@@ -92,6 +95,8 @@ def _decode_data_uri(uri: str) -> bytes | None:
         from urllib.parse import unquote_to_bytes
 
         raw = unquote_to_bytes(m2.group("raw"))
+        if len(raw) > _MAX_BYTES:
+            raise ImageFetchError(f"image exceeds {_MAX_BYTES} byte cap")
         if raw[:5] == b"<?xml" or raw[:4] == b"<svg":
             return _svg_to_png(raw)
         return raw
@@ -110,21 +115,30 @@ def _svg_to_png(svg: bytes) -> bytes | None:
         return None
 
 
-async def _download_skill_file(file_id: UUID) -> bytes | None:
+async def _download_skill_file(
+    url_workspace_id: UUID,
+    file_id: UUID,
+    export_workspace_id: UUID | None,
+    user_id: UUID | None,
+) -> bytes | None:
+    if export_workspace_id is None or user_id is None or url_workspace_id != export_workspace_id:
+        return None
+
     pool = get_pool()
-    row = await pool.fetchrow("SELECT storage_key FROM files WHERE id = $1", file_id)
+    row = await pool.fetchrow(
+        "SELECT workspace_id, storage_key FROM files WHERE id = $1",
+        file_id,
+    )
     if not row or not row["storage_key"]:
         return None
+    if row["workspace_id"] != export_workspace_id:
+        return None
+    can_read = await permission_service.check_access(
+        "file",
+        file_id,
+        user_id,
+        workspace_id=export_workspace_id,
+    )
+    if not can_read:
+        return None
     return await storage_service.download_file(row["storage_key"])
-
-
-async def _download_http(url: str) -> bytes | None:
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S, follow_redirects=True) as client:
-        async with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            buf = bytearray()
-            async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
-                buf.extend(chunk)
-                if len(buf) > _MAX_BYTES:
-                    raise ImageFetchError(f"image exceeds {_MAX_BYTES} byte cap")
-            return bytes(buf)

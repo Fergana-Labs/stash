@@ -224,6 +224,7 @@ export interface WorkspaceSource {
   sync_error?: string | null;
   last_synced_at?: string | null;
   search_hint?: string | null;
+  settings?: Record<string, unknown> | null;
 }
 
 export interface SourceStatus extends WorkspaceSource {
@@ -252,7 +253,12 @@ export async function listWorkspaceSources(
 
 export async function addWorkspaceSource(
   workspaceId: string,
-  body: { source_type: string; external_ref?: string; display_name?: string },
+  body: {
+    source_type: string;
+    external_ref?: string;
+    display_name?: string;
+    settings?: Record<string, unknown>;
+  },
 ): Promise<{ id: string }> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/sources`, {
     method: "POST",

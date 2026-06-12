@@ -95,47 +95,19 @@ async def pool(_db_pool):
     yield _db_pool
 
 
-_TRUNCATE_TABLES = [
-    "webhook_deliveries",
-    "webhooks",
-    "shares",
-    "share_invites",
-    "session_folders",
-    "github_documents",
-    "slack_messages",
-    "granola_notes",
-    "drive_index",
-    "notion_index",
-    "twitter_posts",
-    "workspace_sources",
-    "documents",
-    "files",
-    "skills",
-    "analytics_events",
-    "history_events",
-    "pages",
-    "folders",
-    "table_rows",
-    "session_github_pull_requests",
-    "session_linear_tickets",
-    "sessions",
-    "workspace_members",
-    "histories",
-    "tables",
-    "workspaces",
-    "users",
-]
-
-
 @pytest_asyncio.fixture(autouse=True)
 async def _cleanup(_db_pool):
     """Truncate all user-data tables after each test for full isolation."""
     yield
-    for table in _TRUNCATE_TABLES:
-        try:
-            await _db_pool.execute(f"TRUNCATE {table} CASCADE")
-        except Exception:
-            pass
+    rows = await _db_pool.fetch(
+        "SELECT format('%I.%I', schemaname, tablename) AS name "
+        "FROM pg_tables "
+        "WHERE schemaname = 'public' AND tablename <> 'alembic_version' "
+        "ORDER BY tablename"
+    )
+    table_names = ", ".join(row["name"] for row in rows)
+    if table_names:
+        await _db_pool.execute(f"TRUNCATE {table_names} CASCADE")
 
 
 def unique_name(prefix: str = "user") -> str:

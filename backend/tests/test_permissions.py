@@ -188,6 +188,20 @@ async def test_owner_has_read_and_write(pool):
 
 
 @pytest.mark.asyncio
+async def test_viewer_workspace_member_can_read_not_write(pool):
+    owner = await _make_user(pool)
+    viewer = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    await _add_workspace_member(pool, ws, viewer, role="viewer")
+    page = await _make_page(pool, ws, owner)
+
+    assert await permission_service.check_access("page", page, viewer)
+    # Viewers can comment (files_tree comment endpoints rely on this) but not write.
+    assert await permission_service.check_access("page", page, viewer, require="comment")
+    assert not await permission_service.check_access("page", page, viewer, require="write")
+
+
+@pytest.mark.asyncio
 async def test_stranger_denied_by_default(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
@@ -591,6 +605,102 @@ async def test_write_share_by_email_allows_non_member_page_update_over_http(
 
 
 @pytest.mark.asyncio
+async def test_non_owner_workspace_member_cannot_share_page_over_http(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    editor_key, editor = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "confidential"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "external@example.com",
+            "permission": "read",
+        },
+        headers=_auth(editor_key),
+    )
+
+    assert share.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_non_owner_workspace_member_cannot_publish_skill_folder(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, _ = await _register(client)
+    editor_key, editor = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(editor["id"]), role="editor")
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/folders",
+            json={"name": "Internal Skill"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    create = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
+        json={
+            "folder_id": folder_id,
+            "title": "Internal Skill",
+        },
+        headers=_auth(editor_key),
+    )
+
+    assert create.status_code == 400
+    assert "workspace owners" in create.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/folders",
+            json={"name": "Handbook"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    skill_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/skills",
+            json={"folder_id": folder_id, "title": "Handbook"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    rename = await client.patch(
+        f"/api/v1/skills/{skill_id}",
+        json={"title": "Handbook v2"},
+        headers=_auth(owner_key),
+    )
+
+    assert rename.status_code == 200
+    assert rename.json()["title"] == "Handbook v2"
+
+
+@pytest.mark.asyncio
 async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncClient):
     owner_key, _ = await _register(client)
     ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
@@ -646,6 +756,115 @@ async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncC
     assert folders[0]["id"] == folder_id
     assert folders[0]["name"] == "Deploys"
     assert folders[0]["session_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_create_or_assign_session_folder(client: AsyncClient, pool):
+    owner_key, _ = await _register(client)
+    viewer_key, viewer = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    await _add_workspace_member(pool, uuid.UUID(ws), uuid.UUID(viewer["id"]), role="viewer")
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Deploys"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    session = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "viewer-denied-1", "agent_name": "codex"},
+        headers=_auth(owner_key),
+    )
+    assert session.status_code == 201
+
+    create = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders",
+        json={"name": "Viewer Folder"},
+        headers=_auth(viewer_key),
+    )
+    assign = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        json={"session_row_ids": [session.json()["id"]], "folder_id": folder_id},
+        headers=_auth(viewer_key),
+    )
+
+    assert create.status_code == 403
+    assert assign.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncClient):
+    first_key, _ = await _register(client)
+    second_key, _ = await _register(client)
+    first_ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(first_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    second_ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(second_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    second_folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{second_ws}/session-folders",
+            json={"name": "Other Workspace"},
+            headers=_auth(second_key),
+        )
+    ).json()["id"]
+    session = await client.post(
+        f"/api/v1/workspaces/{first_ws}/sessions",
+        json={"session_id": "cross-workspace-1", "agent_name": "codex"},
+        headers=_auth(first_key),
+    )
+    assert session.status_code == 201
+
+    assign = await client.post(
+        f"/api/v1/workspaces/{first_ws}/session-folders/assign",
+        json={"session_row_ids": [session.json()["id"]], "folder_id": second_folder_id},
+        headers=_auth(first_key),
+    )
+
+    assert assign.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_session_folder_assign_batch_is_all_or_nothing(client: AsyncClient, pool):
+    # A 404 on a mixed batch must mean nothing moved — otherwise the client's
+    # view and the server state silently diverge.
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Deploys"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    session = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "batch-1", "agent_name": "codex"},
+        headers=_auth(owner_key),
+    )
+    assert session.status_code == 201
+    valid_id = session.json()["id"]
+    before = await pool.fetchrow(
+        "SELECT session_folder_id FROM sessions WHERE id = $1", uuid.UUID(valid_id)
+    )
+
+    assign = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        json={"session_row_ids": [valid_id, str(uuid.uuid4())], "folder_id": folder_id},
+        headers=_auth(owner_key),
+    )
+
+    assert assign.status_code == 404
+    after = await pool.fetchrow(
+        "SELECT session_folder_id FROM sessions WHERE id = $1", uuid.UUID(valid_id)
+    )
+    assert after["session_folder_id"] == before["session_folder_id"]
 
 
 @pytest.mark.asyncio

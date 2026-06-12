@@ -19,6 +19,7 @@ export type IntegrationProvider =
   | "asana"
   | "gong"
   | "snowflake"
+  | "render"
   | "twitter";
 
 export type CredentialField = {
@@ -149,6 +150,16 @@ export type AsanaProjectSummary = {
 
 export async function listAsanaProjects(): Promise<AsanaProjectSummary[]> {
   return apiFetch<AsanaProjectSummary[]>("/api/v1/integrations/asana/projects");
+}
+
+export type SlackChannelSummary = {
+  id: string;
+  name: string;
+  is_private: boolean;
+};
+
+export async function listSlackChannels(): Promise<SlackChannelSummary[]> {
+  return apiFetch<SlackChannelSummary[]>("/api/v1/integrations/slack/channels");
 }
 
 // --- Task polling ---

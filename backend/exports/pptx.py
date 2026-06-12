@@ -30,15 +30,16 @@ from uuid import UUID, uuid4
 
 from ..celery_app import celery
 from ..database import get_pool
-from ..services import storage_service
+from ..services import permission_service, storage_service
 from ..tasks._celery_helpers import run_async
 from .native.aspose_builder import build_pptx_via_aspose
+from .native.image_fetch import ImageFetcher
 from .native.layout_probe import probe
 
 logger = logging.getLogger(__name__)
 
 
-async def build_pptx_bytes_for_page(page_id: UUID) -> tuple[str, bytes]:
+async def build_pptx_bytes_for_page(user_id: UUID, page_id: UUID) -> tuple[str, bytes]:
     """Render a page's slides to a PPTX. Returns (filename_stem, bytes).
 
     Exposed so the Google Slides exporter can call this without
@@ -54,6 +55,14 @@ async def build_pptx_bytes_for_page(page_id: UUID) -> tuple[str, bytes]:
         raise RuntimeError("page not found")
     if page_row["content_type"] != "html" or page_row["html_layout"] != "fixed-aspect":
         raise RuntimeError("export requires a fixed-aspect HTML page")
+    can_read = await permission_service.check_access(
+        "page",
+        page_id,
+        user_id,
+        workspace_id=page_row["workspace_id"],
+    )
+    if not can_read:
+        raise RuntimeError("page not found")
 
     base_url = os.environ.get("ASPOSE_PPTX_URL")
     if not base_url:
@@ -69,6 +78,7 @@ async def build_pptx_bytes_for_page(page_id: UUID) -> tuple[str, bytes]:
         source_html,
         base_url=base_url,
         token=token,
+        image_fetcher=ImageFetcher(workspace_id=page_row["workspace_id"], user_id=user_id),
     )
     return page_row["name"] or "slides", pptx_bytes
 
@@ -76,7 +86,7 @@ async def build_pptx_bytes_for_page(page_id: UUID) -> tuple[str, bytes]:
 async def _export(user_id: UUID, page_id: UUID) -> dict:
     pool = get_pool()
     workspace_id = await pool.fetchval("SELECT workspace_id FROM pages WHERE id = $1", page_id)
-    stem, pptx_bytes = await build_pptx_bytes_for_page(page_id)
+    stem, pptx_bytes = await build_pptx_bytes_for_page(user_id, page_id)
     # SigV4 signing breaks on spaces / parens / other punctuation in S3 keys
     # once the URL gets percent-encoded. Collapse to an alnum-safe stem.
     safe_stem = re.sub(r"[^\w.-]+", "_", stem).strip("_") or "slides"

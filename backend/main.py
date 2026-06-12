@@ -28,6 +28,7 @@ from .routers import (
     files,
     files_tree,
     marketing,
+    mcp,
     memory,
     pins,
     publish,
@@ -100,6 +101,7 @@ app.include_router(users.router)
 app.include_router(collab.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
+app.include_router(mcp.router)
 app.include_router(discover.router)
 app.include_router(skills.ws_router)
 app.include_router(skills.me_router)
