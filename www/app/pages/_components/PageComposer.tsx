@@ -197,32 +197,34 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
             You&apos;ll get a public view link and a private edit link.
           </p>
         )}
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <button
-            type="button"
-            onClick={publish}
-            disabled={!canPublish}
-            className="inline-flex h-10 items-center rounded-md bg-brand px-5 text-[14px] font-medium text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+        <button
+          type="button"
+          onClick={publish}
+          disabled={!canPublish}
+          className="inline-flex h-10 shrink-0 items-center rounded-md bg-brand px-5 text-[14px] font-medium text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {publishing ? "Publishing…" : "Create page"}
+        </button>
+      </div>
+
+      <div className="-mx-4 -mb-4 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-b-xl border-t border-border bg-raised/70 px-4 py-3">
+        <p className="text-[14px] text-foreground">
+          <span className="font-medium text-ink">Have an agent do this instead</span>
+          <span className="text-dim"> — copy the link and paste it to your agent. It explains everything.</span>
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <CopyButton
+            value={agentDocsUrl}
+            label="Copy link"
+            copiedLabel="Copied"
+            className="inline-flex h-8 items-center rounded-md border border-border bg-white px-3 text-[13px] font-medium text-ink transition hover:bg-raised"
+          />
+          <Link
+            href="/pages/agents"
+            className="text-[13px] font-medium text-dim underline-offset-2 hover:text-ink hover:underline"
           >
-            {publishing ? "Publishing…" : "Create page"}
-          </button>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/pages/agents"
-              className="text-[13px] text-dim underline-offset-2 hover:text-ink hover:underline"
-            >
-              Have an agent do this instead →
-            </Link>
-            <CopyButton
-              value={agentDocsUrl}
-              label="Copy link"
-              copiedLabel="Copied"
-              className="rounded border border-border bg-white px-2 py-0.5 text-[11.5px] font-medium text-dim transition hover:text-ink"
-            />
-          </div>
-          <p className="text-[11.5px] text-muted">
-            Copy the link and paste it to your agent — it explains everything.
-          </p>
+            View →
+          </Link>
         </div>
       </div>
 
