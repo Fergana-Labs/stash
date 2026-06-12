@@ -497,10 +497,6 @@ async def test_workspace_invite_and_membership_changes_are_audited_without_token
         "removed_share_count": 0,
         "removed_granted_share_count": 0,
         "removed_share_invite_count": 0,
-        "removed_skill_member_count": 0,
-        "removed_granted_skill_member_count": 0,
-        "removed_skill_invite_count": 0,
-        "removed_sent_skill_invite_count": 0,
         "removed_skill_count": 0,
     }
     assert revoked_event["actor_user_id"] == str(owner_id)

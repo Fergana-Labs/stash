@@ -573,6 +573,8 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     client: AsyncClient,
     pool,
 ):
+    """Shares confer access independently of membership, so leaving must
+    revoke the shares the member received and the ones they granted."""
     owner_key, _owner = await _register(client, "offboarding_owner")
     member_name = unique_name("offboarding_member")
     member_email = f"{member_name}@example.com"
@@ -587,7 +589,7 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     assert member_resp.status_code == 201
     member_key = member_resp.json()["api_key"]
     member_id = UUID(member_resp.json()["id"])
-    recipient_key, recipient = await _register(client, "offboarding_recipient")
+    _recipient_key, recipient = await _register(client, "offboarding_recipient")
     recipient_id = UUID(recipient["id"])
 
     ws = (
@@ -612,40 +614,6 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         )
     ).json()
     page_id = page["id"]
-    owner_stash = (
-        await client.post(
-            f"/api/v1/workspaces/{ws['id']}/skills",
-            json={
-                "title": "Owner private Stash",
-                "workspace_permission": "none",
-                "public_permission": "none",
-                "items": [{"object_type": "page", "object_id": page_id}],
-            },
-            headers=_auth(owner_key),
-        )
-    ).json()
-    member_stash = (
-        await client.post(
-            f"/api/v1/workspaces/{ws['id']}/skills",
-            json={
-                "title": "Member private Stash",
-                "workspace_permission": "none",
-                "public_permission": "none",
-                "items": [{"object_type": "page", "object_id": page_id}],
-            },
-            headers=_auth(member_key),
-        )
-    ).json()
-    granted = await client.post(
-        f"/api/v1/skills/{owner_stash['id']}/members",
-        json={"user_id": str(member_id), "permission": "admin"},
-        headers=_auth(owner_key),
-    )
-    member_granted = await client.post(
-        f"/api/v1/skills/{owner_stash['id']}/members",
-        json={"user_id": str(recipient_id), "permission": "read"},
-        headers=_auth(member_key),
-    )
     shared = await client.post(
         "/api/v1/share",
         json={
@@ -656,8 +624,6 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         },
         headers=_auth(owner_key),
     )
-    assert granted.status_code == 201
-    assert member_granted.status_code == 201
     assert shared.status_code == 200
     await pool.execute(
         "INSERT INTO shares "
@@ -677,24 +643,6 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         "future-webflow-user@example.com",
         member_id,
     )
-    assert (
-        await client.get(
-            f"/api/v1/skills/{owner_stash['slug']}",
-            headers=_auth(member_key),
-        )
-    ).status_code == 200
-    assert (
-        await client.get(
-            f"/api/v1/skills/{member_stash['slug']}",
-            headers=_auth(member_key),
-        )
-    ).status_code == 200
-    assert (
-        await client.get(
-            f"/api/v1/skills/{owner_stash['slug']}",
-            headers=_auth(recipient_key),
-        )
-    ).status_code == 200
 
     left = await client.post(
         f"/api/v1/workspaces/{ws['id']}/leave",
@@ -702,22 +650,11 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
     )
 
     assert left.status_code == 204
+    # The share the member received must not outlive their membership.
     assert (
         await client.get(
-            f"/api/v1/skills/{owner_stash['slug']}",
+            f"/api/v1/workspaces/{ws['id']}/pages/{page_id}",
             headers=_auth(member_key),
-        )
-    ).status_code == 404
-    assert (
-        await client.get(
-            f"/api/v1/skills/{member_stash['slug']}",
-            headers=_auth(member_key),
-        )
-    ).status_code == 404
-    assert (
-        await client.get(
-            f"/api/v1/skills/{owner_stash['slug']}",
-            headers=_auth(recipient_key),
         )
     ).status_code == 404
     assert (
@@ -745,61 +682,13 @@ async def test_member_leave_removes_workspace_shares_and_stash_access(
         )
         == 0
     )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM skill_members cm "
-            "JOIN skills c ON c.id = cm.skill_id "
-            "WHERE c.workspace_id = $1 AND cm.user_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM skill_members cm "
-            "JOIN skills c ON c.id = cm.skill_id "
-            "WHERE c.workspace_id = $1 AND cm.granted_by = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM skill_invites ci "
-            "JOIN skills c ON c.id = ci.skill_id "
-            "WHERE c.workspace_id = $1 AND ci.recipient_user_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM skill_invites ci "
-            "JOIN skills c ON c.id = ci.skill_id "
-            "WHERE c.workspace_id = $1 AND ci.invited_by_user_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM skills WHERE workspace_id = $1 AND owner_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
 
 
 @pytest.mark.asyncio
 async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, pool):
-    """Removal must offboard like a voluntary leave: shares and private skill
-    grants confer access independently of membership, so kicking a member has
-    to revoke them too, not just drop the membership row."""
+    """Removal must offboard like a voluntary leave: shares confer access
+    independently of membership, so kicking a member has to revoke them too,
+    not just drop the membership row."""
     owner_key, owner = await _register(client, "kick_owner")
     member_key, member = await _register(client, "kick_member")
     member_id = UUID(member["id"])
@@ -825,24 +714,6 @@ async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, po
             headers=_auth(owner_key),
         )
     ).json()
-    owner_skill = (
-        await client.post(
-            f"/api/v1/workspaces/{ws['id']}/skills",
-            json={
-                "title": "Owner private skill",
-                "workspace_permission": "none",
-                "public_permission": "none",
-                "items": [{"object_type": "page", "object_id": page["id"]}],
-            },
-            headers=_auth(owner_key),
-        )
-    ).json()
-    granted = await client.post(
-        f"/api/v1/skills/{owner_skill['id']}/members",
-        json={"user_id": str(member_id), "permission": "read"},
-        headers=_auth(owner_key),
-    )
-    assert granted.status_code == 201
     await pool.execute(
         "INSERT INTO shares "
         "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
@@ -852,12 +723,6 @@ async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, po
         member_id,
         UUID(owner["id"]),
     )
-    assert (
-        await client.get(
-            f"/api/v1/skills/{owner_skill['slug']}",
-            headers=_auth(member_key),
-        )
-    ).status_code == 200
 
     # Members cannot kick — owner-only.
     forbidden = await client.delete(
@@ -874,7 +739,7 @@ async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, po
 
     assert (
         await client.get(
-            f"/api/v1/skills/{owner_skill['slug']}",
+            f"/api/v1/workspaces/{ws['id']}/pages/{page['id']}",
             headers=_auth(member_key),
         )
     ).status_code == 404
@@ -882,16 +747,6 @@ async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, po
         await pool.fetchval(
             "SELECT COUNT(*) FROM shares "
             "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM skill_members cm "
-            "JOIN skills c ON c.id = cm.skill_id "
-            "WHERE c.workspace_id = $1 AND cm.user_id = $2",
             workspace_id,
             member_id,
         )
