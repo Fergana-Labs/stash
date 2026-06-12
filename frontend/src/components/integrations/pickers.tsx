@@ -19,6 +19,7 @@ import {
   type SlackChannelSummary,
 } from "@/lib/integrations";
 
+import PaywallModal from "../PaywallModal";
 import { AsanaIcon, GitHubIcon, JiraIcon, NotionIcon, SlackIcon } from "./BrandIcons";
 import type { Connector } from "./connectors";
 
@@ -79,17 +80,10 @@ export function AddSourceControls({
   }
 
   const errorRow = error ? (
-    <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">
-      {error}
-      {paymentRequired && (
-        <>
-          {" "}
-          <a href="/settings" className="font-semibold underline">
-            Upgrade to Pro
-          </a>
-        </>
-      )}
-    </div>
+    <>
+      <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
+      {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
+    </>
   ) : null;
 
   if (connector.kind === "github") {
