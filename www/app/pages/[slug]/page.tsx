@@ -41,10 +41,23 @@ export default async function PasteReadPage({ params }: { params: Params }) {
           <span className="inline-flex shrink-0 rounded border border-border bg-white px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-dim">
             {paste.content_type === "markdown" ? "MD" : "HTML"}
           </span>
+          {paste.visibility === "unlisted" && (
+            <span className="inline-flex shrink-0 rounded border border-border bg-white px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-dim">
+              unlisted
+            </span>
+          )}
           <span className="shrink-0 text-[12.5px] text-muted">{timeAgo(paste.created_at)}</span>
           <span className="shrink-0 text-[12.5px] text-muted">
             {paste.view_count} {paste.view_count === 1 ? "view" : "views"}
           </span>
+          {paste.public_edit && (
+            <Link
+              href={`/pages/${paste.slug}/edit`}
+              className="shrink-0 font-mono text-[12px] text-dim underline-offset-2 hover:text-ink hover:underline"
+            >
+              Edit
+            </Link>
+          )}
           <a
             href={`/pages/${paste.slug}/raw`}
             className="shrink-0 font-mono text-[12px] text-dim underline-offset-2 hover:text-ink hover:underline"

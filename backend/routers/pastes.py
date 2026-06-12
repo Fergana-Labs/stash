@@ -23,6 +23,11 @@ class PasteCreateRequest(BaseModel):
     title: str = Field("", max_length=200)
     content: str = Field(..., min_length=1, max_length=_CONTENT_MAX)
     content_type: str = Field(..., pattern=r"^(markdown|html)$")
+    # 'public' shows in the feed; 'unlisted' is link-only. There is no
+    # 'private' — that's the signup gate into the product.
+    visibility: str = Field("public", pattern=r"^(public|unlisted)$")
+    # When true, anyone with the link can edit — no token needed.
+    public_edit: bool = False
 
 
 class PasteUpdateRequest(BaseModel):
@@ -33,7 +38,9 @@ class PasteUpdateRequest(BaseModel):
 @router.post("", status_code=201)
 @limiter.limit("10/minute")
 async def create_paste(request: Request, body: PasteCreateRequest) -> dict:
-    return await paste_service.create_paste(body.title, body.content, body.content_type)
+    return await paste_service.create_paste(
+        body.title, body.content, body.content_type, body.visibility, body.public_edit
+    )
 
 
 @router.get("")
@@ -56,7 +63,9 @@ async def get_paste(request: Request, slug: str, format: str = ""):
 
 @router.patch("/{slug}")
 @limiter.limit("30/minute")
-async def update_paste(request: Request, slug: str, token: str, body: PasteUpdateRequest) -> dict:
+async def update_paste(
+    request: Request, slug: str, body: PasteUpdateRequest, token: str = ""
+) -> dict:
     paste = await paste_service.update_paste(slug, token, body.title, body.content)
     if not paste:
         raise HTTPException(status_code=404, detail="Paste not found")

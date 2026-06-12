@@ -3,7 +3,10 @@
 Each row is a standalone published page (markdown or mini HTML site)
 created without an account. The plaintext ``edit_token`` is the only
 write credential; it is returned once at create time and never read
-back out through the public API.
+back out through the public API. ``visibility`` controls the public
+feed (unlisted pages stay link-only); ``public_edit`` makes the page
+editable by anyone with the link, no token required. Private pages
+don't exist here — that's the signup gate into the product.
 
 Revision ID: 0111
 Revises: 0110
@@ -28,6 +31,10 @@ def upgrade() -> None:
                 CONSTRAINT pastes_content_type_check
                 CHECK (content_type IN ('markdown', 'html')),
             content TEXT NOT NULL,
+            visibility VARCHAR(8) NOT NULL DEFAULT 'public'
+                CONSTRAINT pastes_visibility_check
+                CHECK (visibility IN ('public', 'unlisted')),
+            public_edit BOOLEAN NOT NULL DEFAULT false,
             view_count INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

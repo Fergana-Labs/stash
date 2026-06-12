@@ -18,7 +18,10 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 _TITLE_MAX = 80
 
-_PUBLIC_COLS = "slug, title, content_type, content, view_count, created_at, updated_at"
+_PUBLIC_COLS = (
+    "slug, title, content_type, content, visibility, public_edit, "
+    "view_count, created_at, updated_at"
+)
 _FEED_COLS = "slug, title, content_type, view_count, created_at"
 
 
@@ -42,13 +45,20 @@ def _derive_title(content: str, content_type: str) -> str:
     return "Untitled"
 
 
-async def create_paste(title: str, content: str, content_type: str) -> dict:
+async def create_paste(
+    title: str,
+    content: str,
+    content_type: str,
+    visibility: str,
+    public_edit: bool,
+) -> dict:
     pool = get_pool()
     final_title = title.strip() or _derive_title(content, content_type)
     row = await pool.fetchrow(
         f"""
-        INSERT INTO pastes (slug, edit_token, title, content_type, content)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO pastes (slug, edit_token, title, content_type, content,
+                            visibility, public_edit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING edit_token, {_PUBLIC_COLS}
         """,
         _slugify(final_title),
@@ -56,6 +66,8 @@ async def create_paste(title: str, content: str, content_type: str) -> dict:
         final_title,
         content_type,
         content,
+        visibility,
+        public_edit,
     )
     return dict(row)
 
@@ -74,7 +86,11 @@ async def get_paste(slug: str) -> dict | None:
 
 
 async def update_paste(slug: str, token: str, title: str, content: str) -> dict | None:
-    """None means unknown slug *or* bad token — callers 404 both, no token oracle."""
+    """None means unknown slug *or* bad token — callers 404 both, no token oracle.
+
+    Pages created with public_edit accept writes from anyone with the link,
+    so the token isn't required for them.
+    """
     pool = get_pool()
     row = await pool.fetchrow(
         f"""
@@ -82,7 +98,7 @@ async def update_paste(slug: str, token: str, title: str, content: str) -> dict 
         SET content = $1,
             title = COALESCE(NULLIF($2, ''), title),
             updated_at = now()
-        WHERE slug = $3 AND edit_token = $4
+        WHERE slug = $3 AND (edit_token = $4 OR public_edit)
         RETURNING {_PUBLIC_COLS}
         """,
         content,
@@ -96,7 +112,11 @@ async def update_paste(slug: str, token: str, title: str, content: str) -> dict 
 async def list_recent(limit: int = 30) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        f"SELECT {_FEED_COLS} FROM pastes ORDER BY created_at DESC LIMIT $1",
+        f"""
+        SELECT {_FEED_COLS} FROM pastes
+        WHERE visibility = 'public'
+        ORDER BY created_at DESC LIMIT $1
+        """,
         limit,
     )
     return [dict(r) for r in rows]

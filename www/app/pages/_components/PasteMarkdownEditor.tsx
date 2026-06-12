@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
@@ -25,6 +25,9 @@ interface Props {
    *  the content marked dirty so the next change retries the save. */
   onSave: (markdown: string) => Promise<void>;
   onSaveStatusChange?: (status: SaveStatus) => void;
+  /** Hands the Tiptap instance to the parent — the create flow uses it
+   *  to serialize the doc on Publish instead of waiting for autosave. */
+  onEditor?: (editor: Editor | null) => void;
 }
 
 // The product app's MarkdownEditor (Tiptap) without the workspace-only
@@ -35,6 +38,7 @@ export default function PasteMarkdownEditor({
   initialMarkdown,
   onSave,
   onSaveStatusChange,
+  onEditor,
 }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(initialMarkdown);
@@ -91,6 +95,10 @@ export default function PasteMarkdownEditor({
       }, AUTOSAVE_DEBOUNCE_MS);
     },
   });
+
+  useEffect(() => {
+    onEditor?.(editor);
+  }, [editor, onEditor]);
 
   useEffect(() => {
     saveMarkdownRef.current = (md: string) => {

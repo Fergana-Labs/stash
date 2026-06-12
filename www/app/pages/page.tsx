@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import SiteHeader from "../_components/SiteHeader";
-import PasteComposer from "./_components/PasteComposer";
+import AgentInstructions from "./_components/AgentInstructions";
+import CreateWizard from "./_components/CreateWizard";
 import { timeAgo } from "./_lib/time";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
+const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export const metadata: Metadata = {
   title: "Pages · Stash",
@@ -46,17 +48,17 @@ export default async function PagesHome() {
           <span className="text-brand">No signup.</span>
         </h1>
         <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
-          Paste markdown or a mini HTML site and get a permanent public link, a secret edit
-          link, and raw source access. Built for humans and agents alike.
+          Write a markdown doc or a mini HTML site and get a permanent link, an edit link,
+          and raw source access. Built for humans and agents alike.
         </p>
-        <div className="mt-4 max-w-[640px] rounded-lg border border-border bg-raised/60 px-4 py-3 font-mono text-[12.5px] leading-relaxed text-dim">
-          <span className="select-none text-muted">$ </span>
-          curl -X POST https://joinstash.ai/pages -d &apos;# Hello world&apos;
-        </div>
+      </section>
+
+      <section className="mx-auto max-w-[920px] px-7 pb-8">
+        <CreateWizard appUrl={APP_URL} />
       </section>
 
       <section className="mx-auto max-w-[920px] px-7 pb-16">
-        <PasteComposer />
+        <AgentInstructions />
       </section>
 
       <section className="mx-auto max-w-[920px] px-7 pb-24">

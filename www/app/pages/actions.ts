@@ -3,6 +3,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
 
 export type PasteContentType = "markdown" | "html";
+export type PasteVisibility = "public" | "unlisted";
 
 export type CreatePasteResult =
   | {
@@ -18,6 +19,8 @@ export async function createPaste(input: {
   title: string;
   content: string;
   content_type: PasteContentType;
+  visibility: PasteVisibility;
+  public_edit: boolean;
 }): Promise<CreatePasteResult> {
   const res = await fetch(`${API_URL}/api/v1/pastes`, {
     method: "POST",
