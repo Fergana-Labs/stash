@@ -97,7 +97,7 @@ async def test_ingest_accepts_round_2_event_names(client: AsyncClient):
                 },
                 {
                     "surface": "web",
-                    "event_name": "web.skill_created",
+                    "event_name": "web.skill_published",
                     "properties": {"kind": "manual"},
                 },
                 {

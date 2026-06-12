@@ -23,7 +23,14 @@ class _Recorder:
         self.fail_first_n = fail_first_n
 
     def request(self, method, path, **kwargs):
-        self.calls.append({"method": method, "path": path, "json": kwargs.get("json"), "headers": kwargs.get("headers")})
+        self.calls.append(
+            {
+                "method": method,
+                "path": path,
+                "json": kwargs.get("json"),
+                "headers": kwargs.get("headers"),
+            }
+        )
         if len(self.calls) <= self.fail_first_n:
             raise RuntimeError("simulated network failure")
 
@@ -54,7 +61,10 @@ def test_failed_push_enqueues(tmp_path):
     client = _make_client(tmp_path, fail_first_n=1)
     with pytest.raises(Exception):
         client.push_event(
-            workspace_id="ws-1", agent_name="a", event_type="tool_use", content="x",
+            workspace_id="ws-1",
+            agent_name="a",
+            event_type="tool_use",
+            content="x",
         )
     queued = _queue_lines(tmp_path)
     assert len(queued) == 1

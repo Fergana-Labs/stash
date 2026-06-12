@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..middleware import limiter
-from ..models import SkillItem
 from ..services import (
     demo_content,
     demo_service,
@@ -79,10 +78,15 @@ class DemoSessionCreate(BaseModel):
     cwd: str | None = Field(None, max_length=1024)
 
 
+class DemoSkillItem(BaseModel):
+    object_type: str = Field(..., pattern=r"^(page|session)$")
+    object_id: str = Field(..., min_length=1)
+
+
 class DemoSkillCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    items: list[SkillItem] = Field(..., min_length=1)
+    items: list[DemoSkillItem] = Field(..., min_length=1)
 
 
 # --- Static reads (skill / about / instructions) ---
@@ -208,39 +212,70 @@ async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -
 @router.post("/skills", status_code=201)
 @limiter.limit(_POST_LIMIT)
 async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> dict[str, Any]:
+    """Wrap demo-created pages/sessions into a skill folder and publish it."""
+    from ..database import get_pool
+
     workspace_id, owner_id = await demo_service.get_demo_workspace()
+    pool = get_pool()
 
-    items = list(req.items)
-    # Auto-attach the canonical KB folder so every demo Stash ships with
-    # the slides skill + about-Stash docs the agent used to build it.
-    kb_folder_id = await demo_service.get_kb_folder_id()
-    if not any(item.object_type == "folder" and item.object_id == kb_folder_id for item in items):
-        items.append(
-            SkillItem(
-                object_type="folder",
-                object_id=kb_folder_id,
-                position=len(items),
-                label_override=demo_content.DEMO_KB_FOLDER_NAME,
+    folder = await files_tree_service.create_folder(
+        workspace_id, _unique_page_name(req.title), owner_id
+    )
+
+    for item in req.items:
+        if item.object_type == "page":
+            moved = await pool.execute(
+                "UPDATE pages SET folder_id = $1 WHERE id = $2::uuid AND workspace_id = $3",
+                folder["id"],
+                item.object_id,
+                workspace_id,
             )
-        )
+            if moved != "UPDATE 1":
+                raise HTTPException(
+                    status_code=400, detail="Skill items must be in the demo workspace"
+                )
+        else:
+            session_external_id = await pool.fetchval(
+                "SELECT session_id FROM sessions WHERE id = $1::uuid AND workspace_id = $2 "
+                "AND deleted_at IS NULL",
+                item.object_id,
+                workspace_id,
+            )
+            if not session_external_id:
+                raise HTTPException(
+                    status_code=400, detail="Skill items must be in the demo workspace"
+                )
+            await shared_skill_service.materialize_session_page(
+                workspace_id, session_external_id, folder["id"], owner_id
+            )
 
-    for item in items:
-        await _validate_item_belongs_to_demo(item, workspace_id)
+    # Copy the canonical KB pages in so every demo skill ships with the
+    # slides skill + about-Stash docs the agent used to build it.
+    kb_folder_id = await demo_service.get_kb_folder_id()
+    kb_pages = await pool.fetch(
+        "SELECT name, content_markdown, content_type FROM pages "
+        "WHERE folder_id = $1 AND deleted_at IS NULL",
+        kb_folder_id,
+    )
+    for kb_page in kb_pages:
+        await files_tree_service.create_page(
+            workspace_id,
+            kb_page["name"],
+            owner_id,
+            folder_id=folder["id"],
+            content=kb_page["content_markdown"] or "",
+            content_type=kb_page["content_type"] or "markdown",
+        )
 
     try:
-        skill = await shared_skill_service.create_skill(
-            workspace_id=workspace_id,
-            owner_id=owner_id,
+        skill = await shared_skill_service.publish_folder(
+            workspace_id,
+            owner_id,
+            folder["id"],
             title=req.title,
             description=req.description,
-            workspace_permission="none",
-            public_permission="read",
-            discoverable=False,
-            cover_image_url=None,
-            icon_url=None,
-            items=items,
         )
-    except ValueError as e:
+    except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     base = settings.PUBLIC_URL.rstrip("/")
@@ -263,17 +298,3 @@ def _unique_page_name(title: str) -> str:
     suffix = secrets.token_urlsafe(4)[:6].lower()
     base = title.strip()[:200]
     return f"{base} — {suffix}"
-
-
-async def _validate_item_belongs_to_demo(item: SkillItem, workspace_id) -> None:
-    """Reject attempts to bundle objects from outside the Demo workspace."""
-    from ..services import permission_service
-
-    item_workspace_id = await permission_service.resolve_workspace_id(
-        item.object_type, item.object_id
-    )
-    if item_workspace_id != workspace_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Skill items must be in the demo workspace",
-        )

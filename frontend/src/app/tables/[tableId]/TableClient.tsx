@@ -9,9 +9,11 @@ import {
   useRef,
   useState,
   type AnchorHTMLAttributes,
+  type CSSProperties,
   type FormEvent,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import Markdown from "react-markdown";
@@ -21,6 +23,7 @@ import { downloadBlob } from "../../../components/DownloadMenu";
 import { useShareAction } from "../../../components/ShellChromeContext";
 import ResourceShareButton from "../../../components/share/ResourceShareButton";
 import { useAuth } from "../../../hooks/useAuth";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
@@ -34,6 +37,7 @@ import {
   saveTableView, deleteTableView,
   setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
+import { findInSkillContents } from "../../../lib/localSkill";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
@@ -50,6 +54,13 @@ const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty
 const COLUMN_TYPE_OPTIONS = COLUMN_TYPES.map((type) => ({ value: type, label: type }));
 const FILTER_OP_OPTIONS = FILTER_OPS.map((op) => ({ value: op, label: op }));
 const MARKDOWN_LINK_RE = /\[[^\]\n]+\]\([^)]+\)/;
+const DEFAULT_COLUMN_WIDTH = 180;
+const MIN_COLUMN_WIDTH = 80;
+const MAX_COLUMN_WIDTH = 800;
+const SELECT_COLUMN_WIDTH = 32;
+const ROW_NUMBER_COLUMN_WIDTH = 40;
+const ADD_COLUMN_WIDTH = 40;
+const ROW_ACTIONS_MIN_WIDTH = 64;
 const TABLE_CELL_MARKDOWN_COMPONENTS = {
   p: ({ children }: HTMLAttributes<HTMLParagraphElement>) => <>{children}</>,
   a: ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
@@ -77,12 +88,22 @@ type CellLinkEditorState = {
   top: number;
   left: number;
 };
+type ColumnResizeState = {
+  colId: string;
+  startX: number;
+  startWidth: number;
+  width: number;
+};
 
 const LINK_EDITOR_DEFAULT_HREF = "https://";
 const LINK_EDITOR_WIDTH = 320;
 
 const isDraftRowId = (rowId: string) => rowId.startsWith(DRAFT_ROW_PREFIX);
 const cloneTableRow = (row: TableRow): TableRow => ({ ...row, data: { ...row.data } });
+const patchTableRow = (row: TableRow, data: Record<string, unknown>): TableRow => ({
+  ...row,
+  data: { ...row.data, ...data },
+});
 
 function isTextEntryTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -92,6 +113,15 @@ function isTextEntryTarget(target: EventTarget | null) {
 
 function canLinkCellText(col: TableColumn) {
   return col.type === "text";
+}
+
+function clampColumnWidth(width: number) {
+  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(width)));
+}
+
+function storedColumnWidth(col: TableColumn) {
+  if (!Number.isFinite(col.width)) return DEFAULT_COLUMN_WIDTH;
+  return clampColumnWidth(col.width);
 }
 
 function cellInputType(col: TableColumn) {
@@ -229,6 +259,7 @@ function TableEditorPageInner() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const confirm = useConfirm();
   const tableId = params.tableId as string;
   // Skill mode: `?skill=<slug>` switches the data source to the public
   // skill payload (which the backend gates by skill readability). All
@@ -269,6 +300,8 @@ function TableEditorPageInner() {
   const [linkHref, setLinkHref] = useState(LINK_EDITOR_DEFAULT_HREF);
   const undoStackRef = useRef<TableUndoAction[]>([]);
   const undoInFlightRef = useRef(false);
+  const rowMutationVersionRef = useRef(0);
+  const inFlightCellValuesRef = useRef<Map<string, unknown>>(new Map());
 
   // Row detail modal
   const [detailRow, setDetailRow] = useState<TableRow | null>(null);
@@ -284,6 +317,7 @@ function TableEditorPageInner() {
   const [colMenu, setColMenu] = useState<{ colId: string; x: number; y: number } | null>(null);
   const [colMenuTypeOpen, setColMenuTypeOpen] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
+  const [columnResize, setColumnResize] = useState<ColumnResizeState | null>(null);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [showColVisibility, setShowColVisibility] = useState(false);
 
@@ -318,6 +352,21 @@ function TableEditorPageInner() {
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = rows.length < totalCount;
+  const columnPixelWidth = useCallback((col: TableColumn) => {
+    if (columnResize?.colId === col.id) return columnResize.width;
+    return storedColumnWidth(col);
+  }, [columnResize]);
+  const columnWidthStyle = useCallback((col: TableColumn): CSSProperties => {
+    const width = columnPixelWidth(col);
+    return { width, minWidth: width, maxWidth: width };
+  }, [columnPixelWidth]);
+  const minimumTableWidth = useMemo(() => (
+    SELECT_COLUMN_WIDTH +
+    ROW_NUMBER_COLUMN_WIDTH +
+    ADD_COLUMN_WIDTH +
+    ROW_ACTIONS_MIN_WIDTH +
+    visibleColumns.reduce((total, col) => total + columnPixelWidth(col), 0)
+  ), [columnPixelWidth, visibleColumns]);
 
   const shareAction = useMemo(() => {
     if (!table || readOnly || !user) return null;
@@ -336,6 +385,9 @@ function TableEditorPageInner() {
   const rememberUndo = useCallback((action: TableUndoAction) => {
     undoStackRef.current.push(action);
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+  }, []);
+  const markRowsMutated = useCallback(() => {
+    rowMutationVersionRef.current += 1;
   }, []);
 
   const undoLastTableAction = useCallback(async () => {
@@ -393,36 +445,29 @@ function TableEditorPageInner() {
   const loadTable = useCallback(async () => {
     try {
       if (skillSlug) {
-        // Synthesize a Table from the skill's inlined item content. The
-        // backend serializes columns + the first 500 rows when the skill
-        // is readable; that's the source of truth in skill mode.
+        // Synthesize a Table from the skill's inlined contents. The backend
+        // serializes columns + the first 500 rows when the skill is readable;
+        // that's the source of truth in skill mode.
         const skill = await getPublicSkill(skillSlug);
         setSkillTitle(skill.skill.title);
-        const item = skill.items.find(
-          (it) => it.object_type === "table" && it.object_id === tableId
-        );
-        if (!item || !item.inline) {
+        const item = findInSkillContents(skill.contents, "table", tableId);
+        if (!item) {
           setError("Table isn't in this Skill.");
           return;
         }
-        const inline = item.inline as {
-          description?: string;
-          columns?: TableColumn[];
-          rows?: { data: Record<string, unknown>; row_order?: number }[];
-        };
         const synth: Table = {
           id: tableId,
           workspace_id: skill.skill.workspace_id,
-          name: item.label || "Table",
-          description: inline.description ?? "",
-          columns: (inline.columns ?? []).map((c) => ({ ...c })),
+          name: item.name || "Table",
+          description: item.description ?? "",
+          columns: (item.columns ?? []).map((c) => ({ ...c })),
           views: [],
           created_at: "",
           updated_at: "",
         } as unknown as Table;
         setResolvedWorkspaceId(skill.skill.workspace_id);
         setTable(synth);
-        const synthRows: TableRow[] = (inline.rows ?? []).map((r, i) => ({
+        const synthRows: TableRow[] = (item.rows ?? []).map((r, i) => ({
           id: `skill-${i}`,
           table_id: tableId,
           data: r.data,
@@ -456,12 +501,15 @@ function TableEditorPageInner() {
     // (the backend caps the inline payload at 500 rows). Search/filter
     // happen client-side from that snapshot.
     if (readOnly) return;
+    const startedAtMutationVersion = rowMutationVersionRef.current;
     try {
       if (searchQuery) {
         const res = await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
+        if (startedAtMutationVersion !== rowMutationVersionRef.current) return;
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       } else {
         const res = await listTableRows(wsId, tableId, buildRowParams(0));
+        if (startedAtMutationVersion !== rowMutationVersionRef.current) return;
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
@@ -558,7 +606,12 @@ function TableEditorPageInner() {
   const removeFilter = (idx: number) => setFilters((prev) => prev.filter((_, i) => i !== idx));
 
   const handleDelete = async () => {
-    if (!confirm("Delete this table and all its data?")) return;
+    const ok = await confirm({
+      title: "Delete this table?",
+      body: "All its data will be permanently deleted.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await deleteTable(resolvedWorkspaceId, tableId);
       router.push(wsId ? `/workspaces/${wsId}` : "/");
@@ -575,7 +628,8 @@ function TableEditorPageInner() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to add column"); }
   };
   const handleDeleteColumn = async (colId: string) => {
-    if (!confirm("Delete this column?")) return;
+    const ok = await confirm({ title: "Delete this column?", confirmLabel: "Delete" });
+    if (!ok) return;
     try { setTable(await deleteTableColumn(wsId, tableId, colId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleRenameColumn = async (colId: string) => {
@@ -592,6 +646,65 @@ function TableEditorPageInner() {
     // pick won't break the table — it'll just stop accepting new values.
     try { setTable(await updateTableColumn(wsId, tableId, colId, { type })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
+  const commitColumnWidth = useCallback(async (colId: string, width: number) => {
+    const nextWidth = clampColumnWidth(width);
+    setTable((prev) => prev ? {
+      ...prev,
+      columns: prev.columns.map((col) => col.id === colId ? { ...col, width: nextWidth } : col),
+    } : prev);
+    try {
+      setTable(await updateTableColumn(wsId, tableId, colId, { width: nextWidth }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resize column");
+      void loadTable();
+    }
+  }, [loadTable, tableId, wsId]);
+  const startColumnResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    col: TableColumn,
+  ) => {
+    if (readOnly) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setColMenu(null);
+    const startWidth = columnPixelWidth(col);
+    setColumnResize({
+      colId: col.id,
+      startX: event.clientX,
+      startWidth,
+      width: startWidth,
+    });
+  };
+  const resizingColId = columnResize?.colId ?? null;
+  const resizingStartX = columnResize?.startX ?? null;
+  const resizingStartWidth = columnResize?.startWidth ?? null;
+  useEffect(() => {
+    if (!resizingColId || resizingStartX == null || resizingStartWidth == null) return;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const nextWidth = (clientX: number) => clampColumnWidth(resizingStartWidth + clientX - resizingStartX);
+    const handlePointerMove = (event: PointerEvent) => {
+      const width = nextWidth(event.clientX);
+      setColumnResize((current) => current?.colId === resizingColId ? { ...current, width } : current);
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      const width = nextWidth(event.clientX);
+      setColumnResize(null);
+      void commitColumnWidth(resizingColId, width);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp, { once: true });
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [commitColumnWidth, resizingColId, resizingStartWidth, resizingStartX]);
   const handleColumnDrop = async (targetColId: string) => {
     if (!dragCol || dragCol === targetColId) { setDragCol(null); return; }
     const ids = sortedColumns.map((c) => c.id);
@@ -625,7 +738,12 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to duplicate"); }
   };
   const handleBulkDelete = async () => {
-    if (selectedRows.size === 0 || !confirm(`Delete ${selectedRows.size} rows?`)) return;
+    if (selectedRows.size === 0) return;
+    const ok = await confirm({
+      title: `Delete ${selectedRows.size} rows?`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try { await deleteTableRowsBatch(wsId, tableId, Array.from(selectedRows)); setRows((prev) => prev.filter((r) => !selectedRows.has(r.id))); setTotalCount((c) => c - selectedRows.size); setSelectedRows(new Set()); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
@@ -660,14 +778,38 @@ function TableEditorPageInner() {
       return;
     }
     const previousRow = rows.find((row) => row.id === rowId);
+    const patch = { [colId]: typedValue };
+    const cellKey = `${rowId}\u0000${colId}`;
+    if (Object.is(inFlightCellValuesRef.current.get(cellKey), typedValue)) {
+      setEditingCell(null);
+      return;
+    }
+    inFlightCellValuesRef.current.set(cellKey, typedValue);
+    if (previousRow) {
+      markRowsMutated();
+      setRows((prev) => prev.map((r) => (r.id === rowId ? patchTableRow(r, patch) : r)));
+      setDetailRow((prev) => (prev?.id === rowId ? patchTableRow(prev, patch) : prev));
+    }
+    setEditingCell(null);
     try {
-      const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue });
+      const updated = await updateTableRow(wsId, tableId, rowId, patch);
       setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r)));
+      setDetailRow((prev) => (prev?.id === rowId ? updated : prev));
       if (previousRow) rememberUndo({ kind: "row-update", row: cloneTableRow(previousRow) });
     }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
-    setEditingCell(null);
-  }, [cellValue, editingCell, rememberUndo, rows, table, tableId, wsId]);
+    catch (err) {
+      markRowsMutated();
+      if (previousRow) {
+        setRows((prev) => prev.map((r) => (r.id === rowId ? previousRow : r)));
+        setDetailRow((prev) => (prev?.id === rowId ? previousRow : prev));
+      }
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      if (Object.is(inFlightCellValuesRef.current.get(cellKey), typedValue)) {
+        inFlightCellValuesRef.current.delete(cellKey);
+      }
+    }
+  }, [cellValue, editingCell, markRowsMutated, rememberUndo, rows, table, tableId, wsId]);
   const cancelEdit = () => {
     setLinkEditor(null);
     setEditingCell(null);
@@ -747,8 +889,15 @@ function TableEditorPageInner() {
       return;
     }
 
-    if (e.key === "Enter") void commitEdit();
-    if (e.key === "Escape") cancelEdit();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void commitEdit();
+      return;
+    }
+    if (e.key === "Escape") {
+      cancelEdit();
+      return;
+    }
     if (e.key === "Tab") {
       e.preventDefault();
       void commitEdit();
@@ -904,6 +1053,65 @@ function TableEditorPageInner() {
       await importTabular(text, detectDelimiter(text));
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to paste"); }
   };
+  // --- Block paste (spreadsheet sections) ---
+  // Copying a range of cells in Google Sheets / Excel puts TSV on the
+  // clipboard. Pasting such a block into a cell editor fills cells right and
+  // down from that cell — overwriting the rows it covers and appending new
+  // rows past the end — instead of dumping tab-separated text into one cell.
+  // Clipboard columns past the last visible column are dropped.
+  const pasteCellBlock = async (anchorRowId: string, anchorColId: string, block: string[][]) => {
+    const startColIdx = visibleColumns.findIndex((c) => c.id === anchorColId);
+    const startRowIdx = isDraftRowId(anchorRowId) ? rows.length : rows.findIndex((r) => r.id === anchorRowId);
+    if (startColIdx === -1 || startRowIdx === -1) return;
+    if (hasMore && startRowIdx + block.length > rows.length) {
+      setError("Scroll to load all rows before pasting past the end of the table");
+      return;
+    }
+    setEditingCell(null);
+
+    const targetCols = visibleColumns.slice(startColIdx);
+    const rowData = (cells: string[]) => {
+      const data: Record<string, unknown> = {};
+      cells.slice(0, targetCols.length).forEach((raw, i) => {
+        // Server coerces raw strings per column type; empty cells become NULL.
+        data[targetCols[i].id] = raw === "" ? null : raw;
+      });
+      return data;
+    };
+
+    const overlapCount = Math.min(block.length, rows.length - startRowIdx);
+    const overlapRows = rows.slice(startRowIdx, startRowIdx + overlapCount);
+    const overflow = block.slice(overlapCount);
+    try {
+      const updated = await Promise.all(
+        overlapRows.map((row, i) => updateTableRow(wsId, tableId, row.id, rowData(block[i]))),
+      );
+      overlapRows.forEach((row) => rememberUndo({ kind: "row-update", row: cloneTableRow(row) }));
+      const updatedById = new Map(updated.map((r) => [r.id, r]));
+      setRows((prev) => prev.map((r) => updatedById.get(r.id) ?? r));
+
+      if (overflow.length > 0) {
+        const res = await createTableRowsBatch(wsId, tableId, overflow.map((cells) => ({ data: rowData(cells) })));
+        setRows((prev) => [...prev, ...res.rows]);
+        setTotalCount((c) => c + res.rows.length);
+        res.rows.forEach((row) => rememberUndo({ kind: "row-create", row: cloneTableRow(row) }));
+      }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to paste"); }
+  };
+
+  const handleCellEditorPaste = (e: React.ClipboardEvent) => {
+    if (readOnly || !editingCell) return;
+    const block = parseCsv(e.clipboardData.getData("text/plain"), "\t");
+    const isMultiCell = block.length > 1 || (block[0]?.length ?? 0) > 1;
+    if (!isMultiCell) return;
+    e.preventDefault();
+    if (groupByCol) {
+      setError("Pasting a block isn't supported while grouped — clear grouping first");
+      return;
+    }
+    void pasteCellBlock(editingCell.rowId, editingCell.colId, block);
+  };
+
   const handleCsvExport = async () => {
     if (!table || !wsId) return;
     const base = `/api/v1/workspaces/${wsId}/tables`;
@@ -977,9 +1185,9 @@ function TableEditorPageInner() {
     const isEditing = editingCell?.rowId === rowId && editingCell?.colId === col.id;
     const startCellEditing = () => { if (!isEditing) startEditing(rowId, col.id, value); };
     return (
-      <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={startCellEditing}>
+      <td key={col.id} style={columnWidthStyle(col)} className={`px-1 py-0 border-r border-border/50 ${cellBg}`} onClick={startCellEditing}>
         {isEditing ? (
-          <div data-table-cell-editor>
+          <div data-table-cell-editor onPaste={handleCellEditorPaste}>
             {col.type === "boolean" ? (
               <label className="flex items-center h-8 px-2 cursor-pointer"><input aria-label={`Edit row ${rowNumber} ${col.name}`} type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
             ) : col.type === "select" && col.options ? (
@@ -1227,7 +1435,7 @@ function TableEditorPageInner() {
 
         {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
-          <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto">
+          <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto overscroll-x-contain">
             <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
             {table.views.map((layout: TableView) => (
               <div key={layout.id} className="flex items-center group">
@@ -1271,8 +1479,17 @@ function TableEditorPageInner() {
 
         {/* Grid */}
         {table && (
-          <div className="flex-1 overflow-auto">
-            <table className="w-full border-collapse min-w-max">
+          <div className="flex-1 overflow-auto overscroll-x-contain">
+            <table className="w-full border-collapse table-fixed" style={{ minWidth: minimumTableWidth }}>
+              <colgroup>
+                <col style={{ width: SELECT_COLUMN_WIDTH }} />
+                <col style={{ width: ROW_NUMBER_COLUMN_WIDTH }} />
+                {visibleColumns.map((col) => (
+                  <col key={col.id} style={{ width: columnPixelWidth(col) }} />
+                ))}
+                <col style={{ width: ADD_COLUMN_WIDTH }} />
+                <col />
+              </colgroup>
               <thead className="sticky top-0 z-10">
                 <tr className="bg-surface border-b border-border">
                   <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
@@ -1280,19 +1497,30 @@ function TableEditorPageInner() {
                   {visibleColumns.map((col) => (
                     <th
                       key={col.id}
-                      className={`px-3 py-2 text-left text-xs font-medium text-muted border-r border-border min-w-[140px] select-none cursor-pointer hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
-                      draggable={!readOnly}
+                      style={columnWidthStyle(col)}
+                      className={`relative px-3 py-2 text-left text-xs font-medium text-muted border-r border-border select-none hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
+                      draggable={!readOnly && !columnResize}
                       onDragStart={() => { if (!readOnly) setDragCol(col.id); }}
                       onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
                       onDrop={() => { if (!readOnly) handleColumnDrop(col.id); }}
                       onDragEnd={() => setDragCol(null)}
                       onContextMenu={(e) => { if (readOnly) return; e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}
                     >
-                      <span className="flex items-center gap-1.5" onClick={() => handleSort(col.id)}>
-                        <span className="text-[10px] text-muted/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
-                        {col.name}
-                        {sortBy === col.id && <span className="text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                      <span className="flex min-w-0 cursor-pointer items-center gap-1.5 pr-2" onClick={() => handleSort(col.id)}>
+                        <span className="flex-shrink-0 text-[10px] text-muted/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
+                        <span className="min-w-0 truncate">{col.name}</span>
+                        {sortBy === col.id && <span className="flex-shrink-0 text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
                       </span>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          aria-label={`Resize ${col.name} column`}
+                          title="Resize column"
+                          onPointerDown={(event) => startColumnResize(event, col)}
+                          onClick={(event) => event.stopPropagation()}
+                          className={`absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 transition-colors ${columnResize?.colId === col.id ? "border-brand bg-brand/10" : "border-transparent hover:border-brand/60 hover:bg-brand/5"}`}
+                        />
+                      )}
                     </th>
                   ))}
                   <th className="w-10 px-2 py-2 border-r border-border">
@@ -1330,7 +1558,7 @@ function TableEditorPageInner() {
                     {visibleColumns.map((col) => {
                       const s = summary.columns[col.id];
                       return (
-                        <td key={col.id} className="px-2 py-1.5 border-r border-border text-[10px] font-mono text-muted">
+                        <td key={col.id} style={columnWidthStyle(col)} className="px-2 py-1.5 border-r border-border text-[10px] font-mono text-muted">
                           {s ? (
                             s.sum != null ? (
                               <div className="space-y-0.5">

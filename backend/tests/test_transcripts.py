@@ -52,16 +52,6 @@ async def _workspace(client, key):
     return r.json()["id"]
 
 
-async def _skill(client, key, ws):
-    r = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
-        json={"title": "Default sessions", "items": []},
-        headers={"Authorization": f"Bearer {key}"},
-    )
-    assert r.status_code == 201
-    return r.json()["id"]
-
-
 @pytest.mark.asyncio
 async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     key = await _register(client)
@@ -202,31 +192,6 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     assert events_resp.status_code == 200
     events = events_resp.json()["events"]
     assert [event["content"] for event in events] == ["updated"]
-
-
-@pytest.mark.asyncio
-async def test_upload_adds_session_to_default_skill(client: AsyncClient):
-    key = await _register(client)
-    ws = await _workspace(client, key)
-    skill_id = await _skill(client, key, ws)
-    headers = {"Authorization": f"Bearer {key}"}
-
-    up = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
-        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
-        data={
-            "session_id": "sess-default",
-            "agent_name": "claude",
-            "default_skill_id": skill_id,
-        },
-        headers=headers,
-    )
-    assert up.status_code == 201, up.text
-
-    skills = await client.get(f"/api/v1/workspaces/{ws}/skills", headers=headers)
-    assert skills.status_code == 200
-    [stash] = [item for item in skills.json()["skills"] if item["id"] == skill_id]
-    assert [item["object_type"] for item in stash["items"]] == ["session"]
 
 
 @pytest.mark.asyncio
@@ -688,8 +653,15 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     )
     assert artifact_resp.status_code == 404
 
+    folder_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Materialized"},
+        headers=owner_headers,
+    )
+    assert folder_resp.status_code == 201
     materialize_resp = await client.post(
         f"/api/v1/workspaces/{ws}/sessions/owner-session/materialize",
+        json={"folder_id": folder_resp.json()["id"]},
         headers=viewer_headers,
     )
     assert materialize_resp.status_code == 403

@@ -13,6 +13,7 @@
   --text-primary: #37352F;
   --text-dim: #5C5A53;
   --text-muted: #9B9A97;
+  --divider-color: #DBDAD6;
 }
 
 [data-theme="dark"] {
@@ -24,6 +25,7 @@
   --text-primary: #F1F5F9;
   --text-dim: #94A3B8;
   --text-muted: #64748B;
+  --divider-color: #4C5C73;
 }
 
 @theme inline {
@@ -348,16 +350,13 @@ details > summary::-webkit-details-marker {
   font-style: italic;
 }
 
-/* Horizontal rule: fade out the line so it looks intentional. */
+/* Horizontal rule: Obsidian-style 2px line. --border-color is too
+   faint against the page background and --text-muted too heavy, so
+   dividers get their own token. */
 .prose :where(hr):not(:where([class~="not-prose"] *)) {
   border: none;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--border-color, rgba(0, 0, 0, 0.12)),
-    transparent
-  );
+  height: 2px;
+  background: var(--divider-color);
 }
 
 /* Tables — match the rounded-outer, light-inner-border look. */
