@@ -21,7 +21,6 @@ def main():
     cfg = get_config()
     state = load_state(DATA_DIR)
 
-
     try:
         with get_client() as client:
             stream_user_message(client, cfg, state, event.prompt_text, event)

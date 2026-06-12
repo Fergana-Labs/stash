@@ -3,6 +3,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
   useActiveWorkspaceId,
   useShareAction,
@@ -21,6 +22,7 @@ import {
   updateFile,
   type FolderBreadcrumb,
 } from "../../../../lib/api";
+import { findInSkillContents } from "../../../../lib/localSkill";
 import type { FileInfo } from "../../../../lib/types";
 import FileContentRenderer, {
   isImage,
@@ -56,6 +58,7 @@ function FileViewerPageInner() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const fileId = params.fileId as string;
   // ?skill=<slug> is a back-link hint AND a permission fallback. We try
   // the workspace endpoint first so workspace members get the full editor
@@ -101,31 +104,22 @@ function FileViewerPageInner() {
     try {
       const skill = await getPublicSkill(skillSlug);
       setSkillTitle(skill.skill.title);
-      const item = skill.items.find(
-        (it) => it.object_type === "file" && it.object_id === fileId
-      );
-      if (!item || !item.inline) {
+      const item = findInSkillContents(skill.contents, "file", fileId);
+      if (!item) {
         setError("File isn't in this Skill.");
         return false;
       }
-      const inline = item.inline as {
-        name?: string;
-        content_type?: string;
-        size_bytes?: number;
-        url?: string;
-        created_at?: string;
-      };
       const synth: FileInfo = {
         id: fileId,
         workspace_id: skill.skill.workspace_id,
         folder_id: null,
-        name: inline.name ?? item.label,
-        content_type: inline.content_type ?? "",
-        size_bytes: inline.size_bytes ?? 0,
-        url: inline.url ?? "",
+        name: item.name,
+        content_type: item.content_type ?? "",
+        size_bytes: item.size_bytes ?? 0,
+        url: item.url ?? "",
         app_url: `/f/${fileId}?skill=${skillSlug}`,
         uploaded_by: "",
-        created_at: inline.created_at ?? "",
+        created_at: item.created_at ?? "",
       };
       setFile(synth);
       setFolderChain([]);
@@ -277,7 +271,11 @@ function FileViewerPageInner() {
                           label: "Delete",
                           destructive: true,
                           onSelect: async () => {
-                            if (!window.confirm(`Move "${file.name}" to trash?`)) return;
+                            const ok = await confirm({
+                              title: `Move "${file.name}" to trash?`,
+                              confirmLabel: "Move to trash",
+                            });
+                            if (!ok) return;
                             try {
                               await trashItem(workspaceId, "file", fileId);
                               router.push(`/workspaces/${workspaceId}`);

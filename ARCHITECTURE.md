@@ -27,25 +27,28 @@ tree (an S3-backed binary, vs. an in-app-editable page, vs. a folder).
 - `workspaces` contain members, sessions, Files, tables, and Skills.
 - `sessions` and `history_events` store agent transcript activity.
 - `folders`, `pages`, and `files` form the Files surface.
-- `tables` and `table_rows` store structured data that can be included in
-  Skills.
-- `skills` and `skill_items` define shareable bundles.
-- `skill_members` grants explicit access to private Skills.
-- A forked Skill (`forked_from_skill_id`) attaches a public Skill from another workspace.
+- `tables` and `table_rows` store structured data that can live inside
+  Skill folders.
+- A Skill is a special folder: one containing a `SKILL.md` page. Files and
+  Skills are MECE — skill folders are hidden from every Files surface and
+  shown in the Skills area instead.
+- `skills` is the 1:1 publish record for a skill folder (`folder_id`
+  unique): slug, cover art, Discover flag. Its existence makes the folder
+  publicly readable at /skills/<slug>.
+- Person-to-person skill access rides the generic `shares` table on the
+  skill's folder, exactly like any other folder.
+- Forking deep-copies the skill folder into the forker's workspace.
 
 Object-level privacy tables and page-link graph tables are intentionally not part
 of the current architecture. Privacy is mediated by Skills.
 
 ## Access Rules
 
-- Content with no containing Skill is visible to workspace members.
-- Public Skills are anonymously readable.
-- Workspace Skills are readable to workspace members.
-- Private Skills are readable only to their owner, workspace admins, and
-  explicit Skill members.
-- Items in a private Skill cannot also be included in workspace or public
-  Skills.
-- Publishing is UI sugar for making a Skill public and returning its public URL.
+- Content not inside a published skill folder is visible to workspace members.
+- A publish record grants READ on the whole folder subtree to everyone,
+  never write — publishing IS the public grant.
+- Private skill access is a plain folder share.
+- Publishing mints the skill's publish record and returns its public URL.
 
 ## Main Backend Routers
 
@@ -53,8 +56,8 @@ of the current architecture. Privacy is mediated by Skills.
 - `backend/routers/files_tree.py`: Files folders and pages.
 - `backend/routers/files.py`: uploaded files and extraction.
 - `backend/routers/sessions.py`: session listing, upload, and materialization.
-- `backend/routers/skills.py`: Skill CRUD, publish, public rendering, fork
-  attachment.
+- `backend/routers/skills.py`: skill listing, publish records, public
+  rendering, fork (folder copy), session materialization.
 - `backend/routers/workspace_knowledge.py`: workspace home/sidebar payloads.
 - `backend/routers/publish.py`: Skill publish flow + public Skill URLs.
 - `backend/routers/discover.py`: public Skill catalog (search, trending,
@@ -68,9 +71,8 @@ of the current architecture. Privacy is mediated by Skills.
 
 Object-level privacy is enforced inline in each router that returns a
 resource — there is no separate permissions router. The `workspace_members`
-table gates everything inside a workspace; the `skill_members` table gates
-per-Skill sharing; the `visibility` column on skills and pages controls
-public exposure.
+table gates everything inside a workspace; folder shares gate
+per-person access; the publish record's existence controls public exposure.
 
 ## Frontend Shell
 

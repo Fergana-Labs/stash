@@ -1,9 +1,11 @@
-"""Skill service — skills are Files folders containing a SKILL.md file.
+"""Skill service — skills are special folders containing a SKILL.md file.
 
 Detection rule: any folder whose immediate children include a page named
-``SKILL.md``. Skills are derived from the Files tree; reads/writes still go
-through the Files API. The derived shape feeds the sidebar and the Ask agent's
-tool surface.
+``SKILL.md``. Skill-ness is derived, never stored; reads/writes go through
+the Files API. Files and Skills are MECE: skill subtrees are filtered out of
+every Files surface (see ``skill_subtree_folder_ids``) and surfaced in the
+Skills area instead. Publishing/sharing attaches a 1:1 ``skills`` row to the
+folder (shared_skill_service).
 """
 
 from __future__ import annotations
@@ -12,6 +14,34 @@ from uuid import UUID
 
 from ..database import get_pool
 from . import permission_service
+
+SKILL_MD_NAME = "SKILL.md"
+
+
+def not_skill_folder_pred(alias: str) -> str:
+    """SQL fragment: folder ``alias`` has no live SKILL.md child."""
+    return (
+        f"NOT EXISTS (SELECT 1 FROM pages skp WHERE skp.folder_id = {alias}.id "
+        "AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL)"
+    )
+
+
+async def skill_subtree_folder_ids(workspace_id: UUID) -> set[UUID]:
+    """Every folder inside any skill subtree: the SKILL.md folders themselves
+    plus all their descendants. Used to keep Files surfaces skill-free."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE skill_tree AS ("
+        "  SELECT f.id FROM folders f "
+        "  WHERE f.workspace_id = $1 "
+        "    AND EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
+        "                AND p.name = 'SKILL.md' AND p.deleted_at IS NULL)"
+        "  UNION"
+        "  SELECT f.id FROM folders f JOIN skill_tree st ON f.parent_folder_id = st.id"
+        ") SELECT id FROM skill_tree",
+        workspace_id,
+    )
+    return {r["id"] for r in rows}
 
 
 def parse_frontmatter(md: str) -> tuple[dict, str]:
@@ -45,16 +75,19 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
 
 
 async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
-    """List every skill folder in a stash. Returns folder + frontmatter from
-    its SKILL.md."""
+    """List every skill folder in the workspace: folder + SKILL.md frontmatter,
+    plus the publish record when the skill has been shared."""
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT f.id AS folder_id, f.name AS folder_name, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
         "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
-        "   AND p2.deleted_at IS NULL) AS file_count "
+        "   AND p2.deleted_at IS NULL) AS file_count, "
+        "  s.id AS publish_id, s.slug, s.title, s.discoverable, "
+        "  s.cover_image_url, s.icon_url, s.view_count "
         "FROM folders f "
         "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
+        "LEFT JOIN skills s ON s.folder_id = f.id "
         "WHERE f.workspace_id = $1 "
         "ORDER BY f.name",
         workspace_id,
@@ -67,15 +100,19 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
             user_id,
             workspace_id=workspace_id,
         )
-        can_read_skill_md = await permission_service.check_access(
-            "page",
-            r["skill_md_id"],
-            user_id,
-            workspace_id=workspace_id,
-        )
-        if not can_read_folder or not can_read_skill_md:
+        if not can_read_folder:
             continue
         meta, _body = parse_frontmatter(r["skill_md"] or "")
+        published = None
+        if r["publish_id"]:
+            published = {
+                "id": str(r["publish_id"]),
+                "slug": r["slug"],
+                "discoverable": bool(r["discoverable"]),
+                "cover_image_url": r["cover_image_url"],
+                "icon_url": r["icon_url"],
+                "view_count": int(r["view_count"] or 0),
+            }
         out.append(
             {
                 "folder_id": str(r["folder_id"]),
@@ -86,6 +123,7 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
                 "file_count": int(r["file_count"]),
                 "updated_at": r["updated_at"],
+                "published": published,
             }
         )
     return out
