@@ -1,9 +1,10 @@
 """Billing: the connect-time pay gate and Stripe webhook state sync.
 
-Why these tests matter: the free plan is enforced ONLY when adding a source —
-a free user keeps one connected source, idempotent re-adds of that source must
-not be blocked (create_source is an upsert), and an active subscription lifts
-the cap. Billing is off entirely when STRIPE_SECRET_KEY is unset (self-host).
+Why these tests matter: the free plan is enforced when CONNECTING an account —
+a free user keeps one connected account (each account row counts, so a second
+mailbox on the same provider also gates), and an active subscription lifts the
+cap. Sources added under a connection are unlimited. Billing is off entirely
+when STRIPE_SECRET_KEY is unset (self-host).
 """
 
 import hashlib
@@ -13,9 +14,12 @@ import time
 from uuid import UUID
 
 import pytest
+from cryptography.fernet import Fernet
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from backend.config import settings
+from backend.services import billing_service
 
 from .conftest import unique_name
 
@@ -34,21 +38,15 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _create_workspace(client: AsyncClient, api_key: str) -> UUID:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": unique_name("bill_ws")},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
-    return UUID(resp.json()["id"])
-
-
-async def _add_repo(client: AsyncClient, api_key: str, ws: UUID, repo: str):
-    return await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
-        json={"source_type": "github_repo", "external_ref": repo},
-        headers=_auth(api_key),
+async def _connect_account(pool, user_id: UUID, provider: str, account_key: str = "default"):
+    """Simulate a completed connection by inserting the stored-token row."""
+    await pool.execute(
+        "INSERT INTO user_integrations "
+        "(user_id, provider, access_token_encrypted, account_key) VALUES ($1, $2, $3, $4)",
+        user_id,
+        provider,
+        b"\x00",
+        account_key,
     )
 
 
@@ -66,61 +64,86 @@ def billing_on(monkeypatch):
     monkeypatch.setattr(settings, "STRIPE_ANNUAL_PRICE_ID", "price_test_year")
 
 
+@pytest.fixture
+def github_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "INTEGRATIONS_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(settings, "GITHUB_OAUTH_CLIENT_ID", "gh-client")
+    monkeypatch.setattr(settings, "GITHUB_OAUTH_CLIENT_SECRET", "gh-secret")
+    monkeypatch.setattr(settings, "GITHUB_OAUTH_REDIRECT_URI", "https://app.example.com/callback")
+
+
 @pytest.mark.asyncio
-async def test_free_user_gated_at_second_source(client, pool, billing_on):
-    api_key, user_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+async def test_free_user_gated_at_second_connection(client, pool, billing_on):
+    _, user_id = await _register(client)
 
-    assert (await _add_repo(client, api_key, ws, "acme/one")).status_code == 200
+    # No connections yet — the first one is free.
+    await billing_service.ensure_can_connect(user_id)
 
-    blocked = await _add_repo(client, api_key, ws, "acme/two")
-    assert blocked.status_code == 402
-    assert "Upgrade to Pro" in blocked.json()["detail"]
+    await _connect_account(pool, user_id, "github")
+    with pytest.raises(HTTPException) as exc:
+        await billing_service.ensure_can_connect(user_id)
+    assert exc.value.status_code == 402
+    assert "Upgrade to Pro" in exc.value.detail
 
-    # Re-adding the same source is an upsert, not a new source — must not 402.
-    assert (await _add_repo(client, api_key, ws, "acme/one")).status_code == 200
-
+    # An active subscription lifts the cap.
     await pool.execute(
         "INSERT INTO user_subscriptions (user_id, stripe_customer_id, status) "
         "VALUES ($1, 'cus_gate', 'active')",
         user_id,
     )
-    assert (await _add_repo(client, api_key, ws, "acme/two")).status_code == 200
+    await billing_service.ensure_can_connect(user_id)
 
 
 @pytest.mark.asyncio
-async def test_gate_counts_sources_across_workspaces(client, billing_on):
-    api_key, _ = await _register(client)
-    ws_a = await _create_workspace(client, api_key)
-    ws_b = await _create_workspace(client, api_key)
+async def test_each_account_counts(client, pool, billing_on):
+    """A second mailbox on an already-connected provider is a second account,
+    so it gates just like a brand-new provider would."""
+    _, user_id = await _register(client)
+    await _connect_account(pool, user_id, "gmail", account_key="a@x.com")
 
-    assert (await _add_repo(client, api_key, ws_a, "acme/one")).status_code == 200
-    assert (await _add_repo(client, api_key, ws_b, "acme/two")).status_code == 402
+    assert await billing_service.connection_count(user_id) == 1
+    with pytest.raises(HTTPException) as exc:
+        await billing_service.ensure_can_connect(user_id)
+    assert exc.value.status_code == 402
 
 
 @pytest.mark.asyncio
-async def test_gate_off_when_billing_disabled(client, monkeypatch):
+async def test_gate_off_when_billing_disabled(client, pool, monkeypatch):
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
-    api_key, _ = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    _, user_id = await _register(client)
+    await _connect_account(pool, user_id, "github")
 
-    assert (await _add_repo(client, api_key, ws, "acme/one")).status_code == 200
-    assert (await _add_repo(client, api_key, ws, "acme/two")).status_code == 200
+    # Self-hosted: no cap even with an existing connection.
+    await billing_service.ensure_can_connect(user_id)
+
+
+@pytest.mark.asyncio
+async def test_connect_endpoint_gates_second_connection(client, pool, billing_on, github_enabled):
+    api_key, user_id = await _register(client)
+
+    first = await client.get("/api/v1/integrations/github/connect", headers=_auth(api_key))
+    assert first.status_code == 200
+    assert "github.com/login/oauth/authorize" in first.json()["authorize_url"]
+
+    await _connect_account(pool, user_id, "github")
+
+    blocked = await client.get("/api/v1/integrations/github/connect", headers=_auth(api_key))
+    assert blocked.status_code == 402
+    assert "Upgrade to Pro" in blocked.json()["detail"]
 
 
 @pytest.mark.asyncio
 async def test_billing_me_reflects_plan(client, pool, billing_on):
     api_key, user_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
-    await _add_repo(client, api_key, ws, "acme/one")
+    await _connect_account(pool, user_id, "github")
 
     me = (await client.get("/api/v1/billing/me", headers=_auth(api_key))).json()
     assert me == {
         "billing_enabled": True,
         "plan": "free",
         "status": None,
-        "source_count": 1,
-        "source_limit": 1,
+        "connection_count": 1,
+        "connection_limit": 1,
     }
 
     await pool.execute(

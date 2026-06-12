@@ -28,8 +28,8 @@ async def my_billing(current_user: dict = Depends(get_current_user)):
         "billing_enabled": True,
         "plan": "pro" if status in billing_service.ACTIVE_STATUSES else "free",
         "status": status,
-        "source_count": await billing_service.source_count(current_user["id"]),
-        "source_limit": billing_service.FREE_SOURCE_LIMIT,
+        "connection_count": await billing_service.connection_count(current_user["id"]),
+        "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
     }
 
 

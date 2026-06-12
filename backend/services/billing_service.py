@@ -1,9 +1,9 @@
-"""Per-user Stripe billing: Free (1 connected source) vs Pro ($20/mo, unlimited).
+"""Per-user Stripe billing: Free (1 connected account) vs Pro ($20/mo, unlimited).
 
 Billing is switched on by STRIPE_SECRET_KEY being set (managed deployment).
 Self-hosted instances leave it unset: billing endpoints 404 and the pay gate
-is a no-op. Enforcement is connect-time only — existing sources keep syncing
-even after a subscription lapses.
+is a no-op. Enforcement is connect-time only — existing connections keep
+syncing even after a subscription lapses.
 
 The user ↔ Stripe customer mapping row is created when checkout starts, so
 every later webhook resolves by stripe_customer_id regardless of event order.
@@ -23,7 +23,7 @@ from ..database import get_pool
 # Stripe statuses that grant Pro. Everything else (past_due, canceled,
 # unpaid, incomplete) means free-tier enforcement.
 ACTIVE_STATUSES = {"active", "trialing"}
-FREE_SOURCE_LIMIT = 1
+FREE_CONNECTION_LIMIT = 1
 
 
 def billing_enabled() -> bool:
@@ -47,37 +47,26 @@ async def is_pro(user_id: UUID) -> bool:
     return status in ACTIVE_STATUSES
 
 
-async def source_count(user_id: UUID) -> int:
+async def connection_count(user_id: UUID) -> int:
+    """How many integration accounts the user has connected. Each account row
+    counts on its own, so two Gmail mailboxes are two connections."""
     return await get_pool().fetchval(
-        "SELECT count(*) FROM workspace_sources WHERE owner_user_id = $1", user_id
+        "SELECT count(*) FROM user_integrations WHERE user_id = $1", user_id
     )
 
 
-async def ensure_can_add_source(
-    user_id: UUID, workspace_id: UUID, source_type: str, external_ref: str
-) -> None:
-    """Connect-time pay gate. Counts the user's sources across all workspaces,
-    excluding the natural key being added — create_source is an upsert, and a
-    free user re-adding their one existing source must keep working."""
+async def ensure_can_connect(user_id: UUID) -> None:
+    """Connect-time pay gate. The free plan includes one connected account; a
+    second account — another provider or another mailbox on the same one —
+    requires Pro. Sources added under a connection are unlimited."""
     if not billing_enabled():
         return
     if await is_pro(user_id):
         return
-    others = await get_pool().fetchval(
-        """
-        SELECT count(*) FROM workspace_sources
-        WHERE owner_user_id = $1
-          AND NOT (workspace_id = $2 AND source_type = $3 AND external_ref = $4)
-        """,
-        user_id,
-        workspace_id,
-        source_type,
-        external_ref,
-    )
-    if others >= FREE_SOURCE_LIMIT:
+    if await connection_count(user_id) >= FREE_CONNECTION_LIMIT:
         raise HTTPException(
             status_code=402,
-            detail="The free plan includes 1 connected source. Upgrade to Pro to connect more.",
+            detail="The free plan includes 1 connected account. Upgrade to Pro to connect more.",
         )
 
 

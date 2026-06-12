@@ -246,8 +246,8 @@ export interface BillingInfo {
   billing_enabled: boolean;
   plan?: "free" | "pro";
   status?: string | null;
-  source_count?: number;
-  source_limit?: number;
+  connection_count?: number;
+  connection_limit?: number;
 }
 
 export async function getBilling(): Promise<BillingInfo> {

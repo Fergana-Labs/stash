@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
-from ..services import security_audit_service, source_service
+from ..services import billing_service, security_audit_service, source_service
 from . import storage
 from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
@@ -268,6 +268,7 @@ async def integration_connect(
     """
     p = get_provider(provider)
     _ensure_provider_enabled(provider)
+    await billing_service.ensure_can_connect(current_user["id"])
     # MCP OAuth providers (Granola) register a client + carry PKCE through their
     # own state, so they own the connect step end-to-end.
     if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
@@ -417,6 +418,7 @@ async def integration_connect_with_credentials(
     _ensure_provider_enabled(provider)
     if getattr(p, "auth_kind", "oauth") != "api_key":
         raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
+    await billing_service.ensure_can_connect(current_user["id"])
     # Both handlers redact the exception message — provider errors can embed
     # the pasted secrets, so only the exception type is logged.
     try:

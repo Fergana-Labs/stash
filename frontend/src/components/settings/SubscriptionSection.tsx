@@ -41,7 +41,7 @@ export default function SubscriptionSection() {
       <div>
         <h2 className="text-base font-semibold text-foreground">Subscription</h2>
         <p className="text-xs text-muted mt-0.5">
-          The free plan includes 1 connected source. Pro is $20/month for unlimited sources.
+          The free plan includes 1 connected account. Pro is $20/month for unlimited integrations.
         </p>
       </div>
 
@@ -53,7 +53,7 @@ export default function SubscriptionSection() {
           <div className="text-xs text-muted mt-0.5">
             {isPro
               ? `Subscription ${billing.status}.`
-              : `${billing.source_count} of ${billing.source_limit} connected source used.`}
+              : `${billing.connection_count} of ${billing.connection_limit} connected account used.`}
           </div>
         </div>
         {isPro ? (
