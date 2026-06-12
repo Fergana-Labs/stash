@@ -32,9 +32,7 @@ UPSTREAM_TOOLS = [
 
 @pytest.fixture(autouse=True)
 def _integration_encryption(monkeypatch):
-    monkeypatch.setattr(
-        integration_crypto.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY
-    )
+    monkeypatch.setattr(integration_crypto.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
 
 
 class FakeUpstreamSession:
@@ -46,9 +44,7 @@ class FakeUpstreamSession:
 
     async def call_tool(self, name, arguments):
         self.calls.append((name, arguments))
-        return CallToolResult(
-            content=[TextContent(type="text", text=f"ran {name}")], isError=False
-        )
+        return CallToolResult(content=[TextContent(type="text", text=f"ran {name}")], isError=False)
 
 
 @pytest.fixture
@@ -100,9 +96,7 @@ async def _rpc(client, api_key, method, params=None, msg_id=1) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_render_connects_through_the_integrations_framework(
-    client: AsyncClient, monkeypatch
-):
+async def test_render_connects_through_the_integrations_framework(client: AsyncClient, monkeypatch):
     class _FakeOwners:
         def __call__(self, *args, **kwargs):
             return self
