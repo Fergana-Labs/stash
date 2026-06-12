@@ -365,6 +365,12 @@ async def purge_workspace_session(
 ):
     """Permanent delete — only callable on a session already in trash."""
     await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    storage_keys = await session_service.list_trashed_session_artifact_storage_keys(
+        session_row_id,
+        workspace_id,
+    )
+    for storage_key in storage_keys:
+        await storage_service.delete_file(storage_key)
     purged = await session_service.purge_session(session_row_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Session not in trash")

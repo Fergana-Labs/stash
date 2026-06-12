@@ -34,6 +34,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..database import get_pool
+from . import security_audit_service
 
 logger = logging.getLogger(__name__)
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
@@ -88,6 +89,30 @@ PROVIDER_SOURCE_TYPES = {
     # Render exposes MCP tools only; it never creates indexed sources.
     "render": (),
 }
+
+SOURCE_TYPE_PROVIDER = {
+    source_type: provider
+    for provider, source_types in PROVIDER_SOURCE_TYPES.items()
+    for source_type in source_types
+}
+
+_JIRA_PROJECT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def parse_jira_project_ref(external_ref: str) -> tuple[str, str]:
+    cloud_id, separator, project_key = external_ref.partition(":")
+    if not separator or not cloud_id or not project_key:
+        raise ValueError("Jira external_ref must be {cloudId}:{projectKey}")
+    if ":" in cloud_id or any(ch.isspace() for ch in cloud_id):
+        raise ValueError("Jira cloudId cannot contain whitespace or ':'")
+    if not _JIRA_PROJECT_KEY_RE.fullmatch(project_key):
+        raise ValueError("Jira projectKey must contain only letters, numbers, and underscores")
+    return cloud_id, project_key
+
+
+def validate_source_external_ref(source_type: str, external_ref: str) -> None:
+    if source_type == "jira_project":
+        parse_jira_project_ref(external_ref)
 
 
 def _clean_string_list(value, field_name: str) -> list[str]:
@@ -219,6 +244,7 @@ async def create_source(
     have no indexer and must NOT enroll in the sync queue: the reconciler skips
     them without advancing next_sync_at, so an enabled row would sit "due"
     forever at the front of the due_sources window and starve real syncs."""
+    validate_source_external_ref(source_type, external_ref)
     capability = SOURCE_CAPABILITY.get(source_type, "navigable")
     interval = DEFAULT_SYNC_INTERVAL_S.get(source_type, 3600)
     normalized_settings = normalize_source_settings(source_type, settings)
@@ -284,19 +310,21 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     return result.endswith("1")
 
 
-async def delete_sources_for_provider(user_id: UUID, provider: str) -> int:
-    """Remove all connected sources backed by one disconnected provider."""
+async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """Remove all connected sources backed by one disconnected provider.
+    Returns the deleted rows so callers audit exactly what was removed."""
     source_types = PROVIDER_SOURCE_TYPES.get(provider)
     if source_types is None:
         raise ValueError(f"unknown provider source mapping: {provider}")
 
-    result = await get_pool().execute(
+    rows = await get_pool().fetch(
         "DELETE FROM workspace_sources "
-        "WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
+        "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
+        "RETURNING *",
         user_id,
         list(source_types),
     )
-    return int(result.rsplit(" ", 1)[-1])
+    return [_source_row(row) for row in rows]
 
 
 async def get_source_for_sync(source_id: UUID) -> dict | None:
@@ -445,12 +473,19 @@ async def upsert_content_document(
     channel_id/channel_name/ts)."""
     pool = get_pool()
     new_hash = _content_hash(content)
+    extra = extra or {}
+    existing_cols = ["content_hash", "deleted_at", *extra.keys()]
     existing = await pool.fetchrow(
-        f"SELECT content_hash, deleted_at FROM {table} WHERE source_id = $1 AND path = $2",
+        f"SELECT {', '.join(existing_cols)} FROM {table} WHERE source_id = $1 AND path = $2",
         source_id,
         path,
     )
-    if existing and existing["content_hash"] == new_hash and existing["deleted_at"] is None:
+    if (
+        existing
+        and existing["content_hash"] == new_hash
+        and existing["deleted_at"] is None
+        and all(existing[col] == value for col, value in extra.items())
+    ):
         return "unchanged"
 
     cols = [
@@ -477,7 +512,7 @@ async def upsert_content_document(
         external_updated_at,
         True,
     ]
-    for col, val in (extra or {}).items():
+    for col, val in extra.items():
         cols.append(col)
         vals.append(val)
     placeholders = ", ".join(f"${i + 1}" for i in range(len(vals)))
@@ -589,6 +624,22 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
         )
         return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
 
+    if table == "gong_documents":
+        allowed_workspace_ids = gong_allowed_workspace_ids(source)
+        if not allowed_workspace_ids:
+            return []
+        rows = await get_pool().fetch(
+            f"SELECT path, name, kind FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+            f"AND gong_workspace_id = ANY($4::text[]) "
+            f"ORDER BY path LIMIT $3",
+            UUID(source["id"]),
+            f"{prefix}%",
+            limit,
+            allowed_workspace_ids,
+        )
+        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+
     rows = await get_pool().fetch(
         f"SELECT path, name, kind FROM {table} "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
@@ -645,6 +696,28 @@ async def read_document(source: dict, path: str) -> dict | None:
                 "name": row["name"],
                 "kind": row["kind"],
                 "content": row["content"] or "",
+            }
+
+        if table == "gong_documents":
+            allowed_workspace_ids = gong_allowed_workspace_ids(source)
+            if not allowed_workspace_ids:
+                return None
+            row = await get_pool().fetchrow(
+                f"SELECT path, name, kind, content, external_ref FROM {table} "
+                f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
+                f"AND gong_workspace_id = ANY($3::text[])",
+                UUID(source["id"]),
+                path,
+                allowed_workspace_ids,
+            )
+            if not row:
+                return None
+            return {
+                "path": row["path"],
+                "name": row["name"],
+                "kind": row["kind"],
+                "content": row["content"] or "",
+                "external_ref": row["external_ref"],
             }
 
         row = await get_pool().fetchrow(
@@ -813,14 +886,21 @@ async def search_documents(
         source_id = UUID(source["id"])
 
     def visibility_clause(table: str) -> str:
-        if table != "slack_messages":
-            return ""
-        return (
-            "AND d.channel_id = ANY(ARRAY("
-            "SELECT jsonb_array_elements_text("
-            "COALESCE(s.settings->'allowed_channel_ids', '[]'::jsonb)"
-            ")))"
-        )
+        if table == "slack_messages":
+            return (
+                "AND d.channel_id = ANY(ARRAY("
+                "SELECT jsonb_array_elements_text("
+                "COALESCE(s.settings->'allowed_channel_ids', '[]'::jsonb)"
+                ")))"
+            )
+        if table == "gong_documents":
+            return (
+                "AND d.gong_workspace_id = ANY(ARRAY("
+                "SELECT jsonb_array_elements_text("
+                "COALESCE(s.settings->'allowed_workspace_ids', '[]'::jsonb)"
+                ")))"
+            )
+        return ""
 
     parts = [f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
@@ -917,6 +997,19 @@ async def source_item_count(source: dict) -> int | None:
         )
         return int(row["n"]) if row else 0
 
+    if table == "gong_documents":
+        allowed_workspace_ids = gong_allowed_workspace_ids(source)
+        if not allowed_workspace_ids:
+            return 0
+        row = await get_pool().fetchrow(
+            f"SELECT count(*) AS n FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL "
+            f"AND gong_workspace_id = ANY($2::text[])",
+            UUID(source["id"]),
+            allowed_workspace_ids,
+        )
+        return int(row["n"]) if row else 0
+
     row = await get_pool().fetchrow(
         f"SELECT count(*) AS n FROM {table} WHERE source_id = $1 AND deleted_at IS NULL",
         UUID(source["id"]),
@@ -938,40 +1031,91 @@ async def _resolve_connected(source: str, user_id: UUID) -> dict | None:
     return await get_owned_source(source_id, user_id)
 
 
+async def _audit_source_read(
+    *,
+    action: str,
+    workspace_id: UUID,
+    user_id: UUID,
+    source: str | None,
+    connected: dict | None,
+    metadata: dict,
+) -> None:
+    """Audit a successful source read. Lives here — not in the routers — so
+    every front door to the same data (REST, agent tools) hits the same trail."""
+    target_type = "source"
+    target_id = source
+    source_type = None
+    provider = None
+    if source is None:
+        target_type = "source_collection"
+        target_id = None
+    elif source in (NATIVE_FILES, NATIVE_SESSIONS):
+        source_type = source
+    elif connected is not None:
+        target_id = connected["id"]
+        source_type = connected["source_type"]
+        provider = SOURCE_TYPE_PROVIDER.get(source_type)
+
+    await security_audit_service.record_event(
+        action=action,
+        actor_user_id=user_id,
+        workspace_id=workspace_id,
+        target_type=target_type,
+        target_id=target_id,
+        provider=provider,
+        source_type=source_type,
+        metadata=metadata,
+    )
+
+
 async def source_entries(
     workspace_id: UUID, user_id: UUID, source: str, prefix: str = ""
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
     scopes connected sources to a path. Returns None for an unknown source."""
+    connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import list_workspace_pages
 
         pages = await list_workspace_pages(workspace_id, user_id)
-        return [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
-
-    if source == NATIVE_SESSIONS:
+        entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
+    elif source == NATIVE_SESSIONS:
         from .memory_service import list_workspace_sessions
 
         sessions = await list_workspace_sessions(workspace_id, user_id)
-        return [
+        entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
         ]
+    else:
+        connected = await _resolve_connected(source, user_id)
+        if connected is None:
+            return None
+        if connected["capability"] == "queryable":
+            # A queryable source (Snowflake) has no document table — list its tables.
+            from ..integrations.snowflake.client import list_tables
 
-    connected = await _resolve_connected(source, user_id)
-    if connected is None:
-        return None
-    if connected["capability"] == "queryable":
-        # A queryable source (Snowflake) has no document table — list its tables.
-        from ..integrations.snowflake.client import list_tables
+            entries = await list_tables(connected)
+        elif connected["source_type"] == "twitter":
+            from ..integrations.twitter.indexer import twitter_live_entries
 
-        return await list_tables(connected)
-    if connected["source_type"] == "twitter":
-        from ..integrations.twitter.indexer import twitter_live_entries
+            entries = twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
+        else:
+            entries = await list_documents(connected, prefix=prefix)
 
-        return twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
-    return await list_documents(connected, prefix=prefix)
+    await _audit_source_read(
+        action="source.entries_listed",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "path_hash": security_audit_service.hash_value(prefix),
+            "result_count": len(entries),
+        },
+    )
+    return entries
 
 
 def source_document_url(
@@ -1019,38 +1163,50 @@ async def source_document(
     `source_ok` is False when the handle is unknown / not owned, and `doc` is
     None when the source is valid but the document is missing — callers keep the
     two not-found cases distinct (an unowned source must never look like a typo)."""
+    connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import get_page
 
         page = await get_page(UUID(ref), workspace_id, user_id)
-        if not page:
-            return True, None
-        return True, {
-            "name": page["name"],
-            "content": page.get("content_markdown") or page.get("content_html") or "",
-        }
-
-    if source == NATIVE_SESSIONS:
+        doc = (
+            {
+                "name": page["name"],
+                "content": page.get("content_markdown") or page.get("content_html") or "",
+            }
+            if page
+            else None
+        )
+    elif source == NATIVE_SESSIONS:
         from .memory_service import read_session_events
 
         events = await read_session_events(workspace_id, ref, user_id)
         transcript = "\n".join(
             f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
         )
-        return True, {"session": ref, "transcript": transcript[:8000]}
+        doc = {"session": ref, "transcript": transcript[:8000]}
+    else:
+        connected = await _resolve_connected(source, user_id)
+        if connected is None:
+            return False, None
+        if connected["capability"] == "queryable":
+            # Reading a "document" from a queryable source means describing a table.
+            from ..integrations.snowflake.client import describe_table
 
-    connected = await _resolve_connected(source, user_id)
-    if connected is None:
-        return False, None
-    if connected["capability"] == "queryable":
-        # Reading a "document" from a queryable source means describing a table.
-        from ..integrations.snowflake.client import describe_table
+            doc = await describe_table(connected, ref)
+        else:
+            doc = await read_document(connected, ref)
+            if doc is not None:
+                doc["url"] = await _deep_link(connected, doc)
 
-        return True, await describe_table(connected, ref)
-
-    doc = await read_document(connected, ref)
     if doc is not None:
-        doc["url"] = await _deep_link(connected, doc)
+        await _audit_source_read(
+            action="source.document_read",
+            workspace_id=workspace_id,
+            user_id=user_id,
+            source=source,
+            connected=connected,
+            metadata={"ref_hash": security_audit_service.hash_value(ref)},
+        )
     return True, doc
 
 
@@ -1098,9 +1254,23 @@ async def query_source(
     from ..integrations.snowflake.client import run_query
 
     try:
-        return await run_query(connected, sql, limit)
+        result = await run_query(connected, sql, limit)
     except ValueError as e:
-        return {"error": str(e)}
+        result = {"error": str(e)}
+    await _audit_source_read(
+        action="source.queried",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "sql_hash": security_audit_service.hash_value(sql),
+            "limit": limit,
+            "row_count": result.get("row_count"),
+            "error": bool(result.get("error")),
+        },
+    )
+    return result
 
 
 def _parse_dt(value: str | None):
@@ -1143,7 +1313,22 @@ async def fetch_history(
         from ..integrations.slack.indexer import fetch_history as fn
     else:
         from ..integrations.gong.indexer import fetch_history as fn
-    return await fn(connected, since_dt, until_dt, min(limit, 1000))
+    result = await fn(connected, since_dt, until_dt, min(limit, 1000))
+    await _audit_source_read(
+        action="source.history_fetched",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "since_hash": security_audit_service.hash_value(since),
+            "until_hash": security_audit_service.hash_value(until),
+            "limit": limit,
+            "fetched": result.get("fetched"),
+            "error": bool(result.get("error")),
+        },
+    )
+    return result
 
 
 async def search_all(
@@ -1232,4 +1417,16 @@ async def search_all(
             ):
                 results += hits
 
+    await _audit_source_read(
+        action="source.searched",
+        workspace_id=workspace_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={
+            "query_hash": security_audit_service.hash_value(query),
+            "limit": limit,
+            "result_count": len(results),
+        },
+    )
     return results

@@ -32,6 +32,7 @@ from fastapi import HTTPException
 
 from ...config import settings
 from ...database import get_pool
+from ...services import security_audit_service
 from ..crypto import integration_fernet
 
 # Canonical resource for RFC 8707 — the token is bound to this MCP server.
@@ -190,7 +191,16 @@ async def finish_authorization(code: str, state: str) -> str:
         }
     )
     account = await _fetch_account(token["access_token"])
-    await _store_connection(UUID(payload["u"]), token, client, account)
+    user_id = UUID(payload["u"])
+    await _store_connection(user_id, token, client, account)
+    await security_audit_service.record_user_event(
+        action="integration.connected",
+        actor_user_id=user_id,
+        target_type="integration",
+        target_id="granola",
+        provider="granola",
+        metadata={"auth_kind": "mcp_oauth"},
+    )
     return payload["r"]
 
 

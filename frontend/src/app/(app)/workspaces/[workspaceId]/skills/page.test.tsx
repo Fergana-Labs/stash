@@ -1,7 +1,7 @@
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderBase,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -17,6 +17,11 @@ import {
   type Skill,
 } from "../../../../../lib/api";
 import { skillMdTemplate } from "../../../../../lib/localSkill";
+import { ConfirmDialogProvider } from "../../../../../components/ConfirmDialog";
+
+function render(ui: ReactNode) {
+  return renderBase(ui, { wrapper: ConfirmDialogProvider });
+}
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),

@@ -276,13 +276,11 @@ async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
-    """Can the user access this session folder? Public
-    link, owner, or an explicit user share. Workspace members are granted earlier
+    """Can the user access this session folder? Public link (read-only),
+    owner, or an explicit user share. Workspace members are granted earlier
     in check_access (the workspace is the trust boundary)."""
     public = folder["public_permission"]
     if require == "read" and public != "none":
-        return True
-    if require == "write" and public == "write":
         return True
     if user_id is None:
         return False

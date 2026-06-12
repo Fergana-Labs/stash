@@ -168,6 +168,21 @@ def test_gmail_jira_asana_drive_are_index_only_federated():
         assert source_service.SOURCE_TABLE[st] not in source_service.CONTENT_TABLES, st
 
 
+def test_jira_project_refs_reject_jql_injection_shapes():
+    assert source_service.parse_jira_project_ref("cloud-1:PROJ_1") == ("cloud-1", "PROJ_1")
+
+    for external_ref in (
+        "cloud-1",
+        "cloud-1:",
+        ":PROJ",
+        "cloud 1:PROJ",
+        'cloud-1:PROJ" OR project IS NOT EMPTY',
+        "cloud-1:PROJ-1",
+    ):
+        with pytest.raises(ValueError):
+            source_service.parse_jira_project_ref(external_ref)
+
+
 def test_gmail_is_readonly_searchable_source():
     gmail = GmailIntegration()
     assert "https://www.googleapis.com/auth/gmail.readonly" in gmail.scopes
@@ -287,6 +302,7 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
 @pytest.mark.asyncio
 async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     stored_paths: list[str] = []
+    stored_workspace_ids: list[str] = []
     soft_deleted: list[str] = []
 
     async def fake_get_valid_token(user_id, provider):
@@ -303,6 +319,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
 
     async def fake_upsert_content_document(**kwargs):
         stored_paths.append(kwargs["path"])
+        stored_workspace_ids.append(kwargs["extra"]["gong_workspace_id"])
 
     async def fake_soft_delete_missing(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
@@ -331,6 +348,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     )
 
     assert stored_paths == ["allowed-call"]
+    assert stored_workspace_ids == ["W_ALLOWED"]
     assert soft_deleted == ["allowed-call"]
 
 

@@ -18,7 +18,12 @@ from ..auth import get_current_user
 from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
-from ..services import permission_service, source_service, task_service
+from ..services import (
+    permission_service,
+    security_audit_service,
+    source_service,
+    task_service,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
 
@@ -282,14 +287,28 @@ async def add_source(
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
-    return await source_service.create_source(
+    try:
+        created = await source_service.create_source(
+            workspace_id=workspace_id,
+            owner_user_id=current_user["id"],
+            source_type=body.source_type,
+            external_ref=external_ref,
+            display_name=display_name or external_ref,
+            settings=source_settings,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await security_audit_service.record_event(
+        action="source.created",
+        actor_user_id=current_user["id"],
         workspace_id=workspace_id,
-        owner_user_id=current_user["id"],
-        source_type=body.source_type,
-        external_ref=external_ref,
-        display_name=display_name or external_ref,
-        settings=source_settings,
+        target_type="source",
+        target_id=created["id"],
+        provider=source_service.SOURCE_TYPE_PROVIDER.get(created["source_type"]),
+        source_type=created["source_type"],
+        metadata={"capability": created["capability"]},
     )
+    return created
 
 
 @router.post("/{source_id}/sync")
@@ -321,6 +340,16 @@ async def sync_source_now(
         kwargs={"source_id": str(source_id)},
         task_id=task_id,
     )
+    await security_audit_service.record_event(
+        action="source.sync_requested",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="source",
+        target_id=str(source_id),
+        provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),
+        source_type=source["source_type"],
+        metadata={"task_id": task_id},
+    )
     return {"task_id": task_id}
 
 
@@ -331,7 +360,19 @@ async def remove_source(
     current_user: dict = Depends(get_current_user),
 ):
     await _require_member(workspace_id, current_user["id"])
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
     deleted = await source_service.delete_source(source_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Source not found")
+    await security_audit_service.record_event(
+        action="source.deleted",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="source",
+        target_id=str(source_id),
+        provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),
+        source_type=source["source_type"],
+    )
     return {"deleted": True, "source_id": str(source_id)}

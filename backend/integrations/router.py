@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
-from ..services import source_service
+from ..services import security_audit_service, source_service
 from . import storage
 from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
@@ -327,6 +327,14 @@ async def integration_callback(
                 )
                 account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
+            await security_audit_service.record_user_event(
+                action="integration.connected",
+                actor_user_id=user_id,
+                target_type="integration",
+                target_id=provider,
+                provider=provider,
+                metadata={"auth_kind": getattr(p, "auth_kind", "oauth")},
+            )
 
             # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
             # Capture the connecting user's Slack identity so the bot can map
@@ -365,9 +373,28 @@ async def integration_disconnect(
     current_user: dict = Depends(get_current_user),
 ):
     get_provider(provider)  # 404 if unknown
-    removed_sources = await source_service.delete_sources_for_provider(current_user["id"], provider)
+    removed = await source_service.delete_sources_for_provider(current_user["id"], provider)
     await storage.revoke_stored(current_user["id"], provider)
-    return {"ok": True, "removed_sources": removed_sources}
+    await security_audit_service.record_user_event(
+        action="integration.disconnected",
+        actor_user_id=current_user["id"],
+        target_type="integration",
+        target_id=provider,
+        provider=provider,
+        metadata={"removed_sources": len(removed)},
+    )
+    for source in removed:
+        await security_audit_service.record_event(
+            action="source.deleted",
+            actor_user_id=current_user["id"],
+            workspace_id=UUID(source["workspace_id"]),
+            target_type="source",
+            target_id=source["id"],
+            provider=provider,
+            source_type=source["source_type"],
+            metadata={"reason": "integration_disconnect"},
+        )
+    return {"ok": True, "removed_sources": len(removed)}
 
 
 class CredentialConnectResponse(BaseModel):
@@ -395,6 +422,14 @@ async def integration_connect_with_credentials(
         # Bad/rejected credentials — a client error, not a server fault.
         raise HTTPException(status_code=400, detail=str(e))
     await storage.store_token(current_user["id"], provider, token, account)
+    await security_audit_service.record_user_event(
+        action="integration.connected",
+        actor_user_id=current_user["id"],
+        target_type="integration",
+        target_id=provider,
+        provider=provider,
+        metadata={"auth_kind": "api_key"},
+    )
     return CredentialConnectResponse(
         connected=True,
         account_email=account.email,

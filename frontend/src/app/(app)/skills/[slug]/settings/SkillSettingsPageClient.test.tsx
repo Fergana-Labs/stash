@@ -4,6 +4,7 @@ import {
   render as renderBase,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -163,15 +164,17 @@ describe("SkillSettingsPageClient", () => {
   });
 
   it("stops sharing via unpublish and returns to the workspace skills page", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
     vi.mocked(unpublishSkill).mockResolvedValue(undefined);
 
     render(<SkillSettingsPageClient slug="shared-skill" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Stop sharing" }));
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: 'Stop sharing "Shared Skill"?',
+    });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "Stop sharing" }));
 
     await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
     expect(router.push).toHaveBeenCalledWith("/workspaces/workspace-1/skills");
-    vi.unstubAllGlobals();
   });
 });

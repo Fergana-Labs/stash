@@ -110,7 +110,8 @@ async def index_gong(source: dict) -> str | None:
 
     present: list[str] = []
     for call_id, meta in meta_by_id.items():
-        if _call_workspace_id(meta) not in allowed_workspace_ids:
+        call_workspace_id = _call_workspace_id(meta)
+        if call_workspace_id not in allowed_workspace_ids:
             continue
         await source_service.upsert_content_document(
             table="gong_documents",
@@ -121,6 +122,7 @@ async def index_gong(source: dict) -> str | None:
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
+            extra={"gong_workspace_id": call_workspace_id},
         )
         present.append(call_id)
 
@@ -159,7 +161,8 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     for call_id, meta in meta_by_id.items():
         if len(refs) >= limit:
             break
-        if _call_workspace_id(meta) not in allowed_workspace_ids:
+        call_workspace_id = _call_workspace_id(meta)
+        if call_workspace_id not in allowed_workspace_ids:
             continue
         await source_service.upsert_content_document(
             table="gong_documents",
@@ -170,6 +173,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
+            extra={"gong_workspace_id": call_workspace_id},
         )
         refs.append(call_id)
 

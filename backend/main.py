@@ -32,6 +32,7 @@ from .routers import (
     memory,
     pins,
     publish,
+    security_audit,
     session_folders,
     sessions,
     shares,
@@ -124,6 +125,7 @@ app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
 app.include_router(publish.router)
+app.include_router(security_audit.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)

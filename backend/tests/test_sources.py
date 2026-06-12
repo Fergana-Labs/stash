@@ -177,6 +177,23 @@ async def test_unknown_source_type_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_add_jira_source_rejects_unsafe_external_ref(client: AsyncClient):
+    api_key, _ = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "jira_project",
+            "external_ref": 'cloud-1:PROJ" OR project IS NOT EMPTY',
+            "display_name": "unsafe",
+        },
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 400
+    assert "Jira projectKey" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, monkeypatch):
     from backend.routers import sources as sources_router
 
@@ -893,6 +910,84 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     )
     blocked_hits = await source_service.search_documents(
         workspace_id=ws, user_id=owner_id, query="blocked board"
+    )
+    assert len(allowed_hits) == 1
+    assert blocked_hits == []
+
+
+@pytest.mark.asyncio
+async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    unconfigured = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="gong_calls",
+        external_ref="calls",
+        display_name="Gong",
+    )
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=UUID(unconfigured["id"]),
+        workspace_id=ws,
+        path="call-1",
+        name="Launch Call",
+        kind="call",
+        content="secret revenue plan",
+        external_ref="call-1",
+        extra={"gong_workspace_id": "W1"},
+    )
+
+    assert await source_service.list_documents(unconfigured) == []
+    assert await source_service.read_document(unconfigured, "call-1") is None
+    assert await source_service.source_item_count(unconfigured) == 0
+    assert (
+        await source_service.search_documents(
+            workspace_id=ws, user_id=owner_id, query="secret revenue"
+        )
+        == []
+    )
+
+    configured = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="gong_calls",
+        external_ref="calls-2",
+        display_name="Gong",
+        settings={"allowed_workspace_ids": ["W1"]},
+    )
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=UUID(configured["id"]),
+        workspace_id=ws,
+        path="call-1",
+        name="Allowed Call",
+        kind="call",
+        content="allowed revenue plan",
+        external_ref="call-1",
+        extra={"gong_workspace_id": "W1"},
+    )
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=UUID(configured["id"]),
+        workspace_id=ws,
+        path="call-2",
+        name="Blocked Call",
+        kind="call",
+        content="blocked revenue plan",
+        external_ref="call-2",
+        extra={"gong_workspace_id": "W2"},
+    )
+
+    docs = await source_service.list_documents(configured)
+    assert [doc["path"] for doc in docs] == ["call-1"]
+    assert await source_service.read_document(configured, "call-2") is None
+    assert await source_service.source_item_count(configured) == 1
+    allowed_hits = await source_service.search_documents(
+        workspace_id=ws, user_id=owner_id, query="allowed revenue"
+    )
+    blocked_hits = await source_service.search_documents(
+        workspace_id=ws, user_id=owner_id, query="blocked revenue"
     )
     assert len(allowed_hits) == 1
     assert blocked_hits == []

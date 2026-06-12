@@ -212,7 +212,6 @@ describe("SkillPageClient", () => {
   });
 
   it("unpublishes from the publish popover", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
     vi.mocked(unpublishSkill).mockResolvedValue(undefined);
 
     renderSkill(<SkillPageClient slug="shared-skill" />);
@@ -220,9 +219,12 @@ describe("SkillPageClient", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Published" }));
     const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Unpublish" }));
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: "Unpublish this skill?",
+    });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "Unpublish" }));
 
     await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
-    vi.unstubAllGlobals();
   });
 
   it("shares the skill folder person-to-person via the generic share button", async () => {

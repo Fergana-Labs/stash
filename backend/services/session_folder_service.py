@@ -15,7 +15,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import permission_service
+from . import permission_service, workspace_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
@@ -57,6 +57,8 @@ def _validate_permissions(
         raise ValueError("Unsupported workspace folder permission")
     if public_permission not in _GENERAL_PERMISSION_VALUES:
         raise ValueError("Unsupported public folder permission")
+    if public_permission == "write":
+        raise ValueError("Public write folder links are not supported")
     if discoverable and public_permission == "none":
         raise ValueError("Discoverable folders must be public")
 
@@ -161,19 +163,18 @@ async def get_folder(folder_id: UUID) -> dict | None:
 
 
 async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
+    """Folder management (rename/delete/visibility) is for the folder owner and
+    workspace owners/editors — never public-link or explicit-share writers."""
     row = await get_pool().fetchrow(
-        "SELECT workspace_id FROM session_folders WHERE id = $1",
+        "SELECT workspace_id, owner_user_id FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not row:
         return False
-    return await permission_service.check_access(
-        "session_folder",
-        folder_id,
-        user_id,
-        workspace_id=row["workspace_id"],
-        require="write",
-    )
+    if row["owner_user_id"] == user_id:
+        return True
+    role = await permission_service.get_workspace_role(row["workspace_id"], user_id)
+    return role in workspace_service.ROLES_CAN_WRITE
 
 
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:

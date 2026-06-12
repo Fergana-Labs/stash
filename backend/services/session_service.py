@@ -127,6 +127,23 @@ async def purge_session(session_row_id: UUID, workspace_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+async def list_trashed_session_artifact_storage_keys(
+    session_row_id: UUID,
+    workspace_id: UUID,
+) -> list[str]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT sa.storage_key "
+        "FROM session_artifacts sa "
+        "JOIN sessions s ON s.id = sa.session_id "
+        "WHERE s.id = $1 AND s.workspace_id = $2 AND s.deleted_at IS NOT NULL "
+        "ORDER BY sa.created_at, sa.id",
+        session_row_id,
+        workspace_id,
+    )
+    return [row["storage_key"] for row in rows]
+
+
 async def list_trashed_sessions(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(

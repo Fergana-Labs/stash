@@ -407,6 +407,61 @@ async def test_session_detail_returns_files_touched_and_artifacts_list(client: A
 
 
 @pytest.mark.asyncio
+async def test_session_purge_deletes_artifacts_from_storage(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    created = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "sess-purge", "agent_name": "codex"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+    session_row_id = UUID(created.json()["id"])
+
+    await pool.execute(
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+        "VALUES ($1, $2, $3, $4)",
+        session_row_id,
+        "screenshots/home.png",
+        "artifact-key",
+        32,
+    )
+
+    deleted_keys: list[str] = []
+
+    async def fake_delete_file(storage_key: str) -> None:
+        deleted_keys.append(storage_key)
+
+    monkeypatch.setattr("backend.routers.sessions.storage_service.delete_file", fake_delete_file)
+
+    trashed = await client.delete(
+        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}",
+        headers=headers,
+    )
+    assert trashed.status_code == 204
+
+    purged = await client.delete(
+        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}/purge",
+        headers=headers,
+    )
+    assert purged.status_code == 204
+    assert deleted_keys == ["artifact-key"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+            session_row_id,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
 async def test_transcript_viewer_includes_streamed_legacy_event_types(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
