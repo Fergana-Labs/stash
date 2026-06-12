@@ -281,6 +281,7 @@ export interface WorkspaceSource {
   sync_error?: string | null;
   last_synced_at?: string | null;
   search_hint?: string | null;
+  settings?: Record<string, unknown> | null;
 }
 
 export interface SourceStatus extends WorkspaceSource {
@@ -465,9 +466,6 @@ export interface PublicSkillCard {
   slug: string;
   title: string;
   description: string;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   view_count: number;
@@ -705,11 +703,9 @@ export async function getActivityTimeline(
   days = 30,
   bucket = "day",
   workspaceId?: string | null,
-  skillId?: string | null,
 ): Promise<ActivityTimeline> {
   const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  const st = skillId ? `&skill_id=${skillId}` : "";
-  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}${ws}${st}`);
+  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}${ws}`);
 }
 
 export async function getKnowledgeDensity(
@@ -723,12 +719,10 @@ export async function getEmbeddingProjection(
   maxPoints = 500,
   source?: string,
   workspaceId?: string | null,
-  skillId?: string | null,
 ): Promise<EmbeddingProjection> {
   const src = source ? `&source=${source}` : "";
   const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  const st = skillId ? `&skill_id=${skillId}` : "";
-  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${src}${ws}${st}`);
+  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${src}${ws}`);
 }
 
 // --- Tables ---
@@ -737,7 +731,7 @@ export async function createTable(
   workspaceId: string | null,
   name: string,
   description?: string,
-  columns?: { name: string; type: string; options?: string[] }[]
+  columns?: { name: string; type: string; options?: string[]; width?: number }[]
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables`, {
     method: "POST",
@@ -777,7 +771,7 @@ export async function deleteTable(
 export async function addTableColumn(
   workspaceId: string | null,
   tableId: string,
-  column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[] }
+  column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[]; width?: number }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns`, {
     method: "POST", body: JSON.stringify(column),
@@ -788,7 +782,7 @@ export async function updateTableColumn(
   workspaceId: string | null,
   tableId: string,
   columnId: string,
-  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[] }
+  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[]; width?: number }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/${columnId}`, {
     method: "PATCH", body: JSON.stringify(updates),
@@ -1139,7 +1133,7 @@ export type SessionFolderVisibility = "private" | "public";
 export type DisplayVisibility = "private" | "shared" | "public";
 
 // The label to show: public link, else "shared" if anyone's been invited, else
-// private. Folders and skills both feed (access, count) in.
+// private. Session folders feed (access, count) in.
 export function displayVisibility(
   access: "private" | "public",
   shareCount: number,
@@ -1259,11 +1253,6 @@ export async function listMySessions(workspaceId?: string, limit = 50): Promise<
   return data.sessions;
 }
 
-export interface MaterializedSession {
-  page: { id: string; workspace_id: string; folder_id: string | null; name: string };
-  folder_id: string;
-}
-
 export interface SessionArtifact {
   id: string;
   file_path: string;
@@ -1315,13 +1304,17 @@ export async function deleteSession(
   });
 }
 
+// Freeze a session transcript into a markdown page inside a folder — how
+// sessions travel into skills (sessions can't live in folders directly).
 export async function materializeSession(
   workspaceId: string,
-  sessionId: string
-): Promise<MaterializedSession> {
-  return apiFetch(`/api/v1/sessions/${sessionId}/materialize`, {
-    method: "POST",
-  });
+  sessionId: string,
+  folderId: string
+): Promise<Page> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}/materialize`,
+    { method: "POST", body: JSON.stringify({ folder_id: folderId }) },
+  );
 }
 
 // --- Pins + recents (per user, per workspace) ---
@@ -1375,226 +1368,155 @@ export async function recordWorkspaceRecent(
   });
 }
 
-// --- Skills (publishable bundles of pages, sessions, and files) ---
+// --- Skills (special folders with a SKILL.md, plus their publish records) ---
 
-export type CollectableObjectType = "folder" | "page" | "table" | "file" | "session";
-
-export interface SkillItemSpec {
-  object_type: CollectableObjectType;
-  object_id: string;
-  position?: number;
-  label_override?: string | null;
-}
-
-export type SkillVisibility = "private" | "public";
-export type SkillGeneralPermission = "none" | "read" | "write";
-
-export interface CreatedSkill {
+// The publish record on a skill folder. Published means publicly readable;
+// null for skills that have never been published.
+export interface SkillPublishInfo {
   id: string;
-  workspace_id: string;
   slug: string;
-  title: string;
-  description: string;
-  owner_id: string;
-  owner_name: string;
-  owner_display_name: string | null;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
-  share_count: number;
-  items: SkillItemSpec[];
-  is_external: boolean;
-  added_to_workspace_id: string | null;
-  forked_from_skill_id: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
-export interface PublishedSkillResult {
-  skill: CreatedSkill;
-  url: string;
-  skill_id: string;
-  skill_slug: string;
-}
-
-export async function createSkill(
-  workspaceId: string,
-  title: string,
-  items: SkillItemSpec[],
-  opts: {
-    description?: string;
-    workspace_permission?: SkillGeneralPermission;
-    public_permission?: SkillGeneralPermission;
-    discoverable?: boolean;
-  } = {}
-): Promise<CreatedSkill> {
-  const skill = await apiFetch<CreatedSkill>(
-    `/api/v1/workspaces/${workspaceId}/skills`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        title,
-        description: opts.description ?? "",
-        workspace_permission: opts.workspace_permission ?? "read",
-        public_permission: opts.public_permission ?? "none",
-        discoverable: opts.discoverable ?? false,
-        cover_image_url: null,
-        items: items.map((it, i) => ({
-          object_type: it.object_type,
-          object_id: it.object_id,
-          position: it.position ?? i,
-          label_override: it.label_override ?? null,
-        })),
-      }),
-    },
-  );
-  trackEvent("web.skill_created", {
-    workspace_id: workspaceId,
-    item_count: items.length,
-    public: (opts.public_permission ?? "none") !== "none",
-    kind: "manual",
-  });
-  return skill;
-}
-
-export async function publishSkill(
-  workspaceId: string,
-  title: string,
-  items: SkillItemSpec[],
-  opts: {
-    description?: string;
-    workspace_permission?: SkillGeneralPermission;
-    public_permission?: Exclude<SkillGeneralPermission, "none">;
-    discoverable?: boolean;
-  } = {}
-): Promise<PublishedSkillResult> {
-  const result = await apiFetch<PublishedSkillResult>(
-    `/api/v1/workspaces/${workspaceId}/skills/publish`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        title,
-        description: opts.description ?? "",
-        workspace_permission: opts.workspace_permission ?? "read",
-        public_permission: opts.public_permission ?? "read",
-        discoverable: opts.discoverable ?? false,
-        cover_image_url: null,
-        items: items.map((it, i) => ({
-          object_type: it.object_type,
-          object_id: it.object_id,
-          position: it.position ?? i,
-          label_override: it.label_override ?? null,
-        })),
-      }),
-    },
-  );
-  trackEvent("web.skill_created", {
-    workspace_id: workspaceId,
-    item_count: items.length,
-    public: true,
-    discoverable: opts.discoverable ?? false,
-    kind: "publish",
-  });
-  return result;
-}
-
-export interface WorkspaceSkill {
-  id: string;
-  workspace_id: string;
-  slug: string;
-  title: string;
-  description: string;
-  owner_id: string;
-  owner_name: string;
-  owner_display_name: string | null;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
-  discoverable: boolean;
-  cover_image_url: string | null;
-  icon_url: string | null;
-  view_count: number;
-  share_count: number;
-  items: SkillItemSpec[];
-  is_external: boolean;
-  added_to_workspace_id: string | null;
-  forked_from_skill_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export type SkillMemberPermission = "read" | "write" | "admin";
-
-export interface SkillMember {
-  user_id: string;
-  name: string;
-  display_name: string;
-  permission: SkillMemberPermission;
-  granted_by: string | null;
-  created_at: string;
-}
-
-export interface PublicSkillItem {
-  object_type: CollectableObjectType;
-  object_id: string;
-  position: number;
-  label: string;
-  inline: Record<string, unknown>;
-}
-
-export interface PublicSkillDetail {
-  skill: WorkspaceSkill;
-  workspace_name: string;
-  items: PublicSkillItem[];
-  can_write: boolean;
-}
-
-// A local skill is a Files folder with a SKILL.md; a shared skill is a
-// publishable bundle. The workspace skills endpoint returns both, kind-tagged.
-export interface LocalSkill {
-  kind: "local";
+// A skill folder: SKILL.md frontmatter + folder stats + publish info.
+export interface Skill {
+  folder_id: string;
   name: string;
   description: string;
   when_to_use: string;
   version: string;
   mcp_exposed: boolean;
-  folder_id: string;
   file_count: number;
   updated_at: string;
+  published: SkillPublishInfo | null;
 }
 
-export type SharedSkill = WorkspaceSkill & { kind: "shared"; name: string };
-
-export type SkillListItem = LocalSkill | SharedSkill;
-
-export async function listSkills(workspaceId: string): Promise<SkillListItem[]> {
-  const data = await apiFetch<{ skills: SkillListItem[] }>(
+export async function listSkills(workspaceId: string): Promise<Skill[]> {
+  const data = await apiFetch<{ skills: Skill[] }>(
     `/api/v1/workspaces/${workspaceId}/skills`
   );
   return data.skills;
 }
 
-export async function listSharedSkills(workspaceId: string): Promise<SharedSkill[]> {
-  const skills = await listSkills(workspaceId);
-  return skills.filter((skill): skill is SharedSkill => skill.kind === "shared");
+// The full publish record, as returned by publish/update.
+export interface WorkspaceSkill {
+  id: string;
+  workspace_id: string;
+  folder_id: string;
+  slug: string;
+  title: string;
+  description: string;
+  owner_id: string;
+  owner_name: string;
+  owner_display_name: string | null;
+  discoverable: boolean;
+  cover_image_url: string | null;
+  icon_url: string | null;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export async function listObjectSkills(
+// Mint (or fetch) the publish record for a skill folder.
+export async function publishSkillFolder(
   workspaceId: string,
-  objectType: CollectableObjectType,
-  objectId: string
-): Promise<WorkspaceSkill[]> {
-  const data = await apiFetch<{ skills: WorkspaceSkill[] }>(
-    `/api/v1/workspaces/${workspaceId}/skills/objects/${objectType}/${objectId}`
+  folderId: string,
+  body: {
+    title?: string;
+    description?: string;
+    discoverable?: boolean;
+    cover_image_url?: string | null;
+    icon_url?: string | null;
+  } = {}
+): Promise<WorkspaceSkill> {
+  const skill = await apiFetch<WorkspaceSkill>(
+    `/api/v1/workspaces/${workspaceId}/skills`,
+    {
+      method: "POST",
+      body: JSON.stringify({ folder_id: folderId, ...body }),
+    },
   );
+  trackEvent("web.skill_published", { workspace_id: workspaceId });
+  return skill;
+}
+
+// A skill folder someone shared with me person-to-person (a folder share on
+// a folder that contains a SKILL.md). slug is set when it's also published.
+export interface SharedSkill {
+  folder_id: string;
+  name: string;
+  description: string;
+  workspace_id: string;
+  workspace_name: string;
+  shared_by: string | null;
+  permission: "read" | "write";
+  slug: string | null;
+}
+
+export async function listSkillsSharedWithMe(): Promise<SharedSkill[]> {
+  const data = await apiFetch<{ skills: SharedSkill[] }>("/api/v1/me/shared-skills");
   return data.skills;
 }
 
-export async function deleteSkill(skillId: string): Promise<void> {
+// Inlined folder contents for the public skill renderer.
+export interface PublicSkillSubfolder {
+  id: string;
+  name: string;
+  parent_folder_id: string | null;
+  path: string[];
+}
+
+export interface PublicSkillPage {
+  id: string;
+  name: string;
+  content_type: "markdown" | "html";
+  content_markdown: string;
+  content_html: string;
+  html_layout: "responsive" | "fixed-aspect";
+  updated_at: string;
+  folder_path: string[];
+}
+
+export interface PublicSkillFile {
+  id: string;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  url: string;
+  created_at: string;
+  linked_table_id: string | null;
+  folder_path: string[];
+}
+
+export interface PublicSkillTable {
+  id: string;
+  name: string;
+  description: string;
+  columns: { id?: string; name: string; type?: string }[];
+  rows: { data: Record<string, unknown>; row_order: number }[];
+  folder_path: string[];
+}
+
+export interface PublicSkillContents {
+  subfolders: PublicSkillSubfolder[];
+  pages: PublicSkillPage[];
+  files: PublicSkillFile[];
+  tables: PublicSkillTable[];
+}
+
+export interface PublicSkillDetail {
+  skill: WorkspaceSkill;
+  workspace_name: string;
+  folder_name: string;
+  contents: PublicSkillContents;
+  can_write: boolean;
+}
+
+// Unpublish: deletes the publish record only — the folder stays a skill.
+export async function unpublishSkill(skillId: string): Promise<void> {
   await apiFetch(`/api/v1/skills/${skillId}`, { method: "DELETE" });
 }
 
@@ -1603,12 +1525,9 @@ export async function updateSkill(
   data: {
     title?: string;
     description?: string;
-    workspace_permission?: SkillGeneralPermission;
-    public_permission?: SkillGeneralPermission;
     discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
-    items?: SkillItemSpec[];
   }
 ): Promise<WorkspaceSkill> {
   return apiFetch(`/api/v1/skills/${skillId}`, {
@@ -1617,97 +1536,20 @@ export async function updateSkill(
   });
 }
 
-export async function listSkillMembers(skillId: string): Promise<SkillMember[]> {
-  const data = await apiFetch<{ members: SkillMember[] }>(
-    `/api/v1/skills/${skillId}/members`
-  );
-  return data.members;
-}
-
-export async function addSkillMember(
-  skillId: string,
-  userId: string,
-  permission: SkillMemberPermission
-): Promise<SkillMember> {
-  return apiFetch(`/api/v1/skills/${skillId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeSkillMember(skillId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/skills/${skillId}/members/${userId}`, { method: "DELETE" });
-}
-
 export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
   return apiFetch(`/api/v1/skills/${slug}`);
 }
 
-export async function createSharedSkillPage(
-  skillId: string,
-  data: {
-    name: string;
-    content: string;
-    content_type?: "markdown" | "html";
-    content_html?: string;
-    html_layout?: "responsive" | "fixed-aspect";
-  }
-): Promise<Page> {
-  return apiFetch(`/api/v1/skills/${skillId}/shared-pages`, {
-    method: "POST",
-    body: JSON.stringify({
-      name: data.name,
-      content: data.content,
-      content_type: data.content_type ?? "markdown",
-      content_html: data.content_html ?? "",
-      html_layout: data.html_layout ?? "responsive",
-    }),
-  });
-}
-
+// Fork: deep folder copy into the caller's workspace, landing as a private
+// skill folder.
 export async function forkSkill(
   slug: string,
   workspaceId: string
-): Promise<WorkspaceSkill> {
+): Promise<{ folder_id: string; name: string }> {
   return apiFetch(`/api/v1/skills/${slug}/add-to-workspace`, {
     method: "POST",
     body: JSON.stringify({ workspace_id: workspaceId }),
   });
-}
-
-export async function removeForkedSkill(
-  workspaceId: string,
-  skillId: string
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/external-skills/${skillId}`, {
-    method: "DELETE",
-  });
-}
-
-// --- Skill invites ---
-
-export interface SkillInvite {
-  id: string;
-  skill_id: string;
-  skill_slug: string;
-  skill_title: string;
-  skill_description: string;
-  source_workspace_id: string;
-  source_workspace_name: string;
-  invited_by_user_id: string;
-  invited_by_name: string;
-  invited_by_display_name: string;
-  permission: SkillMemberPermission;
-  created_at: string;
-}
-
-export async function listSkillInvites(): Promise<SkillInvite[]> {
-  const data = await apiFetch<{ invites: SkillInvite[] }>("/api/v1/skill-invites");
-  return data.invites;
-}
-
-export async function dismissSkillInvite(inviteId: string): Promise<void> {
-  await apiFetch(`/api/v1/skill-invites/${inviteId}/dismiss`, { method: "POST" });
 }
 
 // --- Workspace-wide page index ---
@@ -1977,22 +1819,9 @@ export interface WorkspaceFiles {
   files: WorkspaceFile[];
 }
 
-export interface WorkspaceSidebarSkill {
-  id: string;
-  workspace_id: string;
-  slug: string;
-  title: string;
-  description: string;
-  access: SkillVisibility;
-  workspace_permission: SkillGeneralPermission;
-  public_permission: SkillGeneralPermission;
-  discoverable: boolean;
-  is_external: boolean;
-  forked_from_skill_id: string | null;
-  item_count: number;
-  items?: SkillItemSpec[];
-  updated_at: string;
-}
+// Sidebar payload carries the unified skill-folder list (same shape as
+// GET /{ws}/skills items).
+export type WorkspaceSidebarSkill = Skill;
 
 export interface WorkspaceOverview {
   sessions: WorkspaceSidebarSession[];
@@ -2038,6 +1867,7 @@ export async function getWorkspaceSidebar(workspaceId: string): Promise<Workspac
 export interface FolderBreadcrumb {
   id: string;
   name: string;
+  is_skill: boolean;
 }
 export interface FolderSubfolder {
   id: string;
@@ -2046,7 +1876,7 @@ export interface FolderSubfolder {
   file_count: number;
 }
 export interface FolderContents {
-  folder: { id: string; name: string; parent_folder_id: string | null };
+  folder: { id: string; name: string; parent_folder_id: string | null; is_skill: boolean };
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
   pages: { id: string; name: string; content_type: "markdown" | "html" }[];

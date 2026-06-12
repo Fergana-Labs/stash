@@ -44,6 +44,9 @@ import { type GridItem, type ItemKind } from "./kind";
 interface Props {
   workspaceId: string;
   folderId: string | null;
+  // Base path for folder links. Defaults to the plain Files folder route;
+  // the skill browser passes its own route so navigation stays in skill-land.
+  folderHrefBase?: string;
 }
 
 // Mime type carried by drag events to identify a file-browser drag. Keeps the
@@ -66,7 +69,7 @@ type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
-export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
+export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHrefBase }: Props) {
   const router = useRouter();
 
   const [tree, setTree] = useState<WorkspaceTree | null>(null);
@@ -374,7 +377,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
 
   function hrefForItem(item: GridItem): string {
     if (item.kind === "folder") {
-      return `/workspaces/${workspaceId}/folders/${item.id}`;
+      return `${folderHrefBase ?? `/workspaces/${workspaceId}/folders`}/${item.id}`;
     }
     if (item.kind === "page" || item.kind === "html") {
       return `/p/${item.id}`;

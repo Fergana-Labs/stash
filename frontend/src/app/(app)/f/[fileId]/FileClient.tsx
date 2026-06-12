@@ -21,6 +21,7 @@ import {
   updateFile,
   type FolderBreadcrumb,
 } from "../../../../lib/api";
+import { findInSkillContents } from "../../../../lib/localSkill";
 import type { FileInfo } from "../../../../lib/types";
 import FileContentRenderer, {
   isImage,
@@ -101,31 +102,22 @@ function FileViewerPageInner() {
     try {
       const skill = await getPublicSkill(skillSlug);
       setSkillTitle(skill.skill.title);
-      const item = skill.items.find(
-        (it) => it.object_type === "file" && it.object_id === fileId
-      );
-      if (!item || !item.inline) {
+      const item = findInSkillContents(skill.contents, "file", fileId);
+      if (!item) {
         setError("File isn't in this Skill.");
         return false;
       }
-      const inline = item.inline as {
-        name?: string;
-        content_type?: string;
-        size_bytes?: number;
-        url?: string;
-        created_at?: string;
-      };
       const synth: FileInfo = {
         id: fileId,
         workspace_id: skill.skill.workspace_id,
         folder_id: null,
-        name: inline.name ?? item.label,
-        content_type: inline.content_type ?? "",
-        size_bytes: inline.size_bytes ?? 0,
-        url: inline.url ?? "",
+        name: item.name,
+        content_type: item.content_type ?? "",
+        size_bytes: item.size_bytes ?? 0,
+        url: item.url ?? "",
         app_url: `/f/${fileId}?skill=${skillSlug}`,
         uploaded_by: "",
-        created_at: inline.created_at ?? "",
+        created_at: item.created_at ?? "",
       };
       setFile(synth);
       setFolderChain([]);

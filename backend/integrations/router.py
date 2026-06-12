@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from uuid import UUID
 
+import httpx
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -39,6 +40,9 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 # How long a `state` blob is valid between /connect and /callback.
 STATE_TTL = timedelta(minutes=10)
+SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
+SLACK_CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
+SLACK_CHANNEL_LIMIT = 100
 
 
 def _encode_state(
@@ -114,6 +118,12 @@ class ProviderListItem(BaseModel):
 
 class IntegrationsListResponse(BaseModel):
     providers: list[ProviderListItem]
+
+
+class SlackChannelSummary(BaseModel):
+    id: str
+    name: str
+    is_private: bool
 
 
 def _provider_disabled_reason(provider: str) -> str | None:
@@ -411,6 +421,39 @@ async def google_picker_token(current_user: dict = Depends(get_current_user)):
         api_key=settings.GOOGLE_PICKER_API_KEY,
         app_id=settings.GOOGLE_PICKER_APP_ID,
     )
+
+
+@router.get("/slack/channels", response_model=list[SlackChannelSummary])
+async def slack_list_channels(current_user: dict = Depends(get_current_user)):
+    access_token = await storage.get_valid_token(current_user["id"], "slack")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        resp = await client.get(
+            SLACK_CONVERSATIONS_LIST_URL,
+            params={"types": SLACK_CHANNEL_TYPES, "limit": SLACK_CHANNEL_LIMIT},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+
+    if not payload.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
+        )
+
+    channels: list[SlackChannelSummary] = []
+    for channel in payload.get("channels", []):
+        channel_id = channel.get("id")
+        if not channel_id:
+            continue
+        channels.append(
+            SlackChannelSummary(
+                id=channel_id,
+                name=channel.get("name") or channel.get("user") or channel_id,
+                is_private=bool(channel.get("is_private")),
+            )
+        )
+    return channels
 
 
 class GitHubRepoSummary(BaseModel):

@@ -1,153 +1,74 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
-  addSkillMember,
-  ApiError,
-  getMe,
-  listSkillMembers,
-  removeSkillMember,
-  searchUsers,
+  publishSkillFolder,
+  unpublishSkill,
   updateSkill,
-  type PublicSkillDetail,
-  type SkillGeneralPermission,
-  type SkillMember,
-  type SkillMemberPermission,
+  type SkillPublishInfo,
+  type WorkspaceSkill,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
-import type { UserSearchResult } from "../../lib/types";
 
-type SkillVisibility = "private" | "workspace" | "public";
 type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
-const PERMISSION_OPTIONS: { value: SkillMemberPermission; label: string }[] = [
-  { value: "read", label: "Read" },
-  { value: "write", label: "Write" },
-  { value: "admin", label: "Admin" },
-];
-
-const VISIBILITY_OPTIONS: { value: SkillVisibility; label: string }[] = [
-  { value: "private", label: "Private" },
-  { value: "workspace", label: "Workspace" },
-  { value: "public", label: "Public" },
-];
-
-const WORKSPACE_PERMISSION_OPTIONS: { value: SkillGeneralPermission; label: string }[] = [
-  { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
-];
-
-const PUBLIC_PERMISSION_OPTIONS: { value: SkillGeneralPermission; label: string }[] = [
-  { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
-];
-
-const PALETTE = [
-  { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-orange-200", fg: "text-orange-800" },
-  { bg: "bg-emerald-200", fg: "text-emerald-800" },
-  { bg: "bg-amber-200", fg: "text-amber-900" },
-  { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-teal-200", fg: "text-teal-800" },
-];
-
-function visibilityForPermissions(
-  workspacePermission: SkillGeneralPermission,
-  publicPermission: SkillGeneralPermission
-): SkillVisibility {
-  if (publicPermission !== "none") return "public";
-  if (workspacePermission !== "none") return "workspace";
-  return "private";
-}
-
-function permissionsForVisibility(
-  visibility: SkillVisibility,
-  workspacePermission: SkillGeneralPermission,
-  publicPermission: SkillGeneralPermission
-): {
-  workspacePermission: SkillGeneralPermission;
-  publicPermission: SkillGeneralPermission;
-} {
-  if (visibility === "private") {
-    return { workspacePermission: "none", publicPermission: "none" };
-  }
-  if (visibility === "workspace") {
-    return {
-      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
-      publicPermission: "none",
-    };
-  }
+function publishInfoFromRecord(record: WorkspaceSkill): SkillPublishInfo {
   return {
-    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
-    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+    id: record.id,
+    slug: record.slug,
+    discoverable: record.discoverable,
+    cover_image_url: record.cover_image_url,
+    icon_url: record.icon_url,
+    view_count: record.view_count,
   };
 }
 
+// Publish button for a skill folder. Published = publicly readable: the
+// popover mints the publish record, then manages the public URL, the
+// Discover listing, and unpublishing. Person-to-person sharing is the
+// folder's generic ResourceShareButton, rendered next to this one.
 export default function SkillShareButton({
-  skill,
-  canWrite,
-  onChanged,
+  workspaceId,
+  folderId,
+  publish: publishProp,
+  onPublishChange,
 }: {
-  skill: PublicSkillDetail["skill"];
-  canWrite: boolean;
-  onChanged: () => Promise<void>;
+  workspaceId: string;
+  folderId: string;
+  publish: SkillPublishInfo | null;
+  onPublishChange?: (publish: SkillPublishInfo | null) => void;
 }) {
+  const [publish, setPublish] = useState<SkillPublishInfo | null>(publishProp);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [workspacePermission, setWorkspacePermission] =
-    useState<SkillGeneralPermission>(skill.workspace_permission);
-  const [publicPermission, setPublicPermission] =
-    useState<SkillGeneralPermission>(skill.public_permission);
-  const [discoverable, setDiscoverable] = useState(skill.discoverable);
-  const [saving, setSaving] = useState(false);
-  const [shareMessage, setShareMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>("idle");
   const [handoffMessage, setHandoffMessage] = useState("");
-  const [members, setMembers] = useState<SkillMember[]>([]);
-  const [meId, setMeId] = useState<string | null>(null);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [canManageMembers, setCanManageMembers] = useState(false);
-  const [memberBusy, setMemberBusy] = useState(false);
-  const [memberMessage, setMemberMessage] = useState("");
-  const [userQuery, setUserQuery] = useState("");
-  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
-  const [newMemberPermission, setNewMemberPermission] =
-    useState<SkillMemberPermission>("read");
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
-    setWorkspacePermission(skill.workspace_permission);
-    setPublicPermission(skill.public_permission);
-    setDiscoverable(skill.discoverable);
-  }, [skill.workspace_permission, skill.public_permission, skill.discoverable]);
+    setPublish(publishProp);
+  }, [publishProp]);
 
-  const loadMembers = useCallback(async () => {
-    setMembersLoading(true);
-    setMemberMessage("");
-    try {
-      const [nextMembers, me] = await Promise.all([
-        listSkillMembers(skill.id),
-        getMe(),
-      ]);
-      setMembers(nextMembers);
-      setMeId(me.id);
-      setCanManageMembers(true);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 403) {
-        setMembers([]);
-        setCanManageMembers(false);
-        return;
-      }
-      setMemberMessage(e instanceof Error ? e.message : "Failed to load members.");
-    } finally {
-      setMembersLoading(false);
-    }
-  }, [skill.id]);
+  function applyPublish(next: SkillPublishInfo | null) {
+    setPublish(next);
+    onPublishChange?.(next);
+    resetSkillNavigationCache();
+  }
+
+  const ensurePublished = useCallback(async (): Promise<SkillPublishInfo> => {
+    if (publish) return publish;
+    const record = await publishSkillFolder(workspaceId, folderId);
+    const info = publishInfoFromRecord(record);
+    setPublish(info);
+    onPublishChange?.(info);
+    resetSkillNavigationCache();
+    return info;
+  }, [publish, workspaceId, folderId, onPublishChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -162,24 +83,32 @@ export default function SkillShareButton({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !canWrite) return;
-
-    setShareMessage("");
-    setMemberMessage("");
-    setUserQuery("");
-    setUserResults([]);
+    if (!open) return;
+    setMessage("");
     setCopied(false);
-    void loadMembers();
-  }, [open, canWrite, loadMembers]);
+  }, [open]);
+
+  async function publishNow() {
+    setBusy(true);
+    setMessage("");
+    try {
+      await ensurePublished();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Could not publish skill.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function copyLink() {
+    if (!publish) return;
     try {
-      await navigator.clipboard.writeText(absoluteUrl(`/skills/${skill.slug}`));
+      await navigator.clipboard.writeText(absoluteUrl(`/skills/${publish.slug}`));
       setCopied(true);
-      setShareMessage("Link copied.");
+      setMessage("Link copied.");
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
-      setShareMessage("Failed to copy link.");
+      setMessage("Failed to copy link.");
     }
   }
 
@@ -188,23 +117,8 @@ export default function SkillShareButton({
     setHandoffStatus("copying");
     setHandoffMessage("");
     try {
-      if (publicPermission === "none") {
-        if (!canWrite) {
-          throw new Error("Only skill editors can create public agent links.");
-        }
-        const updated = await updateSkill(skill.id, {
-          workspace_permission:
-            workspacePermission === "none" ? "read" : workspacePermission,
-          public_permission: "read",
-          discoverable: false,
-        });
-        setWorkspacePermission(updated.workspace_permission);
-        setPublicPermission(updated.public_permission);
-        setDiscoverable(updated.discoverable);
-        resetSkillNavigationCache();
-      }
-
-      await navigator.clipboard.writeText(agentHandoffUrl(skill.slug));
+      const current = await ensurePublished();
+      await navigator.clipboard.writeText(agentHandoffUrl(current.slug));
       setHandoffStatus("copied");
       window.setTimeout(() => setHandoffStatus("idle"), 1600);
     } catch (e) {
@@ -217,129 +131,35 @@ export default function SkillShareButton({
     }
   }
 
-  async function applyGeneralAccess(
-    nextWorkspacePermission: SkillGeneralPermission,
-    nextPublicPermission: SkillGeneralPermission,
-  ) {
-    const nextDiscoverable = nextPublicPermission === "none" ? false : discoverable;
-    setSaving(true);
-    setShareMessage("");
-    try {
-      const updated = await updateSkill(skill.id, {
-        workspace_permission: nextWorkspacePermission,
-        public_permission: nextPublicPermission,
-        discoverable: nextDiscoverable,
-      });
-      setWorkspacePermission(updated.workspace_permission);
-      setPublicPermission(updated.public_permission);
-      setDiscoverable(updated.discoverable);
-      resetSkillNavigationCache();
-      await onChanged();
-    } catch (e) {
-      setShareMessage(e instanceof Error ? e.message : "Could not update visibility.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function toggleDiscoverable(nextDiscoverable: boolean) {
-    setSaving(true);
-    setShareMessage("");
+    if (!publish) return;
+    setBusy(true);
+    setMessage("");
     try {
-      const updated = await updateSkill(skill.id, {
-        workspace_permission: workspacePermission,
-        public_permission: publicPermission,
-        discoverable: nextDiscoverable,
-      });
-      setWorkspacePermission(updated.workspace_permission);
-      setPublicPermission(updated.public_permission);
-      setDiscoverable(updated.discoverable);
-      resetSkillNavigationCache();
-      await onChanged();
+      const updated = await updateSkill(publish.id, { discoverable: nextDiscoverable });
+      applyPublish(publishInfoFromRecord(updated));
     } catch (e) {
-      setShareMessage(e instanceof Error ? e.message : "Could not update Discover.");
+      setMessage(e instanceof Error ? e.message : "Could not update Discover.");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  async function searchForUsers(e: FormEvent) {
-    e.preventDefault();
-    const query = userQuery.trim();
-    if (!query) return;
+  async function unpublish() {
+    if (!publish) return;
+    if (!confirm("Unpublish this skill? Its public link will stop working.")) return;
 
-    setMemberBusy(true);
-    setMemberMessage("");
+    setBusy(true);
+    setMessage("");
     try {
-      setUserResults(await searchUsers(query));
+      await unpublishSkill(publish.id);
+      applyPublish(null);
+      setOpen(false);
     } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not search users.");
+      setMessage(e instanceof Error ? e.message : "Could not unpublish skill.");
     } finally {
-      setMemberBusy(false);
+      setBusy(false);
     }
-  }
-
-  async function addMember(userId: string) {
-    setMemberBusy(true);
-    setMemberMessage("");
-    try {
-      await addSkillMember(skill.id, userId, newMemberPermission);
-      await loadMembers();
-      setUserQuery("");
-      setUserResults([]);
-      setMemberMessage("Added.");
-      resetSkillNavigationCache();
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not add member.");
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  async function changeMemberPermission(
-    userId: string,
-    permission: SkillMemberPermission,
-  ) {
-    setMemberBusy(true);
-    setMemberMessage("");
-    try {
-      await addSkillMember(skill.id, userId, permission);
-      await loadMembers();
-      setMemberMessage("Updated.");
-      resetSkillNavigationCache();
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not update member.");
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  async function deleteMember(userId: string) {
-    if (!confirm("Remove this member from the skill?")) return;
-
-    setMemberBusy(true);
-    setMemberMessage("");
-    try {
-      await removeSkillMember(skill.id, userId);
-      await loadMembers();
-      resetSkillNavigationCache();
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not remove member.");
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  const ownerLabel = skill.owner_display_name || skill.owner_name;
-  const visibility = visibilityForPermissions(workspacePermission, publicPermission);
-
-  function applyVisibility(nextVisibility: SkillVisibility) {
-    const next = permissionsForVisibility(
-      nextVisibility,
-      workspacePermission,
-      publicPermission
-    );
-    void applyGeneralAccess(next.workspacePermission, next.publicPermission);
   }
 
   return (
@@ -360,381 +180,88 @@ export default function SkillShareButton({
       </button>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
         className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
-        Share
+        {publish ? "Published" : "Publish"}
       </button>
-      {handoffMessage && !open && (
+      {(handoffMessage || (message && !open)) && (
         <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
-          {handoffMessage}
+          {handoffMessage || message}
         </div>
       )}
       {open && (
         <div
           role="dialog"
-          aria-label={`Share ${skill.title}`}
+          aria-label="Publish skill"
           className="absolute right-0 top-full z-40 mt-1.5 w-[360px] rounded-lg border border-border bg-base p-3 shadow-lg"
         >
-          <div className="sys-label mb-1">Public URL</div>
-          <div className="flex gap-1.5">
-            <input
-              readOnly
-              value={absoluteUrl(`/skills/${skill.slug}`)}
-              className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-mono text-foreground"
-            />
-            <button
-              type="button"
-              onClick={() => void copyLink()}
-              className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised"
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-
-          {canWrite && (
+          {!publish ? (
             <>
-              <div className="sys-label mb-1 mt-3">General access</div>
-              <div className="flex flex-col gap-1">
-                <VisibilityAccessRow
-                  label="Visibility"
-                  hint="Choose who can open this skill"
-                  value={visibility}
-                  options={VISIBILITY_OPTIONS}
-                  onChange={applyVisibility}
+              <p className="m-0 text-[12.5px] leading-relaxed text-muted">
+                Publishing creates a public, read-only page for this skill.
+                Anyone with the link can view it.
+              </p>
+              <button
+                type="button"
+                onClick={() => void publishNow()}
+                disabled={busy}
+                className="mt-3 w-full rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+              >
+                {busy ? "Publishing..." : "Publish"}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="sys-label mb-1">Public URL</div>
+              <div className="flex gap-1.5">
+                <input
+                  readOnly
+                  value={absoluteUrl(`/skills/${publish.slug}`)}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-mono text-foreground"
                 />
-                <GeneralAccessRow
-                  label="Workspace"
-                  hint="Anyone in the owning workspace"
-                  value={workspacePermission}
-                  options={WORKSPACE_PERMISSION_OPTIONS}
-                  onChange={(permission) =>
-                    void applyGeneralAccess(permission, publicPermission)
-                  }
-                />
-                <GeneralAccessRow
-                  label="Public"
-                  hint="Anyone with the URL"
-                  value={publicPermission}
-                  options={PUBLIC_PERMISSION_OPTIONS}
-                  onChange={(permission) =>
-                    void applyGeneralAccess(workspacePermission, permission)
-                  }
-                />
+                <button
+                  type="button"
+                  onClick={() => void copyLink()}
+                  className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
               </div>
 
-              {publicPermission !== "none" && (
-                <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                  <input
-                    type="checkbox"
-                    checked={discoverable}
-                    onChange={(e) => void toggleDiscoverable(e.target.checked)}
-                  />
-                  <span className="text-[12px] text-foreground">
-                    List on Discover
-                  </span>
-                </label>
-              )}
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
+                <input
+                  type="checkbox"
+                  checked={publish.discoverable}
+                  disabled={busy}
+                  onChange={(e) => void toggleDiscoverable(e.target.checked)}
+                />
+                <span className="text-[12px] text-foreground">List on Discover</span>
+              </label>
 
-              <div className="mt-4 border-t border-border pt-3">
-                <div className="sys-label mb-2">Members</div>
-                <OwnerRow label={ownerLabel} username={skill.owner_name} />
-
-                {membersLoading && (
-                  <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Loading members...
-                  </div>
-                )}
-
-                {!membersLoading && canManageMembers && (
-                  <>
-                    <ul className="mt-2 max-h-44 overflow-y-auto pr-1">
-                      {members.map((member) => (
-                        <MemberRow
-                          key={member.user_id}
-                          member={member}
-                          isMe={member.user_id === meId}
-                          busy={memberBusy}
-                          onPermissionChange={(permission) =>
-                            void changeMemberPermission(member.user_id, permission)
-                          }
-                          onRemove={
-                            meId && member.user_id !== meId
-                              ? () => void deleteMember(member.user_id)
-                              : null
-                          }
-                        />
-                      ))}
-                      {members.length === 0 && (
-                        <li className="py-2 text-[12px] text-muted">
-                          No explicit members yet.
-                        </li>
-                      )}
-                    </ul>
-
-                    <form onSubmit={searchForUsers} className="mt-3">
-                      <div className="sys-label mb-1">Add member</div>
-                      <div className="flex gap-1.5">
-                        <input
-                          value={userQuery}
-                          onChange={(e) => setUserQuery(e.target.value)}
-                          placeholder="Search users"
-                          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
-                        />
-                        <PermissionSelect
-                          value={newMemberPermission}
-                          onChange={setNewMemberPermission}
-                          ariaLabel="New member permission"
-                          disabled={memberBusy}
-                        />
-                        <button
-                          type="submit"
-                          disabled={memberBusy || !userQuery.trim()}
-                          className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised disabled:opacity-40"
-                        >
-                          Search
-                        </button>
-                      </div>
-                      {userResults.length > 0 && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {userResults.map((result) => (
-                            <button
-                              key={result.id}
-                              type="button"
-                              onClick={() => void addMember(result.id)}
-                              className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-raised"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-[13px] font-medium text-foreground">
-                                  {result.display_name || result.name}
-                                </span>
-                                <span className="block truncate text-[11.5px] text-muted">
-                                  @{result.name}
-                                </span>
-                              </span>
-                              <span className="text-[11.5px] text-muted">Add</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </form>
-                  </>
-                )}
-
-                {!membersLoading && !canManageMembers && (
-                  <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Only skill admins can manage members.
-                  </div>
-                )}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-[11.5px] text-muted">
+                  {publish.view_count} view{publish.view_count === 1 ? "" : "s"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void unpublish()}
+                  disabled={busy}
+                  className="text-[11.5px] font-medium text-red-500 hover:underline disabled:opacity-40"
+                >
+                  Unpublish
+                </button>
               </div>
-
-              {saving && (
-                <div className="mt-2 text-[11px] text-muted">Saving...</div>
-              )}
             </>
           )}
 
-          {(shareMessage || memberMessage) && (
-            <div className="mt-2 text-[12px] text-muted">
-              {memberMessage || shareMessage}
-            </div>
-          )}
+          {message && <div className="mt-2 text-[12px] text-muted">{message}</div>}
         </div>
       )}
     </div>
   );
-}
-
-function OwnerRow({ label, username }: { label: string; username: string }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-md border border-border bg-surface px-2 py-1.5 text-[13px]">
-      <Avatar label={label} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-foreground">{label}</span>
-        <span className="block truncate text-[11.5px] text-muted">@{username}</span>
-      </span>
-      <span className="rounded bg-base px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-        admin
-      </span>
-    </div>
-  );
-}
-
-function MemberRow({
-  member,
-  isMe,
-  busy,
-  onPermissionChange,
-  onRemove,
-}: {
-  member: SkillMember;
-  isMe: boolean;
-  busy: boolean;
-  onPermissionChange: (permission: SkillMemberPermission) => void;
-  onRemove: (() => void) | null;
-}) {
-  const label = member.display_name || member.name;
-
-  return (
-    <li className="flex items-center gap-2.5 py-1 text-[13px]">
-      <Avatar label={label} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-foreground">
-          {label}
-          {isMe ? <span className="ml-1 text-[10px] text-muted">(you)</span> : null}
-        </span>
-        <span className="block truncate text-[11.5px] text-muted">@{member.name}</span>
-      </span>
-      <PermissionSelect
-        value={member.permission}
-        onChange={onPermissionChange}
-        ariaLabel={`Permission for ${member.name}`}
-        disabled={busy}
-      />
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={busy}
-          className="text-[11.5px] text-red-500 hover:underline disabled:opacity-40"
-        >
-          Remove
-        </button>
-      )}
-    </li>
-  );
-}
-
-function PermissionSelect({
-  value,
-  onChange,
-  ariaLabel,
-  disabled,
-}: {
-  value: SkillMemberPermission;
-  onChange: (value: SkillMemberPermission) => void;
-  ariaLabel: string;
-  disabled: boolean;
-}) {
-  return (
-    <select
-      aria-label={ariaLabel}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value as SkillMemberPermission)}
-      className="h-7 rounded border border-border bg-base px-1.5 text-[11.5px] text-foreground outline-none focus:border-[var(--color-brand-400)] disabled:opacity-40"
-    >
-      {PERMISSION_OPTIONS.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function Avatar({ label }: { label: string }) {
-  const color = colorFor(label);
-  return (
-    <span
-      className={
-        "inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-semibold " +
-        color.bg +
-        " " +
-        color.fg
-      }
-    >
-      {initials(label)}
-    </span>
-  );
-}
-
-function VisibilityAccessRow({
-  label,
-  hint,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: SkillVisibility;
-  options: { value: SkillVisibility; label: string }[];
-  onChange: (next: SkillVisibility) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-surface px-2 py-1.5 text-[12px]">
-      <span className="min-w-0">
-        <span className="block font-medium text-foreground">{label}</span>
-        <span className="block text-[11px] text-muted">{hint}</span>
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as SkillVisibility)}
-        className="ml-auto h-7 rounded border border-border bg-base px-1.5 text-[11.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
-        aria-label={label}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function GeneralAccessRow({
-  label,
-  hint,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: SkillGeneralPermission;
-  options: { value: SkillGeneralPermission; label: string }[];
-  onChange: (next: SkillGeneralPermission) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-surface px-2 py-1.5 text-[12px]">
-      <span className="min-w-0">
-        <span className="block font-medium text-foreground">{label}</span>
-        <span className="block text-[11px] text-muted">{hint}</span>
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as SkillGeneralPermission)}
-        className="ml-auto h-7 rounded border border-border bg-base px-1.5 text-[11.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
-        aria-label={`${label} access`}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function colorFor(name: string) {
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
-
-function initials(label: string): string {
-  return label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
 }
 
 function absoluteUrl(path: string): string {
