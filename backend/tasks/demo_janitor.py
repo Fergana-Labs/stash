@@ -51,14 +51,18 @@ async def _purge_demo_orphans() -> dict:
     if workspace_id is None:
         return {"pages": 0, "sessions": 0, "skipped": "no demo workspace"}
 
+    # A page is orphaned when it sits outside every published skill folder
+    # subtree (published demo skills are folder-shaped) and outside the KB.
     page_result = await pool.execute(
+        "WITH RECURSIVE skill_tree AS ("
+        "  SELECT folder_id AS id FROM skills WHERE workspace_id = $1"
+        "  UNION"
+        "  SELECT f.id FROM folders f JOIN skill_tree st ON f.parent_folder_id = st.id"
+        ") "
         "DELETE FROM pages p "
         "WHERE p.workspace_id = $1 "
         f"  AND p.created_at < now() - interval '{ORPHAN_AGE_HOURS} hours' "
-        "  AND NOT EXISTS ("
-        "    SELECT 1 FROM skill_items si "
-        "    WHERE si.object_type = 'page' AND si.object_id = p.id"
-        "  ) "
+        "  AND (p.folder_id IS NULL OR p.folder_id NOT IN (SELECT id FROM skill_tree)) "
         "  AND NOT EXISTS ("
         "    SELECT 1 FROM folders f "
         "    WHERE f.id = p.folder_id AND f.name = $2"
@@ -66,14 +70,12 @@ async def _purge_demo_orphans() -> dict:
         workspace_id,
         DEMO_KB_FOLDER_NAME,
     )
+    # Sessions can't live in skills anymore — published demos materialize the
+    # transcript as a page, so old sessions purge unconditionally by age.
     session_result = await pool.execute(
         "DELETE FROM sessions s "
         "WHERE s.workspace_id = $1 "
-        f"  AND s.started_at < now() - interval '{ORPHAN_AGE_HOURS} hours' "
-        "  AND NOT EXISTS ("
-        "    SELECT 1 FROM skill_items si "
-        "    WHERE si.object_type = 'session' AND si.object_id = s.id"
-        "  )",
+        f"  AND s.started_at < now() - interval '{ORPHAN_AGE_HOURS} hours'",
         workspace_id,
     )
 

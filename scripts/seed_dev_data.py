@@ -13,7 +13,6 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -213,7 +212,10 @@ SAMPLE_SESSIONS = [
             ("prompt", "I need a production-safe rollout plan for this UI change."),
             ("assistant", "I drafted a staged rollout with canary and rollback points."),
             ("tool_call", "search_web"),
-            ("assistant", "I found three comparable strategies and picked canary + manual smoke checks."),
+            (
+                "assistant",
+                "I found three comparable strategies and picked canary + manual smoke checks.",
+            ),
         ],
     },
     {
@@ -238,7 +240,10 @@ SAMPLE_SESSIONS = [
         "events": [
             ("prompt", "Can we improve local file ingest reliability?"),
             ("assistant", "I reviewed upload flow and added better status defaults."),
-            ("assistant", "I confirmed file rows remain queryable even before extraction completes."),
+            (
+                "assistant",
+                "I confirmed file rows remain queryable even before extraction completes.",
+            ),
         ],
     },
     {
@@ -246,7 +251,10 @@ SAMPLE_SESSIONS = [
         "agent_name": "agent",
         "cwd": "/workspace/backend",
         "created_by": "demo_aria",
-        "files_touched": ["backend/services/memory_service.py", "backend/routers/workspace_knowledge.py"],
+        "files_touched": [
+            "backend/services/memory_service.py",
+            "backend/routers/workspace_knowledge.py",
+        ],
         "events": [
             ("prompt", "We need stable session list rendering with minimal payload."),
             ("assistant", "I aligned list query order by most recent activity."),
@@ -259,7 +267,10 @@ SAMPLE_SESSIONS = [
         "agent_name": "claude",
         "cwd": "/workspace/backend",
         "created_by": "demo_devon",
-        "files_touched": ["backend/services/permission_service.py", "backend/services/shared_skill_service.py"],
+        "files_touched": [
+            "backend/services/permission_service.py",
+            "backend/services/shared_skill_service.py",
+        ],
         "events": [
             ("prompt", "Can we test workspace/private/public access rules for skills?"),
             ("assistant", "I mapped access checks and identified partition collisions."),
@@ -284,7 +295,10 @@ SAMPLE_SESSIONS = [
         "agent_name": "copilot",
         "cwd": "/workspace/backend",
         "created_by": "demo_aria",
-        "files_touched": ["backend/routers/workspace_knowledge.py", "backend/services/memory_service.py"],
+        "files_touched": [
+            "backend/routers/workspace_knowledge.py",
+            "backend/services/memory_service.py",
+        ],
         "events": [
             ("prompt", "Any index changes needed for history session queries?"),
             ("assistant", "I validated current indexes and query shape with sessions join."),
@@ -309,7 +323,10 @@ SAMPLE_SESSIONS = [
         "agent_name": "claude",
         "cwd": "/workspace/tests",
         "created_by": "demo_maya",
-        "files_touched": ["backend/tests/test_history.py", "frontend/src/components/AppSidebar.tsx"],
+        "files_touched": [
+            "backend/tests/test_history.py",
+            "frontend/src/components/AppSidebar.tsx",
+        ],
         "events": [
             ("prompt", "What are the riskiest regressions in this area?"),
             ("assistant", "I added checks for session list shape and sidebar items."),
@@ -345,7 +362,10 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/backend",
         "created_by": "demo_maya",
-        "files_touched": ["backend/routers/sessions.py", "backend/services/shared_skill_service.py"],
+        "files_touched": [
+            "backend/routers/sessions.py",
+            "backend/services/shared_skill_service.py",
+        ],
         "events": [
             ("prompt", "Create a release triage list with top three blockers."),
             ("assistant", "I identified ownership, impact, and fallback plans."),
@@ -412,17 +432,10 @@ def _folder_hierarchy_from_templates() -> dict[str, tuple[str, str | None]]:
     return values
 
 
-def _item(
-    object_type: str,
-    object_id: UUID,
-    position: int,
-    label_override: str | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(object_type=object_type, object_id=object_id, position=position, label_override=label_override)
-
-
 async def _ensure_user(pool, user: dict) -> tuple[dict, str | None, bool]:
-    row = await pool.fetchrow("SELECT id, name, display_name FROM users WHERE name = $1", user["name"])
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name FROM users WHERE name = $1", user["name"]
+    )
     if row:
         return dict(row), None, False
 
@@ -509,7 +522,9 @@ async def _ensure_folders(workspace_id: UUID, creator_id: UUID) -> dict[str, dic
     return created
 
 
-async def _ensure_pages(workspace_id: UUID, creator_id: UUID, folders: dict[str, dict]) -> dict[str, dict]:
+async def _ensure_pages(
+    workspace_id: UUID, creator_id: UUID, folders: dict[str, dict]
+) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for spec in SAMPLE_PAGES:
         folder_key = spec["folder"]
@@ -533,8 +548,8 @@ async def _ensure_pages(workspace_id: UUID, creator_id: UUID, folders: dict[str,
             parent_id = folders[folder_key]["id"] if folder_key in folders else None
 
         existing = await database.get_pool().fetchrow(
-            "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 AND folder_id IS NOT DISTINCT FROM $3 "
-            "AND COALESCE(metadata->>'shared_in_skill_id', '') = ''",
+            "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 "
+            "AND folder_id IS NOT DISTINCT FROM $3",
             workspace_id,
             spec["name"],
             parent_id,
@@ -599,11 +614,15 @@ async def _ensure_tables(workspace_id: UUID, creator_id: UUID) -> dict[str, dict
 
 
 async def _session_time_offset(index: int, event_offset: int) -> datetime:
-    base = datetime.now(UTC).replace(microsecond=0) - timedelta(days=6 - index, minutes=event_offset * 17)
+    base = datetime.now(UTC).replace(microsecond=0) - timedelta(
+        days=6 - index, minutes=event_offset * 17
+    )
     return base
 
 
-async def _ensure_sessions(workspace_id: UUID, users: dict[str, dict], folders: dict[str, dict]) -> dict[str, dict]:
+async def _ensure_sessions(
+    workspace_id: UUID, users: dict[str, dict], folders: dict[str, dict]
+) -> dict[str, dict]:
     created: dict[str, dict] = {}
     for i, spec in enumerate(SAMPLE_SESSIONS):
         existing = await session_service.get_session(workspace_id, spec["session_id"])
@@ -635,7 +654,9 @@ async def _ensure_sessions(workspace_id: UUID, users: dict[str, dict], folders: 
                     "attachments": [],
                 }
             )
-        await memory_service.push_events_batch(workspace_id=workspace_id, created_by=created_by["id"], events=events)
+        await memory_service.push_events_batch(
+            workspace_id=workspace_id, created_by=created_by["id"], events=events
+        )
 
         row = await session_service.get_session(workspace_id, spec["session_id"])
         if row:
@@ -697,86 +718,104 @@ async def _ensure_files(
     return out
 
 
-async def _ensure_skills(workspace_id: UUID, user: dict, folders: dict[str, dict], pages: dict[str, dict], tables: dict[str, dict], sessions: dict[str, dict], files: dict[str, dict]) -> None:
+async def _ensure_skills(
+    workspace_id: UUID,
+    user: dict,
+    folders: dict[str, dict],
+    pages: dict[str, dict],
+    tables: dict[str, dict],
+    sessions: dict[str, dict],
+    files: dict[str, dict],
+) -> None:
+    """Skill folders: move a few seeded artifacts into SKILL.md folders and
+    publish them at different access levels."""
+    pool = database.get_pool()
     skill_defs: list[dict[str, Any]] = [
         {
             "title": "Workspace Product Pack",
             "description": "Core product artifacts for sprint planning.",
-            "access": "workspace",
+            "publish": False,
             "discoverable": False,
-            "items": [
-                _item("page", pages["Vision and Principles"]["id"], 0),
-                _item("page", pages["Launch Plan"]["id"], 1),
-                _item("table", tables["Feature Readiness"]["id"], 2),
-            ],
+            "pages": ["Vision and Principles", "Launch Plan"],
+            "tables": ["Feature Readiness"],
         },
         {
             "title": "Public Launch Bundle",
             "description": "Shareable launch-facing packet.",
-            "access": "public",
+            "publish": True,
             "discoverable": True,
-            "items": [
-                _item("table", tables["Release Risks"]["id"], 0),
-                _item("page", pages["Team Working Agreement"]["id"], 1),
-            ]
-            + (
-                [_item("file", files["release-notes.md"]["id"], 2)]
-                if files
-                else []
-            ),
+            "pages": ["Team Working Agreement"],
+            "tables": ["Release Risks"],
         },
         {
             "title": "Private Research Notes",
             "description": "Internal review notes not ready for public share.",
-            "access": "private",
+            "publish": False,
             "discoverable": False,
-            "items": [
-                _item("page", pages["Data Validation"]["id"], 0),
-            ]
-            + (
-                [_item("file", files["runbook.md"]["id"], 1)] if files else []
-            ),
-        },
-        {
-            "title": "Session Story Bundle",
-            "description": "A curated set of historical work sessions.",
-            "access": "workspace",
-            "discoverable": False,
-            "items": [
-                _item("session", sessions[session_key]["id"], position)
-                for position, session_key in enumerate(sorted(sessions)[:6])
-            ],
+            "pages": ["Data Validation"],
+            "tables": [],
         },
     ]
 
     for spec in skill_defs:
-        exists = await database.get_pool().fetchrow(
+        exists = await pool.fetchrow(
             "SELECT id FROM skills WHERE workspace_id = $1 AND title = $2",
             workspace_id,
             spec["title"],
         )
         if exists:
-            item_count = await database.get_pool().fetchval(
-                "SELECT COUNT(*) FROM skill_items WHERE skill_id = $1",
-                exists["id"],
-            )
-            if item_count:
-                continue
-            await shared_skill_service.update_skill(
-                skill_id=exists["id"],
-                user_id=user["id"],
-                items=spec["items"],
-            )
             continue
-        await shared_skill_service.create_skill(
-            workspace_id=workspace_id,
-            owner_id=user["id"],
-            title=spec["title"],
-            description=spec["description"],
-            access=spec["access"],
-            discoverable=spec["discoverable"],
-            cover_image_url=None,
-            items=spec["items"],
+        folder = await pool.fetchrow(
+            "SELECT id FROM folders WHERE workspace_id = $1 AND name = $2 "
+            "AND parent_folder_id IS NULL",
+            workspace_id,
+            spec["title"],
+        )
+        if folder is None:
+            folder = await files_tree_service.create_folder(workspace_id, spec["title"], user["id"])
+        for page_name in spec["pages"]:
+            page = pages.get(page_name)
+            if page:
+                await pool.execute(
+                    "UPDATE pages SET folder_id = $1 WHERE id = $2", folder["id"], page["id"]
+                )
+        for table_name in spec["tables"]:
+            table = tables.get(table_name)
+            if table:
+                await pool.execute(
+                    "UPDATE tables SET folder_id = $1 WHERE id = $2", folder["id"], table["id"]
+                )
+        await shared_skill_service._ensure_skill_md(
+            workspace_id, folder["id"], user["id"], spec["title"]
+        )
+        if spec["publish"]:
+            await shared_skill_service.publish_folder(
+                workspace_id,
+                user["id"],
+                folder["id"],
+                title=spec["title"],
+                description=spec["description"],
+                discoverable=spec["discoverable"],
+            )
+
+    # Freeze a couple of sessions into a published skill folder.
+    story_title = "Session Story Bundle"
+    exists = await pool.fetchrow(
+        "SELECT id FROM skills WHERE workspace_id = $1 AND title = $2",
+        workspace_id,
+        story_title,
+    )
+    if not exists and sessions:
+        folder = await files_tree_service.create_folder(workspace_id, story_title, user["id"])
+        for session_key in sorted(sessions)[:3]:
+            await shared_skill_service.materialize_session_page(
+                workspace_id,
+                sessions[session_key]["session_id"],
+                folder["id"],
+                user["id"],
+            )
+        await shared_skill_service._ensure_skill_md(
+            workspace_id, folder["id"], user["id"], story_title
         )
 
 
@@ -825,56 +864,36 @@ async def _ensure_external_skill_sample(
     )
     external_workspace_id = external_workspace["id"]
 
-    page_name = "External Contributor Brief"
-    existing_page = await database.get_pool().fetchrow(
-        "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 AND folder_id IS NOT DISTINCT FROM NULL "
-        "AND COALESCE(metadata->>'shared_in_skill_id', '') = ''",
-        external_workspace_id,
-        page_name,
-    )
-
-    if existing_page:
-        page = {"id": existing_page["id"]}
-    else:
-        page = await files_tree_service.create_page(
-            workspace_id=external_workspace_id,
-            name=page_name,
-            created_by=external_owner["id"],
-            content=(
-                "# External collaborator brief\\n\\n"
-                "This page lives in a different workspace and is intentionally attached as "
-                "an external skill item.\n"
-            ),
-        )
-
     external_skill_title = "Partner Briefs"
-    existing_external = await database.get_pool().fetchrow(
+    pool = database.get_pool()
+    existing_external = await pool.fetchrow(
         "SELECT id, slug FROM skills WHERE workspace_id = $1 AND title = $2",
         external_workspace_id,
         external_skill_title,
     )
     if existing_external:
         external_slug = existing_external["slug"]
-        item_count = await database.get_pool().fetchval(
-            "SELECT COUNT(*) FROM skill_items WHERE skill_id = $1",
-            existing_external["id"],
-        )
-        if not item_count:
-            await shared_skill_service.update_skill(
-                skill_id=existing_external["id"],
-                user_id=external_owner["id"],
-                items=[_item("page", page["id"], 0)],
-            )
     else:
-        created_external = await shared_skill_service.create_skill(
+        folder = await files_tree_service.create_folder(
+            external_workspace_id, external_skill_title, external_owner["id"]
+        )
+        await files_tree_service.create_page(
             workspace_id=external_workspace_id,
-            owner_id=external_owner["id"],
+            name="External Contributor Brief",
+            created_by=external_owner["id"],
+            folder_id=folder["id"],
+            content=(
+                "# External collaborator brief\n\n"
+                "This page lives in a different workspace and arrives via a forked skill.\n"
+            ),
+        )
+        created_external = await shared_skill_service.publish_folder(
+            external_workspace_id,
+            external_owner["id"],
+            folder["id"],
             title=external_skill_title,
             description="Sample public skill from a different workspace.",
-            access="public",
             discoverable=True,
-            cover_image_url=None,
-            items=[_item("page", page["id"], 0)],
         )
         external_slug = created_external["slug"]
 
@@ -884,10 +903,7 @@ async def _ensure_external_skill_sample(
         workspace_owner["id"],
     )
     if attached:
-        if not attached["is_external"]:
-            log.warning("External skill %s is already local to workspace; skipping attachment.", external_slug)
-        else:
-            log.info("Attached external skill sample: %s", attached["title"])
+        log.info("Forked external skill sample: %s", attached["name"])
 
 
 async def main() -> int:
@@ -960,22 +976,22 @@ async def main() -> int:
             else:
                 log.info("Reusing workspace: %s", workspace_name)
 
-            metrics = await _seed_workspace_bundle(workspace_id, workspace_owner["id"], created_users)
+            metrics = await _seed_workspace_bundle(
+                workspace_id, workspace_owner["id"], created_users
+            )
             await _ensure_external_skill_sample(workspace_id, workspace_owner, created_users)
             seeded_workspace_count = 1
             seeded_session_total += metrics["sessions"]
             seeded_file_total += metrics["files"]
 
             if args.seed_empty_workspaces:
-                empty_workspaces = await pool.fetch(
-                    """
+                empty_workspaces = await pool.fetch("""
                     SELECT w.id, w.name, w.creator_id
                     FROM workspaces w
                     LEFT JOIN skills s ON s.workspace_id = w.id
                     WHERE s.id IS NULL
                     ORDER BY w.created_at
-                    """
-                )
+                    """)
                 for workspace_row in empty_workspaces:
                     metrics = await _seed_workspace_bundle(
                         workspace_row["id"],
@@ -987,9 +1003,7 @@ async def main() -> int:
                     seeded_file_total += metrics["files"]
 
         if seeded_workspace_count:
-            log.info(
-                "Seeded %d workspace(s).", seeded_workspace_count
-            )
+            log.info("Seeded %d workspace(s).", seeded_workspace_count)
 
         log.info("Seed complete for workspace: %s", workspace_name)
         if created_api_keys:

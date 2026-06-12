@@ -103,9 +103,10 @@ async def test_full_publish_flow(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_skill_is_public_unlisted_and_includes_kb_folder(client: AsyncClient, pool):
+async def test_skill_is_public_unlisted_and_includes_kb_pages(client: AsyncClient, pool):
     """Demo Skills must be public-link-shareable but not discoverable, and
-    must auto-include the canonical Stash knowledge base folder."""
+    must auto-copy the canonical Stash knowledge base pages into the skill
+    folder so every demo ships self-contained."""
     page = (
         await client.post(
             "/api/v1/demo/pages",
@@ -126,22 +127,36 @@ async def test_skill_is_public_unlisted_and_includes_kb_folder(client: AsyncClie
     ).json()
 
     row = await pool.fetchrow(
-        "SELECT workspace_permission, public_permission, discoverable " "FROM skills WHERE id = $1",
+        "SELECT folder_id, discoverable FROM skills WHERE id = $1",
         stash["skill_id"],
     )
-    assert row["workspace_permission"] == "none"
-    assert row["public_permission"] == "read"
+    # Published == publicly readable; unlisted means not in Discover.
     assert row["discoverable"] is False
+    detail = await client.get(f"/api/v1/skills/{stash['slug']}")
+    assert detail.status_code == 200
 
-    # The KB folder must be attached as a stash item even though we only
+    # The KB pages must be copied into the skill folder even though we only
     # passed the page in.
-    folder_id = await demo_service.get_kb_folder_id()
-    items = await pool.fetch(
-        "SELECT object_type, object_id FROM skill_items WHERE skill_id = $1",
-        stash["skill_id"],
-    )
-    pairs = {(r["object_type"], str(r["object_id"])) for r in items}
-    assert ("folder", str(folder_id)) in pairs
+    kb_folder_id = await demo_service.get_kb_folder_id()
+    kb_names = {
+        r["name"]
+        for r in await pool.fetch(
+            "SELECT name FROM pages WHERE folder_id = $1 AND deleted_at IS NULL",
+            kb_folder_id,
+        )
+    }
+    assert kb_names, "seed should have populated the KB folder"
+    skill_page_names = {
+        r["name"]
+        for r in await pool.fetch(
+            "SELECT name FROM pages WHERE folder_id = $1 AND deleted_at IS NULL",
+            row["folder_id"],
+        )
+    }
+    assert kb_names <= skill_page_names
+    # The visitor's deck page was moved into the skill folder too.
+    moved_folder = await pool.fetchval("SELECT folder_id FROM pages WHERE id = $1", page["page_id"])
+    assert moved_folder == row["folder_id"]
 
 
 @pytest.mark.asyncio

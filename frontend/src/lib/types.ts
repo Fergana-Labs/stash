@@ -108,6 +108,7 @@ export interface TableColumn {
   required: boolean;
   default: string | number | boolean | string[] | null;
   options: string[] | null;
+  width: number;
 }
 
 export interface TableView {

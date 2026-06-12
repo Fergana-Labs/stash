@@ -20,9 +20,10 @@ from playwright.async_api import async_playwright
 
 from ..celery_app import celery
 from ..database import get_pool
-from ..services import storage_service
+from ..services import permission_service, storage_service
 from ..tasks._celery_helpers import run_async
 from .constants import SLIDE_HEIGHT_PX, SLIDE_WIDTH_PX
+from .playwright_network import abort_network_request
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ async def _render_pdf(html: str) -> bytes:
             page = await browser.new_page(
                 viewport={"width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},
             )
+            await page.route("**/*", abort_network_request)
             await page.set_content(html, wait_until="networkidle")
             # `prefer_css_page_size=True` honours the injected @page block;
             # this keeps slide dims locked to the shared constants instead
@@ -104,6 +106,14 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
         raise RuntimeError("page not found")
     if page_row["content_type"] != "html" or page_row["html_layout"] != "fixed-aspect":
         raise RuntimeError("export requires a fixed-aspect HTML page")
+    can_read = await permission_service.check_access(
+        "page",
+        page_id,
+        user_id,
+        workspace_id=page_row["workspace_id"],
+    )
+    if not can_read:
+        raise RuntimeError("page not found")
 
     source_html = page_row["content_html"] or ""
     html = _inject_paged_css(source_html)

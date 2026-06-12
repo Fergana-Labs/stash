@@ -9,7 +9,7 @@ type GraphNode = {
   degree: number;
 };
 
-// Files file tree for "memory_reading_store". Positions are hand-chosen to
+// Curated wiki graph for "reading-store". Positions are hand-chosen to
 // resemble a force-directed layout; degree drives node size + color.
 const GRAPH_NODES: GraphNode[] = [
   { id: "pgvector-howto", x: 295, y: 170, degree: 7 },
@@ -68,13 +68,10 @@ function PageGraphMock() {
       <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-brand" />
-          <span className="text-[13px] font-semibold text-ink">file tree</span>
-          <span className="font-mono text-[11px] text-muted">
-            files · reading-store
-          </span>
+          <span className="text-[13px] font-semibold text-ink">Wiki</span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
-          12 pages · 19 Skills
+          12 pages · 19 links
         </span>
       </div>
       <div className="relative aspect-[600/360] w-full">
@@ -82,7 +79,7 @@ function PageGraphMock() {
           viewBox={`0 0 ${width} ${height}`}
           className="absolute inset-0 h-full w-full"
           role="img"
-          aria-label="Files file tree"
+          aria-label="Curated wiki graph"
         >
           <defs>
             <pattern
@@ -113,6 +110,8 @@ function PageGraphMock() {
           {GRAPH_NODES.map((n) => {
             const r = 6 + n.degree * 1.2;
             const fill = nodeColor(n.degree);
+            // Right-edge labels flip to the left side so they don't clip.
+            const labelLeft = n.x > 450;
             return (
               <g key={n.id}>
                 <circle
@@ -124,10 +123,11 @@ function PageGraphMock() {
                   strokeWidth="1.5"
                 />
                 <text
-                  x={n.x + r + 4}
+                  x={labelLeft ? n.x - r - 4 : n.x + r + 4}
                   y={n.y + 3}
+                  textAnchor={labelLeft ? "end" : "start"}
                   fontFamily="ui-monospace, Menlo, monospace"
-                  fontSize="9.5"
+                  fontSize="12"
                   fill="rgba(15,23,42,0.62)"
                 >
                   {n.id}
@@ -159,6 +159,74 @@ function PageGraphMock() {
   );
 }
 
+const GREP_MATCHES = [
+  { file: "pgvector-howto.md", line: 42, before: "set hnsw.", after: " = 80;" },
+  { file: "reading-store-arch.md", line: 118, before: "tune ", after: " per query" },
+  { file: "eval-harness.md", line: 9, before: "sweep ", after: " {40, 80, 160}" },
+];
+
+function GrepSearchMock() {
+  return (
+    <div
+      className="relative overflow-hidden rounded-[14px] border border-border bg-background"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
+      <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <span className="h-2 w-2 rounded-full bg-brand" />
+          <span className="text-[13px] font-semibold text-ink">Grep</span>
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
+          3 matches · 38 ms
+        </span>
+      </div>
+      <div className="relative aspect-[600/360] w-full">
+        <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
+          <defs>
+            <pattern
+              id="grep-grid"
+              width="40"
+              height="40"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 40 0 L 0 0 0 40"
+                fill="none"
+                stroke="rgba(15,23,42,0.04)"
+                strokeWidth="1"
+              />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grep-grid)" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col gap-2 overflow-hidden p-5 font-mono text-[12px] leading-[1.5]">
+          <div className="whitespace-nowrap text-dim">
+            <span className="text-muted">$ </span>
+            <span className="text-ink">grep -rn &quot;ef_search&quot; .</span>
+          </div>
+          {GREP_MATCHES.map((m) => (
+            <div key={m.file} className="truncate text-dim">
+              <span className="text-muted">
+                {m.file}:{m.line}:
+              </span>
+              {m.before}
+              <span className="font-semibold text-brand">ef_search</span>
+              {m.after}
+            </div>
+          ))}
+          <div className="whitespace-nowrap text-muted">
+            3 matches in 12 files (0.04s)
+          </div>
+          <div className="whitespace-nowrap text-dim">
+            <span className="text-muted">$ </span>
+            <span className="animate-pulse text-ink">▌</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EyebrowDot({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
@@ -176,36 +244,38 @@ export default function VisualizationsShowcase() {
     >
       <div className="mx-auto max-w-[1200px] px-7">
         <div className="flex max-w-[880px] flex-col gap-4">
-          <EyebrowDot>See the memory form</EyebrowDot>
+          <EyebrowDot>Best-in-class memory</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Your team&apos;s brain,
+            Your team&apos;s memory,
             <br />
-            <span className="font-medium text-dim">actually visible.</span>
+            <span className="font-medium text-dim">actually retrievable.</span>
           </h2>
           <p className="max-w-[620px] text-[17px] leading-[1.55] text-dim">
-            Retrieval in Stash is hybrid: semantic search over embeddings, plus
-            a knowledge graph — the file tree your agents traverse. Both halves
-            are visual, so you can see how your team&apos;s knowledge clusters
-            by meaning, and which pages have become the hubs everything leans
-            on.
+            Every retrieval method has blind spots, so Stash runs three:
+            a curated wiki, vector search, and grep. Your agents get the
+            best of all worlds.
           </p>
         </div>
-        <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <div>
-            <EmbeddingProjection3D />
-            <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">3D embedding projection — the semantic
-              half.</span> Sessions, pages, and tables embedded and projected
-              with PCA. Clusters form around topics — not folders.
-            </p>
-          </div>
+        <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div>
             <PageGraphMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">Knowledge graph — the structural
-              half.</span> The file tree your agents traverse: nodes are pages,
-              edges are <span className="font-mono text-brand">Skills</span>.
-              Orange nodes are the hubs your agents keep citing.
+              While you sleep, an agent curates your history into linked
+              pages — a virtual file system your agents navigate directly.
+            </p>
+          </div>
+          <div>
+            <EmbeddingProjection3D />
+            <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
+              Every session, page, and table embedded, so agents find
+              knowledge by meaning — not filename.
+            </p>
+          </div>
+          <div>
+            <GrepSearchMock />
+            <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
+              Agents search the workspace like a repo — for the exact lookups
+              embeddings miss.
             </p>
           </div>
         </div>

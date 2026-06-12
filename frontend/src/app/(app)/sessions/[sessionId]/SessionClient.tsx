@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
@@ -12,25 +12,21 @@ import {
 import DownloadMenu from "../../../../components/DownloadMenu";
 import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "../../../../components/SkeletonStates";
-import { SkillIcon } from "../../../../components/SkillIcons";
 import { useAuth } from "../../../../hooks/useAuth";
+import { useEscapeKey } from "../../../../hooks/useEscapeKey";
 import {
-  ApiError,
   fetchAuthed,
-  getPublicSkill,
   getSessionDetail,
   getSessionEvents,
-  getWorkspaceSidebar,
-  listObjectSkills,
+  listSkills,
+  materializeSession,
   renameSession,
   trashItem,
-  type PublicSkillItem,
   type SessionDetail,
   type SessionEvent,
-  type WorkspaceSkill,
+  type Skill,
 } from "../../../../lib/api";
 import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
-import { SessionBody } from "../../skills/[slug]/SkillItemBodies";
 import EditableTitle from "../../../../components/workspace/EditableTitle";
 
 interface MessageTurn {
@@ -124,11 +120,9 @@ function initials(name: string): string {
 export default function SessionViewerPage() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading } = useAuth();
   const confirm = useConfirm();
-  const skillSlug = searchParams.get("skill");
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
@@ -137,10 +131,6 @@ export default function SessionViewerPage() {
   const workspaceId = sessionDetail?.workspace_id ?? "";
   useActiveWorkspaceId(workspaceId || null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
-  const [containingSkills, setContainingSkills] = useState<WorkspaceSkill[]>([]);
-  const [skillFallback, setSkillFallback] = useState<
-    { skill: WorkspaceSkill; item: PublicSkillItem } | null
-  >(null);
   const [error, setError] = useState("");
 
   useBreadcrumbs(
@@ -149,7 +139,7 @@ export default function SessionViewerPage() {
   );
 
   const shareAction = useMemo(() => {
-    if (!sessionDetail || skillSlug || !user) return null;
+    if (!sessionDetail || !user) return null;
     return (
       <ResourceShareButton
         objectType="session"
@@ -159,90 +149,33 @@ export default function SessionViewerPage() {
         currentUser={user}
       />
     );
-  }, [sessionDetail, sessionId, skillSlug, user]);
+  }, [sessionDetail, sessionId, user]);
   useShareAction(shareAction);
-
-  const loadSkillFallback = useCallback(async () => {
-    if (!skillSlug) return false;
-    try {
-      const data = await getPublicSkill(skillSlug);
-      const item = data.items.find((it) => {
-        if (it.object_type !== "session") return false;
-        const s = (it.inline as { session?: { session_id?: string } }).session;
-        return s?.session_id === sessionId;
-      });
-      if (!item) {
-        setError("This session isn't part of the linked Skill.");
-        return false;
-      }
-      setSkillFallback({ skill: data.skill, item });
-      setError("");
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Skill not found");
-      return false;
-    }
-  }, [skillSlug, sessionId]);
 
   const load = useCallback(async () => {
     try {
       // The detail fetch resolves the workspace; everything else is scoped
       // to it and has to wait for that answer.
       const detail = await getSessionDetail(sessionId);
-      const ws = detail.workspace_id;
-      const [events, sidebar] = await Promise.all([
-        getSessionEvents(ws, sessionId),
-        getWorkspaceSidebar(ws),
-      ]);
+      const events = await getSessionEvents(detail.workspace_id, sessionId);
       setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
       setSessionDetail(detail);
       setTurns(events.map(eventToTurn));
-      setSkillFallback(null);
-      const session = sidebar.sessions.find((item) => item.session_id === sessionId);
-      setContainingSkills(
-        session?.id ? await listObjectSkills(ws, "session", session.id) : []
-      );
     } catch (e) {
-      if (
-        skillSlug &&
-        e instanceof ApiError &&
-        (e.status === 401 || e.status === 403 || e.status === 404)
-      ) {
-        if (await loadSkillFallback()) return;
-      }
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
-  }, [sessionId, skillSlug, loadSkillFallback]);
+  }, [sessionId]);
 
   useEffect(() => {
     if (user) load();
-    else if (!loading && skillSlug) void loadSkillFallback();
-  }, [user, loading, load, loadSkillFallback, skillSlug]);
+  }, [user, load]);
 
   useEffect(() => {
-    if (!loading && !user && !skillSlug) router.push("/login");
-  }, [user, loading, router, skillSlug]);
+    if (!loading && !user) router.push("/login");
+  }, [user, loading, router]);
 
   if (loading) return <SessionDetailSkeleton />;
-  if (skillFallback) {
-    return (
-      <SkillFallbackSessionView
-        skillSlug={skillSlug ?? ""}
-        skillTitle={skillFallback.skill.title}
-        item={skillFallback.item}
-      />
-    );
-  }
-  if (!user) {
-    if (!skillSlug) return null;
-    if (!error) return <SessionDetailSkeleton />;
-    return (
-      <div className="mx-auto max-w-md py-24 text-center">
-        <h1 className="font-display text-[24px] font-bold text-foreground">Session unavailable</h1>
-        <p className="mt-2 text-[14px] leading-relaxed text-dim">{error}</p>
-      </div>
-    );
-  }
+  if (!user) return null;
   if (!sessionDetail && turns.length === 0 && !error) return <SessionDetailSkeleton />;
 
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
@@ -286,6 +219,13 @@ export default function SessionViewerPage() {
               )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">
+              {sessionDetail && workspaceId && (
+                <SaveToSkillButton
+                  workspaceId={workspaceId}
+                  sessionId={sessionId}
+                  onSaved={(pageId) => router.push(`/p/${pageId}`)}
+                />
+              )}
               {sessionId.startsWith("agent-") && (
                 // Web chats (started in the Agents tab) can be resumed and
                 // continued server-side from where they left off.
@@ -373,19 +313,99 @@ export default function SessionViewerPage() {
             )}
           </div>
         </main>
-        <SessionAside detail={sessionDetail} skills={containingSkills} />
+        <SessionAside detail={sessionDetail} />
       </div>
     </div>
   );
 }
 
-function SessionAside({
-  detail,
-  skills,
+// Compact inline picker: choose a skill folder, freeze the transcript into a
+// markdown page inside it.
+function SaveToSkillButton({
+  workspaceId,
+  sessionId,
+  onSaved,
 }: {
-  detail: SessionDetail | null;
-  skills: WorkspaceSkill[];
+  workspaceId: string;
+  sessionId: string;
+  onSaved: (pageId: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEscapeKey(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || skills !== null) return;
+    listSkills(workspaceId)
+      .then(setSkills)
+      .catch(() => setSkills([]));
+  }, [open, skills, workspaceId]);
+
+  async function save(skill: Skill) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const page = await materializeSession(workspaceId, sessionId, skill.folder_id);
+      setOpen(false);
+      onSaved(page.id);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+      >
+        Save to Skill <span aria-hidden className="text-[10px]">▾</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+          {skills === null && (
+            <div className="px-3 py-1.5 text-muted">Loading…</div>
+          )}
+          {skills?.length === 0 && (
+            <div className="px-3 py-1.5 text-muted">No skills yet.</div>
+          )}
+          {skills?.map((skill) => (
+            <button
+              key={skill.folder_id}
+              type="button"
+              disabled={busy}
+              onClick={() => void save(skill)}
+              className="block w-full truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
+            >
+              {skill.name}
+            </button>
+          ))}
+          {message && <div className="px-3 py-1.5 text-red-500">{message}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SessionAside({ detail }: { detail: SessionDetail | null }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
   const tickets = detail?.linear_tickets ?? [];
@@ -441,35 +461,6 @@ function SessionAside({
           {filesTouched.length === 0 && artifacts.length === 0 && (
             <div className="mt-2 text-[12px] leading-relaxed text-muted">
               No artifacts recorded.
-            </div>
-          )}
-        </div>
-
-        <div className="card-soft p-3.5">
-          <div className="sys-label">In Skills</div>
-          {skills.length > 0 ? (
-            <div className="mt-2 flex flex-col gap-1.5">
-              {skills.map((skill) => (
-                <a
-                  key={skill.id}
-                  href={`/skills/${skill.slug}`}
-                  className="linkrow px-2 py-1.5"
-                >
-                  <span className="text-[var(--color-brand-600)]">
-                    <SkillGlyph />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-                    {skill.title}
-                  </span>
-                  <span className="sys-label" style={{ fontSize: 10 }}>
-                    {skill.items.length}
-                  </span>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-2 text-[12px] leading-relaxed text-muted">
-              This session is not in a Skill yet.
             </div>
           )}
         </div>
@@ -550,10 +541,6 @@ function FileGlyph() {
   );
 }
 
-function SkillGlyph() {
-  return <SkillIcon className="text-[12px]" />;
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -624,38 +611,6 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
           >
             {turn.content}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SkillFallbackSessionView({
-  skillSlug,
-  skillTitle,
-  item,
-}: {
-  skillSlug: string;
-  skillTitle: string;
-  item: PublicSkillItem;
-}) {
-  return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
-        <Link
-          href={`/skills/${skillSlug}`}
-          className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
-        >
-          ← {skillTitle}
-        </Link>
-        <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-          {item.label || "(untitled session)"}
-        </h1>
-        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
-          session · read-only via Skill
-        </div>
-        <div className="mt-6">
-          <SessionBody item={item} />
         </div>
       </div>
     </div>

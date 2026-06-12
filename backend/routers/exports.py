@@ -6,7 +6,7 @@ dispatches it. Returns a task_id the client polls.
 
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -15,7 +15,7 @@ from ..auth import get_current_user
 from ..celery_app import celery
 from ..database import get_pool
 from ..integrations.registry import resolve_exporter
-from ..services import permission_service
+from ..services import permission_service, task_service
 
 router = APIRouter(prefix="/api/v1/pages", tags=["exports"])
 
@@ -56,11 +56,21 @@ async def export_page(
         raise HTTPException(status_code=404, detail="page not found")
 
     task_name = resolve_exporter(body.format)
-    async_result = celery.send_task(
+    task_id = str(uuid4())
+    await task_service.register_task(
+        task_id=task_id,
+        user_id=current_user["id"],
+        workspace_id=page["workspace_id"],
+        task_type=f"export:{body.format}",
+        object_type="page",
+        object_id=page_id,
+    )
+    celery.send_task(
         task_name,
         kwargs={
             "user_id": str(current_user["id"]),
             "page_id": str(page_id),
         },
+        task_id=task_id,
     )
-    return ExportResponse(task_id=async_result.id)
+    return ExportResponse(task_id=task_id)

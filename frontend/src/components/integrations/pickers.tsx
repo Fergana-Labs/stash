@@ -10,15 +10,23 @@ import {
   listGitHubRepos,
   listJiraProjects,
   listNotionPages,
+  listSlackChannels,
   type AsanaProjectSummary,
   type CredentialField,
   type GitHubRepoSummary,
   type JiraProjectSummary,
   type NotionPageSummary,
+  type SlackChannelSummary,
 } from "@/lib/integrations";
 
-import { AsanaIcon, GitHubIcon, JiraIcon, NotionIcon } from "./BrandIcons";
+import { AsanaIcon, GitHubIcon, JiraIcon, NotionIcon, SlackIcon } from "./BrandIcons";
 import type { Connector } from "./connectors";
+
+type AddSourceBody = {
+  external_ref?: string;
+  display_name?: string;
+  settings?: Record<string, unknown>;
+};
 
 export function primaryButton(): string {
   return "shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60";
@@ -48,7 +56,7 @@ export function AddSourceControls({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function add(body?: { external_ref?: string; display_name?: string }) {
+  async function add(body?: AddSourceBody) {
     setBusy(true);
     setError("");
     try {
@@ -168,7 +176,27 @@ export function AddSourceControls({
     );
   }
 
-  // kind "auto" — slack/granola/gong/snowflake. The backend resolves the ref.
+  if (connector.provider === "slack") {
+    return (
+      <div className="space-y-2">
+        {connected ? (
+          <SlackChannelPicker
+            busy={busy}
+            onAdd={(channelIds) =>
+              add({
+                settings: { allowed_channel_ids: channelIds },
+              })
+            }
+          />
+        ) : (
+          <div className="text-[11.5px] text-muted">Connect Slack first to add it.</div>
+        )}
+        {errorRow}
+      </div>
+    );
+  }
+
+  // kind "auto" — granola/gong/snowflake. The backend resolves the ref.
   return (
     <div className="space-y-2">
       {!connected && (
@@ -178,6 +206,99 @@ export function AddSourceControls({
         {busy ? "Adding..." : "Add"}
       </button>
       {errorRow}
+    </div>
+  );
+}
+
+export function SlackChannelPicker({
+  busy,
+  onAdd,
+}: {
+  busy: boolean;
+  onAdd: (channelIds: string[]) => Promise<boolean>;
+}) {
+  const [channels, setChannels] = useState<SlackChannelSummary[] | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    listSlackChannels()
+      .then((next) => {
+        if (!cancelled) setChannels(next);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load channels");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return channels ?? [];
+    return (channels ?? []).filter(
+      (channel) =>
+        channel.name.toLowerCase().includes(q) || channel.id.toLowerCase().includes(q),
+    );
+  }, [query, channels]);
+
+  function toggleChannel(channelId: string) {
+    setSelectedIds((current) =>
+      current.includes(channelId)
+        ? current.filter((id) => id !== channelId)
+        : [...current, channelId],
+    );
+  }
+
+  return (
+    <div>
+      <PickerShell
+        error={error}
+        loading={channels === null && !error}
+        query={query}
+        placeholder="Search channels..."
+        onQuery={setQuery}
+        empty="No channels found."
+      >
+        {filtered.map((channel) => (
+          <label
+            key={channel.id}
+            className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(channel.id)}
+              disabled={busy}
+              onChange={() => toggleChannel(channel.id)}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border"
+            />
+            <SlackIcon className="mt-0.5 shrink-0" size={14} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px] font-medium text-foreground">
+                {channel.name}
+              </span>
+              <span className="block truncate text-[11.5px] text-muted">
+                {channel.is_private ? "Private" : "Channel"} · {channel.id}
+              </span>
+            </span>
+          </label>
+        ))}
+      </PickerShell>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="text-[11.5px] text-muted">{selectedIds.length} selected</div>
+        <button
+          type="button"
+          disabled={busy || selectedIds.length === 0}
+          onClick={() => void onAdd(selectedIds)}
+          className={primaryButton()}
+        >
+          {busy ? "Adding..." : "Add"}
+        </button>
+      </div>
     </div>
   );
 }

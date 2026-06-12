@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   useCallback,
   useEffect,
@@ -18,41 +20,25 @@ import {
   useActiveWorkspaceId,
   useShareAction,
 } from "../../../../components/ShellChromeContext";
-import { PublicSkillSkeleton, SkeletonBlock } from "../../../../components/SkeletonStates";
-import AddToSkillModal from "../../../../components/skill/AddToSkillModal";
+import { PublicSkillSkeleton } from "../../../../components/SkeletonStates";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import SkillShareButton from "../../../../components/skill/SkillShareButton";
 import { SettingsIcon, SkillIcon } from "../../../../components/SkillIcons";
-import ContributorActivityTimeline from "../../../../components/viz/ContributorActivityTimeline";
-import EmbeddingSpaceExplorer from "../../../../components/viz/EmbeddingSpaceExplorer";
+import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
-  getActivityTimeline,
-  getEmbeddingProjection,
   getPublicSkill,
-  getToken,
   updateSkill,
   uploadFile,
+  type PublicSkillContents,
   type PublicSkillDetail,
-  type PublicSkillItem,
+  type SkillPublishInfo,
 } from "../../../../lib/api";
-import type { ActivityTimeline, EmbeddingProjection } from "../../../../lib/types";
+import { SKILL_MD, stripFrontmatter } from "../../../../lib/localSkill";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
-import FileContentRenderer from "../../../../components/workspace/FileContentRenderer";
-import { PageBody, SessionBody } from "./SkillItemBodies";
-
-type SkillItemGroup = Partial<
-  Record<PublicSkillItem["object_type"], PublicSkillItem[]>
->;
-
-type InlineFile = {
-  name?: string;
-  content_type?: string;
-  size_bytes?: number;
-  url?: string;
-  created_at?: string;
-};
 
 export default function SkillPageClient({ slug }: { slug: string }) {
+  const { user } = useAuth();
   const [data, setData] = useState<PublicSkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -92,13 +78,37 @@ export default function SkillPageClient({ slug }: { slug: string }) {
   // re-renders → new node identity → setShareAction → AppShell re-renders).
   const skill = data?.skill ?? null;
   const canWrite = data?.can_write ?? false;
-  const shareAction = useMemo(
-    () =>
-      skill ? (
-        <SkillShareButton skill={skill} canWrite={canWrite} onChanged={load} />
-      ) : null,
-    [skill, canWrite, load],
-  );
+  const shareAction = useMemo(() => {
+    if (!skill || !canWrite) return null;
+    const publish: SkillPublishInfo = {
+      id: skill.id,
+      slug: skill.slug,
+      discoverable: skill.discoverable,
+      cover_image_url: skill.cover_image_url,
+      icon_url: skill.icon_url,
+      view_count: skill.view_count,
+    };
+    return (
+      <div className="flex items-center gap-1.5">
+        {/* Person-to-person sharing of a skill = sharing its folder. */}
+        {user && (
+          <ResourceShareButton
+            objectType="folder"
+            objectId={skill.folder_id}
+            resourceName={skill.title}
+            resourceUrlPath={`/workspaces/${skill.workspace_id}/skills/${skill.folder_id}`}
+            currentUser={user}
+          />
+        )}
+        <SkillShareButton
+          workspaceId={skill.workspace_id}
+          folderId={skill.folder_id}
+          publish={publish}
+          onPublishChange={() => void load()}
+        />
+      </div>
+    );
+  }, [skill, canWrite, user, load]);
   useShareAction(shareAction);
 
   if (loading) {
@@ -140,6 +150,61 @@ const COVER_GRADIENTS = [
   "linear-gradient(135deg, #FECDD3, #FEF3C7)",
 ];
 
+// The SKILL.md at the skill root is the intro; everything else lists as rows.
+function skillMdPage(contents: PublicSkillContents) {
+  return (
+    contents.pages.find((p) => p.name === SKILL_MD && p.folder_path.length === 0) ??
+    null
+  );
+}
+
+type ContentRow = {
+  key: string;
+  href: string;
+  name: string;
+  sub: string;
+  kind: "page" | "file" | "table";
+  folderPath: string[];
+};
+
+function contentRows(contents: PublicSkillContents, slug: string): ContentRow[] {
+  const skillParam = encodeURIComponent(slug);
+  const intro = skillMdPage(contents);
+  const rows: ContentRow[] = [];
+  for (const page of contents.pages) {
+    if (intro && page.id === intro.id) continue;
+    rows.push({
+      key: `page-${page.id}`,
+      href: `/p/${page.id}?skill=${skillParam}`,
+      name: page.name,
+      sub: page.content_type === "html" ? "html page" : "page",
+      kind: "page",
+      folderPath: page.folder_path,
+    });
+  }
+  for (const file of contents.files) {
+    rows.push({
+      key: `file-${file.id}`,
+      href: `/f/${file.id}?skill=${skillParam}`,
+      name: file.name,
+      sub: file.content_type || "file",
+      kind: "file",
+      folderPath: file.folder_path,
+    });
+  }
+  for (const table of contents.tables) {
+    rows.push({
+      key: `table-${table.id}`,
+      href: `/tables/${table.id}?skill=${skillParam}`,
+      name: table.name,
+      sub: `table · ${table.rows.length} row${table.rows.length === 1 ? "" : "s"}`,
+      kind: "table",
+      folderPath: table.folder_path,
+    });
+  }
+  return rows;
+}
+
 function SkillPageBody({
   data,
   onRefresh,
@@ -147,64 +212,24 @@ function SkillPageBody({
   data: PublicSkillDetail;
   onRefresh: () => Promise<void>;
 }) {
-  const { skill: skill, workspace_name, items, can_write } = data;
-  const groups = groupSkillItems(items);
-  const primary = primaryItemForSkill(data);
-  const displayedItemCount = primary ? 1 : items.length;
-  const [addOpen, setAddOpen] = useState(false);
-  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
-  const [projection, setProjection] = useState<EmbeddingProjection | null>(
-    null,
-  );
-  const [insightsLoaded, setInsightsLoaded] = useState(false);
-
-  useEffect(() => {
-    if (primary) {
-      setTimeline(null);
-      setProjection(null);
-      setInsightsLoaded(true);
-      return;
-    }
-
-    // Insight panels are workspace-member only — both endpoints require
-    // auth. Anonymous public-skill viewers should skip the fetch entirely
-    // (the panels render their empty-state without it).
-    if (!getToken()) {
-      setTimeline(null);
-      setProjection(null);
-      setInsightsLoaded(true);
-      return;
-    }
-
-    // Visualizations are scoped to this skill's items — the sessions and
-    // pages bundled into the Skill, not the owning workspace's full activity.
-    let cancelled = false;
-    setInsightsLoaded(false);
-    Promise.allSettled([
-      getActivityTimeline(30, "day", undefined, skill.id),
-      getEmbeddingProjection(500, undefined, undefined, skill.id),
-    ]).then(([t, p]) => {
-      if (cancelled) return;
-      if (t.status === "fulfilled") setTimeline(t.value);
-      if (p.status === "fulfilled") setProjection(p.value);
-      setInsightsLoaded(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [primary, skill.id]);
+  const { skill, workspace_name, contents, can_write } = data;
 
   const cover = skill.cover_image_url
     ? { backgroundImage: `url(${skill.cover_image_url})` }
     : { backgroundImage: COVER_GRADIENTS[coverIndexFor(skill.id)] };
 
-  const existingSpecs = items.map((it, i) => ({
-    object_type: it.object_type,
-    object_id: it.object_id,
-    position: i,
-    label_override: it.label,
-  }));
   const author = skill.owner_display_name || skill.owner_name;
+  const intro = skillMdPage(contents);
+  const rows = contentRows(contents, skill.slug);
+  // Group rows by their subfolder path; root items first.
+  const groups = new Map<string, ContentRow[]>();
+  for (const row of rows) {
+    const key = row.folderPath.join(" / ");
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const groupKeys = [...groups.keys()].sort((a, b) =>
+    a === "" ? -1 : b === "" ? 1 : a.localeCompare(b),
+  );
 
   return (
     <div className="scroll-thin min-h-screen bg-background">
@@ -238,8 +263,7 @@ function SkillPageBody({
                 <span>by {author}</span>
                 <span className="text-muted/60">·</span>
                 <span>
-                  {displayedItemCount} item
-                  {displayedItemCount === 1 ? "" : "s"}
+                  {rows.length} file{rows.length === 1 ? "" : "s"}
                 </span>
                 {skill.updated_at && (
                   <>
@@ -258,23 +282,14 @@ function SkillPageBody({
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
             {can_write ? (
-              <>
-                <Link
-                  href={`/skills/${skill.slug}/settings`}
-                  title="Skill settings"
-                  aria-label="Skill settings"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-                >
-                  <SettingsIcon />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setAddOpen(true)}
-                  className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-                >
-                  + Add things
-                </button>
-              </>
+              <Link
+                href={`/skills/${skill.slug}/settings`}
+                title="Skill settings"
+                aria-label="Skill settings"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
+              >
+                <SettingsIcon />
+              </Link>
             ) : (
               // Forking only makes sense when the viewer doesn't already have
               // write access to this skill in its own workspace.
@@ -296,238 +311,67 @@ function SkillPageBody({
           }}
         />
 
-        {primary ? (
-          <>
-            <PrimaryItemOpenLink
-              kind={primary.kind}
-              item={primary.item}
-              skillSlug={skill.slug}
-            />
-            {primary.kind === "file" ? (
-              <SingleFilePreview item={primary.item} />
-            ) : primary.kind === "page" ? (
-              <section className="mt-6">
-                <PageBody item={primary.item} />
-              </section>
-            ) : (
-              <section className="mt-6">
-                <SessionBody item={primary.item} />
-              </section>
-            )}
-          </>
-        ) : (
-          <>
-            {/* Compact item lists by kind. Items deep-link to the editor /
-                viewer in the owning workspace — no inline rendering. */}
-            <div className="mt-6 flex flex-col gap-6">
-              {/* Two high-level taxonomies: Files (folders + pages + files +
-                  tables — anything you could drop into Drive) and Sessions
-                  (agent transcripts). Tables are a structured kind of file,
-                  so they live under Files rather than as a separate section. */}
-              <SkillItemSection
-                title="Files"
-                items={[
-                  ...(groups.folder ?? []),
-                  ...(groups.page ?? []),
-                  ...(groups.file ?? []),
-                  ...(groups.table ?? []),
-                ]}
-                skillSlug={skill.slug}
-                workspaceId={skill.workspace_id}
-              />
-              <SkillItemSection
-                title="Sessions"
-                items={groups.session ?? []}
-                skillSlug={skill.slug}
-                workspaceId={skill.workspace_id}
-              />
-              {items.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
-                  No items yet.{" "}
-                  {can_write && (
-                    <button
-                      type="button"
-                      onClick={() => setAddOpen(true)}
-                      className="font-medium text-[var(--color-brand-700)] hover:underline"
-                    >
-                      Add things →
-                    </button>
-                  )}
+        {intro && (
+          <section className="mt-6">
+            <div className="markdown-content">
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {stripFrontmatter(intro.content_markdown || "")}
+              </Markdown>
+            </div>
+          </section>
+        )}
+
+        <div className="mt-6 flex flex-col gap-5">
+          {groupKeys.map((key) => (
+            <section key={key || "root"}>
+              {key && (
+                <div className="mb-2 flex items-baseline gap-2 border-b border-border-subtle pb-1.5">
+                  <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">
+                    {key}
+                  </h2>
                 </div>
               )}
+              <div className="flex flex-col gap-1">
+                {groups.get(key)!.map((row) => (
+                  <ContentRowLink key={row.key} row={row} />
+                ))}
+              </div>
+            </section>
+          ))}
+          {rows.length === 0 && !intro && (
+            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
+              Nothing here yet.
             </div>
-
-            {/* Visualizations: human/agent session activity + 3D embedding
-                view scoped to this skill's items. Both panels are
-                workspace-member features — hide them from anonymous
-                public-skill viewers entirely so they don't see empty
-                "no data" placeholders for tools they can't use. */}
-            {getToken() && (
-              <>
-            <section className="mt-8">
-              <div className="sys-label mb-1.5">
-                Activity in this skill — last 30 days
-              </div>
-              <div className="card-soft overflow-x-auto p-3">
-                {!insightsLoaded ? (
-                  <SkeletonBlock className="h-40 w-full" />
-                ) : timeline && timeline.contributors.length > 0 ? (
-                  <ContributorActivityTimeline data={timeline} />
-                ) : (
-                  <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                    No session activity in this skill yet. Add a session to
-                    surface its agent commits here.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="mt-6">
-              <div className="sys-label mb-1.5">
-                Embedding map for this skill
-              </div>
-              <div className="card-soft p-3">
-                {!insightsLoaded ? (
-                  <SkeletonBlock className="h-40 w-full" />
-                ) : projection && projection.points.length > 0 ? (
-                  <EmbeddingSpaceExplorer data={projection} />
-                ) : (
-                  <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                    No embeddings in this skill yet. Pages, table rows, and
-                    session events get embedded as they&apos;re added.
-                  </div>
-                )}
-              </div>
-            </section>
-              </>
-            )}
-          </>
-        )}
+          )}
+        </div>
       </div>
-
-      {can_write && (
-        <AddToSkillModal
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
-          skillId={skill.id}
-          workspaceId={skill.workspace_id}
-          existingItems={existingSpecs}
-          onAdded={() => {
-            void onRefresh();
-          }}
-        />
-      )}
     </div>
   );
 }
 
-type PrimaryItem =
-  | { kind: "file"; item: PublicSkillItem }
-  | { kind: "page"; item: PublicSkillItem }
-  | { kind: "session"; item: PublicSkillItem };
-
-// "Single-content" skills — exactly one file, one page, or one session in
-// the skill, nothing else — open straight to the artifact instead of the
-// bundle chrome + viz section.
-//
-// Folders are intentionally NOT treated as incidental packaging. A folder
-// is an open container the user may keep adding to; promising "this skill
-// IS the page inside that folder" only stays true until the next upload.
-function primaryItemForSkill(data: PublicSkillDetail): PrimaryItem | null {
-  if (data.items.length !== 1) return null;
-  const only = data.items[0];
-  if (only.object_type === "file") return { kind: "file", item: only };
-  if (only.object_type === "page") return { kind: "page", item: only };
-  if (only.object_type === "session") return { kind: "session", item: only };
-  return null;
-}
-
-// Single-content skills render the artifact inline (read-only). The
-// "Open in workspace" link is the escape hatch into the native viewer
-// where edit affordances live for workspace members.
-function PrimaryItemOpenLink({
-  kind,
-  item,
-  skillSlug,
-}: {
-  kind: "file" | "page" | "session";
-  item: PublicSkillItem;
-  skillSlug: string;
-}) {
-  let href: string | null = null;
-  if (kind === "file") {
-    href = `/f/${item.object_id}?skill=${encodeURIComponent(skillSlug)}`;
-  } else if (kind === "page") {
-    href = `/p/${item.object_id}?skill=${encodeURIComponent(skillSlug)}`;
-  } else {
-    const session = (item.inline as { session?: { session_id?: string } }).session;
-    if (session?.session_id) {
-      href = `/sessions/${encodeURIComponent(session.session_id)}?skill=${encodeURIComponent(skillSlug)}`;
-    }
-  }
-  if (!href) return null;
+function ContentRowLink({ row }: { row: ContentRow }) {
   return (
-    <div className="mt-4 flex justify-end">
-      <Link
-        href={href}
-        className="inline-flex items-center gap-1 rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+    <Link
+      href={row.href}
+      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-raised"
+    >
+      <span
+        className={
+          "flex h-5 w-5 flex-shrink-0 items-center justify-center " +
+          (row.kind === "table" ? "text-emerald-600" : "text-muted")
+        }
       >
-        Open in workspace ↗
-      </Link>
-    </div>
+        <KindGlyph kind={row.kind} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13.5px] font-medium text-foreground">
+          {row.name || "(untitled)"}
+        </span>
+        <span className="block truncate text-[11.5px] text-muted">{row.sub}</span>
+      </span>
+      <span className="hidden text-[11.5px] text-muted sm:inline">Open →</span>
+    </Link>
   );
-}
-
-function SingleFilePreview({ item }: { item: PublicSkillItem }) {
-  const file = item.inline as InlineFile;
-  const name = file.name || item.label || "Uploaded file";
-  const contentType = file.content_type || "file";
-  const size = formatFileSize(file.size_bytes ?? 0);
-
-  return (
-    <section className="mt-6">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="m-0 truncate font-display text-[16px] font-semibold text-foreground">
-            {name}
-          </h2>
-          <div className="mt-0.5 text-[12px] text-muted">
-            {contentType} · {size}
-          </div>
-        </div>
-        {file.url && (
-          <a
-            href={file.url}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
-          >
-            Download ↗
-          </a>
-        )}
-      </div>
-
-      {!file.url ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
-          This file is no longer available.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-surface">
-          <FileContentRenderer
-            url={file.url}
-            name={name}
-            contentType={contentType}
-          />
-        </div>
-      )}
-    </section>
-  );
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // Clickable banner. Writers see a faint "Change banner" hint on hover and
@@ -711,210 +555,7 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function groupSkillItems(items: PublicSkillItem[]): SkillItemGroup {
-  const groups: SkillItemGroup = {};
-  for (const item of items) {
-    groups[item.object_type] = [...(groups[item.object_type] ?? []), item];
-  }
-  return groups;
-}
-
-// Compact item list — each item deep-links to its editor / viewer in the
-// owning workspace. No inline content rendering; the user wanted the skill
-// detail page to be a directory, not a wall of embedded documents.
-function SkillItemSection({
-  title,
-  items,
-  skillSlug,
-  workspaceId,
-}: {
-  title: string;
-  items: PublicSkillItem[];
-  skillSlug: string;
-  workspaceId: string;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <section>
-      <div className="mb-2 flex items-baseline gap-2 border-b border-border-subtle pb-1.5">
-        <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">
-          {title}
-        </h2>
-        <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {items.length}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1">
-        {items.map((item) => (
-          <SkillItemRow
-            key={`${item.object_type}-${item.object_id}`}
-            item={item}
-            skillSlug={skillSlug}
-            workspaceId={workspaceId}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SkillItemRow({
-  item,
-  skillSlug,
-  workspaceId,
-}: {
-  item: PublicSkillItem;
-  skillSlug: string;
-  workspaceId: string;
-}) {
-  const href = hrefForItem(item, skillSlug, workspaceId);
-  const sub = subtitleForItem(item);
-  const tint = tintForKind(item.object_type);
-
-  const content = (
-    <>
-      <span
-        className={
-          "flex h-5 w-5 flex-shrink-0 items-center justify-center " + tint
-        }
-      >
-        <KindGlyph kind={item.object_type} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] font-medium text-foreground">
-          {item.label || "(untitled)"}
-        </span>
-        {sub && (
-          <span className="block truncate text-[11.5px] text-muted">{sub}</span>
-        )}
-      </span>
-      {href && (
-        <span className="hidden text-[11.5px] text-muted sm:inline">
-          Open →
-        </span>
-      )}
-    </>
-  );
-
-  const cls =
-    "flex items-center gap-2.5 rounded-md px-2 py-1.5 " +
-    (href ? "hover:bg-raised" : "opacity-60");
-
-  return href ? (
-    <Link href={href} className={cls}>
-      {content}
-    </Link>
-  ) : (
-    <div className={cls}>{content}</div>
-  );
-}
-
-// Skill item URLs are workspace-native routes. The `?skill=<slug>` query
-// param is a backref hint: the viewer tries the workspace endpoint first
-// (full permissions), and falls back to reading through the public skill
-// payload when the user isn't a workspace member.
-function hrefForItem(
-  item: PublicSkillItem,
-  skillSlug: string,
-  workspaceId: string,
-): string | null {
-  const skill = encodeURIComponent(skillSlug);
-  if (item.object_type === "file") {
-    return `/f/${item.object_id}?skill=${skill}`;
-  }
-  if (item.object_type === "page") {
-    return `/p/${item.object_id}?skill=${skill}`;
-  }
-  if (item.object_type === "folder") {
-    return `/workspaces/${workspaceId}/folders/${item.object_id}?skill=${skill}`;
-  }
-  if (item.object_type === "session") {
-    // Session URLs are keyed on the human-readable session_id, not the
-    // row UUID. The string lives in inline.session.session_id.
-    const sessionRow = (item.inline as { session?: { session_id?: string } }).session;
-    if (!sessionRow?.session_id) return null;
-    return `/sessions/${encodeURIComponent(sessionRow.session_id)}?skill=${skill}`;
-  }
-  if (item.object_type === "table") {
-    return `/tables/${item.object_id}?skill=${skill}`;
-  }
-  return null;
-}
-
-function subtitleForItem(item: PublicSkillItem): string {
-  if (item.object_type === "session") {
-    const s = item.inline?.session as
-      | { agent_name?: string; events?: unknown[] }
-      | undefined;
-    if (s)
-      return [
-        s.agent_name,
-        s.events?.length ? `${s.events.length} events` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-  }
-  if (item.object_type === "file") {
-    const f = item.inline as
-      | { content_type?: string; size_bytes?: number }
-      | undefined;
-    if (f?.content_type) return f.content_type;
-  }
-  if (item.object_type === "page") {
-    const p = item.inline?.page as { content_type?: string } | undefined;
-    return p?.content_type === "html" ? "html page" : "page";
-  }
-  return "";
-}
-
-function tintForKind(kind: PublicSkillItem["object_type"]): string {
-  if (kind === "session") return "text-[var(--color-agent)]";
-  if (kind === "table") return "text-emerald-600";
-  if (kind === "folder") return "text-muted";
-  return "text-muted";
-}
-
-function KindGlyph({ kind }: { kind: PublicSkillItem["object_type"] }) {
-  if (kind === "folder")
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-      </svg>
-    );
-  if (kind === "page")
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-        <path d="M14 3v5h5" />
-      </svg>
-    );
-  if (kind === "session")
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M21 12c0 4.4-4 8-9 8-1.4 0-2.8-.3-4-.8L3 21l1.5-4C3.6 15.7 3 13.9 3 12c0-4.4 4-8 9-8s9 3.6 9 8z" />
-      </svg>
-    );
+function KindGlyph({ kind }: { kind: "page" | "file" | "table" }) {
   if (kind === "table")
     return (
       <svg

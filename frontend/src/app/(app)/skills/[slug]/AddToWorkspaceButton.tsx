@@ -8,7 +8,6 @@ import {
   ApiError,
   getToken,
   listMyWorkspaces,
-  type WorkspaceSkill,
 } from "../../../../lib/api";
 import type { Workspace } from "../../../../lib/types";
 import { useEscapeKey } from "../../../../hooks/useEscapeKey";
@@ -22,7 +21,9 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
   const [open, setOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
-  const [attached, setAttached] = useState<WorkspaceSkill | null>(null);
+  const [attached, setAttached] = useState<
+    { workspaceId: string; folderId: string; name: string } | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   const eligibleWorkspaces = useMemo(
@@ -67,7 +68,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
     setError(null);
     try {
       const result = await forkSkill(slug, workspaceId);
-      setAttached(result);
+      setAttached({ workspaceId, folderId: result.folder_id, name: result.name });
       router.refresh();
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "Could not add skill";
@@ -101,13 +102,17 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
         <div className="absolute right-0 top-12 z-20 w-[300px] rounded-lg border border-border-subtle bg-surface p-3 text-left shadow-lg">
           {attached ? (
             <div className="space-y-2">
-              <p className="text-[13px] font-medium text-foreground">Added to your files</p>
+              <p className="text-[13px] font-medium text-foreground">
+                Added {attached.name} to your skills
+              </p>
               <button
                 type="button"
-                onClick={() => router.push(`/workspaces/${attached.added_to_workspace_id}`)}
+                onClick={() =>
+                  router.push(`/workspaces/${attached.workspaceId}/skills/${attached.folderId}`)
+                }
                 className="w-full rounded-md border border-border-subtle px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
               >
-                Open files
+                Open skill
               </button>
             </div>
           ) : eligibleWorkspaces.length > 0 ? (

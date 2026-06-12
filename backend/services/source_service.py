@@ -74,6 +74,58 @@ SOURCE_CAPABILITY = {
 }
 
 
+def _clean_string_list(value, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list of strings")
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{field_name} must be a list of non-empty strings")
+        item = item.strip()
+        if item in seen:
+            continue
+        seen.add(item)
+        cleaned.append(item)
+    return cleaned
+
+
+def normalize_source_settings(source_type: str, settings: dict | None) -> dict:
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict):
+        raise ValueError("settings must be an object")
+
+    if source_type != "slack":
+        if settings:
+            raise ValueError("settings are not supported for this source type")
+        return {}
+
+    unsupported = set(settings) - {"allowed_channel_ids"}
+    if unsupported:
+        raise ValueError(f"unsupported Slack setting: {sorted(unsupported)[0]}")
+
+    allowed_channel_ids = _clean_string_list(
+        settings.get("allowed_channel_ids", []), "allowed_channel_ids"
+    )
+    if not allowed_channel_ids:
+        raise ValueError("allowed_channel_ids must include at least one Slack channel")
+
+    return {"allowed_channel_ids": allowed_channel_ids}
+
+
+def slack_allowed_channel_ids(source: dict) -> list[str]:
+    settings = source.get("settings")
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict):
+        raise ValueError("settings must be an object")
+    return _clean_string_list(settings.get("allowed_channel_ids", []), "allowed_channel_ids")
+
+
 def _content_hash(content: str | None) -> str:
     return hashlib.sha256((content or "").encode()).hexdigest()
 
@@ -91,6 +143,7 @@ def _source_row(row) -> dict:
         "sync_status": row["sync_status"],
         "sync_error": row["sync_error"],
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
+        "settings": row["settings"] or {},
     }
 
 
@@ -123,6 +176,7 @@ async def create_source(
     source_type: str,
     external_ref: str,
     display_name: str,
+    settings: dict | None = None,
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
@@ -132,16 +186,20 @@ async def create_source(
     forever at the front of the due_sources window and starve real syncs."""
     capability = SOURCE_CAPABILITY.get(source_type, "navigable")
     interval = DEFAULT_SYNC_INTERVAL_S.get(source_type, 3600)
+    normalized_settings = normalize_source_settings(source_type, settings)
     sync_enabled = source_type in DEFAULT_SYNC_INTERVAL_S
     row = await get_pool().fetchrow(
         """
         INSERT INTO workspace_sources (
             workspace_id, owner_user_id, source_type, external_ref,
-            display_name, capability, sync_interval_s, sync_enabled
+            display_name, capability, sync_interval_s, sync_enabled, settings
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
         ON CONFLICT (workspace_id, owner_user_id, source_type, external_ref)
-        DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = now()
+        DO UPDATE SET
+            display_name = EXCLUDED.display_name,
+            settings = EXCLUDED.settings,
+            updated_at = now()
         RETURNING *
         """,
         workspace_id,
@@ -152,6 +210,7 @@ async def create_source(
         capability,
         interval,
         sync_enabled,
+        normalized_settings,
     )
     return _source_row(row)
 
@@ -194,7 +253,7 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
     """Everything a sync task needs to crawl one source. Not owner-gated —
     sync runs server-side on behalf of the owner via their stored token."""
     row = await get_pool().fetchrow(
-        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor "
+        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor, settings "
         "FROM workspace_sources WHERE id = $1",
         source_id,
     )
@@ -207,13 +266,14 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
         "source_type": row["source_type"],
         "external_ref": row["external_ref"],
         "sync_cursor": row["sync_cursor"],
+        "settings": row["settings"] or {},
     }
 
 
 async def due_sources(limit: int = 50) -> list[dict]:
     """Pull sources whose scheduled sync is due (for the Beat reconciler)."""
     rows = await get_pool().fetch(
-        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor "
+        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor, settings "
         "FROM workspace_sources "
         "WHERE sync_enabled AND next_sync_at <= now() "
         "ORDER BY next_sync_at LIMIT $1",
@@ -227,6 +287,7 @@ async def due_sources(limit: int = 50) -> list[dict]:
             "source_type": r["source_type"],
             "external_ref": r["external_ref"],
             "sync_cursor": r["sync_cursor"],
+            "settings": r["settings"] or {},
         }
         for r in rows
     ]
@@ -462,6 +523,22 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
     """List a source's live documents, optionally under a path prefix. `source`
     is the registry row (from get_owned_source / get_source_for_sync)."""
     table = _table_for(source["source_type"])
+    if table == "slack_messages":
+        allowed_channel_ids = slack_allowed_channel_ids(source)
+        if not allowed_channel_ids:
+            return []
+        rows = await get_pool().fetch(
+            f"SELECT path, name, kind FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+            f"AND channel_id = ANY($4::text[]) "
+            f"ORDER BY path LIMIT $3",
+            UUID(source["id"]),
+            f"{prefix}%",
+            limit,
+            allowed_channel_ids,
+        )
+        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+
     rows = await get_pool().fetch(
         f"SELECT path, name, kind FROM {table} "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
@@ -499,6 +576,27 @@ async def read_document(source: dict, path: str) -> dict | None:
 
     table = _table_for(source["source_type"])
     if table in CONTENT_TABLES:
+        if table == "slack_messages":
+            allowed_channel_ids = slack_allowed_channel_ids(source)
+            if not allowed_channel_ids:
+                return None
+            row = await get_pool().fetchrow(
+                f"SELECT path, name, kind, content FROM {table} "
+                f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
+                f"AND channel_id = ANY($3::text[])",
+                UUID(source["id"]),
+                path,
+                allowed_channel_ids,
+            )
+            if not row:
+                return None
+            return {
+                "path": row["path"],
+                "name": row["name"],
+                "kind": row["kind"],
+                "content": row["content"] or "",
+            }
+
         row = await get_pool().fetchrow(
             f"SELECT path, name, kind, content, external_ref FROM {table} "
             f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
@@ -664,6 +762,16 @@ async def search_documents(
         tables = [table]
         source_id = UUID(source["id"])
 
+    def visibility_clause(table: str) -> str:
+        if table != "slack_messages":
+            return ""
+        return (
+            "AND d.channel_id = ANY(ARRAY("
+            "SELECT jsonb_array_elements_text("
+            "COALESCE(s.settings->'allowed_channel_ids', '[]'::jsonb)"
+            ")))"
+        )
+
     parts = [f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
@@ -674,6 +782,7 @@ async def search_documents(
           AND ($4::uuid IS NULL OR d.source_id = $4)
           AND to_tsvector('english', coalesce(d.content, ''))
               @@ websearch_to_tsquery('english', $3)
+          {visibility_clause(t)}
         """ for t in tables]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
@@ -731,6 +840,7 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "sync_status": s["sync_status"],
             "sync_error": s["sync_error"],
             "last_synced_at": s["last_synced_at"],
+            "settings": s["settings"],
         }
         hint = _source_search_hint(s)
         if hint:
@@ -745,6 +855,18 @@ async def source_item_count(source: dict) -> int | None:
     table = SOURCE_TABLE.get(source["source_type"])
     if table is None:
         return None
+    if table == "slack_messages":
+        allowed_channel_ids = slack_allowed_channel_ids(source)
+        if not allowed_channel_ids:
+            return 0
+        row = await get_pool().fetchrow(
+            f"SELECT count(*) AS n FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND channel_id = ANY($2::text[])",
+            UUID(source["id"]),
+            allowed_channel_ids,
+        )
+        return int(row["n"]) if row else 0
+
     row = await get_pool().fetchrow(
         f"SELECT count(*) AS n FROM {table} WHERE source_id = $1 AND deleted_at IS NULL",
         UUID(source["id"]),

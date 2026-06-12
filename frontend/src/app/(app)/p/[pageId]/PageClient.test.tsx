@@ -28,7 +28,6 @@ const api = vi.hoisted(() => {
     getPage: vi.fn(),
     getPublicSkill: vi.fn(),
     listCommentThreads: vi.fn(),
-    listObjectSkills: vi.fn(),
     reconcileCommentAnchors: vi.fn(),
     replyToCommentThread: vi.fn(),
     setCommentResolved: vi.fn(),
@@ -84,7 +83,7 @@ vi.mock("../../../../hooks/useAuth", () => ({
 
 vi.mock("../../../../lib/api", () => api);
 
-vi.mock("../../../../skills/[slug]/SkillItemBodies", () => ({
+vi.mock("../../skills/[slug]/SkillItemBodies", () => ({
   PageBody: () => <div>Skill page body</div>,
 }));
 
@@ -97,10 +96,6 @@ vi.mock("../../../../components/DownloadMenu", () => ({
 
 vi.mock("../../../../components/SkeletonStates", () => ({
   DocumentPageSkeleton: () => <div>Loading page</div>,
-}));
-
-vi.mock("../../../../components/SkillIcons", () => ({
-  SkillIcon: () => <span>Skill icon</span>,
 }));
 
 vi.mock("../../../../components/workspace/HtmlPageView", () => ({
@@ -129,6 +124,13 @@ vi.mock("../../../../components/workspace/CommentComposerPopover", () => ({
   default: () => <div>Comment composer</div>,
 }));
 
+const emptyContents = {
+  subfolders: [],
+  pages: [],
+  files: [],
+  tables: [],
+};
+
 describe("SkillPageView access fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -156,6 +158,56 @@ describe("SkillPageView access fallback", () => {
       "/",
     );
     expect(screen.queryByText("Page not found")).not.toBeInTheDocument();
-    expect(screen.queryByText("This page is not in a Skill yet.")).not.toBeInTheDocument();
+  });
+
+  it("renders the read-only body from the skill contents when the page is in the skill", async () => {
+    api.getPublicSkill.mockResolvedValue({
+      skill: { id: "skill-1", title: "Launch Skill" },
+      workspace_name: "Demo",
+      folder_name: "Launch Skill",
+      contents: {
+        ...emptyContents,
+        pages: [
+          {
+            id: "page-1",
+            name: "Plan",
+            content_type: "markdown",
+            content_markdown: "# Plan",
+            content_html: "",
+            html_layout: "responsive",
+            updated_at: "2026-06-08T00:00:00Z",
+            folder_path: [],
+          },
+        ],
+      },
+      can_write: false,
+    });
+
+    render(<SkillPageView />);
+
+    expect(await screen.findByText("Skill page body")).toBeInTheDocument();
+    expect(screen.getByText("page · read-only via Skill")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Launch Skill/ })).toHaveAttribute(
+      "href",
+      "/skills/private-skill",
+    );
+  });
+
+  it("denies access when the page is not part of the skill contents", async () => {
+    api.getPublicSkill.mockResolvedValue({
+      skill: { id: "skill-1", title: "Launch Skill" },
+      workspace_name: "Demo",
+      folder_name: "Launch Skill",
+      contents: emptyContents,
+      can_write: false,
+    });
+
+    render(<SkillPageView />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "You don't have access to this page",
+      }),
+    ).toBeInTheDocument();
   });
 });

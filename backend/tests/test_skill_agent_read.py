@@ -48,27 +48,42 @@ async def _create_page(
 async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     api_key, _ = await _register(client)
     workspace = await _create_workspace(client, api_key)
-    page = await _create_page(client, api_key, workspace["id"], "Root cause", "# Finding")
+    folder = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/folders",
+            json={"name": "Auth 401 spike"},
+            headers=_auth(api_key),
+        )
+    ).json()
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            json={"name": "Root cause", "content": "# Finding", "folder_id": folder["id"]},
+            headers=_auth(api_key),
+        )
+    ).json()
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills/publish",
+        f"/api/v1/workspaces/{workspace['id']}/skills",
         json={
+            "folder_id": folder["id"],
             "title": "Auth 401 spike",
             "description": "Clock skew investigation",
-            "workspace_permission": "read",
-            "public_permission": "read",
-            "items": [{"object_type": "page", "object_id": page["id"]}],
         },
         headers=_auth(api_key),
     )
     assert published.status_code == 201
-    slug = published.json()["skill"]["slug"]
+    slug = published.json()["slug"]
 
     resp = await client.get(f"/api/v1/skills/{slug}?format=text")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/markdown")
     text = resp.text
     assert "# Auth 401 spike" in text
+    # The SKILL.md body renders first (the skill's own instructions), then the
+    # live folder counts: SKILL.md (auto-minted on publish) + the page.
+    assert "This is a public Skill with 2 pages." in text
+    assert text.index("# Auth 401 spike") < text.index("This is a public Skill")
     assert "This page is the Skill homepage" in text
     assert f"http://localhost:3457/skills/{slug}.md" in text
     assert f"http://localhost:3457/skills/{slug}.json" in text
@@ -101,8 +116,6 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
             "title": "HTML strategy memo",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",
-            "workspace_permission": "read",
-            "public_permission": "read",
         },
         headers=_auth(api_key),
     )
@@ -127,7 +140,7 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
         f"/api/v1/skills/{body['skill_slug']}/items/page/{body['page_id']}"
     )
     assert json_resp.status_code == 200
-    assert json_resp.json()["item"]["inline"]["page"]["content_type"] == "html"
+    assert json_resp.json()["item"]["content_type"] == "html"
 
 
 @pytest.mark.asyncio

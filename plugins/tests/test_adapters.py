@@ -102,7 +102,14 @@ def test_cursor_agent_response():
 def test_transcript_paths_flow_through_session_end_adapters():
     cases = [
         ("claude", {"session_id": "s1", "cwd": "/repo", "transcript_path": "/t/claude.jsonl"}),
-        ("cursor", {"session_id": "s1", "workspace_roots": ["/repo"], "transcript_path": "/t/cursor.jsonl"}),
+        (
+            "cursor",
+            {
+                "session_id": "s1",
+                "workspace_roots": ["/repo"],
+                "transcript_path": "/t/cursor.jsonl",
+            },
+        ),
         ("gemini", {"session_id": "s1", "cwd": "/repo", "transcript_path": "/t/gemini.json"}),
     ]
     for plugin, payload in cases:
@@ -117,23 +124,27 @@ def test_cursor_tool_output_json_string_parses():
     """Cursor's tool_output is a JSON-stringified string. The adapter must
     parse it to a dict so summarize_tool_use doesn't crash on `.get()`."""
     adapt = _load_adapt("cursor")
-    event = adapt.adapt_tool_use({
-        "tool_name": "Shell",
-        "session_id": "s1",
-        "tool_input": {"command": "ls"},
-        "tool_output": '{"stdout": "file.txt\\n", "exit_code": 0}',
-    })
+    event = adapt.adapt_tool_use(
+        {
+            "tool_name": "Shell",
+            "session_id": "s1",
+            "tool_input": {"command": "ls"},
+            "tool_output": '{"stdout": "file.txt\\n", "exit_code": 0}',
+        }
+    )
     assert isinstance(event.tool_response, dict)
     assert event.tool_response.get("stdout") == "file.txt\n"
     assert event.tool_response.get("exit_code") == 0
 
     # Non-JSON text falls back to {"raw": ...}.
-    event2 = adapt.adapt_tool_use({
-        "tool_name": "Shell",
-        "session_id": "s1",
-        "tool_input": {"command": "ls"},
-        "tool_output": "not-json-text",
-    })
+    event2 = adapt.adapt_tool_use(
+        {
+            "tool_name": "Shell",
+            "session_id": "s1",
+            "tool_input": {"command": "ls"},
+            "tool_output": "not-json-text",
+        }
+    )
     assert event2.tool_response == {"raw": "not-json-text"}
 
 
@@ -181,22 +192,33 @@ def test_push_event_stamps_client_into_metadata():
     c = FakeClient(base_url="http://x", api_key="k")
 
     c.push_event(
-        workspace_id="ws1", agent_name="henry", event_type="tool_use",
-        content="...", tool_name="edit", metadata={"cwd": "/tmp"}, client="cursor",
+        workspace_id="ws1",
+        agent_name="henry",
+        event_type="tool_use",
+        content="...",
+        tool_name="edit",
+        metadata={"cwd": "/tmp"},
+        client="cursor",
     )
     assert calls[-1][0] == "/api/v1/workspaces/ws1/sessions/events"
     body = calls[-1][1]["json"]
     assert body["metadata"] == {"cwd": "/tmp", "client": "cursor"}
 
     c.push_event(
-        workspace_id="ws1", agent_name="henry", event_type="user_message",
-        content="hi", client="claude_code",
+        workspace_id="ws1",
+        agent_name="henry",
+        event_type="user_message",
+        content="hi",
+        client="claude_code",
     )
     body = calls[-1][1]["json"]
     assert body["metadata"] == {"client": "claude_code"}
 
     c.push_event(
-        workspace_id="ws1", agent_name="henry", event_type="user_message", content="hi",
+        workspace_id="ws1",
+        agent_name="henry",
+        event_type="user_message",
+        content="hi",
     )
     body = calls[-1][1]["json"]
     assert "metadata" not in body
@@ -239,9 +261,9 @@ def test_tool_name_normalization():
     for plugin, raw, expected in cases:
         adapt = _load_adapt(plugin)
         event = adapt.adapt_tool_use({"tool_name": raw, "session_id": "x"})
-        assert event.tool_name == expected, (
-            f"{plugin}: {raw!r} -> {event.tool_name!r}, expected {expected!r}"
-        )
+        assert (
+            event.tool_name == expected
+        ), f"{plugin}: {raw!r} -> {event.tool_name!r}, expected {expected!r}"
 
 
 def test_client_facet_flows_through_stream_paths():
@@ -274,19 +296,32 @@ def test_client_facet_flows_through_stream_paths():
         c = FakeClient(base_url="http://x", api_key="k")
 
         stream_user_message(c, cfg, state, "hello")
-        stream_tool_use(c, cfg, state, HookEvent(
-            kind="tool_use", tool_name="bash",
-            tool_input={"command": "echo hi"}, tool_response={"stdout": "hi"},
-        ))
-        stream_assistant_message(c, cfg, state, HookEvent(
-            kind="stop", last_assistant_message="done.",
-        ))
+        stream_tool_use(
+            c,
+            cfg,
+            state,
+            HookEvent(
+                kind="tool_use",
+                tool_name="bash",
+                tool_input={"command": "echo hi"},
+                tool_response={"stdout": "hi"},
+            ),
+        )
+        stream_assistant_message(
+            c,
+            cfg,
+            state,
+            HookEvent(
+                kind="stop",
+                last_assistant_message="done.",
+            ),
+        )
         stream_session_end(c, cfg, state, HookEvent(kind="session_end"))
 
         for body in calls:
-            assert body.get("metadata", {}).get("client") == client_name, (
-                f"{client_name}: missing client facet in {body}"
-            )
+            assert (
+                body.get("metadata", {}).get("client") == client_name
+            ), f"{client_name}: missing client facet in {body}"
 
 
 def test_model_metadata_flows_through_stream_paths():
@@ -379,9 +414,15 @@ def test_stream_session_end_not_emitted_on_assistant_message():
     c = FakeClient(base_url="http://x", api_key="k")
     cfg = {"workspace_id": "ws1", "agent_name": "henry", "client": "claude_code"}
     state = {"session_id": "s1"}
-    stream_assistant_message(c, cfg, state, HookEvent(
-        kind="stop", last_assistant_message="turn complete.",
-    ))
+    stream_assistant_message(
+        c,
+        cfg,
+        state,
+        HookEvent(
+            kind="stop",
+            last_assistant_message="turn complete.",
+        ),
+    )
 
     event_types = [b.get("event_type") for b in calls]
     assert "assistant_message" in event_types

@@ -9,7 +9,7 @@ source type in later phases.
 
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -18,7 +18,7 @@ from ..auth import get_current_user
 from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
-from ..services import permission_service, source_service
+from ..services import permission_service, source_service, task_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
 
@@ -34,6 +34,7 @@ class AddSourceRequest(BaseModel):
     # Gmail, pass the account email when more than one mailbox is connected.
     external_ref: str | None = None
     display_name: str | None = None
+    settings: dict | None = None
 
 
 async def _resolve_slack_source(user_id) -> tuple[str, str]:
@@ -253,6 +254,10 @@ async def add_source(
     await _require_member(workspace_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
+    try:
+        source_settings = source_service.normalize_source_settings(body.source_type, body.settings)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     external_ref = body.external_ref
     display_name = body.display_name
@@ -283,6 +288,7 @@ async def add_source(
         source_type=body.source_type,
         external_ref=external_ref,
         display_name=display_name or external_ref,
+        settings=source_settings,
     )
 
 
@@ -301,11 +307,21 @@ async def sync_source_now(
         # Search-driven / queryable sources have no indexer; the queued task
         # would no-op, so a 200 here would be a lie.
         raise HTTPException(status_code=400, detail="This source type does not sync")
-    result = celery.send_task(
+    task_id = str(uuid4())
+    await task_service.register_task(
+        task_id=task_id,
+        user_id=current_user["id"],
+        workspace_id=workspace_id,
+        task_type="source_sync",
+        object_type="source",
+        object_id=source_id,
+    )
+    celery.send_task(
         "backend.tasks.sources.sync_source",
         kwargs={"source_id": str(source_id)},
+        task_id=task_id,
     )
-    return {"task_id": result.id}
+    return {"task_id": task_id}
 
 
 @router.delete("/{source_id}")

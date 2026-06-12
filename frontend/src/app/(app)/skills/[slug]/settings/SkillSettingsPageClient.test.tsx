@@ -15,6 +15,7 @@ function render(ui: ReactNode) {
 }
 import {
   getPublicSkill,
+  unpublishSkill,
   updateSkill,
   type PublicSkillDetail,
 } from "../../../../../lib/api";
@@ -75,8 +76,8 @@ vi.mock("../../../../../lib/skillNavigationCache", () => ({
 }));
 
 vi.mock("../../../../../lib/api", () => ({
-  deleteSkill: vi.fn(),
   getPublicSkill: vi.fn(),
+  unpublishSkill: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
 }));
@@ -88,30 +89,24 @@ function skillDetail(
     skill: {
       id: "skill-1",
       workspace_id: "workspace-1",
+      folder_id: "folder-1",
       slug: "shared-skill",
       title: "Shared Skill",
       description: "",
       owner_id: "user-1",
       owner_name: "henry",
       owner_display_name: "Henry",
-      access: "public",
-      workspace_permission: "read",
-      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
       view_count: 0,
-      share_count: 0,
-      items: [],
-      is_external: false,
-      added_to_workspace_id: null,
-      forked_from_skill_id: null,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
       ...skill,
     },
     workspace_name: "Demo Workspace",
-    items: [],
+    folder_name: "Shared Skill",
+    contents: { subfolders: [], pages: [], files: [], tables: [] },
     can_write: true,
   };
 }
@@ -130,16 +125,25 @@ describe("SkillSettingsPageClient", () => {
     cleanup();
   });
 
-  it("loads editable skill settings", async () => {
+  it("loads editable skill settings without member management", async () => {
     render(<SkillSettingsPageClient slug="shared-skill" />);
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(await screen.findByDisplayValue("Shared Skill")).toBeInTheDocument();
+    // Person-to-person access is folder shares now, not skill members.
     expect(screen.queryByText("Members")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Visibility")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Workspace access")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Public access")).not.toBeInTheDocument();
-    expect(screen.queryByText("List on Discover")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("List on Discover")).not.toBeChecked();
+  });
+
+  it("toggles the Discover listing", async () => {
+    render(<SkillSettingsPageClient slug="shared-skill" />);
+
+    fireEvent.click(await screen.findByLabelText("List on Discover"));
+
+    await waitFor(() =>
+      expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
+    );
   });
 
   it("saves title changes only", async () => {
@@ -156,5 +160,18 @@ describe("SkillSettingsPageClient", () => {
       }),
     );
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
+  });
+
+  it("stops sharing via unpublish and returns to the workspace skills page", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.mocked(unpublishSkill).mockResolvedValue(undefined);
+
+    render(<SkillSettingsPageClient slug="shared-skill" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Stop sharing" }));
+
+    await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
+    expect(router.push).toHaveBeenCalledWith("/workspaces/workspace-1/skills");
+    vi.unstubAllGlobals();
   });
 });

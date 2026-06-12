@@ -17,7 +17,7 @@ class _FakeClient:
         return None
 
     # object sharing
-    def share_object(self, object_type, object_id, email, permission="read"):
+    def share_object(self, object_type, object_id, email, permission="read", expires_at=None):
         self._calls.append(("share", object_type, object_id, email, permission))
         return {"pending": True, "email": email}
 
@@ -82,17 +82,11 @@ def test_shares_add_and_remove(monkeypatch) -> None:
     assert ("unshare", "folder", "fold-1", "user", "u9") in calls
 
 
-def test_skill_members_and_invites_and_snapshot(monkeypatch) -> None:
+def test_skill_snapshot_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.skills_members("cart-1", as_json=True)
-    main.skills_add_member("cart-1", "u1", permission="admin", as_json=True)
-    main.skills_invites(as_json=True)
     main.skills_snapshot_source(
         "cart-1", source="src-1", path="specs/auth.md", workspace_id=None, as_json=True
     )
-    assert ("members", "cart-1") in calls
-    assert ("add_member", "cart-1", "u1", "admin") in calls
-    assert ("invites",) in calls
     assert ("snapshot", "ws-1", "cart-1", "src-1", "specs/auth.md") in calls
 
 

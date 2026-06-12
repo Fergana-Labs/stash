@@ -145,10 +145,7 @@ export default function EmbeddingProjection3D() {
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-[#F97316]" />
           <span className="text-[13px] font-semibold text-ink">
-            embedding projection
-          </span>
-          <span className="font-mono text-[11px] text-muted">
-            memory_reading_store
+            Vector Search
           </span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">

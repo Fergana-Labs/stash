@@ -57,14 +57,28 @@ def test_stream_tool_use_writes_counter(tmp_path):
     state = {"session_id": "s1"}
     c = _FakeClient()
 
-    stream_tool_use(c, cfg, state, HookEvent(
-        kind="tool_use", tool_name="edit",
-        tool_input={"file_path": "x.py", "old_string": "a", "new_string": "b"},
-    ), tmp_path)
-    stream_tool_use(c, cfg, state, HookEvent(
-        kind="tool_use", tool_name="bash",
-        tool_input={"command": "ls"},
-    ), tmp_path)
+    stream_tool_use(
+        c,
+        cfg,
+        state,
+        HookEvent(
+            kind="tool_use",
+            tool_name="edit",
+            tool_input={"file_path": "x.py", "old_string": "a", "new_string": "b"},
+        ),
+        tmp_path,
+    )
+    stream_tool_use(
+        c,
+        cfg,
+        state,
+        HookEvent(
+            kind="tool_use",
+            tool_name="bash",
+            tool_input={"command": "ls"},
+        ),
+        tmp_path,
+    )
 
     stats = load_state(tmp_path)["stats"]
     assert stats["tool_count"] == 2
@@ -76,7 +90,11 @@ def test_stream_session_end_reads_counter(tmp_path):
     cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
     state = {
         "session_id": "s1",
-        "stats": {"tool_count": 7, "tools_used": ["edit", "bash"], "files_touched": ["a.py", "b.py"]},
+        "stats": {
+            "tool_count": 7,
+            "tools_used": ["edit", "bash"],
+            "files_touched": ["a.py", "b.py"],
+        },
     }
     c = _FakeClient()
 
