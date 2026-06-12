@@ -175,9 +175,9 @@ function LoginPageInner() {
 
   const formBody = (
     <>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <FormField type="text" placeholder="Username" value={name} onChange={setName} autoFocus />
-        <FormField type="password" placeholder="Password" value={password} onChange={setPassword} />
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormField label="Username" type="text" placeholder="yourname" value={name} onChange={setName} autoFocus />
+        <FormField label="Password" type="password" placeholder="••••••••" value={password} onChange={setPassword} />
         {error && <ErrorLine message={error} />}
         <BrandButton submitting={submitting} label={ctaLabel} />
       </form>
@@ -214,19 +214,19 @@ function LoginPageInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm space-y-4">
-          <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
-            <h2 className="text-base font-semibold text-foreground">
-              {mode === "login" ? "Sign in" : "Create an account"}
-            </h2>
-            {formBody}
-          </div>
-        </div>
-      </main>
-    </div>
+    <AuthShell
+      title={mode === "login" ? "Welcome back" : "Create your stash"}
+      subtitle={
+        mode === "login"
+          ? "Sign in to the workspace you share with your agents."
+          : "One account for you and your agents."
+      }
+    >
+      <FormCard>{formBody}</FormCard>
+      <p className="text-center text-[11px] text-muted">
+        You&apos;re seeing this because you&apos;re running in self-hosted/dev mode.
+      </p>
+    </AuthShell>
   );
 }
 
@@ -364,17 +364,12 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm space-y-4">
-          <div className="rounded-2xl border border-border bg-surface p-6">
-            <h2 className="text-base font-semibold text-foreground mb-4">Sign in</h2>
-            {body}
-          </div>
-        </div>
-      </main>
-    </div>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to the workspace you share with your agents."
+    >
+      <FormCard>{body}</FormCard>
+    </AuthShell>
   );
 }
 
@@ -400,6 +395,48 @@ function Auth0Exchange(props: { cliSession: string | null; onCliApproved: () => 
   return <Comp cliSession={props.cliSession} onCliApproved={props.onCliApproved} />;
 }
 
+// --- Branded auth shell (plain login + Auth0) ----------------------------------
+
+// The auth shell only ever renders for signed-out visitors, so it skips the app
+// Header (whose only signed-out affordance is a link right back to /login).
+function AuthShell({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
+      <AuthBackdrop />
+      <main className="flex-1 flex items-center justify-center px-4 py-12 relative">
+        <div className="w-full max-w-[400px] space-y-7 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="space-y-3 text-center">
+            <Wordmark />
+            <h1 className="font-display text-[32px] leading-[1.05] font-bold tracking-tight text-foreground">
+              {title}
+            </h1>
+            <p className="text-sm text-dim">{subtitle}</p>
+          </div>
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function Wordmark() {
+  return (
+    <div className="flex items-center justify-center gap-2 font-display text-[19px] font-bold tracking-[-0.03em] text-foreground">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/octopus.svg" alt="" width={24} height={27} />
+      stash
+    </div>
+  );
+}
+
 // --- CLI hero shell ----------------------------------------------------------
 
 function CliShell({
@@ -415,7 +452,7 @@ function CliShell({
 }) {
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
-      <CliBackdrop />
+      <AuthBackdrop />
       <Header user={user} onLogout={logout} />
       <main className="flex-1 flex items-center justify-center px-4 py-10 relative">
         <div className="w-full max-w-[420px] space-y-7 animate-in fade-in slide-in-from-bottom-3 duration-500">
@@ -450,7 +487,7 @@ function CliSuccess({
 }) {
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
-      <CliBackdrop />
+      <AuthBackdrop />
       <Header user={user} onLogout={logout} />
       <main className="flex-1 flex items-center justify-center px-4 py-12 relative">
         <div className="w-full max-w-md text-center space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -486,12 +523,14 @@ function FormCard({ children }: { children: React.ReactNode }) {
 }
 
 function FormField({
+  label,
   type,
   placeholder,
   value,
   onChange,
   autoFocus,
 }: {
+  label: string;
   type: string;
   placeholder: string;
   value: string;
@@ -499,15 +538,20 @@ function FormField({
   autoFocus?: boolean;
 }) {
   return (
-    <input
-      type={type}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      autoFocus={autoFocus}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
-      required
-    />
+    <label className="block space-y-1.5">
+      <span className="block text-[10px] font-mono uppercase tracking-[0.14em] text-muted">
+        {label}
+      </span>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoFocus={autoFocus}
+        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+        required
+      />
+    </label>
   );
 }
 
@@ -557,7 +601,7 @@ function SessionCodePanel({ code }: { code: string }) {
   );
 }
 
-function CliBackdrop() {
+function AuthBackdrop() {
   return (
     <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
       <div
