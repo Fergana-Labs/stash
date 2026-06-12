@@ -4109,20 +4109,16 @@ def login_cmd():
         console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
         return
 
-    # --- Step 3: Upload or just read? ---
-    _reserve_bottom_padding(6)
-    usage_mode = questionary.select(
-        "Do you want to upload transcripts, or just read?",
-        choices=[
-            questionary.Choice("Upload transcripts", value="upload"),
-            questionary.Choice("Just read", value="read"),
-        ],
-        use_shortcuts=True,
+    # --- Step 3: Share transcripts? ---
+    _reserve_bottom_padding(4)
+    share_transcripts = questionary.confirm(
+        "Do you want to share your coding agent transcripts to Stash?",
+        default=True,
     ).ask()
-    if usage_mode is None:
+    if share_transcripts is None:
         raise typer.Exit(1)
 
-    if usage_mode == "read":
+    if not share_transcripts:
         _show_setup_complete_splash()
         return
 
