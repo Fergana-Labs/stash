@@ -11,11 +11,13 @@ import { WorkspaceHomeSkeleton } from "../../../../components/SkeletonStates";
 import { WorkspaceIcon } from "../../../../components/SkillIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
+  createPage,
   getWorkspace,
   joinWorkspace,
   updateWorkspace,
 } from "../../../../lib/api";
 import type { Workspace } from "../../../../lib/types";
+import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -74,6 +76,16 @@ export default function WorkspaceHomePage() {
       .then(setWorkspace)
       .catch(() => {});
   }, [user, workspace, workspaceId]);
+
+  async function handleNewPage() {
+    try {
+      const page = await createPage(workspaceId, "Untitled");
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/p/${page.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create page");
+    }
+  }
 
   async function handleJoin() {
     if (!workspace) return;
@@ -134,6 +146,15 @@ export default function WorkspaceHomePage() {
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
+            {isMember && (
+              <button
+                type="button"
+                onClick={handleNewPage}
+                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+              >
+                + New page
+              </button>
+            )}
             {isMember && (
               <Link
                 href={`/workspaces/${workspaceId}/settings`}

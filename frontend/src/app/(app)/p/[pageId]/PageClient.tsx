@@ -35,6 +35,7 @@ import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   createCommentThread,
+  createPage,
   deleteCommentMessage,
   deleteCommentThread,
   getFolderContents,
@@ -52,6 +53,7 @@ import {
 import { findInSkillContents } from "../../../../lib/localSkill";
 import type { CommentThread, Page } from "../../../../lib/types";
 import { subscribePageEvents } from "../../../../lib/pageEvents";
+import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -528,6 +530,17 @@ export default function SkillPageView() {
   const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
   const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
 
+  async function handleNewPage() {
+    if (!page) return;
+    try {
+      const created = await createPage(workspaceId, "Untitled", page.folder_id);
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/p/${created.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create page");
+    }
+  }
+
   // Provenance: when an agent made the last content edit, link the page back to
   // the chat session that produced it.
   const metaItems: ReactNode[] = [];
@@ -568,22 +581,31 @@ export default function SkillPageView() {
         meta={metaItems.length ? metaItems : undefined}
         saveStatus={page && !isHtml ? saveStatus : null}
         rightExtras={
-          isHtml ? (
+          page ? (
             <div className="flex items-center gap-2">
-              {page && (
+              <button
+                type="button"
+                onClick={handleNewPage}
+                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+              >
+                + New page
+              </button>
+              {isHtml && (
                 <ExportDeckButton
                   pageId={page.id}
                   layout={page.html_layout}
                   contentType={page.content_type}
                 />
               )}
-              <button
-                type="button"
-                onClick={() => setHtmlEditMode((v) => !v)}
-                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
-              >
-                {htmlEditMode ? "Done" : "Edit"}
-              </button>
+              {isHtml && (
+                <button
+                  type="button"
+                  onClick={() => setHtmlEditMode((v) => !v)}
+                  className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+                >
+                  {htmlEditMode ? "Done" : "Edit"}
+                </button>
+              )}
             </div>
           ) : undefined
         }
