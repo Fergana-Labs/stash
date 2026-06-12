@@ -4773,6 +4773,146 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
                 save_config(base_url=new_url.strip().rstrip("/"))
 
 
+mcp_app = typer.Typer(
+    help="Proxy upstream MCP servers (Render, Linear, …) through Stash. "
+    "Credentials live encrypted in your workspace; agents connect with the "
+    "Stash auth they already have. Tools are default-deny: only allowlisted "
+    "tools are exposed."
+)
+app.add_typer(mcp_app, name="mcp")
+
+
+def _parse_headers(headers: list[str]) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for raw in headers:
+        key, sep, value = raw.partition(":")
+        if not sep or not key.strip() or not value.strip():
+            console.print(f'[red]Bad --header "{raw}" — expected "Name: value".[/red]')
+            raise typer.Exit(1)
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
+@mcp_app.command("add")
+def mcp_add(
+    name: str = typer.Argument(..., help="Server name; becomes the tool namespace (e.g. render)."),
+    url: str = typer.Argument(..., help="Upstream MCP endpoint, e.g. https://mcp.render.com/mcp"),
+    header: list[str] = typer.Option(
+        [], "--header", "-H", help='Auth header, e.g. "Authorization: Bearer rnd_…". Repeatable.'
+    ),
+    allow: list[str] = typer.Option(
+        [], "--allow", help="Upstream tool to expose. Repeatable. Nothing is exposed by default."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Register an upstream MCP server in the workspace."""
+    ws_id = _resolve_workspace()
+    with _client() as c:
+        try:
+            server = c.register_mcp_server(ws_id, name, url, _parse_headers(header), list(allow))
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(server)
+        return
+    console.print(f"[green]Registered MCP server [bold]{name}[/bold].[/green]")
+    if server["tool_allowlist"]:
+        console.print(f"  Allowed tools: {', '.join(server['tool_allowlist'])}")
+    else:
+        console.print(
+            "  [yellow]No tools allowed yet[/yellow] — run "
+            f"[bold]stash mcp tools {name}[/bold] then [bold]stash mcp allow {name} <tool>…[/bold]"
+        )
+
+
+@mcp_app.command("list")
+def mcp_list(as_json: bool = typer.Option(False, "--json")):
+    """List the workspace's registered MCP servers."""
+    ws_id = _resolve_workspace()
+    with _client() as c:
+        try:
+            servers = c.list_mcp_servers(ws_id)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(servers)
+        return
+    if not servers:
+        console.print("[dim]No MCP servers registered. Add one with stash mcp add.[/dim]")
+        return
+    for s in servers:
+        allowed = ", ".join(s["tool_allowlist"]) or "[none — default deny]"
+        console.print(f"  [bold]{s['name']}[/bold]  [dim]{s['url']}[/dim]")
+        console.print(f"    allowed tools: {allowed}")
+
+
+@mcp_app.command("remove")
+def mcp_remove(name: str = typer.Argument(..., help="Server name to remove.")):
+    """Remove a registered MCP server (and its stored credentials)."""
+    ws_id = _resolve_workspace()
+    with _client() as c:
+        try:
+            c.delete_mcp_server(ws_id, name)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Removed MCP server {name}.[/green]")
+
+
+@mcp_app.command("tools")
+def mcp_tools(
+    name: str = typer.Argument(..., help="Registered server name."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List the upstream server's tools, marking which are allowed."""
+    ws_id = _resolve_workspace()
+    with _client() as c:
+        try:
+            tools = c.list_mcp_server_tools(ws_id, name)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(tools)
+        return
+    for t in tools:
+        mark = "[green]✓ allowed[/green]" if t["allowed"] else "[dim]✗ blocked[/dim]"
+        desc = (t.get("description") or "").split("\n")[0][:80]
+        console.print(f"  {mark}  [bold]{t['name']}[/bold]  [dim]{desc}[/dim]")
+
+
+@mcp_app.command("allow")
+def mcp_allow(
+    name: str = typer.Argument(..., help="Registered server name."),
+    tools: list[str] = typer.Argument(..., help="Tool names to allow (replaces the allowlist)."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Set the server's tool allowlist."""
+    ws_id = _resolve_workspace()
+    with _client() as c:
+        try:
+            server = c.update_mcp_server(ws_id, name, tool_allowlist=list(tools))
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(server)
+        return
+    console.print(
+        f"[green]{name}[/green] now exposes: {', '.join(server['tool_allowlist']) or '[none]'}"
+    )
+
+
+@mcp_app.command("connect")
+def mcp_connect():
+    """Print the command that connects a coding agent to this workspace's MCP proxy."""
+    ws_id = _resolve_workspace()
+    cfg = load_config()
+    endpoint = f"{cfg['base_url']}/api/v1/workspaces/{ws_id}/mcp"
+    console.print("Run this to connect Claude Code to the Stash MCP proxy:\n")
+    console.print(
+        f'  claude mcp add --transport http stash-mcp {endpoint} \\\n'
+        f'      --header "Authorization: Bearer {cfg.get("api_key", "<your stash api key>")}"'
+    )
+
+
 keys_app = typer.Typer(help="Manage your API keys across devices.")
 app.add_typer(keys_app, name="keys")
 

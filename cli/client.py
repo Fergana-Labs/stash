@@ -179,6 +179,40 @@ class StashClient:
     def get_public_skill(self, slug: str) -> dict:
         return self._get(f"/api/v1/skills/{slug}")
 
+    # --- MCP proxy (workspace-registered upstream MCP servers) ---
+
+    def list_mcp_servers(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/mcp-servers", "servers")
+
+    def register_mcp_server(
+        self,
+        workspace_id: str,
+        name: str,
+        url: str,
+        headers: dict[str, str],
+        tool_allowlist: list[str],
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/mcp-servers",
+            json={
+                "name": name,
+                "url": url,
+                "headers": headers,
+                "tool_allowlist": tool_allowlist,
+            },
+        )
+
+    def update_mcp_server(self, workspace_id: str, name: str, **fields) -> dict:
+        return self._patch(
+            f"/api/v1/workspaces/{workspace_id}/mcp-servers/{name}", json=fields
+        )
+
+    def delete_mcp_server(self, workspace_id: str, name: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/mcp-servers/{name}")
+
+    def list_mcp_server_tools(self, workspace_id: str, name: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/mcp-servers/{name}/tools", "tools")
+
     def get_skill_text(self, slug: str) -> str:
         resp = self._request("GET", f"/api/v1/skills/{slug}", params={"format": "text"})
         return resp.text
