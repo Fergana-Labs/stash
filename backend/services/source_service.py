@@ -132,11 +132,13 @@ def normalize_source_settings(source_type: str, settings: dict | None) -> dict:
     if unsupported:
         raise ValueError(f"unsupported Slack setting: {sorted(unsupported)[0]}")
 
-    return {
-        "allowed_channel_ids": _clean_string_list(
-            settings.get("allowed_channel_ids", []), "allowed_channel_ids"
-        )
-    }
+    allowed_channel_ids = _clean_string_list(
+        settings.get("allowed_channel_ids", []), "allowed_channel_ids"
+    )
+    if not allowed_channel_ids:
+        raise ValueError("allowed_channel_ids must include at least one Slack channel")
+
+    return {"allowed_channel_ids": allowed_channel_ids}
 
 
 def slack_allowed_channel_ids(source: dict) -> list[str]:
@@ -155,58 +157,6 @@ def gong_allowed_workspace_ids(source: dict) -> list[str]:
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
     return _clean_string_list(settings.get("allowed_workspace_ids", []), "allowed_workspace_ids")
-
-
-def _clean_string_list(value, field_name: str) -> list[str]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise ValueError(f"{field_name} must be a list of strings")
-
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for item in value:
-        if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"{field_name} must be a list of non-empty strings")
-        item = item.strip()
-        if item in seen:
-            continue
-        seen.add(item)
-        cleaned.append(item)
-    return cleaned
-
-
-def normalize_source_settings(source_type: str, settings: dict | None) -> dict:
-    if settings is None:
-        settings = {}
-    if not isinstance(settings, dict):
-        raise ValueError("settings must be an object")
-
-    if source_type != "slack":
-        if settings:
-            raise ValueError("settings are not supported for this source type")
-        return {}
-
-    unsupported = set(settings) - {"allowed_channel_ids"}
-    if unsupported:
-        raise ValueError(f"unsupported Slack setting: {sorted(unsupported)[0]}")
-
-    allowed_channel_ids = _clean_string_list(
-        settings.get("allowed_channel_ids", []), "allowed_channel_ids"
-    )
-    if not allowed_channel_ids:
-        raise ValueError("allowed_channel_ids must include at least one Slack channel")
-
-    return {"allowed_channel_ids": allowed_channel_ids}
-
-
-def slack_allowed_channel_ids(source: dict) -> list[str]:
-    settings = source.get("settings")
-    if settings is None:
-        settings = {}
-    if not isinstance(settings, dict):
-        raise ValueError("settings must be an object")
-    return _clean_string_list(settings.get("allowed_channel_ids", []), "allowed_channel_ids")
 
 
 def _content_hash(content: str | None) -> str:
