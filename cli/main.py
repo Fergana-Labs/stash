@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import sys
 import textwrap
 import time
 from pathlib import Path
 
+import httpx
 import questionary
 import typer
 from rich.align import Align
@@ -1635,6 +1638,103 @@ def skills_unpublish(skill_id: str = typer.Argument(...)):
         except StashError as e:
             _err(e)
     console.print(f"[green]Unpublished Skill[/green] {skill_id}")
+
+
+def _safe_skill_dirname(name: str) -> str:
+    cleaned = re.sub(r"[^\w.\-() ]+", "-", name).strip(" .")
+    return cleaned or "skill"
+
+
+def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Path, int]:
+    """Write a public-skill payload to skills_root/<folder_name>.
+
+    Returns (target_dir, items_written). fetch_bytes(url) -> bytes is
+    injected so tests don't hit the network. Replacing an existing install
+    is allowed only when the target already looks like a skill (has a
+    SKILL.md) — never delete an arbitrary directory on a name collision."""
+    contents = detail["contents"]
+    target = skills_root / _safe_skill_dirname(detail["folder_name"])
+    if target.exists():
+        if not (target / "SKILL.md").exists():
+            console.print(
+                f"[red]Error:[/red] {target} exists and is not a skill folder; not overwriting."
+            )
+            raise typer.Exit(1)
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+
+    written = 0
+    for page in contents["pages"]:
+        name = page["name"]
+        if "." not in name:
+            name += ".md" if page["content_type"] == "markdown" else ".html"
+        is_md = page["content_type"] == "markdown"
+        body = (page["content_markdown"] if is_md else page["content_html"]) or ""
+        path = target.joinpath(*page["folder_path"], name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        written += 1
+    for f in contents["files"]:
+        if not f.get("url"):
+            console.print(f"[yellow]skipped[/yellow] {f['name']} (no download URL)")
+            continue
+        path = target.joinpath(*f["folder_path"], f["name"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(fetch_bytes(f["url"]))
+        written += 1
+    if contents["tables"]:
+        console.print(
+            f"[yellow]skipped[/yellow] {len(contents['tables'])} table(s) — "
+            "tables don't materialize as local skill files"
+        )
+    return target, written
+
+
+@skills_app.command("install")
+def skills_install(
+    slug: str = typer.Argument(..., help="Public slug, e.g. from app.joinstash.ai/skills/<slug>."),
+    directory: str = typer.Option("", "--dir", help="Skills directory to install into."),
+    project: bool = typer.Option(
+        False, "--project", help="Install into ./.claude/skills (this repo only)."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Install a public Skill into the local agent's skills directory.
+
+    Claude Code loads every SKILL.md folder under ~/.claude/skills (or the
+    repo's .claude/skills with --project) at session start, so the Skill is
+    available to the agent from its next session. Re-running updates the
+    installed copy in place.
+    """
+    if directory and project:
+        console.print("[red]Error:[/red] pass either --dir or --project, not both.")
+        raise typer.Exit(1)
+    if directory:
+        root = Path(directory).expanduser()
+    elif project:
+        root = Path(".claude") / "skills"
+    else:
+        root = Path.home() / ".claude" / "skills"
+
+    with _client() as c:
+        try:
+            detail = c.get_public_skill(slug)
+        except StashError as e:
+            _err(e)
+
+    def fetch_bytes(url: str) -> bytes:
+        resp = httpx.get(url, follow_redirects=True, timeout=60)
+        resp.raise_for_status()
+        return resp.content
+
+    target, written = _materialize_skill(detail, root, fetch_bytes)
+    if _use_json(as_json):
+        output_json({"path": str(target), "items": written})
+        return
+    console.print(
+        f"[green]Installed[/green] '{detail['skill']['title']}' → {target}  ({written} items)"
+    )
+    console.print("[dim]The agent loads it at its next session start.[/dim]")
 
 
 @skills_app.command("fork")
@@ -5075,6 +5175,9 @@ Commands to reach for
 - `stash share <session_id>` — freeze a coding session (transcript + the
   files it touched) into a Skill folder. Sessions are inherently a
   collection, so this is the right unit.
+- `stash skills install <slug>` — install a public Skill (e.g. from
+  Discover) into ~/.claude/skills so the local agent loads it next
+  session. `--project` targets ./.claude/skills instead.
 
 Browsing Stash
 --------------

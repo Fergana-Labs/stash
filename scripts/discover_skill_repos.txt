@@ -1,3 +1,7 @@
 # Curated GitHub repos imported into the Discover catalog.
 # One repo URL per line; every folder containing a SKILL.md becomes a skill.
 # Run: python scripts/import_github_skills.py
+https://github.com/activeloopai/hivemind
+https://github.com/mvanhorn/last30days-skill
+https://github.com/zarazhangrui/frontend-slides
+https://github.com/obra/superpowers

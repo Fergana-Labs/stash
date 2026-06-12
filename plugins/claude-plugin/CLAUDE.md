@@ -17,6 +17,7 @@ A Skill is **not** a wrapper around every single file you happen to share. One-i
 | Publish a curated bundle as one shareable thing | `stash upload <path> --skill "<title>" --json` | the returned `url` |
 | Create a fresh skill folder | `stash skills create "<name>" --public --json` | the returned folder |
 | Share a coding session (transcript + files) | `stash share <session_id>` | the returned `url` |
+| Use a public Skill in this agent | `stash skills install <slug>` | the installed `~/.claude/skills` path |
 
 The default of `stash upload` is **no Skill** — files land in a workspace folder and you hand back the workspace `app_url`. Add `--skill "<title>"` only when you're deliberately publishing a bundle.
 
