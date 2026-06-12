@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { listMyWorkspaces } from "@/lib/api";
 
+import McpConnectorList from "./McpConnectorList";
 import SourceConnectorList from "./SourceConnectorList";
 
 type Props = {
@@ -40,6 +41,16 @@ export default function IntegrationsSettings({ embedded = false }: Props) {
       ) : (
         <div className="text-xs text-muted">No workspace is available for sources.</div>
       )}
+
+      <div className="pt-2">
+        <h2 className="text-base font-semibold text-foreground">Agent tools</h2>
+        <p className="mt-0.5 text-xs text-muted">
+          Give your agents read-only access to outside services through Stash. Credentials stay
+          encrypted on the server; agents connect with the Stash auth they already have.
+        </p>
+      </div>
+
+      {!loading && workspaceId && <McpConnectorList workspaceId={workspaceId} />}
     </>
   );
 
