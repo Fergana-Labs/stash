@@ -110,6 +110,78 @@ async def test_add_list_remove_source(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_viewer_cannot_mutate_sources(client: AsyncClient, pool, monkeypatch):
+    owner_key, _owner_id = await _register(client, "src_owner")
+    viewer_key, viewer_id = await _register(client, "src_viewer")
+    ws = await _create_workspace(client, owner_key)
+    viewer_headers = _auth(viewer_key)
+
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+        ws,
+        viewer_id,
+    )
+
+    add = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "github_repo",
+            "external_ref": "acme/viewer",
+            "display_name": "Viewer source",
+        },
+        headers=viewer_headers,
+    )
+    assert add.status_code == 403
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM workspace_sources WHERE workspace_id = $1 AND owner_user_id = $2",
+            ws,
+            viewer_id,
+        )
+        == 0
+    )
+
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=viewer_id,
+        source_type="slack",
+        external_ref="T_VIEWER",
+        display_name="Viewer Slack",
+        settings={"allowed_channel_ids": ["C_VIEWER"]},
+    )
+    source_id = source["id"]
+
+    sent_tasks: list[dict] = []
+
+    def fake_send_task(*args, **kwargs):
+        sent_tasks.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
+
+    history = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/history",
+        json={"since": "2026-01-01"},
+        headers=viewer_headers,
+    )
+    assert history.status_code == 403
+
+    sync = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/sync",
+        headers=viewer_headers,
+    )
+    assert sync.status_code == 403
+    assert sent_tasks == []
+    assert await pool.fetchval("SELECT COUNT(*) FROM task_records WHERE workspace_id = $1", ws) == 0
+
+    deleted = await client.delete(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}",
+        headers=viewer_headers,
+    )
+    assert deleted.status_code == 403
+    assert await source_service.get_owned_source(UUID(source_id), viewer_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_disconnect_provider_removes_sources_and_copied_documents(
     client: AsyncClient,
     monkeypatch,
@@ -321,6 +393,79 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
     assert await source_service.list_connected_sources(ws, other_id) == []
     assert await source_service.get_owned_source(source_id, owner_id) is not None
     assert await source_service.get_owned_source(source_id, other_id) is None
+
+
+@pytest.mark.asyncio
+async def test_connected_source_handles_are_workspace_scoped(
+    client: AsyncClient,
+    monkeypatch,
+):
+    owner_key, owner_id = await _register(client, "owner")
+    ws_a = await _create_workspace(client, owner_key)
+    ws_b = await _create_workspace(client, owner_key)
+    src = await source_service.create_source(
+        workspace_id=ws_a,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = src["id"]
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(source_id),
+        workspace_id=ws_a,
+        path="eng/1",
+        name="#eng",
+        kind="message",
+        content="workspace A roadmap",
+        external_ref="C1:1",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+
+    same_workspace = await client.get(
+        f"/api/v1/workspaces/{ws_a}/sources/{source_id}/doc",
+        params={"ref": "eng/1"},
+        headers=_auth(owner_key),
+    )
+    sent_tasks: list[dict] = []
+
+    def fake_send_task(*args, **kwargs):
+        sent_tasks.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
+    cross_workspace_doc = await client.get(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/doc",
+        params={"ref": "eng/1"},
+        headers=_auth(owner_key),
+    )
+    cross_workspace_entries = await client.get(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/entries",
+        headers=_auth(owner_key),
+    )
+    cross_workspace_status = await client.get(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/status",
+        headers=_auth(owner_key),
+    )
+    cross_workspace_sync = await client.post(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/sync",
+        headers=_auth(owner_key),
+    )
+    cross_workspace_delete = await client.delete(
+        f"/api/v1/workspaces/{ws_b}/sources/{source_id}",
+        headers=_auth(owner_key),
+    )
+
+    assert same_workspace.status_code == 200
+    assert same_workspace.json()["content"] == "workspace A roadmap"
+    assert cross_workspace_doc.status_code == 404
+    assert cross_workspace_entries.status_code == 404
+    assert cross_workspace_status.status_code == 404
+    assert cross_workspace_sync.status_code == 404
+    assert cross_workspace_delete.status_code == 404
+    assert sent_tasks == []
+    assert await source_service.get_owned_source(UUID(source_id), owner_id) is not None
 
 
 @pytest.mark.asyncio
@@ -794,6 +939,36 @@ async def test_sync_source_unknown_type_is_noop(client: AsyncClient, monkeypatch
     assert result["status"] == "no_indexer"
 
 
+@pytest.mark.asyncio
+async def test_sync_source_status_redacts_provider_exception(client: AsyncClient, monkeypatch):
+    from backend.tasks import sources as sources_task
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/private",
+        display_name="private",
+    )
+
+    async def fail_with_secret(source):
+        raise RuntimeError("upstream failed with token=secret-token and customer transcript")
+
+    monkeypatch.setattr(sources_task, "INDEXERS", {"github_repo": fail_with_secret})
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+    assert result["status"] == "failed"
+
+    status = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/status",
+        headers=_auth(api_key),
+    )
+    assert status.status_code == 200
+    assert status.json()["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
+
+
 # --- slack webhook + event ingest -------------------------------------------
 
 
@@ -1050,7 +1225,9 @@ async def test_slack_sync_without_channels_records_sync_error(client: AsyncClien
     sources = await source_service.list_sources(ws, owner_id)
     slack = next(s for s in sources if s["type"] == "slack")
     assert slack["sync_status"] == "failed"
-    assert "no allowed channels configured" in slack["sync_error"]
+    # The stored error is a redacted constant — raw exception text could carry
+    # secrets, so the detail lives only in server logs.
+    assert slack["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -1435,6 +1612,59 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
     page_ids = {p["id"] for p in public.json()["contents"]["pages"]}
     assert page["id"] in page_ids
+
+
+@pytest.mark.asyncio
+async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncClient, pool):
+    api_key, owner_id = await _register(client)
+    ws_a = await _create_workspace(client, api_key)
+    ws_b = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws_a,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(src["id"]),
+        workspace_id=ws_a,
+        path="eng/1",
+        name="#eng",
+        kind="message",
+        content="workspace A roadmap",
+        external_ref="C1:1",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws_b}/folders",
+        json={"name": "Bundle"},
+        headers=_auth(api_key),
+    )
+    assert folder.status_code == 201
+    folder_id = folder.json()["id"]
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws_b}/skills",
+        json={"folder_id": folder_id, "title": "Bundle"},
+        headers=_auth(api_key),
+    )
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws_b}/skills/{skill_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "eng/1"},
+        headers=_auth(api_key),
+    )
+    copied_pages = await pool.fetchval(
+        "SELECT COUNT(*) FROM pages WHERE folder_id = $1 AND name = '#eng'",
+        UUID(folder_id),
+    )
+
+    assert snap.status_code == 404
+    assert copied_pages == 0
 
 
 # --- VFS REST endpoints (browse / read / search) ----------------------------

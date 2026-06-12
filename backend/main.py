@@ -51,6 +51,13 @@ from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
 
+SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -139,6 +146,15 @@ if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router
 
     app.include_router(auth0_router)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for key, value in SECURITY_HEADERS.items():
+        if key not in response.headers:
+            response.headers[key] = value
+    return response
 
 
 @app.get("/health")

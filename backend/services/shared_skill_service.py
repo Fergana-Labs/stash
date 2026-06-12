@@ -768,7 +768,11 @@ async def snapshot_source_into_skill(
         return None
     if not await user_can_write(skill_id, user_id):
         raise PermissionError("Not allowed to edit this skill")
-    source = await source_service.get_owned_source(source_id, user_id)
+    source = await source_service.get_owned_source_in_workspace(
+        source_id,
+        user_id,
+        skill["workspace_id"],
+    )
     if source is None:
         return None
     doc = await source_service.read_document(source, path)

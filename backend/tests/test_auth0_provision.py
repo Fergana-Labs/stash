@@ -7,7 +7,11 @@ users, new Google-OAuth users silently skip onboarding.
 """
 
 import pytest
+from fastapi import HTTPException
+from jose.exceptions import JWTError
 
+from backend.managed.auth0 import jwt as auth0_jwt
+from backend.managed.auth0.jwt import validate_auth0_token
 from backend.managed.auth0.users import (
     get_or_create_user_from_auth0,
     get_or_create_user_row_from_auth0,
@@ -80,3 +84,26 @@ async def test_browser_session_provisioning_does_not_mint_api_key(pool):
         user["id"],
     )
     assert key_count == 0
+
+
+@pytest.mark.asyncio
+async def test_auth0_invalid_token_errors_are_redacted(monkeypatch):
+    monkeypatch.setattr(auth0_jwt.settings, "AUTH0_DOMAIN", "tenant.example.com")
+    monkeypatch.setattr(auth0_jwt.settings, "AUTH0_AUDIENCE", "stash-api")
+    monkeypatch.setattr(auth0_jwt.jwt, "get_unverified_header", lambda _token: {"kid": "kid-1"})
+
+    async def fake_fetch_jwks():
+        return {"keys": [{"kid": "kid-1"}]}
+
+    def fail_decode(*_args, **_kwargs):
+        raise JWTError("issuer=https://tenant.example.com raw-token-secret")
+
+    monkeypatch.setattr(auth0_jwt, "_fetch_jwks", fake_fetch_jwks)
+    monkeypatch.setattr(auth0_jwt.jwt, "decode", fail_decode)
+
+    with pytest.raises(HTTPException) as exc:
+        await validate_auth0_token("bad-token")
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid token"
+    assert "raw-token-secret" not in exc.value.detail

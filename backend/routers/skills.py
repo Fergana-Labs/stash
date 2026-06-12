@@ -114,6 +114,9 @@ async def snapshot_source(
     """Copy a point-in-time snapshot of one connected-source document into the
     skill's folder as a page, so the skill stays self-contained and curl-able."""
     await _require_member(workspace_id, current_user["id"])
+    skill = await shared_skill_service.get_skill(skill_id)
+    if not skill or skill["workspace_id"] != workspace_id:
+        raise HTTPException(status_code=404, detail="Skill not found")
     try:
         page = await shared_skill_service.snapshot_source_into_skill(
             skill_id, current_user["id"], source_id=req.source_id, path=req.path
@@ -143,6 +146,8 @@ async def materialize_session(
     """Freeze a session transcript into a markdown page inside a folder —
     how sessions travel into skills (sessions can't live in folders)."""
     await _require_member(workspace_id, current_user["id"])
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
     page = await shared_skill_service.materialize_session_page(
         workspace_id, session_id, req.folder_id, current_user["id"]
     )

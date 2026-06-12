@@ -63,7 +63,7 @@ async def validate_auth0_token(token: str) -> dict:
             audience=settings.AUTH0_AUDIENCE,
             issuer=f"https://{settings.AUTH0_DOMAIN}/",
         )
-    except JWTError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     return claims

@@ -572,8 +572,9 @@ async def _search(args: dict) -> dict:
     "query_source",
     "Run a read-only SQL query against a queryable source (e.g. Snowflake). "
     "`source` is the handle from list_sources; use list_source to see its tables "
-    "and read_source on a table to see its columns first. Only SELECT/WITH/SHOW/"
-    "DESCRIBE/EXPLAIN are allowed and rows are capped.",
+    "and read_source on a table to see its columns first. Only SELECT/SHOW/"
+    "DESCRIBE/EXPLAIN are allowed and rows are capped. WITH (CTEs) is rejected — "
+    "rewrite CTEs as subqueries.",
     {
         "type": "object",
         "properties": {

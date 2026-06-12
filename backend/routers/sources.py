@@ -1,10 +1,10 @@
 """Connected-source registry endpoints.
 
-A source is added per workspace but USER-SCOPED — it belongs to the member who
-connects it (`owner_user_id = current_user`) and only they can list, read, or
-remove it. The agent reaches a source's indexed content through the source tools;
-these endpoints just manage the registry. Indexing (sync tasks) is wired per
-source type in later phases.
+A source is added per workspace and per user. It belongs to the member who
+connects it (`owner_user_id = current_user`) inside that workspace, and only they
+can list, read, or remove it there. The agent reaches a source's indexed content
+through the source tools; these endpoints just manage the registry. Indexing
+(sync tasks) is wired per source type in later phases.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from ..services import (
     security_audit_service,
     source_service,
     task_service,
+    workspace_service,
 )
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
@@ -31,6 +32,14 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["so
 async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
     if await permission_service.get_workspace_role(workspace_id, user_id) is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+
+async def _require_write(workspace_id: UUID, user_id: UUID) -> None:
+    role = await permission_service.get_workspace_role(workspace_id, user_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if role not in workspace_service.ROLES_CAN_WRITE:
+        raise HTTPException(status_code=403, detail="Viewers can read but not manage sources")
 
 
 class AddSourceRequest(BaseModel):
@@ -198,7 +207,11 @@ async def source_status(
     """Sync/index status for one connected source (for the integration page):
     sync_status, last_synced_at, sync_error, and how many items are indexed."""
     await _require_member(workspace_id, current_user["id"])
-    source = await source_service.get_owned_source(source_id, current_user["id"])
+    source = await source_service.get_owned_source_in_workspace(
+        source_id,
+        current_user["id"],
+        workspace_id,
+    )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     return {**source, "item_count": await source_service.source_item_count(source)}
@@ -241,7 +254,7 @@ async def fetch_source_history(
 ):
     """Pull older data for a time range from a copied source that supports it
     (Slack/Gong), caching it so it becomes searchable."""
-    await _require_member(workspace_id, current_user["id"])
+    await _require_write(workspace_id, current_user["id"])
     result = await source_service.fetch_history(
         workspace_id, current_user["id"], source, body.since, until=body.until, limit=body.limit
     )
@@ -256,7 +269,7 @@ async def add_source(
     body: AddSourceRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_member(workspace_id, current_user["id"])
+    await _require_write(workspace_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
     try:
@@ -318,8 +331,12 @@ async def sync_source_now(
     current_user: dict = Depends(get_current_user),
 ):
     """Trigger an immediate re-index of an owned source."""
-    await _require_member(workspace_id, current_user["id"])
-    source = await source_service.get_owned_source(source_id, current_user["id"])
+    await _require_write(workspace_id, current_user["id"])
+    source = await source_service.get_owned_source_in_workspace(
+        source_id,
+        current_user["id"],
+        workspace_id,
+    )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     if source["source_type"] not in source_service.DEFAULT_SYNC_INTERVAL_S:
@@ -359,8 +376,12 @@ async def remove_source(
     source_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_member(workspace_id, current_user["id"])
-    source = await source_service.get_owned_source(source_id, current_user["id"])
+    await _require_write(workspace_id, current_user["id"])
+    source = await source_service.get_owned_source_in_workspace(
+        source_id,
+        current_user["id"],
+        workspace_id,
+    )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     deleted = await source_service.delete_source(source_id, current_user["id"])

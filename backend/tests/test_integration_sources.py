@@ -26,7 +26,12 @@ from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.integrations.registry import list_providers
-from backend.integrations.snowflake.client import _assert_read_only, _validate_identifier
+from backend.integrations.snowflake.client import (
+    ROW_CAP,
+    _assert_read_only,
+    _query_limit,
+    _validate_identifier,
+)
 from backend.integrations.snowflake.provider import SnowflakeIntegration
 from backend.integrations.twitter import indexer as twitter_indexer
 from backend.integrations.twitter import provider as twitter_provider
@@ -359,7 +364,6 @@ def test_read_only_guard_allows_selects():
     # Allowed leading keywords pass; a trailing semicolon is stripped.
     for sql in (
         "SELECT 1",
-        "  with x as (select 1) select * from x  ",
         "SHOW TABLES;",
         "DESCRIBE TABLE t",
     ):
@@ -375,6 +379,8 @@ def test_read_only_guard_blocks_writes_and_multi_statements():
         "CREATE TABLE t (id int)",
         "GRANT SELECT ON t TO r",
         "SELECT 1; DROP TABLE t",  # piggybacked statement
+        "WITH x AS (SELECT 1) SELECT * FROM x",
+        "WITH x AS (SELECT 1) DELETE FROM t",
         "",
     ):
         with pytest.raises(ValueError):
@@ -386,6 +392,14 @@ def test_validate_identifier_rejects_injection():
     for bad in ("t; drop table u", "t where 1=1", "t--", "t)"):
         with pytest.raises(ValueError):
             _validate_identifier(bad)
+
+
+def test_snowflake_query_limit_rejects_non_positive_values():
+    assert _query_limit(1) == 1
+    assert _query_limit(ROW_CAP + 1) == ROW_CAP
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="limit must be at least 1"):
+            _query_limit(bad)
 
 
 def test_snowflake_is_queryable_api_key_source():
@@ -857,6 +871,24 @@ async def test_snowflake_rejects_incomplete_credentials():
     # account + user but no auth method (token/key/password) is also rejected.
     with pytest.raises(ValueError):
         await SnowflakeIntegration().connect_with_credentials({"account": "a", "user": "u"})
+
+
+@pytest.mark.asyncio
+async def test_snowflake_connection_errors_are_redacted(monkeypatch):
+    from backend.integrations.snowflake import provider as snowflake_provider
+
+    async def fail_connection(creds):
+        raise RuntimeError(f"account={creds['account']} token={creds['token']}")
+
+    monkeypatch.setattr(snowflake_provider, "test_connection", fail_connection)
+
+    with pytest.raises(ValueError) as exc:
+        await SnowflakeIntegration().connect_with_credentials(
+            {"account": "acme", "user": "svc", "token": "secret-token"}
+        )
+
+    assert str(exc.value) == "Could not connect to Snowflake; check credentials"
+    assert "secret-token" not in str(exc.value)
 
 
 def test_query_source_tool_is_registered_and_in_tool_sets():

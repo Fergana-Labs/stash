@@ -31,6 +31,8 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
+SYNC_FAILED_MESSAGE = "Source sync failed; check server logs"
+
 # source_type -> indexer. Each returns the new sync cursor (or None).
 INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "github_repo": index_github_repo,
@@ -57,9 +59,9 @@ async def _sync_source(source_id: UUID) -> dict:
     await source_service.mark_sync_started(source_id)
     try:
         cursor = await indexer(source)
-    except Exception as e:
+    except Exception:
         logger.exception("source %s sync failed", source_id)
-        await source_service.mark_sync_failed(source_id, str(e))
+        await source_service.mark_sync_failed(source_id, SYNC_FAILED_MESSAGE)
         return {"status": "failed"}
     await source_service.mark_sync_done(source_id, cursor)
     return {"status": "done"}

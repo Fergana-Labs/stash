@@ -44,6 +44,11 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
+async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(status_code=403, detail="Viewers can read but not upload transcripts")
+
+
 @router.post("", status_code=201)
 async def upload_transcript(
     workspace_id: UUID,
@@ -59,7 +64,7 @@ async def upload_transcript(
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     if not _is_jsonl(file.filename):
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():

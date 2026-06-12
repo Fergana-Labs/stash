@@ -12,6 +12,13 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
+def parse_cors_origins(raw: str) -> list[str]:
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if "*" in origins:
+        raise RuntimeError("CORS_ORIGINS cannot include '*' when credentialed CORS is enabled")
+    return origins
+
+
 class Settings:
     # --- Server ---
     PORT: int = int(os.getenv("PORT", "3456"))
@@ -23,13 +30,11 @@ class Settings:
 
     # --- URLs & CORS ---
     PUBLIC_URL: str = os.getenv("PUBLIC_URL", "http://localhost:3457")
-    CORS_ORIGINS: list[str] = [
-        o.strip()
-        for o in os.getenv(
+    CORS_ORIGINS: list[str] = parse_cors_origins(
+        os.getenv(
             "CORS_ORIGINS", "http://localhost:3457,http://localhost:3456,http://localhost:3000"
-        ).split(",")
-        if o.strip()
-    ]
+        )
+    )
 
     # --- Embeddings ---
     # Provider: "openai", "huggingface", "local", or "auto" (default).

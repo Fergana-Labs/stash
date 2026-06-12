@@ -19,6 +19,7 @@ This module also owns the unified VFS surface (`source_entries`, `source_documen
 `search_all`) over BOTH native and connected sources — the single codepath the
 agent tools and the REST endpoints both call. Native reads delegate to
 files_tree_service / memory_service (imported lazily to avoid an import cycle).
+Connected-source handles are scoped to both owner and workspace.
 """
 
 from __future__ import annotations
@@ -294,6 +295,22 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
         "SELECT * FROM workspace_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
         user_id,
+    )
+    return _source_row(row) if row else None
+
+
+async def get_owned_source_in_workspace(
+    source_id: UUID,
+    user_id: UUID,
+    workspace_id: UUID,
+) -> dict | None:
+    """Fetch a connected source only within the workspace route boundary."""
+    row = await get_pool().fetchrow(
+        "SELECT * FROM workspace_sources "
+        "WHERE id = $1 AND owner_user_id = $2 AND workspace_id = $3",
+        source_id,
+        user_id,
+        workspace_id,
     )
     return _source_row(row) if row else None
 
@@ -1018,15 +1035,13 @@ async def source_item_count(source: dict) -> int | None:
 # --- unified VFS over native + connected sources ----------------------------
 
 
-async def _resolve_connected(source: str, user_id: UUID) -> dict | None:
-    """A non-native handle is a workspace_sources id, resolved only if `user_id`
-    owns it. Returns None for unknown / not-owned (callers surface a not-found,
-    never another user's source)."""
+async def _resolve_connected(source: str, workspace_id: UUID, user_id: UUID) -> dict | None:
+    """Resolve a connected-source handle inside the current workspace boundary."""
     try:
         source_id = UUID(source)
     except ValueError:
         return None
-    return await get_owned_source(source_id, user_id)
+    return await get_owned_source_in_workspace(source_id, user_id, workspace_id)
 
 
 async def _audit_source_read(
@@ -1087,7 +1102,7 @@ async def source_entries(
             for s in sessions
         ]
     else:
-        connected = await _resolve_connected(source, user_id)
+        connected = await _resolve_connected(source, workspace_id, user_id)
         if connected is None:
             return None
         if connected["capability"] == "queryable":
@@ -1183,7 +1198,7 @@ async def source_document(
         )
         doc = {"session": ref, "transcript": transcript[:8000]}
     else:
-        connected = await _resolve_connected(source, user_id)
+        connected = await _resolve_connected(source, workspace_id, user_id)
         if connected is None:
             return False, None
         if connected["capability"] == "queryable":
@@ -1244,7 +1259,7 @@ async def query_source(
     """Run a read-only SQL query against a queryable source (Snowflake). Returns
     None when the handle is unknown / not owned, or an error dict when the source
     isn't queryable or the SQL is rejected."""
-    connected = await _resolve_connected(source, user_id)
+    connected = await _resolve_connected(source, workspace_id, user_id)
     if connected is None:
         return None
     if connected["capability"] != "queryable":
@@ -1294,7 +1309,7 @@ async def fetch_history(
     the local table (so they become searchable) and returned. Returns None when
     the handle is unknown / not owned; an error dict for unsupported sources or
     bad input."""
-    connected = await _resolve_connected(source, user_id)
+    connected = await _resolve_connected(source, workspace_id, user_id)
     if connected is None:
         return None
     if connected["source_type"] not in HISTORY_FETCH_TYPES:
@@ -1371,7 +1386,7 @@ async def search_all(
     # Connected sources: all of the user's own when unscoped, else the one named.
     connected: dict | None = None
     if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
-        connected = await _resolve_connected(source, user_id)
+        connected = await _resolve_connected(source, workspace_id, user_id)
         if connected is None:
             return None
     if source is None or connected is not None:

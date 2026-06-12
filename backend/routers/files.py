@@ -129,6 +129,14 @@ async def _file_to_response(row: dict) -> FileResponse:
     )
 
 
+async def _download_storage_file_or_502(storage_key: str, operation: str) -> bytes:
+    try:
+        return await storage_service.download_file(storage_key)
+    except Exception as e:
+        logger.warning("file storage download failed during %s", operation, exc_info=True)
+        raise HTTPException(status_code=502, detail="File storage download failed") from e
+
+
 # ===== Workspace file endpoints =====
 
 
@@ -180,15 +188,6 @@ async def upload_ws_file(
                     status_code=400,
                     detail="folder_id does not belong to workspace",
                 )
-            can_write_folder = await permission_service.check_access(
-                "folder",
-                folder_id,
-                current_user["id"],
-                workspace_id=workspace_id,
-                require="write",
-            )
-            if not can_write_folder:
-                raise HTTPException(status_code=404, detail="Folder not found")
 
         text = content.decode("utf-8", errors="replace")
         exts = _MD_EXTS if page_kind == "markdown" else _HTML_EXTS
@@ -250,15 +249,6 @@ async def upload_ws_file(
         )
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
-        can_write_folder = await permission_service.check_access(
-            "folder",
-            folder_id,
-            current_user["id"],
-            workspace_id=workspace_id,
-            require="write",
-        )
-        if not can_write_folder:
-            raise HTTPException(status_code=404, detail="Folder not found")
     row = await pool.fetchrow(
         "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
@@ -371,14 +361,19 @@ async def download_ws_file(
     viewer_id = current_user["id"] if current_user else None
     if not await _can_access_file(file_id, workspace_id, viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
-    try:
-        content = await storage_service.download_file(row["storage_key"])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"S3 download failed: {e}")
-    disposition = "inline" if (row["content_type"] or "").startswith("image/") else "attachment"
+    content = await _download_storage_file_or_502(row["storage_key"], "file download")
+    content_type = row["content_type"] or "application/octet-stream"
+    # content_type is stored verbatim from the upload, so normalize away MIME
+    # parameters and casing before the SVG check — 'image/svg+xml;charset=utf-8'
+    # must not slip through.
+    content_type = content_type.split(";")[0].strip().lower()
+    # SVG is the one image type that executes script when rendered inline, so
+    # it must download as an attachment — uploads are attacker-controlled.
+    is_inline_image = content_type.startswith("image/") and content_type != "image/svg+xml"
+    disposition = "inline" if is_inline_image else "attachment"
     return Response(
         content=content,
-        media_type=row["content_type"] or "application/octet-stream",
+        media_type=content_type,
         headers={
             "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(row['name'])}",
         },
@@ -599,10 +594,7 @@ async def ingest_csv_file(
         if existing:
             return TableResponse(**existing)
 
-    try:
-        content = await storage_service.download_file(row["storage_key"])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"S3 download failed: {e}")
+    content = await _download_storage_file_or_502(row["storage_key"], "csv ingest")
 
     text = content.decode("utf-8", errors="replace")
     reader = csv.reader(io.StringIO(text))
@@ -699,10 +691,7 @@ async def ingest_xlsx_file(
         if existing:
             return TableListResponse(tables=[TableResponse(**existing)])
 
-    try:
-        content = await storage_service.download_file(row["storage_key"])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"S3 download failed: {e}")
+    content = await _download_storage_file_or_502(row["storage_key"], "xlsx ingest")
 
     base_name = row["name"].rsplit(".", 1)[0] or row["name"]
     try:
@@ -714,7 +703,8 @@ async def ingest_xlsx_file(
             description_template=(f"Imported from {row['name']} (sheet: {{sheet}})"),
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read workbook: {e}")
+        logger.warning("xlsx ingest failed for file %s", file_id, exc_info=True)
+        raise HTTPException(status_code=400, detail="Could not read workbook") from e
 
     if not created:
         raise HTTPException(status_code=400, detail="Workbook had no visible sheets with data")

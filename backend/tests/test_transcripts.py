@@ -28,12 +28,18 @@ BODY = (
 ).encode()
 
 
-async def _register(client):
+async def _register_user(client) -> tuple[str, str]:
     r = await client.post(
         "/api/v1/users/register", json={"name": unique_name(), "password": "securepassword1"}
     )
     assert r.status_code == 201
-    return r.json()["api_key"]
+    body = r.json()
+    return body["api_key"], body["id"]
+
+
+async def _register(client):
+    key, _user_id = await _register_user(client)
+    return key
 
 
 async def _workspace(client, key):
@@ -539,3 +545,132 @@ async def test_non_member_forbidden(client: AsyncClient):
         headers={"Authorization": f"Bearer {other}"},
     )
     assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_write_session_ingress(client: AsyncClient, pool):
+    owner_key = await _register(client)
+    viewer_key, viewer_id = await _register_user(client)
+    ws = await _workspace(client, owner_key)
+    viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
+
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+        ws,
+        viewer_id,
+    )
+
+    event_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "viewer should not write",
+            "session_id": "viewer-event",
+        },
+        headers=viewer_headers,
+    )
+    assert event_resp.status_code == 403
+
+    batch_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "codex",
+                    "event_type": "assistant_message",
+                    "content": "viewer should not batch write",
+                    "session_id": "viewer-batch",
+                }
+            ]
+        },
+        headers=viewer_headers,
+    )
+    assert batch_resp.status_code == 403
+
+    transcript_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "viewer-transcript", "agent_name": "codex"},
+        headers=viewer_headers,
+    )
+    assert transcript_resp.status_code == 403
+
+    session_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "viewer-shell", "agent_name": "codex"},
+        headers=viewer_headers,
+    )
+    assert session_resp.status_code == 403
+
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM history_events WHERE workspace_id = $1", ws) == 0
+    )
+    assert await pool.fetchval("SELECT COUNT(*) FROM sessions WHERE workspace_id = $1", ws) == 0
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_pages(
+    client: AsyncClient,
+    pool,
+):
+    owner_key = await _register(client)
+    viewer_key, viewer_id = await _register_user(client)
+    ws = await _workspace(client, owner_key)
+    owner_headers = {"Authorization": f"Bearer {owner_key}"}
+    viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
+
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+        ws,
+        viewer_id,
+    )
+    created = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "owner-session", "agent_name": "codex"},
+        headers=owner_headers,
+    )
+    assert created.status_code == 201
+    session_row_id = created.json()["id"]
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "owner content",
+            "session_id": "owner-session",
+        },
+        headers=owner_headers,
+    )
+    assert pushed.status_code == 201
+
+    artifact_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}/artifacts",
+        files={"file": ("artifact.txt", io.BytesIO(b"secret"), "text/plain")},
+        data={"file_path": "artifact.txt"},
+        headers=viewer_headers,
+    )
+    assert artifact_resp.status_code == 404
+
+    folder_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Materialized"},
+        headers=owner_headers,
+    )
+    assert folder_resp.status_code == 201
+    materialize_resp = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/owner-session/materialize",
+        json={"folder_id": folder_resp.json()["id"]},
+        headers=viewer_headers,
+    )
+    assert materialize_resp.status_code == 403
+
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+            UUID(session_row_id),
+        )
+        == 0
+    )
+    assert await pool.fetchval("SELECT COUNT(*) FROM pages WHERE workspace_id = $1", ws) == 0

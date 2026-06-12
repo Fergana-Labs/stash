@@ -28,6 +28,14 @@ async def publish(
         if not await workspace_service.is_member(workspace_id, current_user["id"]):
             raise HTTPException(status_code=403, detail="Not a workspace member")
 
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not publish")
+
+    # Gate before any side effects: publish_folder would reject non-owners
+    # anyway, but only after the folder and page were already created.
+    if not await workspace_service.is_owner(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only workspace owners can publish Skills")
+
     if req.folder_id is not None:
         folder = await files_tree_service.get_folder(req.folder_id)
         if not folder or folder["workspace_id"] != workspace_id:

@@ -319,11 +319,11 @@ async def integration_callback(
             # an empty identity instead.
             try:
                 account = await p.fetch_account(token.access_token)
-            except Exception:
+            except Exception as e:
                 logger.warning(
-                    "fetch_account failed for %s; connecting without profile",
+                    "fetch_account failed for %s; connecting without profile (%s)",
                     provider,
-                    exc_info=True,
+                    type(e).__name__,
                 )
                 account = AccountInfo(email=None, display_name=None)
             await storage.store_token(user_id, provider, token, account)
@@ -351,11 +351,9 @@ async def integration_callback(
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:
-        logger.exception("OAuth callback failed for provider %s", provider)
+        logger.warning("OAuth callback failed for provider %s (%s)", provider, type(e).__name__)
         base = settings.PUBLIC_URL.rstrip("/")
-        # Surface a short reason in the redirect — this app's logging swallows
-        # tracebacks, so the URL is the only place the operator sees the cause.
-        query = {"integration_error": provider, "reason": str(e)[:200]}
+        query = {"integration_error": provider, "reason": "connection_failed"}
         return RedirectResponse(url=f"{base}/settings?{urlencode(query)}", status_code=302)
 
     base = settings.PUBLIC_URL.rstrip("/")
