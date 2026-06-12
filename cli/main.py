@@ -19,7 +19,7 @@ from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
 
 from . import __version__, telemetry
-from .client import StashClient, StashError, skill_permissions_for_access
+from .client import StashClient, StashError
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
@@ -32,7 +32,6 @@ from .config import (
     save_enabled_agents,
     set_streaming,
     stored_base_url,
-    write_manifest,
 )
 from .formatting import console, output_json, print_members, print_user, print_workspaces
 
@@ -116,11 +115,6 @@ def _resolve_workspace() -> str:
     if choice is None:
         raise typer.Exit(1)
     return choice
-
-
-def _default_skill_id() -> str:
-    manifest = load_manifest()
-    return (manifest or {}).get("default_skill_id", "")
 
 
 def _err(e: StashError) -> None:
@@ -1158,25 +1152,13 @@ def share_session(
             c.create_page(ws, f"Subagent: {sa_label}", content=sa_md, folder_id=folder["id"])
             console.print(f"  [dim]Included subagent: {sa_label}[/dim]")
 
-        skill_items: list[dict] = [
-            {"object_type": "folder", "object_id": folder["id"], "position": 0},
-        ]
-
-        # Upload attached files
+        # Upload attached files into the session folder
         for fp in files:
             p = Path(fp)
             if not p.exists():
                 console.print(f"[yellow]Skipping {fp} (not found)[/yellow]")
                 continue
-            uploaded = c.upload_ws_file(ws, str(p))
-            skill_items.append(
-                {
-                    "object_type": "file",
-                    "object_id": uploaded["id"],
-                    "position": len(skill_items),
-                    "label_override": p.name,
-                }
-            )
+            c.upload_ws_file(ws, str(p), folder_id=folder["id"])
             console.print(f"  [dim]Attached {p.name}[/dim]")
 
         # Upload the full transcript blob (may already exist via hooks — that's fine)
@@ -1202,16 +1184,15 @@ def share_session(
                 if e.status_code != 409:
                     raise
 
-        # Create the public Skill and publish the underlying items
-        # so the anonymous URL works immediately.
-        bundle = c.publish_skill(
+        # Publish the session folder so the anonymous URL works immediately.
+        skill = c.publish_skill_folder(
             ws,
+            folder["id"],
             title=page_title,
             description="Shared session Skill",
-            items=skill_items,
         )
 
-    public_url = bundle["url"]
+    public_url = f"{_web_app_url()}/skills/{skill['slug']}"
     console.print(f"\n[green bold]Shared![/green bold]  {public_url}")
 
 
@@ -1324,7 +1305,7 @@ def upload(
     follow. **No Skill is created.**
 
     Pass ``--skill <title>`` to *also* bundle the upload into a shareable
-    Skill. Use a Skill when you're publishing a curated bundle of related
+    Skill. Use a Skill when you're publishing a folder of related
     artifacts (a project writeup with its supporting files, a research
     thread with its sources) — not as a wrapper around every single
     upload."""
@@ -1349,11 +1330,6 @@ def upload(
     with _client() as c:
         root_folder = c.create_folder(ws, root_name)
         folder_cache: dict[tuple[str, str], str] = {}
-        skill_items: list[dict] = []
-        if target.is_dir():
-            skill_items.append(
-                {"object_type": "folder", "object_id": root_folder["id"], "position": 0}
-            )
 
         for file_path in files:
             relative_path = (
@@ -1369,16 +1345,7 @@ def upload(
 
             if _is_upload_text_file(file_path):
                 content = file_path.read_text(errors="replace")
-                page = c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
-                if target.is_file():
-                    skill_items.append(
-                        {
-                            "object_type": "page",
-                            "object_id": page["id"],
-                            "position": len(skill_items),
-                            "label_override": str(relative_path),
-                        }
-                    )
+                c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
                 console.print(f"  [dim]Page: {relative_path}[/dim]")
                 continue
 
@@ -1389,53 +1356,55 @@ def upload(
                 content=_markdown_snippet(uploaded),
                 folder_id=folder_id,
             )
-            skill_items.append(
-                {
-                    "object_type": "file",
-                    "object_id": uploaded["id"],
-                    "position": len(skill_items),
-                    "label_override": str(relative_path),
-                }
-            )
             console.print(f"  [dim]File: {relative_path}[/dim]")
 
         folder_url = f"{_web_app_url()}/workspaces/{ws}/folders/{root_folder['id']}"
         result: dict = {"folder": root_folder, "app_url": folder_url}
 
         if create_skill:
+            # A skill is a folder with a SKILL.md; publishing makes it public.
+            try:
+                c.create_page(
+                    ws,
+                    name="SKILL.md",
+                    content=f"---\nname: {skill_title}\ndescription: Uploaded from {target.name}\n---\n\n# {skill_title}\n",
+                    folder_id=root_folder["id"],
+                    content_type="markdown",
+                )
+            except StashError as e:
+                if e.status_code != 409:
+                    raise
             if public:
-                bundle = c.publish_skill(
+                skill_row = c.publish_skill_folder(
                     ws,
+                    root_folder["id"],
                     title=skill_title,
                     description=f"Uploaded from {target.name}",
-                    items=skill_items,
                 )
-                skill_row = bundle["skill"]
-                skill_url = bundle["url"]
+                result["skill"] = skill_row
+                result["url"] = _skill_url(skill_row)
             else:
-                skill_row = c.create_skill(
-                    ws,
-                    title=skill_title,
-                    description=f"Uploaded from {target.name}",
-                    items=skill_items,
-                )
-                skill_url = _skill_url(skill_row)
-            result["skill"] = skill_row
-            result["url"] = skill_url
+                result["url"] = folder_url
 
     if _use_json(as_json):
         output_json(result)
         return
-    if create_skill:
+    if create_skill and "skill" in result:
         console.print(
             f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
             f"[dim]Folder: {root_folder['id']}  Skill: {result['skill']['id']}[/dim]"
+        )
+    elif create_skill:
+        console.print(
+            f"\n[green bold]Uploaded![/green bold]  {folder_url}\n"
+            f"[dim]Folder: {root_folder['id']}  (private skill — publish with "
+            f"`stash skills publish {root_folder['id']}`)[/dim]"
         )
     else:
         console.print(
             f"\n[green bold]Uploaded![/green bold]  {folder_url}\n"
             f"[dim]Folder: {root_folder['id']}  "
-            f"(pass --skill <title> to also bundle into a shareable Skill)[/dim]"
+            f"(pass --skill <title> to turn the folder into a shareable Skill)[/dim]"
         )
 
 
@@ -1477,7 +1446,7 @@ def skills_list(
     workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List skills in a workspace — local SKILL.md folders and shared bundles."""
+    """List skills in a workspace — folders with a SKILL.md, plus publish info."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -1491,17 +1460,15 @@ def skills_list(
         console.print("[dim]No skills in this workspace.[/dim]")
         return
     for v in data:
-        if v["kind"] == "local":
-            console.print(
-                f"[green]local[/green]   [bold]{v['name']}[/bold]  "
-                f"[dim]({v['file_count']} files)  {v.get('description', '')}[/dim]"
-            )
+        published = v.get("published")
+        if published:
+            flag = f"[cyan]{published['access']}[/cyan]  /skills/{published['slug']}"
         else:
-            flag = f"[cyan]{v['access']}[/cyan]"
-            console.print(
-                f"[magenta]shared[/magenta]  [bold]{v['name']}[/bold]  {flag}  /skills/{v['slug']}  "
-                f"[dim]({len(v['items'])} items, viewed {v['view_count']}x)[/dim]"
-            )
+            flag = "[dim]private[/dim]"
+        console.print(
+            f"[bold]{v['name']}[/bold]  {flag}  "
+            f"[dim]({v['file_count']} files)  {v.get('description', '')}[/dim]"
+        )
 
 
 @skills_app.command("show")
@@ -1556,88 +1523,72 @@ def skills_add(
 
 @skills_app.command("create")
 def skills_create(
-    title: str = typer.Argument(..., help="Skill title."),
+    name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     description: str = typer.Option("", "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
-    items_json: str = typer.Option(
-        "[]",
-        "--items",
-        help='JSON array of items: [{"object_type":"folder","object_id":"..."}, ...]',
-    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a Skill. Pass --items as JSON to attach resources up front."""
+    """Create a skill: a folder with a SKILL.md template. Pass --public to publish."""
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
     ws_id = workspace_id or _resolve_workspace()
-    items = json.loads(items_json)
+    skill_md = f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
     with _client() as c:
         try:
+            folder = c.create_folder(ws_id, name)
+            c.create_page(
+                ws_id,
+                name="SKILL.md",
+                content=skill_md,
+                folder_id=folder["id"],
+                content_type="markdown",
+            )
+            skill = None
             if public:
-                bundle = c.publish_skill(
+                skill = c.publish_skill_folder(
                     ws_id,
-                    title=title,
-                    description=description,
+                    folder["id"],
                     discoverable=discover,
-                    items=items,
-                )
-                skill = bundle["skill"]
-            else:
-                skill = c.create_skill(
-                    ws_id,
-                    title=title,
-                    description=description,
-                    discoverable=False,
-                    items=items,
                 )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
-        output_json(skill)
+        output_json({"folder_id": folder["id"], "name": name, "published": skill})
         return
-    flag = f"[cyan]{skill['access']}[/cyan]"
-    if skill.get("discoverable"):
-        flag = f"{flag} [cyan]discover[/cyan]"
-    console.print(f"[green]Created Skill[/green] '{skill['title']}'  {flag}")
-    console.print(f"  ID: {skill['id']}  Slug: {skill['slug']}")
-    if skill["access"] == "public":
+    console.print(f"[green]Created skill[/green] '{name}'  folder {folder['id']}")
+    if skill:
         console.print(f"  Public URL: [cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]")
 
 
 @skills_app.command("publish")
 def skills_publish(
-    skill_id: str = typer.Argument(...),
-    private: bool = typer.Option(False, "--private", help="Make the Skill private."),
-    workspace: bool = typer.Option(
-        False, "--workspace-access", help="Make the Skill workspace-visible."
-    ),
+    folder_id: str = typer.Argument(..., help="Skill folder ID to publish."),
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
+    as_json: bool = typer.Option(False, "--json"),
 ):
-    """Change a Skill's access level."""
-    if discover and (private or workspace):
-        console.print("[red]--discover requires public access.[/red]")
-        raise typer.Exit(1)
-    access = "private" if private else "workspace" if workspace else "public"
+    """Publish a skill folder: mint its share record and print the public URL."""
+    ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            skill = c.update_skill(
-                skill_id,
-                **skill_permissions_for_access(access),
-                discoverable=False if access != "public" else discover,
+            skill = c.publish_skill_folder(
+                ws_id,
+                folder_id,
+                discoverable=discover,
             )
         except StashError as e:
             _err(e)
-    if skill["access"] == "public":
-        label = "Published to Discover" if skill.get("discoverable") else "Published"
-        console.print(
-            f"[green]{label}[/green] '{skill['title']}' -> "
-            f"[cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]"
-        )
-    else:
-        console.print(f"[yellow]{skill['access'].title()}[/yellow] '{skill['title']}'")
+    if _use_json(as_json):
+        output_json(skill)
+        return
+    label = "Published to Discover" if skill.get("discoverable") else "Published"
+    console.print(
+        f"[green]{label}[/green] '{skill['title']}' -> "
+        f"[cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]"
+    )
 
 
 @skills_app.command("update")
@@ -1645,38 +1596,21 @@ def skills_update(
     skill_id: str = typer.Argument(...),
     title: str | None = typer.Option(None, "--title"),
     description: str | None = typer.Option(None, "--description"),
-    access: str | None = typer.Option(
-        None,
-        "--access",
-        help="One of: workspace, private, public.",
-    ),
     discover: bool | None = typer.Option(
         None,
         "--discover/--no-discover",
         help="Whether a public Skill appears in Discover.",
     ),
-    items_json: str | None = typer.Option(
-        None,
-        "--items",
-        help='Replace items with JSON: [{"object_type":"page","object_id":"..."}, ...]',
-    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a Skill's metadata, access, Discover flag, or item list."""
+    """Update a published skill's metadata, access, or Discover flag."""
     fields = {}
     if title is not None:
         fields["title"] = title
     if description is not None:
         fields["description"] = description
-    if access is not None:
-        if access not in {"workspace", "private", "public"}:
-            console.print("[red]--access must be workspace, private, or public.[/red]")
-            raise typer.Exit(1)
-        fields.update(skill_permissions_for_access(access))
     if discover is not None:
         fields["discoverable"] = discover
-    if items_json is not None:
-        fields["items"] = json.loads(items_json)
     if not fields:
         console.print("[red]Pass at least one field to update.[/red]")
         raise typer.Exit(1)
@@ -1695,54 +1629,15 @@ def skills_update(
     console.print(f"[green]Updated Skill[/green] '{skill['title']}'  {flag}")
 
 
-@skills_app.command("default")
-def skills_default(
-    skill_id: str = typer.Argument("", help="Skill ID to receive this repo's streamed sessions."),
-    clear: bool = typer.Option(False, "--clear", help="Clear this repo's default Skill."),
-    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
-):
-    """Set which Skill this repo streams sessions into by default."""
-    if clear:
-        try:
-            write_manifest({"default_skill_id": ""})
-        except FileNotFoundError:
-            console.print("[red]No .stash file found. Run `stash connect` first.[/red]")
-            raise typer.Exit(1)
-        console.print("[green]Cleared default Skill.[/green]")
-        return
-
-    if not skill_id:
-        current = _default_skill_id()
-        console.print(current or "(none)")
-        return
-
-    ws_id = workspace_id or _resolve_workspace()
+@skills_app.command("unpublish")
+def skills_unpublish(skill_id: str = typer.Argument(...)):
+    """Stop sharing a skill: delete its publish record. The folder stays."""
     with _client() as c:
         try:
-            skills = c.list_skills(ws_id)
+            c.unpublish_skill(skill_id)
         except StashError as e:
             _err(e)
-    if not any(skill["id"] == skill_id for skill in skills):
-        console.print("[red]Default Skill must belong to the active workspace.[/red]")
-        raise typer.Exit(1)
-
-    try:
-        write_manifest({"default_skill_id": skill_id})
-    except FileNotFoundError:
-        console.print("[red]No .stash file found. Run `stash connect` first.[/red]")
-        raise typer.Exit(1)
-    console.print(f"[green]Default Skill set[/green] {skill_id}")
-
-
-@skills_app.command("delete")
-def skills_delete(skill_id: str = typer.Argument(...)):
-    """Delete a Skill. The underlying resources are not touched."""
-    with _client() as c:
-        try:
-            c.delete_skill(skill_id)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Deleted Skill[/green] {skill_id}")
+    console.print(f"[green]Unpublished Skill[/green] {skill_id}")
 
 
 @skills_app.command("fork")
@@ -1761,113 +1656,7 @@ def skills_fork(
     if _use_json(as_json):
         output_json(skill)
         return
-    console.print(f"[green]Forked Skill[/green] '{skill['title']}'")
-    console.print(f"  Open it: [cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]")
-
-
-@skills_app.command("remove-fork")
-def skills_remove_fork(
-    skill_id: str = typer.Argument(..., help="Skill ID."),
-    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
-):
-    """Remove a forked Skill from a workspace."""
-    ws_id = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.remove_forked_skill(ws_id, skill_id)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Removed forked Skill[/green] {skill_id}")
-
-
-@skills_app.command("members")
-def skills_members(
-    skill_id: str = typer.Argument(..., help="Skill ID."),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List the people granted access to a Skill."""
-    with _client() as c:
-        try:
-            data = c.list_skill_members(skill_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No members.[/dim]")
-        return
-    for m in data:
-        console.print(
-            f"  [bold]{m.get('display_name') or m.get('name')}[/bold]  "
-            f"[dim]{m.get('permission')} — {m.get('user_id')}[/dim]"
-        )
-
-
-@skills_app.command("add-member")
-def skills_add_member(
-    skill_id: str = typer.Argument(...),
-    user_id: str = typer.Argument(..., help="The user to grant access."),
-    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Grant a user access to a Skill."""
-    with _client() as c:
-        try:
-            data = c.add_skill_member(skill_id, user_id, permission=permission)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    console.print(f"[green]Added member[/green] {user_id} ({permission})")
-
-
-@skills_app.command("remove-member")
-def skills_remove_member(
-    skill_id: str = typer.Argument(...),
-    user_id: str = typer.Argument(...),
-):
-    """Revoke a user's access to a Skill."""
-    with _client() as c:
-        try:
-            c.remove_skill_member(skill_id, user_id)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Removed member[/green] {user_id}")
-
-
-@skills_app.command("invites")
-def skills_invites(as_json: bool = typer.Option(False, "--json")):
-    """List Skill invites pending for you (shared with you, awaiting action)."""
-    with _client() as c:
-        try:
-            data = c.list_skill_invites()
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No pending invites.[/dim]")
-        return
-    for inv in data:
-        console.print(
-            f"  [bold]{inv.get('skill_title')}[/bold]  "
-            f"[dim]from {inv.get('invited_by_display_name')} — {inv.get('permission')} "
-            f"— {inv.get('id')}[/dim]"
-        )
-
-
-@skills_app.command("dismiss-invite")
-def skills_dismiss_invite(invite_id: str = typer.Argument(...)):
-    """Dismiss a pending Skill invite."""
-    with _client() as c:
-        try:
-            c.dismiss_skill_invite(invite_id)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Dismissed invite[/green] {invite_id}")
+    console.print(f"[green]Forked Skill[/green] '{skill['name']}'  folder {skill['folder_id']}")
 
 
 @skills_app.command("snapshot-source")
@@ -2510,7 +2299,6 @@ def hist_push(
                 event_type=event_type,
                 content=content,
                 session_id=session_id,
-                default_skill_id=_default_skill_id(),
                 tool_name=tool_name,
                 attachments=attachments or None,
                 created_at=created_at,
@@ -2716,14 +2504,14 @@ def hist_share(
     with _client() as c:
         folder = c.create_folder(ws, page_title)
         c.create_page(ws, page_title, content=md, folder_id=folder["id"])
-        bundle = c.publish_skill(
+        skill = c.publish_skill_folder(
             ws,
+            folder["id"],
             title=page_title,
             description="Shared session transcript",
-            items=[{"object_type": "folder", "object_id": folder["id"]}],
         )
 
-    console.print(f"[green]Shared![/green]  {bundle['url']}")
+    console.print(f"[green]Shared![/green]  {_web_app_url()}/skills/{skill['slug']}")
 
 
 @hist_app.command("import")
@@ -2789,7 +2577,6 @@ def hist_import(
                     c,
                     ws,
                     conv,
-                    default_skill_id=_default_skill_id(),
                     replace=replace,
                 )
                 imported += 1
@@ -4193,10 +3980,11 @@ search Stash first — it has the full session record and human decisions across
 
 ### What a Skill is
 
-A Skill is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with
-its own access control and an optional public URL. Use one when you're publishing a *collection*
-of related things together — a project writeup with its supporting files, a research thread with
-its sources, a session transcript plus the files it produced.
+A Skill is a *special folder* — one containing a SKILL.md — holding related artifacts
+(pages, files, tables) that shares like any folder and gains a public URL when
+published. Use one when you're publishing a *collection* of related things together — a
+project writeup with its supporting files, a research thread with its sources, a session
+transcript frozen as a page plus the files it produced.
 
 A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills
 clutter Discover and defeat the model. Pick the right tool:
@@ -4204,7 +3992,7 @@ clutter Discover and defeat the model. Pick the right tool:
 - Internal share of a single file → `stash files upload <path> --json`, hand over `app_url`.
 - Upload a folder/project → `stash upload <path> --json` (returns `app_url`, no Skill).
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
-- Composing from existing items → `stash skills create "<title>" --items '<json>' --json`.
+- Creating a fresh skill → `stash skills create "<name>" --public --json`.
 - Share a coding session → `stash share <session_id>`.
 
 Run `stash prompts agent-guidance` to reprint this rule mid-session.
@@ -4691,7 +4479,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
-                upload_conversation(c, ws, conv, default_skill_id=_default_skill_id())
+                upload_conversation(c, ws, conv)
                 imported += 1
             except StashError as e:
                 errors += 1
@@ -4892,16 +4680,13 @@ def _render_settings_header(cfg: dict) -> None:
 
     manifest = load_manifest()
     workspace_id = (manifest.get("workspace_id") if manifest else None) or ""
-    default_skill_id = (manifest.get("default_skill_id") if manifest else None) or ""
     workspace_label = workspace_id[:12] + "…" if workspace_id else "(none — no .stash file)"
-    default_skill_label = default_skill_id[:12] + "…" if default_skill_id else "(none)"
 
     def row(label: str, value: str, *, highlight: bool = True) -> None:
         console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
 
     row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
     row(f"{'Workspace:':<14}", workspace_label, highlight=False)
-    row(f"{'Default Skill:':<14}", default_skill_label, highlight=False)
 
     enabled = load_enabled_agents()
     detected = _detected_agents()
@@ -5253,11 +5038,12 @@ AGENT_GUIDANCE_PROMPT = """\
 What a Skill is
 ===============
 
-A Skill is a named, curated bundle of related workspace artifacts (pages,
-files, tables, sessions) with its own access control and an optional public
-URL. Use one when you're publishing a bundle of related things together — a
-project writeup with its supporting files, a research thread with its
-sources, a session transcript with its outputs.
+A Skill is a special folder — one containing a SKILL.md — holding related
+workspace artifacts (pages, files, tables) that shares like any folder and
+gains a public URL when published. Use one when you're publishing a
+collection of related things together — a project writeup with its
+supporting files, a research thread with its sources, a session transcript
+frozen as a page with its outputs.
 
 When to create a Skill
 ----------------------
@@ -5265,8 +5051,8 @@ When to create a Skill
 Create a Skill when:
 - You're publishing a curated collection of related artifacts that belong
   together as one share.
-- You want a single shareable URL with its own access control (public,
-  workspace-only, or private).
+- You want a single public URL for the whole collection (publish it), or
+  to hand a teammate everything at once (share the folder).
 
 Do NOT create a Skill when:
 - The user just wants to share one file or page internally. Workspace
@@ -5283,14 +5069,15 @@ Commands to reach for
 - `stash upload <path> --json` — upload files/pages into a workspace
   folder, returns the folder's `app_url`. No Skill created.
 - `stash upload <path> --skill "<title>" --json` — same as above AND
-  bundle the upload into a Skill with the given title. Use only when
-  you're producing a shareable bundle.
-- `stash skills create "<title>" --items '<json>' --json` — create a
-  Skill that bundles existing workspace artifacts you've already
-  produced. Use this to compose a Skill from many sources.
-- `stash share <session_id>` — wrap a coding session (transcript + the
-  files it touched) into a Skill. Sessions are inherently a bundle, so
-  this is the right unit.
+  publish the uploaded folder as a Skill with the given title. Use only
+  when you're producing a shareable collection.
+- `stash skills create "<name>" --public --json` — create a fresh skill
+  folder (with a SKILL.md template) and publish it. Add content with the
+  normal files/pages commands; `stash skills publish <folder_id>` shares
+  an existing skill folder.
+- `stash share <session_id>` — freeze a coding session (transcript + the
+  files it touched) into a Skill folder. Sessions are inherently a
+  collection, so this is the right unit.
 
 Browsing Stash
 --------------

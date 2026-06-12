@@ -1,35 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import {
   CardGridSkeleton,
   SkillsGridSkeleton,
 } from "../../../../../components/SkeletonStates";
 import { PinIcon, SkillIcon } from "../../../../../components/SkillIcons";
 import SkillCard, {
-  VIS_COLOR,
-  VisibilityBadge,
+  PUBLISH_COLOR,
+  PublishBadge,
 } from "../../../../../components/skill/SkillCard";
 import ForkSkillCardButton from "../../../../../components/skill/ForkSkillCardButton";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
-import { useShareModal } from "../../../../../lib/shareModalContext";
 import {
   forkSkill,
   ApiError,
   API_BASE,
-  deleteSkill,
-  dismissSkillInvite,
-  displayVisibility,
-  listSkillInvites,
-  listSharedSkills,
-  type SkillInvite,
+  createFolder,
+  createPage,
+  deleteFolder,
+  listSkills,
+  listSkillsSharedWithMe,
+  type SharedSkill,
+  type Skill,
   type PublicSkillCard,
-  type WorkspaceSkill,
 } from "../../../../../lib/api";
+import { SKILL_MD, skillMdTemplate } from "../../../../../lib/localSkill";
 import { usePins } from "../../../../../lib/pins";
 import { skillSlugFromInput } from "../../../../../lib/skillLinks";
+import { refreshWorkspaceSidebar } from "../../../../../lib/skillNavigationCache";
 
 type ViewKey = "grid" | "list";
 // The primary axis: which set of Skills you're looking at. Yours and Shared
@@ -44,21 +46,20 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 
 const TAB_COPY: Record<Tab, string> = {
   yours:
-    "Skills you created in this workspace. Share them with people or publish them to the public library.",
-  shared: "Skills other people created and shared with you, plus pending invites.",
+    "Skill folders in this workspace. Share them with people or publish them to the public library.",
+  shared: "Skill folders other people shared with you, plus adding a skill by link.",
   discover: "Public skills from the community — fork one into your workspace.",
 };
 
 export default function WorkspaceSkillsPage() {
   const params = useParams();
+  const router = useRouter();
   const workspaceId = params.workspaceId as string;
-  const shareModal = useShareModal();
-  const shareVersion = shareModal.version;
   const pins = usePins("skills", workspaceId);
+  const confirm = useConfirm();
 
-  const [skills, setSkills] = useState<WorkspaceSkill[] | null>(null);
-  const [invites, setInvites] = useState<SkillInvite[]>([]);
-  const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [sharedSkills, setSharedSkills] = useState<SharedSkill[]>([]);
   const [tab, setTab] = useState<Tab>("yours");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
@@ -94,8 +95,7 @@ export default function WorkspaceSkillsPage() {
 
   const load = useCallback(async () => {
     try {
-      const list = await listSharedSkills(workspaceId);
-      setSkills(list);
+      setSkills(await listSkills(workspaceId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Skills");
     }
@@ -103,23 +103,26 @@ export default function WorkspaceSkillsPage() {
 
   useEffect(() => {
     load();
-  }, [load, shareVersion]);
+  }, [load]);
 
-  // Pending invites are Skills others shared directly with you — surfaced in
-  // the "Shared with you" section. Non-critical: failure leaves the list empty.
+  // Skill folders others shared directly with you (folder shares) — surfaced
+  // in the "Shared with you" section. Non-critical: failure leaves it empty.
   useEffect(() => {
-    listSkillInvites()
-      .then(setInvites)
-      .catch(() => setInvites([]));
-  }, [shareVersion]);
+    listSkillsSharedWithMe()
+      .then(setSharedSkills)
+      .catch(() => setSharedSkills([]));
+  }, []);
 
-  async function dismissInvite(invite: SkillInvite) {
-    setBusyInviteId(invite.id);
+  async function newSkill() {
+    const name = window.prompt("Skill name?");
+    if (!name?.trim()) return;
     try {
-      await dismissSkillInvite(invite.id);
-      setInvites((current) => current.filter((item) => item.id !== invite.id));
-    } finally {
-      setBusyInviteId(null);
+      const folder = await createFolder(workspaceId, name.trim());
+      await createPage(workspaceId, SKILL_MD, folder.id, skillMdTemplate(name.trim()));
+      await refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/workspaces/${workspaceId}/skills/${folder.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create skill");
     }
   }
 
@@ -130,36 +133,36 @@ export default function WorkspaceSkillsPage() {
     );
   }, [skills]);
 
-  const native = useMemo(() => visible.filter((s) => !s.is_external), [visible]);
-  const forked = useMemo(() => visible.filter((s) => s.is_external), [visible]);
-
   const pinnedSkills = useMemo(
-    () => (skills ?? []).filter((s) => pins.pinnedSet.has(s.id)),
+    () => (skills ?? []).filter((s) => pins.pinnedSet.has(s.folder_id)),
     [skills, pins.pinnedSet]
   );
   const recentSkills = useMemo(
     () =>
       (skills ?? [])
-        .filter((s) => !pins.pinnedSet.has(s.id))
+        .filter((s) => !pins.pinnedSet.has(s.folder_id))
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
         .slice(0, 6),
     [skills, pins.pinnedSet]
   );
 
-  const selectedSkills = (skills ?? []).filter((s) => selectedIds.has(s.id));
+  const selectedSkills = (skills ?? []).filter((s) => selectedIds.has(s.folder_id));
 
   async function bulkDeleteSkills() {
     if (selectedSkills.length === 0) return;
-    const yes = window.confirm(
-      `Delete ${selectedSkills.length} Skill${selectedSkills.length === 1 ? "" : "s"}? This can't be undone.`,
-    );
-    if (!yes) return;
+    const ok = await confirm({
+      title: `Delete ${selectedSkills.length} skill${selectedSkills.length === 1 ? "" : "s"}?`,
+      body: "Their files will be deleted too. This can't be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       for (const skill of selectedSkills) {
-        await deleteSkill(skill.id);
+        await deleteFolder(workspaceId, skill.folder_id);
       }
       clearSelection();
       await load();
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
     }
@@ -169,7 +172,7 @@ export default function WorkspaceSkillsPage() {
     return <SkillsGridSkeleton />;
   }
 
-  const isPinned = (s: WorkspaceSkill) => pins.pinnedSet.has(s.id);
+  const isPinned = (s: Skill) => pins.pinnedSet.has(s.folder_id);
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -180,7 +183,7 @@ export default function WorkspaceSkillsPage() {
           </h1>
           <button
             type="button"
-            onClick={() => shareModal.open({ workspaceId })}
+            onClick={() => void newSkill()}
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
             <PlusGlyph /> New Skill
@@ -197,25 +200,24 @@ export default function WorkspaceSkillsPage() {
         <SkillTabs
           tab={tab}
           onChange={setTab}
-          yoursCount={(skills ?? []).filter((s) => !s.is_external).length}
-          sharedCount={
-            (skills ?? []).filter((s) => s.is_external).length + invites.length
-          }
+          yoursCount={skills.length}
+          sharedCount={sharedSkills.length}
         />
         <p className="mt-2 text-[12.5px] text-muted">{TAB_COPY[tab]}</p>
 
         {/* Quick-access + the view toolbar belong to your held Skills, so
-            they sit under Yours and Shared, not Discover. */}
-        {tab !== "discover" && (pinnedSkills.length > 0 || recentSkills.length > 0) && (
+            they sit under Yours, not Discover. */}
+        {tab === "yours" && (pinnedSkills.length > 0 || recentSkills.length > 0) && (
           <SkillQuickAccess
+            workspaceId={workspaceId}
             pinned={pinnedSkills}
             recent={recentSkills}
             isPinned={isPinned}
-            onTogglePin={(s) => pins.toggle(s.id)}
+            onTogglePin={(s) => pins.toggle(s.folder_id)}
           />
         )}
 
-        {tab !== "discover" && (
+        {tab === "yours" && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <SkillViewToggle view={view} onChange={setViewPersisted} />
           </div>
@@ -223,16 +225,15 @@ export default function WorkspaceSkillsPage() {
 
         {tab === "yours" && (
           <div className="mt-4">
-            {native.length > 0 ? (
+            {visible.length > 0 ? (
               <SkillCollection
-                skills={native}
-                startIndex={0}
+                workspaceId={workspaceId}
+                skills={visible}
                 view={view}
                 isPinned={isPinned}
-                onTogglePin={(s) => pins.toggle(s.id)}
+                onTogglePin={(s) => pins.toggle(s.folder_id)}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
-                embedded
               />
             ) : (
               <EmptyHint>No skills yet.</EmptyHint>
@@ -242,32 +243,14 @@ export default function WorkspaceSkillsPage() {
 
         {tab === "shared" && (
           <div className="mt-4">
-            {invites.length > 0 && (
+            {sharedSkills.length > 0 ? (
               <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                {invites.map((invite) => (
-                  <SharedInviteRow
-                    key={invite.id}
-                    invite={invite}
-                    busy={busyInviteId === invite.id}
-                    onDismiss={() => void dismissInvite(invite)}
-                  />
+                {sharedSkills.map((shared) => (
+                  <SharedSkillRow key={shared.folder_id} shared={shared} />
                 ))}
               </div>
-            )}
-            {forked.length > 0 ? (
-              <SkillCollection
-                skills={forked}
-                startIndex={native.length}
-                view={view}
-                isPinned={isPinned}
-                onTogglePin={(s) => pins.toggle(s.id)}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-                embedded
-                className={invites.length > 0 ? "mt-3" : undefined}
-              />
             ) : (
-              invites.length === 0 && <EmptyHint>Nothing shared with you yet.</EmptyHint>
+              <EmptyHint>Nothing shared with you yet.</EmptyHint>
             )}
             <ExternalSkillLinkForm workspaceId={workspaceId} onAdded={() => void load()} />
           </div>
@@ -327,13 +310,9 @@ function ExternalSkillLinkForm({
     setError("");
     setMessage("");
     try {
-      const skill = await forkSkill(slug, workspaceId);
+      const forked = await forkSkill(slug, workspaceId);
       setInput("");
-      setMessage(
-        skill.is_external
-          ? `Added ${skill.title} to this workspace.`
-          : `${skill.title} is already in this workspace.`
-      );
+      setMessage(`Added ${forked.name} to this workspace.`);
       onAdded();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add skill");
@@ -435,18 +414,15 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
   );
 }
 
-// A pending invite rendered as a drive-style row above the shared list. View
-// opens the Skill; Dismiss removes the invite (the access stays — it can
-// still be reached by link). Mirrors the dismiss logic in SkillInviteCenter.
-function SharedInviteRow({
-  invite,
-  busy,
-  onDismiss,
-}: {
-  invite: SkillInvite;
-  busy: boolean;
-  onDismiss: () => void;
-}) {
+// A skill folder shared with you, as a drive-style row. The folder lives in
+// the sharer's workspace (you're not a member), so View opens the public
+// skill page when it's published, else the shared folder route.
+function sharedSkillHref(shared: SharedSkill): string {
+  if (shared.slug) return `/skills/${shared.slug}`;
+  return `/workspaces/${shared.workspace_id}/folders/${shared.folder_id}`;
+}
+
+function SharedSkillRow({ shared }: { shared: SharedSkill }) {
   return (
     <div
       className="grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0"
@@ -456,27 +432,19 @@ function SharedInviteRow({
         <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
           <SkillIcon />
         </span>
-        <span className="min-w-0 truncate font-medium text-foreground">
-          {invite.skill_title}
-        </span>
-        <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
-          INVITE
-        </span>
+        <span className="min-w-0 truncate font-medium text-foreground">{shared.name}</span>
+        {shared.description && (
+          <span className="min-w-0 truncate text-[12px] text-muted">
+            {shared.description}
+          </span>
+        )}
       </div>
       <span className="truncate text-[12px] text-muted">
-        from {invite.invited_by_display_name} · {invite.source_workspace_name}
+        shared by {shared.shared_by ?? "someone"} · {shared.workspace_name}
       </span>
-      <div className="flex items-center justify-end gap-1.5">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onDismiss}
-          className="rounded-md border border-border-subtle px-2 py-1 text-[12px] text-muted hover:text-foreground disabled:opacity-50"
-        >
-          Dismiss
-        </button>
+      <div className="flex items-center justify-end">
         <Link
-          href={`/skills/${invite.skill_slug}`}
+          href={sharedSkillHref(shared)}
           className="rounded-md bg-[var(--color-brand-600)] px-2 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
         >
           View
@@ -512,8 +480,8 @@ async function fetchPublicSkills(params: {
 }
 
 // The public marketplace as a section of the Skills page. Self-contained:
-// owns its own search/sort/fetch and isn't touched by the page's visibility
-// filter, view toggle, pins, or selection (those are for Skills you hold).
+// owns its own search/sort/fetch and isn't touched by the page's view
+// toggle, pins, or selection (those are for Skills you hold).
 function DiscoverSection({ workspaceId }: { workspaceId: string }) {
   const [sort, setSort] = useState<DiscoverSort>("trending");
   const [query, setQuery] = useState("");
@@ -590,14 +558,12 @@ function DiscoverSection({ workspaceId }: { workspaceId: string }) {
             return (
               <SkillCard
                 key={skill.id}
+                href={`/skills/${skill.slug}`}
                 skill={{
-                  id: skill.id,
-                  slug: skill.slug,
                   title: skill.title,
                   description: skill.description,
                   cover_image_url: skill.cover_image_url,
-                  access: "public",
-                  item_count: skill.item_count,
+                  file_count: skill.item_count,
                   updated_at: skill.updated_at,
                 }}
                 cover={COVERS[i % COVERS.length]}
@@ -651,44 +617,44 @@ function SearchGlyph() {
 }
 
 
+function skillHref(workspaceId: string, skill: Skill): string {
+  return `/workspaces/${workspaceId}/skills/${skill.folder_id}`;
+}
+
+// Publish badge state: null = Private, otherwise Published (+ Discover dot).
+function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
+  if (!skill.published) return null;
+  return { discoverable: skill.published.discoverable };
+}
+
 function SkillCollection({
+  workspaceId,
   skills,
-  startIndex,
   view,
   isPinned,
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  embedded,
-  className,
 }: {
-  skills: WorkspaceSkill[];
-  startIndex: number;
+  workspaceId: string;
+  skills: Skill[];
   view: ViewKey;
-  isPinned: (skill: WorkspaceSkill) => boolean;
-  onTogglePin: (skill: WorkspaceSkill) => void;
+  isPinned: (skill: Skill) => boolean;
+  onTogglePin: (skill: Skill) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  embedded?: boolean;
-  className?: string;
 }) {
-  const extra = className ? ` ${className}` : "";
   if (view === "list") {
     return (
-      <div
-        className={
-          (embedded ? "" : "mt-4 ") +
-          "overflow-hidden rounded-xl border border-border bg-surface" +
-          extra
-        }
-      >
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
         {skills.map((skill) => (
           <SkillListRow
-            key={skill.id}
+            key={skill.folder_id}
+            workspaceId={workspaceId}
             skill={skill}
             pinned={isPinned(skill)}
             onTogglePin={onTogglePin}
-            selected={selectedIds.has(skill.id)}
+            selected={selectedIds.has(skill.folder_id)}
             onToggleSelect={onToggleSelect}
           />
         ))}
@@ -697,83 +663,82 @@ function SkillCollection({
   }
 
   return (
-    <div
-      className={
-        (embedded ? "" : "mt-4 ") +
-        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" +
-        extra
-      }
-    >
-      {skills.map((skill, i) => (
-        <SkillCard
-          key={skill.id}
-          skill={skill}
-          cover={COVERS[(startIndex + i) % COVERS.length]}
-          selected={selectedIds.has(skill.id)}
-          badge={
-            <span className="absolute left-2.5 top-2.5 z-10">
-              <SelectBox
-                selected={selectedIds.has(skill.id)}
-                onToggle={() => onToggleSelect(skill.id)}
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {skills.map((skill, i) => {
+        return (
+          <SkillCard
+            key={skill.folder_id}
+            href={skillHref(workspaceId, skill)}
+            skill={{
+              title: skill.name,
+              description: skill.description,
+              cover_image_url: skill.published?.cover_image_url ?? null,
+              icon_url: skill.published?.icon_url ?? null,
+              published: skillPublishBadge(skill),
+              updated_at: skill.updated_at,
+              file_count: skill.file_count,
+            }}
+            cover={COVERS[i % COVERS.length]}
+            selected={selectedIds.has(skill.folder_id)}
+            badge={
+              <span className="absolute left-2.5 top-2.5 z-10">
+                <SelectBox
+                  selected={selectedIds.has(skill.folder_id)}
+                  onToggle={() => onToggleSelect(skill.folder_id)}
+                />
+              </span>
+            }
+            cornerAction={
+              <SkillPinButton
+                pinned={isPinned(skill)}
+                onToggle={() => onTogglePin(skill)}
+                onCover
               />
-            </span>
-          }
-          cornerAction={
-            <SkillPinButton
-              pinned={isPinned(skill)}
-              onToggle={() => onTogglePin(skill)}
-              onCover
-            />
-          }
-        />
-      ))}
+            }
+          />
+        );
+      })}
     </div>
   );
 }
 
 function SkillListRow({
+  workspaceId,
   skill,
   pinned,
   onTogglePin,
   selected,
   onToggleSelect,
 }: {
-  skill: WorkspaceSkill;
+  workspaceId: string;
+  skill: Skill;
   pinned: boolean;
-  onTogglePin: (skill: WorkspaceSkill) => void;
+  onTogglePin: (skill: Skill) => void;
   selected: boolean;
   onToggleSelect: (id: string) => void;
 }) {
-  const itemCount = skill.items?.length ?? 0;
-  const author = skill.owner_display_name || skill.owner_name || "";
-
   return (
     <Link
-      href={`/skills/${skill.slug}`}
+      href={skillHref(workspaceId, skill)}
       className={
         "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
       }
       style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto" }}
     >
-      <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.id)} />
+      <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
           <SkillIcon />
         </span>
-        <span className="min-w-0 truncate font-medium text-foreground">{skill.title}</span>
-        {skill.is_external && (
-          <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-0.5 font-mono text-[9.5px] text-muted">
-            EXTERNAL
-          </span>
-        )}
+        <span className="min-w-0 truncate font-medium text-foreground">{skill.name}</span>
       </div>
       <span className="truncate text-[12px] text-muted">
-        {author && `by ${author} · `}
-        {itemCount} item{itemCount === 1 ? "" : "s"}
+        {skill.description && `${skill.description} · `}
+        {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
       </span>
-      <VisibilityBadge access={skill.access} shareCount={skill.share_count} />
+      <PublishBadge published={skillPublishBadge(skill)} />
       <span
         className={
           pinned
@@ -827,15 +792,17 @@ function SkillPinButton({
 }
 
 function SkillQuickAccess({
+  workspaceId,
   pinned,
   recent,
   isPinned,
   onTogglePin,
 }: {
-  pinned: WorkspaceSkill[];
-  recent: WorkspaceSkill[];
-  isPinned: (skill: WorkspaceSkill) => boolean;
-  onTogglePin: (skill: WorkspaceSkill) => void;
+  workspaceId: string;
+  pinned: Skill[];
+  recent: Skill[];
+  isPinned: (skill: Skill) => boolean;
+  onTogglePin: (skill: Skill) => void;
 }) {
   return (
     <div className="mt-5 space-y-4">
@@ -843,7 +810,8 @@ function SkillQuickAccess({
         <QuickAccessRow title="Pinned">
           {pinned.map((skill) => (
             <SkillQuickCard
-              key={`pin-${skill.id}`}
+              key={`pin-${skill.folder_id}`}
+              workspaceId={workspaceId}
               skill={skill}
               pinned
               onTogglePin={onTogglePin}
@@ -855,7 +823,8 @@ function SkillQuickAccess({
         <QuickAccessRow title="Recent">
           {recent.map((skill) => (
             <SkillQuickCard
-              key={`recent-${skill.id}`}
+              key={`recent-${skill.folder_id}`}
+              workspaceId={workspaceId}
               skill={skill}
               pinned={isPinned(skill)}
               onTogglePin={onTogglePin}
@@ -879,18 +848,20 @@ function QuickAccessRow({ title, children }: { title: string; children: React.Re
 }
 
 function SkillQuickCard({
+  workspaceId,
   skill,
   pinned,
   onTogglePin,
 }: {
-  skill: WorkspaceSkill;
+  workspaceId: string;
+  skill: Skill;
   pinned: boolean;
-  onTogglePin: (skill: WorkspaceSkill) => void;
+  onTogglePin: (skill: Skill) => void;
 }) {
-  const dotColor = VIS_COLOR[displayVisibility(skill.access, skill.share_count)];
+  const dotColor = skill.published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private;
   return (
     <Link
-      href={`/skills/${skill.slug}`}
+      href={skillHref(workspaceId, skill)}
       className="group/qa relative flex w-[200px] items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised"
     >
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-brand-600)]">
@@ -904,10 +875,10 @@ function SkillQuickCard({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] font-medium text-foreground">
-          {skill.title}
+          {skill.name}
         </span>
         <span className="block truncate text-[10.5px] text-muted">
-          {(skill.items?.length ?? 0)} item{(skill.items?.length ?? 0) === 1 ? "" : "s"}
+          {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         </span>
       </span>
       <span className="shrink-0">

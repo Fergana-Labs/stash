@@ -654,19 +654,6 @@ export function PublicSkillSkeleton() {
   );
 }
 
-export function SkillItemSkeleton() {
-  return (
-    <div className="scroll-thin min-h-screen bg-background">
-      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
-        <SkeletonLine className="h-4 w-32" />
-        <SkeletonLine className="mt-4 h-7 w-72 max-w-full" />
-        <SkeletonLine className="mt-2 h-3 w-20" />
-        <DocumentBodySkeleton className="mt-6" />
-      </div>
-    </div>
-  );
-}
-
 export function JoinWorkspaceSkeleton() {
   return (
     <div className="flex min-h-screen flex-col bg-base text-foreground">

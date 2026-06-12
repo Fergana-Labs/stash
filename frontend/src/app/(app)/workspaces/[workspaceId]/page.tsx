@@ -8,15 +8,16 @@ import DescriptionEditor, {
 } from "../../../../components/DescriptionEditor";
 import { seedWelcomePage } from "../../../../lib/onboarding/seedWelcome";
 import { WorkspaceHomeSkeleton } from "../../../../components/SkeletonStates";
-import SkillQuickAdd from "../../../../components/SkillQuickAdd";
 import { WorkspaceIcon } from "../../../../components/SkillIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
+  createPage,
   getWorkspace,
   joinWorkspace,
   updateWorkspace,
 } from "../../../../lib/api";
 import type { Workspace } from "../../../../lib/types";
+import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -75,6 +76,16 @@ export default function WorkspaceHomePage() {
       .then(setWorkspace)
       .catch(() => {});
   }, [user, workspace, workspaceId]);
+
+  async function handleNewPage() {
+    try {
+      const page = await createPage(workspaceId, "Untitled");
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/p/${page.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create page");
+    }
+  }
 
   async function handleJoin() {
     if (!workspace) return;
@@ -136,6 +147,15 @@ export default function WorkspaceHomePage() {
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
             {isMember && (
+              <button
+                type="button"
+                onClick={handleNewPage}
+                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+              >
+                + New page
+              </button>
+            )}
+            {isMember && (
               <Link
                 href={`/workspaces/${workspaceId}/settings`}
                 title="Workspace settings"
@@ -173,18 +193,6 @@ export default function WorkspaceHomePage() {
           canEdit={isMember}
           onSaved={(updated) => setWorkspace(updated)}
         />
-
-        {/* Quick-add: paste URL or drop a file. .jsonl files route to
-              session-transcript upload; anything else uploads to Files. */}
-        {isMember && (
-          <section className="mt-6">
-            <div className="sys-label mb-1.5">
-              Quick add — paste a URL, drop a file, drop a .jsonl transcript
-            </div>
-            <SkillQuickAdd workspaceId={workspaceId} onAdded={load} />
-          </section>
-        )}
-
 
       </div>
     </div>

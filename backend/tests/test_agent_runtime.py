@@ -17,7 +17,6 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 
-from backend.models import SkillItem
 from backend.services import agent_runtime, prompts, shared_skill_service
 
 
@@ -90,50 +89,71 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_skill_tools_create_list_and_delete(workspace: UUID, _db_pool):
+async def test_skill_tools_create_publish_update_and_unpublish(workspace: UUID, _db_pool):
+    """The agent's skill lifecycle: create makes a SKILL.md folder, publish
+    mints the share record (and a public URL), update edits the record, and
+    unpublish removes only the record — the folder stays a skill."""
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
-    folder_id = uuid4()
-    await _db_pool.execute(
-        "INSERT INTO folders (id, workspace_id, name, created_by) VALUES ($1, $2, $3, $4)",
-        folder_id,
-        workspace,
-        "Launch notes",
-        user_id,
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        created = json.loads(
+            (
+                await agent_runtime._create_skill.handler(
+                    {
+                        "name": "Launch bundle",
+                        "skill_md": (
+                            "---\nname: Launch bundle\ndescription: Launch context\n---\n\n# Go\n"
+                        ),
+                        "files": [{"name": "checklist.md", "content": "- ship it"}],
+                    }
+                )
+            )["content"][0]["text"]
+        )
+        listed = json.loads((await agent_runtime._list_skills.handler({}))["content"][0]["text"])
+        published = json.loads(
+            (await agent_runtime._publish_skill.handler({"folder_id": created["folder_id"]}))[
+                "content"
+            ][0]["text"]
+        )
+        updated = json.loads(
+            (
+                await agent_runtime._update_skill.handler(
+                    {"skill_id": published["id"], "description": "Edited"}
+                )
+            )["content"][0]["text"]
+        )
+        unpublished = json.loads(
+            (await agent_runtime._unpublish_skill.handler({"skill_id": published["id"]}))[
+                "content"
+            ][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    assert created["name"] == "Launch bundle"
+    [skill] = [s for s in listed if s["folder_id"] == created["folder_id"]]
+    assert skill["name"] == "Launch bundle"
+    assert skill["files"] == 2  # SKILL.md + checklist.md
+    assert skill["published"] is None  # creating a skill does not share it
+
+    # Publishing alone makes the skill public but not Discover-listed.
+    assert published["discoverable"] is False
+    assert published["url"].endswith(f"/skills/{published['slug']}")
+    assert updated["description"] == "Edited"
+    assert unpublished == {"deleted": True, "skill_id": published["id"]}
+    # The publish record is gone but the folder is still a skill.
+    record = await _db_pool.fetchval(
+        "SELECT 1 FROM skills WHERE folder_id = $1", UUID(created["folder_id"])
     )
-
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
-    user_token = agent_runtime._user_ctx.set(user_id)
-    try:
-        create_result = await agent_runtime._create_shared_skill.handler(
-            {
-                "title": "Launch bundle",
-                "description": "Published launch context",
-                "items": [{"object_type": "folder", "object_id": str(folder_id)}],
-            }
-        )
-        list_result = await agent_runtime._list_shared_skills.handler({})
-    finally:
-        agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
-
-    created = json.loads(create_result["content"][0]["text"])
-    listed = json.loads(list_result["content"][0]["text"])
-    assert created["title"] == "Launch bundle"
-    assert listed[0]["id"] == created["id"]
-    assert listed[0]["items"][0]["object_type"] == "folder"
-
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
-    user_token = agent_runtime._user_ctx.set(user_id)
-    try:
-        delete_result = await agent_runtime._delete_shared_skill.handler(
-            {"skill_id": created["id"]}
-        )
-    finally:
-        agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
-
-    deleted = json.loads(delete_result["content"][0]["text"])
-    assert deleted == {"deleted": True, "skill_id": created["id"]}
+    assert record is None
+    skill_md = await _db_pool.fetchval(
+        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' " "AND deleted_at IS NULL",
+        UUID(created["folder_id"]),
+    )
+    assert skill_md == 1
 
 
 def test_page_tools_are_writable_surfaces_only():
@@ -463,11 +483,12 @@ async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_external_skill_is_workspace_fork(workspace: UUID, _db_pool):
+async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: UUID, _db_pool):
+    """Forking deep-copies the skill folder into the target workspace as a
+    private (unpublished) skill: contents are point-in-time copies, not live
+    references, and no skills row is minted for the fork."""
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     target_workspace = uuid4()
-    page_id = uuid4()
-    session_row_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
         target_workspace,
@@ -480,73 +501,65 @@ async def test_external_skill_is_workspace_fork(workspace: UUID, _db_pool):
         target_workspace,
         owner_id,
     )
+    folder_id = uuid4()
     await _db_pool.execute(
-        "INSERT INTO pages (id, workspace_id, name, content_markdown, created_by) "
-        "VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO folders (id, workspace_id, name, created_by) VALUES ($1, $2, $3, $4)",
+        folder_id,
+        workspace,
+        "Fork source",
+        owner_id,
+    )
+    page_id = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO pages (id, workspace_id, folder_id, name, content_markdown, created_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6)",
         page_id,
         workspace,
+        folder_id,
         "Public source page",
         "External Stash source",
         owner_id,
     )
-    await _db_pool.execute(
-        "INSERT INTO sessions (id, workspace_id, session_id, agent_name, created_by) "
-        "VALUES ($1, $2, $3, $4, $5)",
-        session_row_id,
-        workspace,
-        "session-external-source",
-        "assistant",
-        owner_id,
-    )
-    await _db_pool.execute(
-        "INSERT INTO history_events "
-        "(workspace_id, created_by, agent_name, event_type, content, session_id) "
-        "VALUES ($1, $2, $3, $4, $5, $6)",
+    source = await shared_skill_service.publish_folder(
         workspace,
         owner_id,
-        "assistant",
-        "assistant",
-        "Copied session event",
-        "session-external-source",
-    )
-    source = await shared_skill_service.create_skill(
-        workspace_id=workspace,
-        owner_id=owner_id,
+        folder_id,
         title="Fork source Stash",
-        description="",
-        workspace_permission="read",
-        public_permission="read",
-        discoverable=False,
-        cover_image_url=None,
-        items=[
-            SkillItem(object_type="page", object_id=page_id, position=0),
-            SkillItem(object_type="session", object_id=session_row_id, position=1),
-        ],
     )
 
     attached = await shared_skill_service.fork_skill(
         target_workspace, source["slug"], added_by=owner_id
     )
-    target_skills = await shared_skill_service.list_workspace_skills(target_workspace, owner_id)
 
     assert attached is not None
-    assert attached["id"] != source["id"]
-    assert attached["is_external"] is True
-    assert attached["added_to_workspace_id"] == target_workspace
-    assert attached["forked_from_skill_id"] == source["id"]
-    assert [skill["id"] for skill in target_skills] == [attached["id"]]
-    assert target_skills[0]["workspace_id"] == target_workspace
-
-    fork_page_id = attached["items"][0]["object_id"]
-    assert fork_page_id != page_id
-    fork_page = await _db_pool.fetchrow(
-        "SELECT workspace_id, name, content_markdown FROM pages WHERE id = $1",
-        fork_page_id,
+    assert attached["name"] == "Fork source"
+    fork_folder_id = UUID(attached["folder_id"])
+    assert fork_folder_id != folder_id
+    fork_folder_ws = await _db_pool.fetchval(
+        "SELECT workspace_id FROM folders WHERE id = $1", fork_folder_id
     )
-    assert fork_page["workspace_id"] == target_workspace
-    assert fork_page["name"] == "Public source page"
-    assert fork_page["content_markdown"] == "External Stash source"
+    assert fork_folder_ws == target_workspace
 
+    # The fork has no publish record of its own — it's a private skill folder.
+    record = await _db_pool.fetchval(
+        "SELECT 1 FROM skills WHERE workspace_id = $1", target_workspace
+    )
+    assert record is None
+
+    # The page travelled as a copy (SKILL.md too, minted at publish time).
+    fork_page = await _db_pool.fetchrow(
+        "SELECT id, content_markdown FROM pages "
+        "WHERE folder_id = $1 AND name = 'Public source page'",
+        fork_folder_id,
+    )
+    assert fork_page is not None
+    assert fork_page["content_markdown"] == "External Stash source"
+    fork_skill_md = await _db_pool.fetchval(
+        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", fork_folder_id
+    )
+    assert fork_skill_md == 1
+
+    # Editing the source afterwards does not leak into the fork.
     await _db_pool.execute(
         "UPDATE pages SET content_markdown = $1 WHERE id = $2",
         "Edited source",
@@ -554,21 +567,6 @@ async def test_external_skill_is_workspace_fork(workspace: UUID, _db_pool):
     )
     fork_content = await _db_pool.fetchval(
         "SELECT content_markdown FROM pages WHERE id = $1",
-        fork_page_id,
+        fork_page["id"],
     )
     assert fork_content == "External Stash source"
-
-    fork_session_id = attached["items"][1]["object_id"]
-    assert fork_session_id != session_row_id
-    fork_session = await _db_pool.fetchrow(
-        "SELECT workspace_id, session_id FROM sessions WHERE id = $1",
-        fork_session_id,
-    )
-    assert fork_session["workspace_id"] == target_workspace
-    assert fork_session["session_id"] == f"session-external-source-fork-{session_row_id.hex[:8]}"
-    fork_event = await _db_pool.fetchrow(
-        "SELECT workspace_id, session_id, content FROM history_events WHERE workspace_id = $1",
-        target_workspace,
-    )
-    assert fork_event["session_id"] == fork_session["session_id"]
-    assert fork_event["content"] == "Copied session event"

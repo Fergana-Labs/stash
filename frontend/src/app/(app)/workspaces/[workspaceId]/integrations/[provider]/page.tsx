@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../../components/ConfirmDialog";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
   deleteWorkspaceSource,
@@ -44,6 +45,7 @@ export default function IntegrationPage() {
   const provider = params.provider as string;
   const highlightSourceId = searchParams.get("source");
   const { user, loading } = useAuth();
+  const confirm = useConfirm();
 
   const connector = connectorForProvider(provider);
 
@@ -131,9 +133,12 @@ export default function IntegrationPage() {
   }
 
   async function disconnect() {
-    if (!confirm(`Disconnect ${connector!.label}? You'll need to reconnect to sync its sources again.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Disconnect ${connector!.label}?`,
+      body: "You'll need to reconnect to sync its sources again.",
+      confirmLabel: "Disconnect",
+    });
+    if (!ok) return;
     setBusy("disconnect");
     setError("");
     try {
@@ -160,7 +165,11 @@ export default function IntegrationPage() {
   }
 
   async function removeSource(source: WorkspaceSource) {
-    if (!confirm(`Remove ${source.display_name}?`)) return;
+    const ok = await confirm({
+      title: `Remove ${source.display_name}?`,
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     setBusy(`delete:${source.source}`);
     setError("");
     try {
