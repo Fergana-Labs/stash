@@ -199,9 +199,7 @@ async def test_delete_paste_wrong_token_404(client: AsyncClient):
 
 async def test_delete_cascades_comments(client: AsyncClient):
     paste = await _create(client)
-    await client.post(
-        f"/api/v1/pastes/{paste['slug']}/comments", json={"body": "doomed comment"}
-    )
+    await client.post(f"/api/v1/pastes/{paste['slug']}/comments", json={"body": "doomed comment"})
     await client.delete(f"/api/v1/pastes/{paste['slug']}?token={paste['edit_token']}")
     # Comments endpoint on a deleted paste returns an empty list, not the orphan.
     listed = await client.get(f"/api/v1/pastes/{paste['slug']}/comments")
