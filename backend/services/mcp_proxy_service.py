@@ -39,6 +39,65 @@ class McpProxyError(Exception):
     to a 4xx; the JSON-RPC handler maps it to an invalid-params error."""
 
 
+# Curated presets: the read-only judgment for known providers, encoded once
+# so neither humans nor agents re-derive which tools are safe per connect.
+# Render's query_render_postgres is deliberately excluded — it executes SQL
+# against production databases, which is an opt-in beyond "read-only"
+# (allowlist it explicitly via update if a workspace wants it).
+MCP_PRESETS: dict[str, dict] = {
+    "render": {
+        "label": "Render",
+        "url": "https://mcp.render.com/mcp",
+        "key_help": (
+            "Create an API key at dashboard.render.com → Account Settings → API Keys."
+        ),
+        "tool_allowlist": [
+            "list_workspaces",
+            "get_selected_workspace",
+            "list_services",
+            "get_service",
+            "list_deploys",
+            "get_deploy",
+            "list_logs",
+            "list_log_label_values",
+            "get_metrics",
+            "list_postgres_instances",
+            "get_postgres",
+            "list_key_value",
+            "get_key_value",
+        ],
+    },
+}
+
+
+async def list_presets(workspace_id: UUID) -> list[dict]:
+    connected = {server["name"] for server in await list_servers(workspace_id)}
+    return [
+        {
+            "name": name,
+            "label": preset["label"],
+            "url": preset["url"],
+            "key_help": preset["key_help"],
+            "tool_allowlist": preset["tool_allowlist"],
+            "connected": name in connected,
+        }
+        for name, preset in MCP_PRESETS.items()
+    ]
+
+
+async def connect_preset(workspace_id: UUID, preset_name: str, api_key: str) -> dict:
+    preset = MCP_PRESETS.get(preset_name)
+    if not preset:
+        raise McpProxyError(f"unknown MCP preset: {preset_name}")
+    return await create_server(
+        workspace_id,
+        preset_name,
+        preset["url"],
+        {"Authorization": f"Bearer {api_key}"},
+        preset["tool_allowlist"],
+    )
+
+
 def _row_to_public(row) -> dict:
     return {
         "id": str(row["id"]),

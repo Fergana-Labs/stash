@@ -33,9 +33,37 @@ class McpServerUpdateRequest(BaseModel):
     tool_allowlist: list[str] | None = None
 
 
+class McpPresetConnectRequest(BaseModel):
+    api_key: str
+
+
 async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+@router.get("/{workspace_id}/mcp-presets")
+async def list_mcp_presets(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Known providers with curated read-only allowlists, for the connect UI."""
+    await _require_member(workspace_id, current_user["id"])
+    return {"presets": await mcp_proxy_service.list_presets(workspace_id)}
+
+
+@router.post("/{workspace_id}/mcp-presets/{preset}/connect", status_code=201)
+async def connect_mcp_preset(
+    workspace_id: UUID,
+    preset: str,
+    req: McpPresetConnectRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_member(workspace_id, current_user["id"])
+    try:
+        return await mcp_proxy_service.connect_preset(workspace_id, preset, req.api_key)
+    except mcp_proxy_service.McpProxyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{workspace_id}/mcp-servers")

@@ -199,6 +199,54 @@ async def test_upstream_tools_endpoint_marks_allowed(client: AsyncClient, fake_u
     assert tools == {"list_services": True, "delete_service": False}
 
 
+# --- Presets ----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_render_preset_connects_with_curated_readonly_allowlist(client: AsyncClient):
+    api_key = await _register(client)
+    ws_id = await _create_workspace(client, api_key)
+
+    presets = await client.get(
+        f"/api/v1/workspaces/{ws_id}/mcp-presets", headers=_auth(api_key)
+    )
+    render = next(p for p in presets.json()["presets"] if p["name"] == "render")
+    assert render["connected"] is False
+
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws_id}/mcp-presets/render/connect",
+        json={"api_key": "rnd_test_key"},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 201
+    server = resp.json()
+    assert server["url"] == "https://mcp.render.com/mcp"
+    assert "list_services" in server["tool_allowlist"]
+    # The SQL tool is read-but-powerful and must stay an explicit opt-in,
+    # never part of the preset.
+    assert "query_render_postgres" not in server["tool_allowlist"]
+    # The preset is read-only: no create/update tools.
+    assert not any(t.startswith(("create_", "update_")) for t in server["tool_allowlist"])
+
+    presets = await client.get(
+        f"/api/v1/workspaces/{ws_id}/mcp-presets", headers=_auth(api_key)
+    )
+    render = next(p for p in presets.json()["presets"] if p["name"] == "render")
+    assert render["connected"] is True
+
+
+@pytest.mark.asyncio
+async def test_unknown_preset_is_rejected(client: AsyncClient):
+    api_key = await _register(client)
+    ws_id = await _create_workspace(client, api_key)
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws_id}/mcp-presets/nonsense/connect",
+        json={"api_key": "x"},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 400
+
+
 # --- Proxy ----------------------------------------------------------------
 
 
