@@ -88,23 +88,6 @@ def _page_app_url(page_id: UUID) -> str:
     return f"{settings.PUBLIC_URL.rstrip('/')}/p/{page_id}"
 
 
-_MD_EXTS = (".md", ".markdown", ".mdx")
-_HTML_EXTS = (".html", ".htm")
-
-
-def _detect_page_kind(filename: str, content_type: str) -> str | None:
-    """Return 'markdown' or 'html' if the upload should become a page,
-    else None (treat as a binary file). Mirrors the frontend's
-    isMarkdownUpload / isHtmlUpload."""
-    name = filename.lower()
-    ct = (content_type or "").lower()
-    if ct == "text/markdown" or name.endswith(_MD_EXTS):
-        return "markdown"
-    if "html" in ct or name.endswith(_HTML_EXTS):
-        return "html"
-    return None
-
-
 def _strip_ext(filename: str, exts: tuple[str, ...]) -> str:
     lower = filename.lower()
     for ext in exts:
@@ -179,7 +162,7 @@ async def upload_ws_file(
     # support comments, and live in the same VFS tree as binary files.
     # Anything else is a binary upload (S3-backed file row). Frontend, CLI,
     # and MCP all hit this single endpoint and get the routing for free.
-    page_kind = _detect_page_kind(filename, content_type)
+    page_kind = files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
         if folder_id is not None:
             pool = get_pool()
@@ -195,7 +178,9 @@ async def upload_ws_file(
                 )
 
         text = content.decode("utf-8", errors="replace")
-        exts = _MD_EXTS if page_kind == "markdown" else _HTML_EXTS
+        exts = (
+            files_tree_service.MD_EXTS if page_kind == "markdown" else files_tree_service.HTML_EXTS
+        )
         name = _strip_ext(filename, exts)
 
         try:

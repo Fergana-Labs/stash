@@ -1,0 +1,3 @@
+# Curated GitHub repos imported into the Discover catalog.
+# One repo URL per line; every folder containing a SKILL.md becomes a skill.
+# Run: python scripts/import_github_skills.py

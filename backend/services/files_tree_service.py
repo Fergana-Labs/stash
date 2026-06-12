@@ -19,6 +19,23 @@ from . import page_events, permission_service, security_audit_service, skill_ser
 
 logger = logging.getLogger(__name__)
 
+MD_EXTS = (".md", ".markdown", ".mdx")
+HTML_EXTS = (".html", ".htm")
+
+
+def detect_page_kind(filename: str, content_type: str) -> str | None:
+    """Return 'markdown' or 'html' if the upload should become a page,
+    else None (treat as a binary file). Mirrors the frontend's
+    isMarkdownUpload / isHtmlUpload."""
+    name = filename.lower()
+    ct = (content_type or "").lower()
+    if ct == "text/markdown" or name.endswith(MD_EXTS):
+        return "markdown"
+    if "html" in ct or name.endswith(HTML_EXTS):
+        return "html"
+    return None
+
+
 # HTML pages render in a sandboxed iframe with allow-scripts, and are served on
 # public skill URLs. We strip author-supplied scripts / event handlers /
 # javascript: + data:text/html URLs on write so an agent- or attacker-authored

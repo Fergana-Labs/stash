@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
 import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
+import { GitHubIcon } from "../../components/integrations/BrandIcons";
 import ForkSkillCardButton from "../../components/skill/ForkSkillCardButton";
 import SkillCard from "../../components/skill/SkillCard";
 import { useAuth } from "../../hooks/useAuth";
@@ -154,13 +155,16 @@ function DiscoverGrid({
             }
             footer={
               <>
-                <span className="min-w-0 truncate">
+                <span className="flex min-w-0 items-center gap-1.5 truncate">
                   {owner}
                   {skill.workspace_name && (
                     <>
                       {" · "}
                       <span className="font-mono text-dim">{skill.workspace_name}</span>
                     </>
+                  )}
+                  {skill.source_github_url && (
+                    <GitHubSourceGlyph href={skill.source_github_url} />
                   )}
                 </span>
                 <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
@@ -172,6 +176,33 @@ function DiscoverGrid({
         );
       })}
     </div>
+  );
+}
+
+// The card is one big link, so this opens GitHub itself instead of nesting an
+// anchor (which breaks SSR HTML parsing) — same convention as the fork button.
+function GitHubSourceGlyph({ href }: { href: string }) {
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      title="View source on GitHub"
+      aria-label="View source on GitHub"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, "_blank", "noopener");
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, "_blank", "noopener");
+      }}
+      className="inline-flex flex-shrink-0 text-muted hover:text-foreground"
+    >
+      <GitHubIcon size={13} />
+    </span>
   );
 }
 

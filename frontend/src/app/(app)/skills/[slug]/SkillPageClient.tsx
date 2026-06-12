@@ -21,6 +21,7 @@ import {
   useShareAction,
 } from "../../../../components/ShellChromeContext";
 import { PublicSkillSkeleton } from "../../../../components/SkeletonStates";
+import { GitHubIcon } from "../../../../components/integrations/BrandIcons";
 import ResourceShareButton from "../../../../components/share/ResourceShareButton";
 import SkillShareButton from "../../../../components/skill/SkillShareButton";
 import { SettingsIcon, SkillIcon } from "../../../../components/SkillIcons";
@@ -275,6 +276,20 @@ function SkillPageBody({
                   <>
                     <span className="text-muted/60">·</span>
                     <span className="truncate">in {workspace_name}</span>
+                  </>
+                )}
+                {skill.source_github_url && (
+                  <>
+                    <span className="text-muted/60">·</span>
+                    <a
+                      href={skill.source_github_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-muted underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      <GitHubIcon size={13} />
+                      GitHub
+                    </a>
                   </>
                 )}
               </div>

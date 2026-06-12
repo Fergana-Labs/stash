@@ -459,6 +459,7 @@ export interface PublicSkillCard {
   description: string;
   discoverable: boolean;
   cover_image_url: string | null;
+  source_github_url: string | null;
   view_count: number;
   owner_name: string;
   owner_display_name: string;
@@ -1406,6 +1407,7 @@ export interface WorkspaceSkill {
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
+  source_github_url: string | null;
   view_count: number;
   created_at: string;
   updated_at: string;

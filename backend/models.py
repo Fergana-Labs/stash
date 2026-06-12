@@ -157,6 +157,7 @@ class SkillResponse(BaseModel):
     discoverable: bool
     cover_image_url: str | None = None
     icon_url: str | None = None
+    source_github_url: str | None = None
     view_count: int
     created_at: datetime
     updated_at: datetime
