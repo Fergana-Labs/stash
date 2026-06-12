@@ -320,6 +320,67 @@ choose_dev_ports() {
     fi
 }
 
+# Next.js allows one dev server per checkout: `next dev` holds an exclusive
+# flock on frontend/.next/dev/lock, and a second one exits at startup. Without
+# a preflight check that failure happens last — after the database, backend,
+# and collab are already up — and tears the whole stack down on the way out.
+
+frontend_dev_server_info() {
+    # Prints "<pid> <appUrl>" if a live dev server holds the lock, else nothing.
+    # Probes the same flock Next takes, so a crashed server's leftover lock
+    # file (the OS releases its flock) never counts as running.
+    python - "$PROJECT_ROOT/frontend/.next/dev/lock" <<'PY'
+import fcntl
+import json
+import sys
+
+try:
+    f = open(sys.argv[1])
+except OSError:
+    sys.exit(0)
+
+with f:
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sys.exit(0)
+    except OSError:
+        pass
+    try:
+        info = json.load(f)
+    except ValueError:
+        info = {}
+    print(info.get("pid", "unknown"), info.get("appUrl", "unknown"))
+PY
+}
+
+ensure_frontend_dev_server_not_running() {
+    local info pid app_url
+    info="$(frontend_dev_server_info)"
+    if [ -z "$info" ]; then
+        return
+    fi
+
+    pid="${info%% *}"
+    app_url="${info#* }"
+
+    if [ "${START_KILL_DEV_SERVER:-0}" = "1" ] && [ "$pid" != "unknown" ]; then
+        echo "[frontend] Stopping the dev server already running for this worktree (pid ${pid})..."
+        kill "$pid" 2>/dev/null || true
+        for _ in {1..20}; do
+            if [ -z "$(frontend_dev_server_info)" ]; then
+                return
+            fi
+            sleep 0.5
+        done
+        echo "[frontend] The dev server (pid ${pid}) did not exit; stop it manually, then rerun ./start.sh."
+        exit 1
+    fi
+
+    echo "[frontend] A dev server for this worktree is already running at ${app_url} (pid ${pid})."
+    echo "[frontend] Use it, stop it (kill ${pid}), or rerun with START_KILL_DEV_SERVER=1 to replace it."
+    exit 1
+}
+
 wait_for_services() {
     local pid
     local status
@@ -346,6 +407,9 @@ wait_for_services() {
 
 echo "Starting Stash services..."
 echo "================================"
+
+# --- Preflight ---
+ensure_frontend_dev_server_not_running
 
 # --- Dependencies ---
 ensure_python_deps
