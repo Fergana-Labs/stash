@@ -31,59 +31,52 @@ async def _create_workspace(client: AsyncClient, api_key: str, name: str) -> dic
     return resp.json()
 
 
-async def _create_page(client: AsyncClient, api_key: str, workspace_id: str, name: str) -> dict:
-    resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/pages/new",
-        json={"name": name, "content": f"# {name}"},
+async def _create_skill_folder(
+    client: AsyncClient, api_key: str, workspace_id: str, name: str
+) -> str:
+    """A folder holding one content page — the publishable unit for a skill."""
+    folder = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/folders",
+        json={"name": name},
         headers=_auth(api_key),
     )
-    assert resp.status_code == 201
-    return resp.json()
+    assert folder.status_code == 201
+    folder_id = folder.json()["id"]
+    page = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/pages/new",
+        json={"name": f"{name} brief", "content": f"# {name}", "folder_id": folder_id},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    return folder_id
 
 
 @pytest.mark.asyncio
 async def test_discover_lists_discoverable_public_product_stashes(client: AsyncClient):
     api_key, user = await _register(client)
     workspace = await _create_workspace(client, api_key, "Discovery workspace")
-    public_page = await _create_page(client, api_key, workspace["id"], "Public brief")
-    private_page = await _create_page(client, api_key, workspace["id"], "Private brief")
-
-    private_skill = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
-        json={
-            "title": "Private notes",
-            "items": [{"object_type": "page", "object_id": private_page["id"]}],
-        },
-        headers=_auth(api_key),
-    )
-    assert private_skill.status_code == 201
+    unlisted_folder = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted")
+    public_folder = await _create_skill_folder(client, api_key, workspace["id"], "Public notes")
 
     public_unlisted = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills/publish",
-        json={
-            "title": "Public but unlisted",
-            "workspace_permission": "read",
-            "public_permission": "read",
-            "items": [{"object_type": "page", "object_id": public_page["id"]}],
-        },
+        f"/api/v1/workspaces/{workspace['id']}/skills",
+        json={"folder_id": unlisted_folder, "title": "Public but unlisted"},
         headers=_auth(api_key),
     )
     assert public_unlisted.status_code == 201
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills/publish",
+        f"/api/v1/workspaces/{workspace['id']}/skills",
         json={
+            "folder_id": public_folder,
             "title": "Public notes",
             "description": "A public Stash",
-            "workspace_permission": "read",
-            "public_permission": "read",
             "discoverable": True,
-            "items": [{"object_type": "page", "object_id": public_page["id"]}],
         },
         headers=_auth(api_key),
     )
     assert published.status_code == 201
-    published_skill = published.json()["skill"]
+    published_skill = published.json()
     slug = published_skill["slug"]
     assert published_skill["owner_name"] == user["name"]
     assert published_skill["owner_display_name"] == user["display_name"]
@@ -94,10 +87,12 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     )
     assert workspace_skills.status_code == 200
     workspace_skill = next(
-        skill for skill in workspace_skills.json()["skills"] if skill["slug"] == slug
+        skill
+        for skill in workspace_skills.json()["skills"]
+        if skill["published"] and skill["published"]["slug"] == slug
     )
-    assert workspace_skill["owner_name"] == user["name"]
-    assert workspace_skill["owner_display_name"] == user["display_name"]
+    assert workspace_skill["folder_id"] == public_folder
+    assert workspace_skill["published"]["discoverable"] is True
 
     catalog = await client.get("/api/v1/discover/skills")
     assert catalog.status_code == 200
@@ -105,7 +100,8 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert [skill["title"] for skill in skills] == ["Public notes"]
     assert skills[0]["slug"] == slug
     assert skills[0]["discoverable"] is True
-    assert skills[0]["item_count"] == 1
+    # Live count of the folder subtree: the content page + the auto-minted SKILL.md.
+    assert skills[0]["item_count"] == 2
     assert skills[0]["workspace_name"] == workspace["name"]
 
     detail = await client.get(f"/api/v1/skills/{slug}")
@@ -114,60 +110,47 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert detail.json()["skill"]["owner_name"] == user["name"]
     assert detail.json()["skill"]["owner_display_name"] == user["display_name"]
 
-    unlisted_detail = await client.get(f"/api/v1/skills/{public_unlisted.json()['skill']['slug']}")
+    unlisted_detail = await client.get(f"/api/v1/skills/{public_unlisted.json()['slug']}")
     assert unlisted_detail.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_discover_opt_in_requires_public_product_skill(client: AsyncClient):
+async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: AsyncClient):
+    """Discoverable is purely an opt-in catalog flag: a default publish is
+    publicly readable at its slug (anonymously) yet never surfaces in
+    Discover."""
     api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key, "Private Discover workspace")
-    page = await _create_page(client, api_key, workspace["id"], "Private Discover brief")
+    workspace = await _create_workspace(client, api_key, "Unlisted workspace")
+    folder_id = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted only")
 
-    workspace_skill = await client.post(
+    published = await client.post(
         f"/api/v1/workspaces/{workspace['id']}/skills",
-        json={
-            "title": "Workspace Discover attempt",
-            "workspace_permission": "read",
-            "public_permission": "none",
-            "discoverable": True,
-            "items": [{"object_type": "page", "object_id": page["id"]}],
-        },
+        json={"folder_id": folder_id, "title": "Unlisted only"},
         headers=_auth(api_key),
     )
-    assert workspace_skill.status_code == 400
+    assert published.status_code == 201
+    slug = published.json()["slug"]
 
-    private_skill = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
-        json={
-            "title": "Private Discover attempt",
-            "workspace_permission": "none",
-            "public_permission": "none",
-            "discoverable": True,
-            "items": [{"object_type": "page", "object_id": page["id"]}],
-        },
-        headers=_auth(api_key),
-    )
-    assert private_skill.status_code == 400
+    catalog = await client.get("/api/v1/discover/skills")
+    assert catalog.status_code == 200
+    assert slug not in {skill["slug"] for skill in catalog.json()["skills"]}
+
+    # Anonymous read by slug still works — published == public.
+    detail = await client.get(f"/api/v1/skills/{slug}")
+    assert detail.status_code == 200
+    assert detail.json()["skill"]["discoverable"] is False
 
 
 @pytest.mark.asyncio
 async def test_discover_search_filters_product_stashes(client: AsyncClient):
     api_key, _ = await _register(client)
     workspace = await _create_workspace(client, api_key, "Search workspace")
-    alpha = await _create_page(client, api_key, workspace["id"], "Alpha")
-    beta = await _create_page(client, api_key, workspace["id"], "Beta")
 
-    for title, page in (("Alpha launch notes", alpha), ("Beta roadmap", beta)):
+    for title, folder_name in (("Alpha launch notes", "Alpha"), ("Beta roadmap", "Beta")):
+        folder_id = await _create_skill_folder(client, api_key, workspace["id"], folder_name)
         resp = await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/skills/publish",
-            json={
-                "title": title,
-                "workspace_permission": "read",
-                "public_permission": "read",
-                "discoverable": True,
-                "items": [{"object_type": "page", "object_id": page["id"]}],
-            },
+            f"/api/v1/workspaces/{workspace['id']}/skills",
+            json={"folder_id": folder_id, "title": title, "discoverable": True},
             headers=_auth(api_key),
         )
         assert resp.status_code == 201

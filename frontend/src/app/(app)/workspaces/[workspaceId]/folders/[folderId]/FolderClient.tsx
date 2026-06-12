@@ -11,12 +11,18 @@ import WorkspaceFileBrowser from "../../../../../../components/workspace/file-br
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
   ApiError,
+  createPage,
   getFolderContents,
   getPublicSkill,
-  type PublicSkillItem,
-  type WorkspaceSkill,
+  type PublicSkillContents,
+  type PublicSkillSubfolder,
 } from "../../../../../../lib/api";
-import { FolderBody } from "../../../../skills/[slug]/SkillItemBodies";
+import {
+  findInSkillContents,
+  SKILL_MD,
+  skillMdTemplate,
+} from "../../../../../../lib/localSkill";
+import { refreshWorkspaceSidebar } from "../../../../../../lib/skillNavigationCache";
 
 export default function FolderDetailPage() {
   const params = useParams();
@@ -34,23 +40,30 @@ export default function FolderDetailPage() {
     { label: "Folder" },
   ]);
   const [folderName, setFolderName] = useState<string | null>(null);
-  const [skillFallback, setSkillFallback] = useState<
-    { skill: WorkspaceSkill; item: PublicSkillItem } | null
-  >(null);
+  const [skillFallback, setSkillFallback] = useState<{
+    skillSlug: string;
+    skillTitle: string;
+    folder: PublicSkillSubfolder;
+    contents: PublicSkillContents;
+  } | null>(null);
   const [error, setError] = useState("");
+  const [converting, setConverting] = useState(false);
 
   const loadSkillFallback = useCallback(async () => {
     if (!skillSlug) return false;
     try {
       const data = await getPublicSkill(skillSlug);
-      const item = data.items.find(
-        (it) => it.object_type === "folder" && it.object_id === folderId,
-      );
-      if (!item) {
+      const folder = findInSkillContents(data.contents, "folder", folderId);
+      if (!folder) {
         setError("This folder isn't part of the linked Skill.");
         return false;
       }
-      setSkillFallback({ skill: data.skill, item });
+      setSkillFallback({
+        skillSlug,
+        skillTitle: data.skill.title,
+        folder,
+        contents: data.contents,
+      });
       setError("");
       return true;
     } catch (e) {
@@ -69,6 +82,11 @@ export default function FolderDetailPage() {
     getFolderContents(workspaceId, folderId)
       .then((c) => {
         if (cancelled) return;
+        // Skill folders live on the skill browse route — deep links self-heal.
+        if (c.folder.is_skill || c.breadcrumbs.some((b) => b.is_skill)) {
+          router.replace(`/workspaces/${workspaceId}/skills/${folderId}`);
+          return;
+        }
         const trail = c.breadcrumbs.slice(0, -1).map((cr) => ({
           label: cr.name,
           href: `/workspaces/${workspaceId}/folders/${cr.id}`,
@@ -94,25 +112,49 @@ export default function FolderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading, workspaceId, folderId, skillSlug, loadSkillFallback]);
+  }, [user, loading, workspaceId, folderId, skillSlug, loadSkillFallback, router]);
 
   useBreadcrumbs(
     crumbs,
     `${workspaceId}/files/${folderId}/${crumbs.map((c) => c.label).join("/")}`
   );
 
+  const convertToSkill = useCallback(async () => {
+    if (!folderName) return;
+    setConverting(true);
+    try {
+      await createPage(workspaceId, SKILL_MD, folderId, skillMdTemplate(folderName));
+      await refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/workspaces/${workspaceId}/skills/${folderId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Convert failed");
+    } finally {
+      setConverting(false);
+    }
+  }, [folderName, workspaceId, folderId, router]);
+
   const shareAction = useMemo(() => {
     if (!folderName || skillSlug || !user) return null;
     return (
-      <ResourceShareButton
-        objectType="folder"
-        objectId={folderId}
-        resourceName={folderName}
-        resourceUrlPath={`/workspaces/${workspaceId}/folders/${folderId}`}
-        currentUser={user}
-      />
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => void convertToSkill()}
+          disabled={converting}
+          className="rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
+        >
+          {converting ? "Converting…" : "Convert to Skill"}
+        </button>
+        <ResourceShareButton
+          objectType="folder"
+          objectId={folderId}
+          resourceName={folderName}
+          resourceUrlPath={`/workspaces/${workspaceId}/folders/${folderId}`}
+          currentUser={user}
+        />
+      </div>
     );
-  }, [folderId, folderName, skillSlug, user, workspaceId]);
+  }, [folderId, folderName, skillSlug, user, workspaceId, convertToSkill, converting]);
   useShareAction(shareAction);
 
   useEffect(() => {
@@ -121,13 +163,7 @@ export default function FolderDetailPage() {
 
   if (loading) return <FileBrowserSkeleton />;
   if (skillFallback) {
-    return (
-      <SkillFallbackFolderView
-        skillSlug={skillSlug ?? ""}
-        skillTitle={skillFallback.skill.title}
-        item={skillFallback.item}
-      />
-    );
+    return <SkillFallbackFolderView {...skillFallback} />;
   }
   if (!user) {
     if (!skillSlug) return null;
@@ -143,15 +179,27 @@ export default function FolderDetailPage() {
   return <WorkspaceFileBrowser workspaceId={workspaceId} folderId={folderId} />;
 }
 
+// Read-only listing of the subfolder's contents, sourced from the public
+// skill payload (for viewers who can't reach the workspace endpoint).
 function SkillFallbackFolderView({
   skillSlug,
   skillTitle,
-  item,
+  folder,
+  contents,
 }: {
   skillSlug: string;
   skillTitle: string;
-  item: PublicSkillItem;
+  folder: PublicSkillSubfolder;
+  contents: PublicSkillContents;
 }) {
+  const inFolder = (path: string[]) =>
+    path.length >= folder.path.length &&
+    folder.path.every((part, i) => path[i] === part);
+  const pages = contents.pages.filter((p) => inFolder(p.folder_path));
+  const files = contents.files.filter((f) => inFolder(f.folder_path));
+  const tables = contents.tables.filter((t) => inFolder(t.folder_path));
+  const skill = encodeURIComponent(skillSlug);
+
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
@@ -162,15 +210,51 @@ function SkillFallbackFolderView({
           ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-          {item.label || "(untitled folder)"}
+          {folder.name || "(untitled folder)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
           folder · read-only via Skill
         </div>
-        <div className="mt-6">
-          <FolderBody item={item} />
+        <div className="mt-6 flex flex-col gap-1">
+          {pages.map((p) => (
+            <FallbackRow key={p.id} href={`/p/${p.id}?skill=${skill}`} name={p.name} sub="page" />
+          ))}
+          {files.map((f) => (
+            <FallbackRow
+              key={f.id}
+              href={`/f/${f.id}?skill=${skill}`}
+              name={f.name}
+              sub={f.content_type || "file"}
+            />
+          ))}
+          {tables.map((t) => (
+            <FallbackRow
+              key={t.id}
+              href={`/tables/${t.id}?skill=${skill}`}
+              name={t.name}
+              sub="table"
+            />
+          ))}
+          {pages.length === 0 && files.length === 0 && tables.length === 0 && (
+            <p className="text-[13px] text-muted">Folder is empty.</p>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function FallbackRow({ href, name, sub }: { href: string; name: string; sub: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-raised"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13.5px] font-medium text-foreground">{name}</span>
+        <span className="block truncate text-[11.5px] text-muted">{sub}</span>
+      </span>
+      <span className="hidden text-[11.5px] text-muted sm:inline">Open →</span>
+    </Link>
   );
 }

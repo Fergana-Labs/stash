@@ -1,0 +1,16 @@
+{
+  "name": "stash-chat-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that syncs ChatGPT and Claude.ai conversations into Stash agent sessions",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.5.0"
+  }
+}

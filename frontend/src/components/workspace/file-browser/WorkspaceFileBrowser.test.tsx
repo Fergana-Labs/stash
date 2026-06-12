@@ -1,9 +1,16 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceFileBrowser from "./WorkspaceFileBrowser";
+import { ConfirmDialogProvider } from "../../ConfirmDialog";
+
+function render(ui: ReactNode) {
+  return renderBase(ui, { wrapper: ConfirmDialogProvider });
+}
 import {
   createTable,
   deleteTable,
+  getFolderContents,
   getWorkspaceTree,
   listFiles,
   listSharedWithMe,
@@ -95,6 +102,50 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("WorkspaceFileBrowser folder links", () => {
+  function folderContents() {
+    return {
+      folder: {
+        id: "folder-1",
+        name: "Skill folder",
+        parent_folder_id: null,
+        is_skill: true,
+      },
+      breadcrumbs: [{ id: "folder-1", name: "Skill folder", is_skill: true }],
+      subfolders: [{ id: "folder-2", name: "Nested", page_count: 0, file_count: 0 }],
+      pages: [],
+      files: [],
+      tables: [],
+    };
+  }
+
+  it("routes folder navigation through folderHrefBase when provided", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(
+      <WorkspaceFileBrowser
+        workspaceId="ws-1"
+        folderId="folder-1"
+        folderHrefBase="/workspaces/ws-1/skills"
+      />
+    );
+
+    fireEvent.click(await screen.findByText("Nested"));
+
+    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/skills/folder-2");
+  });
+
+  it("defaults folder navigation to the Files folder route", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(<WorkspaceFileBrowser workspaceId="ws-1" folderId="folder-1" />);
+
+    fireEvent.click(await screen.findByText("Nested"));
+
+    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/folders/folder-2");
+  });
+});
+
 describe("WorkspaceFileBrowser table creation", () => {
   it("creates a blank table from the + New menu", async () => {
     vi.mocked(createTable).mockResolvedValue(table("table-1", "Untitled table"));
@@ -146,7 +197,6 @@ describe("WorkspaceFileBrowser table creation", () => {
   });
 
   it("deletes standalone tables with the table API", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
     vi.mocked(listTables).mockResolvedValue({
       tables: [table("table-standalone", "Budget", 2)],
     });
@@ -156,6 +206,9 @@ describe("WorkspaceFileBrowser table creation", () => {
 
     await screen.findByText("Budget");
     fireEvent.click(screen.getByLabelText("Delete"));
+
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
       expect(deleteTable).toHaveBeenCalledWith("ws-1", "table-standalone")

@@ -111,9 +111,7 @@ class Stash:
     # Auth
     # =========================================================================
 
-    def register(
-        self, name: str, description: str = "", password: str | None = None
-    ) -> dict:
+    def register(self, name: str, description: str = "", password: str | None = None) -> dict:
         body: dict = {"name": name, "description": description}
         if password:
             body["password"] = password
@@ -193,53 +191,30 @@ class Stash:
     def list_skills(self, workspace: str | None = None) -> list:
         return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/skills", "skills")
 
-    def create_skill(
+    def publish_skill_folder(
         self,
-        title: str,
+        folder_id: str,
+        title: str | None = None,
         description: str = "",
-        access: str = "workspace",
         discoverable: bool = False,
-        cover_image_url: str | None = None,
-        items: list | None = None,
         workspace: str | None = None,
     ) -> dict:
+        body = {
+            "folder_id": folder_id,
+            "description": description,
+            "discoverable": discoverable,
+        }
+        if title:
+            body["title"] = title
         return self._post(
             f"/api/v1/workspaces/{self._ws(workspace)}/skills",
-            json={
-                "title": title,
-                "description": description,
-                "access": access,
-                "discoverable": discoverable,
-                "cover_image_url": cover_image_url,
-                "items": items or [],
-            },
-        )
-
-    def publish_skill(
-        self,
-        title: str,
-        description: str = "",
-        discoverable: bool = False,
-        cover_image_url: str | None = None,
-        items: list | None = None,
-        workspace: str | None = None,
-    ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/skills/publish",
-            json={
-                "title": title,
-                "description": description,
-                "access": "public",
-                "discoverable": discoverable,
-                "cover_image_url": cover_image_url,
-                "items": items or [],
-            },
+            json=body,
         )
 
     def update_skill(self, skill_id: str, **fields) -> dict:
         return self._patch(f"/api/v1/skills/{skill_id}", json=fields)
 
-    def delete_skill(self, skill_id: str) -> None:
+    def unpublish_skill(self, skill_id: str) -> None:
         self._delete(f"/api/v1/skills/{skill_id}")
 
     def get_public_skill(self, slug: str) -> dict:
@@ -268,9 +243,7 @@ class Stash:
         )
 
     def list_invite_tokens(self, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/invite-tokens", "tokens"
-        )
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/invite-tokens", "tokens")
 
     def revoke_invite_token(self, token_id: str, workspace: str | None = None) -> None:
         self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/invite-tokens/{token_id}")
@@ -279,9 +252,7 @@ class Stash:
         return self._post("/api/v1/workspaces/redeem-invite", json={"token": token})
 
     @staticmethod
-    def redeem_invite_unauthenticated(
-        base_url: str, token: str, display_name: str
-    ) -> dict:
+    def redeem_invite_unauthenticated(base_url: str, token: str, display_name: str) -> dict:
         resp = httpx.post(
             f"{base_url.rstrip('/')}/api/v1/users/cli-auth/redeem-invite",
             json={"token": token, "display_name": display_name},
@@ -325,9 +296,7 @@ class Stash:
     # =========================================================================
 
     def list_folders(self, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/folders", "folders"
-        )
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/folders", "folders")
 
     def create_folder(
         self,
@@ -338,9 +307,7 @@ class Stash:
         body: dict = {"name": name}
         if parent_folder_id:
             body["parent_folder_id"] = parent_folder_id
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/folders", json=body
-        )
+        return self._post(f"/api/v1/workspaces/{self._ws(workspace)}/folders", json=body)
 
     def delete_folder(self, folder_id: str, workspace: str | None = None) -> None:
         self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/folders/{folder_id}")
@@ -375,27 +342,19 @@ class Stash:
         )
 
     def list_pages(self, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/pages", "pages"
-        )
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/pages", "pages")
 
     def get_page(self, page_id: str, workspace: str | None = None) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}"
-        )
+        return self._get(f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}")
 
-    def update_page(
-        self, page_id: str, workspace: str | None = None, **kwargs
-    ) -> dict:
+    def update_page(self, page_id: str, workspace: str | None = None, **kwargs) -> dict:
         return self._patch(
             f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}",
             json=kwargs,
         )
 
     def delete_page(self, page_id: str, workspace: str | None = None) -> None:
-        self._delete(
-            f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}"
-        )
+        self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}")
 
     # =========================================================================
     # Session events
@@ -407,7 +366,6 @@ class Stash:
         event_type: str,
         content: str,
         session_id: str | None = None,
-        default_skill_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -421,8 +379,6 @@ class Stash:
         }
         if session_id:
             body["session_id"] = session_id
-        if default_skill_id:
-            body["default_skill_id"] = default_skill_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -431,19 +387,14 @@ class Stash:
             body["attachments"] = attachments
         if created_at:
             body["created_at"] = created_at
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events", json=body
-        )
+        return self._post(f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events", json=body)
 
     def push_events_batch(
         self,
         events: list[dict],
         workspace: str | None = None,
-        default_skill_id: str | None = None,
     ) -> list:
         body: dict = {"events": events}
-        if default_skill_id:
-            body["default_skill_id"] = default_skill_id
         return self._post(
             f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events/batch",
             json=body,
@@ -468,9 +419,7 @@ class Stash:
             f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events", "events", **params
         )
 
-    def search_events(
-        self, query: str, limit: int = 50, workspace: str | None = None
-    ) -> list:
+    def search_events(self, query: str, limit: int = 50, workspace: str | None = None) -> list:
         return self._list(
             f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events/search",
             "events",
@@ -479,9 +428,7 @@ class Stash:
         )
 
     def list_agent_names(self, workspace: str | None = None) -> list:
-        data = self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/agent-names"
-        )
+        data = self._get(f"/api/v1/workspaces/{self._ws(workspace)}/sessions/agent-names")
         return data.get("agent_names", []) if isinstance(data, dict) else data
 
     def upload_transcript(
@@ -491,7 +438,6 @@ class Stash:
         agent_name: str,
         cwd: str = "",
         workspace: str | None = None,
-        default_skill_id: str | None = None,
         replace: bool = False,
     ) -> dict:
         import gzip as _gzip
@@ -510,7 +456,6 @@ class Stash:
                 "agent_name": agent_name,
                 "cwd": cwd,
                 "replace": str(replace).lower(),
-                **({"default_skill_id": default_skill_id} if default_skill_id else {}),
             },
             files={"file": (name, body, "application/gzip")},
             timeout=120,
@@ -522,27 +467,19 @@ class Stash:
     # =========================================================================
 
     def upload_file(self, file_path: str | Path, workspace: str | None = None) -> dict:
-        return self._upload(
-            f"/api/v1/workspaces/{self._ws(workspace)}/files", file_path
-        )
+        return self._upload(f"/api/v1/workspaces/{self._ws(workspace)}/files", file_path)
 
     def list_files(self, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/files", "files"
-        )
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/files", "files")
 
     def get_file(self, file_id: str, workspace: str | None = None) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/files/{file_id}"
-        )
+        return self._get(f"/api/v1/workspaces/{self._ws(workspace)}/files/{file_id}")
 
     def delete_file(self, file_id: str, workspace: str | None = None) -> None:
         self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/files/{file_id}")
 
     def get_file_text(self, file_id: str, workspace: str | None = None) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/files/{file_id}/text"
-        )
+        return self._get(f"/api/v1/workspaces/{self._ws(workspace)}/files/{file_id}/text")
 
     # =========================================================================
     # Webhooks
@@ -554,9 +491,7 @@ class Stash:
         body: dict = {"url": url}
         if secret:
             body["secret"] = secret
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/webhooks", json=body
-        )
+        return self._post(f"/api/v1/workspaces/{self._ws(workspace)}/webhooks", json=body)
 
     # =========================================================================
     # Tables
@@ -575,14 +510,10 @@ class Stash:
         )
 
     def list_tables(self, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/tables", "tables"
-        )
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/tables", "tables")
 
     def get_table(self, table_id: str, workspace: str | None = None) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/tables/{table_id}"
-        )
+        return self._get(f"/api/v1/workspaces/{self._ws(workspace)}/tables/{table_id}")
 
     def update_table(self, table_id: str, workspace: str | None = None, **kwargs) -> dict:
         return self._patch(
@@ -612,9 +543,7 @@ class Stash:
             **params,
         )
 
-    def insert_table_row(
-        self, table_id: str, data: dict, workspace: str | None = None
-    ) -> dict:
+    def insert_table_row(self, table_id: str, data: dict, workspace: str | None = None) -> dict:
         return self._post(
             f"/api/v1/workspaces/{self._ws(workspace)}/tables/{table_id}/rows",
             json={"data": data},
@@ -636,12 +565,8 @@ class Stash:
             json={"data": data},
         )
 
-    def delete_table_row(
-        self, table_id: str, row_id: str, workspace: str | None = None
-    ) -> None:
-        self._delete(
-            f"/api/v1/workspaces/{self._ws(workspace)}/tables/{table_id}/rows/{row_id}"
-        )
+    def delete_table_row(self, table_id: str, row_id: str, workspace: str | None = None) -> None:
+        self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/tables/{table_id}/rows/{row_id}")
 
     def add_table_column(
         self,

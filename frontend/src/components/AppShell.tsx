@@ -13,7 +13,6 @@ import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
-import SkillInviteCenter from "./SkillInviteCenter";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { useShellChromeValue } from "./ShellChromeContext";
 import {
@@ -418,7 +417,6 @@ export default function AppShell({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1">
-          <SkillInviteCenter />
           {shareAction}
           <UserMenu
             initial={initial}

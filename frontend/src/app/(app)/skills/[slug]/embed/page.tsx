@@ -6,17 +6,26 @@ import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
 
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 
-type SkillItemInlined = {
-  object_type: "folder" | "page" | "table" | "file" | "session";
-  object_id: string;
-  position: number;
-  label: string;
-  inline: Record<string, unknown>;
+type EmbedPage = {
+  id: string;
+  name: string;
+  content_type?: string;
+  content_markdown?: string;
+  content_html?: string;
+  html_layout?: "responsive" | "fixed-aspect";
+};
+
+type EmbedFile = {
+  id: string;
+  name: string;
+  content_type?: string;
+  size_bytes?: number;
+  url?: string;
 };
 
 type PublicSkill = {
   skill: { id: string; slug: string; title: string };
-  items: SkillItemInlined[];
+  contents: { pages: EmbedPage[]; files: EmbedFile[] };
 };
 
 async function loadSkill(slug: string): Promise<PublicSkill | null> {
@@ -40,46 +49,7 @@ export default async function SkillEmbed({
     <main className="px-4 py-4">
       <h1 className="mb-3 font-display text-[18px] font-bold text-ink">{data.skill.title}</h1>
       <div className="space-y-6">
-        {data.items.map((it, i) => (
-          <ItemBody key={`${it.object_type}-${it.object_id}-${i}`} item={it} />
-        ))}
-      </div>
-      <p className="mt-4 text-right font-mono text-[10px] uppercase tracking-wider text-muted">
-        <a href={`/skills/${slug}`} target="_blank" rel="noreferrer" className="hover:text-ink">
-          on Stash ↗
-        </a>
-      </p>
-    </main>
-  );
-}
-
-function ItemBody({ item }: { item: SkillItemInlined }) {
-  if (Object.keys(item.inline).length === 0) {
-    return <p className="text-[12px] italic text-muted">Item unavailable.</p>;
-  }
-  if (item.object_type === "page") {
-    const p = (item.inline as { page?: { content_type?: string; content_markdown?: string; content_html?: string; html_layout?: "responsive" | "fixed-aspect"; name?: string } }).page;
-    if (!p) return null;
-    return p.content_type === "html" ? (
-      <HtmlPageView
-        html={p.content_html || ""}
-        title={p.name || item.label}
-        layout={p.html_layout}
-      />
-    ) : (
-      <div className="markdown-content">
-        <Markdown remarkPlugins={[remarkGfm]}>{p.content_markdown || ""}</Markdown>
-      </div>
-    );
-  }
-  if (item.object_type === "folder") {
-    const inline = item.inline as {
-      pages?: { id: string; name: string; content_type?: string; content_markdown?: string; content_html?: string; html_layout?: "responsive" | "fixed-aspect" }[];
-      files?: { id: string; name: string; content_type?: string; size_bytes?: number; url?: string }[];
-    };
-    return (
-      <div className="space-y-4">
-        {(inline.pages ?? []).map((p) => (
+        {data.contents.pages.map((p) => (
           <div key={p.id}>
             <h2 className="mb-2 font-display text-[15px] font-bold text-ink">{p.name}</h2>
             {p.content_type === "html" ? (
@@ -95,7 +65,7 @@ function ItemBody({ item }: { item: SkillItemInlined }) {
             )}
           </div>
         ))}
-        {(inline.files ?? []).map((file) => (
+        {data.contents.files.map((file) => (
           <a
             key={file.id}
             href={file.url}
@@ -110,24 +80,13 @@ function ItemBody({ item }: { item: SkillItemInlined }) {
           </a>
         ))}
       </div>
-    );
-  }
-  if (item.object_type === "session") {
-    const session = (item.inline as {
-      session?: { events?: { content: string; created_at: string }[] };
-    }).session;
-    if (!session) return null;
-    return (
-      <div className="space-y-3 text-[13px] leading-relaxed text-foreground">
-        {(session.events ?? []).slice(0, 20).map((event, idx) => (
-          <p key={`${event.created_at}-${idx}`} className="whitespace-pre-wrap">
-            {event.content}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return <p className="text-[12px] text-muted">{item.label}</p>;
+      <p className="mt-4 text-right font-mono text-[10px] uppercase tracking-wider text-muted">
+        <a href={`/skills/${slug}`} target="_blank" rel="noreferrer" className="hover:text-ink">
+          on Stash ↗
+        </a>
+      </p>
+    </main>
+  );
 }
 
 function formatSize(bytes: number): string {

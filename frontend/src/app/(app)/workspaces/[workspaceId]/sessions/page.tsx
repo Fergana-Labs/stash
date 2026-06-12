@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { useConfirm } from "../../../../../components/ConfirmDialog";
 import SessionUpload from "../../../../../components/SessionUpload";
 import { SessionsListSkeleton } from "../../../../../components/SkeletonStates";
 import { PinIcon } from "../../../../../components/SkillIcons";
@@ -94,6 +95,7 @@ export default function SkillSessionsPage() {
   const workspaceId = params.workspaceId as string;
   const { user, loading } = useAuth();
   const pins = usePins("sessions", workspaceId);
+  const confirm = useConfirm();
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [folders, setFolders] = useState<SessionFolder[]>([]);
@@ -184,10 +186,12 @@ export default function SkillSessionsPage() {
   async function bulkDeleteSessions() {
     const targets = selectedSessions.filter((s) => s.id);
     if (targets.length === 0) return;
-    const yes = window.confirm(
-      `Delete ${targets.length} session${targets.length === 1 ? "" : "s"}? They move to Trash.`,
-    );
-    if (!yes) return;
+    const ok = await confirm({
+      title: `Delete ${targets.length} session${targets.length === 1 ? "" : "s"}?`,
+      body: "They move to Trash.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       for (const session of targets) {
         await deleteSession(workspaceId, session.id!);
@@ -261,10 +265,12 @@ export default function SkillSessionsPage() {
   }
 
   async function removeFolder(folder: SessionFolder) {
-    const yes = window.confirm(
-      `Delete folder "${folder.name}"? Sessions inside become unfiled (not deleted).`,
-    );
-    if (!yes) return;
+    const ok = await confirm({
+      title: `Delete folder "${folder.name}"?`,
+      body: "Sessions inside become unfiled (not deleted).",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await deleteSessionFolder(workspaceId, folder.id);
       setOpenFolder(null);
