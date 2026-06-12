@@ -63,8 +63,6 @@ function OnboardingInner() {
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [sourceCount, setSourceCount] = useState(0);
-  const [obsidianAdded, setObsidianAdded] = useState(false);
   const [answered, setAnswered] = useState(false);
   const [role, setRole] = useState("");
   const [roleOther, setRoleOther] = useState("");
@@ -180,9 +178,8 @@ function OnboardingInner() {
       ? referralOther.trim() && `Other: ${referralOther.trim()}`
       : referralSource;
   // About: role + referral are required, and "Other" needs to be spelled out
-  // (use-case is optional). Try it out: Continue lives inside the Connect
-  // option and is gated on a connected source. Ask: only let them launch once
-  // the agent has actually replied.
+  // (use-case is optional). Ask: only let them launch once the agent has
+  // actually replied. Everything else can be continued past freely.
   const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : !isAsk || answered;
   const onContinue = async () => {
     if (isAbout) {
@@ -224,14 +221,7 @@ function OnboardingInner() {
           )}
           {isIntro && <IntroStep />}
           {isTryItOut && (
-            <TryItOutStep
-              workspaceId={workspaceId}
-              onCollabDoc={finishToCollabDoc}
-              onSourceCountChange={setSourceCount}
-              onObsidianAdded={() => setObsidianAdded(true)}
-              canContinue={sourceCount > 0 || obsidianAdded}
-              onContinue={() => goToStep(stepIdx + 1)}
-            />
+            <TryItOutStep workspaceId={workspaceId} onCollabDoc={finishToCollabDoc} />
           )}
           {isCli && <CliStep />}
           {isAsk && (
@@ -242,7 +232,6 @@ function OnboardingInner() {
             onSkip={skip}
             continueLabel={continueLabel}
             canContinue={canContinue}
-            hideContinue={isTryItOut}
           />
         </div>
       </main>
@@ -517,17 +506,9 @@ function CliConnectedStatus({ cliKey }: { cliKey: ApiKeyInfo | null }) {
 function TryItOutStep({
   workspaceId,
   onCollabDoc,
-  onSourceCountChange,
-  onObsidianAdded,
-  canContinue,
-  onContinue,
 }: {
   workspaceId: string | null;
   onCollabDoc: () => void;
-  onSourceCountChange: (n: number) => void;
-  onObsidianAdded: () => void;
-  canContinue: boolean;
-  onContinue: () => void;
 }) {
   return (
     <div className="space-y-7">
@@ -563,27 +544,7 @@ function TryItOutStep({
         badge="Connect"
         lead="Connect a data source and your agent can navigate it like a file system."
       >
-        <div className="space-y-3">
-          <SourceConnectorList
-            workspaceId={workspaceId}
-            returnTo="/onboarding?step=3"
-            onSourceCountChange={onSourceCountChange}
-            onObsidianUploaded={onObsidianAdded}
-          />
-          <div className="flex items-center justify-end gap-3">
-            {!canContinue && (
-              <span className="text-[12px] text-muted">Connect a source to continue</span>
-            )}
-            <button
-              type="button"
-              onClick={onContinue}
-              disabled={!canContinue}
-              className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Continue
-            </button>
-          </div>
-        </div>
+        <SourceConnectorList workspaceId={workspaceId} returnTo="/onboarding?step=3" />
       </TryOption>
     </div>
   );
@@ -689,13 +650,11 @@ function StepControls({
   onSkip,
   continueLabel,
   canContinue,
-  hideContinue,
 }: {
   onContinue: () => void;
   onSkip: () => void;
   continueLabel: string;
   canContinue: boolean;
-  hideContinue?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
@@ -706,16 +665,14 @@ function StepControls({
       >
         Skip onboarding
       </button>
-      {!hideContinue && (
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue}
-          className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {continueLabel}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onContinue}
+        disabled={!canContinue}
+        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {continueLabel}
+      </button>
     </div>
   );
 }
