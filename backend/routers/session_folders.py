@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
-from ..services import permission_service, session_folder_service
+from ..services import permission_service, session_folder_service, workspace_service
 
 ws_router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/session-folders", tags=["session-folders"]
@@ -27,6 +27,11 @@ GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
 async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
     if not await permission_service.is_workspace_member(workspace_id, user_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+
+async def _require_write(workspace_id: UUID, user_id: UUID) -> None:
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(status_code=403, detail="Viewers can read but not edit this workspace")
 
 
 class CreateFolderRequest(BaseModel):
@@ -54,6 +59,7 @@ async def create_folder(
     workspace_id: UUID, body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
 ):
     await _require_member(workspace_id, current_user["id"])
+    await _require_write(workspace_id, current_user["id"])
     try:
         return await session_folder_service.create_folder(
             workspace_id,
@@ -108,8 +114,15 @@ async def assign_sessions(
     workspace_id: UUID, body: AssignRequest, current_user: dict = Depends(get_current_user)
 ):
     await _require_member(workspace_id, current_user["id"])
-    for session_row_id in body.session_row_ids:
-        await session_folder_service.assign_session(session_row_id, body.folder_id)
+    await _require_write(workspace_id, current_user["id"])
+    assigned = await session_folder_service.assign_sessions(
+        workspace_id,
+        current_user["id"],
+        body.session_row_ids,
+        body.folder_id,
+    )
+    if not assigned:
+        raise HTTPException(status_code=404, detail="Session or folder not found")
     return {"ok": True, "moved": len(body.session_row_ids)}
 
 

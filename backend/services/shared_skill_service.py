@@ -23,6 +23,7 @@ from . import (
     skill_service,
     source_service,
     storage_service,
+    workspace_service,
 )
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -158,6 +159,8 @@ async def publish_folder(
     )
     if not folder or folder["workspace_id"] != workspace_id:
         raise ValueError("Folder not found in this workspace")
+    if not await workspace_service.is_owner(workspace_id, owner_id):
+        raise ValueError("Only workspace owners can publish Skills")
     if not await permission_service.check_access(
         "folder", folder_id, owner_id, workspace_id=workspace_id, require="write"
     ):

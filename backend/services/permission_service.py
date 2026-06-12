@@ -1,17 +1,18 @@
 """Permission service.
 
-Private by default. A user owns everything in their (single, implicit) workspace
-— workspace membership == ownership. Beyond that, access comes from the `shares`
-table: a row grants a principal access to an object. Folder / session-folder
-shares cascade to contents via the recursive folder chain.
+Private by default. Workspace roles grant baseline access: owners/editors can
+read and write, viewers can read only. Beyond that, access comes from the
+`shares` table: a row grants a principal access to an object. Folder /
+session-folder shares cascade to contents via the recursive folder chain.
 
-A skill is a published folder: anyone who can *open* the skill (public, owner,
-or skill member) can READ everything in its folder subtree — never write.
+A skill is a published folder: publishing makes its folder subtree publicly
+readable — never writable.
 """
 
 from uuid import UUID
 
 from ..database import get_pool
+from . import workspace_service
 
 _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
@@ -301,13 +302,14 @@ async def check_access(
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
-    # Owner = the (single) workspace member. Full read/write.
-    if (
-        user_id is not None
-        and workspace_id is not None
-        and await is_workspace_member(workspace_id, user_id)
-    ):
-        return True
+    # Workspace roles grant baseline access: owners/editors get everything,
+    # viewers can read and comment but never write.
+    if user_id is not None and workspace_id is not None:
+        role = await get_workspace_role(workspace_id, user_id)
+        if role in workspace_service.ROLES_CAN_WRITE:
+            return True
+        if require in ("read", "comment") and role in workspace_service.ROLES_CAN_READ:
+            return True
 
     # The publish record itself: existence == publicly readable; owner manages.
     if object_type == "skill":
