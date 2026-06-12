@@ -1269,6 +1269,9 @@ def build_entry_tree(entries: list[dict], depth: int, per_dir: int) -> list[dict
             if is_entry:
                 node["kind"] = entry["kind"]
                 node["path"] = entry["path"]
+                # Display the document's name, not the raw path segment —
+                # Gmail paths are opaque message ids; the name is the subject.
+                node["name"] = entry["name"] or part
             children = node["children"]
     return _finalize_tree(root, per_dir)
 
@@ -1299,6 +1302,14 @@ def _capped_flat_tree(entries: list[dict], per_dir: int) -> list[dict]:
     return nodes
 
 
+def _session_title(session: dict) -> str:
+    """A human-readable session label: the first user message, one line."""
+    title = " ".join((session.get("title_source") or "").split())
+    if len(title) > 80:
+        title = title[:77] + "…"
+    return title or session.get("agent_name") or "session"
+
+
 async def sources_tree(
     workspace_id: UUID, user_id: UUID, depth: int = 3, per_dir: int = 50
 ) -> list[dict]:
@@ -1327,7 +1338,7 @@ async def sources_tree(
             "tree": _capped_flat_tree(
                 [
                     {
-                        "name": s.get("agent_name") or "session",
+                        "name": _session_title(s),
                         "kind": "session",
                         "ref": s["session_id"],
                     }
