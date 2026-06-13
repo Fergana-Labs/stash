@@ -103,3 +103,29 @@ async def add_comment(request: Request, slug: str, body: CommentCreateRequest) -
     if not comment:
         raise HTTPException(status_code=404, detail="Paste not found")
     return comment
+
+
+class CommentUpdateRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=5_000)
+
+
+@router.patch("/{slug}/comments/{comment_id}")
+@limiter.limit("30/minute")
+async def update_comment(
+    request: Request, slug: str, comment_id: str, token: str, body: CommentUpdateRequest
+) -> dict:
+    if not token:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    comment = await paste_service.update_comment(slug, comment_id, token, body.body)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return comment
+
+
+@router.delete("/{slug}/comments/{comment_id}", status_code=204)
+@limiter.limit("30/minute")
+async def delete_comment(request: Request, slug: str, comment_id: str, token: str) -> None:
+    if not token:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if not await paste_service.delete_comment(slug, comment_id, token):
+        raise HTTPException(status_code=404, detail="Comment not found")

@@ -157,13 +157,15 @@ async def add_comment(
     prefix: str,
     suffix: str,
 ) -> dict | None:
-    """None means the paste doesn't exist."""
+    """None means the paste doesn't exist. The returned dict includes the
+    comment's own edit_token — the only time it's exposed."""
     pool = get_pool()
     row = await pool.fetchrow(
         f"""
-        INSERT INTO paste_comments (paste_id, author_name, body, quoted_text, prefix, suffix)
-        SELECT id, $2, $3, $4, $5, $6 FROM pastes WHERE slug = $1
-        RETURNING {_COMMENT_COLS}
+        INSERT INTO paste_comments
+            (paste_id, author_name, body, quoted_text, prefix, suffix, edit_token)
+        SELECT id, $2, $3, $4, $5, $6, $7 FROM pastes WHERE slug = $1
+        RETURNING edit_token, {_COMMENT_COLS}
         """,
         slug,
         author_name.strip(),
@@ -171,8 +173,50 @@ async def add_comment(
         quoted_text,
         prefix,
         suffix,
+        secrets.token_urlsafe(16),
     )
     return dict(row) if row else None
+
+
+async def update_comment(slug: str, comment_id: str, token: str, body: str) -> dict | None:
+    """Edit a comment's body — only its author (the comment's edit_token).
+    None means not-found-or-bad-token."""
+    pool = get_pool()
+    # Qualify the RETURNING columns: id/created_at exist on both tables, so
+    # they're ambiguous in an UPDATE...FROM without the alias.
+    returning = ", ".join(f"c.{col.strip()}" for col in _COMMENT_COLS.split(","))
+    row = await pool.fetchrow(
+        f"""
+        UPDATE paste_comments c
+        SET body = $4
+        FROM pastes p
+        WHERE c.id = $2 AND c.paste_id = p.id AND p.slug = $1 AND c.edit_token = $3
+        RETURNING {returning}
+        """,
+        slug,
+        comment_id,
+        token,
+        body,
+    )
+    return dict(row) if row else None
+
+
+async def delete_comment(slug: str, comment_id: str, token: str) -> bool:
+    """True when deleted. Authorized by the comment's own edit_token (author)
+    or the parent paste's edit_token (page owner moderation)."""
+    pool = get_pool()
+    result = await pool.execute(
+        """
+        DELETE FROM paste_comments c
+        USING pastes p
+        WHERE c.id = $2 AND c.paste_id = p.id AND p.slug = $1
+          AND ($3 = c.edit_token OR $3 = p.edit_token)
+        """,
+        slug,
+        comment_id,
+        token,
+    )
+    return result.endswith(" 1")
 
 
 async def list_comments(slug: str) -> list[dict]:
