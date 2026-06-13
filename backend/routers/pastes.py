@@ -54,10 +54,17 @@ async def create_paste(request: Request, body: PasteCreateRequest) -> dict:
     )
 
 
+_FEED_PAGE = 20
+
+
 @router.get("")
 @limiter.limit("60/minute")
-async def list_pastes(request: Request) -> dict:
-    return {"pastes": await paste_service.list_recent()}
+async def list_pastes(request: Request, offset: int = 0) -> dict:
+    offset = max(0, offset)
+    # Fetch one extra to learn whether a "load more" page exists without a
+    # second query.
+    rows = await paste_service.list_recent(_FEED_PAGE + 1, offset)
+    return {"pastes": rows[:_FEED_PAGE], "has_more": len(rows) > _FEED_PAGE}
 
 
 @router.get("/{slug}")

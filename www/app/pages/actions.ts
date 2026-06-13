@@ -5,6 +5,27 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
 export type PasteContentType = "markdown" | "html";
 export type PasteVisibility = "public" | "unlisted";
 
+export type FeedPaste = {
+  slug: string;
+  title: string;
+  content_type: PasteContentType;
+  view_count: number;
+  created_at: string;
+};
+
+export async function fetchFeed(
+  offset = 0,
+): Promise<{ pastes: FeedPaste[]; has_more: boolean }> {
+  const res = await fetch(`${API_URL}/api/v1/pastes?offset=${offset}`, { cache: "no-store" });
+  if (!res.ok) return { pastes: [], has_more: false };
+  const body = await res.json();
+  return { pastes: body.pastes ?? [], has_more: body.has_more ?? false };
+}
+
+export async function loadMorePages(offset: number) {
+  return fetchFeed(offset);
+}
+
 export type CreatePasteResult =
   | {
       status: "ok";

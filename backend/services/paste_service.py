@@ -241,8 +241,9 @@ async def list_comments(slug: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def list_recent(limit: int = 30) -> list[dict]:
-    """Public pages ranked HN-style: views buoy a page, age sinks it."""
+async def list_recent(limit: int = 20, offset: int = 0) -> list[dict]:
+    """Public pages ranked HN-style: views buoy a page, age sinks it.
+    Paginated by offset so the feed never loads everything at once."""
     pool = get_pool()
     rows = await pool.fetch(
         f"""
@@ -250,9 +251,11 @@ async def list_recent(limit: int = 30) -> list[dict]:
         WHERE visibility = 'public'
         ORDER BY (view_count + 1)
                  / POWER(EXTRACT(EPOCH FROM (now() - created_at)) / 3600 + 2, 1.5)
-                 DESC
-        LIMIT $1
+                 DESC,
+                 created_at DESC
+        LIMIT $1 OFFSET $2
         """,
         limit,
+        offset,
     )
     return [dict(r) for r in rows]
