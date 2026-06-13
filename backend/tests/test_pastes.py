@@ -73,6 +73,27 @@ async def test_feed_lists_recent_without_content(client: AsyncClient):
     assert "edit_token" not in entry
 
 
+async def test_feed_paginates(client: AsyncClient):
+    # More than one page (page size is 20).
+    for i in range(23):
+        await _create(client, title=f"Page {i}")
+
+    first = await client.get("/api/v1/pastes")
+    body = first.json()
+    assert len(body["pastes"]) == 20
+    assert body["has_more"] is True
+
+    second = await client.get("/api/v1/pastes?offset=20")
+    body2 = second.json()
+    assert len(body2["pastes"]) == 3
+    assert body2["has_more"] is False
+
+    # No overlap between the two pages.
+    slugs1 = {p["slug"] for p in body["pastes"]}
+    slugs2 = {p["slug"] for p in body2["pastes"]}
+    assert slugs1.isdisjoint(slugs2)
+
+
 async def test_patch_with_token_updates(client: AsyncClient):
     paste = await _create(client)
     resp = await client.patch(
