@@ -14,12 +14,17 @@ export type Paste = {
 
 export type PasteComment = {
   id: string;
+  parent_id: string | null;
   author_name: string;
   body: string;
   quoted_text: string;
   prefix: string;
   suffix: string;
   created_at: string;
+  // Only present on comments created in the current session (the create
+  // response returns it once); lets the author delete their own comment
+  // before a reload. Never comes back from the list endpoint.
+  edit_token?: string;
 };
 
 export async function fetchPaste(slug: string): Promise<Paste | null> {

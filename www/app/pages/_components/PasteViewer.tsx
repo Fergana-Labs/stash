@@ -51,6 +51,12 @@ export default function PasteViewer({
     setComments((cur) => [...cur, comment]);
   }, []);
 
+  const removeLocal = useCallback((id: string) => {
+    // Drop the comment and any replies hanging off it (matches the
+    // server's ON DELETE CASCADE).
+    setComments((cur) => cur.filter((c) => c.id !== id && c.parent_id !== id));
+  }, []);
+
   const content = (
     <div ref={wrapRef} className="relative min-w-0">
       {isHtml ? (
@@ -84,7 +90,12 @@ export default function PasteViewer({
       {content}
       <aside className="mt-8 lg:mt-0">
         <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto">
-          <CommentsRail slug={paste.slug} comments={comments} onCommentAdded={addLocal} />
+          <CommentsRail
+            slug={paste.slug}
+            comments={comments}
+            onCommentAdded={addLocal}
+            onCommentDeleted={removeLocal}
+          />
         </div>
       </aside>
     </div>

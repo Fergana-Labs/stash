@@ -250,6 +250,42 @@ async def test_delete_comment_wrong_token_404(client: AsyncClient):
     )
 
 
+async def test_reply_to_comment(client: AsyncClient):
+    paste = await _create(client)
+    top = await _add_comment(client, paste["slug"], body="top-level")
+    assert top["parent_id"] is None
+    reply = await _add_comment(client, paste["slug"], body="a reply", parent_id=top["id"])
+    assert reply["parent_id"] == top["id"]
+
+    listed = (await client.get(f"/api/v1/pastes/{paste['slug']}/comments")).json()["comments"]
+    assert len(listed) == 2
+    by_id = {c["id"]: c for c in listed}
+    assert by_id[reply["id"]]["parent_id"] == top["id"]
+
+
+async def test_deleting_comment_cascades_replies(client: AsyncClient):
+    paste = await _create(client)
+    top = await _add_comment(client, paste["slug"], body="top")
+    await _add_comment(client, paste["slug"], body="reply", parent_id=top["id"])
+    await client.delete(
+        f"/api/v1/pastes/{paste['slug']}/comments/{top['id']}?token={top['edit_token']}"
+    )
+    listed = (await client.get(f"/api/v1/pastes/{paste['slug']}/comments")).json()["comments"]
+    assert listed == []
+
+
+async def test_reply_parent_on_other_page_rejected(client: AsyncClient):
+    page_a = await _create(client)
+    page_b = await _create(client)
+    other = await _add_comment(client, page_b["slug"], body="on page B")
+    # Replying on page A with page B's comment as parent must not insert.
+    resp = await client.post(
+        f"/api/v1/pastes/{page_a['slug']}/comments",
+        json={"body": "cross-page reply", "parent_id": other["id"]},
+    )
+    assert resp.status_code == 404
+
+
 async def test_comment_token_empty_rejected(client: AsyncClient):
     paste = await _create(client)
     comment = await _add_comment(client, paste["slug"])

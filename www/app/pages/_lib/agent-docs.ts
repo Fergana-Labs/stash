@@ -36,7 +36,7 @@ Always hand the human **both** links: the view_url to share, and the edit_url to
 Pages can carry comments (anchored to selected text, or general). All comment endpoints live under the page's view URL:
 
 - **Read**: \`GET <view_url>/comments\` → \`{"comments": [...]}\`
-- **Add**: \`POST <view_url>/comments\` with a raw body (the comment text) or JSON \`{"body": "...", "author_name": "...", "quoted_text": "..."}\`. Set \`quoted_text\` to a verbatim snippet from the page to anchor the comment to it. The response includes the comment's \`id\` and a one-time \`edit_token\`.
+- **Add**: \`POST <view_url>/comments\` with a raw body (the comment text) or JSON \`{"body": "...", "author_name": "...", "quoted_text": "...", "parent_id": "..."}\`. Set \`quoted_text\` to a verbatim snippet from the page to anchor the comment to it. Set \`parent_id\` to another comment's id to post a **reply** to it. The response includes the comment's \`id\` and a one-time \`edit_token\`.
 - **Edit**: \`PATCH <view_url>/comments/{id}?token=<comment_edit_token>\` with the new body. Author only.
 - **Delete**: \`DELETE <view_url>/comments/{id}?token=<token>\` — the token can be the comment's own edit_token (author) or the page's edit_token (page owner moderating).
 

@@ -55,6 +55,7 @@ export async function addComment(
     quoted_text: string;
     prefix: string;
     suffix: string;
+    parent_id?: string | null;
   },
 ): Promise<AddCommentResult> {
   const res = await fetch(`${API_URL}/api/v1/pastes/${encodeURIComponent(slug)}/comments`, {
@@ -70,6 +71,22 @@ export async function addComment(
     return { status: "error", message };
   }
   return { status: "ok", comment: await res.json() };
+}
+
+export async function deleteComment(
+  slug: string,
+  commentId: string,
+  token: string,
+): Promise<UpdatePasteResult> {
+  const res = await fetch(
+    `${API_URL}/api/v1/pastes/${encodeURIComponent(slug)}/comments/` +
+      `${encodeURIComponent(commentId)}?token=${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    return { status: "error", message: "Could not delete the comment." };
+  }
+  return { status: "ok" };
 }
 
 export type UpdatePasteResult = { status: "ok" } | { status: "error"; message: string };

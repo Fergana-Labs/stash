@@ -42,6 +42,8 @@ class CommentCreateRequest(BaseModel):
     quoted_text: str = Field("", max_length=500)
     prefix: str = Field("", max_length=100)
     suffix: str = Field("", max_length=100)
+    # A reply: the id of the comment this answers (must be on the same page).
+    parent_id: str | None = None
 
 
 @router.post("", status_code=201)
@@ -98,7 +100,13 @@ async def list_comments(request: Request, slug: str) -> dict:
 @limiter.limit("10/minute")
 async def add_comment(request: Request, slug: str, body: CommentCreateRequest) -> dict:
     comment = await paste_service.add_comment(
-        slug, body.author_name, body.body, body.quoted_text, body.prefix, body.suffix
+        slug,
+        body.author_name,
+        body.body,
+        body.quoted_text,
+        body.prefix,
+        body.suffix,
+        body.parent_id,
     )
     if not comment:
         raise HTTPException(status_code=404, detail="Paste not found")

@@ -146,7 +146,7 @@ async def delete_paste(slug: str, token: str) -> bool:
     return result.endswith(" 1")
 
 
-_COMMENT_COLS = "id, author_name, body, quoted_text, prefix, suffix, created_at"
+_COMMENT_COLS = "id, parent_id, author_name, body, quoted_text, prefix, suffix, created_at"
 
 
 async def add_comment(
@@ -156,15 +156,23 @@ async def add_comment(
     quoted_text: str,
     prefix: str,
     suffix: str,
+    parent_id: str | None = None,
 ) -> dict | None:
-    """None means the paste doesn't exist. The returned dict includes the
-    comment's own edit_token — the only time it's exposed."""
+    """None means the paste doesn't exist (or parent_id isn't a comment on
+    it). The returned dict includes the comment's own edit_token — the only
+    time it's exposed."""
     pool = get_pool()
     row = await pool.fetchrow(
         f"""
         INSERT INTO paste_comments
-            (paste_id, author_name, body, quoted_text, prefix, suffix, edit_token)
-        SELECT id, $2, $3, $4, $5, $6, $7 FROM pastes WHERE slug = $1
+            (paste_id, parent_id, author_name, body, quoted_text, prefix, suffix, edit_token)
+        SELECT p.id, $8::uuid, $2, $3, $4, $5, $6, $7
+        FROM pastes p
+        WHERE p.slug = $1
+          AND ($8::uuid IS NULL OR EXISTS (
+            SELECT 1 FROM paste_comments parent
+            WHERE parent.id = $8::uuid AND parent.paste_id = p.id
+          ))
         RETURNING edit_token, {_COMMENT_COLS}
         """,
         slug,
@@ -174,6 +182,7 @@ async def add_comment(
         prefix,
         suffix,
         secrets.token_urlsafe(16),
+        parent_id,
     )
     return dict(row) if row else None
 
