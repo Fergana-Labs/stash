@@ -158,8 +158,10 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
                   type="button"
                   onClick={() => openHtmlTab(tab)}
                   className={
-                    "rounded px-2.5 py-1 text-[12.5px] transition " +
-                    (htmlTab === tab ? "bg-ink text-white" : "text-dim hover:text-ink")
+                    "rounded px-2.5 py-1 text-[12.5px] font-medium transition " +
+                    (htmlTab === tab
+                      ? "bg-brand text-white shadow-sm"
+                      : "text-dim hover:bg-brand/10 hover:text-brand-ink")
                   }
                 >
                   {tab === "code" ? "Code" : "Edit visually"}
@@ -288,8 +290,10 @@ function Segmented({
           type="button"
           onClick={() => onChange(opt.value)}
           className={
-            "rounded px-2.5 py-1 text-[12.5px] transition " +
-            (value === opt.value ? "bg-ink text-white" : "text-dim hover:text-ink")
+            "rounded px-2.5 py-1 text-[12.5px] font-medium transition " +
+            (value === opt.value
+              ? "bg-brand text-white shadow-sm"
+              : "text-dim hover:bg-brand/10 hover:text-brand-ink")
           }
         >
           {opt.label}

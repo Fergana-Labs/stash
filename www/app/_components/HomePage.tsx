@@ -513,9 +513,9 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
   },
   {
     n: "02",
-    pill: "Capture",
-    title: "Capture every agent session.",
-    body: "Transcripts stream in automatically — prompts, tool calls, artifacts — so your knowledge base accumulates with every run instead of evaporating when the session closes.",
+    pill: "Remember",
+    title: "Memory that builds itself.",
+    body: "Every agent session — prompts, tool calls, artifacts — streams in automatically and becomes shared, retrievable memory. Your agents remember what they did instead of starting from zero each run.",
     viz: <StreamViz />,
   },
   {
