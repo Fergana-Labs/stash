@@ -530,7 +530,7 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
 // The message-test variant pages pass their own title/steps so the section
 // tells the story of the message under test.
 export function HowItWorks({
-  title = "Connect. Capture. Create.",
+  title = "Connect. Remember. Create.",
   subtitle = "One workspace, two kinds of writer.",
   steps = DEFAULT_HOW_STEPS,
 }: {
