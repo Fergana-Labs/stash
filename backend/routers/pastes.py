@@ -42,6 +42,8 @@ class CommentCreateRequest(BaseModel):
     quoted_text: str = Field("", max_length=500)
     prefix: str = Field("", max_length=100)
     suffix: str = Field("", max_length=100)
+    # A reply: the id of the comment this answers (must be on the same page).
+    parent_id: str | None = None
 
 
 @router.post("", status_code=201)
@@ -98,8 +100,40 @@ async def list_comments(request: Request, slug: str) -> dict:
 @limiter.limit("10/minute")
 async def add_comment(request: Request, slug: str, body: CommentCreateRequest) -> dict:
     comment = await paste_service.add_comment(
-        slug, body.author_name, body.body, body.quoted_text, body.prefix, body.suffix
+        slug,
+        body.author_name,
+        body.body,
+        body.quoted_text,
+        body.prefix,
+        body.suffix,
+        body.parent_id,
     )
     if not comment:
         raise HTTPException(status_code=404, detail="Paste not found")
     return comment
+
+
+class CommentUpdateRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=5_000)
+
+
+@router.patch("/{slug}/comments/{comment_id}")
+@limiter.limit("30/minute")
+async def update_comment(
+    request: Request, slug: str, comment_id: str, token: str, body: CommentUpdateRequest
+) -> dict:
+    if not token:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    comment = await paste_service.update_comment(slug, comment_id, token, body.body)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return comment
+
+
+@router.delete("/{slug}/comments/{comment_id}", status_code=204)
+@limiter.limit("30/minute")
+async def delete_comment(request: Request, slug: str, comment_id: str, token: str) -> None:
+    if not token:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if not await paste_service.delete_comment(slug, comment_id, token):
+        raise HTTPException(status_code=404, detail="Comment not found")

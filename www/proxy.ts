@@ -19,6 +19,14 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/pages" && request.method === "POST" && !request.headers.get("next-action")) {
     return NextResponse.rewrite(new URL("/api/pages", request.url));
   }
+  // Comments on the canonical domain (no Next pages live at these paths):
+  //   GET/POST   joinstash.ai/pages/{slug}/comments
+  //   PATCH/DEL  joinstash.ai/pages/{slug}/comments/{id}?token=…
+  if (/^\/pages\/[^/]+\/comments(\/[^/]+)?$/.test(pathname)) {
+    return NextResponse.rewrite(
+      new URL(`/api${pathname}${request.nextUrl.search}`, request.url),
+    );
+  }
   const pasteSlug = pathname.match(/^\/pages\/([^/]+)$/)?.[1];
   if (pasteSlug && (request.method === "PATCH" || request.method === "DELETE")) {
     return NextResponse.rewrite(new URL(`/api/pages/${pasteSlug}${request.nextUrl.search}`, request.url));

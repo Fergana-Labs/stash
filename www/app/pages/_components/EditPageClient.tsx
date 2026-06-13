@@ -29,6 +29,10 @@ export default function EditPageClient({
     setComments((cur) => [...cur, comment]);
   }, []);
 
+  const removeLocal = useCallback((id: string) => {
+    setComments((cur) => cur.filter((c) => c.id !== id && c.parent_id !== id));
+  }, []);
+
   const anchors = useMemo(
     () =>
       comments
@@ -88,7 +92,13 @@ export default function EditPageClient({
           <div className="min-w-0">{editor}</div>
           <aside className="mt-8 lg:mt-0">
             <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto">
-              <CommentsRail slug={paste.slug} comments={comments} onCommentAdded={addLocal} />
+              <CommentsRail
+                slug={paste.slug}
+                comments={comments}
+                onCommentAdded={addLocal}
+                onCommentDeleted={removeLocal}
+                pageToken={token}
+              />
             </div>
           </aside>
         </div>
