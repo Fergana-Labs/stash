@@ -62,10 +62,10 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <CommandRef
         command="stash auth"
         args="<base_url> --api-key <key>"
-        description="Non-interactive auth for headless machines. Writes a pre-minted API key (from `stash keys`) into ~/.stash/config.json. Use this when there's no browser to complete sign-in — it's also the only way to authenticate the streaming hooks unattended, since they read the config file, not env vars."
+        description="Niche tool — not part of normal setup; use signin. Stores a pre-existing API key into ~/.stash/config.json for an unattended, browser-less machine (typically a self-hosted CI runner or server), so its streaming hooks can authenticate. Get the key from your self-hosted instance's API-key page."
         params={[
           { name: "<base_url>", type: "string", desc: "Base URL of the Stash server.", required: true },
-          { name: "--api-key", type: "string", desc: "A pre-minted API key.", required: true },
+          { name: "--api-key", type: "string", desc: "A pre-existing API key from your self-hosted instance.", required: true },
         ]}
       />
 

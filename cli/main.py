@@ -4226,12 +4226,14 @@ def signin(
 
 @app.command()
 def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
-    """Store a pre-minted API key — non-interactive auth for headless machines.
+    """Store a pre-existing API key — non-interactive auth for unattended machines.
 
-    `signin` needs a browser; env vars only reach the CLI, not the streaming
-    hooks (they read ~/.stash/config.json). This writes the key to that file so
-    an unattended box — CI runner, server, baked image — can stream. Mint the
-    key from `stash keys` on a machine you've already signed in on.
+    Niche tool, not part of normal setup — use `signin` for that. It exists only
+    because `signin` needs a browser and env vars reach the CLI but not the
+    streaming hooks (they read ~/.stash/config.json). `auth` writes the key into
+    that file so a browser-less box — typically a self-hosted CI runner or
+    server — can stream. Get the key from your self-hosted instance's API-key
+    page (managed Stash mints keys only through browser sign-in).
     """
     save_config(base_url=base_url, api_key=api_key)
     with StashClient(base_url=base_url, api_key=api_key) as c:
