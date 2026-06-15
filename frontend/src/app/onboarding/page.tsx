@@ -61,8 +61,6 @@ function OnboardingInner() {
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [sourceCount, setSourceCount] = useState(0);
-  const [obsidianAdded, setObsidianAdded] = useState(false);
   const [answered, setAnswered] = useState(false);
   const [role, setRole] = useState("");
   const [roleOther, setRoleOther] = useState("");
@@ -224,9 +222,6 @@ function OnboardingInner() {
             <TryItOutStep
               workspaceId={workspaceId}
               onCollabDoc={finishToCollabDoc}
-              onSourceCountChange={setSourceCount}
-              onObsidianAdded={() => setObsidianAdded(true)}
-              canContinue={sourceCount > 0 || obsidianAdded}
               onContinue={() => goToStep(stepIdx + 1)}
             />
           )}
@@ -430,16 +425,10 @@ function IntroPoint({ title, children }: { title: string; children: React.ReactN
 function TryItOutStep({
   workspaceId,
   onCollabDoc,
-  onSourceCountChange,
-  onObsidianAdded,
-  canContinue,
   onContinue,
 }: {
   workspaceId: string | null;
   onCollabDoc: () => void;
-  onSourceCountChange: (n: number) => void;
-  onObsidianAdded: () => void;
-  canContinue: boolean;
   onContinue: () => void;
 }) {
   return (
@@ -480,18 +469,12 @@ function TryItOutStep({
           <SourceConnectorList
             workspaceId={workspaceId}
             returnTo="/onboarding?step=3"
-            onSourceCountChange={onSourceCountChange}
-            onObsidianUploaded={onObsidianAdded}
           />
           <div className="flex items-center justify-end gap-3">
-            {!canContinue && (
-              <span className="text-[12px] text-muted">Connect a source to continue</span>
-            )}
             <button
               type="button"
               onClick={onContinue}
-              disabled={!canContinue}
-              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
             >
               Continue
             </button>
