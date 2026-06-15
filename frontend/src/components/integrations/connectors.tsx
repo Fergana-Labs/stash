@@ -10,6 +10,7 @@ import {
   GoogleDriveIcon,
   GranolaIcon,
   JiraIcon,
+  LinearIcon,
   NotionIcon,
   SlackIcon,
   SnowflakeIcon,
@@ -70,6 +71,13 @@ export const CONNECTORS: Connector[] = [
     blurb: "Navigate tasks from a project.",
   },
   {
+    provider: "linear",
+    label: "Linear",
+    sourceType: "linear",
+    kind: "auto",
+    blurb: "Label sessions with their Linear issue status.",
+  },
+  {
     provider: "slack",
     label: "Slack",
     sourceType: "slack",
@@ -115,6 +123,7 @@ export const providerForSourceType: Record<string, string> = {
   notion: "notion",
   jira_project: "jira",
   asana_project: "asana",
+  linear: "linear",
   slack: "slack",
   granola: "granola",
   gong_calls: "gong",
@@ -144,6 +153,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <JiraIcon />;
     case "asana":
       return <AsanaIcon />;
+    case "linear":
+      return <LinearIcon />;
     case "slack":
       return <SlackIcon />;
     case "granola":
@@ -168,6 +179,7 @@ export function labelForSourceType(type: string): string {
   if (type === "granola") return "Granola";
   if (type === "jira_project") return "Jira";
   if (type === "asana_project") return "Asana";
+  if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
   if (type === "snowflake") return "Snowflake";
   if (type === "twitter") return "Twitter / X";

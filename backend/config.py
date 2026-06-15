@@ -201,8 +201,16 @@ class Settings:
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     # --- Linear ---
-    LINEAR_API_KEY: str | None = os.getenv("LINEAR_API_KEY") or os.getenv("LINEAR_API_TOKEN")
+    # Issue enrichment reads Linear with each connected user's OAuth token (see
+    # backend/integrations/linear/). LINEAR_API_URL is the GraphQL endpoint.
     LINEAR_API_URL: str = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
+    LINEAR_OAUTH_CLIENT_ID: str | None = os.getenv("LINEAR_OAUTH_CLIENT_ID")
+    LINEAR_OAUTH_CLIENT_SECRET: str | None = os.getenv("LINEAR_OAUTH_CLIENT_SECRET")
+    LINEAR_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "LINEAR_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
+    # Verifies inbound Linear webhook signatures (Linear-Signature header).
+    LINEAR_WEBHOOK_SECRET: str | None = os.getenv("LINEAR_WEBHOOK_SECRET")
 
     # --- Integrations (OAuth + per-user token storage) ---
     # Comma-separated Fernet keyring for encrypting access/refresh tokens at

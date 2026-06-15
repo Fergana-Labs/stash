@@ -9,8 +9,9 @@ from backend.services.linear_api_service import LinearIssue
 
 @pytest.mark.asyncio
 async def test_fetch_issue_parses_linear_graphql_response(monkeypatch):
-    async def graphql(query, variables):
+    async def graphql(query, variables, access_token):
         assert variables == {"id": "FER-19"}
+        assert access_token == "test-token"
         return {
             "data": {
                 "issue": {
@@ -27,10 +28,9 @@ async def test_fetch_issue_parses_linear_graphql_response(monkeypatch):
             }
         }
 
-    monkeypatch.setattr(linear_api_service.settings, "LINEAR_API_KEY", "test-key")
     monkeypatch.setattr(linear_api_service, "_graphql", graphql)
 
-    issue = await linear_api_service.fetch_issue("FER-19")
+    issue = await linear_api_service.fetch_issue("FER-19", "test-token")
 
     assert issue == LinearIssue(
         issue_id="issue-id",
@@ -49,6 +49,7 @@ async def test_fetch_issue_parses_linear_graphql_response(monkeypatch):
 @pytest.mark.asyncio
 async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch):
     session_row_id = UUID("00000000-0000-0000-0000-000000000019")
+    WORKSPACE_ID = UUID("00000000-0000-0000-0000-0000000000aa")
     updated_at = datetime(2026, 5, 19, 21, 45, 50, tzinfo=UTC)
 
     class Pool:
@@ -56,15 +57,16 @@ async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch
             self.executed = []
 
         async def fetch(self, *args):
-            return [{"ticket_identifier": "FER-19"}]
+            return [{"ticket_identifier": "FER-19", "workspace_id": WORKSPACE_ID}]
 
         async def execute(self, *args):
             self.executed.append(args)
 
     pool = Pool()
 
-    async def fetch_issue(identifier):
+    async def fetch_issue(identifier, access_token):
         assert identifier == "FER-19"
+        assert access_token == "test-token"
         return LinearIssue(
             issue_id="issue-id",
             identifier="FER-19",
@@ -78,7 +80,12 @@ async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch
             updated_at=updated_at,
         )
 
+    async def workspace_token(workspace_id):
+        assert workspace_id == WORKSPACE_ID
+        return "test-token"
+
     monkeypatch.setattr(linear_ticket_service, "get_pool", lambda: pool)
+    monkeypatch.setattr(linear_ticket_service, "_workspace_linear_token", workspace_token)
     monkeypatch.setattr(linear_ticket_service.linear_api_service, "fetch_issue", fetch_issue)
 
     updated = await linear_ticket_service.enrich_session_labels(session_row_id)

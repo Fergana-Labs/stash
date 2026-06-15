@@ -19,6 +19,13 @@ def enrich_session_linear_tickets(_workspace_id: str, session_row_id: str) -> in
     return run_async(linear_ticket_service.enrich_session_labels(UUID(session_row_id)))
 
 
+@celery.task(name="backend.tasks.linear_tickets.enrich_ticket")
+def enrich_ticket(ticket_identifier: str) -> int:
+    if not linear_api_service.is_configured():
+        return 0
+    return run_async(linear_ticket_service.enrich_ticket(ticket_identifier))
+
+
 @celery.task(name="backend.tasks.linear_tickets.discover_session_github_prs")
 def discover_session_github_prs(session_row_id: str) -> int:
     return run_async(github_pr_service.discover_session_labels(UUID(session_row_id)))
