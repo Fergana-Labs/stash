@@ -208,6 +208,157 @@ async def test_me_sessions_requires_current_workspace_access_for_authored_sessio
 
 
 @pytest.mark.asyncio
+async def test_event_created_session_lands_in_default_folder(client: AsyncClient):
+    """An un-targeted push hook (e.g. Codex, which has no session-start hook so
+    the first event creates the row) must land in the Default folder, never at
+    the workspace root with no folder."""
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "untargeted session",
+            "session_id": "codex-untargeted",
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    listed = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    assert listed.status_code == 200
+    session = next(
+        s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted"
+    )
+    assert session["session_folder_id"] is not None
+    assert session["session_folder_name"] == "Default"
+
+
+@pytest.mark.asyncio
+async def test_transcript_upload_targets_explicit_session_folder(client: AsyncClient):
+    """A pinned repo passes session_folder_id with the transcript upload, so a
+    session whose row is first created by the upload lands in that folder."""
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Pinned"}, headers=headers
+    )
+    assert folder.status_code in (200, 201)
+    folder_id = folder.json()["id"]
+
+    upload = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("t.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={
+            "session_id": "pinned-session",
+            "agent_name": "claude",
+            "session_folder_id": folder_id,
+        },
+        headers=headers,
+    )
+    assert upload.status_code == 201
+
+    listed = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    session = next(
+        s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session"
+    )
+    assert session["session_folder_id"] == folder_id
+    assert session["session_folder_name"] == "Pinned"
+
+
+@pytest.mark.asyncio
+async def test_event_stream_pin_targets_folder(client: AsyncClient):
+    """A pinned repo streams session_folder_id on every event. An agent with no
+    session-start hook (Codex) creates the row from its first event, which must
+    land in the pinned folder, not Default."""
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Repo"}, headers=headers
+    )
+    folder_id = folder.json()["id"]
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "pinned codex session",
+            "session_id": "codex-pinned",
+            "session_folder_id": folder_id,
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    listed = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-pinned")
+    assert session["session_folder_id"] == folder_id
+
+
+@pytest.mark.asyncio
+async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: AsyncClient):
+    """The folder is set once at row creation. A later streamed pin must not undo
+    an explicit move-to-root, or the agent would fight a user's manual move."""
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Repo"}, headers=headers
+    )
+    folder_id = folder.json()["id"]
+
+    async def push():
+        return await client.post(
+            f"/api/v1/workspaces/{ws}/sessions/events",
+            json={
+                "agent_name": "codex",
+                "event_type": "assistant_message",
+                "content": "turn",
+                "session_id": "moved-session",
+                "session_folder_id": folder_id,
+            },
+            headers=headers,
+        )
+
+    await push()
+    listed = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    row_id = next(
+        s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session"
+    )
+
+    moved = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        json={"session_row_ids": [row_id], "folder_id": None},
+        headers=headers,
+    )
+    assert moved.status_code == 200
+
+    await push()  # another turn keeps streaming the pin
+    after = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    session = next(s for s in after.json()["sessions"] if s["session_id"] == "moved-session")
+    assert session["session_folder_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_replace_reimports_existing_session(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)

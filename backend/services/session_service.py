@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from ..database import get_pool
-from . import security_audit_service
+from . import security_audit_service, session_folder_service
 
 _SELECT_COLS = (
     "id, workspace_id, session_id, agent_name, cwd, files_touched, "
@@ -24,19 +24,32 @@ async def upsert_session(
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
 
-    The CLI calls this lazily — first event for a session writes the row. The
-    folder is set once and never re-homed by a later upsert, so a manual move
-    sticks even if the agent keeps streaming.
+    The CLI calls this lazily — first event for a session writes the row.
+
+    Every session is born into a folder: the one it was pushed to (the repo's
+    pinned folder, streamed on every event), or the workspace's Default. We
+    resolve the Default only when the row doesn't exist yet. The folder is set
+    once at insert and never touched on update, so a manual move — including a
+    move to root (session_folder_id = NULL) — sticks even as the agent keeps
+    streaming the pin.
     """
     pool = get_pool()
+    if session_folder_id is None:
+        exists = await pool.fetchval(
+            "SELECT 1 FROM sessions WHERE workspace_id = $1 AND session_id = $2",
+            workspace_id,
+            session_id,
+        )
+        if not exists:
+            default_folder = await session_folder_service.ensure_default_folder(workspace_id)
+            session_folder_id = UUID(default_folder["id"])
     row = await pool.fetchrow(
         "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, created_by, session_folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6) "
         "ON CONFLICT (workspace_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
         "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
-        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by), "
-        "  session_folder_id = COALESCE(sessions.session_folder_id, EXCLUDED.session_folder_id) "
+        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by) "
         f"RETURNING {_SELECT_COLS}",
         workspace_id,
         session_id,

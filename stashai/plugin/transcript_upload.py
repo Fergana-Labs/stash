@@ -51,6 +51,7 @@ def spawn_transcript_upload(
     cwd: str,
     base_url: str,
     api_key: str,
+    session_folder_id: str = "",
 ) -> bool:
     """Spawn a detached process to upload the transcript. Returns True on spawn."""
     if not transcript_path or not session_id.strip():
@@ -71,7 +72,7 @@ def spawn_transcript_upload(
             [
                 sys.executable, str(script),
                 str(path), session_id, workspace_id, agent_name, cwd, base_url, api_key,
-                str(data_dir),
+                str(data_dir), session_folder_id,
             ],
             env=env,
             stdin=subprocess.DEVNULL,

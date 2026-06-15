@@ -97,6 +97,7 @@ async def push_event(
     content: str,
     created_by: UUID,
     session_id: str | None = None,
+    session_folder_id: UUID | None = None,
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
@@ -136,6 +137,7 @@ async def push_event(
             agent_name=agent_name,
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
             created_by=created_by,
+            session_folder_id=session_folder_id,
         )
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(workspace_id, session["id"], session_id)

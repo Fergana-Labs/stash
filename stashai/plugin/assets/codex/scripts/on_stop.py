@@ -46,6 +46,7 @@ def main():
         cwd=event.cwd,
         base_url=cfg["api_endpoint"],
         api_key=cfg["api_key"],
+        session_folder_id=cfg.get("session_folder_id", ""),
     )
     warning = upload_health_warning(cfg, state, event, DATA_DIR)
     if warning:

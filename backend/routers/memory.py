@@ -56,6 +56,7 @@ async def push_ws_event(
         content=req.content,
         created_by=current_user["id"],
         session_id=req.session_id,
+        session_folder_id=req.session_folder_id,
         tool_name=req.tool_name,
         metadata=req.metadata,
         attachments=attachments,

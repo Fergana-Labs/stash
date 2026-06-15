@@ -94,7 +94,7 @@ async def list_folders(workspace_id: UUID, current_user: dict = Depends(get_curr
     # Non-members may still see folders shared with them, so this isn't gated on
     # membership. Members get a Default folder lazily ensured on first listing.
     if await permission_service.is_workspace_member(workspace_id, current_user["id"]):
-        await session_folder_service.ensure_default_folder(workspace_id, current_user["id"])
+        await session_folder_service.ensure_default_folder(workspace_id)
     return {"folders": await session_folder_service.list_folders(workspace_id, current_user["id"])}
 
 
