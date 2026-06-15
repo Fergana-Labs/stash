@@ -64,9 +64,10 @@ export function useAuth() {
     // legacy mc_ keys minted by old Auth0 sign-ins too.
     setUser(null);
     await revokeStoredApiKey();
-    // Hard navigation so module-level caches reset. `?federated` asks Auth0 to
-    // clear upstream identity-provider state too.
-    window.location.href = AUTH0_ENABLED ? "/auth/logout?federated" : "/login";
+    // Hard navigation so module-level caches reset. We intentionally do NOT use
+    // `?federated` — that would tell Auth0 to clear the upstream identity provider
+    // (e.g. Google) session, signing the user out of Google itself, not just Stash.
+    window.location.href = AUTH0_ENABLED ? "/auth/logout" : "/login";
   }, []);
 
   return {
