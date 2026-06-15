@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import {
+  disconnectIntegration,
   listIntegrations,
   startConnect,
   submitCredentials,
@@ -12,6 +13,7 @@ import {
   type IntegrationStatus,
 } from "@/lib/integrations";
 
+import { useConfirm } from "../ConfirmDialog";
 import { ObsidianIcon } from "./BrandIcons";
 import { CONNECTORS, connectorIcon, type Connector } from "./connectors";
 import { CredentialForm, primaryButton, secondaryButton } from "./pickers";
@@ -39,6 +41,7 @@ export default function SourceConnectorList({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentRequired, setPaymentRequired] = useState(false);
+  const confirm = useConfirm();
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -98,6 +101,25 @@ export default function SourceConnectorList({
     }
   }
 
+  async function disconnect(connector: Connector) {
+    const ok = await confirm({
+      title: `Disconnect ${connector.label}?`,
+      body: "You'll need to reconnect to sync its sources again.",
+      confirmLabel: "Disconnect",
+    });
+    if (!ok) return;
+    setBusy(connector.provider);
+    setError(null);
+    try {
+      await disconnectIntegration(connector.provider);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not disconnect");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-2">
       {disabledReasons.length > 0 && (
@@ -135,6 +157,7 @@ export default function SourceConnectorList({
                   workspaceId={workspaceId}
                   expanded={expanded === connector.provider}
                   onConnect={() => void connect(connector)}
+                  onDisconnect={() => void disconnect(connector)}
                   onExpand={() =>
                     setExpanded((value) => (value === connector.provider ? null : connector.provider))
                   }
@@ -189,6 +212,7 @@ function ConnectorAction({
   workspaceId,
   expanded,
   onConnect,
+  onDisconnect,
   onExpand,
 }: {
   connector: Connector;
@@ -200,6 +224,7 @@ function ConnectorAction({
   workspaceId: string | null;
   expanded: boolean;
   onConnect: () => void;
+  onDisconnect: () => void;
   onExpand: () => void;
 }) {
   if (!enabled) {
@@ -225,14 +250,23 @@ function ConnectorAction({
       </button>
     );
   }
-  if (workspaceId) {
-    return (
-      <Link href={`/workspaces/${workspaceId}/integrations/${connector.provider}`} className={secondaryButton()}>
-        Open
-      </Link>
-    );
-  }
-  return <span className="text-[12px] font-medium text-muted">Connected</span>;
+  return (
+    <>
+      {workspaceId && (
+        <Link href={`/workspaces/${workspaceId}/integrations/${connector.provider}`} className={secondaryButton()}>
+          Open
+        </Link>
+      )}
+      <button
+        type="button"
+        onClick={onDisconnect}
+        disabled={busy}
+        className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+      >
+        {busy ? "Disconnecting..." : "Disconnect"}
+      </button>
+    </>
+  );
 }
 
 function ObsidianSourceCard({
