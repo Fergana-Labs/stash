@@ -424,9 +424,10 @@ function TableEditorPageInner() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "z") return;
-      const isCellEditorTarget = isTableCellEditorTarget(e.target);
-      if (isTextEntryTarget(e.target) && !isCellEditorTarget) return;
-      if (isCellEditorTarget && undoStackRef.current.length === 0) return;
+      // While a text field (including an open cell editor) is focused, cmd-z must
+      // stay as the browser's native text undo. The table-level undo only fires
+      // when focus is outside any text entry.
+      if (isTextEntryTarget(e.target)) return;
       e.preventDefault();
       void undoLastTableAction();
     };
