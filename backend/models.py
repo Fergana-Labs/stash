@@ -274,7 +274,7 @@ class PageCreateRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     content_html: str = ""
-    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
+    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect|full-width)$")
 
 
 class PageUpdateRequest(BaseModel):
@@ -284,7 +284,7 @@ class PageUpdateRequest(BaseModel):
     collab_projection: bool = False
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
-    html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect)$")
+    html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect|full-width)$")
     move_to_root: bool = False
 
 
@@ -621,7 +621,7 @@ class PublishRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
-    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
+    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect|full-width)$")
     folder_id: UUID | None = None
 
 

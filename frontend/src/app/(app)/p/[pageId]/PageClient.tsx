@@ -530,6 +530,9 @@ export default function SkillPageView() {
   if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
+  // Full-width HTML drops the 1200px reading-column cap so the page gets the
+  // whole window (minus the comment rail) — room for real responsive layouts.
+  const isFullWidth = isHtml && page?.html_layout === "full-width";
   // Keep the live-update handler reading current view state without resubscribing.
   liveViewRef.current = { isHtml, htmlEditMode };
   loadRef.current = load;
@@ -693,7 +696,9 @@ export default function SkillPageView() {
       />
       <div
         ref={pageLayoutRef}
-        className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]"
+        className={`mt-6 grid gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px] ${
+          isFullWidth ? "" : "mx-auto max-w-[1200px]"
+        }`}
       >
         <main className="min-w-0">
           {externalEdit && (

@@ -1983,7 +1983,8 @@ def files_add_page(
     layout: str = typer.Option(
         None,
         "--layout",
-        help="HTML layout: 'responsive' (default) or 'fixed-aspect' for 16:9 slide decks.",
+        help="HTML layout: 'responsive' (default), 'full-width' for full-window web pages, "
+        "or 'fixed-aspect' for 16:9 slide decks.",
         case_sensitive=False,
     ),
     attach: list[str] = typer.Option(
@@ -1998,9 +1999,10 @@ def files_add_page(
         raise typer.Exit(1)
     if layout is not None:
         layout = layout.lower()
-        if layout not in ("responsive", "fixed-aspect"):
+        if layout not in ("responsive", "fixed-aspect", "full-width"):
             console.print(
-                f"[red]--layout must be 'responsive' or 'fixed-aspect', got: {layout}[/red]"
+                f"[red]--layout must be 'responsive', 'fixed-aspect', or 'full-width', "
+                f"got: {layout}[/red]"
             )
             raise typer.Exit(1)
         if page_type != "html":
@@ -2065,7 +2067,8 @@ def files_edit_page(
     layout: str = typer.Option(
         None,
         "--layout",
-        help="Switch HTML layout: 'responsive' or 'fixed-aspect' (16:9 slide decks).",
+        help="Switch HTML layout: 'responsive', 'full-width' (full-window web pages), "
+        "or 'fixed-aspect' (16:9 slide decks).",
         case_sensitive=False,
     ),
     attach: list[str] = typer.Option(
@@ -2089,9 +2092,10 @@ def files_edit_page(
             raise typer.Exit(1)
     if layout is not None:
         layout = layout.lower()
-        if layout not in ("responsive", "fixed-aspect"):
+        if layout not in ("responsive", "fixed-aspect", "full-width"):
             console.print(
-                f"[red]--layout must be 'responsive' or 'fixed-aspect', got: {layout}[/red]"
+                f"[red]--layout must be 'responsive', 'fixed-aspect', or 'full-width', "
+                f"got: {layout}[/red]"
             )
             raise typer.Exit(1)
     if html_body is not None and page_type is None:

@@ -131,6 +131,60 @@ const emptyContents = {
   tables: [],
 };
 
+function htmlPage(html_layout: "responsive" | "fixed-aspect" | "full-width") {
+  return {
+    id: "page-1",
+    workspace_id: "ws-1",
+    folder_id: null,
+    name: "Web page",
+    content_markdown: "",
+    content_type: "html",
+    content_html: "<!doctype html><html><body><h1>hi</h1></body></html>",
+    html_layout,
+    updated_at: "2026-06-08T00:00:00Z",
+  };
+}
+
+// The page-chrome wrapper is the grid that holds <main> and the comment rail.
+function layoutWrapper(container: HTMLElement): HTMLElement {
+  const main = container.querySelector("main.min-w-0");
+  if (!main?.parentElement) throw new Error("layout wrapper not found");
+  return main.parentElement;
+}
+
+describe("SkillPageView HTML page width", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    route.search = "";
+    api.listCommentThreads.mockResolvedValue({ threads: [] });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("keeps the 1200px reading-column cap for responsive HTML pages", async () => {
+    api.getPage.mockResolvedValue(htmlPage("responsive"));
+
+    const { container } = render(<SkillPageView />);
+    await screen.findByText("HTML page view");
+
+    expect(layoutWrapper(container).className).toContain("max-w-[1200px]");
+  });
+
+  it("drops the width cap for full-width HTML pages so they fill the window", async () => {
+    api.getPage.mockResolvedValue(htmlPage("full-width"));
+
+    const { container } = render(<SkillPageView />);
+    await screen.findByText("HTML page view");
+
+    const wrapper = layoutWrapper(container);
+    expect(wrapper.className).not.toContain("max-w-[1200px]");
+    // The comment rail stays — only the cap goes.
+    expect(wrapper.className).toContain("lg:grid-cols-[minmax(0,1fr)_240px]");
+  });
+});
+
 describe("SkillPageView access fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();

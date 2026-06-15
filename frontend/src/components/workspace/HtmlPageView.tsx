@@ -2,7 +2,11 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-export type HtmlLayout = "responsive" | "fixed-aspect";
+// "full-width" renders exactly like "responsive" here (auto-height iframe at
+// width:100%); the difference is purely the parent's column width, set in
+// PageClient. So every check below treats anything that isn't "fixed-aspect"
+// as the responsive path.
+export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width";
 
 export type HtmlSelectionInfo = {
   quoted_text: string;
@@ -101,7 +105,7 @@ export default function HtmlPageView({
   const [activeSlide, setActiveSlide] = useState(0);
 
   const srcDoc = useMemo(() => {
-    if (layout === "responsive")
+    if (layout !== "fixed-aspect")
       return injectResizeBootstrap(initialHtml, channel, Boolean(onNavigateLink));
     if (isDeck) return injectSlideDeckBootstrap(initialHtml, channel);
     return initialHtml;
@@ -112,7 +116,7 @@ export default function HtmlPageView({
       const data = e.data;
       if (!data || typeof data !== "object" || data.channel !== channel) return;
       if (data.type === "skill:resize" && typeof data.height === "number") {
-        if (layout === "responsive") setHeight(Math.max(0, Math.ceil(data.height)));
+        if (layout !== "fixed-aspect") setHeight(Math.max(0, Math.ceil(data.height)));
         return;
       }
       if (data.type === "skill:selection") {

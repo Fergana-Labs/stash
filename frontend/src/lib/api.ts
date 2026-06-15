@@ -551,7 +551,7 @@ export async function createPage(
   options?: {
     content_type?: "markdown" | "html";
     content_html?: string;
-    html_layout?: "responsive" | "fixed-aspect";
+    html_layout?: "responsive" | "fixed-aspect" | "full-width";
   }
 ): Promise<Page> {
   const page = await apiFetch<Page>(`/api/v1/workspaces/${workspaceId}/pages/new`, {
@@ -583,7 +583,7 @@ export async function updatePage(
     collab_projection?: boolean;
     content_type?: "markdown" | "html";
     content_html?: string;
-    html_layout?: "responsive" | "fixed-aspect";
+    html_layout?: "responsive" | "fixed-aspect" | "full-width";
     move_to_root?: boolean;
   }
 ): Promise<Page> {
@@ -1499,7 +1499,7 @@ export interface PublicSkillPage {
   content_type: "markdown" | "html";
   content_markdown: string;
   content_html: string;
-  html_layout: "responsive" | "fixed-aspect";
+  html_layout: "responsive" | "fixed-aspect" | "full-width";
   updated_at: string;
   folder_path: string[];
 }
