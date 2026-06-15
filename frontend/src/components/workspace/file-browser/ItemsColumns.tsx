@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { getFolderContents, type FolderContents } from "../../../lib/api";
+import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { KindIcon, tintFor, type GridItem } from "./kind";
+import { KindIcon, tintFor, typeFor, type GridItem } from "./kind";
 import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
 
 interface Props {
@@ -12,6 +13,57 @@ interface Props {
   onNavigate: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
+}
+
+type SortKey = "name" | "date" | "type" | "size";
+type Sort = { key: SortKey; dir: "asc" | "desc" };
+
+const SORT_STORAGE_KEY = "stash_columns_sort";
+
+const DEFAULT_SORT: Sort = { key: "name", dir: "asc" };
+
+// Each key's natural first direction: names/types read A→Z, but dates and sizes
+// are most useful largest/newest first.
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "name", label: "Name" },
+  { key: "date", label: "Date created" },
+  { key: "type", label: "Type" },
+  { key: "size", label: "Size" },
+];
+
+function defaultDirFor(key: SortKey): "asc" | "desc" {
+  return key === "date" || key === "size" ? "desc" : "asc";
+}
+
+function readSort(): Sort {
+  if (typeof window === "undefined") return DEFAULT_SORT;
+  const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
+  if (!raw) return DEFAULT_SORT;
+  const [key, dir] = raw.split(":");
+  const keyOk = key === "name" || key === "date" || key === "type" || key === "size";
+  if (keyOk && (dir === "asc" || dir === "desc")) return { key, dir };
+  return DEFAULT_SORT;
+}
+
+function timeOf(item: GridItem): number {
+  if (!item.updatedAt) return 0;
+  const t = new Date(item.updatedAt).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+// Ascending comparators; the caller reverses for descending. Every key falls
+// back to name so equal values keep a stable, readable order.
+function compareItems(a: GridItem, b: GridItem, key: SortKey): number {
+  if (key === "date") return timeOf(a) - timeOf(b) || a.name.localeCompare(b.name);
+  if (key === "type") return typeFor(a).localeCompare(typeFor(b)) || a.name.localeCompare(b.name);
+  if (key === "size") return (a.sizeBytes ?? 0) - (b.sizeBytes ?? 0) || a.name.localeCompare(b.name);
+  return a.name.localeCompare(b.name);
+}
+
+function sortItems(items: GridItem[], sort: Sort): GridItem[] {
+  const arr = [...items].sort((a, b) => compareItems(a, b, sort.key));
+  if (sort.dir === "desc") arr.reverse();
+  return arr;
 }
 
 // Finder-style column view: a stack of identical folder columns that grow
@@ -32,7 +84,27 @@ export default function ItemsColumns({
   const [selected, setSelected] = useState<{ columnIdx: number; item: GridItem } | null>(
     null
   );
+  const [sort, setSort] = useState<Sort>(() => readSort());
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  function applySort(next: Sort) {
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, `${next.key}:${next.dir}`);
+    } catch {
+      /* ignore */
+    }
+    setSort(next);
+  }
+
+  // Picking the active key flips its direction; picking a new key starts from
+  // that key's natural direction.
+  function chooseSort(key: SortKey) {
+    applySort(
+      sort.key === key
+        ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: defaultDirFor(key) }
+    );
+  }
 
   // Fetch any missing folder contents along the current path.
   useEffect(() => {
@@ -63,11 +135,11 @@ export default function ItemsColumns({
   }, [path]);
 
   function columnItemsAt(idx: number): GridItem[] {
-    if (idx === 0) return rootItems;
+    if (idx === 0) return sortItems(rootItems, sort);
     const folderId = path[idx - 1];
     const contents = cache.get(folderId);
     if (!contents) return [];
-    return folderContentsToItems(contents);
+    return sortItems(folderContentsToItems(contents), sort);
   }
 
   function handlePick(columnIdx: number, item: GridItem) {
@@ -97,7 +169,7 @@ export default function ItemsColumns({
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, cache, rootItems]);
+  }, [path, cache, rootItems, sort]);
 
   // The active id per column so each column highlights the drilled-into
   // folder (or the previewed leaf).
@@ -108,30 +180,103 @@ export default function ItemsColumns({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface">
-      <div
-        ref={containerRef}
-        className="scroll-thin flex min-h-0 flex-1 overflow-x-auto"
-      >
-        {columns.map((col) => (
-          <Column
-            key={`${col.idx}-${col.folderId ?? "root"}`}
-            items={col.items}
-            activeId={activeIdInColumn(col.idx)}
-            onPick={(item) => handlePick(col.idx, item)}
-            onOpen={handleOpen}
-            onReparent={onReparent}
-            onDelete={onDelete}
-            folderIdForDrop={col.folderId}
-            loading={col.idx > 0 && !cache.get(col.folderId!) }
-          />
-        ))}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex items-center justify-end border-b border-border bg-base/60 px-3 py-1.5">
+        <SortMenu sort={sort} onChoose={chooseSort} />
       </div>
-      <PreviewPanel
-        selected={selected?.item ?? null}
-        onOpen={() => selected && handleOpen(selected.item)}
-        onDelete={onDelete ? () => selected && onDelete(selected.item) : undefined}
-      />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={containerRef}
+          className="scroll-thin flex min-h-0 flex-1 overflow-x-auto"
+        >
+          {columns.map((col) => (
+            <Column
+              key={`${col.idx}-${col.folderId ?? "root"}`}
+              items={col.items}
+              activeId={activeIdInColumn(col.idx)}
+              onPick={(item) => handlePick(col.idx, item)}
+              onOpen={handleOpen}
+              onReparent={onReparent}
+              onDelete={onDelete}
+              folderIdForDrop={col.folderId}
+              loading={col.idx > 0 && !cache.get(col.folderId!) }
+            />
+          ))}
+        </div>
+        <PreviewPanel
+          selected={selected?.item ?? null}
+          onOpen={() => selected && handleOpen(selected.item)}
+          onDelete={onDelete ? () => selected && onDelete(selected.item) : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
+// A single "Sort by" dropdown that applies to every column. Picking the active
+// key flips its direction (arrow shows which way); picking another switches key.
+function SortMenu({
+  sort,
+  onChoose,
+}: {
+  sort: Sort;
+  onChoose: (key: SortKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEscapeKey(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [open]);
+
+  const activeLabel = SORT_OPTIONS.find((o) => o.key === sort.key)?.label ?? "Name";
+  const arrow = sort.dir === "desc" ? "▼" : "▲";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
+      >
+        Sort: {activeLabel}
+        <span className="text-[9px]">{arrow}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+          {SORT_OPTIONS.map((opt) => {
+            const active = sort.key === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => {
+                  onChoose(opt.key);
+                  setOpen(false);
+                }}
+                className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
+              >
+                <span className="truncate">{opt.label}</span>
+                {active && <span className="text-[9px] text-muted">{arrow}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -390,12 +535,14 @@ function folderContentsToItems(contents: FolderContents): GridItem[] {
       id: sub.id,
       name: sub.name,
       subtitle: `${sub.page_count + sub.file_count} item${sub.page_count + sub.file_count === 1 ? "" : "s"}`,
+      updatedAt: sub.created_at,
     })),
     ...contents.pages.map<GridItem>((p) => ({
       kind: "page",
       id: p.id,
       name: p.name.replace(/\.md$/, ""),
       subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
+      updatedAt: p.created_at,
     })),
     ...contents.files.map<GridItem>((f) => {
       const isCsvLinked = !!(f.content_type.includes("csv") && f.linked_table_id);
@@ -416,6 +563,7 @@ function folderContentsToItems(contents: FolderContents): GridItem[] {
       id: t.id,
       name: t.name,
       subtitle: `table · ${t.row_count} row${t.row_count === 1 ? "" : "s"}`,
+      updatedAt: t.created_at,
     })),
   ];
 }

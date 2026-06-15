@@ -1898,14 +1898,15 @@ export interface FolderSubfolder {
   name: string;
   page_count: number;
   file_count: number;
+  created_at: string;
 }
 export interface FolderContents {
   folder: { id: string; name: string; parent_folder_id: string | null; is_skill: boolean };
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
-  pages: { id: string; name: string; content_type: "markdown" | "html" }[];
+  pages: { id: string; name: string; content_type: "markdown" | "html"; created_at: string }[];
   files: Omit<WorkspaceFile, "folder_id">[];
-  tables: { id: string; name: string; row_count: number }[];
+  tables: { id: string; name: string; row_count: number; created_at: string }[];
 }
 
 export async function getFolderContents(

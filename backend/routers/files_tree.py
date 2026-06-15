@@ -246,7 +246,7 @@ async def get_folder_contents(
     readable_file = permission_service.readable_content_condition("file", "fi", 3)
     readable_table = permission_service.readable_content_condition("table", "t", 3)
     subfolders = await pool.fetch(
-        "SELECT id, name, "
+        "SELECT id, name, created_at, "
         "       ("
         "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
         "         AND p.workspace_id = $2 "
@@ -268,7 +268,7 @@ async def get_folder_contents(
         current_user["id"],
     )
     pages = await pool.fetch(
-        "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
+        "SELECT id, name, content_type, created_at FROM pages p WHERE p.folder_id = $1 "
         "AND p.workspace_id = $2 "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
@@ -288,7 +288,7 @@ async def get_folder_contents(
         current_user["id"],
     )
     tables = await pool.fetch(
-        "SELECT id, name, "
+        "SELECT id, name, created_at, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t WHERE t.folder_id = $1 AND t.workspace_id = $2 "
         f"AND {readable_table} "
@@ -331,16 +331,27 @@ async def get_folder_contents(
                 "name": r["name"],
                 "page_count": int(r["page_count"] or 0),
                 "file_count": int(r["file_count"] or 0),
+                "created_at": r["created_at"],
             }
             for r in subfolders
         ],
         "pages": [
-            {"id": str(r["id"]), "name": r["name"], "content_type": r["content_type"]}
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "content_type": r["content_type"],
+                "created_at": r["created_at"],
+            }
             for r in pages
         ],
         "files": file_payload,
         "tables": [
-            {"id": str(r["id"]), "name": r["name"], "row_count": int(r["row_count"] or 0)}
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "row_count": int(r["row_count"] or 0),
+                "created_at": r["created_at"],
+            }
             for r in tables
         ],
     }
