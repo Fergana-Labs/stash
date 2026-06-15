@@ -84,6 +84,9 @@ PROVIDER_SOURCE_TYPES = {
     "granola": ("granola",),
     "jira": ("jira_project",),
     "asana": ("asana_project",),
+    # Linear is enrichment-only (labels are scanned from transcripts, not a
+    # connected source), so disconnecting removes no source rows.
+    "linear": (),
     "gong": ("gong_calls",),
     "snowflake": ("snowflake",),
     "twitter": ("twitter",),
