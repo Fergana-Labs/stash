@@ -36,7 +36,7 @@ CONTEXT = (
     "supporting files, a research thread with its sources. It is NOT a "
     "wrapper to slap on every single file you share.\n\n"
     "When sharing artifacts, pick the right tool:\n"
-    " - Single file your teammate should look at → `stash files upload "
+    " - Single file your teammate should look at → `stash upload "
     "<path> --json` and hand them the returned `app_url`. NO Skill needed.\n"
     " - Upload a folder/project into the workspace → `stash upload <path> "
     "--json` returns the folder `app_url`. NO Skill created by default.\n"

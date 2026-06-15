@@ -42,8 +42,7 @@ You should see a `user_message` event with the prompt you just sent.
 
 ## Config
 
-Reads from `~/.stash/config.json` (populated by `stash login` +
-`stash config …`). No Cursor-specific config surface.
+Reads from `~/.stash/config.json` (populated by `stash login`; change it later with `stash settings`). No Cursor-specific config surface.
 
 Override with env vars (set in Cursor's environment):
 - `STASH_CURSOR_DATA=<path>` — custom state dir (default `~/.stash/plugins/cursor`)

@@ -12,7 +12,7 @@ A Skill is **not** a wrapper around every single file you happen to share. One-i
 
 | What you want to do | Command | What you give the user |
 |---|---|---|
-| Share one file with your teammate (internal) | `stash files upload <path> --json` | the returned `app_url` |
+| Share one file with your teammate (internal) | `stash upload <path> --json` | the returned `app_url` |
 | Upload a folder / project into the workspace | `stash upload <path> --json` | the returned `app_url` |
 | Publish a curated bundle as one shareable thing | `stash upload <path> --skill "<title>" --json` | the returned `url` |
 | Create a fresh skill folder | `stash skills create "<name>" --public --json` | the returned folder |

@@ -159,25 +159,6 @@ def register(
         )
 
 
-@app.command()
-def login(
-    name: str = typer.Argument(...),
-    password: str = typer.Option(..., prompt=True, hide_input=True),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Login with password."""
-    with _client() as c:
-        try:
-            data = c.login(name, password)
-        except StashError as e:
-            _err(e)
-    save_config(api_key=data["api_key"], username=data["name"])
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Logged in as {data['name']}[/green]")
-
-
 def _default_signin_page(api: str) -> str:
     """Map a backend URL to its matching /connect-token page."""
     api = api.rstrip("/")
@@ -1299,11 +1280,12 @@ def upload(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload local files into a workspace folder.
+    """Upload a local file or directory into a workspace.
 
-    Default: upload only — files land in a workspace folder, and the
-    returned ``app_url`` is the workspace link your teammates can already
-    follow. **No Skill is created.**
+    A single file lands directly in the workspace (Markdown/HTML become
+    editable pages, everything else a binary file) and the returned
+    ``app_url`` is the share link. A directory becomes a workspace folder.
+    **No Skill is created.**
 
     Pass ``--skill <title>`` to *also* bundle the upload into a shareable
     Skill. Use a Skill when you're publishing a folder of related
@@ -1316,6 +1298,23 @@ def upload(
     if not target.exists():
         console.print(f"[red]Not found: {path}[/red]")
         raise typer.Exit(1)
+
+    # A single file with no Skill goes straight into the workspace — no
+    # wrapping folder. The server routes Markdown/HTML to pages.
+    if target.is_file() and not skill:
+        ws = workspace_id or _resolve_workspace()
+        with _client() as c:
+            try:
+                data = _upload_path(c, ws, str(target))
+            except StashError as e:
+                _err(e)
+        if _use_json(as_json):
+            output_json(data)
+            return
+        label = "Uploaded as page" if data.get("kind") == "page" else "Uploaded"
+        console.print(f"[green]{label}[/green] {data['name']}  [dim]{data['id']}[/dim]")
+        console.print(data["app_url"])
+        return
 
     files = _upload_file_list(target)
     if not files:
@@ -2186,32 +2185,21 @@ def files_create_folder(
 @files_app.command("edit-folder")
 def files_edit_folder(
     folder_id: str = typer.Argument(...),
-    name: str = typer.Option(None, "--name", help="Rename the folder."),
-    parent: str = typer.Option(None, "--parent", help="Move under this parent folder id."),
-    to_root: bool = typer.Option(False, "--to-root", help="Move to workspace root."),
+    name: str = typer.Option(..., "--name", help="New folder name."),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Rename and/or reparent a folder."""
-    if parent and to_root:
-        console.print("[red]--parent and --to-root are mutually exclusive[/red]")
-        raise typer.Exit(1)
+    """Rename a folder. Use `stash mv` to relocate it."""
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.update_folder(
-                ws,
-                folder_id,
-                name=name,
-                parent_folder_id=parent,
-                move_to_root=to_root,
-            )
+            data = c.update_folder(ws, folder_id, name=name)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Folder updated.[/green] {data['name']}  [dim]{data['id']}[/dim]")
+        console.print(f"[green]Folder renamed.[/green] {data['name']}  [dim]{data['id']}[/dim]")
 
 
 @files_app.command("pages")
@@ -2547,24 +2535,6 @@ def hist_new_folder(
     console.print(f"[green]Created folder[/green] {name}  [dim]({data.get('id')})[/dim]")
 
 
-@hist_app.command("assign")
-def hist_assign(
-    session_row_id: str = typer.Argument(..., help="The session row id to move."),
-    folder: str = typer.Option(
-        None, "--folder", help="Target folder id; omit to move back to ungrouped root."
-    ),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Move a session into a session folder (or back to the ungrouped root)."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.assign_session_folder(ws, session_row_id, folder_id=folder)
-        except StashError as e:
-            _err(e)
-    console.print("[green]Session assigned.[/green]")
-
-
 @hist_app.command("push")
 def hist_push(
     content: str = typer.Argument(...),
@@ -2770,57 +2740,6 @@ def _transcript_to_markdown(raw_jsonl: str) -> str:
     return "\n---\n\n".join(lines) if lines else "(empty transcript)"
 
 
-@hist_app.command("share")
-def hist_share(
-    session_id: str = typer.Argument(...),
-    title: str = typer.Option(
-        "", "--title", help="Title for the shared page. Auto-generated if omitted."
-    ),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Share a session transcript as a public Skill link.
-
-    Fetches the transcript, formats it as a readable page, publishes it
-    in a new Skill, and prints the shareable URL.
-    """
-    import gzip
-
-    import httpx
-
-    ws = workspace_id or _resolve_workspace()
-    cfg = load_config()
-    base = cfg["base_url"].rstrip("/")
-    headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
-
-    # 1. Fetch transcript
-    url = f"{base}/api/v1/workspaces/{ws}/transcripts/{session_id}"
-    meta = httpx.get(url, headers=headers, timeout=30).json()
-    if "download_url" not in meta:
-        console.print(f"[red]{meta.get('detail', 'Transcript not found')}[/red]")
-        raise typer.Exit(1)
-    raw = httpx.get(meta["download_url"], timeout=60).content
-    if raw[:2] == b"\x1f\x8b":
-        raw = gzip.decompress(raw)
-    body = raw.decode("utf-8", errors="replace")
-
-    # 2. Format into markdown
-    md = _transcript_to_markdown(body)
-
-    # 3. Create folder + page + public Skill
-    page_title = title or f"Session {session_id[:8]}"
-    with _client() as c:
-        folder = c.create_folder(ws, page_title)
-        c.create_page(ws, page_title, content=md, folder_id=folder["id"])
-        skill = c.publish_skill_folder(
-            ws,
-            folder["id"],
-            title=page_title,
-            description="Shared session transcript",
-        )
-
-    console.print(f"[green]Shared![/green]  {_web_app_url()}/skills/{skill['slug']}")
-
-
 @hist_app.command("import")
 def hist_import(
     workspace_id: str = typer.Option(None, "--ws"),
@@ -2901,58 +2820,6 @@ def hist_import(
             )
 
 
-@hist_app.command("delete")
-def hist_delete(
-    session_row_id: str = typer.Argument(..., help="Session row id (UUID), not session_id."),
-    workspace_id: str = typer.Option(None, "--ws"),
-    permanent: bool = typer.Option(False, "--permanent"),
-):
-    """Move a session to trash. Pass --permanent to wipe it without going through trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.delete_session(ws, session_row_id)
-            if permanent:
-                c.purge_session(ws, session_row_id)
-        except StashError as e:
-            _err(e)
-    console.print(
-        "[green]Session permanently deleted.[/green]"
-        if permanent
-        else "[green]Session moved to trash.[/green]"
-    )
-
-
-@hist_app.command("restore")
-def hist_restore(
-    session_row_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Restore a session from trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.restore_session(ws, session_row_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]Session restored.[/green]")
-
-
-@hist_app.command("purge")
-def hist_purge(
-    session_row_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Permanently delete a session already in trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.purge_session(ws, session_row_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]Session permanently deleted.[/green]")
-
-
 # ===========================================================================
 # Sources — unified VFS over native files/sessions + connected sources
 # ===========================================================================
@@ -2964,7 +2831,7 @@ app.add_typer(sources_app, name="sources")
 
 
 def _print_search(query: str, source: str, workspace_id: str, limit: int, as_json: bool) -> None:
-    """Shared body for `stash search` and `stash sources search`."""
+    """Shared body for `stash search`."""
     telemetry.record("sources.search")
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
@@ -3128,18 +2995,6 @@ def sources_read(
     console.print(data.get("content") or data.get("transcript") or "")
 
 
-@sources_app.command("search")
-def sources_search(
-    query: str = typer.Argument(...),
-    source: str = typer.Option("", "--source", help="Scope to one source handle."),
-    workspace_id: str = typer.Option(None, "--ws"),
-    limit: int = typer.Option(20, "-n", "--limit"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Search across sources (alias of `stash search`)."""
-    _print_search(query, source, workspace_id, limit, as_json)
-
-
 def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
     """Stable filesystem-style directory name per source. Natives keep their
     handle ('files', 'sessions'); connected sources slug their display name,
@@ -3261,6 +3116,145 @@ def _print_ls_path(c: StashClient, ws: str, sources: list[dict], path: str, as_j
 
 
 # ===========================================================================
+# Object operations — rm / restore / mv / cp across every object type
+# ===========================================================================
+
+_OBJECT_TYPES = "page | file | folder | session | table"
+
+
+def _parse_refs(refs: list[str]) -> list[tuple[str, str]]:
+    """Parse `type:id` tokens (e.g. page:abc session:def) into (type, id) pairs."""
+    parsed = []
+    for ref in refs:
+        if ":" not in ref:
+            console.print(f"[red]Invalid item '{ref}' — use type:id, e.g. page:<id>[/red]")
+            raise typer.Exit(1)
+        object_type, object_id = ref.split(":", 1)
+        parsed.append((object_type, object_id))
+    return parsed
+
+
+@app.command("rm")
+def rm_cmd(
+    refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | session"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    permanent: bool = typer.Option(
+        False, "--permanent", help="Skip the trash window — delete immediately."
+    ),
+):
+    """Move pages, files, or sessions to trash. Pass --permanent to wipe immediately.
+
+    Example: stash rm page:<id> file:<id> session:<id>
+    """
+    ws = workspace_id or _resolve_workspace()
+    trash = {
+        "page": (lambda c, i: c.delete_page(ws, i), lambda c, i: c.purge_page(ws, i)),
+        "file": (lambda c, i: c.delete_ws_file(ws, i), lambda c, i: c.purge_ws_file(ws, i)),
+        "session": (lambda c, i: c.delete_session(ws, i), lambda c, i: c.purge_session(ws, i)),
+    }
+    items = _parse_refs(refs)
+    with _client() as c:
+        for object_type, object_id in items:
+            if object_type not in trash:
+                console.print(f"[red]Cannot rm '{object_type}'. Supported: page | file | session[/red]")
+                raise typer.Exit(1)
+            delete, purge = trash[object_type]
+            try:
+                delete(c, object_id)
+                if permanent:
+                    purge(c, object_id)
+            except StashError as e:
+                _err(e)
+    verb = "permanently deleted" if permanent else "moved to trash"
+    console.print(f"[green]{len(items)} item(s) {verb}.[/green]")
+
+
+@app.command("restore")
+def restore_cmd(
+    refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | session"),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Restore pages, files, or sessions from trash.
+
+    Example: stash restore page:<id> session:<id>
+    """
+    ws = workspace_id or _resolve_workspace()
+    restore = {
+        "page": lambda c, i: c.restore_page(ws, i),
+        "file": lambda c, i: c.restore_ws_file(ws, i),
+        "session": lambda c, i: c.restore_session(ws, i),
+    }
+    items = _parse_refs(refs)
+    with _client() as c:
+        for object_type, object_id in items:
+            if object_type not in restore:
+                console.print(f"[red]Cannot restore '{object_type}'. Supported: page | file | session[/red]")
+                raise typer.Exit(1)
+            try:
+                restore[object_type](c, object_id)
+            except StashError as e:
+                _err(e)
+    console.print(f"[green]{len(items)} item(s) restored.[/green]")
+
+
+@app.command("mv")
+def mv_cmd(
+    refs: list[str] = typer.Argument(..., help=f"Items as type:id. Types: {_OBJECT_TYPES}"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id."),
+    to_root: bool = typer.Option(False, "--to-root", help="Move to the workspace root."),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Move objects into a folder (or to the workspace root with --to-root).
+
+    Example: stash mv page:<id> file:<id> --to-folder <id>
+    """
+    if not to_folder and not to_root:
+        console.print("[red]Pass --to-folder <id> or --to-root.[/red]")
+        raise typer.Exit(1)
+    ws = workspace_id or _resolve_workspace()
+    items = _parse_refs(refs)
+    sessions = [i for t, i in items if t == "session"]
+    others = [{"object_type": t, "object_id": i} for t, i in items if t != "session"]
+    with _client() as c:
+        try:
+            if others:
+                c.batch_move(ws, others, target_folder_id=to_folder, move_to_root=to_root)
+            for session_id in sessions:
+                c.assign_session_folder(ws, session_id, folder_id=None if to_root else to_folder)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]{len(items)} item(s) moved.[/green]")
+
+
+@app.command("cp")
+def cp_cmd(
+    refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | folder"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id."),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Duplicate pages, files, or folders as 'Copy of <name>'.
+
+    Example: stash cp page:<id> folder:<id> --to-folder <id>
+    """
+    ws = workspace_id or _resolve_workspace()
+    copy = {
+        "page": lambda c, i: c.copy_page(ws, i, target_folder_id=to_folder or None),
+        "file": lambda c, i: c.copy_ws_file(ws, i, target_folder_id=to_folder or None),
+        "folder": lambda c, i: c.copy_folder(ws, i, target_folder_id=to_folder or None),
+    }
+    for object_type, object_id in _parse_refs(refs):
+        if object_type not in copy:
+            console.print(f"[red]Cannot cp '{object_type}'. Supported: page | file | folder[/red]")
+            raise typer.Exit(1)
+        with _client() as c:
+            try:
+                made = copy[object_type](c, object_id)
+            except StashError as e:
+                _err(e)
+        console.print(f"[green]Copied to[/green] {made['name']} ({made['id']})")
+
+
+# ===========================================================================
 # Shares — grant a person access to a folder/page/file/session by email
 # ===========================================================================
 
@@ -3335,77 +3329,6 @@ def shares_rm(
         except StashError as e:
             _err(e)
     console.print("[green]Access revoked.[/green]")
-
-
-# ===========================================================================
-# Batch ops
-# ===========================================================================
-
-batch_app = typer.Typer(help="Batch — move/delete/restore many items at once.")
-app.add_typer(batch_app, name="batch")
-
-
-def _parse_batch_items(refs: list[str]) -> list[dict]:
-    """Parse `type:id` tokens (e.g. page:abc file:def) into batch items."""
-    items = []
-    for ref in refs:
-        if ":" not in ref:
-            _err(f"Invalid item '{ref}' — use type:id, e.g. page:<id>")
-        object_type, object_id = ref.split(":", 1)
-        items.append({"object_type": object_type, "object_id": object_id})
-    return items
-
-
-@batch_app.command("move")
-def batch_move(
-    refs: list[str] = typer.Argument(..., help="Items as type:id, e.g. page:<id> file:<id>"),
-    workspace_id: str = typer.Option(None, "--ws"),
-    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
-    to_root: bool = typer.Option(False, "--to-root", help="Move to the workspace root"),
-):
-    """Move many items (pages, files, folders, tables) at once."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            result = c.batch_move(
-                ws,
-                _parse_batch_items(refs),
-                target_folder_id=to_folder or None,
-                move_to_root=to_root,
-            )
-        except StashError as e:
-            _err(e)
-    output_json(result)
-
-
-@batch_app.command("delete")
-def batch_delete(
-    refs: list[str] = typer.Argument(..., help="Items as type:id (pages/files)"),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Move many pages/files to the trash at once."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            result = c.batch_delete(ws, _parse_batch_items(refs))
-        except StashError as e:
-            _err(e)
-    output_json(result)
-
-
-@batch_app.command("restore")
-def batch_restore(
-    refs: list[str] = typer.Argument(..., help="Items as type:id (pages/files)"),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Restore many pages/files from the trash at once."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            result = c.batch_restore(ws, _parse_batch_items(refs))
-        except StashError as e:
-            _err(e)
-    output_json(result)
 
 
 # ===========================================================================
@@ -3983,33 +3906,6 @@ def _get_file_meta(c: StashClient, workspace_id: str, file_id: str) -> dict:
     return c.get_ws_file(workspace_id, file_id)
 
 
-@files_app.command("upload")
-def files_upload(
-    path: str = typer.Argument(..., help="Local file path to upload."),
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Upload a file to a workspace.
-
-    Markdown (.md/.markdown/.mdx) and HTML (.html/.htm) become editable
-    pages; everything else becomes a binary file. The server does the
-    routing, so the returned object's `kind` tells you what landed where.
-    """
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = _upload_path(c, ws, path)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        kind = data.get("kind", "file")
-        label = "Uploaded as page" if kind == "page" else "Uploaded"
-        console.print(f"[green]{label}[/green] {data['name']}  [dim]{data['id']}[/dim]")
-        console.print(data["app_url"])
-
-
 @files_app.command("list")
 def files_list(
     workspace_id: str = typer.Option(None, "--ws"),
@@ -4039,188 +3935,21 @@ def files_list(
 @files_app.command("edit-file")
 def files_edit_file(
     file_id: str = typer.Argument(...),
-    name: str = typer.Option(None, "--name", help="Rename the file."),
-    folder: str = typer.Option(None, "--folder", help="Move into this folder id."),
-    to_root: bool = typer.Option(False, "--to-root", help="Move to workspace root."),
+    name: str = typer.Option(..., "--name", help="New file name."),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Rename and/or move a file. Pass any subset of --name / --folder / --to-root."""
-    if folder and to_root:
-        console.print("[red]--folder and --to-root are mutually exclusive[/red]")
-        raise typer.Exit(1)
+    """Rename a file. Use `stash mv` to relocate it."""
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.update_ws_file(
-                ws,
-                file_id,
-                name=name,
-                folder_id=folder,
-                move_to_root=to_root,
-            )
+            data = c.update_ws_file(ws, file_id, name=name)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]File updated.[/green] {data['name']}  [dim]{data['id']}[/dim]")
-
-
-@files_app.command("rm")
-def files_rm(
-    file_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    permanent: bool = typer.Option(
-        False,
-        "--permanent",
-        help="Trash and then immediately purge — skips the recoverable trash window.",
-    ),
-):
-    """Move a file to trash. Pass --permanent to wipe it without going through trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.delete_ws_file(ws, file_id)
-            if permanent:
-                c.purge_ws_file(ws, file_id)
-        except StashError as e:
-            _err(e)
-    console.print(
-        "[green]File permanently deleted.[/green]"
-        if permanent
-        else "[green]File moved to trash.[/green]"
-    )
-
-
-@files_app.command("restore")
-def files_restore(
-    file_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Restore a file from trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.restore_ws_file(ws, file_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]File restored.[/green]")
-
-
-@files_app.command("purge")
-def files_purge(
-    file_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Permanently delete a file already in trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.purge_ws_file(ws, file_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]File permanently deleted.[/green]")
-
-
-@files_app.command("rm-page")
-def files_rm_page(
-    page_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    permanent: bool = typer.Option(False, "--permanent"),
-):
-    """Move a page to trash. Pass --permanent to wipe it without going through trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.delete_page(ws, page_id)
-            if permanent:
-                c.purge_page(ws, page_id)
-        except StashError as e:
-            _err(e)
-    console.print(
-        "[green]Page permanently deleted.[/green]"
-        if permanent
-        else "[green]Page moved to trash.[/green]"
-    )
-
-
-@files_app.command("restore-page")
-def files_restore_page(
-    page_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Restore a page from trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.restore_page(ws, page_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]Page restored.[/green]")
-
-
-@files_app.command("purge-page")
-def files_purge_page(
-    page_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Permanently delete a page already in trash."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.purge_page(ws, page_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]Page permanently deleted.[/green]")
-
-
-@files_app.command("copy-page")
-def files_copy_page(
-    page_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
-):
-    """Duplicate a page as 'Copy of <name>'."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            page = c.copy_page(ws, page_id, target_folder_id=to_folder or None)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Copied to[/green] {page['name']} ({page['id']})")
-
-
-@files_app.command("copy-folder")
-def files_copy_folder(
-    folder_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    to_folder: str = typer.Option(None, "--to-folder", help="Target parent folder id"),
-):
-    """Deep-duplicate a folder as 'Copy of <name>'."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            folder = c.copy_folder(ws, folder_id, target_folder_id=to_folder or None)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Copied to[/green] {folder['name']} ({folder['id']})")
-
-
-@files_app.command("copy-file")
-def files_copy_file(
-    file_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
-):
-    """Duplicate an uploaded file as 'Copy of <name>'."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            f = c.copy_ws_file(ws, file_id, target_folder_id=to_folder or None)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Copied to[/green] {f['name']} ({f['id']})")
+        console.print(f"[green]File renamed.[/green] {data['name']}  [dim]{data['id']}[/dim]")
 
 
 @files_app.command("text")
@@ -4416,8 +4145,7 @@ transcript frozen as a page plus the files it produced.
 A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills
 clutter Discover and defeat the model. Pick the right tool:
 
-- Internal share of a single file → `stash files upload <path> --json`, hand over `app_url`.
-- Upload a folder/project → `stash upload <path> --json` (returns `app_url`, no Skill).
+- Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
 - Creating a fresh skill → `stash skills create "<name>" --public --json`.
 - Share a coding session → `stash share <session_id>`.
@@ -5372,76 +5100,6 @@ def vfs_command(
 
 
 # ===========================================================================
-# Config
-# ===========================================================================
-
-
-@app.command("config")
-def config_cmd(
-    key: str | None = typer.Argument(None),
-    value: str | None = typer.Argument(None),
-):
-    """Show or set config. Keys: base_url.
-
-    Writes to ~/.stash/config.json.
-    """
-    from .config import USER_CONFIG_FILE
-
-    if key and value:
-        allowed = {"base_url", "api_key", "username"}
-        if key not in allowed:
-            console.print(f"[red]Unknown config key: {key}[/red]")
-            raise typer.Exit(1)
-        save_config(**{key: value})
-        console.print(f"[green]{key} = {value}[/green]")
-        return
-
-    cfg = load_config()
-    display = dict(cfg)
-    if display.get("api_key"):
-        display["api_key"] = display["api_key"][:10] + "..."
-
-    console.print(f"[dim]config:  {USER_CONFIG_FILE}[/dim]\n")
-    console.print(json.dumps(display, indent=2, default=str))
-
-
-@app.command("publish")
-def publish_cmd(
-    file_path: str = typer.Argument(..., help="Path to .html or .md file to publish"),
-    title: str = typer.Option(None, "--title", "-t", help="Page title (defaults to filename)"),
-    workspace_id: str = typer.Option(None, "--workspace", "-w"),
-    folder_id: str = typer.Option(
-        None, "--folder", "-f", help="Defaults to auto-created 'AI Drafts' folder"
-    ),
-    audience: str = typer.Option("public", "--audience", help="workspace | private | public"),
-):
-    """Publish a local file as a Stash page and print the share URL.
-
-    Single call: creates the page, wraps it in a Stash, and prints the Stash URL.
-    Mirrors what an agent does via the MCP `stash_publish_html` tool."""
-    p = Path(file_path)
-    if not p.exists():
-        console.print(f"[red]File not found: {file_path}[/red]")
-        raise typer.Exit(1)
-    content_type = "html" if p.suffix.lower() in (".html", ".htm") else "markdown"
-    cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
-    ws = workspace_id or (load_manifest() or {}).get("workspace_id")
-    if not ws:
-        console.print("[red]No workspace. Pass --workspace or run `stash connect`.[/red]")
-        raise typer.Exit(1)
-    result = c.publish(
-        workspace_id=ws,
-        title=title or p.stem,
-        content=p.read_text(),
-        content_type=content_type,
-        audience=audience,
-        folder_id=folder_id,
-    )
-    console.print(result["url"])
-
-
-# ===========================================================================
 # Prompts — reusable agent-facing prompts the CLI can hand back as text
 # ===========================================================================
 
@@ -5476,16 +5134,15 @@ Do NOT create a Skill when:
 - The user just wants to share one file or page internally. Workspace
   members can already see it — give them the workspace `app_url`.
 - You're emitting incidental artifacts (logs, intermediate outputs).
-  Upload them with `stash files upload` and pass the `app_url` back.
+  Upload them with `stash upload` and pass the `app_url` back.
 
 Commands to reach for
 ---------------------
 
-- `stash files upload <path> --json` — raw file into workspace storage,
-  returns `app_url`. No Skill created. This is the default for "share this
+- `stash upload <path> --json` — a single file (Markdown/HTML become pages,
+  everything else a binary file) or a folder, into workspace storage.
+  Returns `app_url`. No Skill created. This is the default for "share this
   one file with my team."
-- `stash upload <path> --json` — upload files/pages into a workspace
-  folder, returns the folder's `app_url`. No Skill created.
 - `stash upload <path> --skill "<title>" --json` — same as above AND
   publish the uploaded folder as a Skill with the given title. Use only
   when you're producing a shareable collection.
