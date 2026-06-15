@@ -39,6 +39,9 @@ from . import security_audit_service
 
 logger = logging.getLogger(__name__)
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
+# A Linear issue identifier (FER-199). Any such ref is readable live from the
+# API, so reads work even before a sync has indexed the issue.
+LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
 
 # Native source handles. Connected sources use their workspace_sources.id (str).
 NATIVE_FILES = "files"
@@ -55,6 +58,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "granola": 21600,
     "jira_project": 1800,
     "asana_project": 1800,
+    "linear": 1800,
     "gong_calls": 21600,
 }
 
@@ -68,6 +72,7 @@ SOURCE_CAPABILITY = {
     "granola": "searchable",
     "jira_project": "searchable",
     "asana_project": "navigable",
+    "linear": "navigable",
     "gong_calls": "searchable",
     "twitter": "searchable",
     # Queryable sources run live read-only SQL; they have no document table or
@@ -84,9 +89,7 @@ PROVIDER_SOURCE_TYPES = {
     "granola": ("granola",),
     "jira": ("jira_project",),
     "asana": ("asana_project",),
-    # Linear is enrichment-only (labels are scanned from transcripts, not a
-    # connected source), so disconnecting removes no source rows.
-    "linear": (),
+    "linear": ("linear",),
     "gong": ("gong_calls",),
     "snowflake": ("snowflake",),
     "twitter": ("twitter",),
@@ -115,6 +118,10 @@ def parse_jira_project_ref(external_ref: str) -> tuple[str, str]:
 def validate_source_external_ref(source_type: str, external_ref: str) -> None:
     if source_type == "jira_project":
         parse_jira_project_ref(external_ref)
+    # A Linear source always covers every issue the connected user can read, so
+    # there is one canonical ref; the router resolves it before we get here.
+    if source_type == "linear" and external_ref != "me":
+        raise ValueError("Linear external_ref must be 'me'")
 
 
 def _clean_string_list(value, field_name: str) -> list[str]:
@@ -489,6 +496,7 @@ SOURCE_TABLE = {
     "granola": "granola_notes",
     "jira_project": "jira_documents",
     "asana_project": "asana_documents",
+    "linear": "linear_index",
     "gong_calls": "gong_documents",
     "twitter": "twitter_posts",
 }
@@ -511,7 +519,14 @@ CONTENT_TABLES = {
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
 # provider search coroutine, resolved lazily to avoid an import cycle.
-FEDERATED_SEARCH_TYPES = {"gmail", "google_drive", "jira_project", "asana_project", "twitter"}
+FEDERATED_SEARCH_TYPES = {
+    "gmail",
+    "google_drive",
+    "jira_project",
+    "asana_project",
+    "linear",
+    "twitter",
+}
 
 # Federated types excluded from UNSCOPED search fan-out: the owner's API quota
 # is metered (X free tier: one recent-search per 15 minutes), too scarce to
@@ -765,6 +780,26 @@ async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
     return {**doc, "content": content, "external_ref": ref}
 
 
+async def _read_linear_live_ref(source: dict, identifier: str) -> dict | None:
+    from ..integrations.linear.indexer import fetch_linear_content
+
+    owner_user_id = UUID(source["owner_user_id"])
+    doc = {"path": identifier, "name": identifier, "kind": "issue"}
+    try:
+        content = await fetch_linear_content(owner_user_id, identifier)
+    except Exception as exc:
+        logger.warning(
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            source["id"],
+            source["source_type"],
+            type(exc).__name__,
+        )
+        return {**doc, "content": "", "error": "source document fetch failed"}
+    if not content:
+        return None
+    return {**doc, "content": content, "external_ref": identifier}
+
+
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables fetch it lazily from the provider with the owner's token."""
@@ -773,6 +808,10 @@ async def read_document(source: dict, path: str) -> dict | None:
 
         if is_twitter_live_ref(path):
             return await _read_twitter_live_ref(source, path)
+
+    # Any Linear identifier is readable live, even one not yet in the index.
+    if source["source_type"] == "linear" and LINEAR_IDENTIFIER_RE.match(path):
+        return await _read_linear_live_ref(source, path)
 
     table = _table_for(source["source_type"])
     if table in CONTENT_TABLES:
@@ -891,6 +930,10 @@ async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
         from ..integrations.asana.indexer import fetch_asana_content
 
         return await fetch_asana_content(owner_user_id, external_ref)
+    if source_type == "linear":
+        from ..integrations.linear.indexer import fetch_linear_content
+
+        return await fetch_linear_content(owner_user_id, external_ref)
     # twitter never reaches here: every cached path is a numeric post id, which
     # read_document already routes through the live-ref path.
     return ""
@@ -955,6 +998,8 @@ async def _federated_search(
             from ..integrations.jira.indexer import search_jira as fn
         elif source_type == "asana_project":
             from ..integrations.asana.indexer import search_asana as fn
+        elif source_type == "linear":
+            from ..integrations.linear.indexer import search_linear as fn
         elif source_type == "twitter":
             from ..integrations.twitter.indexer import search_twitter as fn
         else:

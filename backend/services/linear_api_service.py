@@ -16,12 +16,33 @@ query Issue($id: String!) {
     id
     identifier
     title
+    description
     url
     updatedAt
     state { name }
     assignee { name }
     team { key name }
     project { name }
+  }
+}
+"""
+
+# Lists every issue the connected user can read, newest first, for the navigable
+# index. Only the fields the index needs — the body is fetched lazily on read.
+ISSUES_QUERY = """
+query Issues($after: String) {
+  issues(first: 100, after: $after, orderBy: updatedAt) {
+    nodes { identifier title updatedAt }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+# Linear's native full-text search, used for federated source search.
+SEARCH_QUERY = """
+query SearchIssues($term: String!, $first: Int!) {
+  searchIssues(term: $term, first: $first) {
+    nodes { identifier title }
   }
 }
 """
@@ -39,6 +60,7 @@ class LinearIssue:
     team_name: str | None
     project_name: str | None
     updated_at: datetime | None
+    description: str | None = None
 
 
 def is_configured() -> bool:
@@ -47,10 +69,7 @@ def is_configured() -> bool:
 
 async def fetch_issue(ticket_identifier: str, access_token: str) -> LinearIssue | None:
     payload = await _graphql(ISSUE_QUERY, {"id": ticket_identifier}, access_token)
-    errors = payload.get("errors")
-    if errors:
-        message = "; ".join(str(error.get("message", error)) for error in errors)
-        raise RuntimeError(f"Linear issue lookup failed: {message}")
+    _raise_on_errors(payload, "issue lookup")
 
     issue = payload.get("data", {}).get("issue")
     if not issue:
@@ -73,7 +92,52 @@ async def fetch_issue(ticket_identifier: str, access_token: str) -> LinearIssue 
         team_name=team.get("name"),
         project_name=project.get("name"),
         updated_at=_parse_datetime(updated_at) if updated_at else None,
+        description=issue.get("description"),
     )
+
+
+async def list_issues(
+    access_token: str, after: str | None = None
+) -> tuple[list[dict[str, Any]], str | None]:
+    """One page of issues the connected user can read, newest first. Returns the
+    page's lightweight rows (identifier/title/updated_at) and the next cursor, or
+    None when the listing is exhausted."""
+    payload = await _graphql(ISSUES_QUERY, {"after": after}, access_token)
+    _raise_on_errors(payload, "issue listing")
+
+    connection = payload.get("data", {}).get("issues") or {}
+    page_info = connection.get("pageInfo") or {}
+    issues = [
+        {
+            "identifier": node["identifier"],
+            "title": node.get("title") or node["identifier"],
+            "updated_at": _parse_datetime(node["updatedAt"]) if node.get("updatedAt") else None,
+        }
+        for node in connection.get("nodes") or []
+        if node.get("identifier")
+    ]
+    next_cursor = page_info.get("endCursor") if page_info.get("hasNextPage") else None
+    return issues, next_cursor
+
+
+async def search_issues(access_token: str, term: str, first: int = 25) -> list[dict[str, str]]:
+    """Linear's native full-text issue search. Returns identifier/title rows."""
+    payload = await _graphql(SEARCH_QUERY, {"term": term, "first": first}, access_token)
+    _raise_on_errors(payload, "issue search")
+
+    nodes = (payload.get("data", {}).get("searchIssues") or {}).get("nodes") or []
+    return [
+        {"identifier": node["identifier"], "title": node.get("title") or node["identifier"]}
+        for node in nodes
+        if node.get("identifier")
+    ]
+
+
+def _raise_on_errors(payload: dict[str, Any], action: str) -> None:
+    errors = payload.get("errors")
+    if errors:
+        message = "; ".join(str(error.get("message", error)) for error in errors)
+        raise RuntimeError(f"Linear {action} failed: {message}")
 
 
 async def _graphql(query: str, variables: dict[str, Any], access_token: str) -> dict[str, Any]:

@@ -133,6 +133,14 @@ async def _resolve_twitter_source(user_id) -> tuple[str, str]:
     return me["id"], f"Twitter / X (@{username})"
 
 
+async def _resolve_linear_source(user_id) -> tuple[str, str]:
+    """A Linear source covers every issue the connected user can read, so there
+    is one canonical ref ('me'). Confirm the token exists (raises 401 if not
+    connected) before creating the source."""
+    await integration_storage.get_valid_token(user_id, "linear")
+    return "me", "Linear"
+
+
 @router.get("")
 async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
@@ -311,6 +319,9 @@ async def add_source(
     elif body.source_type == "twitter":
         external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
         display_name = resolved_name
+    elif body.source_type == "linear":
+        external_ref, resolved_name = await _resolve_linear_source(current_user["id"])
+        display_name = display_name or resolved_name
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
