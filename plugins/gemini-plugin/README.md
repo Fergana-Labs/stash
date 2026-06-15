@@ -59,7 +59,7 @@ Gemini CLI has shell access. For reads mid-conversation, let the agent
 shell out to the `stash` CLI — all commands support `--json`:
 
 ```
-stash sessions query --ws <id> --limit 20 --json
-stash sessions search "<query>" --ws <id> --json
+stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash search "<query>"
 stash whoami --json
 ```

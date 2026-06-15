@@ -60,11 +60,11 @@ CONTEXT = (
     '-type f"`, `stash vfs "rg \\"query\\" /workspaces"`, or '
     "`stash vfs \"cat '/workspaces/<workspace>/README.md' | sed -n "
     "'1,80p'\"`.\n\n"
-    "Common direct reads (all support `--json`): "
-    '`stash sessions search "<query>"`, '
-    "`stash sessions query --limit 20`, "
+    "Common direct reads: "
+    '`stash search "<query>"`, '
+    "`stash vfs \"cat '/workspaces/<id>/sessions/_index.jsonl'\"`, "
     "`stash sessions agents`, "
-    "`stash files pages --all`."
+    "`stash vfs \"find /workspaces -name '*.md'\"`."
 )
 
 SESSION_CONTEXT = (

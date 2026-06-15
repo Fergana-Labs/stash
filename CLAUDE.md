@@ -54,11 +54,14 @@ A Skill is **not** a wrapper to slap on every single file you happen to share. O
 
 Run `stash prompts agent-guidance` to reprint this guidance mid-session.
 
-Common reads (all support `--json`):
-- `stash sessions search "<query>"` — full-text search across transcripts
-- `stash sessions query --limit 20` — latest session events
+Common reads:
+- `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
+- `stash vfs "ls /workspaces"` — browse workspaces as a filesystem: files, sessions, tables, skills, sources
+- `stash vfs "cat '/workspaces/<ws>/files/<page>.md'"` — read any page, file, transcript, or source doc
 - `stash sessions agents` — who's been active
-- `stash files tree` — browse workspace Files
+
+Browsing and reading workspace content (files, pages, sessions, tables, skills, connected sources) is
+done through the VFS — `stash vfs "<bash>"` (ls/cat/find/grep/tree) — not dedicated read subcommands.
 
 ### LLM configuration (server-side)
 

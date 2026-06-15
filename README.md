@@ -29,7 +29,7 @@
 <p align="center">
   <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, file tree, agent activity" width="900" />
 </p>
-<!-- GIF #2 — The product in action: agent runs `stash sessions search`, gets a cited answer -->
+<!-- GIF #2 — The product in action: agent runs `stash search`, gets a cited answer -->
 
 <p align="center">
   <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />

@@ -84,8 +84,8 @@ so point it at the `stash` CLI for reads mid-conversation — all commands
 support `--json`:
 
 ```
-stash sessions query --ws <id> --limit 20 --json
-stash sessions search "<query>" --ws <id> --json
+stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash search "<query>"
 stash whoami --json
 ```
 

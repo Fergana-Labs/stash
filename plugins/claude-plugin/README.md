@@ -60,7 +60,7 @@ To collaborate with teammates in a shared workspace:
 
 Now everyone's activity streams to the same workspace. You can:
 - Collaborate on shared pages
-- Query each other's activity (`stash sessions query --ws <workspace_id>`)
+- Query each other's activity (`stash vfs "cat '/workspaces/<workspace_id>/sessions/_index.jsonl'"`)
 
 ---
 
@@ -106,10 +106,10 @@ The plugin also gives Claude access to the rest of the `stash` CLI. Key commands
 stash vfs "find /workspaces -maxdepth 3 -type f"                 # Browse Stash like a filesystem without an OS mount
 stash vfs "rg \"database migration\" /workspaces"                # Search the virtual Stash tree
 stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash sessions search "database migration" --ws <workspace_id>   # Full-text search events
-stash sessions query --ws <workspace_id> --limit 20              # Recent events
-stash sessions query --all --limit 20                             # Cross-workspace events
-stash files pages --all                                           # List all pages
+stash search "database migration"                                # Full-text search events
+stash vfs "cat '/workspaces/<workspace_id>/sessions/_index.jsonl'"  # Recent events
+stash vfs "find /workspaces -path '*/sessions/_index.jsonl'"     # Cross-workspace events
+stash vfs "find /workspaces -name '*.md'"                        # List all pages
 ```
 
 Workspace is determined from the `.stash` manifest in the repo.

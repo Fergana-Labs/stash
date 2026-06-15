@@ -79,7 +79,7 @@ the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mou
 stash vfs "find /workspaces -maxdepth 3 -type f"
 stash vfs "rg \"database migration\" /workspaces"
 stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash sessions query --ws <id> --limit 20 --json
-stash sessions search "<query>" --ws <id> --json
+stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash search "<query>"
 stash whoami --json
 ```

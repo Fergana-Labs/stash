@@ -1289,51 +1289,6 @@ skills_app = typer.Typer(
 app.add_typer(skills_app, name="skills")
 
 
-@skills_app.command("list")
-def skills_list(
-    workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List skills in a workspace — folders with a SKILL.md, plus publish info."""
-    ws_id = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.list_skills(ws_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No skills in this workspace.[/dim]")
-        return
-    for v in data:
-        published = v.get("published")
-        if published:
-            flag = f"[cyan]{published['access']}[/cyan]  /skills/{published['slug']}"
-        else:
-            flag = "[dim]private[/dim]"
-        console.print(
-            f"[bold]{v['name']}[/bold]  {flag}  "
-            f"[dim]({v['file_count']} files)  {v.get('description', '')}[/dim]"
-        )
-
-
-@skills_app.command("show")
-def skills_show(
-    name: str = typer.Argument(..., help="Local skill name (frontmatter or folder name)."),
-    workspace_id: str = typer.Option("", "--ws", help="Workspace ID; falls back to .stash."),
-):
-    """Read a local skill: SKILL.md frontmatter + body + sibling files concatenated."""
-    ws_id = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c._get(f"/api/v1/workspaces/{ws_id}/skills/{name}")
-        except StashError as e:
-            _err(e)
-    console.print(data["combined"])
-
-
 @skills_app.command("add")
 def skills_add(
     folder: str = typer.Argument(..., help="Local folder containing a SKILL.md file."),
@@ -1817,7 +1772,7 @@ def skills_fork(
 def skills_snapshot_source(
     skill_id: str = typer.Argument(...),
     source: str = typer.Option(
-        ..., "--source", help="Connected-source id (from `stash sources ls`)."
+        ..., "--source", help="Connected-source handle (see /workspaces/<ws>/sources via `stash vfs`)."
     ),
     path: str = typer.Option(..., "--path", help="Document path within the source."),
     workspace_id: str = typer.Option(None, "--ws"),
@@ -1953,63 +1908,6 @@ files_app = typer.Typer(help="Files — folders, pages, and uploaded files.")
 app.add_typer(files_app, name="files")
 
 
-@files_app.command("tree")
-def files_tree(
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Show the nested folder + page tree for the workspace."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.get_workspace_tree(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-
-    def _print_folder(folder: dict, depth: int) -> None:
-        pad = "  " * depth
-        console.print(f"{pad}[bold]{folder['name']}/[/bold]  (id: {str(folder['id'])[:8]})")
-        for sub in folder.get("folders", []):
-            _print_folder(sub, depth + 1)
-        for p in folder.get("pages", []):
-            console.print(f"{pad}  {p['name']}  (id: {str(p['id'])[:8]})")
-
-    for folder in data.get("folders", []):
-        _print_folder(folder, 0)
-    for p in data.get("pages", []):
-        console.print(f"  {p['name']}  (id: {str(p['id'])[:8]})")
-
-
-@files_app.command("folders")
-def files_folders(
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Flat list of every folder in the workspace."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.list_folders(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No folders.[/dim]")
-        else:
-            for f in data:
-                parent = (
-                    f"  parent: {str(f['parent_folder_id'])[:8]}"
-                    if f.get("parent_folder_id")
-                    else ""
-                )
-                console.print(f"  {f['name']}  (id: {str(f['id'])[:8]}){parent}")
-
-
 @files_app.command("create-folder")
 def files_create_folder(
     name: str = typer.Argument(...),
@@ -2048,31 +1946,6 @@ def files_edit_folder(
         output_json(data)
     else:
         console.print(f"[green]Folder renamed.[/green] {data['name']}  [dim]{data['id']}[/dim]")
-
-
-@files_app.command("pages")
-def files_pages(
-    workspace_id: str = typer.Option(None, "--ws"),
-    all_: bool = typer.Option(False, "--all", help="list pages across every workspace"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List pages. --all for cross-workspace, default for the active workspace."""
-    with _client() as c:
-        try:
-            data = c.all_pages() if all_ else c.list_pages(workspace_id or _resolve_workspace())
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No pages.[/dim]")
-            return
-        for p in data:
-            path = "/".join(p.get("folder_path") or [])
-            label = f"{path}/{p['name']}" if path else p["name"]
-            ws = f" [{p.get('workspace_name', '')}]" if p.get("workspace_name") else ""
-            console.print(f"  {label}{ws}  (id: {str(p['id'])[:8]})")
 
 
 def _markdown_snippet(file_resp: dict) -> str:
@@ -2175,29 +2048,6 @@ def files_add_page(
             f"[green]Page '{data['name']}' created.[/green]  ID: {data['id']}  "
             f"Type: {data.get('content_type', 'markdown')}"
         )
-
-
-@files_app.command("read-page")
-def files_read_page(
-    page_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Read a page's content."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.get_page(ws, page_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[bold]{data['name']}[/bold]\n")
-        if data.get("content_type") == "html":
-            console.print(data.get("content_html", ""))
-        else:
-            console.print(data.get("content_markdown", ""))
 
 
 @files_app.command("edit-page")
@@ -2436,91 +2286,6 @@ def hist_push(
         console.print(f"[green]Event recorded.[/green]  ID: {data['id']}")
 
 
-@hist_app.command("query")
-def hist_query(
-    workspace_id: str = typer.Option(None, "--ws"),
-    agent_name: str = typer.Option(None, "--agent"),
-    event_type: str = typer.Option(None, "--type"),
-    limit: int = typer.Option(50, "-n", "--limit"),
-    before: str = typer.Option(None, "--before", help="Cursor: ISO timestamp for previous page"),
-    after: str = typer.Option(None, "--after", help="Cursor: ISO timestamp for next page"),
-    order: str = typer.Option(
-        "desc", "--order", help="Sort order: desc (newest first) or asc (oldest first)"
-    ),
-    all_: bool = typer.Option(False, "--all"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Query events (newest first by default). --all for cross-workspace."""
-    telemetry.record("history.query")
-    with _client() as c:
-        try:
-            if all_:
-                data = c.all_events(
-                    agent_name=agent_name,
-                    event_type=event_type,
-                    limit=limit,
-                    before=before,
-                    after=after,
-                    order=order,
-                )
-            else:
-                ws = workspace_id or _resolve_workspace()
-                data = c.query_events(
-                    ws,
-                    agent_name=agent_name,
-                    event_type=event_type,
-                    limit=limit,
-                    before=before,
-                    after=after,
-                    order=order,
-                )
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        for ev in data:
-            tool = f" ({ev['tool_name']})" if ev.get("tool_name") else ""
-            console.print(
-                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
-            )
-
-
-@hist_app.command("transcript")
-def hist_transcript(
-    session_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    save: str = typer.Option(None, "--save"),
-):
-    """Fetch a full session transcript (.jsonl) and print or save it.
-
-    Transcripts are stored gzipped on the server; we decompress here so
-    `--save` writes plain .jsonl and stdout is readable.
-    """
-    import gzip
-
-    import httpx
-
-    ws = workspace_id or _resolve_workspace()
-    cfg = load_config()
-    url = f"{cfg['base_url'].rstrip('/')}/api/v1/workspaces/{ws}/transcripts/{session_id}"
-    headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
-    meta = httpx.get(url, headers=headers, timeout=30).json()
-    if "download_url" not in meta:
-        console.print(f"[red]{meta.get('detail', 'not found')}[/red]")
-        raise typer.Exit(1)
-    raw = httpx.get(meta["download_url"], timeout=60).content
-    # Detect gzip via magic bytes so legacy uncompressed uploads still work.
-    if raw[:2] == b"\x1f\x8b":
-        raw = gzip.decompress(raw)
-    body = raw.decode("utf-8", errors="replace")
-    if save:
-        Path(save).write_text(body)
-        console.print(f"[green]Saved {len(body):,} chars to {save}[/green]")
-        return
-    sys.stdout.write(body)
-
-
 def _transcript_to_markdown(raw_jsonl: str) -> str:
     """Convert a Claude Code .jsonl transcript into readable markdown."""
     lines = []
@@ -2673,7 +2438,8 @@ def hist_import(
 # ===========================================================================
 
 sources_app = typer.Typer(
-    help="Sources — browse, read, and search files, sessions, and connected sources."
+    help="Sources — connect, sync, and disconnect external sources. "
+    "Browse and read their contents with `stash vfs` under /workspaces/<ws>/sources."
 )
 app.add_typer(sources_app, name="sources")
 
@@ -2714,27 +2480,6 @@ def search(
 ):
     """Search everything you can see — files, sessions, and connected sources."""
     _print_search(query, source, workspace_id, limit, as_json)
-
-
-@sources_app.command("ls")
-def sources_ls(
-    workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
-):
-    """List every source you can read here."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.list_sources(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    for s in data:
-        console.print(
-            f"  [bold]{s['display_name']}[/bold]  [dim]({s['type']}, {s['capability']}) "
-            f"→ {s['source']}[/dim]"
-        )
 
 
 @sources_app.command("add")
@@ -2798,49 +2543,6 @@ def sources_rm(
     console.print("[green]Source removed.[/green]")
 
 
-@sources_app.command("browse")
-def sources_browse(
-    source: str = typer.Argument(..., help="A source handle from `stash sources ls`."),
-    path: str = typer.Argument("", help="Path prefix (connected sources only)."),
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List a source's entries like a file system."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.list_source_entries(ws, source, path=path)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]Empty.[/dim]")
-        return
-    for entry in data:
-        ref = entry.get("path") or entry.get("id")
-        console.print(f"  [{entry.get('kind', 'file')}] {entry['name']}  [dim]({ref})[/dim]")
-
-
-@sources_app.command("read")
-def sources_read(
-    source: str = typer.Argument(..., help="A source handle from `stash sources ls`."),
-    ref: str = typer.Argument(..., help="Page id (files), session id (sessions), or doc path."),
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Read one document from a source."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.read_source_doc(ws, source, ref)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    console.print(data.get("content") or data.get("transcript") or "")
 
 
 def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
@@ -3269,36 +2971,6 @@ def _resolve_sort_name(table: dict, sort_by: str) -> str:
     return name_to_id.get(sort_by, sort_by)
 
 
-@tables_app.command("list")
-def tables_list(
-    workspace_id: str = typer.Option(None, "--ws"),
-    all_: bool = typer.Option(False, "--all"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List tables. --all for cross-workspace."""
-    with _client() as c:
-        try:
-            if all_:
-                data = c.all_tables()
-            else:
-                data = c.list_tables(workspace_id or _resolve_workspace())
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No tables.[/dim]")
-        else:
-            for t in data:
-                ws = f" [{t.get('workspace_name', '')}]" if t.get("workspace_name") else ""
-                cols = len(t.get("columns", []))
-                rows = t.get("row_count", 0)
-                console.print(
-                    f"  {t['name']}{ws}  ({cols} cols, {rows} rows, id: {str(t['id'])[:8]})"
-                )
-
-
 @tables_app.command("create")
 def tables_create(
     name: str = typer.Argument(...),
@@ -3348,79 +3020,6 @@ def tables_update(
         output_json(data)
     else:
         console.print("[green]Table updated.[/green]")
-
-
-@tables_app.command("schema")
-def tables_schema(
-    table_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Show a table's column schema."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.get_table(ws, table_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[bold]{data['name']}[/bold]  ({data.get('row_count', 0)} rows)")
-        cols = data.get("columns", [])
-        if not cols:
-            console.print("[dim]No columns defined.[/dim]")
-        else:
-            for col in sorted(cols, key=lambda c: c.get("order", 0)):
-                extra = ""
-                if col.get("options"):
-                    extra = f"  options: {', '.join(col['options'])}"
-                if col.get("required"):
-                    extra += "  REQUIRED"
-                console.print(f"  {col['name']}  [dim]({col['type']}, {col['id']})[/dim]{extra}")
-
-
-@tables_app.command("rows")
-def tables_rows(
-    table_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    limit: int = typer.Option(50, "-n", "--limit"),
-    offset: int = typer.Option(0, "--offset"),
-    sort_by: str = typer.Option("", "--sort", help="Column name or ID to sort by"),
-    sort_order: str = typer.Option("asc", "--order"),
-    filters: str = typer.Option(
-        "", "--filter", help='JSON: [{"column_id":"Name","op":"eq","value":"Alice"}]'
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Read rows. --sort and --filter accept column names (auto-resolved)."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _resolve_workspace()
-            table = c.get_table(ws, table_id)
-            id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
-            resolved_sort = _resolve_sort_name(table, sort_by)
-            resolved_filters = _resolve_filter_names(table, filters) if filters else ""
-            result = c.list_table_rows(
-                ws,
-                table_id,
-                limit=limit,
-                offset=offset,
-                sort_by=resolved_sort,
-                sort_order=sort_order,
-                filters=resolved_filters,
-            )
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(result)
-    else:
-        rows = result.get("rows", []) if isinstance(result, dict) else result
-        total = result.get("total_count", len(rows)) if isinstance(result, dict) else len(rows)
-        console.print(f"[dim]Showing {len(rows)} of {total} rows[/dim]")
-        for row in rows:
-            named = {id_to_name.get(k, k): v for k, v in row.get("data", {}).items()}
-            console.print(f"  [{str(row['id'])[:8]}] {named}")
 
 
 def _parse_uploads(upload: list[str] | None) -> dict[str, str]:
@@ -3754,32 +3353,6 @@ def _get_file_meta(c: StashClient, workspace_id: str, file_id: str) -> dict:
     return c.get_ws_file(workspace_id, file_id)
 
 
-@files_app.command("list")
-def files_list(
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List files in a workspace."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.list_ws_files(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No files.[/dim]")
-        return
-    for f in data:
-        size_kb = (f.get("size_bytes") or 0) / 1024
-        console.print(
-            f"  {f['id']}  [bold]{f['name']}[/bold]  "
-            f"[dim]{f.get('content_type', '')}  {size_kb:.1f} KB[/dim]"
-        )
-
-
 @files_app.command("edit-file")
 def files_edit_file(
     file_id: str = typer.Argument(...),
@@ -4008,11 +3581,11 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 - `stash vfs "rg 'query' /workspaces"`
 - `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
 
-Common reads (all support `--json`):
-- `stash sessions search "<query>"` — full-text search across transcripts
-- `stash sessions query --limit 20` — latest events
+Common reads:
+- `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
+- `stash vfs "ls /workspaces"` — browse workspaces: files, sessions, tables, skills, and connected sources
+- `stash vfs "cat '/workspaces/<workspace>/sessions/_index.jsonl'"` — recent sessions
 - `stash sessions agents` — who's been active
-- `stash files pages --all` — shared pages across workspaces
 
 Common writes:
 - `stash share --title "..."` — share this session as a public Skill
@@ -4564,8 +4137,8 @@ def _setup_complete_intro(ws_url: str) -> str:
         f"{workspace_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
         '  [#1e3a8a]stash vfs "find /workspaces -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
-        '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
-        "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
+        '  [#1e3a8a]stash search "<query>"[/#1e3a8a]   full-text search across files, sessions, and sources\n'
+        "  [#1e3a8a]stash sessions agents[/#1e3a8a]   see which agents have been active\n"
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
@@ -5063,8 +4636,8 @@ Browsing Stash
 `stash ls` shows everything Stash can reach as one filesystem — workspace
 files, session transcripts, and every connected integration (GitHub, Slack,
 Gong, Gmail, Drive, Notion, …). When asked what you have access to, run it
-and show the tree. Drill in with `stash ls <source>/<path>` and read
-documents with `stash sources read`.
+and show the tree. Drill in with `stash ls <source>/<path>`, and read a
+document with `stash vfs "cat '/workspaces/<ws>/sources/<source>/<path>'"`.
 
 Use `stash vfs` when you want to browse Stash like a filesystem without
 mounting anything into the OS. It accepts bash-shaped commands over the

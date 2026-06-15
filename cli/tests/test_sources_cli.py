@@ -61,14 +61,6 @@ def test_search_scoped_passes_the_source(monkeypatch) -> None:
     assert calls == [("search", "ws-1", "rotate", "src-9", 5)]
 
 
-def test_sources_browse_and_read(monkeypatch) -> None:
-    calls = _wire(monkeypatch)
-    main.sources_browse("src-9", "specs/", workspace_id=None, as_json=True)
-    main.sources_read("src-9", "specs/auth.md", workspace_id=None, as_json=True)
-    assert ("entries", "ws-1", "src-9", "specs/") in calls
-    assert ("read", "ws-1", "src-9", "specs/auth.md") in calls
-
-
 def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
     """The entries endpoint takes a query param literally named "path". The real
     client method must not collide with the helpers' URL argument (it did once:

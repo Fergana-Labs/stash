@@ -57,12 +57,12 @@ stash disconnect                   # Pause event streaming across every plugin
 
 ### Files
 ```bash
-stash files tree --ws <workspace_id>                               # Show folders and pages
-stash files pages --ws <workspace_id>                              # List workspace pages
-stash files pages --all                                            # List shared pages across workspaces
+stash vfs "tree /workspaces/<workspace_id>/files"                  # Show folders and pages
+stash vfs "ls /workspaces/<workspace_id>/files"                    # List workspace pages
+stash vfs "find /workspaces -name '*.md'"                          # List shared pages across workspaces
 stash files create-folder "name" --ws <workspace_id>               # Create a folder
 stash files add-page "title" --ws <ws_id> --content "markdown content"
-stash files read-page <page_id> --ws <ws_id>                       # Read a page
+stash vfs "cat '/workspaces/<ws_id>/files/<page>.md'"             # Read a page
 stash files edit-page <page_id> --ws <ws_id> --content "new content"
 ```
 
@@ -70,14 +70,14 @@ stash files edit-page <page_id> --ws <ws_id> --content "new content"
 ```bash
 stash sessions agents --ws <workspace_id>                              # List distinct agent names
 stash sessions push "text" --ws <ws_id> --agent <name> --type <event_type>
-stash sessions query --ws <ws_id> --limit 20                           # Query events
-stash sessions search "query" --ws <ws_id>                             # Full-text search
-stash sessions query --all --limit 20                                  # Cross-workspace events
+stash vfs "cat '/workspaces/<ws_id>/sessions/_index.jsonl'"            # Query events
+stash search "query"                                                   # Full-text search
+stash vfs "find /workspaces -path '*/sessions/_index.jsonl'"           # Cross-workspace events
 ```
 
 ### Tables
 ```bash
-stash tables list --ws <workspace_id>                            # List tables
+stash vfs "cat '/workspaces/<workspace_id>/tables/_index.jsonl'" # List tables
 stash tables search <table_id> "query" --ws <workspace_id>      # Search rows
 ```
 
