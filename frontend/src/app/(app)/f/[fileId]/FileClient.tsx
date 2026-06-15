@@ -234,10 +234,11 @@ function FileViewerPageInner() {
         minute: "2-digit",
       })
     : null;
+  const uploader = file?.uploaded_by_display_name || file?.uploaded_by_name;
   const tags = file ? [{ label: fileKindLabel, tone: "muted" as const }] : undefined;
   const meta: string[] = [];
   if (file) meta.push(formatBytes(file.size_bytes));
-  if (updatedAt) meta.push(`Uploaded ${updatedAt}`);
+  if (updatedAt) meta.push(`Uploaded ${updatedAt}${uploader ? ` by ${uploader}` : ""}`);
 
   return (
     <div className="scroll-thin flex flex-1 min-h-0 flex-col overflow-hidden">

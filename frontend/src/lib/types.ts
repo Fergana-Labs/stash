@@ -162,6 +162,8 @@ export interface FileInfo {
   url: string;
   app_url: string;
   uploaded_by: string;
+  uploaded_by_name?: string;
+  uploaded_by_display_name?: string | null;
   created_at: string;
   linked_table_id?: string | null;
 }

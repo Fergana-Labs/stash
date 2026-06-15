@@ -46,6 +46,15 @@ canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
+# File rows are always read joined to their uploader so responses can show
+# attribution ("Uploaded by Sam") without a second round trip.
+_FILE_COLS = (
+    "f.id, f.workspace_id, f.folder_id, f.name, f.content_type, f.size_bytes, "
+    "f.storage_key, f.uploaded_by, f.created_at, f.linked_table_id, "
+    "u.name AS uploaded_by_name, u.display_name AS uploaded_by_display_name"
+)
+_FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
+
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
     """Read gate: any member."""
@@ -108,9 +117,22 @@ async def _file_to_response(row: dict) -> FileResponse:
         url=url,
         app_url=_file_app_url(row),
         uploaded_by=row["uploaded_by"],
+        uploaded_by_name=row["uploaded_by_name"],
+        uploaded_by_display_name=row.get("uploaded_by_display_name"),
         created_at=row["created_at"],
         linked_table_id=row.get("linked_table_id"),
     )
+
+
+async def _fetch_file_row(file_id: UUID, workspace_id: UUID) -> dict | None:
+    """Fetch a single workspace file joined to its uploader, or None."""
+    row = await get_pool().fetchrow(
+        f"SELECT {_FILE_COLS} {_FILE_FROM} "
+        "WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL",
+        file_id,
+        workspace_id,
+    )
+    return dict(row) if row else None
 
 
 async def _download_storage_file_or_502(storage_key: str, operation: str) -> bytes:
@@ -281,10 +303,10 @@ async def list_ws_files(
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 2)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files f WHERE f.workspace_id = $1 AND f.deleted_at IS NULL "
+        f"SELECT {_FILE_COLS} {_FILE_FROM} "
+        "WHERE f.workspace_id = $1 AND f.deleted_at IS NULL "
         f"AND {readable_file} "
-        "ORDER BY created_at DESC",
+        "ORDER BY f.created_at DESC",
         workspace_id,
         current_user["id"],
     )
@@ -301,8 +323,7 @@ async def get_file_by_id(
     file the caller can't read exists."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE id = $1 AND deleted_at IS NULL",
+        f"SELECT {_FILE_COLS} {_FILE_FROM} WHERE f.id = $1 AND f.deleted_at IS NULL",
         file_id,
     )
     if not row:
@@ -318,18 +339,12 @@ async def get_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
-        file_id,
-        workspace_id,
-    )
+    row = await _fetch_file_row(file_id, workspace_id)
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
     if not await _can_access_file(file_id, workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="You don't have access to this file")
-    return await _file_to_response(dict(row))
+    return await _file_to_response(row)
 
 
 @ws_router.get("/{file_id}/download")
@@ -455,17 +470,17 @@ async def update_ws_file(
         updates.append(f"folder_id = ${len(params)}")
 
     if not updates:
-        return await _file_to_response(dict(file_row))
+        return await _file_to_response(await _fetch_file_row(file_id, workspace_id))
 
     params.append(file_id)
     file_id_pos = len(params)
     params.append(workspace_id)
     ws_pos = len(params)
-    updated = await pool.fetchrow(
-        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos} RETURNING *",
+    await pool.execute(
+        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos}",
         *params,
     )
-    return await _file_to_response(dict(updated))
+    return await _file_to_response(await _fetch_file_row(file_id, workspace_id))
 
 
 @ws_router.delete("/{file_id}", status_code=204)
@@ -513,12 +528,7 @@ async def copy_ws_file(
     )
     if not copied:
         raise HTTPException(status_code=404, detail="File not found")
-    row = await get_pool().fetchrow(
-        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, "
-        "uploaded_by, created_at, linked_table_id FROM files WHERE id = $1",
-        copied["id"],
-    )
-    return await _file_to_response(dict(row))
+    return await _file_to_response(await _fetch_file_row(copied["id"], workspace_id))
 
 
 @ws_router.post("/{file_id}/restore", status_code=204)

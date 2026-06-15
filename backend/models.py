@@ -647,6 +647,8 @@ class FileResponse(BaseModel):
     url: str
     app_url: str
     uploaded_by: UUID
+    uploaded_by_name: str
+    uploaded_by_display_name: str | None = None
     created_at: datetime
     linked_table_id: UUID | None = None
 
