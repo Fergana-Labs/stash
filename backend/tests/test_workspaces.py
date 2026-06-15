@@ -798,7 +798,9 @@ async def test_new_page_button_never_collides(client: AsyncClient):
     """The 'New page' button always sends 'Untitled'. Clicking it repeatedly must
     keep working: each new page gets the next free name instead of a 409."""
     key, _ = await _register(client)
-    ws = (await client.post("/api/v1/workspaces", json={"name": "Pages"}, headers=_auth(key))).json()
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Pages"}, headers=_auth(key))
+    ).json()
 
     names = []
     for _ in range(3):

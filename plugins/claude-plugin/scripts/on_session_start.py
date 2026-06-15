@@ -24,7 +24,7 @@ from stashai.plugin.hooks import (
     uploads_disabled_warning,
     uploads_enabled,
 )
-from stashai.plugin.session_upload import spawn_session_watcher
+from stashai.plugin.session_upload import spawn_session_watcher, spawn_skills_sync
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 CONTEXT = (
@@ -45,7 +45,10 @@ CONTEXT = (
     "create` to compose from existing items).\n"
     " - Sharing a coding session → `stash share <session_id>` wraps the "
     "transcript and touched files in one Skill. Don't ALSO mint a Skill "
-    "for each file in that session.\n\n"
+    "for each file in that session.\n"
+    " - Using a public Skill locally → `stash skills install <slug>` "
+    "writes it into ~/.claude/skills so it loads next session "
+    "(`--project` for ./.claude/skills).\n\n"
     "Run `stash prompts agent-guidance` any time you want this guidance "
     "reprinted in full.\n\n"
     "`stash ls` shows everything Stash can reach as one filesystem — files, "
@@ -97,6 +100,10 @@ def main():
             session_url = create_session_record(client, cfg, state, event, DATA_DIR)
     except Exception:
         session_url = None
+
+    spawn_skills_sync(
+        cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", "")
+    )
 
     if session_url:
         session_context = "\n" + SESSION_CONTEXT.format(url=session_url)

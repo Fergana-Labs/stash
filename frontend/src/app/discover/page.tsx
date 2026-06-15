@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
 import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
+import { GitHubIcon } from "../../components/integrations/BrandIcons";
 import ForkSkillCardButton from "../../components/skill/ForkSkillCardButton";
 import SkillCard from "../../components/skill/SkillCard";
 import { useAuth } from "../../hooks/useAuth";
-import { API_BASE, type PublicSkillCard } from "../../lib/api";
+import { API_BASE, githubOwner, type PublicSkillCard } from "../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
@@ -122,7 +123,6 @@ function DiscoverGrid({
   return (
     <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
       {skills.map((skill, i) => {
-        const owner = skill.owner_display_name;
         const trending = sort === "trending" && i < 2;
         return (
           <SkillCard
@@ -132,7 +132,10 @@ function DiscoverGrid({
               title: skill.title,
               description: skill.description,
               cover_image_url: skill.cover_image_url,
-              file_count: skill.item_count,
+              owner_name: skill.owner_name,
+              owner_display_name: skill.source_github_url
+                ? githubOwner(skill.source_github_url)
+                : skill.owner_display_name,
               updated_at: skill.updated_at,
             }}
             cover={COVERS[i % COVERS.length]}
@@ -147,31 +150,47 @@ function DiscoverGrid({
               ) : undefined
             }
             cornerAction={
-              <ForkSkillCardButton
-                slug={skill.slug}
-                sourceWorkspaceId={skill.workspace_id}
-              />
-            }
-            footer={
-              <>
-                <span className="min-w-0 truncate">
-                  {owner}
-                  {skill.workspace_name && (
-                    <>
-                      {" · "}
-                      <span className="font-mono text-dim">{skill.workspace_name}</span>
-                    </>
-                  )}
-                </span>
-                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
-                  Open →
-                </span>
-              </>
+              <span className="flex items-center gap-1.5">
+                {skill.source_github_url && (
+                  <GitHubSourceGlyph href={skill.source_github_url} />
+                )}
+                <ForkSkillCardButton
+                  slug={skill.slug}
+                  sourceWorkspaceId={skill.workspace_id}
+                />
+              </span>
             }
           />
         );
       })}
     </div>
+  );
+}
+
+// The card is one big link, so this opens GitHub itself instead of nesting an
+// anchor (which breaks SSR HTML parsing) — same convention as the fork button.
+function GitHubSourceGlyph({ href }: { href: string }) {
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      title="View source on GitHub"
+      aria-label="View source on GitHub"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, "_blank", "noopener");
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, "_blank", "noopener");
+      }}
+      className="inline-flex cursor-pointer items-center rounded-full bg-white/85 p-1 text-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-white"
+    >
+      <GitHubIcon size={13} />
+    </span>
   );
 }
 

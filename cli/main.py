@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
+import shutil
 import sys
 import textwrap
 import time
@@ -1636,6 +1639,312 @@ def skills_unpublish(skill_id: str = typer.Argument(...)):
         except StashError as e:
             _err(e)
     console.print(f"[green]Unpublished Skill[/green] {skill_id}")
+
+
+def _safe_skill_dirname(name: str) -> str:
+    cleaned = re.sub(r"[^\w.\-() ]+", "-", name).strip(" .")
+    return cleaned or "skill"
+
+
+def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Path, int]:
+    """Write a public-skill payload to skills_root/<folder_name>.
+
+    Returns (target_dir, items_written). fetch_bytes(url) -> bytes is
+    injected so tests don't hit the network. Replacing an existing install
+    is allowed only when the target already looks like a skill (has a
+    SKILL.md) — never delete an arbitrary directory on a name collision."""
+    contents = detail["contents"]
+    target = skills_root / _safe_skill_dirname(detail["folder_name"])
+    if target.exists():
+        if not (target / "SKILL.md").exists():
+            console.print(
+                f"[red]Error:[/red] {target} exists and is not a skill folder; not overwriting."
+            )
+            raise typer.Exit(1)
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+
+    written = 0
+    for page in contents["pages"]:
+        name = page["name"]
+        if "." not in name:
+            name += ".md" if page["content_type"] == "markdown" else ".html"
+        is_md = page["content_type"] == "markdown"
+        body = (page["content_markdown"] if is_md else page["content_html"]) or ""
+        path = target.joinpath(*page["folder_path"], name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        written += 1
+    for f in contents["files"]:
+        if not f.get("url"):
+            console.print(f"[yellow]skipped[/yellow] {f['name']} (no download URL)")
+            continue
+        path = target.joinpath(*f["folder_path"], f["name"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(fetch_bytes(f["url"]))
+        written += 1
+    if contents["tables"]:
+        console.print(
+            f"[yellow]skipped[/yellow] {len(contents['tables'])} table(s) — "
+            "tables don't materialize as local skill files"
+        )
+    return target, written
+
+
+@skills_app.command("install")
+def skills_install(
+    slug: str = typer.Argument(..., help="Public slug, e.g. from app.joinstash.ai/skills/<slug>."),
+    directory: str = typer.Option("", "--dir", help="Skills directory to install into."),
+    project: bool = typer.Option(
+        False, "--project", help="Install into ./.claude/skills (this repo only)."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Install a public Skill into the local agent's skills directory.
+
+    Claude Code loads every SKILL.md folder under ~/.claude/skills (or the
+    repo's .claude/skills with --project) at session start, so the Skill is
+    available to the agent from its next session. Re-running updates the
+    installed copy in place.
+    """
+    if directory and project:
+        console.print("[red]Error:[/red] pass either --dir or --project, not both.")
+        raise typer.Exit(1)
+    if directory:
+        root = Path(directory).expanduser()
+    elif project:
+        root = Path(".claude") / "skills"
+    else:
+        root = Path.home() / ".claude" / "skills"
+
+    with _client() as c:
+        try:
+            detail = c.get_public_skill(slug)
+        except StashError as e:
+            _err(e)
+
+    def fetch_bytes(url: str) -> bytes:
+        resp = httpx.get(url, follow_redirects=True, timeout=60)
+        resp.raise_for_status()
+        return resp.content
+
+    target, written = _materialize_skill(detail, root, fetch_bytes)
+    if _use_json(as_json):
+        output_json({"path": str(target), "items": written})
+        return
+    console.print(
+        f"[green]Installed[/green] '{detail['skill']['title']}' → {target}  ({written} items)"
+    )
+    console.print("[dim]The agent loads it at its next session start.[/dim]")
+
+
+# --- skills sync: two-way local <-> workspace skill sync ---
+
+_SYNC_STATE_DIR = Path.home() / ".stash" / "skills_sync"
+
+
+def _sync_state_path(workspace_id: str, root: Path) -> Path:
+    # One state file per (workspace, local root): the same workspace can sync
+    # to both ~/.claude/skills and a repo's .claude/skills independently.
+    root_key = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:8]
+    return _SYNC_STATE_DIR / f"{workspace_id}--{root_key}.json"
+
+
+def _local_skill_dirs(root: Path) -> dict[str, Path]:
+    if not root.is_dir():
+        return {}
+    return {p.name: p for p in sorted(root.iterdir()) if p.is_dir() and (p / "SKILL.md").exists()}
+
+
+def _collect_local_files(skill_dir: Path) -> list[tuple[str, bytes]]:
+    out = []
+    for path in sorted(skill_dir.rglob("*")):
+        rel = path.relative_to(skill_dir)
+        if path.is_file() and not any(part.startswith(".") for part in rel.parts):
+            out.append((rel.as_posix(), path.read_bytes()))
+    return out
+
+
+def _hash_local_skill(skill_dir: Path) -> str:
+    h = hashlib.sha256()
+    for rel, blob in _collect_local_files(skill_dir):
+        h.update(rel.encode())
+        h.update(b"\0")
+        h.update(blob)
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _hash_remote_contents(contents: dict) -> str:
+    """Change fingerprint for a skill's cloud contents. Pages hash their
+    bodies; binaries hash name+size (bytes live behind presigned URLs)."""
+    entries = []
+    for p in contents["pages"]:
+        name = p["name"]
+        if "." not in name:
+            name += ".md" if p["content_type"] == "markdown" else ".html"
+        is_md = p["content_type"] == "markdown"
+        body = (p["content_markdown"] if is_md else p["content_html"]) or ""
+        sig = hashlib.sha256(body.encode()).hexdigest()
+        entries.append(("/".join([*p["folder_path"], name]), sig))
+    for f in contents["files"]:
+        entries.append(("/".join([*f["folder_path"], f["name"]]), f"size:{f['size_bytes']}"))
+    h = hashlib.sha256()
+    for rel, sig in sorted(entries):
+        h.update(rel.encode())
+        h.update(b"\0")
+        h.update(sig.encode())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _sync_skills(
+    c, workspace_id: str, root: Path, state: dict, push_new: bool, fetch_bytes
+) -> tuple[dict, dict]:
+    """Three-way sync between root and the workspace's skills.
+
+    state maps skill folder name -> {folder_id, local_hash, remote_hash}
+    captured at the last sync; comparing each side against it tells us which
+    side moved. Both moved -> conflict, skipped loudly. Returns
+    (summary, new_state)."""
+    remote: dict[str, dict] = {}
+    for s in c.list_skills(workspace_id):
+        detail = c.get_skill_contents(workspace_id, s["folder_id"])
+        remote[detail["folder_name"]] = detail
+
+    local = _local_skill_dirs(root)
+    summary: dict = {"pulled": [], "pushed": [], "conflicts": [], "ignored": [], "unchanged": []}
+    new_state: dict = {}
+
+    def record(name: str, detail: dict) -> None:
+        new_state[name] = {
+            "folder_id": detail["folder_id"],
+            "local_hash": _hash_local_skill(root / name),
+            "remote_hash": _hash_remote_contents(detail["contents"]),
+        }
+
+    def pull(name: str, detail: dict) -> None:
+        target, _written = _materialize_skill(
+            {"folder_name": detail["folder_name"], "contents": detail["contents"]},
+            root,
+            fetch_bytes,
+        )
+        new_state[name] = {
+            "folder_id": detail["folder_id"],
+            "local_hash": _hash_local_skill(target),
+            "remote_hash": _hash_remote_contents(detail["contents"]),
+        }
+        summary["pulled"].append(name)
+
+    def push(name: str, folder_id: str) -> None:
+        c.replace_skill_contents(workspace_id, folder_id, _collect_local_files(local[name]))
+        record(name, c.get_skill_contents(workspace_id, folder_id))
+        summary["pushed"].append(name)
+
+    for name in sorted(set(remote) | set(local)):
+        rec = state.get(name)
+        detail = remote.get(name)
+        try:
+            if detail and name not in local:
+                # The cloud is the source of truth for what exists: a tracked
+                # local deletion gets re-pulled; remove skills in Stash.
+                pull(name, detail)
+            elif name in local and not detail:
+                if rec:
+                    summary["ignored"].append(f"{name} (deleted in workspace; kept local copy)")
+                elif push_new:
+                    folder = c.create_folder(workspace_id, name)
+                    push(name, folder["id"])
+                else:
+                    summary["ignored"].append(f"{name} (local-only; `stash skills add` to share)")
+            elif rec is None:
+                summary["conflicts"].append(
+                    f"{name} (exists on both sides but was never synced; "
+                    "rename one or delete the local copy to adopt the workspace's)"
+                )
+            else:
+                local_changed = _hash_local_skill(local[name]) != rec["local_hash"]
+                remote_changed = _hash_remote_contents(detail["contents"]) != rec["remote_hash"]
+                if local_changed and remote_changed:
+                    new_state[name] = rec
+                    summary["conflicts"].append(f"{name} (changed locally AND in the workspace)")
+                elif local_changed:
+                    push(name, detail["folder_id"])
+                elif remote_changed:
+                    pull(name, detail)
+                else:
+                    new_state[name] = rec
+                    summary["unchanged"].append(name)
+        except StashError as e:
+            summary["conflicts"].append(f"{name} (sync failed: {e.detail})")
+            if rec:
+                new_state[name] = rec
+    return summary, new_state
+
+
+@skills_app.command("sync")
+def skills_sync(
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
+    directory: str = typer.Option("", "--dir", help="Skills directory to sync."),
+    project: bool = typer.Option(
+        False, "--project", help="Sync ./.claude/skills and push new local skills too."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Two-way sync between the local skills directory and the workspace.
+
+    Every workspace skill is materialized under ~/.claude/skills (so agents
+    load it next session), and local edits to synced skills are pushed back.
+    New local skills are pushed only in --project mode — the global skills
+    dir holds personal skills that don't belong to the team; share one
+    deliberately with `stash skills add`. Skills changed on both sides are
+    skipped loudly: resolve, then re-run.
+    """
+    if directory and project:
+        console.print("[red]Error:[/red] pass either --dir or --project, not both.")
+        raise typer.Exit(1)
+    if directory:
+        root = Path(directory).expanduser()
+    elif project:
+        root = Path(".claude") / "skills"
+    else:
+        root = Path.home() / ".claude" / "skills"
+    ws_id = workspace_id or _resolve_workspace()
+
+    state_path = _sync_state_path(ws_id, root)
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+
+    def fetch_bytes(url: str) -> bytes:
+        resp = httpx.get(url, follow_redirects=True, timeout=60)
+        resp.raise_for_status()
+        return resp.content
+
+    with _client() as c:
+        try:
+            summary, new_state = _sync_skills(
+                c, ws_id, root, state, push_new=project, fetch_bytes=fetch_bytes
+            )
+        except StashError as e:
+            _err(e)
+
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(new_state, indent=1))
+
+    if _use_json(as_json):
+        output_json(summary)
+        return
+    for name in summary["pulled"]:
+        console.print(f"[green]pulled[/green]  {name}")
+    for name in summary["pushed"]:
+        console.print(f"[green]pushed[/green]  {name}")
+    for note in summary["ignored"]:
+        console.print(f"[dim]ignored[/dim]  {note}")
+    for note in summary["conflicts"]:
+        console.print(f"[yellow]conflict[/yellow] {note}")
+    console.print(
+        f"[dim]{len(summary['pulled'])} pulled, {len(summary['pushed'])} pushed, "
+        f"{len(summary['unchanged'])} unchanged, {len(summary['conflicts'])} conflicts → {root}[/dim]"
+    )
 
 
 @skills_app.command("fork")
@@ -5187,6 +5496,14 @@ Commands to reach for
 - `stash share <session_id>` — freeze a coding session (transcript + the
   files it touched) into a Skill folder. Sessions are inherently a
   collection, so this is the right unit.
+- `stash skills install <slug>` — install a public Skill (e.g. from
+  Discover) into ~/.claude/skills so the local agent loads it next
+  session. `--project` targets ./.claude/skills instead.
+- `stash skills sync` — two-way sync between the local skills directory
+  and the workspace's skills: workspace skills materialize locally, local
+  edits to synced skills push back. Runs automatically at session start,
+  targeting each agent's own skills dir (Claude `~/.claude/skills`, Codex/
+  Gemini/OpenCode `~/.agents/skills`, OpenClaw `~/.openclaw/skills`).
 
 Browsing Stash
 --------------

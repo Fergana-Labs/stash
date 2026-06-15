@@ -484,6 +484,7 @@ export interface PublicSkillCard {
   description: string;
   discoverable: boolean;
   cover_image_url: string | null;
+  source_github_url: string | null;
   view_count: number;
   owner_name: string;
   owner_display_name: string;
@@ -492,6 +493,12 @@ export interface PublicSkillCard {
   item_count: number;
   created_at: string;
   updated_at: string;
+}
+
+// Skills imported from GitHub are owned by the curator account, but credit
+// belongs to the repo owner — derive it from the attribution URL.
+export function githubOwner(sourceGithubUrl: string): string {
+  return sourceGithubUrl.replace("https://github.com/", "").split("/")[0];
 }
 
 // --- Files: folders (nested) and pages ---
@@ -1431,6 +1438,7 @@ export interface WorkspaceSkill {
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
+  source_github_url: string | null;
   view_count: number;
   created_at: string;
   updated_at: string;

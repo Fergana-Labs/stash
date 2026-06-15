@@ -59,6 +59,8 @@ vi.mock("../../../../lib/api", () => ({
   },
   forkSkill: vi.fn(),
   getPublicSkill: vi.fn(),
+  githubOwner: (url: string) =>
+    url.replace("https://github.com/", "").split("/")[0],
   listObjectShares: vi.fn(),
   publishSkillFolder: vi.fn(),
   shareObjectByEmail: vi.fn(),
@@ -121,6 +123,7 @@ function skillDetail(
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
+      source_github_url: null,
       view_count: 0,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
@@ -289,6 +292,27 @@ describe("SkillPageClient", () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     expect(await screen.findByText("by Sam")).toBeInTheDocument();
+  });
+
+  it("links the GitHub source in the header only for imported skills", async () => {
+    vi.mocked(getPublicSkill).mockResolvedValueOnce(
+      skillDetail({ source_github_url: "https://github.com/acme/skills/tree/main/cooking" })
+    );
+
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+
+    const link = await screen.findByRole("link", { name: /GitHub/ });
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/acme/skills/tree/main/cooking"
+    );
+    // Credit goes to the repo owner, not the curator account that imported it.
+    expect(screen.getByText("by acme")).toBeInTheDocument();
+
+    cleanup();
+    vi.mocked(getPublicSkill).mockResolvedValueOnce(skillDetail());
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+    await screen.findByText("by Henry");
+    expect(screen.queryByRole("link", { name: /GitHub/ })).toBeNull();
   });
 
   it("renders the SKILL.md intro and rows for the rest of the contents", async () => {

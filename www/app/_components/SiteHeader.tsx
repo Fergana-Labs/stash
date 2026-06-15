@@ -47,6 +47,12 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
             Share docs
           </Link>
           <Link
+            href="/discover"
+            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
+          >
+            Discover
+          </Link>
+          <Link
             href="/docs"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
           >

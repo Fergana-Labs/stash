@@ -19,6 +19,23 @@ from . import page_events, permission_service, security_audit_service, skill_ser
 
 logger = logging.getLogger(__name__)
 
+MD_EXTS = (".md", ".markdown", ".mdx")
+HTML_EXTS = (".html", ".htm")
+
+
+def detect_page_kind(filename: str, content_type: str) -> str | None:
+    """Return 'markdown' or 'html' if the upload should become a page,
+    else None (treat as a binary file). Mirrors the frontend's
+    isMarkdownUpload / isHtmlUpload."""
+    name = filename.lower()
+    ct = (content_type or "").lower()
+    if ct == "text/markdown" or name.endswith(MD_EXTS):
+        return "markdown"
+    if "html" in ct or name.endswith(HTML_EXTS):
+        return "html"
+    return None
+
+
 # HTML pages render in a sandboxed iframe with allow-scripts, and are served on
 # public skill URLs. We strip author-supplied scripts / event handlers /
 # javascript: + data:text/html URLs on write so an agent- or attacker-authored
@@ -1184,3 +1201,105 @@ async def find_or_create_root_folder(workspace_id: UUID, name: str, created_by: 
     if row:
         return dict(row)
     return await create_folder(workspace_id, name, created_by, parent_folder_id=None)
+
+
+# --- Bulk folder-content replacement (skill sync + GitHub import) ---
+
+_SUBTREE = (
+    "WITH RECURSIVE subtree AS ("
+    "  SELECT id FROM folders WHERE id = $1"
+    "  UNION ALL"
+    "  SELECT f.id FROM folders f JOIN subtree s ON f.parent_folder_id = s.id"
+    ") SELECT id FROM subtree"
+)
+
+
+async def clear_folder_contents(root_folder_id: UUID) -> None:
+    """Hard-delete everything inside the folder, keeping the root — for skill
+    folders, skills.folder_id cascades on folder delete, so dropping the root
+    would unpublish the skill. Pages/files folder FKs are ON DELETE SET NULL,
+    so their rows must be deleted explicitly or they'd orphan into the
+    workspace root."""
+    from . import storage_service
+
+    pool = get_pool()
+    if storage_service.is_configured():
+        rows = await pool.fetch(
+            f"SELECT storage_key FROM files WHERE folder_id IN ({_SUBTREE})", root_folder_id
+        )
+        for row in rows:
+            await storage_service.delete_file(row["storage_key"])
+    await pool.execute(f"DELETE FROM files WHERE folder_id IN ({_SUBTREE})", root_folder_id)
+    await pool.execute(f"DELETE FROM pages WHERE folder_id IN ({_SUBTREE})", root_folder_id)
+    await pool.execute(f"DELETE FROM folders WHERE id IN ({_SUBTREE}) AND id <> $1", root_folder_id)
+
+
+async def write_folder_files(
+    workspace_id: UUID,
+    owner_id: UUID,
+    root_folder_id: UUID,
+    files: list[tuple[str, bytes]],
+) -> int:
+    """Write (relative_path, bytes) pairs into the folder, creating subfolders
+    as needed. Markdown/HTML become pages keeping their full filenames (skill
+    detection requires a page named literally SKILL.md); everything else goes
+    to file storage. Returns the number of items written."""
+    import mimetypes
+
+    from . import storage_service
+
+    pool = get_pool()
+    folder_ids: dict[str, UUID] = {"": root_folder_id}
+
+    async def ensure_dir(path: str) -> UUID:
+        if path in folder_ids:
+            return folder_ids[path]
+        parent, _, name = path.rpartition("/")
+        parent_id = await ensure_dir(parent)
+        folder = await create_folder(
+            workspace_id=workspace_id,
+            name=name,
+            created_by=owner_id,
+            parent_folder_id=parent_id,
+        )
+        folder_ids[path] = folder["id"]
+        return folder["id"]
+
+    written = 0
+    for rel_path, blob in files:
+        dir_path, _, filename = rel_path.rpartition("/")
+        folder_id = await ensure_dir(dir_path)
+        page_kind = detect_page_kind(filename, "")
+        if page_kind is not None:
+            text = blob.decode("utf-8", errors="replace")
+            await create_page(
+                workspace_id=workspace_id,
+                name=filename,
+                created_by=owner_id,
+                folder_id=folder_id,
+                content=text if page_kind == "markdown" else "",
+                content_html=text if page_kind == "html" else "",
+                content_type=page_kind,
+            )
+            written += 1
+            continue
+        if not storage_service.is_configured():
+            logger.warning("file storage not configured; skipping binary %s", rel_path)
+            continue
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        storage_key = await storage_service.upload_file(
+            str(workspace_id), filename, blob, content_type
+        )
+        await pool.execute(
+            "INSERT INTO files (workspace_id, folder_id, name, content_type, size_bytes, "
+            "storage_key, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            workspace_id,
+            folder_id,
+            filename,
+            content_type,
+            len(blob),
+            storage_key,
+            owner_id,
+        )
+        written += 1
+    return written

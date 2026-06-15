@@ -77,6 +77,12 @@ export default function SkillCard({
   selected,
 }: SkillCardProps) {
   const author = authorName(skill);
+  const metaParts = [
+    author && `by ${author}`,
+    skill.file_count !== undefined &&
+      `${skill.file_count} file${skill.file_count === 1 ? "" : "s"}`,
+    skill.updated_at && `updated ${relativeTime(skill.updated_at)}`,
+  ].filter(Boolean) as string[];
 
   return (
     <Link
@@ -127,12 +133,11 @@ export default function SkillCard({
         <p className="mt-2 line-clamp-2 text-[12.5px] leading-[1.55] text-dim">
           {skill.description || "No description."}
         </p>
-        <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
-          {author && `by ${author} · `}
-          {skill.file_count !== undefined &&
-            `${skill.file_count} file${skill.file_count === 1 ? "" : "s"}`}
-          {skill.updated_at && ` · updated ${relativeTime(skill.updated_at)}`}
-        </div>
+        {metaParts.length > 0 && (
+          <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
+            {metaParts.join(" · ")}
+          </div>
+        )}
         <div className="flex-1" />
         {footer && (
           <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-border-subtle pt-2.5 text-[11.5px] text-muted">

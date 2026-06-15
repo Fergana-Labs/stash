@@ -349,6 +349,12 @@ export default function AppSidebar({
             active={pathname.startsWith(`/workspaces/${activeWorkspace.id}/agents`)}
           />
         ) : null}
+        <NavRow
+          href="/discover"
+          icon={<span aria-hidden>◎</span>}
+          label="Discover"
+          active={pathname.startsWith("/discover")}
+        />
       </nav>
 
       {activeWorkspace ? (
