@@ -92,6 +92,15 @@ type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
 
 const SORT_STORAGE_KEY = "stash_files_sort";
 
+const DEFAULT_SORT: Sort = { key: "modified", dir: "desc" };
+
+// The List view opens on documents only — folders plus the page types people
+// author (HTML, Markdown). Other file types (PDFs, images, tables) stay hidden
+// until chosen from the Type menu, so uploads don't clutter the default view.
+// `typeFilter === null` means this doc set; ALL_TYPES means show everything.
+const DEFAULT_TYPES = new Set(["Folder", "HTML", "Markdown"]);
+const ALL_TYPES = "__all__";
+
 function readSort(): Sort {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
@@ -133,7 +142,7 @@ export default function ItemsList({
   onToggleSelect,
   selectedDragPayloads,
 }: Props) {
-  const [sort, setSort] = useState<Sort>(() => readSort());
+  const [sort, setSort] = useState<Sort>(() => readSort() ?? DEFAULT_SORT);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
   function applySort(next: NonNullable<Sort>) {
@@ -154,15 +163,22 @@ export default function ItemsList({
     applySort(next);
   }
 
-  // Options come from the unfiltered items so every type stays pickable
-  // while a filter is active.
+  // Only the non-default types are pickable here; folders/HTML/Markdown already
+  // show by default, so the menu is purely for revealing the other types.
   const typeOptions = useMemo(
-    () => Array.from(new Set(items.map(typeFor))).sort(),
+    () =>
+      Array.from(new Set(items.map(typeFor)))
+        .filter((type) => !DEFAULT_TYPES.has(type))
+        .sort(),
     [items],
   );
 
   const sortedItems = useMemo(() => {
-    const visible = typeFilter ? items.filter((item) => typeFor(item) === typeFilter) : items;
+    const visible = items.filter((item) => {
+      if (typeFilter === null) return DEFAULT_TYPES.has(typeFor(item));
+      if (typeFilter === ALL_TYPES) return true;
+      return typeFor(item) === typeFilter;
+    });
     if (!sort) return visible;
     const arr = [...visible].sort((a, b) => compareItems(a, b, sort.key));
     if (sort.dir === "desc") arr.reverse();
@@ -206,7 +222,9 @@ export default function ItemsList({
         ))}
         {sortedItems.length === 0 && (
           <div className="px-4 py-10 text-center text-[12.5px] text-muted">
-            {typeFilter ? `No ${typeFilter} items here.` : "Empty folder."}
+            {typeFilter && typeFilter !== ALL_TYPES
+              ? `No ${typeFilter} items here.`
+              : "Empty folder."}
           </div>
         )}
       </div>
@@ -292,7 +310,11 @@ function TypeHeader({
           (sortActive || filter ? "text-foreground" : "")
         }
       >
-        {filter ? `Type: ${filter}` : "Type"}
+        {filter === null
+          ? "Type"
+          : filter === ALL_TYPES
+            ? "Type: All"
+            : `Type: ${filter}`}
         {sortActive && <span className="text-[9px]">{sort?.dir === "desc" ? "▼" : "▲"}</span>}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <polyline points="6 9 12 15 18 9" />
@@ -303,7 +325,8 @@ function TypeHeader({
           <MenuItem label="Sort A → Z" checked={sortActive && sort?.dir === "asc"} onSelect={() => choose(() => onSort("asc"))} />
           <MenuItem label="Sort Z → A" checked={sortActive && sort?.dir === "desc"} onSelect={() => choose(() => onSort("desc"))} />
           <div className="my-1 border-t border-border" />
-          <MenuItem label="All types" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
+          <MenuItem label="Documents only" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
+          <MenuItem label="All types" checked={filter === ALL_TYPES} onSelect={() => choose(() => onFilter(ALL_TYPES))} />
           {options.map((type) => (
             <MenuItem key={type} label={type} checked={filter === type} onSelect={() => choose(() => onFilter(type))} />
           ))}
