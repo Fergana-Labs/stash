@@ -173,16 +173,12 @@ Then install the CLI:
 ```bash
 pip install stashai   # or: uv tool install stashai
 cd /path/to/the/repo/you/want/to/connect
-stash config base_url http://localhost:3456
-stash login
+stash login   # choose "Self-host" and enter http://localhost:3456
 ```
 
-Use your public URL instead of `http://localhost:3456` when connecting to a
-domain-backed install:
-
-```bash
-stash config base_url https://app.example.com
-```
+When connecting to a domain-backed install, enter your public URL (e.g.
+`https://app.example.com`) at the same prompt. To change the endpoint later,
+run `stash settings`.
 
 Finally see it in action:
 
