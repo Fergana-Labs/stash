@@ -377,7 +377,7 @@ export default function AppSidebar({
           <button
             type="button"
             onClick={toggleExternalCollapsed}
-            className="flex w-full items-center gap-1 px-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+            className="flex w-full cursor-pointer items-center gap-1 px-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
           >
             <span
               aria-hidden
@@ -400,7 +400,7 @@ export default function AppSidebar({
           <button
             type="button"
             onClick={() => setAddSourceOpen(true)}
-            className="page-row group/nav flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
+            className="page-row group/nav flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
           >
             <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]" aria-hidden>
               ＋

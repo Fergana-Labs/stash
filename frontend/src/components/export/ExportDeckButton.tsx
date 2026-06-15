@@ -159,7 +159,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={!!busyFormat}
-        className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-raised disabled:cursor-wait disabled:opacity-80"
+        className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-raised disabled:cursor-wait disabled:opacity-80"
       >
         {busyFormat && <Spinner />}
         {busyFormat ? busyCopyFor(busyFormat) : "Export deck"}
@@ -174,7 +174,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
               key={f.value}
               role="menuitem"
               onClick={() => runExport(f.value)}
-              className="block w-full rounded-md px-2.5 py-2 text-left transition hover:bg-raised"
+              className="block w-full cursor-pointer rounded-md px-2.5 py-2 text-left transition hover:bg-raised"
             >
               <div className="text-[13px] font-medium text-foreground">{f.label}</div>
               <div className="mt-0.5 text-[12px] text-muted">{f.help}</div>
@@ -219,7 +219,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
           <button
             type="button"
             onClick={() => setResult(null)}
-            className="ml-3 text-muted hover:text-foreground"
+            className="ml-3 cursor-pointer text-muted hover:text-foreground"
           >
             Dismiss
           </button>
@@ -231,7 +231,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
           <button
             type="button"
             onClick={() => setError(null)}
-            className="ml-2 underline"
+            className="ml-2 cursor-pointer underline"
           >
             Dismiss
           </button>

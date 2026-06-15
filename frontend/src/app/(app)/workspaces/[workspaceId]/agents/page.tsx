@@ -145,7 +145,7 @@ function AgentsPageInner() {
               <button
                 type="button"
                 onClick={() => setActive(t.id)}
-                className="min-w-0 truncate outline-none"
+                className="min-w-0 cursor-pointer truncate outline-none"
               >
                 {t.title}
               </button>
@@ -154,7 +154,7 @@ function AgentsPageInner() {
                   type="button"
                   aria-label="Close chat"
                   onClick={() => closeChat(t.id)}
-                  className="ml-1 text-muted hover:text-error"
+                  className="ml-1 cursor-pointer text-muted hover:text-error"
                 >
                   ×
                 </button>
@@ -165,7 +165,7 @@ function AgentsPageInner() {
             type="button"
             onClick={newChat}
             aria-label="New chat"
-            className="px-3 py-2 text-[16px] text-muted hover:text-foreground"
+            className="cursor-pointer px-3 py-2 text-[16px] text-muted hover:text-foreground"
           >
             ＋
           </button>

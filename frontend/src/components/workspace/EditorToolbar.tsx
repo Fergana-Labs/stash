@@ -291,7 +291,7 @@ export default function EditorToolbar({
               "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium transition " +
               (selectionEmpty
                 ? "cursor-not-allowed text-muted/40"
-                : "text-foreground hover:bg-raised")
+                : "cursor-pointer text-foreground hover:bg-raised")
             }
           >
             <CommentIcon />
@@ -346,8 +346,8 @@ function Btn({
         (disabled
           ? "cursor-not-allowed text-muted/40"
           : active
-            ? "bg-foreground/5 text-foreground"
-            : "text-muted hover:bg-raised hover:text-foreground")
+            ? "cursor-pointer bg-foreground/5 text-foreground"
+            : "cursor-pointer text-muted hover:bg-raised hover:text-foreground")
       }
     >
       {children}
@@ -410,7 +410,7 @@ function Item({
       type="button"
       onClick={onClick}
       className={
-        "block w-full px-3 py-1.5 text-left transition " +
+        "block w-full cursor-pointer px-3 py-1.5 text-left transition " +
         (destructive
           ? "text-red-600 hover:bg-red-500/10"
           : "text-foreground hover:bg-raised")

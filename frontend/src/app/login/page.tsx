@@ -185,14 +185,14 @@ function LoginPageInner() {
         {mode === "login" ? (
           <>
             New here?{" "}
-            <button type="button" onClick={() => { setMode("register"); setError(""); }} className="text-brand hover:underline">
+            <button type="button" onClick={() => { setMode("register"); setError(""); }} className="cursor-pointer text-brand hover:underline">
               Create an account
             </button>
           </>
         ) : (
           <>
             Already have an account?{" "}
-            <button type="button" onClick={() => { setMode("login"); setError(""); }} className="text-brand hover:underline">
+            <button type="button" onClick={() => { setMode("login"); setError(""); }} className="cursor-pointer text-brand hover:underline">
               Sign in
             </button>
           </>
@@ -291,14 +291,14 @@ function AuthorizeCliPanel({
           type="button"
           onClick={handleAuthorize}
           disabled={submitting}
-          className="w-full bg-brand hover:bg-brand-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
+          className="w-full cursor-pointer bg-brand hover:bg-brand-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
         >
           {submitting ? "Authorizing..." : "Authorize CLI"}
         </button>
         <button
           type="button"
           onClick={onUseDifferentAccount}
-          className="text-[11px] text-muted hover:text-foreground"
+          className="cursor-pointer text-[11px] text-muted hover:text-foreground"
         >
           Use a different account
         </button>
@@ -560,7 +560,7 @@ function BrandButton({ submitting, label }: { submitting: boolean; label: string
     <button
       type="submit"
       disabled={submitting}
-      className="group relative w-full bg-brand hover:bg-brand-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-[0_8px_24px_-8px_oklch(0.7_0.14_55_/_0.5)] hover:shadow-[0_10px_28px_-6px_oklch(0.7_0.14_55_/_0.6)]"
+      className="group relative w-full cursor-pointer bg-brand hover:bg-brand-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-[0_8px_24px_-8px_oklch(0.7_0.14_55_/_0.5)] hover:shadow-[0_10px_28px_-6px_oklch(0.7_0.14_55_/_0.6)]"
     >
       <span className="inline-flex items-center justify-center gap-2">
         {label}

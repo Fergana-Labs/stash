@@ -61,7 +61,7 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
         aria-haspopup="menu"
         aria-expanded={open}
         title={accountLabel}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
+        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
       >
         {initial}
       </button>
@@ -92,7 +92,7 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
               setOpen(false);
               onLogout?.();
             }}
-            className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+            className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
           >
             Sign out
           </button>

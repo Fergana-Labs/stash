@@ -107,7 +107,7 @@ export default function WorkspaceSection() {
                 key={g.label}
                 onClick={() => setGradient(g.css)}
                 className={
-                  "h-8 w-16 rounded-md border " +
+                  "h-8 w-16 cursor-pointer rounded-md border " +
                   (workspace.color_gradient === g.css
                     ? "border-foreground ring-2 ring-brand/30"
                     : "border-border")
@@ -119,7 +119,7 @@ export default function WorkspaceSection() {
             {workspace.color_gradient && (
               <button
                 onClick={() => clearField("color_gradient")}
-                className="text-[11.5px] text-muted hover:text-foreground"
+                className="cursor-pointer text-[11.5px] text-muted hover:text-foreground"
               >
                 Clear
               </button>
@@ -138,7 +138,7 @@ export default function WorkspaceSection() {
         </div>
         <button
           onClick={handleDelete}
-          className="rounded-lg border border-error/60 px-3 py-2 text-sm font-medium text-error hover:bg-error/10 transition-colors"
+          className="cursor-pointer rounded-lg border border-error/60 px-3 py-2 text-sm font-medium text-error hover:bg-error/10 transition-colors"
         >
           Delete this workspace
         </button>
@@ -198,7 +198,7 @@ function ImageField({
             }}
           />
           {url && (
-            <button onClick={onClear} className="text-[11.5px] text-muted hover:text-foreground">
+            <button onClick={onClear} className="cursor-pointer text-[11.5px] text-muted hover:text-foreground">
               Clear
             </button>
           )}

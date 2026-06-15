@@ -50,7 +50,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
       {children}
       {options && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 px-4"
+          className="fixed inset-0 z-[60] flex cursor-pointer items-center justify-center bg-black/30 px-4"
           onClick={() => settle(false)}
         >
           <div
@@ -70,7 +70,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 onClick={() => settle(false)}
-                className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
+                className="cursor-pointer rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
               >
                 Cancel
               </button>
@@ -79,7 +79,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
                 autoFocus
                 onClick={() => settle(true)}
                 className={
-                  "rounded-md px-3 py-1.5 text-[12.5px] font-medium text-white " +
+                  "cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium text-white " +
                   (destructive
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)]")

@@ -247,7 +247,7 @@ export default function TrashPage() {
               type="button"
               disabled={bulkBusy || selected.size === 0}
               onClick={handleBulkRestore}
-              className="rounded-md border border-border bg-base px-3 py-1 text-[12px] text-foreground hover:bg-raised disabled:opacity-50"
+              className="cursor-pointer rounded-md border border-border bg-base px-3 py-1 text-[12px] text-foreground hover:bg-raised disabled:opacity-50"
             >
               Restore {selected.size > 0 ? `(${selected.size})` : ""}
             </button>
@@ -255,7 +255,7 @@ export default function TrashPage() {
               type="button"
               disabled={bulkBusy || selected.size === 0}
               onClick={handleBulkPurge}
-              className="rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10 disabled:opacity-50"
+              className="cursor-pointer rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10 disabled:opacity-50"
             >
               Delete forever {selected.size > 0 ? `(${selected.size})` : ""}
             </button>
@@ -360,7 +360,7 @@ function TrashSection({
                 type="button"
                 disabled={busyId === entry.id || bulkBusy}
                 onClick={() => onRestore(kind, entry.id)}
-                className="rounded-md border border-border bg-base px-3 py-1 text-[12px] text-foreground hover:bg-raised disabled:opacity-50"
+                className="cursor-pointer rounded-md border border-border bg-base px-3 py-1 text-[12px] text-foreground hover:bg-raised disabled:opacity-50"
               >
                 Restore
               </button>
@@ -368,7 +368,7 @@ function TrashSection({
                 type="button"
                 disabled={busyId === entry.id || bulkBusy}
                 onClick={() => onPurge(kind, entry.id, entry.name)}
-                className="rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10 disabled:opacity-50"
+                className="cursor-pointer rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10 disabled:opacity-50"
               >
                 Delete forever
               </button>

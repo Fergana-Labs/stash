@@ -227,7 +227,7 @@ function TopSearchButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-10 w-full items-center gap-2.5 rounded-full border border-border bg-surface px-4 text-left text-[14px] text-muted shadow-sm transition-colors hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
+      className="flex h-10 w-full cursor-pointer items-center gap-2.5 rounded-full border border-border bg-surface px-4 text-left text-[14px] text-muted shadow-sm transition-colors hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
       aria-label="Search"
     >
       <svg
@@ -392,7 +392,7 @@ export default function AppShell({
                 return next;
               });
             }}
-            className="rounded p-1 text-muted hover:bg-raised"
+            className="cursor-pointer rounded p-1 text-muted hover:bg-raised"
             aria-label="Toggle sidebar"
             title="Toggle sidebar (⌘\\)"
           >
@@ -501,7 +501,7 @@ function UserMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         title={accountLabel}
-        className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
+        className="ml-1 inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
       >
         {initial}
       </button>
@@ -532,7 +532,7 @@ function UserMenu({
               setOpen(false);
               onLogout();
             }}
-            className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+            className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
           >
             Sign out
           </button>

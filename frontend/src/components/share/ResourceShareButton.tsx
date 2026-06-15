@@ -160,7 +160,7 @@ export default function ResourceShareButton({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+        className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
         Share
       </button>
@@ -180,7 +180,7 @@ export default function ResourceShareButton({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded p-1 text-muted hover:bg-raised hover:text-foreground"
+              className="cursor-pointer rounded p-1 text-muted hover:bg-raised hover:text-foreground"
               aria-label="Close share dialog"
             >
               <svg
@@ -228,7 +228,7 @@ export default function ResourceShareButton({
               <button
                 type="submit"
                 disabled={busy || !email.trim()}
-                className="rounded-md bg-foreground px-3 py-2 text-[12.5px] font-medium text-background disabled:opacity-45"
+                className="cursor-pointer rounded-md bg-foreground px-3 py-2 text-[12.5px] font-medium text-background disabled:opacity-45"
               >
                 Invite
               </button>
@@ -312,14 +312,14 @@ export default function ResourceShareButton({
             <button
               type="button"
               onClick={() => void copyLink()}
-              className="rounded-full border border-border bg-base px-4 py-2 text-[13px] font-medium text-foreground hover:bg-raised"
+              className="cursor-pointer rounded-full border border-border bg-base px-4 py-2 text-[13px] font-medium text-foreground hover:bg-raised"
             >
               Copy link
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-full bg-[var(--color-brand-600)] px-5 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="cursor-pointer rounded-full bg-[var(--color-brand-600)] px-5 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Done
             </button>
@@ -386,7 +386,7 @@ function AccessRow({
           type="button"
           onClick={onRemove}
           disabled={busy}
-          className="shrink-0 text-[12px] text-red-500 hover:underline disabled:opacity-40"
+          className="shrink-0 cursor-pointer text-[12px] text-red-500 hover:underline disabled:opacity-40"
         >
           Remove
         </button>

@@ -151,7 +151,7 @@ function Tile({
             e.stopPropagation();
             void onDelete(item);
           }}
-          className="rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          className="cursor-pointer rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
           title="Delete"
           aria-label="Delete"
         >

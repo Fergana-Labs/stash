@@ -95,7 +95,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
         type="button"
         onClick={onClick}
         disabled={busy}
-        className="rounded-lg border border-brand bg-brand px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+        className="cursor-pointer rounded-lg border border-brand bg-brand px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
       >
         {busy ? "Adding..." : "Add to my files"}
       </button>
@@ -112,7 +112,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
                 onClick={() =>
                   router.push(`/workspaces/${attached.workspaceId}/skills/${attached.folderId}`)
                 }
-                className="w-full rounded-md border border-border-subtle px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
+                className="w-full cursor-pointer rounded-md border border-border-subtle px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
               >
                 Open skill
               </button>
@@ -140,7 +140,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
                 type="button"
                 disabled={busy || !selectedWorkspaceId}
                 onClick={() => void attachToWorkspace(selectedWorkspaceId)}
-                className="w-full rounded-md bg-brand px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
+                className="w-full cursor-pointer rounded-md bg-brand px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
               >
                 Add Skill
               </button>

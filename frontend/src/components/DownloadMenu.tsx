@@ -36,7 +36,7 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-base text-muted hover:bg-raised hover:text-foreground"
+        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-border bg-base text-muted hover:bg-raised hover:text-foreground"
         aria-label="More actions"
         title="More actions"
       >
@@ -55,7 +55,7 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
                 setOpen(false);
                 o.onSelect();
               }}
-              className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
             >
               {o.label}
             </button>
@@ -70,7 +70,7 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
                 setOpen(false);
                 o.onSelect();
               }}
-              className="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-500/10"
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-red-600 hover:bg-red-500/10"
             >
               {o.label}
             </button>

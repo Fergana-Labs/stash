@@ -200,7 +200,7 @@ export default function CommandPalette({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-transparent px-2 pt-2 sm:px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] cursor-pointer bg-transparent px-2 pt-2 sm:px-4" onClick={onClose}>
       <div
         className="mx-auto flex max-h-[calc(100vh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -223,7 +223,7 @@ export default function CommandPalette({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground"
             aria-label="Close search"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

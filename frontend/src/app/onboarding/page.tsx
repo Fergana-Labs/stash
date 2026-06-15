@@ -348,7 +348,7 @@ function PillGroup({
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(selected ? "" : option)}
-            className={`rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
+            className={`cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
               selected
                 ? "border-brand bg-brand text-white"
                 : "border-border bg-surface text-dim hover:border-foreground/40 hover:text-foreground"
@@ -459,7 +459,7 @@ function TryItOutStep({
         <button
           type="button"
           onClick={onCollabDoc}
-          className="group flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
+          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
         >
           <div>
             <div className="text-[13.5px] font-medium text-foreground">
@@ -491,7 +491,7 @@ function TryItOutStep({
               type="button"
               onClick={onContinue}
               disabled={!canContinue}
-              className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Continue
             </button>
@@ -608,7 +608,7 @@ function StepControls({
       <button
         type="button"
         onClick={onSkip}
-        className="text-[12px] text-muted hover:text-foreground transition-colors"
+        className="cursor-pointer text-[12px] text-muted hover:text-foreground transition-colors"
       >
         Skip onboarding
       </button>
@@ -617,7 +617,7 @@ function StepControls({
           type="button"
           onClick={onContinue}
           disabled={!canContinue}
-          className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {continueLabel}
         </button>

@@ -59,7 +59,7 @@ export default function JoinPage() {
               <p className="text-red-400 mb-4">{error}</p>
               <button
                 onClick={() => router.push("/")}
-                className="bg-raised hover:bg-raised text-foreground px-4 py-2 rounded text-sm"
+                className="bg-raised hover:bg-raised text-foreground px-4 py-2 rounded text-sm cursor-pointer"
               >
                 Go Home
               </button>
