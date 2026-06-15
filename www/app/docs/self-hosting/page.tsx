@@ -36,12 +36,11 @@ curl https://app.example.com/health   # wait for {"status":"ok"}`}</CodeBlock>
       </P>
       <CodeBlock>{`pip install stashai   # or: uv tool install stashai
 cd /path/to/your/repo
-stash config base_url http://localhost:3456
-stash login`}</CodeBlock>
+stash login   # choose "Self-host" and enter http://localhost:3456`}</CodeBlock>
       <P>
-        Use your public URL instead of <Code>http://localhost:3456</Code> for a
-        Caddy-backed install.{" "}
-        <Code>stash login</Code> opens it to register and authorize the CLI.
+        Enter your public URL instead of <Code>http://localhost:3456</Code> for a
+        Caddy-backed install. <Code>stash login</Code> opens it to register and
+        authorize the CLI; change the endpoint later from <Code>stash settings</Code>.
       </P>
 
       <H3>Upgrading</H3>

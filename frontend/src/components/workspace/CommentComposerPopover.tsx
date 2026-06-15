@@ -72,7 +72,7 @@ export default function CommentComposerPopover({
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="rounded-sm px-2 py-1 text-[12px] text-muted hover:bg-background"
+          className="cursor-pointer rounded-sm px-2 py-1 text-[12px] text-muted hover:bg-background"
         >
           Cancel
         </button>
@@ -80,7 +80,7 @@ export default function CommentComposerPopover({
           type="button"
           onClick={submit}
           disabled={submitting || !body.trim()}
-          className="rounded-sm bg-[var(--color-brand-600)] px-2.5 py-1 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50"
+          className="cursor-pointer rounded-sm bg-[var(--color-brand-600)] px-2.5 py-1 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? "…" : "Comment"}
         </button>

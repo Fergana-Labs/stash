@@ -138,7 +138,7 @@ export default function SkillFolderClient() {
         <button
           type="button"
           onClick={() => void convertToFolder()}
-          className="rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground"
+          className="cursor-pointer rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground"
         >
           Convert to folder
         </button>

@@ -601,7 +601,7 @@ export default function SkillPageView() {
               <button
                 type="button"
                 onClick={handleNewPage}
-                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+                className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
               >
                 + New page
               </button>
@@ -616,7 +616,7 @@ export default function SkillPageView() {
                 <button
                   type="button"
                   onClick={() => setHtmlEditMode((v) => !v)}
-                  className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+                  className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
                 >
                   {htmlEditMode ? "Done" : "Edit"}
                 </button>
@@ -707,14 +707,14 @@ export default function SkillPageView() {
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="font-medium text-[var(--color-brand-600)] hover:underline"
+                  className="cursor-pointer font-medium text-[var(--color-brand-600)] hover:underline"
                 >
                   Reload
                 </button>
                 <button
                   type="button"
                   onClick={() => setExternalEdit(null)}
-                  className="text-[var(--text-muted)] hover:text-foreground"
+                  className="cursor-pointer text-[var(--text-muted)] hover:text-foreground"
                 >
                   Dismiss
                 </button>
@@ -758,7 +758,7 @@ export default function SkillPageView() {
                           selection: htmlSelection,
                         });
                       }}
-                      className="comment-anchor-pill absolute z-30 inline-flex -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
+                      className="comment-anchor-pill absolute z-30 inline-flex -translate-x-1/2 -translate-y-full cursor-pointer items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
                       style={{
                         top: htmlSelection.rect.top - 8,
                         left: (htmlSelection.rect.left + htmlSelection.rect.right) / 2,

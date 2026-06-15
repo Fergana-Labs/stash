@@ -372,14 +372,14 @@ export default function SkillSessionsPage() {
             <button
               type="button"
               onClick={() => void bulkDeleteSessions()}
-              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
             >
               Delete
             </button>
             <button
               type="button"
               onClick={clearSelection}
-              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
@@ -509,7 +509,7 @@ function DayGroup({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
       >
         <Chev open={open} />
         <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
@@ -561,7 +561,7 @@ function FlatGroup({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
       >
         <Chev open={open} />
         <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
@@ -610,7 +610,7 @@ function SegmentedControl<T extends string>({
               type="button"
               onClick={() => onChange(opt.key)}
               className={
-                "rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
+                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
                 (active
                   ? "bg-base font-semibold text-foreground shadow-sm"
                   : "text-muted hover:bg-raised/70 hover:text-foreground")
@@ -796,7 +796,7 @@ function SessionTableRow({
           }
         }}
         className={
-          "hidden justify-self-end rounded p-1 transition hover:bg-raised md:block " +
+          "hidden cursor-pointer justify-self-end rounded p-1 transition hover:bg-raised md:block " +
           (pinned
             ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
             : "text-muted/40 hover:text-foreground")
@@ -953,7 +953,7 @@ function FoldersSection({
         <button
           type="button"
           onClick={onNewFolder}
-          className="rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+          className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
         >
           + New folder
         </button>
@@ -1052,7 +1052,7 @@ function FolderCard({
           e.stopPropagation();
           onShare();
         }}
-        className="shrink-0 rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
+        className="shrink-0 cursor-pointer rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
       >
         Share
       </button>
@@ -1073,7 +1073,7 @@ function SharedFolderCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
+      className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
     >
       <span aria-hidden className="mt-0.5 text-[18px]">
         🗂️
@@ -1148,7 +1148,7 @@ function FolderDrill({
       <button
         type="button"
         onClick={onBack}
-        className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+        className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
       >
         ← All folders
       </button>
@@ -1163,7 +1163,7 @@ function FolderDrill({
             <button
               type="button"
               onClick={() => onShare(ownFolder)}
-              className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Share
             </button>
@@ -1171,7 +1171,7 @@ function FolderDrill({
               <button
                 type="button"
                 onClick={() => onDelete(ownFolder)}
-                className="rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted hover:text-rose-500"
+                className="cursor-pointer rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted hover:text-rose-500"
               >
                 Delete
               </button>

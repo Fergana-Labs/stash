@@ -29,11 +29,11 @@ type AddSourceBody = {
 };
 
 export function primaryButton(): string {
-  return "shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60";
+  return "shrink-0 cursor-pointer rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60";
 }
 
 export function secondaryButton(): string {
-  return "shrink-0 rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-raised disabled:opacity-60";
+  return "shrink-0 cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-raised disabled:opacity-60";
 }
 
 // Renders the right "add a specific project/page/repo" UI for a connector and
@@ -388,7 +388,7 @@ export function GitHubRepoPicker({
           type="button"
           disabled={busy}
           onClick={() => void onAdd(repo)}
-          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
+          className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
         >
           <GitHubIcon className="mt-0.5 text-muted" size={14} />
           <span className="min-w-0 flex-1">
@@ -451,7 +451,7 @@ export function NotionPagePicker({
           type="button"
           disabled={busy}
           onClick={() => void onAdd(page)}
-          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
+          className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
         >
           <NotionIcon className="mt-0.5 text-muted" size={14} />
           <span className="min-w-0 flex-1">
@@ -514,7 +514,7 @@ export function JiraProjectPicker({
           type="button"
           disabled={busy}
           onClick={() => void onAdd(project)}
-          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
+          className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
         >
           <JiraIcon className="mt-0.5" size={14} />
           <span className="min-w-0 flex-1">
@@ -575,7 +575,7 @@ export function AsanaProjectPicker({
           type="button"
           disabled={busy}
           onClick={() => void onAdd(project)}
-          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
+          className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
         >
           <AsanaIcon className="mt-0.5" size={14} />
           <span className="min-w-0 flex-1">

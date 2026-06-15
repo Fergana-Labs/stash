@@ -179,7 +179,7 @@ export default function MemoryAskStep({
                     setQuestion(s);
                     void ask(s);
                   }}
-                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-[12px] text-foreground hover:bg-raised hover:border-brand"
+                  className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-[12px] text-foreground hover:bg-raised hover:border-brand"
                 >
                   {s}
                 </button>
@@ -204,7 +204,7 @@ export default function MemoryAskStep({
             <button
               type="submit"
               disabled={!question.trim()}
-              className="rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
             >
               Ask
             </button>

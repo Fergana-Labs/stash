@@ -163,7 +163,7 @@ function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
               key={prompt}
               type="button"
               onClick={() => onPrompt(prompt)}
-              className="min-h-12 rounded-md border border-border bg-surface px-3 py-2 text-left text-[12.5px] leading-4 text-foreground hover:border-[var(--color-brand-300)] hover:bg-raised"
+              className="min-h-12 cursor-pointer rounded-md border border-border bg-surface px-3 py-2 text-left text-[12.5px] leading-4 text-foreground hover:border-[var(--color-brand-300)] hover:bg-raised"
             >
               {prompt}
             </button>
@@ -306,7 +306,7 @@ function Composer({
           type="button"
           onClick={onSend}
           disabled={disabled || !value.trim()}
-          className="rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           Send
         </button>

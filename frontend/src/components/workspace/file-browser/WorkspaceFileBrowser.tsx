@@ -611,7 +611,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
               <button
                 type="button"
                 onClick={handleUploadFile}
-                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+                className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
               >
                 + Upload
               </button>
@@ -702,14 +702,14 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
             <button
               type="button"
               onClick={() => void bulkDelete(selectedItems)}
-              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
             >
               Delete
             </button>
             <button
               type="button"
               onClick={clearSelection}
-              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
@@ -724,14 +724,14 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
             <button
               type="button"
               onClick={handleUndoDelete}
-              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
             >
               Undo
             </button>
             <button
               type="button"
               onClick={() => setUndo(null)}
-              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
               aria-label="Dismiss"
             >
               ×
@@ -759,7 +759,7 @@ function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) 
             type="button"
             onClick={() => onChange(t.key)}
             className={
-              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors " +
+              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] transition-colors " +
               (active
                 ? "border-[var(--color-brand-600)] font-semibold text-foreground"
                 : "border-transparent text-muted hover:text-foreground")
@@ -811,7 +811,7 @@ function NewMenu({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
       >
         + New <span aria-hidden className="text-[10px]">▾</span>
       </button>
@@ -825,7 +825,7 @@ function NewMenu({
                 setOpen(false);
                 o.onSelect();
               }}
-              className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
             >
               {o.label}
             </button>
@@ -852,7 +852,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => 
             type="button"
             onClick={() => onChange(opt.key)}
             className={
-              "rounded px-2 py-[3px] " +
+              "cursor-pointer rounded px-2 py-[3px] " +
               (active ? "bg-raised font-semibold text-foreground" : "text-muted hover:text-foreground")
             }
           >

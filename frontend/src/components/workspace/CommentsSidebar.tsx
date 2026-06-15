@@ -291,7 +291,7 @@ function Group({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="sys-label flex w-full items-center justify-between"
+        className="sys-label flex w-full cursor-pointer items-center justify-between"
         style={{ fontSize: 11 }}
       >
         <span>
@@ -396,7 +396,7 @@ function ThreadCard({
                       onDeleteMessage(thread.id, m.id);
                     }}
                     title="Delete comment"
-                    className="ml-auto px-1 text-[11px] leading-none text-muted opacity-0 transition-opacity hover:text-red-500 group-hover/msg:opacity-100"
+                    className="ml-auto cursor-pointer px-1 text-[11px] leading-none text-muted opacity-0 transition-opacity hover:text-red-500 group-hover/msg:opacity-100"
                   >
                     ×
                   </button>
@@ -432,7 +432,7 @@ function ThreadCard({
                   e.stopPropagation();
                   onDeleteThread(thread.id);
                 }}
-                className="text-[11px] text-muted underline hover:text-red-500"
+                className="cursor-pointer text-[11px] text-muted underline hover:text-red-500"
               >
                 Delete
               </button>
@@ -443,7 +443,7 @@ function ThreadCard({
                 e.stopPropagation();
                 toggleResolved();
               }}
-              className="rounded-sm border border-border-subtle bg-background px-2 py-0.5 text-[11px] text-muted hover:bg-raised hover:text-foreground"
+              className="cursor-pointer rounded-sm border border-border-subtle bg-background px-2 py-0.5 text-[11px] text-muted hover:bg-raised hover:text-foreground"
             >
               Resolve
             </button>
@@ -458,7 +458,7 @@ function ThreadCard({
               e.stopPropagation();
               toggleResolved();
             }}
-            className="text-[11.5px] text-muted underline hover:text-foreground"
+            className="cursor-pointer text-[11.5px] text-muted underline hover:text-foreground"
           >
             Reopen
           </button>
@@ -469,7 +469,7 @@ function ThreadCard({
                 e.stopPropagation();
                 onDeleteThread(thread.id);
               }}
-              className="text-[11.5px] text-muted underline hover:text-red-500"
+              className="cursor-pointer text-[11.5px] text-muted underline hover:text-red-500"
             >
               Delete
             </button>

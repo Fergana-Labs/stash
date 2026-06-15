@@ -12,7 +12,7 @@ A Skill is **not** a wrapper to slap on every single file you happen to share. O
 
 ## How to share things
 
-- **One file your teammate should look at** → `stash files upload <path> --json` and hand them the returned `app_url`. No Skill needed.
+- **One file your teammate should look at** → `stash upload <path> --json` and hand them the returned `app_url`. No Skill needed.
 - **A folder / project into the workspace** → `stash upload <path> --json`. Returns the folder `app_url`. No Skill created by default.
 - **A curated bundle as one shareable thing** → `stash upload <path> --skill "<title>" --json`, or `stash skills create "<name>" --public` to start a fresh one. Returns the Skill `url`.
 - **A coding session (transcript + touched files)** → `stash share <session_id>`. Sessions are inherently a bundle.

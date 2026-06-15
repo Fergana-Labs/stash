@@ -94,7 +94,7 @@ def test_session_folders(monkeypatch) -> None:
     calls = _wire(monkeypatch)
     main.hist_folders(workspace_id=None, as_json=True)
     main.hist_new_folder("Launch", workspace_id=None, as_json=True)
-    main.hist_assign("sess-1", folder="f1", workspace_id=None)
+    main.mv_cmd(["session:sess-1"], to_folder="f1", to_root=False, workspace_id=None)
     assert ("folders", "ws-1") in calls
     assert ("new_folder", "ws-1", "Launch") in calls
     assert ("assign", "ws-1", "sess-1", "f1") in calls

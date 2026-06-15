@@ -2,7 +2,7 @@
 
 Tokens are stored as sha256 hashes (raw token returned only at mint time),
 TTL-bounded, and usage-counted. This is the magic-link path — distinct from
-the forever-secret workspaces.invite_code used by `stash workspaces join`.
+the forever-secret workspaces.invite_code redeemed via the join API.
 """
 
 import hashlib

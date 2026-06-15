@@ -177,7 +177,7 @@ export default function SkillShareButton({
         disabled={handoffStatus === "copying"}
         aria-label="Copy agent handoff link"
         title="Copy an agent-readable public link"
-        className="inline-flex min-w-[72px] items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
+        className="inline-flex min-w-[72px] cursor-pointer items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
       >
         {handoffStatus === "copying"
           ? "Copying"
@@ -190,7 +190,7 @@ export default function SkillShareButton({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+        className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
         {publish ? "Published" : "Publish"}
       </button>
@@ -215,7 +215,7 @@ export default function SkillShareButton({
                 type="button"
                 onClick={() => void publishNow()}
                 disabled={busy}
-                className="mt-3 w-full rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+                className="mt-3 w-full cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
               >
                 {busy ? "Publishing..." : "Publish"}
               </button>
@@ -232,7 +232,7 @@ export default function SkillShareButton({
                 <button
                   type="button"
                   onClick={() => void copyLink()}
-                  className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised"
+                  className="cursor-pointer rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
@@ -256,7 +256,7 @@ export default function SkillShareButton({
                   type="button"
                   onClick={() => void unpublish()}
                   disabled={busy}
-                  className="text-[11.5px] font-medium text-red-500 hover:underline disabled:opacity-40"
+                  className="cursor-pointer text-[11.5px] font-medium text-red-500 hover:underline disabled:opacity-40"
                 >
                   Unpublish
                 </button>

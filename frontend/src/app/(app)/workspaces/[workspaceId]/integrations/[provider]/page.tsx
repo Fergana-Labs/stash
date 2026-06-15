@@ -227,7 +227,7 @@ export default function IntegrationPage() {
                   type="button"
                   onClick={() => void disconnect()}
                   disabled={busy === "disconnect"}
-                  className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+                  className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
                 >
                   {busy === "disconnect"
                     ? "Disconnecting..."
@@ -455,7 +455,7 @@ function SourceRow({
         (highlighted ? "-mx-2 rounded-lg bg-[var(--color-brand-50)] px-3" : "")
       }
     >
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
+      <button type="button" onClick={onOpen} className="min-w-0 flex-1 cursor-pointer text-left">
         <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
           {source.display_name}
           {ref && <span className="font-mono text-[12px] font-normal text-muted">{ref}</span>}
@@ -491,10 +491,10 @@ function SourceRow({
 
 // The quiet bordered row action (Browse/Sync) and its borderless ghost (Remove).
 function rowButton(): string {
-  return "rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
+  return "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
 }
 function rowButtonGhost(): string {
-  return "rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-error disabled:opacity-60";
+  return "cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-error disabled:opacity-60";
 }
 
 function BrowsePanel({
@@ -590,7 +590,7 @@ function DocViewer({
               Open in {providerLabel} ↗
             </a>
           )}
-          <button type="button" onClick={onClose} className="text-[12px] text-muted hover:text-foreground">
+          <button type="button" onClick={onClose} className="cursor-pointer text-[12px] text-muted hover:text-foreground">
             Close
           </button>
         </div>
@@ -654,7 +654,7 @@ function QueryablePanel({ workspaceId, source }: { workspaceId: string; source: 
               key={t.name}
               type="button"
               onClick={() => setSql(`SELECT * FROM ${t.name} LIMIT 100`)}
-              className="rounded-md border border-border bg-base px-2 py-1 text-[11.5px] text-foreground hover:bg-raised"
+              className="cursor-pointer rounded-md border border-border bg-base px-2 py-1 text-[11.5px] text-foreground hover:bg-raised"
             >
               {t.name}
             </button>
@@ -853,7 +853,7 @@ function HitRow({
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full rounded-md px-1.5 py-1.5 text-left hover:bg-raised"
+      className="block w-full cursor-pointer rounded-md px-1.5 py-1.5 text-left hover:bg-raised"
     >
       <div className="flex items-baseline gap-2.5">
         {showKey && <span className="font-mono text-[12px] text-muted">{hitKey}</span>}
@@ -932,7 +932,7 @@ function NavigablePanel({
             <button
               type="button"
               onClick={() => goCrumb(i)}
-              className={i === crumbs.length - 1 ? "text-foreground" : "hover:text-foreground hover:underline"}
+              className={"cursor-pointer " + (i === crumbs.length - 1 ? "text-foreground" : "hover:text-foreground hover:underline")}
             >
               {c.label}
             </button>
@@ -956,7 +956,7 @@ function NavigablePanel({
                 key={key}
                 type="button"
                 onClick={() => openEntry(entry)}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
               >
                 <span aria-hidden className="text-[13px]">
                   {folder ? "📁" : "📄"}

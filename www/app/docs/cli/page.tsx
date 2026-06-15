@@ -105,77 +105,19 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       />
 
       <CommandRef
-        command="stash config"
-        args="[key] [value]"
-        description="View or update a configuration value. Keys: base_url, default_workspace, output_format. Run without arguments to show all config."
+        command="stash settings"
+        args="[--json]"
+        description="Interactive settings page — change the endpoint, toggle which agents stream, and view config. Pass --json for a read-only snapshot."
         params={[
-          { name: "key", type: "string", desc: "Config key to read or write." },
-          { name: "value", type: "string", desc: "New value. Omit to read the current value." },
+          { name: "--json", type: "flag", desc: "Print a read-only snapshot instead of the interactive page." },
         ]}
       />
 
       <Callout>
-        After <Code>stash connect</Code>, your defaults are stored. You can still override
-        any value: e.g. <Code>stash config base_url https://joinstash.ai</Code> or set{" "}
-        <Code>STASH_API_KEY</Code> / <Code>STASH_URL</Code> as environment variables for
-        CI and scripts.
+        After <Code>stash connect</Code>, your defaults are stored. Change the endpoint
+        any time from <Code>stash settings</Code>, or set <Code>STASH_API_KEY</Code> /{" "}
+        <Code>STASH_URL</Code> as environment variables for CI and scripts.
       </Callout>
-
-      <H2>Workspaces</H2>
-
-      <CommandRef
-        command="stash workspaces list"
-        args=""
-        description="List workspaces you belong to."
-        params={[]}
-      />
-
-      <CommandRef
-        command="stash workspaces create"
-        args="<name> [--description TEXT]"
-        description="Create a new workspace."
-        params={[
-          { name: "<name>", type: "string", desc: "Name for the workspace.", required: true },
-          { name: "--description", type: "string", desc: "Workspace description." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces join"
-        args="<invite_code>"
-        description="Join a workspace by invite code."
-        params={[
-          { name: "<invite_code>", type: "string", desc: "Invite code or magic link token.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces use"
-        args="<workspace> [--scope user|project]"
-        description="Set the default workspace for future commands. Accepts a workspace ID or name."
-        params={[
-          { name: "<workspace>", type: "string", desc: "Workspace ID or name to set as default.", required: true },
-          { name: "--scope", type: "string", desc: 'Where to write config: "user" or "project". Defaults to "user".' },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces info"
-        args="<workspace_id>"
-        description="Show workspace details."
-        params={[
-          { name: "<workspace_id>", type: "string", desc: "ID of the workspace.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces members"
-        args="<workspace_id>"
-        description="List members of a workspace."
-        params={[
-          { name: "<workspace_id>", type: "string", desc: "ID of the workspace.", required: true },
-        ]}
-      />
 
       <H2>Files</H2>
 
@@ -293,17 +235,6 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         description="Create a session folder."
         params={[
           { name: "<name>", type: "string", desc: "Folder name.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash sessions assign"
-        args="<session_row_id> [--folder ID]"
-        description="Move a session into a session folder, or omit --folder to move it back to the ungrouped root."
-        params={[
-          { name: "<session_row_id>", type: "string", desc: "The session row id to move.", required: true },
-          { name: "--folder", type: "string", desc: "Target folder id. Omit to ungroup." },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
@@ -572,12 +503,13 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <H2>Uploaded Files</H2>
 
       <CommandRef
-        command="stash files upload"
-        args="<path> [--ws ID]"
-        description="Upload a file to a workspace or to your personal files."
+        command="stash upload"
+        args="<path> [--skill TITLE] [--ws ID]"
+        description="Upload a single file (Markdown/HTML become pages, everything else a binary file) or a folder into a workspace. Pass --skill to also bundle it into a shareable Skill."
         params={[
-          { name: "<path>", type: "path", desc: "Path to the file.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID. Omit to upload as a personal file." },
+          { name: "<path>", type: "path", desc: "File or directory to upload.", required: true },
+          { name: "--skill", type: "string", desc: "Also publish the upload as a Skill with this title." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -591,20 +523,62 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       />
 
       <CommandRef
-        command="stash files rm"
-        args="<file_id>"
-        description="Delete a file."
-        params={[
-          { name: "<file_id>", type: "string", desc: "ID of the file to delete.", required: true },
-        ]}
-      />
-
-      <CommandRef
         command="stash files text"
         args="<file_id>"
         description="Print extracted text for a file (PDF, image OCR, or plain text)."
         params={[
           { name: "<file_id>", type: "string", desc: "ID of the file.", required: true },
+        ]}
+      />
+
+      <H2>Object operations</H2>
+      <P>
+        One set of verbs across every object type. Pass items as{" "}
+        <Code>type:id</Code> tokens (e.g. <Code>page:abc</Code>, <Code>file:def</Code>,{" "}
+        <Code>session:ghi</Code>); each verb accepts several at once.
+      </P>
+
+      <CommandRef
+        command="stash rm"
+        args="<type:id>... [--permanent] [--ws ID]"
+        description="Move pages, files, or sessions to trash. Pass --permanent to skip the trash window and delete immediately."
+        params={[
+          { name: "<type:id>", type: "string", desc: "Items to delete, e.g. page:<id> session:<id>.", required: true },
+          { name: "--permanent", type: "flag", desc: "Delete immediately instead of trashing." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash restore"
+        args="<type:id>... [--ws ID]"
+        description="Restore pages, files, or sessions from trash."
+        params={[
+          { name: "<type:id>", type: "string", desc: "Items to restore, e.g. page:<id> file:<id>.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash mv"
+        args="<type:id>... (--to-folder ID | --to-root) [--ws ID]"
+        description="Move pages, files, folders, tables, or sessions into a folder, or to the workspace root."
+        params={[
+          { name: "<type:id>", type: "string", desc: "Items to move.", required: true },
+          { name: "--to-folder", type: "string", desc: "Target folder id." },
+          { name: "--to-root", type: "flag", desc: "Move to the workspace root." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cp"
+        args="<type:id>... [--to-folder ID] [--ws ID]"
+        description="Duplicate pages, files, or folders as 'Copy of <name>'."
+        params={[
+          { name: "<type:id>", type: "string", desc: "Items to copy.", required: true },
+          { name: "--to-folder", type: "string", desc: "Target folder id for the copies." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 

@@ -23,7 +23,7 @@ export default function AddSourceModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <div
@@ -41,7 +41,7 @@ export default function AddSourceModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md px-2 py-1 text-[18px] leading-none text-muted hover:bg-raised hover:text-foreground"
+            className="cursor-pointer rounded-md px-2 py-1 text-[18px] leading-none text-muted hover:bg-raised hover:text-foreground"
           >
             ×
           </button>

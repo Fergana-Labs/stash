@@ -149,7 +149,7 @@ export default function CustomSelect({
         className={[
           "flex min-w-0 items-center justify-between gap-2 text-left outline-none",
           className,
-          disabled ? "cursor-not-allowed opacity-50" : "",
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -194,7 +194,7 @@ export default function CustomSelect({
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => selectOption(index)}
                 className={[
-                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+                  "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-foreground disabled:cursor-not-allowed disabled:opacity-50",
                   activeOption ? "bg-raised" : "hover:bg-raised",
                   optionClassName,
                 ]

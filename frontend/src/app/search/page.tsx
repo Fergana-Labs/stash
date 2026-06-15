@@ -496,7 +496,7 @@ function SearchPageInner() {
                       type="button"
                       onClick={() => setContentScope(scope.id)}
                       className={
-                        "rounded px-2 py-1 text-[12px] " +
+                        "cursor-pointer rounded px-2 py-1 text-[12px] " +
                         (contentScope === scope.id
                           ? "bg-[var(--color-brand-600)] text-white"
                           : "text-muted hover:bg-raised hover:text-foreground")
@@ -529,7 +529,7 @@ function SearchPageInner() {
               <button
                 type="submit"
                 disabled={searching || !query.trim() || fetching}
-                className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+                className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
               >
                 {searching ? "Searching..." : "Search"}
               </button>

@@ -297,7 +297,7 @@ function ColumnRow({
             void onDelete(item);
           }}
           className={
-            "flex-shrink-0 rounded p-0.5 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 " +
+            "flex-shrink-0 cursor-pointer rounded p-0.5 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 " +
             (active ? "text-white hover:bg-white/10" : "text-muted hover:bg-raised hover:text-red-600")
           }
           title="Delete"
@@ -364,7 +364,7 @@ function PreviewPanel({
         <button
           type="button"
           onClick={onOpen}
-          className="flex-1 rounded-md border border-border bg-base px-3 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+          className="flex-1 cursor-pointer rounded-md border border-border bg-base px-3 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
         >
           Open
         </button>
@@ -372,7 +372,7 @@ function PreviewPanel({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10"
+            className="cursor-pointer rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10"
             title="Move to trash"
           >
             Delete

@@ -42,7 +42,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="text-sm text-muted hover:text-foreground inline-flex items-center gap-1.5"
+            className="cursor-pointer text-sm text-muted hover:text-foreground inline-flex items-center gap-1.5"
           >
             <span aria-hidden>←</span> Home
           </button>
@@ -121,7 +121,7 @@ function Profile({ user, onUpdated }: { user: User; onUpdated: () => void }) {
         <button
           type="submit"
           disabled={saving}
-          className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
         >
           {saving ? "Saving…" : "Save profile"}
         </button>
@@ -220,7 +220,7 @@ function ActiveSessions() {
         </div>
         <button
           onClick={load}
-          className="text-xs text-muted hover:text-foreground"
+          className="cursor-pointer text-xs text-muted hover:text-foreground"
           type="button"
         >
           Refresh
@@ -242,7 +242,7 @@ function ActiveSessions() {
           <button
             type="submit"
             disabled={creating}
-            className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
           >
             {creating ? "Creating…" : "Create key"}
           </button>
@@ -268,7 +268,7 @@ function ActiveSessions() {
               <button
                 onClick={() => handleRevoke(k.id)}
                 disabled={revoking === k.id}
-                className="text-xs px-3 py-1.5 rounded-md border border-border hover:border-error hover:text-error disabled:opacity-60 transition-colors"
+                className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-border hover:border-error hover:text-error disabled:opacity-60 transition-colors"
                 type="button"
               >
                 {revoking === k.id ? "Revoking…" : "Revoke"}
@@ -311,14 +311,14 @@ function MintedKey({
         <button
           onClick={copy}
           type="button"
-          className="text-xs px-3 py-1.5 rounded-md border border-border hover:border-brand hover:text-brand transition-colors"
+          className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-border hover:border-brand hover:text-brand transition-colors"
         >
           {copied ? "Copied" : "Copy"}
         </button>
         <button
           onClick={onDismiss}
           type="button"
-          className="text-xs text-muted hover:text-foreground px-2"
+          className="cursor-pointer text-xs text-muted hover:text-foreground px-2"
         >
           Dismiss
         </button>
@@ -383,7 +383,7 @@ function ChangePassword() {
         <button
           type="submit"
           disabled={submitting || !current || !next || !confirm}
-          className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
         >
           {submitting ? "Saving…" : "Change password"}
         </button>

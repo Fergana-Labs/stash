@@ -168,7 +168,7 @@ export default function ObsidianVaultDropZone({ workspaceId, onUploaded }: Props
           e.dataTransfer.dropEffect = "copy";
         }}
         onDrop={handleDrop}
-        className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+        className={`w-full cursor-pointer flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
           dragActive
             ? "border-brand bg-brand/10"
             : "border-border bg-background/40 hover:border-brand hover:bg-raised"
