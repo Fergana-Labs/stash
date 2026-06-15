@@ -3,7 +3,7 @@
 Invoked by transcript_upload.spawn_transcript_upload(). Runs outside the
 hook timeout so large files don't block the agent.
 
-argv: script.py <transcript_path> <session_id> <workspace_id> <agent_name> <cwd> <base_url> <api_key> <data_dir>
+argv: script.py <transcript_path> <session_id> <workspace_id> <agent_name> <cwd> <base_url> <api_key> <data_dir> <session_folder_id>
 """
 
 import sys
@@ -13,7 +13,11 @@ from stashai.plugin.stash_client import StashClient
 
 
 def main() -> None:
-    _, transcript_path, session_id, workspace_id, agent_name, cwd, base_url, api_key, data_dir = sys.argv
+    (
+        _, transcript_path, session_id, workspace_id, agent_name, cwd,
+        base_url, api_key, data_dir, session_folder_id,
+    ) = sys.argv
+    folder = session_folder_id or None
 
     path = Path(transcript_path)
     with StashClient(base_url=base_url, api_key=api_key, data_dir=data_dir) as client:
@@ -23,6 +27,7 @@ def main() -> None:
             transcript_path=path,
             agent_name=agent_name,
             cwd=cwd,
+            session_folder_id=folder,
         )
 
         subagents_dir = path.parent / path.stem / "subagents"
@@ -35,6 +40,7 @@ def main() -> None:
                         transcript_path=sa_jsonl,
                         agent_name="claude-subagent",
                         cwd=cwd,
+                        session_folder_id=folder,
                     )
                 except Exception:
                     pass

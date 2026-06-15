@@ -208,6 +208,74 @@ async def test_me_sessions_requires_current_workspace_access_for_authored_sessio
 
 
 @pytest.mark.asyncio
+async def test_event_created_session_lands_in_default_folder(client: AsyncClient):
+    """An un-targeted push hook (e.g. Codex, which has no session-start hook so
+    the first event creates the row) must land in the Default folder, never at
+    the workspace root with no folder."""
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "untargeted session",
+            "session_id": "codex-untargeted",
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    listed = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    assert listed.status_code == 200
+    session = next(
+        s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted"
+    )
+    assert session["session_folder_id"] is not None
+    assert session["session_folder_name"] == "Default"
+
+
+@pytest.mark.asyncio
+async def test_transcript_upload_targets_explicit_session_folder(client: AsyncClient):
+    """A pinned repo passes session_folder_id with the transcript upload, so a
+    session whose row is first created by the upload lands in that folder."""
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Pinned"}, headers=headers
+    )
+    assert folder.status_code in (200, 201)
+    folder_id = folder.json()["id"]
+
+    upload = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("t.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={
+            "session_id": "pinned-session",
+            "agent_name": "claude",
+            "session_folder_id": folder_id,
+        },
+        headers=headers,
+    )
+    assert upload.status_code == 201
+
+    listed = await client.get(
+        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+    )
+    session = next(
+        s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session"
+    )
+    assert session["session_folder_id"] == folder_id
+    assert session["session_folder_name"] == "Pinned"
+
+
+@pytest.mark.asyncio
 async def test_replace_reimports_existing_session(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)

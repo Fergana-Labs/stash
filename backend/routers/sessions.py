@@ -193,14 +193,9 @@ async def upsert_workspace_session(
         raise HTTPException(status_code=403, detail="Viewers can read but not create sessions")
 
     # A session always lands in a folder: the one it was pushed to, or the
-    # workspace's Default folder (chat-UI + un-targeted CLI sessions).
+    # workspace's Default folder (resolved by upsert_session when unset).
     folder_id = req.session_folder_id
-    if folder_id is None:
-        default_folder = await session_folder_service.ensure_default_folder(
-            workspace_id, current_user["id"]
-        )
-        folder_id = UUID(default_folder["id"])
-    elif not await session_folder_service.can_add_session_to_folder(
+    if folder_id is not None and not await session_folder_service.can_add_session_to_folder(
         workspace_id=workspace_id,
         user_id=current_user["id"],
         folder_id=folder_id,

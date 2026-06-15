@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from ..database import get_pool
-from . import security_audit_service
+from . import security_audit_service, session_folder_service
 
 _SELECT_COLS = (
     "id, workspace_id, session_id, agent_name, cwd, files_touched, "
@@ -27,8 +27,22 @@ async def upsert_session(
     The CLI calls this lazily — first event for a session writes the row. The
     folder is set once and never re-homed by a later upsert, so a manual move
     sticks even if the agent keeps streaming.
+
+    Every session is born into a folder: the one it was pushed to, or the
+    workspace's Default. We resolve the Default only when the row doesn't exist
+    yet, so an explicit move-to-root (session_folder_id = NULL) is never
+    re-homed by a later streamed event.
     """
     pool = get_pool()
+    if session_folder_id is None:
+        exists = await pool.fetchval(
+            "SELECT 1 FROM sessions WHERE workspace_id = $1 AND session_id = $2",
+            workspace_id,
+            session_id,
+        )
+        if not exists:
+            default_folder = await session_folder_service.ensure_default_folder(workspace_id)
+            session_folder_id = UUID(default_folder["id"])
     row = await pool.fetchrow(
         "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, created_by, session_folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6) "

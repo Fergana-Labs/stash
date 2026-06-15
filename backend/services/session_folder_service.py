@@ -121,18 +121,28 @@ async def create_folder(
     return _row(r)
 
 
-async def ensure_default_folder(workspace_id: UUID, owner_user_id: UUID) -> dict:
+async def ensure_default_folder(workspace_id: UUID) -> dict:
     """Get-or-create the workspace's single Default folder. Sessions that aren't
-    pushed to a specific folder land here (chat-UI + un-targeted CLI sessions)."""
-    existing = await get_pool().fetchrow(
+    pushed to a specific folder land here (chat-UI + un-targeted CLI sessions).
+
+    The folder is owned by the workspace owner — not whoever happened to push the
+    first session — so its access never leaks to a member who later leaves.
+    """
+    pool = get_pool()
+    existing = await pool.fetchrow(
         f"{_FOLDER_SELECT} WHERE sf.workspace_id = $1 AND sf.is_default",
         workspace_id,
     )
     if existing:
         return _row(existing)
+    owner_id = await pool.fetchval(
+        "SELECT user_id FROM workspace_members "
+        "WHERE workspace_id = $1 AND role = 'owner' LIMIT 1",
+        workspace_id,
+    )
     return await create_folder(
         workspace_id,
-        owner_user_id,
+        owner_id,
         DEFAULT_FOLDER_NAME,
         workspace_permission="read",
         is_default=True,

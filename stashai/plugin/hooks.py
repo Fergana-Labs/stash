@@ -477,6 +477,7 @@ def stream_session_end(
     if not path.is_file():
         return None
 
+    session_folder_id = cfg.get("session_folder_id") or None
     try:
         client.upload_transcript(
             workspace_id=workspace_id,
@@ -484,6 +485,7 @@ def stream_session_end(
             transcript_path=path,
             agent_name=cfg["agent_name"],
             cwd=event.cwd,
+            session_folder_id=session_folder_id,
         )
     except Exception:
         pass
@@ -498,6 +500,7 @@ def stream_session_end(
                     transcript_path=sa_jsonl,
                     agent_name="claude-subagent",
                     cwd=event.cwd,
+                    session_folder_id=session_folder_id,
                 )
             except Exception:
                 pass

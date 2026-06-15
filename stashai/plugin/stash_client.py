@@ -249,7 +249,7 @@ class StashClient:
     # request.
     def upload_transcript(
         self, workspace_id: str, session_id: str, transcript_path: Path,
-        agent_name: str, cwd: str | None = None,
+        agent_name: str, cwd: str | None = None, session_folder_id: str | None = None,
     ) -> dict:
         import gzip
 
@@ -259,13 +259,18 @@ class StashClient:
         if not name.endswith(".gz"):
             name = name + ".gz"
 
+        data = {"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""}
+        # Omit when unset so the backend routes the session to the Default folder.
+        if session_folder_id:
+            data["session_folder_id"] = session_folder_id
+
         record_upload_attempt(self._data_dir, "transcript")
         try:
             resp = self._http.request(
                 "POST",
                 f"/api/v1/workspaces/{workspace_id}/transcripts",
                 headers=self._headers(),
-                data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""},
+                data=data,
                 files={"file": (name, body, "application/gzip")},
                 timeout=httpx.Timeout(60.0, connect=5.0),
             )

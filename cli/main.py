@@ -36,6 +36,7 @@ from .config import (
     save_enabled_agents,
     set_streaming,
     stored_base_url,
+    write_manifest,
 )
 from .formatting import console, output_json, print_user
 
@@ -2381,6 +2382,47 @@ def hist_new_folder(
         output_json(data)
         return
     console.print(f"[green]Created folder[/green] {name}  [dim]({data.get('id')})[/dim]")
+
+
+@hist_app.command("use-folder")
+def hist_use_folder(
+    folder: str = typer.Argument(
+        None, help="Folder name or id to pin this repo's sessions to. A new name is created."
+    ),
+    use_default: bool = typer.Option(
+        False, "--default", help="Clear the pin so sessions land in the workspace Default folder."
+    ),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Pin this repo's agent sessions to a session folder (writes `.stash`)."""
+    if load_manifest() is None:
+        console.print(f"[red]No {MANIFEST_FILE} here. Run [bold]stash connect[/bold] first.[/red]")
+        raise typer.Exit(1)
+    if not folder and not use_default:
+        console.print("[red]Pass a folder name/id, or --default to clear the pin.[/red]")
+        raise typer.Exit(1)
+
+    if use_default:
+        write_manifest({"session_folder_id": ""})
+        console.print("[green]✓[/green] Sessions will land in the workspace Default folder.")
+        return
+
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            folders = c.list_session_folders(ws)
+            match = next((f for f in folders if folder in (f.get("id"), f.get("name"))), None)
+            if match is None:
+                match = c.create_session_folder(ws, folder)
+                console.print(f"[green]Created folder[/green] {folder}")
+        except StashError as e:
+            _err(e)
+
+    write_manifest({"session_folder_id": match["id"]})
+    console.print(
+        f"[green]✓[/green] Sessions in this repo now land in "
+        f"[bold]{match.get('name')}[/bold]  [dim]({match['id']})[/dim]"
+    )
 
 
 @hist_app.command("push")
