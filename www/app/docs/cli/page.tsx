@@ -31,14 +31,17 @@ export default function CLIPage() {
 
       <H2>Virtual filesystem</H2>
       <P>
-        Use <Code>stash vfs</Code> when an agent needs to browse workspace files, pages,
-        sessions, stashes, and tables through one filesystem-shaped interface without
-        mounting anything into the OS.
+        Use <Code>stash vfs</Code> when an agent needs to browse Stash through one
+        filesystem-shaped interface without mounting anything into the OS. Each
+        workspace exposes <Code>files</Code>, <Code>sessions</Code>, <Code>skills</Code>,{" "}
+        <Code>tables</Code>, and <Code>sources</Code> — the last surfacing every connected
+        integration (Gmail, GitHub, Slack, Jira, …) as read-only documents you can{" "}
+        <Code>ls</Code>, <Code>cat</Code>, and <Code>grep</Code>.
       </P>
       <CodeBlock>{`stash vfs ls /
 stash vfs "find /workspaces -maxdepth 3 -type f"
 stash vfs "rg 'database migration' /workspaces"
-stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBlock>
+stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock>
       <CommandRef
         command="stash vfs"
         args={'[--ws ID] [--cwd PATH] "command"'}

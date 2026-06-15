@@ -40,10 +40,10 @@ class FakeClient:
             },
             "skills": [
                 {
-                    "id": "stash-12345678",
-                    "slug": "demo-stash",
-                    "title": "Demo Stash",
-                    "items": [],
+                    "folder_id": "skillfolder-12345678",
+                    "name": "Demo Skill",
+                    "file_count": 1,
+                    "published": {"slug": "demo-stash"},
                 }
             ],
             "sessions": [
@@ -73,6 +73,26 @@ class FakeClient:
     def get_skill_text(self, slug):
         assert slug == "demo-stash"
         return "# Demo Stash\n"
+
+    def list_sources(self, workspace_id):
+        assert workspace_id == "workspace-12345678"
+        return [
+            {"type": "native_files", "source": "files", "display_name": "Files"},
+            {"type": "gmail", "source": "src-gmail-1", "display_name": "Gmail (demo@x.com)"},
+        ]
+
+    def list_source_entries(self, workspace_id, source, path=""):
+        assert workspace_id == "workspace-12345678"
+        assert source == "src-gmail-1"
+        return [
+            {"path": "msg-1", "name": "Welcome email", "kind": "message"},
+            {"path": "threads/msg-2", "name": "Nested note", "kind": "message"},
+        ]
+
+    def read_source_doc(self, workspace_id, source, ref):
+        assert workspace_id == "workspace-12345678"
+        assert source == "src-gmail-1"
+        return {"content": f"BODY of {ref}"}
 
     def get_transcript_events(self, workspace_id, session_id):
         assert workspace_id == "workspace-12345678"
@@ -131,14 +151,23 @@ def test_vfs_exposes_workspace_sections():
         "sessions",
         "skills",
         "tables",
+        "sources",
     }
-    assert model.read_file(f"{workspace_path}/skills/Demo Stash--stash-12.md") == b"# Demo Stash\n"
+    assert model.read_file(f"{workspace_path}/skills/Demo Skill--skillfol.md") == b"# Demo Stash\n"
     assert b"hello" in model.read_file(
         f"{workspace_path}/sessions/Fix login--session-/transcript.md"
     )
     assert b'"Name": "Mount"' in model.read_file(
         f"{workspace_path}/tables/Ideas--table-12/rows.json"
     )
+
+    # Connected sources are mounted read-only; native sources are skipped
+    # (files/sessions already appear above). Document bodies load lazily.
+    assert model.list_dir(f"{workspace_path}/sources") == ["gmail-demo-x.com"]
+    gmail = f"{workspace_path}/sources/gmail-demo-x.com"
+    assert "Welcome email" in model.list_dir(gmail)
+    assert model.read_file(f"{gmail}/Welcome email") == b"BODY of msg-1"
+    assert model.read_file(f"{gmail}/threads/Nested note") == b"BODY of threads/msg-2"
 
 
 def test_vfs_reads_files_and_writes_pages():
