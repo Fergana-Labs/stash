@@ -1527,7 +1527,10 @@ function TableEditorPageInner() {
                   <th className="w-10 px-2 py-2 border-r border-border">
                     {!readOnly && <button onClick={() => setShowAddCol(true)} className="cursor-pointer w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted hover:text-brand text-sm font-bold">+</button>}
                   </th>
-                  <th className="w-16" />
+                  {/* Auto-width spacer: absorbs leftover width so the fixed
+                      columns (select, #, add) keep their real widths instead
+                      of the browser inflating them when the table is sparse. */}
+                  <th />
                 </tr>
               </thead>
               <tbody>
