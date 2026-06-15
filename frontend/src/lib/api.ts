@@ -1149,7 +1149,7 @@ export interface SessionSummary {
   session_folder_name: string | null;
 }
 
-export type GeneralPermission = "none" | "read" | "write";
+export type GeneralPermission = "none" | "read" | "comment" | "write";
 // Stored visibility is two-state (the "workspace" tier was dropped after the
 // 1:1 workspace↔user migration). "shared" is a derived display state.
 export type SessionFolderVisibility = "private" | "public";

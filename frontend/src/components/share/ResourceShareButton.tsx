@@ -19,10 +19,11 @@ import {
 } from "../../lib/api";
 import type { User } from "../../lib/types";
 
-type SharePermission = Extract<GeneralPermission, "read" | "write">;
+type SharePermission = Extract<GeneralPermission, "read" | "comment" | "write">;
 
 const PERMISSIONS: { value: SharePermission; label: string }[] = [
   { value: "read", label: "Can view" },
+  { value: "comment", label: "Can comment" },
   { value: "write", label: "Can edit" },
 ];
 
@@ -119,6 +120,24 @@ export default function ResourceShareButton({
       await loadShares();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not remove access.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changePermission(share: ObjectShare, next: SharePermission) {
+    if (!share.email || share.permission === next) return;
+
+    setBusy(true);
+    setMessage("");
+    try {
+      // The share endpoint upserts on conflict, so re-sharing the same email
+      // with a new permission updates the existing share or pending invite.
+      await shareObjectByEmail(objectType, objectId, share.email, next);
+      await loadShares();
+      setMessage("Access updated.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Could not update access.");
     } finally {
       setBusy(false);
     }
@@ -243,8 +262,11 @@ export default function ResourceShareButton({
                         ? "Invited"
                         : share.email ?? share.principal_type
                     }
-                    permissionLabel={
-                      share.permission === "write" ? "Can edit" : "Can view"
+                    permission={share.permission as SharePermission}
+                    onChangePermission={
+                      share.email
+                        ? (next) => void changePermission(share, next)
+                        : undefined
                     }
                     onRemove={
                       share.pending || !share.principal_id
@@ -318,12 +340,16 @@ function AccessRow({
   label,
   sublabel,
   permissionLabel,
+  permission,
+  onChangePermission,
   onRemove,
   busy = false,
 }: {
   label: string;
   sublabel: string;
-  permissionLabel: string;
+  permissionLabel?: string;
+  permission?: SharePermission;
+  onChangePermission?: (permission: SharePermission) => void;
   onRemove?: () => void;
   busy?: boolean;
 }) {
@@ -336,7 +362,25 @@ function AccessRow({
         </span>
         <span className="block truncate text-[12px] text-muted">{sublabel}</span>
       </span>
-      <span className="shrink-0 text-[12px] text-muted">{permissionLabel}</span>
+      {onChangePermission && permission ? (
+        <select
+          value={permission}
+          onChange={(event) =>
+            onChangePermission(event.target.value as SharePermission)
+          }
+          disabled={busy}
+          aria-label="Change permission"
+          className="shrink-0 rounded-md border border-border bg-base px-1.5 py-1 text-[12px] text-foreground disabled:opacity-45"
+        >
+          {PERMISSIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <span className="shrink-0 text-[12px] text-muted">{permissionLabel}</span>
+      )}
       {onRemove && (
         <button
           type="button"

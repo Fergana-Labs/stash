@@ -123,4 +123,33 @@ describe("ResourceShareButton", () => {
     expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByText("Invited")).toBeInTheDocument();
   });
+
+  it("changes an existing person's permission", async () => {
+    render(
+      <ResourceShareButton
+        objectType="page"
+        objectId="page-1"
+        resourceName="Blog post outline"
+        resourceUrlPath="/p/page-1"
+        currentUser={currentUser}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("Ada Lovelace");
+
+    fireEvent.change(screen.getByLabelText("Change permission"), {
+      target: { value: "comment" },
+    });
+
+    await waitFor(() =>
+      expect(shareObjectByEmail).toHaveBeenCalledWith(
+        "page",
+        "page-1",
+        "ada@example.com",
+        "comment",
+      ),
+    );
+    expect(await screen.findByText("Access updated.")).toBeInTheDocument();
+  });
 });
