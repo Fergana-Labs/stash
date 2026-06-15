@@ -6,7 +6,6 @@ import json
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 console = Console()
 
@@ -37,24 +36,6 @@ def print_messages(messages: list[dict]) -> None:
         console.print(format_message(msg))
 
 
-def print_workspaces(workspaces: list[dict], title: str = "Workspaces") -> None:
-    """Print a table of workspaces."""
-    if not workspaces:
-        console.print("[dim]No workspaces found.[/dim]")
-        return
-    table = Table(title=title)
-    table.add_column("Name", style="bold")
-    table.add_column("ID", style="dim")
-    table.add_column("Members")
-    for workspace in workspaces:
-        table.add_row(
-            workspace.get("name", ""),
-            str(workspace.get("id", ""))[:8],
-            str(workspace.get("member_count", "?")),
-        )
-    console.print(table)
-
-
 def print_user(user: dict, title: str = "Profile") -> None:
     """Print user profile as a panel."""
     lines = [
@@ -69,19 +50,3 @@ def print_user(user: dict, title: str = "Profile") -> None:
     console.print(Panel("\n".join(lines), title=title))
 
 
-def print_members(members: list[dict]) -> None:
-    """Print workspace members table."""
-    if not members:
-        console.print("[dim]No members.[/dim]")
-        return
-    table = Table(title="Members")
-    table.add_column("Name", style="bold")
-    table.add_column("Role")
-    table.add_column("Joined")
-    for m in members:
-        table.add_row(
-            m.get("name", ""),
-            m.get("role", "member"),
-            str(m.get("joined_at", ""))[:19],
-        )
-    console.print(table)

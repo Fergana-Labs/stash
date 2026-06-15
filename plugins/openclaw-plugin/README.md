@@ -87,7 +87,6 @@ support `--json`:
 stash sessions query --ws <id> --limit 20 --json
 stash sessions search "<query>" --ws <id> --json
 stash whoami --json
-stash workspaces list --json
 ```
 
 For user-requested uploads, run `stash upload <path> --json` and return the

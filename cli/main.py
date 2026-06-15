@@ -37,7 +37,7 @@ from .config import (
     set_streaming,
     stored_base_url,
 )
-from .formatting import console, output_json, print_members, print_user, print_workspaces
+from .formatting import console, output_json, print_user
 
 app = typer.Typer(
     name="stash",
@@ -726,93 +726,6 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
         output_json(data)
     else:
         print_user(data)
-
-
-# ===========================================================================
-# Workspaces
-# ===========================================================================
-
-ws_app = typer.Typer(help="Stash Workspace management.")
-app.add_typer(ws_app, name="workspaces")
-
-
-@ws_app.command("list")
-def ws_list(as_json: bool = typer.Option(False, "--json")):
-    """List workspaces."""
-    with _client() as c:
-        try:
-            data = c.list_workspaces()
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        print_workspaces(data, title="Workspaces")
-
-
-@ws_app.command("create")
-def ws_create(
-    name: str = typer.Argument(...),
-    description: str = typer.Option(""),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Create workspace."""
-    with _client() as c:
-        try:
-            data = c.create_workspace(name, description=description)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(
-            f"[green]Created '{data['name']}'[/green]  ID: {data['id']}  Invite: {data['invite_code']}"
-        )
-
-
-@ws_app.command("join")
-def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Join workspace by invite code."""
-    with _client() as c:
-        try:
-            data = c.join_workspace(invite_code)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Joined '{data.get('name')}'[/green]")
-
-
-@ws_app.command("info")
-def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Show workspace details."""
-    with _client() as c:
-        try:
-            data = c.get_workspace(workspace_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}")
-        console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
-
-
-@ws_app.command("members")
-def ws_members(
-    workspace_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")
-):
-    """List workspace members."""
-    with _client() as c:
-        try:
-            data = c.workspace_members(workspace_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        print_members(data)
 
 
 # ===========================================================================

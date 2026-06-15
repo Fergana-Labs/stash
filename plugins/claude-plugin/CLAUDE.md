@@ -81,12 +81,6 @@ stash tables list --ws <workspace_id>                            # List tables
 stash tables search <table_id> "query" --ws <workspace_id>      # Search rows
 ```
 
-### Workspaces
-```bash
-stash workspaces list                # List your workspaces
-stash workspaces members <workspace_id>     # List workspace members
-```
-
 ### Tips
 - Workspace is determined from the `.stash` manifest in the repo
 - Use `--json` flag on any command for JSON output

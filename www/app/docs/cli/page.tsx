@@ -119,62 +119,6 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         <Code>STASH_URL</Code> as environment variables for CI and scripts.
       </Callout>
 
-      <H2>Workspaces</H2>
-
-      <CommandRef
-        command="stash workspaces list"
-        args=""
-        description="List workspaces you belong to."
-        params={[]}
-      />
-
-      <CommandRef
-        command="stash workspaces create"
-        args="<name> [--description TEXT]"
-        description="Create a new workspace."
-        params={[
-          { name: "<name>", type: "string", desc: "Name for the workspace.", required: true },
-          { name: "--description", type: "string", desc: "Workspace description." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces join"
-        args="<invite_code>"
-        description="Join a workspace by invite code."
-        params={[
-          { name: "<invite_code>", type: "string", desc: "Invite code or magic link token.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces use"
-        args="<workspace> [--scope user|project]"
-        description="Set the default workspace for future commands. Accepts a workspace ID or name."
-        params={[
-          { name: "<workspace>", type: "string", desc: "Workspace ID or name to set as default.", required: true },
-          { name: "--scope", type: "string", desc: 'Where to write config: "user" or "project". Defaults to "user".' },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces info"
-        args="<workspace_id>"
-        description="Show workspace details."
-        params={[
-          { name: "<workspace_id>", type: "string", desc: "ID of the workspace.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash workspaces members"
-        args="<workspace_id>"
-        description="List members of a workspace."
-        params={[
-          { name: "<workspace_id>", type: "string", desc: "ID of the workspace.", required: true },
-        ]}
-      />
-
       <H2>Files</H2>
 
       <CommandRef

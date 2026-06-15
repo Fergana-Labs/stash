@@ -110,7 +110,6 @@ stash sessions search "database migration" --ws <workspace_id>   # Full-text sea
 stash sessions query --ws <workspace_id> --limit 20              # Recent events
 stash sessions query --all --limit 20                             # Cross-workspace events
 stash files pages --all                                           # List all pages
-stash workspaces list                                     # List your workspaces
 ```
 
 Workspace is determined from the `.stash` manifest in the repo.

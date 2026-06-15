@@ -85,5 +85,4 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash sessions query --ws <id> --limit 20 --json
 stash sessions search "<query>" --ws <id> --json
 stash whoami --json
-stash workspaces list --json
 ```
