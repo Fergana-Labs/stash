@@ -774,9 +774,12 @@ async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
 # names (the new folder is empty, so they can't collide).
 
 
-async def _create_page_unique(
+async def create_page_unique(
     workspace_id: UUID, base_name: str, created_by: UUID, folder_id: UUID | None, **content
 ) -> dict:
+    """Create a page, appending ' (2)', ' (3)', … until the name is free in the
+    target folder. Use for human-initiated creates where a collision should just
+    pick the next free name rather than fail."""
     name = base_name
     n = 2
     while True:
@@ -824,7 +827,7 @@ async def copy_page(
     if src is None:
         return None
     folder_id = target_folder_id if target_folder_id is not None else src["folder_id"]
-    return await _create_page_unique(
+    return await create_page_unique(
         workspace_id, f"Copy of {src['name']}", copied_by, folder_id, **_page_content_kwargs(src)
     )
 

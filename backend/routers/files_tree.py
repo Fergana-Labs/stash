@@ -453,19 +453,16 @@ async def create_page(
             current_user["id"],
             require="write",
         )
-    try:
-        page = await files_tree_service.create_page(
-            workspace_id,
-            req.name,
-            current_user["id"],
-            folder_id=req.folder_id,
-            content=req.content,
-            content_type=req.content_type,
-            content_html=req.content_html,
-            html_layout=req.html_layout,
-        )
-    except DuplicatePageName as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    page = await files_tree_service.create_page_unique(
+        workspace_id,
+        req.name,
+        current_user["id"],
+        req.folder_id,
+        content=req.content,
+        content_type=req.content_type,
+        content_html=req.content_html,
+        html_layout=req.html_layout,
+    )
     return PageResponse(**page)
 
 
