@@ -266,6 +266,7 @@ export default function AppShell({
     () => readCachedWorkspaces(user.id)?.all ?? [],
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  const searchBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
@@ -405,9 +406,9 @@ export default function AppShell({
         </div>
 
         <div className="flex min-w-0 flex-1 justify-center">
-          {/* Match the command-palette modal width (max-w-4xl) so the bar and
-              the popup it opens read as the same element. */}
-          <div className="w-full max-w-4xl">
+          {/* The popup measures this element on open so it lines up exactly
+              with the bar, regardless of sidebar/breadcrumb width. */}
+          <div ref={searchBarRef} className="w-full max-w-4xl">
             <TopSearchButton
               scope={searchScope}
               workspace={activeWorkspace}
@@ -457,6 +458,7 @@ export default function AppShell({
       <CommandPalette
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
+        anchorRef={searchBarRef}
         workspaceId={activeWorkspaceId}
         workspaceName={activeWorkspace?.name}
         searchScope={searchScope}

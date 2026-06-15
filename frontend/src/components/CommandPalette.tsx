@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { listAllTables, semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
 import {
   getCachedWorkspaceSidebar,
@@ -15,6 +15,7 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
+  anchorRef: RefObject<HTMLDivElement | null>;
   workspaceId: string | null;
   workspaceName?: string | null;
   searchScope: SearchScope | null;
@@ -30,6 +31,7 @@ interface Result {
 export default function CommandPalette({
   open,
   onClose,
+  anchorRef,
   workspaceId,
   workspaceName,
   searchScope,
@@ -42,9 +44,14 @@ export default function CommandPalette({
   const [tables, setTables] = useState<TableWithWorkspace[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEscapeKey(open, onClose);
+
+  useEffect(() => {
+    if (open) setAnchorRect(anchorRef.current?.getBoundingClientRect() ?? null);
+  }, [open, anchorRef]);
 
   useEffect(() => {
     if (!open) return;
@@ -200,9 +207,14 @@ export default function CommandPalette({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] cursor-pointer bg-transparent px-2 pt-2 sm:px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] cursor-pointer bg-transparent" onClick={onClose}>
       <div
-        className="mx-auto flex max-h-[calc(100vh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
+        className="absolute flex max-h-[calc(100vh-1rem)] flex-col overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
+        style={{
+          left: anchorRect?.left,
+          top: anchorRect?.top,
+          width: anchorRect?.width,
+        }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Search"

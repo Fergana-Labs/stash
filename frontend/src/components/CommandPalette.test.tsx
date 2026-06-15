@@ -74,6 +74,7 @@ function renderPalette() {
     <CommandPalette
       open
       onClose={vi.fn()}
+      anchorRef={{ current: null }}
       workspaceId="ws-1"
       workspaceName="Demo Workspace"
       searchScope={{
