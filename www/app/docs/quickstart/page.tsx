@@ -35,7 +35,7 @@ export default function QuickstartPage() {
 
       <H3>2. Install the CLI</H3>
       <CodeBlock>{`pip install stashai
-stash login`}</CodeBlock>
+stash signin`}</CodeBlock>
 
       <H3>3. Try these commands</H3>
       <P>Use the CLI to interact with your workspace:</P>

@@ -87,7 +87,7 @@ export async function getAuth0AccessToken(): Promise<string | null> {
 // The onboarding agent prompt needs a persistent API key — agents can't use
 // the browser's short-lived Auth0 access token. Self-hosted browsers already
 // hold their key; under managed Auth0 the browser never mints keys, so this
-// returns null and the agent prompt tells the user to run `stash login`.
+// returns null and the agent prompt tells the user to run `stash signin`.
 export function getAgentApiKey(): string | null {
   return getToken();
 }

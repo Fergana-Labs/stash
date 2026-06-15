@@ -138,7 +138,7 @@ function LoginPageInner() {
           },
         );
         if (!approveRes.ok) {
-          throw new Error("CLI session expired. Re-run `stash login` and try again.");
+          throw new Error("CLI session expired. Re-run `stash signin` and try again.");
         }
         setCliApproved(true);
       }

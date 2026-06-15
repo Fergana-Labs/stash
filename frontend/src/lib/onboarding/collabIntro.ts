@@ -6,7 +6,7 @@
 // the agent installs the CLI, authenticates, and edits this exact page while
 // the user watches. Self-hosted browsers hold a persistent API key we can
 // embed; under managed Auth0 the browser never mints keys, so the prompt
-// points at the CLI sign-in flow (`stash login`) instead.
+// points at the CLI sign-in flow (`stash signin`) instead.
 
 export function generateCollabIntroMarkdown({
   displayName,
@@ -18,7 +18,7 @@ export function generateCollabIntroMarkdown({
   apiKey: string | null;
 }): string {
   const name = displayName.trim() || "there";
-  const authenticate = apiKey ? `export STASH_API_KEY=${apiKey}` : "stash login";
+  const authenticate = apiKey ? `export STASH_API_KEY=${apiKey}` : "stash signin";
   return `# Welcome to your agent-native Drive, ${name}
 
 This is a real page in your Skill — start typing to make it yours, or delete it. Edits save automatically, and you and your agent can edit the same page at the same time (two cursors at once).

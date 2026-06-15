@@ -142,7 +142,7 @@ function OnboardingInner() {
     track("onboarding.collab_path_chosen", {});
     // The starter page embeds its own id in a copy-paste agent prompt, so we
     // create it empty and fill it in after. Self-hosted browsers hold a key
-    // to embed; under managed Auth0 the prompt says `stash login` instead.
+    // to embed; under managed Auth0 the prompt says `stash signin` instead.
     const apiKey = getAgentApiKey();
     const page = await createPage(workspaceId, "Welcome to your Drive");
     const content = generateCollabIntroMarkdown({
@@ -504,7 +504,7 @@ function TryItOutStep({
       >
         <div className="space-y-2">
           <CommandBlock command={CLI_INSTALL_COMMAND} />
-          <CommandBlock command="stash login" />
+          <CommandBlock command="stash signin" />
         </div>
       </TryOption>
     </div>

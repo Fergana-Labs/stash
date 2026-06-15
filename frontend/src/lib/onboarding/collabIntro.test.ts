@@ -20,7 +20,7 @@ describe("generateCollabIntroMarkdown", () => {
       apiKey: null,
     });
 
-    expect(md).toContain("Authenticate: stash login");
+    expect(md).toContain("Authenticate: stash signin");
     expect(md).not.toContain("STASH_API_KEY");
     expect(md).toContain("stash files read-page page-1");
   });

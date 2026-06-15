@@ -43,7 +43,7 @@ export default async function ConnectTokenPage({
         <Heading>Open this page from the CLI</Heading>
         <Body>
           This page completes sign-in for the Stash CLI and has to be opened
-          with a session id. Run <code>stash login</code>{" "}
+          with a session id. Run <code>stash signin</code>{" "}
           in your terminal and it&apos;ll
           open the right URL for you.
         </Body>

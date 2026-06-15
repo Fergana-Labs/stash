@@ -1,7 +1,7 @@
 """Cursor plugin config: reads from ~/.stash/config.json (CLI config).
 
 Cursor has no plugin-level userConfig surface, so we piggyback on the CLI
-config the user already set up with `stash login`. Shared logic lives in
+config the user already set up with `stash signin`. Shared logic lives in
 `stashai.plugin.agent_config`; this module only supplies the per-agent
 constants.
 """

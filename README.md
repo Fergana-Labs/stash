@@ -74,10 +74,10 @@ Built for —
 
 ```bash
 pip install stashai / uv tool install stashai
-stash login
+stash signin
 ```
 
-`stash login` walks you through account creation, picks a workspace, connects
+`stash signin` walks you through sign-in, picks a workspace, connects
 your current repo when you want uploads, and wires up coding-agent plugins.
 Use `stash connect` later when you are already authenticated and only need to
 bind another repo to a workspace.
@@ -90,7 +90,7 @@ bash -c "$(curl -fsSL https://joinstash.ai/install)"
 ```
 
 The installer uses `uv` to install or update `stashai`, bootstrapping `uv`
-when needed, and then runs `stash login`.
+when needed, and then runs `stash signin`.
 Use this when you don't already have a Python toolchain on your machine.
 
 </details>
@@ -124,7 +124,7 @@ Stash supports the following coding agents:
 - **Gemini CLI**
 - **Openclaw** 
 
-Stash supports opt in per-coding agent. `stash login` can auto-install hooks for Claude Code, Cursor, Codex, and OpenCode; Gemini CLI and Openclaw are available in `plugins/` and are installed manually. Mix and match — different teammates can use different agents against the same shared brain.
+Stash supports opt in per-coding agent. `stash signin` can auto-install hooks for Claude Code, Cursor, Codex, and OpenCode; Gemini CLI and Openclaw are available in `plugins/` and are installed manually. Mix and match — different teammates can use different agents against the same shared brain.
 
 ## CLI Reference
 
@@ -173,7 +173,7 @@ Then install the CLI:
 ```bash
 pip install stashai   # or: uv tool install stashai
 cd /path/to/the/repo/you/want/to/connect
-stash login   # choose "Self-host" and enter http://localhost:3456
+stash signin   # choose "Self-host" and enter http://localhost:3456
 ```
 
 When connecting to a domain-backed install, enter your public URL (e.g.

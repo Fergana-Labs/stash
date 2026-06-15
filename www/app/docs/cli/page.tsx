@@ -20,7 +20,7 @@ export default function CLIPage() {
       <H2>First-time setup</H2>
       <P>
         Run the interactive setup wizard. It configures the API endpoint, authenticates you
-        (login or register), and creates a workspace — all in one shot. No manual config
+        through the browser, and creates a workspace — all in one shot. No manual config
         editing required.
       </P>
       <CodeBlock>{`stash connect`}</CodeBlock>
@@ -53,46 +53,30 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <H2>Authentication</H2>
 
       <CommandRef
-        command="stash login"
-        args="<name> --password <pw>"
-        description="Authenticate with username and password."
-        params={[
-          { name: "<name>", type: "string", desc: "Your username.", required: true },
-          { name: "--password", type: "string", desc: "Your password.", required: true },
-        ]}
-      />
-
-      <CommandRef
         command="stash signin"
-        args="[--api URL] [--no-browser] [--timeout N]"
-        description="Open the browser for OAuth sign-in. Blocks until the user authorizes. Writes credentials on success and auto-selects the default workspace if there is exactly one."
-        params={[
-          { name: "--api", type: "string", desc: "Stash API base URL. Override for self-hosted deployments. Defaults to https://api.stash.ac." },
-          { name: "--page", type: "string", desc: "Sign-in page URL. Defaults to the /connect-token page matching --api." },
-          { name: "--no-browser", type: "flag", desc: "Skip auto-opening the browser; just print the URL. Use on SSH or headless machines." },
-          { name: "--timeout", type: "number", desc: "Seconds to wait for sign-in. Defaults to 120." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash register"
-        args="<name> [--password <pw>]"
-        description="Create a new Stash account and store the API key."
-        params={[
-          { name: "<name>", type: "string", desc: "Username for the new account.", required: true },
-          { name: "--password", type: "string", desc: "Password for the account." },
-        ]}
+        args=""
+        description="Authenticate this machine through the browser. On first run it also picks the endpoint (managed or self-host) and offers to install streaming hooks for your coding agents. On SSH/headless it prints a URL to open instead of launching a browser."
+        params={[]}
       />
 
       <CommandRef
         command="stash auth"
         args="<base_url> --api-key <key>"
-        description="Store existing credentials for a Stash instance."
+        description="Non-interactive auth for headless machines. Writes a pre-minted API key (from `stash keys`) into ~/.stash/config.json. Use this when there's no browser to complete sign-in — it's also the only way to authenticate the streaming hooks unattended, since they read the config file, not env vars."
         params={[
           { name: "<base_url>", type: "string", desc: "Base URL of the Stash server.", required: true },
-          { name: "--api-key", type: "string", desc: "Your API key.", required: true },
+          { name: "--api-key", type: "string", desc: "A pre-minted API key.", required: true },
         ]}
       />
+
+      <Callout>
+        Setting <Code>STASH_API_KEY</Code> / <Code>STASH_URL</Code> in the environment
+        authenticates <em>CLI commands</em> for CI and scripts — but it does{" "}
+        <strong>not</strong> reach the streaming hooks, which read{" "}
+        <Code>~/.stash/config.json</Code>. To make an unattended machine stream, use{" "}
+        <Code>stash auth</Code>. Change the endpoint or streaming agents later from{" "}
+        <Code>stash settings</Code>.
+      </Callout>
 
       <CommandRef
         command="stash whoami"

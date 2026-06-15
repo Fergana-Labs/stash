@@ -5,7 +5,7 @@ plugin's event coverage.
 
 ## Prerequisites
 
-- `stash` CLI installed and logged in (`pip install stashai && stash login`)
+- `stash` CLI installed and logged in (`pip install stashai && stash signin`)
 - `.stash` manifest present in repo (or ancestor)
 - Python 3.10+ on PATH
 - `httpx` installed (`pip install httpx`)
@@ -42,7 +42,7 @@ You should see a `user_message` event with the prompt you just sent.
 
 ## Config
 
-Reads from `~/.stash/config.json` (populated by `stash login`; change it later with `stash settings`). No Cursor-specific config surface.
+Reads from `~/.stash/config.json` (populated by `stash signin`; change it later with `stash settings`). No Cursor-specific config surface.
 
 Override with env vars (set in Cursor's environment):
 - `STASH_CURSOR_DATA=<path>` — custom state dir (default `~/.stash/plugins/cursor`)

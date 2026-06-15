@@ -136,29 +136,6 @@ def _err(e: StashError) -> None:
 # ===========================================================================
 
 
-@app.command()
-def register(
-    name: str = typer.Argument(...),
-    password: str = typer.Option(None, "--password", help="Password for the account"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Create account and store API key."""
-    if not password:
-        password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
-    with _client() as c:
-        try:
-            data = c.register(name, description="", password=password)
-        except StashError as e:
-            _err(e)
-    save_config(api_key=data["api_key"], username=data["name"])
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(
-            f"[green]Registered as {data['name']}[/green]  API key: [bold]{data['api_key']}[/bold]"
-        )
-
-
 def _default_signin_page(api: str) -> str:
     """Map a backend URL to its matching /connect-token page."""
     api = api.rstrip("/")
@@ -230,52 +207,10 @@ def _browser_auth_flow(
             time.sleep(1)
 
     console.print(
-        f"[red]Timed out waiting for sign-in.[/red] "
-        f"Run [cyan]stash auth {api} --api-key <token>[/cyan] by hand if needed."
+        "[red]Timed out waiting for sign-in.[/red] "
+        "Re-run [cyan]stash signin[/cyan], or set STASH_API_KEY / STASH_URL for headless use."
     )
     raise typer.Exit(1)
-
-
-@app.command()
-def signin(
-    page: str = typer.Option(
-        None,
-        "--page",
-        help="Sign-in page URL. Defaults to the /connect-token page matching --api.",
-    ),
-    api: str = typer.Option(
-        "https://api.joinstash.ai",
-        "--api",
-        help="Stash API base URL. Override for self-hosted deployments.",
-    ),
-    no_browser: bool = typer.Option(
-        False,
-        "--no-browser",
-        help="Skip auto-opening the browser; just print the URL. Use when on SSH or without a display.",
-    ),
-    timeout: int = typer.Option(120, "--timeout", help="Seconds to wait for sign-in."),
-):
-    """Sign in through the browser — blocks until the user authorizes.
-
-    Writes credentials to `~/.stash/config.json` on success and auto-selects
-    the default workspace if the user has exactly one.
-    """
-    api_key, username = _browser_auth_flow(api, page, timeout, no_browser)
-    save_config(base_url=api, api_key=api_key, username=username)
-    console.print(f"[green]✓ Signed in as {username}[/green]")
-
-
-@app.command()
-def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
-    """Store existing credentials."""
-    save_config(base_url=base_url, api_key=api_key)
-    with StashClient(base_url=base_url, api_key=api_key) as c:
-        try:
-            user = c.whoami()
-            save_config(username=user["name"])
-            console.print(f"[green]Authenticated as {user['name']}[/green]")
-        except StashError:
-            console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
 # ===========================================================================
@@ -3960,7 +3895,7 @@ def _require_auth() -> dict:
     """Return loaded config if authenticated, otherwise print error and exit."""
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print("[red]Not authenticated. Run `stash login` first.[/red]")
+        console.print("[red]Not authenticated. Run `stash signin` first.[/red]")
         raise typer.Exit(1)
     return cfg
 
@@ -4116,17 +4051,43 @@ def _install_all_hooks(agents: list[str] | None = None) -> None:
             console.print(f"  [red]✗[/red] {_AGENT_LABEL[agent]} hook failed  {detail}")
 
 
-@app.command("login")
-def login_cmd():
-    """Authenticate with Stash. On first run, walks through full onboarding."""
-    console.print("\n[bold]Stash login[/bold]\n")
+@app.command()
+def signin(
+    api: str = typer.Option(
+        None, "--api", help="Stash API base URL. Override for self-hosted deployments."
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Don't open a browser; just print the URL. Use on SSH or headless machines.",
+    ),
+    timeout: int = typer.Option(120, "--timeout", help="Seconds to wait for sign-in."),
+):
+    """Sign in to Stash through the browser.
+
+    Run interactively for guided first-run setup (endpoint, streaming agents,
+    repo). With --no-browser — or whenever stdin isn't a terminal — it just
+    authenticates, which is the path installers and agents use. For a fully
+    unattended machine (no browser), use `stash auth` to inject a pre-minted
+    key instead.
+    """
+    # Scripted / headless: bare browser auth, no wizard prompts.
+    if no_browser or not sys.stdin.isatty():
+        base_url = api or stored_base_url() or PRODUCTION_BASE_URL
+        api_key, username = _browser_auth_flow(base_url, timeout=timeout, no_browser=no_browser)
+        save_config(base_url=base_url, api_key=api_key, username=username)
+        console.print(f"[green]✓ Signed in as {username}[/green]")
+        return
+
+    console.print("\n[bold]Stash sign-in[/bold]\n")
 
     cfg = load_config()
 
     # --- Step 1: API endpoint ---
-    prev_base = stored_base_url()
+    prev_base = api or stored_base_url()
     if prev_base:
         base_url = prev_base
+        save_config(base_url=base_url)
         console.print(f"  [green]✓[/green] Using endpoint: [bold]{base_url}[/bold]")
     else:
         mode_options = [
@@ -4261,6 +4222,25 @@ def login_cmd():
     _onboarding_import_history(detected)
 
     _show_setup_complete_splash()
+
+
+@app.command()
+def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
+    """Store a pre-minted API key — non-interactive auth for headless machines.
+
+    `signin` needs a browser; env vars only reach the CLI, not the streaming
+    hooks (they read ~/.stash/config.json). This writes the key to that file so
+    an unattended box — CI runner, server, baked image — can stream. Mint the
+    key from `stash keys` on a machine you've already signed in on.
+    """
+    save_config(base_url=base_url, api_key=api_key)
+    with StashClient(base_url=base_url, api_key=api_key) as c:
+        try:
+            user = c.whoami()
+            save_config(username=user["name"])
+            console.print(f"[green]Authenticated as {user['name']}[/green]")
+        except StashError:
+            console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
 @app.command("connect")
@@ -4872,7 +4852,7 @@ def keys_revoke(key_id: str = typer.Argument(..., help="Key id to revoke.")):
 
 @app.command("logout")
 def logout_cmd(as_json: bool = typer.Option(False, "--json")):
-    """Sign out and clear credentials. Hooks go inert until you `stash login` again."""
+    """Sign out and clear credentials. Hooks go inert until you `stash signin` again."""
     from .config import clear_config
 
     json_mode = as_json
@@ -4881,7 +4861,7 @@ def logout_cmd(as_json: bool = typer.Option(False, "--json")):
         output_json({"logged_out": True})
         return
     console.print("[yellow]Logged out.[/yellow] Cleared auth and preferences.")
-    console.print("  Run [bold]stash login[/bold] to sign in again.")
+    console.print("  Run [bold]stash signin[/bold] to sign in again.")
 
 
 @app.command("disconnect")
@@ -4944,7 +4924,7 @@ def mount_command(
 
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print("[red]Not signed in. Run [bold]stash login[/bold] first.[/red]")
+        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
         raise typer.Exit(1)
 
     client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
@@ -4975,7 +4955,7 @@ def vfs_command(
 
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print("[red]Not signed in. Run [bold]stash login[/bold] first.[/red]")
+        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
         raise typer.Exit(1)
 
     client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
