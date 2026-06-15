@@ -39,11 +39,6 @@ def _is_jsonl(filename: str | None) -> bool:
     return name.endswith(".jsonl") or name.endswith(".jsonl.gz")
 
 
-async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.is_member(workspace_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-
-
 async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
     if not await workspace_service.can_write(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Viewers can read but not upload transcripts")
@@ -169,8 +164,8 @@ async def get_transcript_metadata(
     current_user: dict = Depends(get_current_user),
 ):
     """Metadata-only response. The frontend follows up with /events for
-    the bytes."""
-    await _check_member(workspace_id, current_user["id"])
+    the bytes. No membership gate: read_session_events enforces
+    can_read_session, so a non-member with a share can read it."""
     events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
@@ -201,8 +196,10 @@ async def get_transcript_events(
     current_user: dict = Depends(get_current_user),
 ):
     """Chat-thread turns for a session, in render order. Sourced directly
-    from history_events — no JSONL serialization round-trip."""
-    await _check_member(workspace_id, current_user["id"])
+    from history_events — no JSONL serialization round-trip.
+
+    No workspace-membership gate: read_session_events enforces
+    can_read_session, so a non-member the session is shared with can read it."""
     events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
@@ -215,10 +212,11 @@ async def export_transcript_jsonl(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """JSONL projection of the session — one event per line."""
+    """JSONL projection of the session — one event per line. No membership
+    gate: read_session_events enforces can_read_session, so a non-member with
+    a share can export it."""
     import json as json_mod
 
-    await _check_member(workspace_id, current_user["id"])
     events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
