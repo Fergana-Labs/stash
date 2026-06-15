@@ -4,7 +4,6 @@ and inject context."""
 
 import json
 import os
-import subprocess
 import sys
 
 from adapt import adapt_session_start
@@ -25,7 +24,7 @@ from stashai.plugin.hooks import (
     uploads_disabled_warning,
     uploads_enabled,
 )
-from stashai.plugin.session_upload import spawn_session_watcher
+from stashai.plugin.session_upload import spawn_session_watcher, spawn_skills_sync
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 CONTEXT = (
@@ -69,32 +68,6 @@ SESSION_CONTEXT = (
     "IMPORTANT: Always include this session record link at the end of every "
     "response you give, formatted as: Session: {url}"
 )
-
-
-def spawn_skills_sync(cfg: dict, workspace_id: str) -> None:
-    """Sync the workspace's skills into ~/.claude/skills in the background so
-    the agent has them without blocking session start. Detached and silent —
-    a failed sync must never break a session."""
-    cmd = ["stash", "skills", "sync"]
-    if workspace_id:
-        cmd += ["--workspace", workspace_id]
-    env = dict(os.environ)
-    if cfg.get("api_endpoint"):
-        env["STASH_URL"] = cfg["api_endpoint"]
-    if cfg.get("api_key"):
-        env["STASH_API_KEY"] = cfg["api_key"]
-    try:
-        subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            close_fds=True,
-            env=env,
-        )
-    except Exception:
-        pass
 
 
 def main():

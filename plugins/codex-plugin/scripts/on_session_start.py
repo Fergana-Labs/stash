@@ -14,7 +14,7 @@ from stashai.plugin.hooks import (
     uploads_disabled_warning,
     uploads_enabled,
 )
-from stashai.plugin.session_upload import spawn_session_watcher
+from stashai.plugin.session_upload import spawn_session_watcher, spawn_skills_sync
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 
@@ -39,6 +39,8 @@ def main():
             create_session_record(client, cfg, state, event, DATA_DIR)
     except Exception:
         return
+
+    spawn_skills_sync(cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", ""))
 
     if state.get("session_row_id"):
         spawn_session_watcher(

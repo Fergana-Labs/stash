@@ -5392,9 +5392,11 @@ Commands to reach for
 - `stash skills install <slug>` — install a public Skill (e.g. from
   Discover) into ~/.claude/skills so the local agent loads it next
   session. `--project` targets ./.claude/skills instead.
-- `stash skills sync` — two-way sync between ~/.claude/skills and the
-  workspace's skills: workspace skills materialize locally, local edits
-  to synced skills push back. Runs automatically at session start.
+- `stash skills sync` — two-way sync between the local skills directory
+  and the workspace's skills: workspace skills materialize locally, local
+  edits to synced skills push back. Runs automatically at session start,
+  targeting each agent's own skills dir (Claude `~/.claude/skills`, Codex/
+  Gemini/OpenCode `~/.agents/skills`, OpenClaw `~/.openclaw/skills`).
 
 Browsing Stash
 --------------
