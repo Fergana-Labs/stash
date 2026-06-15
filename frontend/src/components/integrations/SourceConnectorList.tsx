@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "@/lib/api";
@@ -148,13 +147,11 @@ export default function SourceConnectorList({
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <ConnectorAction
-                  connector={connector}
                   connected={connected}
                   enabled={enabled}
                   authKind={status?.auth_kind ?? "oauth"}
                   disabledReason={status?.disabled_reason ?? null}
                   busy={busy === connector.provider}
-                  workspaceId={workspaceId}
                   expanded={expanded === connector.provider}
                   onConnect={() => void connect(connector)}
                   onDisconnect={() => void disconnect(connector)}
@@ -203,25 +200,21 @@ function connectedLabel(status: IntegrationStatus | undefined): string {
 }
 
 function ConnectorAction({
-  connector,
   connected,
   enabled,
   authKind,
   disabledReason,
   busy,
-  workspaceId,
   expanded,
   onConnect,
   onDisconnect,
   onExpand,
 }: {
-  connector: Connector;
   connected: boolean;
   enabled: boolean;
   authKind: IntegrationStatus["auth_kind"];
   disabledReason: string | null;
   busy: boolean;
-  workspaceId: string | null;
   expanded: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -250,22 +243,13 @@ function ConnectorAction({
       </button>
     );
   }
+  // Once connected, the single action toggles to Disconnect. The dedicated
+  // integration page (for adding specific repos/pages) is still reachable from
+  // the sidebar's External Sources list.
   return (
-    <>
-      {workspaceId && (
-        <Link href={`/workspaces/${workspaceId}/integrations/${connector.provider}`} className={secondaryButton()}>
-          Open
-        </Link>
-      )}
-      <button
-        type="button"
-        onClick={onDisconnect}
-        disabled={busy}
-        className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
-      >
-        {busy ? "Disconnecting..." : "Disconnect"}
-      </button>
-    </>
+    <button type="button" onClick={onDisconnect} disabled={busy} className={secondaryButton()}>
+      {busy ? "Disconnecting..." : "Disconnect"}
+    </button>
   );
 }
 
