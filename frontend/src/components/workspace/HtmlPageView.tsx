@@ -24,7 +24,7 @@ type Props = {
   onSelection?: (info: HtmlSelectionInfo | null) => void;
   /** Click on a `[data-comment-id]` span inside the iframe asks the
    *  parent to surface the matching thread. */
-  onActivateThread?: (threadId: string) => void;
+  onActivateThread?: (threadId: string | null) => void;
   onAnchorTops?: (anchorTops: Record<string, number>) => void;
   /** Wraps the most recently reported selection with a
    *  `<span data-comment-id>` and posts the resulting full HTML back
@@ -136,6 +136,10 @@ export default function HtmlPageView({
       }
       if (data.type === "skill:thread-click" && typeof data.id === "string") {
         onActivateThread?.(data.id);
+        return;
+      }
+      if (data.type === "skill:thread-deselect") {
+        onActivateThread?.(null);
         return;
       }
       if (data.type === "skill:anchor-tops" && data.anchorTops) {
@@ -696,6 +700,7 @@ function injectResizeBootstrap(
         }
         t=t.parentNode;
       }
+      post({type:"skill:thread-deselect"});
       if(!BRIDGE_LINKS) return;
       var a=e.target;
       while(a && a!==document){
