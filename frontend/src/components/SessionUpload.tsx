@@ -99,7 +99,7 @@ export default function SessionUpload({ workspaceId, onUploaded }: SessionUpload
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={status === "uploading"}
-          className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised disabled:opacity-50"
+          className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised disabled:opacity-50"
         >
           {status === "uploading" ? "Uploading..." : "+ Add session"}
         </button>

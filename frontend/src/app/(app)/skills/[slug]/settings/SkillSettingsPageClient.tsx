@@ -281,7 +281,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
                 <button
                   type="submit"
                   disabled={saving === "general" || !title.trim()}
-                  className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+                  className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
                 >
                   {saving === "general" ? "Saving..." : "Save changes"}
                 </button>
@@ -335,7 +335,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
               type="button"
               onClick={handleStopSharing}
               disabled={saving === "unpublish"}
-              className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+              className="cursor-pointer rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
             >
               {saving === "unpublish" ? "Stopping..." : "Stop sharing"}
             </button>
@@ -404,7 +404,7 @@ function ImageField({
             <button
               type="button"
               onClick={() => void onClear()}
-              className="text-[11.5px] text-muted hover:text-foreground"
+              className="cursor-pointer text-[11.5px] text-muted hover:text-foreground"
             >
               Clear
             </button>

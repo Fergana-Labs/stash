@@ -83,14 +83,14 @@ export default function NewWorkspacePage() {
             <button
               type="button"
               onClick={() => router.back()}
-              className="text-[13px] text-muted hover:text-foreground"
+              className="cursor-pointer text-[13px] text-muted hover:text-foreground"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy || !name.trim()}
-              className="rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-hover)] disabled:opacity-40"
+              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-hover)] disabled:opacity-40"
             >
               {busy ? "Creating…" : "Create workspace"}
             </button>

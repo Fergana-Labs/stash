@@ -143,7 +143,7 @@ function Card({
           onTogglePin(item);
         }}
         className={
-          "flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px] transition " +
+          "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-[14px] transition " +
           (pinned
             ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
             : "text-muted opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/qa:opacity-100")

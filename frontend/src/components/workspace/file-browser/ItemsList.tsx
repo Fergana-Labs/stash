@@ -231,7 +231,7 @@ function SortHeader({
       type="button"
       onClick={() => onSort(sortKey)}
       className={
-        "flex items-center gap-1 text-left uppercase tracking-wide transition-colors hover:text-foreground " +
+        "flex cursor-pointer items-center gap-1 text-left uppercase tracking-wide transition-colors hover:text-foreground " +
         (active ? "text-foreground" : "")
       }
     >
@@ -288,7 +288,7 @@ function TypeHeader({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={
-          "flex items-center gap-1 text-left uppercase tracking-wide transition-colors hover:text-foreground " +
+          "flex cursor-pointer items-center gap-1 text-left uppercase tracking-wide transition-colors hover:text-foreground " +
           (sortActive || filter ? "text-foreground" : "")
         }
       >
@@ -326,7 +326,7 @@ function MenuItem({
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
+      className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
     >
       <span className="truncate">{label}</span>
       {checked && (
@@ -422,7 +422,7 @@ function Row({
             onTogglePin(item);
           }}
           className={
-            "rounded p-1 transition hover:bg-raised " +
+            "cursor-pointer rounded p-1 transition hover:bg-raised " +
             (pinned
               ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
               : "text-muted opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100")
@@ -439,7 +439,7 @@ function Row({
             e.stopPropagation();
             void onDelete(item);
           }}
-          className="rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          className="cursor-pointer rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
           title="Delete"
           aria-label="Delete"
         >

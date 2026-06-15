@@ -118,7 +118,7 @@ export default function SessionFolderShareModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[60] flex cursor-pointer items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <div
@@ -133,7 +133,7 @@ export default function SessionFolderShareModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-[20px] leading-none text-muted hover:text-foreground"
+            className="cursor-pointer text-[20px] leading-none text-muted hover:text-foreground"
             aria-label="Close"
           >
             ×
@@ -154,7 +154,7 @@ export default function SessionFolderShareModal({
                 disabled={busy}
                 onClick={() => changeVisibility(v.key)}
                 className={
-                  "flex-1 rounded-md px-2 py-[5px] text-[12.5px] " +
+                  "flex-1 cursor-pointer rounded-md px-2 py-[5px] text-[12.5px] " +
                   (visibility === v.key
                     ? "bg-raised font-semibold text-foreground"
                     : "text-muted hover:text-foreground")
@@ -175,7 +175,7 @@ export default function SessionFolderShareModal({
             <button
               type="button"
               onClick={copyLink}
-              className="shrink-0 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="shrink-0 cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               {copied ? "Copied" : "Copy link"}
             </button>
@@ -205,7 +205,7 @@ export default function SessionFolderShareModal({
             <button
               type="submit"
               disabled={busy || !email.trim()}
-              className="rounded-md bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-45"
+              className="cursor-pointer rounded-md bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-45"
             >
               Invite
             </button>
@@ -229,7 +229,7 @@ export default function SessionFolderShareModal({
                     <button
                       type="button"
                       onClick={() => void removePerson(s)}
-                      className="text-[11.5px] text-rose-500 hover:underline"
+                      className="cursor-pointer text-[11.5px] text-rose-500 hover:underline"
                     >
                       Remove
                     </button>

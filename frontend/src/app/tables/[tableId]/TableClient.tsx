@@ -213,14 +213,14 @@ function CellLinkEditorPopover({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md px-2 py-1.5 text-[12.5px] font-medium text-muted hover:bg-raised hover:text-foreground"
+          className="cursor-pointer rounded-md px-2 py-1.5 text-[12.5px] font-medium text-muted hover:bg-raised hover:text-foreground"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={!href.trim()}
-          className="rounded-md bg-brand px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+          className="cursor-pointer rounded-md bg-brand px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
         >
           Save
         </button>
@@ -1249,8 +1249,8 @@ function TableEditorPageInner() {
       <td className="px-1 py-0 whitespace-nowrap">
         {!readOnly && (
           <>
-            <button onClick={() => handleDuplicateRow(row.id)} className="text-xs text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
-            <button onClick={() => handleDeleteRow(row.id)} className="text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Delete">&times;</button>
+            <button onClick={() => handleDuplicateRow(row.id)} className="cursor-pointer text-xs text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
+            <button onClick={() => handleDeleteRow(row.id)} className="cursor-pointer text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Delete">&times;</button>
           </>
         )}
       </td>
@@ -1335,8 +1335,8 @@ function TableEditorPageInner() {
           </div>
           <div className="flex-1" />
           {table && <>
-            {!readOnly && <button onClick={addFilter} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
-            {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
+            {!readOnly && <button onClick={addFilter} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
+            {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
             {/* Group by */}
             <CustomSelect
               value={groupByCol}
@@ -1350,14 +1350,14 @@ function TableEditorPageInner() {
               className="min-w-[132px] rounded border border-border bg-raised px-2 py-1 text-xs text-foreground"
               menuClassName="text-xs"
             />
-            {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>}
-            {!readOnly && wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
-            <button onClick={() => setShowColVisibility((p) => !p)} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
-            <button onClick={() => setWrapCells((p) => !p)} className={`text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
-            {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
+            {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>}
+            {!readOnly && wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
+            <button onClick={() => setShowColVisibility((p) => !p)} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
+            <button onClick={() => setWrapCells((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
+            {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
             {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
-            {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
-            {!readOnly && <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
+            {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="cursor-pointer text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
+            {!readOnly && <button onClick={handleDelete} className="cursor-pointer text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
           </>}
         </div>
 
@@ -1370,7 +1370,7 @@ function TableEditorPageInner() {
                 {c.name}
               </label>
             ))}
-            <button onClick={() => setShowColVisibility(false)} className="text-xs text-muted hover:text-foreground ml-2">Done</button>
+            <button onClick={() => setShowColVisibility(false)} className="cursor-pointer text-xs text-muted hover:text-foreground ml-2">Done</button>
           </div>
         )}
 
@@ -1398,7 +1398,7 @@ function TableEditorPageInner() {
                     setTimeout(() => setBackfillStatus(""), 2000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
                 }}
-                className="text-xs bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-2 py-1 rounded"
+                className="cursor-pointer text-xs bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-2 py-1 rounded"
               >
                 Save
               </button>
@@ -1410,7 +1410,7 @@ function TableEditorPageInner() {
                     setTimeout(() => setBackfillStatus(""), 5000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
                 }}
-                className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
+                className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
               >
                 Backfill all rows
               </button>
@@ -1436,14 +1436,14 @@ function TableEditorPageInner() {
         {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
           <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto overscroll-x-contain">
-            <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
+            <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`cursor-pointer px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
             {table.views.map((layout: TableView) => (
               <div key={layout.id} className="flex items-center group">
-                <button onClick={() => handleLoadLayout(layout)} className={`px-3 py-1 text-xs rounded ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{layout.name}</button>
-                <button onClick={() => handleDeleteLayout(layout.id)} className="text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
+                <button onClick={() => handleLoadLayout(layout)} className={`cursor-pointer px-3 py-1 text-xs rounded ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{layout.name}</button>
+                <button onClick={() => handleDeleteLayout(layout.id)} className="cursor-pointer text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
               </div>
             ))}
-            <button onClick={handleSaveLayout} className="px-2 py-1 text-xs text-muted hover:text-brand">+ Save layout</button>
+            <button onClick={handleSaveLayout} className="cursor-pointer px-2 py-1 text-xs text-muted hover:text-brand">+ Save layout</button>
           </div>
         )}
 
@@ -1467,11 +1467,11 @@ function TableEditorPageInner() {
                   menuClassName="text-xs"
                 />
                 {f.op !== "is_empty" && f.op !== "is_not_empty" && <input value={f.value} onChange={(e) => updateFilter(idx, "value", e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") loadRows(); }} className="w-24 bg-transparent outline-none text-foreground border-b border-border" placeholder="value" />}
-                <button onClick={() => removeFilter(idx)} className="text-muted hover:text-red-400 ml-1">&times;</button>
+                <button onClick={() => removeFilter(idx)} className="cursor-pointer text-muted hover:text-red-400 ml-1">&times;</button>
               </div>
             ))}
-            <button onClick={addFilter} className="text-xs text-brand hover:text-brand-hover">+ Add</button>
-            <button onClick={() => { setFilters([]); setShowFilterBar(false); }} className="text-xs text-muted hover:text-foreground ml-2">Clear all</button>
+            <button onClick={addFilter} className="cursor-pointer text-xs text-brand hover:text-brand-hover">+ Add</button>
+            <button onClick={() => { setFilters([]); setShowFilterBar(false); }} className="cursor-pointer text-xs text-muted hover:text-foreground ml-2">Clear all</button>
           </div>
         )}
 
@@ -1524,7 +1524,7 @@ function TableEditorPageInner() {
                     </th>
                   ))}
                   <th className="w-10 px-2 py-2 border-r border-border">
-                    {!readOnly && <button onClick={() => setShowAddCol(true)} className="w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted hover:text-brand text-sm font-bold">+</button>}
+                    {!readOnly && <button onClick={() => setShowAddCol(true)} className="cursor-pointer w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted hover:text-brand text-sm font-bold">+</button>}
                   </th>
                   <th className="w-16" />
                 </tr>
@@ -1580,7 +1580,7 @@ function TableEditorPageInner() {
             </table>
 
             {/* Add row + infinite scroll sentinel */}
-            {!readOnly && <button onClick={handleAddRow} className="w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
+            {!readOnly && <button onClick={handleAddRow} className="cursor-pointer w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
             {hasMore && (
               <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">
                 {loadingMore ? (
@@ -1611,25 +1611,25 @@ function TableEditorPageInner() {
           <div data-colmenu className="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[180px]" style={{ left: colMenu.x, top: colMenu.y }} onClick={(e) => e.stopPropagation()}>
             {!colMenuTypeOpen ? (
               <>
-                <button onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</button>
-                <button onClick={() => handleRenameColumn(colMenu.colId)} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Rename</button>
-                <button onClick={() => setColMenuTypeOpen(true)} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised flex items-center justify-between">
+                <button onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</button>
+                <button onClick={() => handleRenameColumn(colMenu.colId)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Rename</button>
+                <button onClick={() => setColMenuTypeOpen(true)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised flex items-center justify-between">
                   <span>Change type</span>
                   <span className="text-[10px] text-muted font-mono">{sortedColumns.find((c) => c.id === colMenu.colId)?.type ?? ""} ›</span>
                 </button>
-                <button onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Hide column</button>
-                <button onClick={() => handleDeleteColumn(colMenu.colId)} className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised">Delete column</button>
+                <button onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Hide column</button>
+                <button onClick={() => handleDeleteColumn(colMenu.colId)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised">Delete column</button>
               </>
             ) : (
               <>
-                <button onClick={() => setColMenuTypeOpen(false)} className="w-full text-left px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-raised">‹ Back</button>
+                <button onClick={() => setColMenuTypeOpen(false)} className="cursor-pointer w-full text-left px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-raised">‹ Back</button>
                 {COLUMN_TYPES.map((t) => {
                   const current = sortedColumns.find((c) => c.id === colMenu.colId)?.type;
                   return (
                     <button
                       key={t}
                       onClick={() => { void handleChangeColumnType(colMenu.colId, t); setColMenuTypeOpen(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-raised flex items-center gap-2 ${current === t ? "text-brand" : "text-foreground"}`}
+                      className={`cursor-pointer w-full text-left px-3 py-1.5 text-sm hover:bg-raised flex items-center gap-2 ${current === t ? "text-brand" : "text-foreground"}`}
                     >
                       <span className="text-[10px] text-muted font-mono w-4 text-center">{TYPE_ICONS[t] ?? "?"}</span>
                       <span>{t}</span>
@@ -1644,7 +1644,7 @@ function TableEditorPageInner() {
 
         {/* Add column dialog */}
         {showAddCol && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAddCol(false)}>
+          <div className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/40" onClick={() => setShowAddCol(false)}>
             <div className="bg-surface border border-border rounded-xl p-6 w-[360px] shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-base font-bold font-display text-foreground mb-4">Add Column</h2>
               <div className="space-y-3">
@@ -1662,8 +1662,8 @@ function TableEditorPageInner() {
                 {(newColType === "select" || newColType === "multiselect") && <div><label className="text-xs text-muted mb-1 block">Options (comma-separated)</label><input value={newColOptions} onChange={(e) => setNewColOptions(e.target.value)} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" placeholder="option1, option2" /></div>}
               </div>
               <div className="flex justify-end gap-2 mt-5">
-                <button onClick={() => setShowAddCol(false)} className="text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
-                <button onClick={handleAddColumn} className="text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Add</button>
+                <button onClick={() => setShowAddCol(false)} className="cursor-pointer text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
+                <button onClick={handleAddColumn} className="cursor-pointer text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Add</button>
               </div>
             </div>
           </div>
@@ -1671,7 +1671,7 @@ function TableEditorPageInner() {
 
         {/* Row detail modal */}
         {detailRow && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDetailRow(null)}>
+          <div className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/40" onClick={() => setDetailRow(null)}>
             <div className="bg-surface border border-border rounded-xl p-6 w-[480px] max-h-[80vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-base font-bold font-display text-foreground">Row Detail</h2>
@@ -1711,10 +1711,10 @@ function TableEditorPageInner() {
                 </div>
               </div>
               <div className="flex justify-between mt-5">
-                <button onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="text-sm text-muted hover:text-foreground px-3 py-1.5">Duplicate</button>
+                <button onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="cursor-pointer text-sm text-muted hover:text-foreground px-3 py-1.5">Duplicate</button>
                 <div className="flex gap-2">
-                  <button onClick={() => setDetailRow(null)} className="text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
-                  <button onClick={saveDetail} className="text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Save</button>
+                  <button onClick={() => setDetailRow(null)} className="cursor-pointer text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
+                  <button onClick={saveDetail} className="cursor-pointer text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Save</button>
                 </div>
               </div>
             </div>

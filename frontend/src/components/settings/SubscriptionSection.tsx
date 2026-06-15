@@ -61,7 +61,7 @@ export default function SubscriptionSection() {
             type="button"
             disabled={busy}
             onClick={() => redirectTo(openBillingPortal)}
-            className="text-sm font-semibold px-4 py-2 rounded-lg border border-border text-foreground hover:bg-raised disabled:opacity-60 transition-colors"
+            className="cursor-pointer text-sm font-semibold px-4 py-2 rounded-lg border border-border text-foreground hover:bg-raised disabled:opacity-60 transition-colors"
           >
             {busy ? "Opening…" : "Manage subscription"}
           </button>
@@ -71,7 +71,7 @@ export default function SubscriptionSection() {
               type="button"
               disabled={busy}
               onClick={() => redirectTo(() => startCheckout("month"))}
-              className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               {busy ? "Redirecting…" : "Upgrade — $20/month"}
             </button>
@@ -79,7 +79,7 @@ export default function SubscriptionSection() {
               type="button"
               disabled={busy}
               onClick={() => redirectTo(() => startCheckout("year"))}
-              className="text-xs text-muted hover:text-foreground underline disabled:opacity-60"
+              className="cursor-pointer text-xs text-muted hover:text-foreground underline disabled:opacity-60"
             >
               or $200/year — 2 months free
             </button>

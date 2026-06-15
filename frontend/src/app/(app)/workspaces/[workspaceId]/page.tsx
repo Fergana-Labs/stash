@@ -150,7 +150,7 @@ export default function WorkspaceHomePage() {
               <button
                 type="button"
                 onClick={handleNewPage}
-                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+                className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
               >
                 + New page
               </button>
@@ -181,7 +181,7 @@ export default function WorkspaceHomePage() {
             </span>
             <button
               onClick={handleJoin}
-              className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Join workspace
             </button>

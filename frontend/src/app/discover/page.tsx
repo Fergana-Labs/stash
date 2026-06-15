@@ -68,7 +68,7 @@ export default function DiscoverPage() {
               type="button"
               onClick={() => setSort(option)}
               className={
-                "rounded-md px-2.5 py-[3px] text-[12px] " +
+                "cursor-pointer rounded-md px-2.5 py-[3px] text-[12px] " +
                 (sort === option
                   ? "bg-raised font-semibold text-foreground"
                   : "text-muted hover:text-foreground")

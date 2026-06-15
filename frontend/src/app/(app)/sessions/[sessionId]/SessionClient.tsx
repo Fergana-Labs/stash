@@ -375,7 +375,7 @@ function SaveToSkillButton({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
       >
         Save to Skill <span aria-hidden className="text-[10px]">▾</span>
       </button>
@@ -393,7 +393,7 @@ function SaveToSkillButton({
               type="button"
               disabled={busy}
               onClick={() => void save(skill)}
-              className="block w-full truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
+              className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
             >
               {skill.name}
             </button>

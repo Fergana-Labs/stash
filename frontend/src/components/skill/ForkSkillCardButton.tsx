@@ -125,7 +125,7 @@ export default function ForkSkillCardButton({ slug, sourceWorkspaceId }: Props) 
         onClick={onPrimaryClick}
         disabled={showBusy}
         title={showDone ? "Saved to workspace" : "Save to your workspace"}
-        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm ring-1 backdrop-blur transition ${
+        className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm ring-1 backdrop-blur transition ${
           showDone
             ? "bg-[var(--color-brand-600)] text-white ring-[var(--color-brand-600)]"
             : "bg-white/85 text-foreground ring-border hover:bg-white"
@@ -160,7 +160,7 @@ export default function ForkSkillCardButton({ slug, sourceWorkspaceId }: Props) 
               <button
                 type="button"
                 onClick={() => void save(phase.selectedId)}
-                className="w-full rounded-md bg-brand px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover"
+                className="w-full cursor-pointer rounded-md bg-brand px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover"
               >
                 Save
               </button>
@@ -179,7 +179,7 @@ export default function ForkSkillCardButton({ slug, sourceWorkspaceId }: Props) 
                 onClick={() =>
                   router.push(`/workspaces/${phase.workspaceId}`)
                 }
-                className="w-full rounded-md border border-border px-2.5 py-1.5 text-[12.5px] text-foreground hover:border-brand hover:text-brand"
+                className="w-full cursor-pointer rounded-md border border-border px-2.5 py-1.5 text-[12.5px] text-foreground hover:border-brand hover:text-brand"
               >
                 Open workspace →
               </button>

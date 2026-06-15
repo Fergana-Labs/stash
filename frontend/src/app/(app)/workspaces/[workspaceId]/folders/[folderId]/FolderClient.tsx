@@ -141,7 +141,7 @@ export default function FolderDetailPage() {
           type="button"
           onClick={() => void convertToSkill()}
           disabled={converting}
-          className="rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
+          className="cursor-pointer rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
         >
           {converting ? "Converting…" : "Convert to Skill"}
         </button>

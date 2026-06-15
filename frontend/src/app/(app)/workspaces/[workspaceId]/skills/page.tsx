@@ -184,7 +184,7 @@ export default function WorkspaceSkillsPage() {
           <button
             type="button"
             onClick={() => void newSkill()}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
             <PlusGlyph /> New Skill
           </button>
@@ -266,14 +266,14 @@ export default function WorkspaceSkillsPage() {
             <button
               type="button"
               onClick={() => void bulkDeleteSkills()}
-              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
             >
               Delete
             </button>
             <button
               type="button"
               onClick={clearSelection}
-              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
@@ -342,7 +342,7 @@ function ExternalSkillLinkForm({
         <button
           type="submit"
           disabled={busy || !input.trim()}
-          className="rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-45 sm:mt-6"
+          className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-45 sm:mt-6"
         >
           {busy ? "Adding…" : "Add Skill"}
         </button>
@@ -389,7 +389,7 @@ function SkillTabs({
             type="button"
             onClick={() => onChange(t.key)}
             className={
-              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors " +
+              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] transition-colors " +
               (active
                 ? "border-[var(--color-brand-600)] font-semibold text-foreground"
                 : "border-transparent text-muted hover:text-foreground")
@@ -532,7 +532,7 @@ function DiscoverSection({ workspaceId }: { workspaceId: string }) {
                 type="button"
                 onClick={() => setSort(option)}
                 className={
-                  "rounded-md px-2.5 py-[3px] text-[12px] " +
+                  "cursor-pointer rounded-md px-2.5 py-[3px] text-[12px] " +
                   (sort === option
                     ? "bg-raised font-semibold text-foreground"
                     : "text-muted hover:text-foreground")
@@ -775,7 +775,7 @@ function SkillPinButton({
         onToggle();
       }}
       className={
-        "flex h-6 w-6 items-center justify-center rounded transition " +
+        "flex h-6 w-6 cursor-pointer items-center justify-center rounded transition " +
         (onCover
           ? "bg-white/70 backdrop-blur hover:bg-white "
           : "hover:bg-raised ") +
@@ -909,7 +909,7 @@ function SkillViewToggle({
             type="button"
             onClick={() => onChange(opt.key)}
             className={
-              "rounded px-2 py-[3px] " +
+              "cursor-pointer rounded px-2 py-[3px] " +
               (active
                 ? "bg-raised font-semibold text-foreground"
                 : "text-muted hover:text-foreground")

@@ -26,7 +26,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 px-4"
+      className="fixed inset-0 z-[60] flex cursor-pointer items-center justify-center bg-black/30 px-4"
       onClick={onClose}
     >
       <div
@@ -49,7 +49,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
+            className="cursor-pointer rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
           >
             Not now
           </button>
@@ -58,7 +58,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
             autoFocus
             disabled={busy}
             onClick={() => upgrade("month")}
-            className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+            className="cursor-pointer rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
           >
             {busy ? "Redirecting…" : "Upgrade — $20/month"}
           </button>
@@ -67,7 +67,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
           type="button"
           disabled={busy}
           onClick={() => upgrade("year")}
-          className="mt-2 block w-full text-right text-[11.5px] text-muted underline hover:text-foreground disabled:opacity-60"
+          className="mt-2 block w-full cursor-pointer text-right text-[11.5px] text-muted underline hover:text-foreground disabled:opacity-60"
         >
           or $200/year — 2 months free
         </button>
