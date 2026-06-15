@@ -104,6 +104,9 @@ export default function EditableTitle({
     <input
       ref={inputRef}
       value={draft}
+      // Grow the input with its content so long titles aren't clipped. `size`
+      // is in characters; it auto-widens as the user types and shrinks back.
+      size={Math.max(draft.length, placeholder?.length ?? 1, 1)}
       disabled={saving}
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={onKey}
@@ -111,7 +114,7 @@ export default function EditableTitle({
       placeholder={placeholder}
       className={
         (className ?? "") +
-        " rounded border border-[var(--color-brand-300)] bg-base px-1 py-0.5 -mx-1 outline-none focus:border-[var(--color-brand-500)]"
+        " max-w-full rounded border border-[var(--color-brand-300)] bg-base px-1 py-0.5 -mx-1 outline-none focus:border-[var(--color-brand-500)]"
       }
     />
   );

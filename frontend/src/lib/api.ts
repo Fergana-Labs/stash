@@ -240,6 +240,31 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }
 
+// --- Billing ---
+
+export interface BillingInfo {
+  billing_enabled: boolean;
+  plan?: "free" | "pro";
+  status?: string | null;
+  connection_count?: number;
+  connection_limit?: number;
+}
+
+export async function getBilling(): Promise<BillingInfo> {
+  return apiFetch("/api/v1/billing/me");
+}
+
+export async function startCheckout(interval: "month" | "year"): Promise<{ url: string }> {
+  return apiFetch("/api/v1/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ interval }),
+  });
+}
+
+export async function openBillingPortal(): Promise<{ url: string }> {
+  return apiFetch("/api/v1/billing/portal", { method: "POST" });
+}
+
 // --- Workspaces ---
 
 export async function createWorkspace(name: string, description?: string): Promise<Workspace> {

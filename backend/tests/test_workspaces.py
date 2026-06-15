@@ -791,3 +791,23 @@ async def test_owner_cannot_leave(client: AsyncClient):
 
     resp = await client.post(f"/api/v1/workspaces/{ws['id']}/leave", headers=_auth(key))
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_new_page_button_never_collides(client: AsyncClient):
+    """The 'New page' button always sends 'Untitled'. Clicking it repeatedly must
+    keep working: each new page gets the next free name instead of a 409."""
+    key, _ = await _register(client)
+    ws = (await client.post("/api/v1/workspaces", json={"name": "Pages"}, headers=_auth(key))).json()
+
+    names = []
+    for _ in range(3):
+        resp = await client.post(
+            f"/api/v1/workspaces/{ws['id']}/pages/new",
+            json={"name": "Untitled"},
+            headers=_auth(key),
+        )
+        assert resp.status_code == 201
+        names.append(resp.json()["name"])
+
+    assert names == ["Untitled", "Untitled (2)", "Untitled (3)"]

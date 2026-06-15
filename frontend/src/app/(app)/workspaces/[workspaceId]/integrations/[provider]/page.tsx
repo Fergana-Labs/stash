@@ -8,6 +8,7 @@ import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { useConfirm } from "../../../../../../components/ConfirmDialog";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
+  ApiError,
   deleteWorkspaceSource,
   fetchSourceHistory,
   getSourceEntries,
@@ -35,6 +36,7 @@ import {
   primaryButton,
   secondaryButton,
 } from "../../../../../../components/integrations/pickers";
+import PaywallModal from "../../../../../../components/PaywallModal";
 
 export default function IntegrationPage() {
   const params = useParams();
@@ -55,6 +57,7 @@ export default function IntegrationPage() {
   const [showCreds, setShowCreds] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [paymentRequired, setPaymentRequired] = useState(false);
 
   useBreadcrumbs(
     [{ label: connector?.label ?? "Integration" }],
@@ -111,7 +114,11 @@ export default function IntegrationPage() {
     try {
       await startConnect(connector!.provider, pathname);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start connection");
+      if (e instanceof ApiError && e.status === 402) {
+        setPaymentRequired(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Could not start connection");
+      }
       setBusy(null);
     }
   }
@@ -125,7 +132,11 @@ export default function IntegrationPage() {
       await refresh();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not connect");
+      if (e instanceof ApiError && e.status === 402) {
+        setPaymentRequired(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Could not connect");
+      }
       return false;
     } finally {
       setBusy(null);
@@ -263,6 +274,8 @@ export default function IntegrationPage() {
             {error}
           </div>
         )}
+
+        {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
 
         {/* Add a <thing> */}
         {connected && (

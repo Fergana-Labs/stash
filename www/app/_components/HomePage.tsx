@@ -24,6 +24,7 @@ export default function HomePage() {
       <VisualizationsShowcase />
       <Features />
       <CliAndPlugin />
+      <Pricing />
       <ClosingCTA />
       <Footer />
     </main>
@@ -512,9 +513,9 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
   },
   {
     n: "02",
-    pill: "Capture",
-    title: "Capture every agent session.",
-    body: "Transcripts stream in automatically — prompts, tool calls, artifacts — so your knowledge base accumulates with every run instead of evaporating when the session closes.",
+    pill: "Remember",
+    title: "Memory that builds itself.",
+    body: "Every agent session — prompts, tool calls, artifacts — streams in automatically and becomes shared, retrievable memory. Your agents remember what they did instead of starting from zero each run.",
     viz: <StreamViz />,
   },
   {
@@ -529,7 +530,7 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
 // The message-test variant pages pass their own title/steps so the section
 // tells the story of the message under test.
 export function HowItWorks({
-  title = "Connect. Capture. Create.",
+  title = "Connect. Remember. Create.",
   subtitle = "One workspace, two kinds of writer.",
   steps = DEFAULT_HOW_STEPS,
 }: {
@@ -845,6 +846,109 @@ function CliAndPlugin() {
   );
 }
 
+const PRICING_TIERS = [
+  {
+    name: "Free",
+    price: "$0",
+    period: "forever",
+    blurb: "Try the whole product with one connected source.",
+    features: [
+      "1 connected integration / external source",
+      "Unlimited pages, sessions, and tables",
+      "Full agent access — CLI, MCP, plugins",
+      "Self-hostable, MIT licensed",
+    ],
+    cta: { label: "Start free →", href: APP_URL },
+    highlight: false,
+  },
+  {
+    name: "Pro",
+    price: "$20",
+    period: "per user / month",
+    blurb: "For people whose agents read from everywhere.",
+    features: [
+      "Unlimited connected sources",
+      "GitHub, Slack, Gmail, Drive, Notion, and more",
+      "Everything in Free",
+      "$200/year — 2 months free",
+    ],
+    cta: { label: "Upgrade in app →", href: APP_URL },
+    highlight: true,
+  },
+  {
+    name: "Enterprise",
+    price: "Custom",
+    period: "annual pricing",
+    blurb: "For teams with security and deployment requirements.",
+    features: [
+      "Custom deployment options",
+      "SSO and admin controls",
+      "Support SLAs",
+    ],
+    cta: { label: "Contact us →", href: "/contact-sales" },
+    highlight: false,
+  },
+];
+
+export function Pricing() {
+  return (
+    <section id="pricing" className="border-b border-border-subtle bg-surface py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <EyebrowDot>Pricing</EyebrowDot>
+        <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+          Free to try.
+          <br />
+          <span className="font-medium text-dim">Pay when your agents need more.</span>
+        </h2>
+        <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-3">
+          {PRICING_TIERS.map((tier) => (
+            <div
+              key={tier.name}
+              className={`relative flex flex-col rounded-[14px] border bg-background p-7 ${
+                tier.highlight ? "border-brand" : "border-border"
+              }`}
+            >
+              {tier.highlight && (
+                <span className="absolute -top-3 left-7 inline-flex items-center rounded bg-brand px-2 py-1 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.12em] text-white">
+                  Most popular
+                </span>
+              )}
+              <h3 className="font-mono text-[12px] font-medium uppercase tracking-[0.14em] text-brand">
+                {tier.name}
+              </h3>
+              <div className="mt-4 flex items-baseline gap-2">
+                <span className="font-display text-[40px] font-bold tracking-[-0.03em] text-ink">
+                  {tier.price}
+                </span>
+                <span className="text-[13px] text-muted">{tier.period}</span>
+              </div>
+              <p className="mt-2 text-[14.5px] leading-[1.55] text-dim">{tier.blurb}</p>
+              <ul className="mt-6 flex-1 space-y-2.5">
+                {tier.features.map((feature) => (
+                  <li key={feature} className="flex gap-2.5 text-[14px] leading-[1.5] text-foreground">
+                    <span className="mt-[7px] inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-brand" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={tier.cta.href}
+                className={`mt-7 inline-flex h-10 items-center justify-center rounded-lg px-4 text-[13.5px] font-medium transition ${
+                  tier.highlight
+                    ? "bg-brand text-white shadow-sm hover:bg-brand-hover"
+                    : "border border-border bg-background text-ink hover:border-ink"
+                }`}
+              >
+                {tier.cta.label}
+              </Link>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // Variant pages pass ctaHref="#survey" so the signup button leads to the form.
 export function ClosingCTA({ ctaHref = APP_URL }: { ctaHref?: string }) {
   const ctaClassName =
@@ -895,6 +999,7 @@ export function Footer() {
         ["Connect your data", "/connect-your-data"],
         ["Agent-native Drive", "/agent-native-drive"],
         ["Discover", "/discover"],
+        ["Pricing", "/#pricing"],
         ["Docs", "/docs"],
       ],
     },

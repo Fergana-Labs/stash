@@ -51,6 +51,10 @@ CONTEXT = (
     "(`--project` for ./.claude/skills).\n\n"
     "Run `stash prompts agent-guidance` any time you want this guidance "
     "reprinted in full.\n\n"
+    "`stash ls` shows everything Stash can reach as one filesystem — files, "
+    "session transcripts, and every connected integration (GitHub, Slack, "
+    "Gong, Gmail, Drive, Notion, …). When asked what you have access to, run "
+    "it and show the tree; drill in with `stash ls <source>/<path>`.\n\n"
     "Browse Stash through the virtual filesystem first when you need workspace "
     'context: `stash vfs ls /`, `stash vfs "find /workspaces -maxdepth 3 '
     '-type f"`, `stash vfs "rg \\"query\\" /workspaces"`, or '

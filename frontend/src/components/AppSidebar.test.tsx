@@ -116,9 +116,11 @@ describe("AppSidebar workspace nav", () => {
     await waitFor(() => expect(navLink("Index")).toBeTruthy());
 
     expect(navLink("Index").getAttribute("href")).toBe("/activity");
-    expect(screen.getByText("Your Brain")).toBeTruthy();
+    // The section headers render only after the workspace fetch resolves,
+    // later than the Index link — await them or this test flakes under load.
+    expect(await screen.findByText("Your Brain")).toBeTruthy();
     // The External Sources header renders even with no connected sources.
-    expect(screen.getByText("External Sources")).toBeTruthy();
+    expect(await screen.findByText("External Sources")).toBeTruthy();
   });
 
   it("links Discover in the global nav", async () => {

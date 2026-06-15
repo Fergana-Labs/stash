@@ -21,6 +21,7 @@ from .routers import (
     aggregate,
     analytics,
     batch,
+    billing,
     collab,
     demo,
     discover,
@@ -29,6 +30,7 @@ from .routers import (
     files_tree,
     marketing,
     memory,
+    pastes,
     pins,
     publish,
     security_audit,
@@ -126,6 +128,7 @@ app.include_router(agent_docs.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(marketing.router)
+app.include_router(pastes.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
@@ -139,6 +142,7 @@ app.include_router(session_folders.ws_router)
 app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
+app.include_router(billing.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 

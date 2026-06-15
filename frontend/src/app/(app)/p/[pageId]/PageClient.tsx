@@ -152,6 +152,19 @@ export default function SkillPageView() {
     htmlSelectionRef.current = htmlSelection;
   }, [htmlSelection]);
 
+  // Deselect the active comment when clicking anywhere outside its anchor in
+  // the page and its card in the sidebar.
+  useEffect(() => {
+    if (!activeThreadId) return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("[data-comment-id], [data-comment-thread-id]")) return;
+      setActiveThreadId(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [activeThreadId]);
+
   useEffect(() => {
     setCommentAnchorTops({});
     setExternalEdit(null);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ApiError } from "@/lib/api";
 import {
   listIntegrations,
   startConnect,
@@ -15,6 +16,7 @@ import { ObsidianIcon } from "./BrandIcons";
 import { CONNECTORS, connectorIcon, type Connector } from "./connectors";
 import { CredentialForm, primaryButton, secondaryButton } from "./pickers";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
+import PaywallModal from "../PaywallModal";
 
 type Props = {
   workspaceId: string | null;
@@ -36,6 +38,7 @@ export default function SourceConnectorList({
   const [expanded, setExpanded] = useState<IntegrationProvider | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentRequired, setPaymentRequired] = useState(false);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -66,7 +69,11 @@ export default function SourceConnectorList({
     try {
       await startConnect(connector.provider, returnTo);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start connection");
+      if (e instanceof ApiError && e.status === 402) {
+        setPaymentRequired(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Could not start connection");
+      }
       setBusy(null);
     }
   }
@@ -80,7 +87,11 @@ export default function SourceConnectorList({
       await refresh();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not connect");
+      if (e instanceof ApiError && e.status === 402) {
+        setPaymentRequired(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Could not connect");
+      }
       return false;
     } finally {
       setBusy(null);
@@ -154,6 +165,8 @@ export default function SourceConnectorList({
           {error}
         </div>
       )}
+
+      {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
     </div>
   );
 }
