@@ -167,6 +167,11 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "JIRA_OAUTH_CLIENT_SECRET",
             "JIRA_OAUTH_REDIRECT_URI",
         ],
+        "linear": [
+            "LINEAR_OAUTH_CLIENT_ID",
+            "LINEAR_OAUTH_CLIENT_SECRET",
+            "LINEAR_OAUTH_REDIRECT_URI",
+        ],
         "asana": [
             "ASANA_OAUTH_CLIENT_ID",
             "ASANA_OAUTH_CLIENT_SECRET",
@@ -184,6 +189,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "twitter": "Twitter / X",
             "granola": "Granola",
             "jira": "Jira",
+            "linear": "Linear",
             "asana": "Asana",
         }
         return f"{display_names.get(provider, provider)} OAuth is not configured for this server."

@@ -16,6 +16,7 @@ export type IntegrationProvider =
   | "slack"
   | "granola"
   | "jira"
+  | "linear"
   | "asana"
   | "gong"
   | "snowflake"

@@ -42,14 +42,11 @@ class LinearIssue:
 
 
 def is_configured() -> bool:
-    return bool(settings.LINEAR_API_KEY)
+    return bool(settings.LINEAR_OAUTH_CLIENT_ID and settings.LINEAR_OAUTH_CLIENT_SECRET)
 
 
-async def fetch_issue(ticket_identifier: str) -> LinearIssue | None:
-    if not settings.LINEAR_API_KEY:
-        return None
-
-    payload = await _graphql(ISSUE_QUERY, {"id": ticket_identifier})
+async def fetch_issue(ticket_identifier: str, access_token: str) -> LinearIssue | None:
+    payload = await _graphql(ISSUE_QUERY, {"id": ticket_identifier}, access_token)
     errors = payload.get("errors")
     if errors:
         message = "; ".join(str(error.get("message", error)) for error in errors)
@@ -79,9 +76,9 @@ async def fetch_issue(ticket_identifier: str) -> LinearIssue | None:
     )
 
 
-async def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+async def _graphql(query: str, variables: dict[str, Any], access_token: str) -> dict[str, Any]:
     headers = {
-        "Authorization": settings.LINEAR_API_KEY or "",
+        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
     async with httpx.AsyncClient(timeout=15) as client:

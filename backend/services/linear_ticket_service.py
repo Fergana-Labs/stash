@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from ..database import get_pool
+from ..integrations import storage
 from . import linear_api_service
 
 LINEAR_TICKET_ID = r"[A-Z][A-Z0-9]+-\d+"
@@ -206,17 +207,44 @@ def enqueue_session_enrichment(workspace_id: UUID, session_row_id: UUID) -> None
     enrich_session_linear_tickets.delay(str(workspace_id), str(session_row_id))
 
 
+async def _workspace_linear_token(workspace_id: UUID) -> str | None:
+    """A Linear OAuth token for any member of this workspace, or None if no
+    member has connected Linear. Linear issues are workspace-shared, so any
+    member's token can read the tickets every session in the workspace cites."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT ui.user_id
+        FROM user_integrations ui
+        JOIN workspace_members wm ON wm.user_id = ui.user_id
+        WHERE ui.provider = 'linear' AND wm.workspace_id = $1
+        ORDER BY ui.created_at
+        LIMIT 1
+        """,
+        workspace_id,
+    )
+    if row is None:
+        return None
+    return await storage.get_valid_token(row["user_id"], "linear")
+
+
 async def enrich_session_labels(session_row_id: UUID) -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT ticket_identifier FROM session_linear_tickets "
+        "SELECT ticket_identifier, workspace_id FROM session_linear_tickets "
         "WHERE session_row_id = $1 ORDER BY ticket_identifier",
         session_row_id,
     )
+    if not rows:
+        return 0
+
+    token = await _workspace_linear_token(rows[0]["workspace_id"])
+    if token is None:
+        return 0
 
     updated = 0
     for row in rows:
-        issue = await linear_api_service.fetch_issue(row["ticket_identifier"])
+        issue = await linear_api_service.fetch_issue(row["ticket_identifier"], token)
         if not issue:
             await pool.execute(
                 "UPDATE session_linear_tickets SET enriched_at = now(), updated_at = now() "
@@ -276,6 +304,56 @@ async def enrich_stale_sessions(limit: int) -> int:
     updated = 0
     for row in rows:
         updated += await enrich_session_labels(row["session_row_id"])
+    return updated
+
+
+async def enrich_ticket(ticket_identifier: str) -> int:
+    """Re-enrich every session that cites this ticket, one workspace at a time.
+    Driven by the Linear webhook so a ticket's status/assignee refreshes the
+    moment it changes upstream, instead of waiting for the periodic reconcile."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT workspace_id FROM session_linear_tickets WHERE ticket_identifier = $1",
+        ticket_identifier,
+    )
+
+    updated = 0
+    for row in rows:
+        token = await _workspace_linear_token(row["workspace_id"])
+        if token is None:
+            continue
+        issue = await linear_api_service.fetch_issue(ticket_identifier, token)
+        if not issue:
+            continue
+        await pool.execute(
+            """
+            UPDATE session_linear_tickets SET
+              linear_issue_id = $3,
+              ticket_title = $4,
+              ticket_url = $5,
+              ticket_status = $6,
+              ticket_assignee_name = $7,
+              ticket_team_key = $8,
+              ticket_team_name = $9,
+              ticket_project_name = $10,
+              linear_updated_at = $11,
+              enriched_at = now(),
+              updated_at = now()
+            WHERE workspace_id = $1 AND ticket_identifier = $2
+            """,
+            row["workspace_id"],
+            ticket_identifier,
+            issue.issue_id,
+            issue.title,
+            issue.url,
+            issue.status,
+            issue.assignee_name,
+            issue.team_key,
+            issue.team_name,
+            issue.project_name,
+            issue.updated_at,
+        )
+        updated += 1
     return updated
 
 

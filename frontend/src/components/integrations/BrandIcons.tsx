@@ -160,6 +160,22 @@ export function JiraIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function LinearIcon({ className, size = defaultSize }: Props) {
+  // Official Linear mark — interlocking diagonals in Linear's indigo.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="#5E6AD2"
+      aria-hidden
+    >
+      <path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.181 6.561 17.44 22.82c-.336.176-.682.335-1.038.477L.703 7.6c.142-.356.3-.703.477-1.039h.001ZM.002 11.882 12.118 24c-.51-.025-1.014-.082-1.508-.17L.17 13.39a12.087 12.087 0 0 1-.17-1.508h.002Zm.452 4.341 7.323 7.324a12.03 12.03 0 0 1-7.323-7.324Z" />
+    </svg>
+  );
+}
+
 export function AsanaIcon({ className, size = defaultSize }: Props) {
   // Official Asana mark — three coral dots forming a triangle.
   return (
