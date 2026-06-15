@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import { useConfirm } from "../../../../components/ConfirmDialog";
 import {
@@ -601,16 +603,15 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
               </span>
             )}
           </div>
-          <div
-            className={
-              "mt-1 whitespace-pre-wrap leading-relaxed text-foreground " +
-              (turn.toolName
-                ? "rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px]"
-                : "text-[13.5px]")
-            }
-          >
-            {turn.content}
-          </div>
+          {turn.toolName ? (
+            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
+              {turn.content}
+            </div>
+          ) : (
+            <div className="markdown-content mt-1 text-[13.5px] leading-relaxed text-foreground">
+              <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
+            </div>
+          )}
         </div>
       </div>
     </div>
