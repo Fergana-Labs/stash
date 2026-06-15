@@ -18,9 +18,7 @@ FAKE_REPO = {
 
 @pytest.fixture(autouse=True)
 def _admin_secret(monkeypatch):
-    monkeypatch.setattr(
-        "backend.routers.admin.settings.ADMIN_PASSWORD", ADMIN["X-Admin-Token"]
-    )
+    monkeypatch.setattr("backend.routers.admin.settings.ADMIN_PASSWORD", ADMIN["X-Admin-Token"])
 
 
 def _fake_github(monkeypatch, files: dict[str, bytes], branch: str = "main") -> None:

@@ -25,9 +25,7 @@ def _auth(api_key: str) -> dict:
 
 async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
     """Returns (workspace_id, folder_id) for a fresh unpublished skill."""
-    ws = await client.post(
-        "/api/v1/workspaces", json={"name": "Sync ws"}, headers=_auth(api_key)
-    )
+    ws = await client.post("/api/v1/workspaces", json={"name": "Sync ws"}, headers=_auth(api_key))
     workspace_id = ws.json()["id"]
     folder = await client.post(
         f"/api/v1/workspaces/{workspace_id}/folders",
@@ -37,7 +35,11 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
     folder_id = folder.json()["id"]
     page = await client.post(
         f"/api/v1/workspaces/{workspace_id}/pages/new",
-        json={"name": "SKILL.md", "content": "---\nname: my-skill\n---\nv1", "folder_id": folder_id},
+        json={
+            "name": "SKILL.md",
+            "content": "---\nname: my-skill\n---\nv1",
+            "folder_id": folder_id,
+        },
         headers=_auth(api_key),
     )
     assert page.status_code == 201

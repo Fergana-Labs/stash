@@ -77,9 +77,7 @@ def test_discover_skill_dirs_finds_root_and_nested():
 
 
 @pytest.mark.asyncio
-async def test_import_publishes_discoverable_skills(
-    client: AsyncClient, pool, monkeypatch
-):
+async def test_import_publishes_discoverable_skills(client: AsyncClient, pool, monkeypatch):
     _fake_github(monkeypatch, FAKE_REPO)
     results = await _import_repo("https://github.com/acme/skills")
     assert results == ["created", "created"]
@@ -108,9 +106,7 @@ async def test_import_publishes_discoverable_skills(
         skill_folder,
     )
     assert guide_folder is not None
-    guide = await pool.fetchval(
-        "SELECT name FROM pages WHERE folder_id = $1", guide_folder["id"]
-    )
+    guide = await pool.fetchval("SELECT name FROM pages WHERE folder_id = $1", guide_folder["id"])
     assert guide == "guide.md"
 
 

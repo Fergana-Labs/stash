@@ -1,13 +1,13 @@
 """GitHub attribution for imported skills.
 
-Revision ID: 0111
-Revises: 0110
+Revision ID: 0115
+Revises: 0114
 """
 
 from alembic import op
 
-revision = "0111"
-down_revision = "0110"
+revision = "0115"
+down_revision = "0114"
 branch_labels = None
 depends_on = None
 

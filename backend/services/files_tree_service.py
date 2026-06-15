@@ -1231,9 +1231,7 @@ async def clear_folder_contents(root_folder_id: UUID) -> None:
             await storage_service.delete_file(row["storage_key"])
     await pool.execute(f"DELETE FROM files WHERE folder_id IN ({_SUBTREE})", root_folder_id)
     await pool.execute(f"DELETE FROM pages WHERE folder_id IN ({_SUBTREE})", root_folder_id)
-    await pool.execute(
-        f"DELETE FROM folders WHERE id IN ({_SUBTREE}) AND id <> $1", root_folder_id
-    )
+    await pool.execute(f"DELETE FROM folders WHERE id IN ({_SUBTREE}) AND id <> $1", root_folder_id)
 
 
 async def write_folder_files(

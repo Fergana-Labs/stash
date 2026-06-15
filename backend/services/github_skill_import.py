@@ -89,7 +89,9 @@ async def _fetch_tree(client: httpx.AsyncClient, owner: str, repo: str, ref: str
     return resp.json()["tree"]
 
 
-async def _fetch_blob(client: httpx.AsyncClient, owner: str, repo: str, ref: str, path: str) -> bytes:
+async def _fetch_blob(
+    client: httpx.AsyncClient, owner: str, repo: str, ref: str, path: str
+) -> bytes:
     # raw.githubusercontent.com serves blobs without burning API rate limit.
     resp = await client.get(f"{_RAW}/{owner}/{repo}/{ref}/{path}")
     resp.raise_for_status()
@@ -201,7 +203,9 @@ async def import_skill(
     )
     if existing:
         await files_tree_service.clear_folder_contents(existing["folder_id"])
-        await files_tree_service.write_folder_files(workspace_id, owner_id, existing["folder_id"], files)
+        await files_tree_service.write_folder_files(
+            workspace_id, owner_id, existing["folder_id"], files
+        )
         await pool.execute(
             "UPDATE skills SET title = $1, description = $2, updated_at = now() WHERE id = $3",
             title,
@@ -304,8 +308,7 @@ async def remove_repo_skills(repo_url: str) -> int:
     base = f"https://github.com/{owner}/{repo}"
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT folder_id FROM skills "
-        "WHERE source_github_url = $1 OR source_github_url LIKE $2",
+        "SELECT folder_id FROM skills " "WHERE source_github_url = $1 OR source_github_url LIKE $2",
         base,
         f"{base}/tree/%",
     )
@@ -313,5 +316,3 @@ async def remove_repo_skills(repo_url: str) -> int:
         await files_tree_service.clear_folder_contents(r["folder_id"])
         await pool.execute("DELETE FROM folders WHERE id = $1", r["folder_id"])
     return len(rows)
-
-

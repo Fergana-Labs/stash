@@ -1753,11 +1753,7 @@ def _sync_state_path(workspace_id: str, root: Path) -> Path:
 def _local_skill_dirs(root: Path) -> dict[str, Path]:
     if not root.is_dir():
         return {}
-    return {
-        p.name: p
-        for p in sorted(root.iterdir())
-        if p.is_dir() and (p / "SKILL.md").exists()
-    }
+    return {p.name: p for p in sorted(root.iterdir()) if p.is_dir() and (p / "SKILL.md").exists()}
 
 
 def _collect_local_files(skill_dir: Path) -> list[tuple[str, bytes]]:

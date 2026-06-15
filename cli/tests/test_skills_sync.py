@@ -20,9 +20,7 @@ class _FakeSyncClient:
         return folder_id
 
     def list_skills(self, workspace_id):
-        return [
-            {"folder_id": fid, "name": s["folder_name"]} for fid, s in self.skills.items()
-        ]
+        return [{"folder_id": fid, "name": s["folder_name"]} for fid, s in self.skills.items()]
 
     def get_skill_contents(self, workspace_id, folder_id):
         s = self.skills[folder_id]
