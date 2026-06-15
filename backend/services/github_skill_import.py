@@ -239,3 +239,79 @@ async def _create_root_folder(workspace_id: UUID, owner_id: UUID, title: str) ->
     raise ValueError(f"Could not find a free folder name for {title!r}")
 
 
+# ===== Whole-repo operations (script + admin dashboard) =====
+
+
+async def import_repo(repo_url: str) -> dict:
+    """Import every SKILL.md folder in a repo into the curator workspace.
+
+    Returns a summary: how many skills the repo had and how many were newly
+    created vs updated in place. Idempotent — re-running tracks upstream."""
+    workspace_id, owner_id = await ensure_curator()
+    skills = await fetch_repo_skills(repo_url)
+    created = updated = 0
+    for skill in skills:
+        result = await import_skill(
+            workspace_id,
+            owner_id,
+            source_url=skill["source_url"],
+            fallback_title=skill["fallback_title"],
+            files=skill["files"],
+        )
+        created += result == "created"
+        updated += result == "updated"
+    return {
+        "repo_url": repo_url,
+        "skills_found": len(skills),
+        "created": created,
+        "updated": updated,
+    }
+
+
+def _repo_base(source_github_url: str) -> str:
+    """github.com/owner/repo from a skill's source URL (drops any /tree/... suffix)."""
+    return "/".join(source_github_url.split("/")[:5])
+
+
+async def list_imported_repos() -> list[dict]:
+    """Every imported skill, grouped by source repo — for the admin dashboard."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT source_github_url, title, slug, updated_at FROM skills "
+        "WHERE source_github_url IS NOT NULL ORDER BY source_github_url"
+    )
+    repos: dict[str, dict] = {}
+    for r in rows:
+        base = _repo_base(r["source_github_url"])
+        repo = repos.setdefault(base, {"repo_url": base, "skills": []})
+        repo["skills"].append(
+            {
+                "title": r["title"],
+                "slug": r["slug"],
+                "source_github_url": r["source_github_url"],
+                "updated_at": r["updated_at"].isoformat(),
+            }
+        )
+    return sorted(repos.values(), key=lambda r: r["repo_url"])
+
+
+async def remove_repo_skills(repo_url: str) -> int:
+    """Delete every imported skill from a repo. Returns the count removed.
+
+    Deleting the root folder cascades the skills row (folder_id FK); we clear
+    the subtree first so child pages/files (folder FK SET NULL) don't orphan."""
+    owner, repo = parse_repo_url(repo_url)
+    base = f"https://github.com/{owner}/{repo}"
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT folder_id FROM skills "
+        "WHERE source_github_url = $1 OR source_github_url LIKE $2",
+        base,
+        f"{base}/tree/%",
+    )
+    for r in rows:
+        await files_tree_service.clear_folder_contents(r["folder_id"])
+        await pool.execute("DELETE FROM folders WHERE id = $1", r["folder_id"])
+    return len(rows)
+
+

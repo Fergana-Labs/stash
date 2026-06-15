@@ -221,7 +221,15 @@ export default function AnalyticsClient({
               Admin · Analytics
             </span>
           </div>
-          <GeneratedAt iso={data.summary.generated_at} />
+          <div className="flex items-center gap-4">
+            <Link
+              href="/admin/skills"
+              className="text-sm text-gray-500 hover:text-gray-800"
+            >
+              Discover Skills →
+            </Link>
+            <GeneratedAt iso={data.summary.generated_at} />
+          </div>
         </div>
       </header>
 

@@ -3,9 +3,15 @@
 import hmac
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from ..config import settings
-from ..services import admin_analytics_service, cohort_service, security_audit_service
+from ..services import (
+    admin_analytics_service,
+    cohort_service,
+    github_skill_import,
+    security_audit_service,
+)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -117,3 +123,38 @@ async def analytics_top_events(
     limit: int = Query(20, ge=1, le=100),
 ):
     return await admin_analytics_service.get_top_events(days=days, limit=limit)
+
+
+# --- Discover catalog: import / remove GitHub skill repos ---
+
+
+class RepoRequest(BaseModel):
+    repo_url: str
+
+
+@router.get("/discover-skills", dependencies=[Depends(require_admin_token)])
+async def list_discover_skills():
+    """Imported GitHub skills, grouped by source repo."""
+    return {"repos": await github_skill_import.list_imported_repos()}
+
+
+@router.post("/discover-skills/import", dependencies=[Depends(require_admin_token)])
+async def import_discover_skill(req: RepoRequest):
+    """Import (or re-import) every SKILL.md folder in a public GitHub repo."""
+    try:
+        summary = await github_skill_import.import_repo(req.repo_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if summary["skills_found"] == 0:
+        raise HTTPException(status_code=404, detail="No SKILL.md folders found in that repo")
+    return summary
+
+
+@router.post("/discover-skills/remove", dependencies=[Depends(require_admin_token)])
+async def remove_discover_skill(req: RepoRequest):
+    """Remove every imported skill from a repo."""
+    try:
+        removed = await github_skill_import.remove_repo_skills(req.repo_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"repo_url": req.repo_url, "removed": removed}
