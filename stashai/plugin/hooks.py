@@ -314,6 +314,7 @@ def stream_user_message(
             event_type="user_message",
             content=prompt_text,
             session_id=state.get("session_id", ""),
+            session_folder_id=cfg.get("session_folder_id") or None,
             metadata=_event_metadata(event),
             client=cfg.get("client") or None,
         )
@@ -349,6 +350,7 @@ def stream_tool_use(
             event_type="tool_use",
             content=content,
             session_id=state.get("session_id", ""),
+            session_folder_id=cfg.get("session_folder_id") or None,
             tool_name=event.tool_name,
             metadata=metadata,
             client=cfg.get("client") or None,
@@ -377,6 +379,7 @@ def stream_assistant_message(
             event_type="assistant_message",
             content=event.last_assistant_message,
             session_id=state.get("session_id", ""),
+            session_folder_id=cfg.get("session_folder_id") or None,
             metadata=_event_metadata(event),
             client=cfg.get("client") or None,
         )
@@ -454,6 +457,7 @@ def stream_session_end(
             event_type="session_end",
             content=" ".join(parts),
             session_id=sid,
+            session_folder_id=cfg.get("session_folder_id") or None,
             metadata=_event_metadata(
                 event,
                 {

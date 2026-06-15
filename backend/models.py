@@ -568,6 +568,9 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
+    session_folder_id: UUID | None = Field(
+        None, description="Pinned folder for this session (from the repo manifest)"
+    )
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None

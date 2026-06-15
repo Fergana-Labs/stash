@@ -24,14 +24,14 @@ async def upsert_session(
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
 
-    The CLI calls this lazily — first event for a session writes the row. The
-    folder is set once and never re-homed by a later upsert, so a manual move
-    sticks even if the agent keeps streaming.
+    The CLI calls this lazily — first event for a session writes the row.
 
-    Every session is born into a folder: the one it was pushed to, or the
-    workspace's Default. We resolve the Default only when the row doesn't exist
-    yet, so an explicit move-to-root (session_folder_id = NULL) is never
-    re-homed by a later streamed event.
+    Every session is born into a folder: the one it was pushed to (the repo's
+    pinned folder, streamed on every event), or the workspace's Default. We
+    resolve the Default only when the row doesn't exist yet. The folder is set
+    once at insert and never touched on update, so a manual move — including a
+    move to root (session_folder_id = NULL) — sticks even as the agent keeps
+    streaming the pin.
     """
     pool = get_pool()
     if session_folder_id is None:
@@ -49,8 +49,7 @@ async def upsert_session(
         "ON CONFLICT (workspace_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
         "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
-        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by), "
-        "  session_folder_id = COALESCE(sessions.session_folder_id, EXCLUDED.session_folder_id) "
+        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by) "
         f"RETURNING {_SELECT_COLS}",
         workspace_id,
         session_id,
