@@ -62,6 +62,7 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "granola": "granola",
         "jira_project": "cloud-1:PROJ_1",
         "asana_project": "asana-project-1",
+        "linear": "me",
         "gong_calls": "gong-source",
         "snowflake": "account/database/schema",
         "twitter": "111",
@@ -2694,3 +2695,136 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
     # The owner still does not see it leak into the other member's listing.
     other_listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(other_key))
     assert src["id"] not in {s["source"] for s in other_listing.json()["sources"]}
+
+
+# --- Linear: navigable + searchable source ----------------------------------
+
+
+async def _create_linear_source(ws: UUID, owner_id: UUID) -> dict:
+    return await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="linear",
+        external_ref="me",
+        display_name="Linear",
+    )
+
+
+@pytest.mark.asyncio
+async def test_linear_source_resolves_to_all_issues(monkeypatch):
+    """A Linear source has one canonical ref ('me') covering every issue the
+    connected user can read; the resolver only confirms the token exists."""
+
+    async def fake_token(user_id, provider):
+        assert provider == "linear"
+        return "tok"
+
+    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
+
+    external_ref, display_name = await sources_router._resolve_linear_source(uuid4())
+
+    assert external_ref == "me"
+    assert display_name == "Linear"
+
+
+@pytest.mark.asyncio
+async def test_linear_index_builds_navigable_issue_rows(client: AsyncClient, monkeypatch):
+    """The sync paginates the user's issues into a navigable index — one row per
+    issue keyed by its identifier — without copying the body."""
+    from backend.integrations.linear import indexer as linear_indexer
+    from backend.services import linear_api_service
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_linear_source(ws, owner_id)
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    pages = [
+        ([{"identifier": "FER-1", "title": "First", "updated_at": None}], "cursor-1"),
+        ([{"identifier": "FER-2", "title": "Second", "updated_at": None}], None),
+    ]
+
+    async def fake_list_issues(token, after=None):
+        return pages.pop(0)
+
+    monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(linear_api_service, "list_issues", fake_list_issues)
+
+    await linear_indexer.index_linear(src)
+
+    live = await source_service.list_documents(src)
+    assert {d["path"] for d in live} == {"FER-1", "FER-2"}
+    assert {d["name"] for d in live} == {"FER-1 First", "FER-2 Second"}
+
+
+@pytest.mark.asyncio
+async def test_linear_source_reads_issue_body_lazily(client: AsyncClient, monkeypatch):
+    """Reading an issue renders its body — including the description — fetched
+    live from Linear. The identifier is readable even without a prior sync."""
+    from backend.integrations.linear import indexer as linear_indexer
+    from backend.services import linear_api_service
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_linear_source(ws, owner_id)
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    async def fake_fetch_issue(identifier, token):
+        assert identifier == "FER-199"
+        return linear_api_service.LinearIssue(
+            issue_id="uuid-1",
+            identifier="FER-199",
+            title="Make Linear a real source",
+            url="https://linear.app/ferganalabs/issue/FER-199",
+            status="In Progress",
+            assignee_name="Henry",
+            team_key="FER",
+            team_name="Fergana",
+            project_name="Sources",
+            updated_at=None,
+            description="Stash should let agents view Linear issues.",
+        )
+
+    monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(linear_api_service, "fetch_issue", fake_fetch_issue)
+
+    doc = await source_service.read_document(src, "FER-199")
+
+    assert doc["path"] == "FER-199"
+    assert doc["kind"] == "issue"
+    assert "Make Linear a real source" in doc["content"]
+    assert "Status: In Progress" in doc["content"]
+    assert "Stash should let agents view Linear issues." in doc["content"]
+
+
+@pytest.mark.asyncio
+async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, monkeypatch):
+    """Search is federated live to Linear's native search; hits are keyed by the
+    issue identifier (the index path the agent can then read)."""
+    from backend.integrations.linear import indexer as linear_indexer
+    from backend.services import linear_api_service
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_linear_source(ws, owner_id)
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    async def fake_search_issues(token, term, first=25):
+        assert term == "real source"
+        return [{"identifier": "FER-199", "title": "Make Linear a real source"}]
+
+    monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(linear_api_service, "search_issues", fake_search_issues)
+
+    results = await source_service.search_all(ws, owner_id, "real source", source=src["id"])
+
+    assert any(r["ref"] == "FER-199" for r in results)
+    hit = next(r for r in results if r["ref"] == "FER-199")
+    assert hit["source"] == src["id"]
+    assert hit["name"] == "FER-199 Make Linear a real source"

@@ -24,6 +24,7 @@ from ..integrations.gong.indexer import index_gong
 from ..integrations.google.indexer import index_google_drive
 from ..integrations.granola.indexer import index_granola
 from ..integrations.jira.indexer import index_jira
+from ..integrations.linear.indexer import index_linear
 from ..integrations.notion.indexer import index_notion
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..services import source_service
@@ -43,6 +44,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "granola": index_granola,
     "jira_project": index_jira,
     "asana_project": index_asana,
+    "linear": index_linear,
     "gong_calls": index_gong,
 }
 

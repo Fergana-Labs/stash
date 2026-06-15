@@ -75,7 +75,7 @@ export const CONNECTORS: Connector[] = [
     label: "Linear",
     sourceType: "linear",
     kind: "auto",
-    blurb: "Label sessions with their Linear issue status.",
+    blurb: "Search and read your Linear issues.",
   },
   {
     provider: "slack",
