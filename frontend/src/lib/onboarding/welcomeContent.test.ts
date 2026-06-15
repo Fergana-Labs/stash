@@ -6,11 +6,6 @@ describe("generateWelcomeHtml", () => {
     const html = generateWelcomeHtml({
       displayName: "Ada",
       inviteLink: null,
-      counts: {
-        pages: 0,
-        files: 0,
-        sessions: 0,
-      },
     });
 
     expect(html).toContain("<h1>Welcome to Stash, Ada</h1>");

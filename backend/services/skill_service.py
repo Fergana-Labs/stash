@@ -78,6 +78,7 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
     """List every skill folder in the workspace: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared."""
     pool = get_pool()
+    readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
         "SELECT f.id AS folder_id, f.name AS folder_name, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
@@ -88,20 +89,13 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
         "FROM folders f "
         "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "LEFT JOIN skills s ON s.folder_id = f.id "
-        "WHERE f.workspace_id = $1 "
+        f"WHERE f.workspace_id = $1 AND {readable} "
         "ORDER BY f.name",
         workspace_id,
+        user_id,
     )
     out = []
     for r in rows:
-        can_read_folder = await permission_service.check_access(
-            "folder",
-            r["folder_id"],
-            user_id,
-            workspace_id=workspace_id,
-        )
-        if not can_read_folder:
-            continue
         meta, _body = parse_frontmatter(r["skill_md"] or "")
         published = None
         if r["publish_id"]:

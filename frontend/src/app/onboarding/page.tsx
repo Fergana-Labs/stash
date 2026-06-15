@@ -16,6 +16,7 @@ import {
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
+import type { Workspace } from "../../lib/types";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
@@ -60,7 +61,8 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const workspaceId = workspace?.id ?? null;
   const [answered, setAnswered] = useState(false);
   const [role, setRole] = useState("");
   const [roleOther, setRoleOther] = useState("");
@@ -82,8 +84,8 @@ function OnboardingInner() {
     if (!user) return;
     listMyWorkspaces()
       .then(({ workspaces }) => {
-        const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
-        if (primary) setWorkspaceId(primary.id);
+        const primary = workspaces.find((w) => w.is_primary) ?? workspaces[0];
+        if (primary) setWorkspace(primary);
       })
       .catch(() => {});
   }, [user]);
@@ -114,10 +116,10 @@ function OnboardingInner() {
 
   const finishAndExit = useCallback(async () => {
     track("onboarding.completed", { total_steps: STEP_NAMES.length });
-    if (workspaceId && user) {
+    if (workspace && user) {
       try {
         await seedWelcomePage({
-          workspaceId,
+          workspace,
           displayName: user.display_name || user.name,
         });
       } catch {
@@ -125,7 +127,7 @@ function OnboardingInner() {
       }
     }
     exitToWorkspace();
-  }, [workspaceId, user, exitToWorkspace]);
+  }, [workspace, user, exitToWorkspace]);
 
   const skip = useCallback(() => {
     track("onboarding.skipped", { step_idx: stepIdx });

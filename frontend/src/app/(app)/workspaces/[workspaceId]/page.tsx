@@ -48,10 +48,12 @@ export default function WorkspaceHomePage() {
     }
   }, [workspaceId]);
 
+  // Fetch the workspace on mount, in parallel with the auth round-trip — the
+  // request only needs the URL's workspaceId, not the resolved user, so gating
+  // it behind useAuth would serialize two requests for no reason.
   useEffect(() => {
-    if (!user) return;
     load();
-  }, [user, load]);
+  }, [load]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -69,13 +71,12 @@ export default function WorkspaceHomePage() {
     if (workspace.creator_id !== user.id) return;
     if (!isBlankDescription(workspace.description ?? "")) return;
     seedWelcomePage({
-      workspaceId,
+      workspace,
       displayName: user.display_name || user.name,
     })
-      .then(() => getWorkspace(workspaceId))
       .then(setWorkspace)
       .catch(() => {});
-  }, [user, workspace, workspaceId]);
+  }, [user, workspace]);
 
   async function handleNewPage() {
     try {

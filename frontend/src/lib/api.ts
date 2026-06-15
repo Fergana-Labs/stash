@@ -188,8 +188,17 @@ export async function loginWithPassword(
   });
 }
 
+// useAuth mounts in both the app layout and the page, so a cold load fires
+// /users/me twice at once. Share the in-flight request; clear it once settled
+// so later auth refreshes (login, cross-tab) re-fetch.
+let _meInflight: Promise<User> | null = null;
+
 export async function getMe(): Promise<User> {
-  return apiFetch("/api/v1/users/me");
+  if (_meInflight) return _meInflight;
+  _meInflight = apiFetch<User>("/api/v1/users/me").finally(() => {
+    _meInflight = null;
+  });
+  return _meInflight;
 }
 
 export async function updateMe(data: {
