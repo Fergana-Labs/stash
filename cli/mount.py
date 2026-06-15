@@ -61,9 +61,14 @@ class StashVfsModel:
         self.client = client
         self.workspace_id = workspace_id
         self.nodes: dict[str, VfsNode] = {}
+        # Source-root path -> thunk that fetches that source's entries. A source's
+        # contents are materialized only when something first descends into it, so
+        # listing source names stays cheap no matter how large the source is.
+        self._expanders: dict[str, Callable[[], None]] = {}
 
     def refresh(self) -> None:
         self.nodes = {}
+        self._expanders = {}
         self._add_dir("/")
         self._add_static_file(
             "/README.md",
@@ -96,7 +101,9 @@ class StashVfsModel:
             self._add_workspace(workspace)
 
     def exists(self, path: str) -> bool:
-        return self._clean_path(path) in self.nodes
+        path = self._clean_path(path)
+        self._ensure_expanded(path)
+        return path in self.nodes
 
     def list_dir(self, path: str) -> list[str]:
         node = self._get_node(path)
@@ -322,11 +329,16 @@ class StashVfsModel:
             source_root = self._add_dir_child(
                 sources_path, _source_slug(source.get("display_name") or handle)
             )
-            try:
-                entries = self.client.list_source_entries(workspace_id, handle, "")
-            except StashError:
-                continue
-            self._add_source_entries(source_root, workspace_id, handle, entries)
+            self._expanders[source_root] = (
+                lambda root=source_root, ws=workspace_id, h=handle: self._expand_source(root, ws, h)
+            )
+
+    def _expand_source(self, source_root: str, workspace_id: str, handle: str) -> None:
+        try:
+            entries = self.client.list_source_entries(workspace_id, handle, "")
+        except StashError:
+            return
+        self._add_source_entries(source_root, workspace_id, handle, entries)
 
     def _add_source_entries(
         self, source_root: str, workspace_id: str, handle: str, entries: list[dict]
@@ -435,10 +447,19 @@ class StashVfsModel:
 
     def _get_node(self, path: str) -> VfsNode:
         path = self._clean_path(path)
+        self._ensure_expanded(path)
         node = self.nodes.get(path)
         if node is None:
             raise FileNotFoundError(path)
         return node
+
+    def _ensure_expanded(self, path: str) -> None:
+        """Materialize any connected source whose subtree contains `path`. No-op
+        once a source has been expanded, and never triggered by listing the
+        `sources/` directory itself — only by descending into a source."""
+        for root in list(self._expanders):
+            if path == root or path.startswith(f"{root}/"):
+                self._expanders.pop(root)()
 
     def _unique_child_name(self, parent: str, name: str) -> str:
         existing = self.nodes[parent].children

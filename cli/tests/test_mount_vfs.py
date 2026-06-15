@@ -12,6 +12,7 @@ from cli.mount import (
 class FakeClient:
     def __init__(self):
         self.page_updates = []
+        self.source_entry_calls = 0
 
     def list_workspaces(self):
         return [{"id": "workspace-12345678", "name": "Demo Workspace", "description": "Demo"}]
@@ -84,6 +85,7 @@ class FakeClient:
     def list_source_entries(self, workspace_id, source, path=""):
         assert workspace_id == "workspace-12345678"
         assert source == "src-gmail-1"
+        self.source_entry_calls += 1
         return [
             {"path": "msg-1", "name": "Welcome email", "kind": "message"},
             {"path": "threads/msg-2", "name": "Nested note", "kind": "message"},
@@ -168,6 +170,25 @@ def test_vfs_exposes_workspace_sections():
     assert "Welcome email" in model.list_dir(gmail)
     assert model.read_file(f"{gmail}/Welcome email") == b"BODY of msg-1"
     assert model.read_file(f"{gmail}/threads/Nested note") == b"BODY of threads/msg-2"
+
+
+def test_vfs_loads_source_entries_lazily():
+    # Listing source names must not fetch any source's contents — that's the
+    # whole point: enumerating a 10k-doc source costs the same as a 1-doc one.
+    client = FakeClient()
+    model = StashVfsModel(client)
+    model.refresh()
+    workspace_name = model.list_dir("/workspaces")[0]
+    sources_path = f"/workspaces/{workspace_name}/sources"
+
+    assert model.list_dir(sources_path) == ["gmail-demo-x.com"]
+    assert client.source_entry_calls == 0
+
+    # Descending into a source materializes only that source, once.
+    model.list_dir(f"{sources_path}/gmail-demo-x.com")
+    assert client.source_entry_calls == 1
+    model.list_dir(f"{sources_path}/gmail-demo-x.com")
+    assert client.source_entry_calls == 1
 
 
 def test_vfs_reads_files_and_writes_pages():
