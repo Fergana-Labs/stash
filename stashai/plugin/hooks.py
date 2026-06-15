@@ -235,7 +235,10 @@ def create_session_record(
     record_upload_success(data_dir, "session")
 
     state["session_row_id"] = str(session["id"])
-    state["session_url"] = f"{cfg['api_endpoint'].rstrip('/')}/sessions/{sid}"
+    # The record link points at the web app (PUBLIC_URL), not the API host, so
+    # use the canonical app_url the backend returns rather than building one off
+    # api_endpoint.
+    state["session_url"] = session["app_url"]
     state["uploaded_session_id"] = sid
     state["uploaded_workspace_id"] = workspace_id
     state["cwd"] = event.cwd or state.get("cwd", "")

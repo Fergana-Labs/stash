@@ -8,6 +8,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from ..config import settings
 from .conftest import unique_name
 
 
@@ -120,6 +121,9 @@ async def test_member_resolves_session_by_external_id_alone(client: AsyncClient)
     assert resp.status_code == 200
     assert resp.json()["session_id"] == session_id
     assert resp.json()["workspace_id"] == workspace_id
+    # The record link must point at the web app (PUBLIC_URL), not the API host,
+    # so the plugin can hand it back as a clickable session URL.
+    assert resp.json()["app_url"] == f"{settings.PUBLIC_URL.rstrip('/')}/sessions/{session_id}"
 
 
 @pytest.mark.asyncio

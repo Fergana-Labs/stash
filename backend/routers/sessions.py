@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_pool
 from ..services import (
     files_tree_service,
@@ -42,6 +43,10 @@ class SessionUpsertRequest(BaseModel):
     session_folder_id: UUID | None = None
 
 
+def _session_app_url(session_id: str) -> str:
+    return f"{settings.PUBLIC_URL.rstrip('/')}/sessions/{session_id}"
+
+
 def _session_response(row: dict, title: str | None = None) -> dict:
     files_touched = row.get("files_touched") or []
     if isinstance(files_touched, str):
@@ -50,6 +55,7 @@ def _session_response(row: dict, title: str | None = None) -> dict:
         "id": str(row["id"]),
         "workspace_id": str(row["workspace_id"]),
         "session_id": row["session_id"],
+        "app_url": _session_app_url(row["session_id"]),
         "title": title
         or session_title_service.title_from_text(
             row.get("title_source"),
