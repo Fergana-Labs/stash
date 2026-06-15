@@ -134,7 +134,10 @@ export default function SessionViewerPage() {
   const [error, setError] = useState("");
 
   useBreadcrumbs(
-    [{ label: "Sessions" }, { label: `#${sessionId}` }],
+    [
+      { label: "Sessions" },
+      { label: sessionDetail ? sessionHeading(sessionDetail, sessionId) : `#${sessionId}` },
+    ],
     `${workspaceId}/session/${sessionId}`
   );
 
@@ -169,6 +172,11 @@ export default function SessionViewerPage() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  useEffect(() => {
+    if (!sessionDetail) return;
+    document.title = `${sessionHeading(sessionDetail, sessionId)} - Stash`;
+  }, [sessionDetail, sessionId]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
