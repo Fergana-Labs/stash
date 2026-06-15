@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import files_tree_service, paste_service, permission_service, workspace_service
+from ..services import files_tree_service, paste_service, permission_service
 
 router = APIRouter(prefix="/api/v1/collab", tags=["collaboration"])
 
@@ -42,8 +42,16 @@ async def authorize_collab_document(
     current_user: dict = Depends(get_current_user),
 ):
     workspace_id, page_id = _parse_page_document_name(req.document_name)
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    # Shares grant access without workspace membership, so gate on read access
+    # (which honors shares) rather than membership; can_write decides editability.
+    if not await permission_service.check_access(
+        "page",
+        page_id,
+        current_user["id"],
+        workspace_id=workspace_id,
+        require="read",
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized")
 
     page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:

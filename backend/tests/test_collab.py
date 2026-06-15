@@ -88,6 +88,82 @@ async def test_collab_authorizes_workspace_viewer_as_read_only(
 
 
 @pytest.mark.asyncio
+async def test_collab_authorizes_non_member_with_page_share(
+    client: AsyncClient,
+    pool,
+):
+    """A page shared directly with a non-member grants live-edit access:
+    membership is not required, the share decides read/write."""
+    owner_key, _owner = await _register(client)
+    editor_key, editor = await _register(client)
+    workspace = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Collab"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            json={"name": "Plan", "content": "# Draft"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    await pool.execute(
+        """
+        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+                            principal_id, permission, created_by)
+        VALUES ($1, 'page', $2, 'user', $3, 'write', $4)
+        """,
+        uuid.UUID(workspace["id"]),
+        uuid.UUID(page["id"]),
+        uuid.UUID(editor["id"]),
+        uuid.UUID(_owner["id"]),
+    )
+
+    response = await client.post(
+        "/api/v1/collab/authorize",
+        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        headers=_auth(editor_key),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["can_write"] is True
+
+
+@pytest.mark.asyncio
+async def test_collab_rejects_user_without_access(
+    client: AsyncClient,
+):
+    """A user who is neither a member nor a sharee is rejected outright."""
+    owner_key, _owner = await _register(client)
+    outsider_key, _outsider = await _register(client)
+    workspace = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Collab"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            json={"name": "Plan", "content": "# Draft"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+
+    response = await client.post(
+        "/api/v1/collab/authorize",
+        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        headers=_auth(outsider_key),
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_collab_rejects_html_pages(client: AsyncClient):
     api_key, _user = await _register(client)
     workspace = (
