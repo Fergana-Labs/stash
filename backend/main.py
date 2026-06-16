@@ -23,6 +23,7 @@ from .routers import (
     batch,
     billing,
     collab,
+    dashboard_tokens,
     demo,
     discover,
     exports,
@@ -143,6 +144,7 @@ app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(billing.router)
+app.include_router(dashboard_tokens.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 

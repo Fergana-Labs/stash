@@ -1,4 +1,7 @@
+import base64
 import hashlib
+import hmac
+import json
 import secrets
 import time
 
@@ -78,6 +81,72 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Dashboard tokens — short-lived, read-only, stateless (HMAC-signed)
+# ---------------------------------------------------------------------------
+# A stash-hosted dashboard runs in a sandboxed iframe that can't carry the
+# owner's session cookie or a long-lived secret. At render time we mint one of
+# these for the viewer and inject it; the dashboard reads the owner's data with
+# it until it expires. Stateless so there's no row to write per page load.
+
+DASHBOARD_TOKEN_PREFIX = "dt_"
+DASHBOARD_TOKEN_DEFAULT_TTL = 900  # 15 minutes
+
+
+def _dashboard_secret() -> bytes:
+    from .config import settings
+
+    if not settings.DASHBOARD_TOKEN_SECRET:
+        raise HTTPException(status_code=503, detail="Dashboard tokens are not enabled")
+    return settings.DASHBOARD_TOKEN_SECRET.encode()
+
+
+def _b64url_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _b64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def mint_dashboard_token(user_id, workspace_id, ttl_seconds: int = DASHBOARD_TOKEN_DEFAULT_TTL) -> tuple[str, int]:
+    """Sign a read-only token scoped to one user + workspace. Returns (token, exp_epoch)."""
+    exp = int(time.time()) + ttl_seconds
+    payload = {"uid": str(user_id), "ws": str(workspace_id), "exp": exp}
+    body = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
+    sig = _b64url_encode(hmac.new(_dashboard_secret(), body.encode(), hashlib.sha256).digest())
+    return f"{DASHBOARD_TOKEN_PREFIX}{body}.{sig}", exp
+
+
+async def _get_user_from_dashboard_token(token: str) -> dict:
+    raw = token[len(DASHBOARD_TOKEN_PREFIX):]
+    body, _, sig = raw.partition(".")
+    expected = _b64url_encode(hmac.new(_dashboard_secret(), body.encode(), hashlib.sha256).digest())
+    if not sig or not hmac.compare_digest(sig, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid dashboard token")
+
+    payload = json.loads(_b64url_decode(body))
+    if payload["exp"] < int(time.time()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Dashboard token expired")
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name, email, description, created_at, last_seen, "
+        "       role, referral_source, use_case "
+        "FROM users WHERE id = $1",
+        payload["uid"],
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
+
+    user = dict(row)
+    user["key_id"] = None
+    user["read_only"] = True
+    user["dashboard_workspace_id"] = payload["ws"]
+    return user
+
+
+# ---------------------------------------------------------------------------
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
@@ -151,6 +220,9 @@ async def get_current_user(
 
     if token.startswith("mc_"):
         return await _get_user_from_api_key(token, managed_auth_enabled=settings.AUTH0_ENABLED)
+
+    if token.startswith(DASHBOARD_TOKEN_PREFIX):
+        return await _get_user_from_dashboard_token(token)
 
     if settings.AUTH0_ENABLED:
         return await _get_user_from_jwt(token)
