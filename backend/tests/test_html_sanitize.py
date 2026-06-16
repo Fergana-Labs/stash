@@ -69,6 +69,33 @@ async def test_create_page_strips_scripts_keeps_structure(workspace, _db_pool):
 
 
 @pytest.mark.asyncio
+async def test_title_text_does_not_leak_into_body(workspace, _db_pool):
+    """A full HTML document carries a <title>. nh3 drops the (disallowed) tag,
+    but without clean_content_tags it would keep the title's text and render it
+    as unstyled body text. The author's <style> must still survive."""
+    ws_id, user_id = workspace
+    doc = (
+        "<!doctype html><html><head>"
+        "<title>Gong Analysis · Acme Corp</title>"
+        "<style>h1{font-family:Fraunces}</style>"
+        "</head><body><h1>Report</h1></body></html>"
+    )
+    page = await files_tree_service.create_page(
+        workspace_id=ws_id,
+        name="Doc",
+        created_by=user_id,
+        content_type="html",
+        content_html=doc,
+    )
+    stored = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", page["id"])
+    # The title text must be gone entirely — not left as a bare body text node.
+    assert "Gong Analysis" not in stored
+    # Author styling and real content are untouched.
+    assert "font-family:Fraunces" in stored
+    assert "<h1>Report</h1>" in stored
+
+
+@pytest.mark.asyncio
 async def test_content_hash_matches_sanitized_bytes(workspace, _db_pool):
     """The stored content_hash must be computed from the sanitized body, so the
     optimistic-concurrency guard on the next edit doesn't spuriously conflict."""
