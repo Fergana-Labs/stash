@@ -1,43 +1,27 @@
-// Pure utility: pull workspace state, generate the welcome HTML, and PATCH it
-// onto workspace.description if the description is still empty. Safe to call
-// multiple times — the empty-check keeps it idempotent against the live
-// description.
+// Given the already-loaded workspace, generate the welcome HTML and PATCH it
+// onto workspace.description when the description is still empty. Returns the
+// resulting workspace (the PATCH response when seeded, otherwise the input) so
+// the caller never has to re-fetch. Idempotent: the empty-check keeps repeat
+// calls safe against the live description.
 
 import { isBlankDescription } from "@/components/DescriptionEditor";
-import {
-  getWorkspace,
-  getWorkspaceOverview,
-  updateWorkspace,
-} from "@/lib/api";
+import { updateWorkspace } from "@/lib/api";
 import { generateWelcomeHtml } from "@/lib/onboarding/welcomeContent";
+import type { Workspace } from "@/lib/types";
 
 export async function seedWelcomePage(args: {
-  workspaceId: string;
+  workspace: Workspace;
   displayName: string;
-}): Promise<void> {
-  const { workspaceId, displayName } = args;
+}): Promise<Workspace> {
+  const { workspace, displayName } = args;
 
-  const [workspace, overview] = await Promise.all([
-    getWorkspace(workspaceId),
-    getWorkspaceOverview(workspaceId),
-  ]);
-
-  if (!isBlankDescription(workspace.description ?? "")) return;
+  if (!isBlankDescription(workspace.description ?? "")) return workspace;
 
   const inviteLink =
     typeof window !== "undefined" && workspace.invite_code
       ? `${window.location.origin}/join/${workspace.invite_code}`
       : null;
 
-  const html = generateWelcomeHtml({
-    displayName,
-    inviteLink,
-    counts: {
-      pages: overview.files?.pages?.length ?? 0,
-      files: overview.files?.files?.length ?? 0,
-      sessions: overview.sessions?.length ?? 0,
-    },
-  });
-
-  await updateWorkspace(workspaceId, { description: html });
+  const html = generateWelcomeHtml({ displayName, inviteLink });
+  return updateWorkspace(workspace.id, { description: html });
 }

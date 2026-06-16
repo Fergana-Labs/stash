@@ -7,31 +7,16 @@
 export type WelcomeInputs = {
   displayName: string;
   inviteLink: string | null;
-  counts: {
-    pages: number;
-    files: number;
-    sessions: number;
-  };
 };
 
 export function generateWelcomeHtml(inputs: WelcomeInputs): string {
-  const { displayName, inviteLink, counts } = inputs;
+  const { displayName, inviteLink } = inputs;
 
   const parts: string[] = [];
 
   parts.push(
     `<h1>Welcome to Stash, ${escapeHtml(displayName)}</h1>`,
   );
-
-  if (counts.sessions > 0) {
-    parts.push(`<h2>What you just did</h2>`);
-    parts.push(
-      `<ul><li>You&rsquo;ve got <strong>${counts.sessions} ${pluralize(
-        "session",
-        counts.sessions,
-      )}</strong> uploaded.</li></ul>`,
-    );
-  }
 
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
@@ -73,10 +58,6 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   );
 
   return parts.join("");
-}
-
-function pluralize(noun: string, n: number): string {
-  return n === 1 ? noun : `${noun}s`;
 }
 
 function escapeHtml(s: string): string {

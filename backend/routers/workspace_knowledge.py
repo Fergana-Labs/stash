@@ -15,10 +15,10 @@ from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
-    files_tree_service,
     linear_ticket_service,
     llm,
     memory_service,
+    permission_service,
     session_title_service,
     skill_service,
     workspace_service,
@@ -59,8 +59,16 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
 
 
 async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
-    """One unified file tree: folders, pages, and uploaded files."""
+    """One unified file tree: folders, pages, and uploaded files.
+
+    The viewer's read permission is pushed into each SELECT via
+    `readable_content_condition`, so a populated workspace costs three queries —
+    not three queries plus one `check_access` round-trip per folder/page/file.
+    """
     pool = get_pool()
+    readable_folder = permission_service.readable_content_condition("folder", "f", 2)
+    readable_page = permission_service.readable_content_condition("page", "p", 2)
+    readable_file = permission_service.readable_content_condition("file", "fi", 2)
     folder_rows, page_rows, file_rows = await asyncio.gather(
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
@@ -68,20 +76,24 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
             "        AND fi.deleted_at IS NULL) AS file_count "
-            "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
+            f"FROM folders f WHERE f.workspace_id = $1 AND {readable_folder} ORDER BY f.name",
             workspace_id,
+            user_id,
         ),
         pool.fetch(
-            "SELECT id, name, content_type, folder_id FROM pages WHERE workspace_id = $1 "
-            "AND deleted_at IS NULL ORDER BY name",
+            "SELECT p.id, p.name, p.content_type, p.folder_id FROM pages p "
+            f"WHERE p.workspace_id = $1 AND p.deleted_at IS NULL AND {readable_page} "
+            "ORDER BY p.name",
             workspace_id,
+            user_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id, size_bytes, content_type, "
-            "       created_at, linked_table_id "
-            "FROM files WHERE workspace_id = $1 AND deleted_at IS NULL "
-            "ORDER BY created_at DESC",
+            "SELECT fi.id, fi.name, fi.folder_id, fi.size_bytes, fi.content_type, "
+            "       fi.created_at, fi.linked_table_id "
+            f"FROM files fi WHERE fi.workspace_id = $1 AND fi.deleted_at IS NULL "
+            f"AND {readable_file} ORDER BY fi.created_at DESC",
             workspace_id,
+            user_id,
         ),
     )
 
@@ -89,39 +101,6 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
     folder_rows = [r for r in folder_rows if r["id"] not in hidden]
     page_rows = [r for r in page_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
     file_rows = [r for r in file_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
-
-    folders = await files_tree_service._filter_readable(
-        [dict(r) for r in folder_rows],
-        "folder",
-        user_id,
-        workspace_id,
-    )
-    pages = await files_tree_service._filter_readable(
-        [dict(r) for r in page_rows],
-        "page",
-        user_id,
-        workspace_id,
-    )
-    files = await files_tree_service._filter_readable(
-        [dict(r) for r in file_rows],
-        "file",
-        user_id,
-        workspace_id,
-    )
-
-    file_payload = [
-        {
-            "id": str(f["id"]),
-            "name": f["name"],
-            "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
-            "size_bytes": f["size_bytes"],
-            "content_type": f["content_type"],
-            "url": None,
-            "created_at": f["created_at"],
-            "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
-        }
-        for f in files
-    ]
 
     return {
         "folders": [
@@ -132,7 +111,7 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
                 "page_count": int(r["page_count"] or 0),
                 "file_count": int(r["file_count"] or 0),
             }
-            for r in folders
+            for r in folder_rows
         ],
         "pages": [
             {
@@ -141,9 +120,21 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
                 "content_type": r["content_type"],
                 "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
             }
-            for r in pages
+            for r in page_rows
         ],
-        "files": file_payload,
+        "files": [
+            {
+                "id": str(f["id"]),
+                "name": f["name"],
+                "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
+                "size_bytes": f["size_bytes"],
+                "content_type": f["content_type"],
+                "url": None,
+                "created_at": f["created_at"],
+                "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
+            }
+            for f in file_rows
+        ],
     }
 
 
