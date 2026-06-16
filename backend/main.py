@@ -19,6 +19,7 @@ from .routers import (
     agent_chat,
     agent_docs,
     aggregate,
+    ai_api,
     analytics,
     batch,
     billing,
@@ -151,6 +152,7 @@ app.include_router(billing.router)
 app.include_router(dashboard_tokens.router)
 app.include_router(data_access.router)
 app.include_router(data_api.router)
+app.include_router(ai_api.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 
