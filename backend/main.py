@@ -24,6 +24,7 @@ from .routers import (
     billing,
     collab,
     dashboard_tokens,
+    data_access,
     data_api,
     demo,
     discover,
@@ -146,6 +147,7 @@ app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(billing.router)
 app.include_router(dashboard_tokens.router)
+app.include_router(data_access.router)
 app.include_router(data_api.router)
 app.include_router(exports.router)
 app.include_router(demo.router)

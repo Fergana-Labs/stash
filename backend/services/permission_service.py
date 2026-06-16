@@ -254,6 +254,36 @@ async def _user_share_grants(
     return False
 
 
+async def _api_key_share_grants(
+    object_type: str, object_id: UUID, key_id: UUID, require: str
+) -> bool:
+    """A live api_key share on the object or any ancestor folder at the required level."""
+    pool = get_pool()
+    for target_type, target_id in await _object_targets(object_type, object_id):
+        row = await pool.fetchrow(
+            "SELECT permission FROM shares "
+            "WHERE principal_type = 'api_key' AND principal_id = $1 "
+            "AND object_type = $2 AND object_id = $3 "
+            "AND (expires_at IS NULL OR expires_at > now())",
+            key_id,
+            target_type,
+            target_id,
+        )
+        if row and _LEVELS[row["permission"]] >= _LEVELS[require]:
+            return True
+    return False
+
+
+async def check_anon_access(
+    object_type: str, object_id: UUID, key_id: UUID, require: str = "read"
+) -> bool:
+    """Access for a publishable (anon) key. Anon keys get NOTHING by default —
+    only an explicit api_key share on the object grants read (or write)."""
+    if object_type not in _CONTENT_TYPES:
+        return False
+    return await _api_key_share_grants(object_type, object_id, key_id, require)
+
+
 async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
     """Published skills whose folder is the object or one of its ancestors."""
     if object_type not in _CONTENT_TYPES:

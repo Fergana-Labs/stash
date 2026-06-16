@@ -147,6 +147,57 @@ async def _get_user_from_dashboard_token(token: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Publishable (anon) keys — workspace-scoped, browser-safe
+# ---------------------------------------------------------------------------
+# A `pk_` key identifies an app/workspace and is safe to embed in browser JS.
+# It grants nothing on its own; `shares` rows (principal_type='api_key') decide
+# which tables it can read or write (read-only unless an explicit write policy).
+
+PUBLISHABLE_KEY_PREFIX = "pk_"
+
+
+def generate_publishable_key() -> str:
+    return PUBLISHABLE_KEY_PREFIX + secrets.token_urlsafe(32)
+
+
+async def create_publishable_key(workspace_id, created_by, name: str = "default") -> str:
+    """Mint a publishable key for the workspace and persist its hash. Returns the raw key."""
+    pool = get_pool()
+    key = generate_publishable_key()
+    await pool.execute(
+        "INSERT INTO publishable_keys (workspace_id, key_hash, name, created_by) "
+        "VALUES ($1, $2, $3, $4)",
+        workspace_id,
+        hash_api_key(key),
+        name[:128],
+        created_by,
+    )
+    return key
+
+
+async def resolve_publishable_key(token: str) -> dict:
+    """Resolve a `pk_` token to {key_id, workspace_id, created_by}. 401 if unknown/revoked.
+
+    `created_by` (the key's owner) is who anon writes are attributed to.
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, workspace_id, created_by FROM publishable_keys "
+        "WHERE key_hash = $1 AND revoked_at IS NULL",
+        hash_api_key(token),
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid publishable key")
+
+    kid = str(row["id"])
+    now = time.monotonic()
+    if now - _last_seen_written.get(kid) > _LAST_SEEN_DEBOUNCE_SECONDS:
+        _last_seen_written.set(kid, now)
+        await pool.execute("UPDATE publishable_keys SET last_used_at = now() WHERE id = $1", row["id"])
+    return {"key_id": row["id"], "workspace_id": row["workspace_id"], "created_by": row["created_by"]}
+
+
+# ---------------------------------------------------------------------------
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
@@ -206,16 +257,8 @@ async def _get_user_from_jwt(token: str) -> dict:
     return user
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
-) -> dict:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
-        )
-
-    token: str = credentials.credentials
+async def resolve_user_token(token: str) -> dict:
+    """Resolve a bearer token (mc_ key, dashboard token, or Auth0 JWT) to a user."""
     from .config import settings
 
     if token.startswith("mc_"):
@@ -228,6 +271,17 @@ async def get_current_user(
         return await _get_user_from_jwt(token)
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+    return await resolve_user_token(credentials.credentials)
 
 
 async def get_current_user_optional(

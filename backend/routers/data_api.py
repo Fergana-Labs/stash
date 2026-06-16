@@ -1,10 +1,15 @@
 """PostgREST/supabase-js-compatible data API over stash tables.
 
-A dashboard (or any vibe-coded UI) reads and writes the owner's tables through
+A dashboard (or any vibe-coded UI) reads and writes tables through
 `/rest/v1/{table}` using `supabase-js` or plain fetch — the grammar agents
-already know. Auth is the caller's stash identity (an `mc_` token or a
-short-lived read-only dashboard token); the workspace comes from a dashboard
-token's binding or the `X-Stash-Workspace` header for `mc_` callers.
+already know. Callers authenticate one of two ways:
+
+- **User token** (`mc_` or a short-lived read-only dashboard token) — sees the
+  owner's own data. Workspace comes from a dashboard token's binding or the
+  `X-Stash-Workspace` header for `mc_` callers.
+- **Publishable key** (`pk_`, in the `apikey` or Authorization header) — the
+  public/shared path. Workspace comes from the key; access is whatever explicit
+  table policies grant (read-only unless a write policy exists).
 
 Translation of the query grammar lives in `services/postgrest.py`; this router
 does auth, table resolution, and the DB calls, and fails loud (501) on real
@@ -15,13 +20,33 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from ..auth import get_current_user
+from .. import auth
 from ..services import permission_service, postgrest, table_service, workspace_service
 
 router = APIRouter(prefix="/rest/v1", tags=["data-api"])
 
 
-async def _resolve_workspace(request: Request, user: dict) -> UUID:
+def _token(request: Request) -> str:
+    """supabase-js sends the key in both `apikey` and `Authorization: Bearer`."""
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[len("bearer "):].strip()
+    apikey = request.headers.get("apikey")
+    if apikey:
+        return apikey
+    raise HTTPException(status_code=401, detail="Missing credentials")
+
+
+async def data_principal(request: Request) -> dict:
+    """Resolve the caller to a user principal or an anon (publishable-key) principal."""
+    token = _token(request)
+    if token.startswith(auth.PUBLISHABLE_KEY_PREFIX):
+        info = await auth.resolve_publishable_key(token)
+        return {"kind": "api_key", **info}
+    return {"kind": "user", "user": await auth.resolve_user_token(token)}
+
+
+async def _user_workspace(request: Request, user: dict) -> UUID:
     """A dashboard token is workspace-bound; an mc_ caller names it via header."""
     bound = user.get("dashboard_workspace_id")
     if bound:
@@ -35,8 +60,22 @@ async def _resolve_workspace(request: Request, user: dict) -> UUID:
     return workspace_id
 
 
-async def _load_table(request: Request, table: str, user: dict, *, require: str) -> dict:
-    workspace_id = await _resolve_workspace(request, user)
+async def _load_table(request: Request, principal: dict, table: str, *, require: str) -> tuple[dict, UUID]:
+    """Resolve the table by name, authorize the principal, and return (table, writer_id)."""
+    if principal["kind"] == "api_key":
+        workspace_id = principal["workspace_id"]
+        row = await table_service.get_table_by_name(workspace_id, table)
+        if not row:
+            raise HTTPException(status_code=404, detail=f"No table named '{table}'")
+        allowed = await permission_service.check_anon_access(
+            "table", row["id"], principal["key_id"], require
+        )
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Not allowed")
+        return row, principal["created_by"]
+
+    user = principal["user"]
+    workspace_id = await _user_workspace(request, user)
     row = await table_service.get_table_by_name(workspace_id, table)
     if not row:
         raise HTTPException(status_code=404, detail=f"No table named '{table}'")
@@ -47,7 +86,7 @@ async def _load_table(request: Request, table: str, user: dict, *, require: str)
     )
     if not allowed:
         raise HTTPException(status_code=403, detail="Not allowed")
-    return row
+    return row, user["id"]
 
 
 def _translate(exc: Exception) -> HTTPException:
@@ -72,9 +111,9 @@ async def list_rows(
     table: str,
     request: Request,
     response: Response,
-    current_user: dict = Depends(get_current_user),
+    principal: dict = Depends(data_principal),
 ):
-    row = await _load_table(request, table, current_user, require="read")
+    row, _writer = await _load_table(request, principal, table, require="read")
     columns = row["columns"]
     params = list(request.query_params.multi_items())
     try:
@@ -98,16 +137,16 @@ async def list_rows(
 async def insert_rows(
     table: str,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    principal: dict = Depends(data_principal),
 ):
-    row = await _load_table(request, table, current_user, require="write")
+    row, writer = await _load_table(request, principal, table, require="write")
     body = await request.json()
     columns = row["columns"]
     # RowValidationError (422) is handled globally in main.py.
     if isinstance(body, list):
-        created = await table_service.create_rows_batch(row["id"], body, current_user["id"])
+        created = await table_service.create_rows_batch(row["id"], body, writer)
         return [postgrest.row_to_named(r, columns, None) for r in created]
-    created = await table_service.create_row(row["id"], body, current_user["id"])
+    created = await table_service.create_row(row["id"], body, writer)
     return postgrest.row_to_named(created, columns, None)
 
 
@@ -115,13 +154,13 @@ async def insert_rows(
 async def update_rows(
     table: str,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    principal: dict = Depends(data_principal),
 ):
-    row = await _load_table(request, table, current_user, require="write")
+    row, writer = await _load_table(request, principal, table, require="write")
     row_id = _require_row_id(request)
     body = await request.json()
     # RowValidationError (422) is handled globally in main.py.
-    updated = await table_service.update_row(row_id, body, current_user["id"], table_id=row["id"])
+    updated = await table_service.update_row(row_id, body, writer, table_id=row["id"])
     if not updated:
         raise HTTPException(status_code=404, detail="Row not found")
     return postgrest.row_to_named(updated, row["columns"], None)
@@ -131,9 +170,9 @@ async def update_rows(
 async def delete_rows(
     table: str,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    principal: dict = Depends(data_principal),
 ):
-    row = await _load_table(request, table, current_user, require="write")
+    row, _writer = await _load_table(request, principal, table, require="write")
     row_id = _require_row_id(request)
     deleted = await table_service.delete_row(row_id, table_id=row["id"])
     if not deleted:
