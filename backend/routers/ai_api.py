@@ -88,7 +88,9 @@ async def chat(
 ):
     workspace = await _require_member(workspace_id, current_user["id"])
     if not settings.ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=503, detail="The agent is not configured (ANTHROPIC_API_KEY unset)")
+        raise HTTPException(
+            status_code=503, detail="The agent is not configured (ANTHROPIC_API_KEY unset)"
+        )
 
     history = _to_history(body.messages)
     if not history:

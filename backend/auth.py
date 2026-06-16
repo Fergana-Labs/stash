@@ -109,7 +109,9 @@ def _b64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
-def mint_dashboard_token(user_id, workspace_id, ttl_seconds: int = DASHBOARD_TOKEN_DEFAULT_TTL) -> tuple[str, int]:
+def mint_dashboard_token(
+    user_id, workspace_id, ttl_seconds: int = DASHBOARD_TOKEN_DEFAULT_TTL
+) -> tuple[str, int]:
     """Sign a read-only token scoped to one user + workspace. Returns (token, exp_epoch)."""
     exp = int(time.time()) + ttl_seconds
     payload = {"uid": str(user_id), "ws": str(workspace_id), "exp": exp}
@@ -119,15 +121,19 @@ def mint_dashboard_token(user_id, workspace_id, ttl_seconds: int = DASHBOARD_TOK
 
 
 async def _get_user_from_dashboard_token(token: str) -> dict:
-    raw = token[len(DASHBOARD_TOKEN_PREFIX):]
+    raw = token[len(DASHBOARD_TOKEN_PREFIX) :]
     body, _, sig = raw.partition(".")
     expected = _b64url_encode(hmac.new(_dashboard_secret(), body.encode(), hashlib.sha256).digest())
     if not sig or not hmac.compare_digest(sig, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid dashboard token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid dashboard token"
+        )
 
     payload = json.loads(_b64url_decode(body))
     if payload["exp"] < int(time.time()):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Dashboard token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Dashboard token expired"
+        )
 
     pool = get_pool()
     row = await pool.fetchrow(
@@ -187,14 +193,22 @@ async def resolve_publishable_key(token: str) -> dict:
         hash_api_key(token),
     )
     if not row:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid publishable key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid publishable key"
+        )
 
     kid = str(row["id"])
     now = time.monotonic()
     if now - _last_seen_written.get(kid) > _LAST_SEEN_DEBOUNCE_SECONDS:
         _last_seen_written.set(kid, now)
-        await pool.execute("UPDATE publishable_keys SET last_used_at = now() WHERE id = $1", row["id"])
-    return {"key_id": row["id"], "workspace_id": row["workspace_id"], "created_by": row["created_by"]}
+        await pool.execute(
+            "UPDATE publishable_keys SET last_used_at = now() WHERE id = $1", row["id"]
+        )
+    return {
+        "key_id": row["id"],
+        "workspace_id": row["workspace_id"],
+        "created_by": row["created_by"],
+    }
 
 
 # ---------------------------------------------------------------------------

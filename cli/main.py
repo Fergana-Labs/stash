@@ -1773,7 +1773,9 @@ def skills_fork(
 def skills_snapshot_source(
     skill_id: str = typer.Argument(...),
     source: str = typer.Option(
-        ..., "--source", help="Connected-source handle (see /workspaces/<ws>/sources via `stash vfs`)."
+        ...,
+        "--source",
+        help="Connected-source handle (see /workspaces/<ws>/sources via `stash vfs`).",
     ),
     path: str = typer.Option(..., "--path", help="Document path within the source."),
     workspace_id: str = typer.Option(None, "--ws"),
@@ -2589,8 +2591,6 @@ def sources_rm(
     console.print("[green]Source removed.[/green]")
 
 
-
-
 def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
     """Stable filesystem-style directory name per source. Natives keep their
     handle ('files', 'sessions'); connected sources slug their display name,
@@ -2752,7 +2752,9 @@ def rm_cmd(
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in trash:
-                console.print(f"[red]Cannot rm '{object_type}'. Supported: page | file | session[/red]")
+                console.print(
+                    f"[red]Cannot rm '{object_type}'. Supported: page | file | session[/red]"
+                )
                 raise typer.Exit(1)
             delete, purge = trash[object_type]
             try:
@@ -2784,7 +2786,9 @@ def restore_cmd(
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in restore:
-                console.print(f"[red]Cannot restore '{object_type}'. Supported: page | file | session[/red]")
+                console.print(
+                    f"[red]Cannot restore '{object_type}'. Supported: page | file | session[/red]"
+                )
                 raise typer.Exit(1)
             try:
                 restore[object_type](c, object_id)

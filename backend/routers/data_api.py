@@ -35,7 +35,7 @@ def _token(request: Request) -> str:
     """supabase-js sends the key in both `apikey` and `Authorization: Bearer`."""
     header = request.headers.get("authorization", "")
     if header.lower().startswith("bearer "):
-        return header[len("bearer "):].strip()
+        return header[len("bearer ") :].strip()
     apikey = request.headers.get("apikey")
     if apikey:
         return apikey
@@ -68,7 +68,9 @@ async def _user_workspace(request: Request, user: dict) -> UUID:
     return workspace_id
 
 
-async def _load_table(request: Request, principal: dict, table: str, *, require: str) -> tuple[dict, UUID]:
+async def _load_table(
+    request: Request, principal: dict, table: str, *, require: str
+) -> tuple[dict, UUID]:
     """Resolve the table by name, authorize the principal, and return (table, writer_id)."""
     if principal["kind"] == "api_key":
         workspace_id = principal["workspace_id"]
@@ -105,11 +107,13 @@ def _translate(exc: Exception) -> HTTPException:
 
 def _require_row_id(request: Request) -> UUID:
     """PATCH/DELETE target a single row via `?id=eq.<uuid>` (the only supported filter)."""
-    items = [(k, v) for k, v in request.query_params.multi_items() if k not in postgrest.RESERVED_PARAMS]
+    items = [
+        (k, v) for k, v in request.query_params.multi_items() if k not in postgrest.RESERVED_PARAMS
+    ]
     if len(items) != 1 or items[0][0] != "id" or not items[0][1].startswith("eq."):
         raise HTTPException(status_code=400, detail="Mutations require exactly id=eq.<row id>")
     try:
-        return UUID(items[0][1][len("eq."):])
+        return UUID(items[0][1][len("eq.") :])
     except ValueError:
         raise HTTPException(status_code=400, detail="id=eq.<row id> must be a UUID")
 
@@ -134,7 +138,12 @@ async def list_rows(
     limit = _int_param(request, "limit", 100)
     offset = _int_param(request, "offset", 0)
     rows, total = await table_service.list_rows(
-        row["id"], filters=filters, sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset
+        row["id"],
+        filters=filters,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=limit,
+        offset=offset,
     )
     out = [postgrest.row_to_named(r, columns, project) for r in rows]
     response.headers["Content-Range"] = postgrest.content_range(offset, len(out), total)

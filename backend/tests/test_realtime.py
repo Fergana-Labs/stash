@@ -29,12 +29,20 @@ def test_on_notify_dedupes_own_origin():
     q = realtime.subscribe(key)
     try:
         # An event this process emitted (same origin) was already dispatched locally.
-        realtime._on_notify(None, 0, realtime.CHANNEL,
-                            json.dumps({"origin": realtime._ORIGIN, "key": key, "event": {"a": 1}}))
+        realtime._on_notify(
+            None,
+            0,
+            realtime.CHANNEL,
+            json.dumps({"origin": realtime._ORIGIN, "key": key, "event": {"a": 1}}),
+        )
         assert q.empty()
         # An event from another instance is dispatched.
-        realtime._on_notify(None, 0, realtime.CHANNEL,
-                            json.dumps({"origin": "other", "key": key, "event": {"a": 2}}))
+        realtime._on_notify(
+            None,
+            0,
+            realtime.CHANNEL,
+            json.dumps({"origin": "other", "key": key, "event": {"a": 2}}),
+        )
         assert q.get_nowait() == {"a": 2}
     finally:
         realtime.unsubscribe(key, q)
@@ -49,7 +57,9 @@ async def test_row_create_emits_event(client: AsyncClient):
             json={"name": name, "display_name": name, "password": "password123"},
         )
     ).json()["api_key"]
-    ws = (await client.post("/api/v1/workspaces", json={"name": "RT"}, headers=_auth(api_key))).json()
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "RT"}, headers=_auth(api_key))
+    ).json()
     table = (
         await client.post(
             f"/api/v1/workspaces/{ws['id']}/tables",

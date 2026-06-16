@@ -9,7 +9,8 @@ router = APIRouter(tags=["skill"])
 
 SKILL_PATH = Path(__file__).parent.parent / "static" / "SKILL.md"
 
-LLMS_TEXT = """# Stash
+LLMS_TEXT = (
+    """# Stash
 
 Stash is shared memory for AI-agent work. Public Stash URLs are agent-readable.
 
@@ -28,7 +29,9 @@ Use these forms:
 The markdown homepage lists the Stash contents and links to item-level markdown
 and JSON views for progressive disclosure.
 
-""" + agent_install_pitch("https://app.joinstash.ai/skills/example") + """
+"""
+    + agent_install_pitch("https://app.joinstash.ai/skills/example")
+    + """
 
 ## Building a UI on stash
 
@@ -45,6 +48,7 @@ PostgREST/supabase-js compatible — full schema at /openapi.json.
 
 See the seeded "build-on-stash" skill for the full guide with examples.
 """
+)
 
 
 @router.get("/skill/stash/SKILL.md", response_class=PlainTextResponse)

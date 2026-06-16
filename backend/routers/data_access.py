@@ -15,7 +15,9 @@ from ..auth import create_publishable_key, get_current_user
 from ..database import get_pool
 from ..services import table_service, workspace_service
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/publishable-keys", tags=["data-access"])
+router = APIRouter(
+    prefix="/api/v1/workspaces/{workspace_id}/publishable-keys", tags=["data-access"]
+)
 
 POLICY_PERMISSIONS = {"read", "write"}
 

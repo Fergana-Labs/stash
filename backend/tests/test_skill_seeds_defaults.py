@@ -30,7 +30,9 @@ async def _register_and_workspace(client: AsyncClient) -> tuple[UUID, UUID]:
     ).json()
     ws = (
         await client.post(
-            "/api/v1/workspaces", json={"name": "S"}, headers={"Authorization": f"Bearer {reg['api_key']}"}
+            "/api/v1/workspaces",
+            json={"name": "S"},
+            headers={"Authorization": f"Bearer {reg['api_key']}"},
         )
     ).json()
     return UUID(ws["id"]), UUID(reg["id"])

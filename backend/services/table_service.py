@@ -380,7 +380,9 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
     )
     result = dict(row)
     asyncio.create_task(maybe_embed_row(table_id, result["id"], validated))
-    realtime.emit(realtime.table_key(table_id), {"type": "row.created", "row_id": str(result["id"])})
+    realtime.emit(
+        realtime.table_key(table_id), {"type": "row.created", "row_id": str(result["id"])}
+    )
     return result
 
 

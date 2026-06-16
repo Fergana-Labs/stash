@@ -44,7 +44,9 @@ async def _setup(client: AsyncClient):
 
 async def _make_key(client: AsyncClient, api_key: str, ws_id: str) -> str:
     resp = await client.post(
-        f"/api/v1/workspaces/{ws_id}/publishable-keys", json={"name": "site"}, headers=_auth(api_key)
+        f"/api/v1/workspaces/{ws_id}/publishable-keys",
+        json={"name": "site"},
+        headers=_auth(api_key),
     )
     assert resp.status_code == 201
     key = resp.json()["key"]
@@ -66,7 +68,9 @@ async def test_anon_key_grants_nothing_until_policy(client: AsyncClient):
 async def test_read_policy_enables_read_not_write(client: AsyncClient):
     api_key, ws, table = await _setup(client)
     pk = await _make_key(client, api_key, ws["id"])
-    keys = await client.get(f"/api/v1/workspaces/{ws['id']}/publishable-keys", headers=_auth(api_key))
+    keys = await client.get(
+        f"/api/v1/workspaces/{ws['id']}/publishable-keys", headers=_auth(api_key)
+    )
     key_id = keys.json()[0]["id"]
 
     # Grant read.
@@ -109,7 +113,9 @@ async def test_only_owner_can_make_keys(client: AsyncClient):
     _owner_key, ws, _table = await _setup(client)
     outsider = await _register(client)
     resp = await client.post(
-        f"/api/v1/workspaces/{ws['id']}/publishable-keys", json={"name": "x"}, headers=_auth(outsider)
+        f"/api/v1/workspaces/{ws['id']}/publishable-keys",
+        json={"name": "x"},
+        headers=_auth(outsider),
     )
     assert resp.status_code == 403
 

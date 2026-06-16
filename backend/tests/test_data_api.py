@@ -94,11 +94,15 @@ async def test_unsupported_and_bad_queries(client: AsyncClient):
     # Embedded select (join) -> 501
     assert (await client.get("/rest/v1/Sales?select=Name,other(*)", headers=hdr)).status_code == 501
     # Multi-column order -> 501
-    assert (await client.get("/rest/v1/Sales?order=Name.asc,Revenue.desc", headers=hdr)).status_code == 501
+    assert (
+        await client.get("/rest/v1/Sales?order=Name.asc,Revenue.desc", headers=hdr)
+    ).status_code == 501
     # Unknown column filter -> 400
     assert (await client.get("/rest/v1/Sales?Nope=eq.1", headers=hdr)).status_code == 400
     # PATCH without id=eq -> 400
-    assert (await client.patch("/rest/v1/Sales?Name=eq.Acme", json={"Revenue": 1}, headers=hdr)).status_code == 400
+    assert (
+        await client.patch("/rest/v1/Sales?Name=eq.Acme", json={"Revenue": 1}, headers=hdr)
+    ).status_code == 400
 
 
 @pytest.mark.asyncio

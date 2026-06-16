@@ -23,7 +23,9 @@ async def _register(client: AsyncClient) -> str:
 
 
 async def _workspace(client: AsyncClient, api_key: str) -> dict:
-    return (await client.post("/api/v1/workspaces", json={"name": "AI"}, headers=_auth(api_key))).json()
+    return (
+        await client.post("/api/v1/workspaces", json={"name": "AI"}, headers=_auth(api_key))
+    ).json()
 
 
 @pytest.mark.asyncio

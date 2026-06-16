@@ -19,8 +19,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE publishable_keys (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -31,8 +30,7 @@ def upgrade() -> None:
             last_used_at timestamptz,
             revoked_at timestamptz
         )
-        """
-    )
+        """)
     op.execute("CREATE INDEX publishable_keys_workspace_idx ON publishable_keys (workspace_id)")
 
 

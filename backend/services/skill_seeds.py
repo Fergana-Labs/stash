@@ -217,7 +217,9 @@ DEFAULT_SKILLS: list[tuple[str, str]] = [
 ]
 
 
-async def _seed_skill(workspace_id: UUID, creator_id: UUID, folder_name: str, markdown: str) -> bool:
+async def _seed_skill(
+    workspace_id: UUID, creator_id: UUID, folder_name: str, markdown: str
+) -> bool:
     """Create `Skills/<folder>/SKILL.md` if a SKILL.md isn't already in that
     folder (we treat an existing one as already-seeded and leave user edits alone).
     """

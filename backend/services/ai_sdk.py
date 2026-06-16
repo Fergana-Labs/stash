@@ -41,7 +41,9 @@ async def to_data_stream(events: AsyncIterator[dict]) -> AsyncIterator[str]:
                 },
             )
         elif kind == "tool_result":
-            yield _line("a", {"toolCallId": event.get("id"), "result": {"ok": event.get("ok", True)}})
+            yield _line(
+                "a", {"toolCallId": event.get("id"), "result": {"ok": event.get("ok", True)}}
+            )
         elif kind == "end":
             saw_end = True
             yield _line("d", _FINISH)

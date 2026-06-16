@@ -28,9 +28,7 @@ async def _register(client: AsyncClient) -> tuple[str, dict]:
 
 async def _make_workspace(client: AsyncClient, api_key: str) -> dict:
     return (
-        await client.post(
-            "/api/v1/workspaces", json={"name": "Dash"}, headers=_auth(api_key)
-        )
+        await client.post("/api/v1/workspaces", json={"name": "Dash"}, headers=_auth(api_key))
     ).json()
 
 
@@ -54,9 +52,7 @@ async def test_minted_token_reads_owner_data(client: AsyncClient):
     assert dt.startswith("dt_")
 
     # The dashboard token authenticates a read of the owner's workspace.
-    listed = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/pages", headers=_auth(dt)
-    )
+    listed = await client.get(f"/api/v1/workspaces/{ws['id']}/pages", headers=_auth(dt))
     assert listed.status_code == 200
 
 
@@ -100,9 +96,7 @@ async def test_expired_token_rejected(client: AsyncClient):
     ws = await _make_workspace(client, api_key)
 
     expired, _exp = auth.mint_dashboard_token(user["id"], ws["id"], ttl_seconds=-10)
-    resp = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/pages", headers=_auth(expired)
-    )
+    resp = await client.get(f"/api/v1/workspaces/{ws['id']}/pages", headers=_auth(expired))
     assert resp.status_code == 401
 
 
@@ -113,7 +107,5 @@ async def test_tampered_token_rejected(client: AsyncClient):
 
     token, _exp = auth.mint_dashboard_token(user["id"], ws["id"])
     tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
-    resp = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/pages", headers=_auth(tampered)
-    )
+    resp = await client.get(f"/api/v1/workspaces/{ws['id']}/pages", headers=_auth(tampered))
     assert resp.status_code == 401

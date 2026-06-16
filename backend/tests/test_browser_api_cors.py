@@ -8,7 +8,10 @@ from httpx import AsyncClient
 async def test_preflight_allows_any_origin(client: AsyncClient):
     resp = await client.options(
         "/rest/v1/Anything",
-        headers={"Origin": "https://some-dashboard.example", "Access-Control-Request-Method": "GET"},
+        headers={
+            "Origin": "https://some-dashboard.example",
+            "Access-Control-Request-Method": "GET",
+        },
     )
     assert resp.status_code == 204
     assert resp.headers["access-control-allow-origin"] == "*"
