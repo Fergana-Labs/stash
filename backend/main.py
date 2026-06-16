@@ -7,7 +7,7 @@ from fastapi.requests import Request
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import JSONResponse, Response
 
 from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
 from . import integrations as _integrations  # noqa: F401 — registers providers + importers
@@ -142,28 +142,6 @@ app.add_middleware(
 # Added last so it's outermost — handles /rest/v1 + /ai/v1 preflight before the
 # credentialed CORS middleware would reject a cross-origin request.
 app.add_middleware(BrowserApiCORS)
-
-
-@app.get("/llms.txt", response_class=PlainTextResponse)
-async def llms_txt() -> str:
-    """Agent-facing pointer to how to build on stash. The live schema/endpoints
-    are in /openapi.json; the seeded `build-on-stash` skill has the full guide."""
-    return (
-        "# Build a UI on stash\n\n"
-        "Stash is the backend for dashboards and vibe-coded UIs. The data API is\n"
-        "PostgREST/supabase-js compatible.\n\n"
-        "## Data API\n"
-        "- GET/POST/PATCH/DELETE /rest/v1/{table} (filters col=op.value, select, order,\n"
-        "  limit/offset; Content-Range header). Joins/rpc/and/or return 501.\n"
-        "- Realtime: EventSource /rest/v1/{table}/subscribe?access_token=...\n\n"
-        "## AI (authenticated users only)\n"
-        "- POST /ai/v1/{workspace}/chat — Vercel AI SDK useChat-compatible stream.\n"
-        "- POST /ai/v1/{workspace}/search — retrieval over the workspace.\n\n"
-        "## Credentials\n"
-        "- Private (your data): POST /api/v1/dashboard-tokens -> read-only token.\n"
-        "- Public/shared: a publishable pk_ key + per-table policies (owner-created).\n\n"
-        "Full schema: /openapi.json\n"
-    )
 app.include_router(users.router)
 app.include_router(collab.router)
 app.include_router(workspaces.router)
