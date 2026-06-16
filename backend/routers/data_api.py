@@ -16,14 +16,19 @@ does auth, table resolution, and the DB calls, and fails loud (501) on real
 PostgREST features stash doesn't implement.
 """
 
+import asyncio
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from .. import auth
-from ..services import permission_service, postgrest, table_service, workspace_service
+from ..services import permission_service, postgrest, realtime, table_service, workspace_service
 
 router = APIRouter(prefix="/rest/v1", tags=["data-api"])
+
+_HEARTBEAT_S = 25
 
 
 def _token(request: Request) -> str:
@@ -37,13 +42,16 @@ def _token(request: Request) -> str:
     raise HTTPException(status_code=401, detail="Missing credentials")
 
 
-async def data_principal(request: Request) -> dict:
-    """Resolve the caller to a user principal or an anon (publishable-key) principal."""
-    token = _token(request)
+async def _principal_from_token(token: str) -> dict:
     if token.startswith(auth.PUBLISHABLE_KEY_PREFIX):
         info = await auth.resolve_publishable_key(token)
         return {"kind": "api_key", **info}
     return {"kind": "user", "user": await auth.resolve_user_token(token)}
+
+
+async def data_principal(request: Request) -> dict:
+    """Resolve the caller to a user principal or an anon (publishable-key) principal."""
+    return await _principal_from_token(_token(request))
 
 
 async def _user_workspace(request: Request, user: dict) -> UUID:
@@ -131,6 +139,40 @@ async def list_rows(
     out = [postgrest.row_to_named(r, columns, project) for r in rows]
     response.headers["Content-Range"] = postgrest.content_range(offset, len(out), total)
     return out
+
+
+@router.get("/{table}/subscribe")
+async def subscribe(table: str, request: Request):
+    """SSE stream of row-change nudges for the table. Browsers consume this with
+    `EventSource`, which can't set headers — so the token rides as `?access_token=`
+    (the short-lived read-only dashboard token, or a publishable key)."""
+    token = request.query_params.get("access_token") or request.query_params.get("apikey")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing access_token")
+    principal = await _principal_from_token(token)
+    row, _writer = await _load_table(request, principal, table, require="read")
+    key = realtime.table_key(row["id"])
+
+    async def event_stream():
+        queue = realtime.subscribe(key)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_S)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            realtime.unsubscribe(key, queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/{table}", status_code=201)

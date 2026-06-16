@@ -51,7 +51,7 @@ from .routers import (
     workspace_knowledge,
     workspaces,
 )
-from .services import demo_service
+from .services import demo_service, realtime
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
@@ -70,6 +70,7 @@ async def lifespan(app: FastAPI):
     # precompute, session summarizer) now run in the Celery `worker` and
     # `beat` services — see backend/celery_app.py.
     await init_db()
+    await realtime.start()
     try:
         await demo_service.seed_demo_workspace()
     except Exception:
@@ -77,6 +78,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await realtime.stop()
         await close_db()
 
 

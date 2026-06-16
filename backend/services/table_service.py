@@ -8,7 +8,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import permission_service
+from . import permission_service, realtime
 from .row_validation import RowValidationError, validate_row_data
 
 logger = logging.getLogger(__name__)
@@ -380,6 +380,7 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
     )
     result = dict(row)
     asyncio.create_task(maybe_embed_row(table_id, result["id"], validated))
+    realtime.emit(realtime.table_key(table_id), {"type": "row.created", "row_id": str(result["id"])})
     return result
 
 
@@ -459,6 +460,9 @@ async def update_row(
         return None
     result = dict(row)
     asyncio.create_task(maybe_embed_row(result["table_id"], result["id"], result["data"]))
+    realtime.emit(
+        realtime.table_key(result["table_id"]), {"type": "row.updated", "row_id": str(result["id"])}
+    )
     return result
 
 
@@ -472,7 +476,10 @@ async def delete_row(row_id: UUID, table_id: UUID | None = None) -> bool:
         )
     else:
         result = await pool.execute("DELETE FROM table_rows WHERE id = $1", row_id)
-    return result == "DELETE 1"
+    deleted = result == "DELETE 1"
+    if deleted and table_id is not None:
+        realtime.emit(realtime.table_key(table_id), {"type": "row.deleted", "row_id": str(row_id)})
+    return deleted
 
 
 async def update_rows_batch(table_id: UUID, updates: list[dict], updated_by: UUID) -> list[dict]:
