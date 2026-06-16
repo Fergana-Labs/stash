@@ -103,7 +103,10 @@ def _sanitize_html(html: str) -> str:
         attributes=_SANITIZE_ATTRS,
         url_schemes=_SANITIZE_URL_SCHEMES,
         link_rel=None,
-        clean_content_tags={"script"},
+        # <title> isn't an allowed tag, so nh3 drops the tag but keeps its text —
+        # which then leaks into the body as unstyled text. Authors routinely put
+        # a <title> in their HTML, so remove its content outright.
+        clean_content_tags={"script", "title"},
         attribute_filter=_drop_unsafe_data_uri,
     )
 
