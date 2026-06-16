@@ -1,0 +1,124 @@
+application:
+  subdomain: stash
+  multi_instance: false
+  routes:
+    - /=http://frontend:3457/
+  upstreams:
+    - location: /api
+      backend: http://backend:3456
+      disable_trim_location: true
+    - location: /health
+      backend: http://backend:3456
+      disable_trim_location: true
+    - location: /collab
+      backend: http://collab:3458
+      disable_trim_location: true
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_USER=stash
+      - POSTGRES_PASSWORD=stash
+      - POSTGRES_DB=stash
+    binds:
+      - /lzcapp/var/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U stash
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    binds:
+      - /lzcapp/var/redis:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: embed:backend
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://stash:stash@postgres:5432/stash
+      - REDIS_URL=redis://redis:6379/0
+      - PUBLIC_URL=https://${LAZYCAT_APP_DOMAIN}
+      - CORS_ORIGINS=https://${LAZYCAT_APP_DOMAIN}
+      - LAZYCAT_AUTH_ENABLED=true
+      - EMBEDDING_PROVIDER=auto
+      - ANTHROPIC_MODEL=claude-sonnet-4-6
+      - ANTHROPIC_FAST_MODEL=claude-haiku-4-5
+    binds:
+      - /lzcapp/var/backend-secrets:/app/.secrets
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3456/health
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    image: embed:backend
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    environment:
+      - DATABASE_URL=postgresql://stash:stash@postgres:5432/stash
+      - REDIS_URL=redis://redis:6379/0
+      - PUBLIC_URL=https://${LAZYCAT_APP_DOMAIN}
+      - CORS_ORIGINS=https://${LAZYCAT_APP_DOMAIN}
+      - EMBEDDING_PROVIDER=auto
+      - ANTHROPIC_MODEL=claude-sonnet-4-6
+      - ANTHROPIC_FAST_MODEL=claude-haiku-4-5
+    binds:
+      - /lzcapp/var/backend-secrets:/app/.secrets
+    command: celery -A backend.celery_app worker --loglevel=info --concurrency=4
+
+  beat:
+    image: embed:backend
+    depends_on:
+      - redis
+      - backend
+    environment:
+      - DATABASE_URL=postgresql://stash:stash@postgres:5432/stash
+      - REDIS_URL=redis://redis:6379/0
+      - PUBLIC_URL=https://${LAZYCAT_APP_DOMAIN}
+      - CORS_ORIGINS=https://${LAZYCAT_APP_DOMAIN}
+      - EMBEDDING_PROVIDER=auto
+      - ANTHROPIC_MODEL=claude-sonnet-4-6
+      - ANTHROPIC_FAST_MODEL=claude-haiku-4-5
+    binds:
+      - /lzcapp/var/backend-secrets:/app/.secrets
+    command: celery -A backend.celery_app beat --loglevel=info
+
+  frontend:
+    image: embed:frontend
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_INTERNAL_URL=http://backend:3456
+      - PUBLIC_URL=https://${LAZYCAT_APP_DOMAIN}
+
+  collab:
+    image: embed:collab
+    depends_on:
+      - postgres
+      - backend
+    environment:
+      - DATABASE_URL=postgresql://stash:stash@postgres:5432/stash
+      - BACKEND_URL=http://backend:3456

@@ -140,6 +140,7 @@ class Settings:
     # managed auth0 router is mounted at /api/v1/auth0/. Requires the
     # managed/ directory to be present in the deployment.
     AUTH0_ENABLED: bool = os.getenv("AUTH0_ENABLED", "false").lower() == "true"
+    LAZYCAT_AUTH_ENABLED: bool = os.getenv("LAZYCAT_AUTH_ENABLED", "false").lower() == "true"
 
     # --- Database ---
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://stash:stash@localhost:5432/stash")

@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.config import settings
 from backend.services import user_service
 
 from .conftest import unique_name
@@ -337,3 +338,66 @@ async def test_invalid_api_key_rejected(client: AsyncClient):
 async def test_missing_auth_rejected(client: AsyncClient):
     resp = await client.get("/api/v1/users/me")
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_lazycat_header_auth_creates_user_and_primary_workspace(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "LAZYCAT_AUTH_ENABLED", True)
+
+    first = await client.get("/api/v1/users/me", headers={"SAFE_UID": "box-user-1"})
+    second = await client.get("/api/v1/users/me", headers={"SAFE_UID": "box-user-1"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+    assert first.json()["name"].startswith("lazycat_")
+
+    workspace_count = await pool.fetchval(
+        "SELECT COUNT(*) FROM workspace_members WHERE user_id = $1 AND is_primary = true",
+        UUID(first.json()["id"]),
+    )
+    key_count = await pool.fetchval(
+        "SELECT COUNT(*) FROM user_api_keys WHERE user_id = $1",
+        UUID(first.json()["id"]),
+    )
+    assert workspace_count == 1
+    assert key_count == 0
+
+
+@pytest.mark.asyncio
+async def test_lazycat_auth_disables_password_registration(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(settings, "LAZYCAT_AUTH_ENABLED", True)
+
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("lazycat_password"), "password": "securepassword1"},
+    )
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Password auth is disabled; use Lazycat"
+
+
+@pytest.mark.asyncio
+async def test_lazycat_auth_still_allows_cli_keys(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(settings, "LAZYCAT_AUTH_ENABLED", True)
+
+    session = await client.post(
+        "/api/v1/users/cli-auth/sessions",
+        json={"device_name": "lazycat-cli"},
+    )
+    approved = await client.post(
+        f"/api/v1/users/cli-auth/sessions/{session.json()['session_id']}/approve",
+        headers={"SAFE_UID": "box-user-cli"},
+    )
+    polled = await client.get(f"/api/v1/users/cli-auth/sessions/{session.json()['session_id']}")
+    api_key = polled.json()["api_key"]
+    me = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {api_key}"})
+
+    assert approved.status_code == 200
+    assert polled.status_code == 200
+    assert api_key.startswith("mc_")
+    assert me.status_code == 200

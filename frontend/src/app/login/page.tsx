@@ -6,7 +6,7 @@ import Header from "../../components/Header";
 import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { API_BASE, getToken, setToken, listMyWorkspaces } from "../../lib/api";
+import { API_BASE, getAuthToken, setToken, listMyWorkspaces } from "../../lib/api";
 import { consumeManualAuth0Logout } from "../../lib/authLogout";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -256,13 +256,13 @@ function AuthorizeCliPanel({
     setError("");
     setSubmitting(true);
     try {
-      const token = getToken();
-      if (!token) throw new Error("Not signed in");
+      const token = await getAuthToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const res = await fetch(
         `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
         },
       );
       if (!res.ok) {

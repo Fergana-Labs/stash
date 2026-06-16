@@ -1,3 +1,4 @@
+import hashlib
 from uuid import UUID
 
 from ..auth import create_api_key, hash_api_key, hash_password, verify_password
@@ -73,6 +74,49 @@ async def get_user_by_email(email: str) -> dict | None:
         email,
     )
     return dict(row) if row else None
+
+
+async def get_or_create_lazycat_user(safe_uid: str) -> dict:
+    pool = get_pool()
+    username = _lazycat_username(safe_uid)
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name, email, description, created_at, last_seen, "
+        "       role, referral_source, use_case "
+        "FROM users WHERE name = $1",
+        username,
+    )
+    if row:
+        await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
+        user = dict(row)
+        user["key_id"] = None
+        return user
+
+    display_name = f"Lazycat {username.removeprefix('lazycat_')[:8]}"
+    row = await pool.fetchrow(
+        "INSERT INTO users (name, display_name, description) "
+        "VALUES ($1, $2, '') "
+        "RETURNING id, name, display_name, email, description, created_at, last_seen, "
+        "          role, referral_source, use_case",
+        username,
+        display_name,
+    )
+    user = dict(row)
+
+    from . import workspace_service
+
+    await workspace_service.create_workspace(
+        name="Stash",
+        description="",
+        creator_id=user["id"],
+        is_primary=True,
+    )
+    user["key_id"] = None
+    return user
+
+
+def _lazycat_username(safe_uid: str) -> str:
+    digest = hashlib.sha256(safe_uid.encode()).hexdigest()[:24]
+    return f"lazycat_{digest}"
 
 
 async def update_user(
