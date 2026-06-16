@@ -228,13 +228,9 @@ async def test_event_created_session_lands_in_default_folder(client: AsyncClient
     )
     assert pushed.status_code == 201
 
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
-    )
+    listed = await client.get("/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers)
     assert listed.status_code == 200
-    session = next(
-        s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted"
-    )
+    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted")
     assert session["session_folder_id"] is not None
     assert session["session_folder_name"] == "Default"
 
@@ -265,12 +261,8 @@ async def test_transcript_upload_targets_explicit_session_folder(client: AsyncCl
     )
     assert upload.status_code == 201
 
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
-    )
-    session = next(
-        s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session"
-    )
+    listed = await client.get("/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers)
+    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session")
     assert session["session_folder_id"] == folder_id
     assert session["session_folder_name"] == "Pinned"
 
@@ -302,9 +294,7 @@ async def test_event_stream_pin_targets_folder(client: AsyncClient):
     )
     assert pushed.status_code == 201
 
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
-    )
+    listed = await client.get("/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers)
     session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-pinned")
     assert session["session_folder_id"] == folder_id
 
@@ -336,12 +326,8 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
         )
 
     await push()
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
-    )
-    row_id = next(
-        s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session"
-    )
+    listed = await client.get("/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers)
+    row_id = next(s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session")
 
     moved = await client.post(
         f"/api/v1/workspaces/{ws}/session-folders/assign",
@@ -351,9 +337,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
     assert moved.status_code == 200
 
     await push()  # another turn keeps streaming the pin
-    after = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
-    )
+    after = await client.get("/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers)
     session = next(s for s in after.json()["sessions"] if s["session_id"] == "moved-session")
     assert session["session_folder_id"] is None
 

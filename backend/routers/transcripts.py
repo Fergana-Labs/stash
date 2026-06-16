@@ -66,10 +66,13 @@ async def upload_transcript(
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
-    if session_folder_id is not None and not await session_folder_service.can_add_session_to_folder(
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        folder_id=session_folder_id,
+    if (
+        session_folder_id is not None
+        and not await session_folder_service.can_add_session_to_folder(
+            workspace_id=workspace_id,
+            user_id=current_user["id"],
+            folder_id=session_folder_id,
+        )
     ):
         raise HTTPException(status_code=404, detail="Session folder not found")
 
