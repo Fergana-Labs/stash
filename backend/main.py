@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
 from . import integrations as _integrations  # noqa: F401 — registers providers + importers
@@ -56,6 +57,32 @@ from .services import demo_service, realtime
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
+
+# The browser-facing data + AI APIs are called from vibe-coded UIs on any
+# origin. They authenticate with bearer/apikey tokens (never cookies), so an
+# open CORS policy is safe here — and a null origin is allowed so a Page's
+# sandboxed iframe can call them. Other routes keep the credentialed allowlist.
+_BROWSER_API_PREFIXES = ("/rest/v1", "/ai/v1")
+_BROWSER_API_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-stash-workspace, prefer, range",
+    "Access-Control-Expose-Headers": "Content-Range",
+    "Access-Control-Max-Age": "86400",
+}
+
+
+class BrowserApiCORS(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not request.url.path.startswith(_BROWSER_API_PREFIXES):
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return Response(status_code=204, headers=_BROWSER_API_CORS)
+        response = await call_next(request)
+        for key, value in _BROWSER_API_CORS.items():
+            response.headers[key] = value
+        return response
+
 
 SECURITY_HEADERS = {
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
@@ -112,6 +139,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Added last so it's outermost — handles /rest/v1 + /ai/v1 preflight before the
+# credentialed CORS middleware would reject a cross-origin request.
+app.add_middleware(BrowserApiCORS)
+
+
+@app.get("/llms.txt", response_class=PlainTextResponse)
+async def llms_txt() -> str:
+    """Agent-facing pointer to how to build on stash. The live schema/endpoints
+    are in /openapi.json; the seeded `build-on-stash` skill has the full guide."""
+    return (
+        "# Build a UI on stash\n\n"
+        "Stash is the backend for dashboards and vibe-coded UIs. The data API is\n"
+        "PostgREST/supabase-js compatible.\n\n"
+        "## Data API\n"
+        "- GET/POST/PATCH/DELETE /rest/v1/{table} (filters col=op.value, select, order,\n"
+        "  limit/offset; Content-Range header). Joins/rpc/and/or return 501.\n"
+        "- Realtime: EventSource /rest/v1/{table}/subscribe?access_token=...\n\n"
+        "## AI (authenticated users only)\n"
+        "- POST /ai/v1/{workspace}/chat — Vercel AI SDK useChat-compatible stream.\n"
+        "- POST /ai/v1/{workspace}/search — retrieval over the workspace.\n\n"
+        "## Credentials\n"
+        "- Private (your data): POST /api/v1/dashboard-tokens -> read-only token.\n"
+        "- Public/shared: a publishable pk_ key + per-table policies (owner-created).\n\n"
+        "Full schema: /openapi.json\n"
+    )
 app.include_router(users.router)
 app.include_router(collab.router)
 app.include_router(workspaces.router)
