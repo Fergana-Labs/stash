@@ -95,6 +95,23 @@ async def get_table_metadata(table_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_table_by_name(workspace_id: UUID, name: str) -> dict | None:
+    """Resolve a table by case-insensitive name within a workspace (most recent wins).
+
+    The PostgREST-style data API addresses tables by name in the URL path.
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"SELECT t.{_TABLE_FIELDS.replace(', ', ', t.')}, "
+        "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
+        "FROM tables t WHERE t.workspace_id = $1 AND lower(t.name) = lower($2) "
+        "ORDER BY t.updated_at DESC LIMIT 1",
+        workspace_id,
+        name,
+    )
+    return dict(row) if row else None
+
+
 async def update_table(
     table_id: UUID,
     updated_by: UUID,
