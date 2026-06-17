@@ -5,14 +5,14 @@ Adds a third layout mode to the pages.html_layout CHECK constraint. Like
 1200px reading-column cap so the page uses the full window width (keeping the
 comment rail). Right for web-page-style HTML that wants real responsive room.
 
-Revision ID: 0116
-Revises: 0115
+Revision ID: 0117
+Revises: 0116
 """
 
 from alembic import op
 
-revision = "0116"
-down_revision = "0115"
+revision = "0117"
+down_revision = "0116"
 branch_labels = None
 depends_on = None
 

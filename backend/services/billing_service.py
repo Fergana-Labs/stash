@@ -25,6 +25,13 @@ from ..database import get_pool
 ACTIVE_STATUSES = {"active", "trialing"}
 FREE_CONNECTION_LIMIT = 1
 
+# Internal team accounts get Pro without a subscription — no card, no Stripe row.
+INTERNAL_EMAIL_DOMAINS = {"ferganalabs.com", "joinstash.ai"}
+
+
+def is_internal_email(email: str | None) -> bool:
+    return bool(email) and email.rsplit("@", 1)[-1].lower() in INTERNAL_EMAIL_DOMAINS
+
 
 def billing_enabled() -> bool:
     return settings.STRIPE_SECRET_KEY is not None
@@ -41,10 +48,17 @@ async def get_subscription(user_id: UUID) -> dict | None:
 
 
 async def is_pro(user_id: UUID) -> bool:
-    status = await get_pool().fetchval(
-        "SELECT status FROM user_subscriptions WHERE user_id = $1", user_id
+    row = await get_pool().fetchrow(
+        "SELECT u.email, s.status FROM users u "
+        "LEFT JOIN user_subscriptions s ON s.user_id = u.id "
+        "WHERE u.id = $1",
+        user_id,
     )
-    return status in ACTIVE_STATUSES
+    if row is None:
+        return False
+    if is_internal_email(row["email"]):
+        return True
+    return row["status"] in ACTIVE_STATUSES
 
 
 async def connection_count(user_id: UUID) -> int:

@@ -26,7 +26,7 @@ async def my_billing(current_user: dict = Depends(get_current_user)):
     status = subscription["status"] if subscription else None
     return {
         "billing_enabled": True,
-        "plan": "pro" if status in billing_service.ACTIVE_STATUSES else "free",
+        "plan": "pro" if await billing_service.is_pro(current_user["id"]) else "free",
         "status": status,
         "connection_count": await billing_service.connection_count(current_user["id"]),
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
