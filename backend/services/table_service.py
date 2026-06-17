@@ -604,11 +604,17 @@ async def list_rows(
 
     where = " AND ".join(where_clauses)
 
-    # Sort — validate sort_by against schema
+    # Sort — validate sort_by against schema. Number columns must sort
+    # numerically, not lexicographically (otherwise '900' sorts before '7400').
     order = "row_order ASC"
     if sort_by and sort_by in valid_col_ids:
         direction = "DESC" if sort_order == "desc" else "ASC"
-        order = f"data->>'{sort_by}' {direction}, row_order ASC"
+        col_types = {c["id"]: c["type"] for c in table["columns"]}
+        if col_types.get(sort_by) == "number":
+            expr = f"NULLIF(data->>'{sort_by}', '')::numeric"
+        else:
+            expr = f"data->>'{sort_by}'"
+        order = f"{expr} {direction} NULLS LAST, row_order ASC"
 
     total_query = pool.fetchval(f"SELECT COUNT(*) FROM table_rows WHERE {where}", *args)
     if limit == 0:

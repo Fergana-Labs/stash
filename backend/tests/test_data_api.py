@@ -88,6 +88,25 @@ async def test_insert_returns_row_with_id_then_patch_and_delete(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_numeric_order_is_numeric_not_lexicographic(client: AsyncClient):
+    api_key, _user = await _register(client)
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "N"}, headers=_auth(api_key))
+    ).json()
+    await client.post(
+        f"/api/v1/workspaces/{ws['id']}/tables",
+        json={"name": "T", "columns": [{"name": "V", "type": "number"}]},
+        headers=_auth(api_key),
+    )
+    hdr = {**_auth(api_key), "X-Stash-Workspace": ws["id"]}
+    for v in [900, 7400, 5000, 3200]:
+        await client.post("/rest/v1/T", json={"V": v}, headers=hdr)
+    rows = (await client.get("/rest/v1/T?order=V.desc", headers=hdr)).json()
+    # Numeric order, not text order (which would put 900 first because '9' > '7').
+    assert [r["V"] for r in rows] == [7400, 5000, 3200, 900]
+
+
+@pytest.mark.asyncio
 async def test_schema_introspection(client: AsyncClient):
     _key, _user, _ws, hdr = await _setup(client)
     resp = await client.get("/rest/v1", headers=hdr)
