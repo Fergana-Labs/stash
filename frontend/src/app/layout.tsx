@@ -21,7 +21,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Skill",
+  title: "Stash",
   description:
     "One place for your agents to connect to all your data, plus an agent-native Drive in Markdown and HTML.",
   icons: {

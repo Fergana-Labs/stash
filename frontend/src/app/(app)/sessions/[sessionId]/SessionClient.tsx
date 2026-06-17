@@ -176,11 +176,6 @@ export default function SessionViewerPage() {
   }, [user, load]);
 
   useEffect(() => {
-    if (!sessionDetail) return;
-    document.title = `${sessionHeading(sessionDetail, sessionId)} - Stash`;
-  }, [sessionDetail, sessionId]);
-
-  useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 

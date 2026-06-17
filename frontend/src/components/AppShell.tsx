@@ -317,6 +317,16 @@ export default function AppShell({
 
   const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
+
+  // Browser tab title: the most specific thing we know — the current item or
+  // section from breadcrumbs, falling back to the workspace name on its home —
+  // suffixed with the brand. Item viewers (pages, sessions, files) set the last
+  // crumb to their own name, so this covers them too.
+  const documentTitle =
+    lastCrumbLabel(breadcrumbs) ?? activeWorkspace?.name ?? null;
+  useEffect(() => {
+    document.title = documentTitle ? `${documentTitle} - Stash` : "Stash";
+  }, [documentTitle]);
   const initial = user.display_name[0].toUpperCase();
   const accountLabel = user.email ?? user.name;
   const usernameLabel = `@${user.name}`;
