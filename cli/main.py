@@ -3307,6 +3307,58 @@ def tables_delete_column(
         console.print("[green]Column deleted.[/green]")
 
 
+@tables_app.command("list")
+def tables_list(
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List tables in the workspace with their columns."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _resolve_workspace()
+            tables = c.list_tables(ws)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(tables)
+        return
+    if not tables:
+        console.print("[dim]No tables.[/dim]")
+        return
+    for t in tables:
+        cols = ", ".join(col["name"] for col in t.get("columns", []))
+        console.print(f"[cyan]{t['name']}[/cyan]  ({t.get('row_count', 0)} rows)  {t['id']}")
+        if cols:
+            console.print(f"  [dim]{cols}[/dim]")
+
+
+@tables_app.command("schema")
+def tables_schema(
+    name: str = typer.Argument(..., help="Table name"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Show a table's columns (types, required, options) — for building UIs on the data API."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _resolve_workspace()
+            tables = c.list_tables(ws)
+        except StashError as e:
+            _err(e)
+    table = next((t for t in tables if t["name"].lower() == name.lower()), None)
+    if not table:
+        console.print(f"[red]No table named '{name}'.[/red]")
+        raise typer.Exit(1)
+    if _use_json(as_json):
+        output_json(table)
+        return
+    console.print(f"[bold cyan]{table['name']}[/bold cyan]  ({table.get('row_count', 0)} rows)")
+    for col in sorted(table.get("columns", []), key=lambda c: c.get("order", 0)):
+        req = " [red]required[/red]" if col.get("required") else ""
+        opts = f" options={col['options']}" if col.get("options") else ""
+        console.print(f"  [cyan]{col['name']}[/cyan] [yellow]{col['type']}[/yellow]{req}{opts}")
+
+
 @tables_app.command("count")
 def tables_count(
     table_id: str = typer.Argument(...),

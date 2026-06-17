@@ -141,6 +141,34 @@ def _optional_row_id(request: Request, columns: list[dict]) -> UUID | None:
         raise HTTPException(status_code=400, detail="id=eq.<row id> must be a UUID")
 
 
+@router.get("")
+async def list_schema(request: Request, principal: dict = Depends(data_principal)):
+    """Supabase-style schema introspection: the workspace's readable tables + columns.
+
+    Lets a dashboard (or agent) discover what to query before hitting `/rest/v1/{table}`.
+    A user sees every table they can read; an anon key sees only tables it has a policy for.
+    """
+    if principal["kind"] == "api_key":
+        tables = await table_service.list_tables(principal["workspace_id"], None)
+        readable = [
+            t
+            for t in tables
+            if await permission_service.check_anon_access(
+                "table", t["id"], principal["key_id"], "read"
+            )
+        ]
+    else:
+        user = principal["user"]
+        workspace_id = await _user_workspace(request, user)
+        readable = await table_service.list_tables(workspace_id, user["id"])
+
+    return {
+        "tables": [
+            {"name": t["name"], "id": str(t["id"]), "columns": t["columns"]} for t in readable
+        ]
+    }
+
+
 @router.get("/{table}")
 async def list_rows(
     table: str,

@@ -88,6 +88,16 @@ async def test_insert_returns_row_with_id_then_patch_and_delete(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_schema_introspection(client: AsyncClient):
+    _key, _user, _ws, hdr = await _setup(client)
+    resp = await client.get("/rest/v1", headers=hdr)
+    assert resp.status_code == 200
+    tables = resp.json()["tables"]
+    sales = next(t for t in tables if t["name"] == "Sales")
+    assert {c["name"] for c in sales["columns"]} == {"Name", "Revenue"}
+
+
+@pytest.mark.asyncio
 async def test_get_one_row_by_id(client: AsyncClient):
     # supabase .eq('id', x): fetch a single row by its id (id is the row id, not a cell).
     _key, _user, _ws, hdr = await _setup(client)
