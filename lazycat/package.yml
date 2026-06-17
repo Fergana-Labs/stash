@@ -4,7 +4,9 @@ name: Stash
 description: Agent-native workspace for shared sessions, files, pages, skills, and search.
 author: Fergana Labs
 license: MIT
-homepage: https://joinstash.ai
+homepage: https://github.com/Fergana-Labs/stash
+unsupported_platforms:
+  - linux/arm64
 locales:
   zh-CN:
     name: Stash

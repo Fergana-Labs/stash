@@ -1,16 +1,3 @@
 manifest: ./lzc-manifest.yml
 pkgout: ./
 icon: ./lzc-icon.png
-images:
-  backend:
-    builder: local
-    dockerfile: ../backend/Dockerfile
-    context: ..
-  frontend:
-    builder: local
-    dockerfile: ../frontend/Dockerfile
-    context: ../frontend
-  collab:
-    builder: local
-    dockerfile: ../collab/Dockerfile
-    context: ../collab
