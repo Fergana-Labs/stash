@@ -118,6 +118,29 @@ def _require_row_id(request: Request) -> UUID:
         raise HTTPException(status_code=400, detail="id=eq.<row id> must be a UUID")
 
 
+def _optional_row_id(request: Request, columns: list[dict]) -> UUID | None:
+    """A GET `?id=eq.<uuid>` fetches one row by its id — the supabase `.eq('id', x)`
+    pattern. `id` is the row's id, not a JSONB cell, so it can't go through the
+    column filter path. Returns None when no id filter is present (or when the
+    table actually has a user column named 'id', which then filters normally)."""
+    if any(c["name"] == "id" for c in columns):
+        return None
+    items = [
+        (k, v) for k, v in request.query_params.multi_items() if k not in postgrest.RESERVED_PARAMS
+    ]
+    id_values = [v for k, v in items if k == "id"]
+    if not id_values:
+        return None
+    if len(items) != 1 or not id_values[0].startswith("eq."):
+        raise HTTPException(
+            status_code=400, detail="id must be the only filter and use id=eq.<row id>"
+        )
+    try:
+        return UUID(id_values[0][len("eq.") :])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="id=eq.<row id> must be a UUID")
+
+
 @router.get("/{table}")
 async def list_rows(
     table: str,
@@ -127,6 +150,20 @@ async def list_rows(
 ):
     row, _writer = await _load_table(request, principal, table, require="read")
     columns = row["columns"]
+
+    # Single-row fetch by id (supabase .eq('id', x)) — id is the row id, not a cell.
+    row_id = _optional_row_id(request, columns)
+    if row_id is not None:
+        try:
+            project = postgrest.parse_select(request.query_params.get("select"), columns)
+        except (postgrest.UnsupportedQuery, postgrest.BadQuery) as exc:
+            raise _translate(exc)
+        one = await table_service.get_row(row_id)
+        found = [one] if one and str(one["table_id"]) == str(row["id"]) else []
+        out = [postgrest.row_to_named(r, columns, project) for r in found]
+        response.headers["Content-Range"] = postgrest.content_range(0, len(out), len(out))
+        return out
+
     params = list(request.query_params.multi_items())
     try:
         filters = postgrest.parse_filters(params, columns)

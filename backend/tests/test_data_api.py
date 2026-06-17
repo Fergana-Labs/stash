@@ -88,6 +88,27 @@ async def test_insert_returns_row_with_id_then_patch_and_delete(client: AsyncCli
 
 
 @pytest.mark.asyncio
+async def test_get_one_row_by_id(client: AsyncClient):
+    # supabase .eq('id', x): fetch a single row by its id (id is the row id, not a cell).
+    _key, _user, _ws, hdr = await _setup(client)
+    created = (
+        await client.post("/rest/v1/Sales", json={"Name": "Solo", "Revenue": 1}, headers=hdr)
+    ).json()
+    row_id = created["id"]
+
+    resp = await client.get(f"/rest/v1/Sales?id=eq.{row_id}", headers=hdr)
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1 and rows[0]["Name"] == "Solo"
+
+    # A non-existent id returns an empty list, not an error.
+    missing = await client.get(
+        "/rest/v1/Sales?id=eq.00000000-0000-0000-0000-000000000000", headers=hdr
+    )
+    assert missing.status_code == 200 and missing.json() == []
+
+
+@pytest.mark.asyncio
 async def test_unsupported_and_bad_queries(client: AsyncClient):
     _key, _user, _ws, hdr = await _setup(client)
 
