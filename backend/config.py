@@ -294,6 +294,11 @@ class Settings:
     # The recurring Pro prices (price_...): $20/month and $200/year.
     STRIPE_MONTHLY_PRICE_ID: str | None = os.getenv("STRIPE_MONTHLY_PRICE_ID")
     STRIPE_ANNUAL_PRICE_ID: str | None = os.getenv("STRIPE_ANNUAL_PRICE_ID")
+    # Internal team domains get Pro for free. Set to "false" to make internal
+    # accounts hit the real pay gate — useful for testing the paywall.
+    INTERNAL_DOMAINS_FREE_PRO: bool = (
+        os.getenv("INTERNAL_DOMAINS_FREE_PRO", "true").lower() == "true"
+    )
 
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")

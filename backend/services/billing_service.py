@@ -30,6 +30,8 @@ INTERNAL_EMAIL_DOMAINS = {"ferganalabs.com", "joinstash.ai"}
 
 
 def is_internal_email(email: str | None) -> bool:
+    if not settings.INTERNAL_DOMAINS_FREE_PRO:
+        return False
     return bool(email) and email.rsplit("@", 1)[-1].lower() in INTERNAL_EMAIL_DOMAINS
 
 

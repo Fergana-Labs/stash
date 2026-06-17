@@ -125,6 +125,20 @@ async def test_internal_email_gets_pro_without_subscription(client, pool, billin
 
 
 @pytest.mark.asyncio
+async def test_internal_bypass_can_be_disabled(client, pool, billing_on, monkeypatch):
+    """Flipping INTERNAL_DOMAINS_FREE_PRO off makes internal accounts hit the
+    real pay gate — for testing the paywall."""
+    monkeypatch.setattr(settings, "INTERNAL_DOMAINS_FREE_PRO", False)
+    _, user_id = await _register(client)
+    await pool.execute("UPDATE users SET email = 'dev@joinstash.ai' WHERE id = $1", user_id)
+    await _connect_account(pool, user_id, "github")
+
+    with pytest.raises(HTTPException) as exc:
+        await billing_service.ensure_can_connect(user_id)
+    assert exc.value.status_code == 402
+
+
+@pytest.mark.asyncio
 async def test_gate_off_when_billing_disabled(client, pool, monkeypatch):
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
     _, user_id = await _register(client)
