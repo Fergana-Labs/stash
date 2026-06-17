@@ -134,7 +134,7 @@ async def test_google_drive_index_success_logs_internal_source_id_only(monkeypat
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-    async def list_folder(client, folder_id):
+    async def list_files(client, q):
         return [
             {
                 "id": "drive-file-secret",
@@ -145,7 +145,7 @@ async def test_google_drive_index_success_logs_internal_source_id_only(monkeypat
 
     monkeypatch.setattr(google_indexer, "get_valid_token", _token)
     monkeypatch.setattr(google_indexer.httpx, "AsyncClient", lambda *args, **kwargs: DriveClient())
-    monkeypatch.setattr(google_indexer, "_list_folder", list_folder)
+    monkeypatch.setattr(google_indexer, "_list", list_files)
     monkeypatch.setattr(google_indexer.source_service, "upsert_index_row", _noop)
     monkeypatch.setattr(google_indexer.source_service, "remove_missing_documents", _noop)
 
