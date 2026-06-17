@@ -30,3 +30,4 @@ coverage/
 .vercel
 .claude/
 .global-agents/
+lazycat/.lzc-cli-cache/
