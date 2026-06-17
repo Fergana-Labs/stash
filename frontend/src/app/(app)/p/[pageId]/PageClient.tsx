@@ -36,6 +36,7 @@ import { useAuth } from "../../../../hooks/useAuth";
 import {
   ApiError,
   createCommentThread,
+  createDashboardToken,
   createPage,
   deleteCommentMessage,
   deleteCommentThread,
@@ -455,6 +456,32 @@ export default function SkillPageView() {
     if (!loading && !user && !skillSlug) router.push("/login");
   }, [user, loading, router, skillSlug]);
 
+  // Hosted dashboards: mint a short-lived read-only token and expose it to the
+  // sandboxed iframe as window.stash. Only for HTML pages that actually use the
+  // data API — slide decks and plain HTML pages are left untouched.
+  const [dashboardConfig, setDashboardConfig] = useState<{
+    token: string;
+    workspaceId: string;
+    apiBase: string;
+  } | null>(null);
+  useEffect(() => {
+    const isApp = page?.content_type === "html" && page?.html_layout === "app";
+    if (!isApp || !workspaceId) {
+      setDashboardConfig(null);
+      return;
+    }
+    let cancelled = false;
+    void createDashboardToken(workspaceId).then((dt) => {
+      if (cancelled) return;
+      setDashboardConfig(
+        dt ? { token: dt.token, workspaceId, apiBase: window.location.origin } : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [page?.content_type, page?.html_layout, workspaceId]);
+
   const handleHtmlAnchorTops = useCallback((iframeAnchorTops: Record<string, number>) => {
     const layout = pageLayoutRef.current;
     const iframeBox = iframeBoxRef.current;
@@ -532,7 +559,8 @@ export default function SkillPageView() {
   const isHtml = page?.content_type === "html";
   // Full-width HTML drops the 1200px reading-column cap so the page gets the
   // whole window (minus the comment rail) — room for real responsive layouts.
-  const isFullWidth = isHtml && page?.html_layout === "full-width";
+  const isFullWidth =
+    isHtml && (page?.html_layout === "full-width" || page?.html_layout === "app");
   // Keep the live-update handler reading current view state without resubscribing.
   liveViewRef.current = { isHtml, htmlEditMode };
   loadRef.current = load;
@@ -750,6 +778,7 @@ export default function SkillPageView() {
                     onHtmlMutated={handleHtmlMutated}
                     stripCommentToken={stripCommentToken}
                     editable={htmlEditMode}
+                    dashboard={dashboardConfig}
                   />
                   {htmlSelection && !htmlComposer && !htmlEditMode && (
                     <button

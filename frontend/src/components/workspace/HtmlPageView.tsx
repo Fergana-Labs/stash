@@ -6,7 +6,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 // width:100%); the difference is purely the parent's column width, set in
 // PageClient. So every check below treats anything that isn't "fixed-aspect"
 // as the responsive path.
-export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width";
+export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width" | "app";
 
 export type HtmlSelectionInfo = {
   quoted_text: string;
@@ -49,6 +49,10 @@ type Props = {
    *  it from `html` prop changes, so the user's caret position survives
    *  the save round-trip. */
   editable?: boolean;
+  /** When set, this HTML page is a hosted dashboard: inject `window.stash`
+   *  (a read-only data-API client bound to a short-lived token) into the
+   *  sandboxed iframe so the page can read its workspace's data. */
+  dashboard?: { token: string; workspaceId: string; apiBase: string } | null;
 };
 
 // Iframes don't auto-size to their content — the parent has to decide the
@@ -78,6 +82,7 @@ export default function HtmlPageView({
   activeThreadId,
   stripCommentToken,
   editable = false,
+  dashboard,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const presentWrapRef = useRef<HTMLDivElement | null>(null);
@@ -105,11 +110,17 @@ export default function HtmlPageView({
   const [activeSlide, setActiveSlide] = useState(0);
 
   const srcDoc = useMemo(() => {
-    if (layout !== "fixed-aspect")
-      return injectResizeBootstrap(initialHtml, channel, Boolean(onNavigateLink));
-    if (isDeck) return injectSlideDeckBootstrap(initialHtml, channel);
-    return initialHtml;
-  }, [layout, channel, initialHtml, isDeck, onNavigateLink]);
+    if (layout === "fixed-aspect") {
+      return isDeck ? injectSlideDeckBootstrap(initialHtml, channel) : initialHtml;
+    }
+    let out = injectResizeBootstrap(initialHtml, channel, Boolean(onNavigateLink));
+    if (layout === "app") {
+      const apiOrigin =
+        dashboard?.apiBase ?? (typeof window !== "undefined" ? window.location.origin : "");
+      out = injectAppShell(out, apiOrigin, dashboard ?? null);
+    }
+    return out;
+  }, [layout, channel, initialHtml, isDeck, onNavigateLink, dashboard]);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
@@ -501,6 +512,41 @@ export default function HtmlPageView({
 //   - active thread highlight class,
 //   - edit mode: toggles `contenteditable` on body and debounces the
 //     "current HTML" round-trip so the parent can save while the user types.
+// 'app' (dashboard) pages run author JS inside the sandbox. We inject, at the
+// very top of <head> (before any author script runs):
+//   1. a CSP egress-lock — the script may read/write the stash data API but
+//      can't send data anywhere else, so even agent-authored JS can't exfiltrate;
+//   2. for an owner-viewed dashboard, a `window.stash` client bound to the
+//      short-lived read token. Public renders get the CSP but no token.
+// The page is opaque-origin, so the API must be an absolute URL (apiOrigin).
+function injectAppShell(
+  html: string,
+  apiOrigin: string,
+  dashboard: { token: string; workspaceId: string; apiBase: string } | null,
+): string {
+  const csp =
+    `<meta http-equiv="Content-Security-Policy" content="` +
+    `default-src 'none'; ` +
+    `script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://cdn.tailwindcss.com; ` +
+    `style-src 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; ` +
+    `font-src data: https://fonts.gstatic.com https://cdn.jsdelivr.net; ` +
+    `img-src 'self' data: ${apiOrigin}; ` +
+    `connect-src ${apiOrigin};">`;
+  let head = csp;
+  if (dashboard) {
+    const cfg = JSON.stringify(dashboard);
+    head +=
+      `<script>(function(){var d=${cfg};window.stash={` +
+      `token:d.token,workspaceId:d.workspaceId,apiBase:d.apiBase,` +
+      `rest:function(path,opts){opts=opts||{};` +
+      `var h=Object.assign({},opts.headers,{Authorization:"Bearer "+d.token});` +
+      `return fetch(d.apiBase+"/rest/v1/"+path,Object.assign({},opts,{headers:h}));}};})();</script>`;
+  }
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + head);
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => m + head);
+  return head + html;
+}
+
 function injectResizeBootstrap(
   html: string,
   channel: string,

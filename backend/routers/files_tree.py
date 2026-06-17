@@ -586,11 +586,15 @@ async def download_page(
     media = "text/html; charset=utf-8" if is_html else "text/markdown; charset=utf-8"
     name = page.get("name") or "page"
     filename = name if name.lower().endswith(suffix) else f"{name}{suffix}"
+    # HTML must never execute on this origin (it can carry author scripts for
+    # 'app' dashboard pages). Force a download instead of inline rendering.
+    disposition = "attachment" if is_html else "inline"
     return Response(
         content=body,
         media_type=media,
         headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "X-Content-Type-Options": "nosniff",
         },
     )
 

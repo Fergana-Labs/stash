@@ -94,6 +94,12 @@ def _drop_unsafe_data_uri(tag: str, attr: str, value: str) -> str | None:
     return value
 
 
+# A dashboard page-kind: full-width, runs author JS, binds to the data API via
+# window.stash. Rendered only in a sandboxed iframe with a CSP egress-lock, so
+# its scripts are kept (not stripped) on write.
+APP_LAYOUT = "app"
+
+
 def _sanitize_html(html: str) -> str:
     if not html:
         return html
@@ -372,7 +378,10 @@ async def create_page(
         folder = await pool.fetchrow("SELECT workspace_id FROM folders WHERE id = $1", folder_id)
         if not folder or folder["workspace_id"] != workspace_id:
             raise ValueError("folder_id does not belong to workspace")
-    content_html = _sanitize_html(content_html)
+    # 'app' (dashboard) pages keep author scripts — they only ever execute in a
+    # sandboxed iframe with a CSP egress-lock, never on the trusted origin.
+    if html_layout != APP_LAYOUT:
+        content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
     meta = metadata or {}
@@ -494,7 +503,17 @@ async def update_page(
     editor reloads the fresh content instead of stale Yjs state."""
     pool = get_pool()
     if content_html is not None:
-        content_html = _sanitize_html(content_html)
+        # Skip sanitization for 'app' (dashboard) pages — see create_page. The
+        # layout may be unchanged in this update, so fall back to the stored one.
+        effective_layout = html_layout
+        if effective_layout is None:
+            effective_layout = await pool.fetchval(
+                "SELECT html_layout FROM pages WHERE id = $1 AND workspace_id = $2",
+                page_id,
+                workspace_id,
+            )
+        if effective_layout != APP_LAYOUT:
+            content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
 
     if folder_id is not None and not move_to_root:

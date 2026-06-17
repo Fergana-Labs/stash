@@ -203,9 +203,22 @@ Publishable keys cannot call AI — broker it with a user token server-side.
 
 ## 5. Hosting
 
-- **In stash:** save your single-file HTML app as a Page; it runs sandboxed and
-  gets a dashboard token injected, so it reads your data with no setup.
-- **Anywhere else:** deploy normally and point at the stash API with a token.
+- **In stash:** save your single-file HTML dashboard as a Page with
+  `html_layout: "app"`. It runs in a sandboxed iframe and, when you (the owner)
+  view it, a read-only `window.stash` client is injected automatically:
+
+  ```html
+  <script>
+    const res = await window.stash.rest("Sales?select=Name,Revenue&order=Revenue.desc");
+    const rows = await res.json();   // reads your data, no key needed
+  </script>
+  ```
+
+  A CSP egress-lock means an `app` page may call the stash API and load assets
+  from common CDNs (jsdelivr, unpkg, cdnjs, tailwind, google fonts) — but cannot
+  send data to any other origin. Use those CDNs for charting libs, etc.
+- **Anywhere else:** deploy normally and point at the stash API with a `pk_` key
+  (public/shared data) or a dashboard token.
 """
 
 
