@@ -30,11 +30,12 @@ class GoogleIntegration(Integration):
     # files our app creates (for Slides export). Avoids the scary
     # "read all your Drive files" consent screen.
     scopes = [
-        # Read access to the user's whole Drive — needed so federated search
-        # (`fullText contains`) and the folder crawl can see all files, not just
-        # ones picked with the app (the narrower drive.file scope). This is a
-        # Google "restricted" scope; the OAuth consent screen must list it.
-        "https://www.googleapis.com/auth/drive.readonly",
+        # Read access to the user's Drive for the folder crawl + federated
+        # `fullText` search. `auth/docs` is a *sensitive* scope (already
+        # approved on our consent screen), unlike the *restricted*
+        # `drive.readonly`, which requires a CASA assessment to clear the
+        # "unverified app" screen.
+        "https://www.googleapis.com/auth/docs",
         "openid",
         "email",
         "profile",
