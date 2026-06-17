@@ -28,12 +28,22 @@ build_push_copy() {
   local context="$3"
   local image="${DOCKERHUB_USER}/stash-${service}:${TAG}"
 
-  docker buildx build \
-    --platform "$PLATFORM" \
-    -t "$image" \
-    --push \
-    -f "$dockerfile" \
-    "$context"
+  if [[ "$service" == "frontend" ]]; then
+    docker buildx build \
+      --platform "$PLATFORM" \
+      --build-arg NEXT_PUBLIC_LAZYCAT_AUTH_ENABLED=true \
+      -t "$image" \
+      --push \
+      -f "$dockerfile" \
+      "$context"
+  else
+    docker buildx build \
+      --platform "$PLATFORM" \
+      -t "$image" \
+      --push \
+      -f "$dockerfile" \
+      "$context"
+  fi
 
   docker buildx imagetools inspect "$image" | grep -q 'linux/amd64'
   copy_image "$image"

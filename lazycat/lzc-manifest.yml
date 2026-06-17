@@ -45,7 +45,7 @@ services:
       retries: 5
 
   backend:
-    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-backend:feb5f8a36ca75fad
+    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-backend:9787f36d79cda957
     user: "0"
     depends_on:
       - postgres
@@ -73,7 +73,7 @@ services:
       start_period: 30s
 
   worker:
-    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-backend:feb5f8a36ca75fad
+    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-backend:9787f36d79cda957
     user: "0"
     depends_on:
       - postgres
@@ -92,7 +92,7 @@ services:
     command: celery -A backend.celery_app worker --loglevel=info --concurrency=4
 
   beat:
-    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-backend:feb5f8a36ca75fad
+    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-backend:9787f36d79cda957
     user: "0"
     depends_on:
       - redis
@@ -110,15 +110,16 @@ services:
     command: celery -A backend.celery_app beat --loglevel=info
 
   frontend:
-    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-frontend:21461b033bce401d
+    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-frontend:c878a80c02ccbe1c
     depends_on:
       - backend
     environment:
       - BACKEND_INTERNAL_URL=http://backend:3456
       - PUBLIC_URL=https://${LAZYCAT_APP_DOMAIN}
+      - NEXT_PUBLIC_LAZYCAT_AUTH_ENABLED=true
 
   collab:
-    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-collab:d2d30c4d17579230
+    image: registry.lazycat.cloud/handingnihao/idocker1688/stash-collab:aa368d588972cddc
     depends_on:
       - postgres
       - backend

@@ -23,6 +23,8 @@ ARG NEXT_PUBLIC_COLLAB_URL
 ENV NEXT_PUBLIC_COLLAB_URL=$NEXT_PUBLIC_COLLAB_URL
 ARG NEXT_PUBLIC_AUTH0_ENABLED
 ENV NEXT_PUBLIC_AUTH0_ENABLED=$NEXT_PUBLIC_AUTH0_ENABLED
+ARG NEXT_PUBLIC_LAZYCAT_AUTH_ENABLED
+ENV NEXT_PUBLIC_LAZYCAT_AUTH_ENABLED=$NEXT_PUBLIC_LAZYCAT_AUTH_ENABLED
 # In docker / self-host, rewrites + SSR fetches use the internal hostname
 # to reach the backend; the public URL would loop through Caddy back into
 # the container. next.config.ts's rewrites() runs at build, so this needs

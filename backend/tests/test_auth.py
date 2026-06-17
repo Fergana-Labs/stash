@@ -348,8 +348,8 @@ async def test_lazycat_header_auth_creates_user_and_primary_workspace(
 ):
     monkeypatch.setattr(settings, "LAZYCAT_AUTH_ENABLED", True)
 
-    first = await client.get("/api/v1/users/me", headers={"SAFE_UID": "box-user-1"})
-    second = await client.get("/api/v1/users/me", headers={"SAFE_UID": "box-user-1"})
+    first = await client.get("/api/v1/users/me", headers={"X-HC-User-ID": "box-user-1"})
+    second = await client.get("/api/v1/users/me", headers={"X-HC-User-ID": "box-user-1"})
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -391,7 +391,7 @@ async def test_lazycat_auth_still_allows_cli_keys(client: AsyncClient, monkeypat
     )
     approved = await client.post(
         f"/api/v1/users/cli-auth/sessions/{session.json()['session_id']}/approve",
-        headers={"SAFE_UID": "box-user-cli"},
+        headers={"X-HC-User-ID": "box-user-cli"},
     )
     polled = await client.get(f"/api/v1/users/cli-auth/sessions/{session.json()['session_id']}")
     api_key = polled.json()["api_key"]

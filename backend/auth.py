@@ -138,16 +138,16 @@ async def _get_user_from_jwt(token: str) -> dict:
 
 
 async def _get_user_from_lazycat_headers(request: Request) -> dict:
-    safe_uid = request.headers.get("SAFE_UID")
-    if not safe_uid:
+    user_id = request.headers.get("X-HC-User-ID")
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing SAFE_UID header",
+            detail="Missing X-HC-User-ID header",
         )
 
     from .services import user_service
 
-    return await user_service.get_or_create_lazycat_user(safe_uid)
+    return await user_service.get_or_create_lazycat_user(user_id)
 
 
 async def get_current_user(
