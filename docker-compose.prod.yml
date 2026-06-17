@@ -55,7 +55,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.113
+    image: ghcr.io/fergana-labs/stash-backend:0.1.114
     restart: always
     expose:
       - "3456"
@@ -78,7 +78,7 @@ services:
       start_period: 30s
 
   worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.113
+    image: ghcr.io/fergana-labs/stash-backend:0.1.114
     restart: always
     depends_on:
       postgres:
@@ -96,7 +96,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
 
   beat:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.113
+    image: ghcr.io/fergana-labs/stash-backend:0.1.114
     restart: always
     depends_on:
       redis:
@@ -112,7 +112,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
-    image: ghcr.io/fergana-labs/stash-frontend:0.1.113
+    image: ghcr.io/fergana-labs/stash-frontend:0.1.114
     restart: always
     expose:
       - "3457"
@@ -122,7 +122,7 @@ services:
       BACKEND_INTERNAL_URL: http://backend:3456
 
   collab:
-    image: ghcr.io/fergana-labs/stash-collab:0.1.113
+    image: ghcr.io/fergana-labs/stash-collab:0.1.114
     restart: always
     expose:
       - "3458"
