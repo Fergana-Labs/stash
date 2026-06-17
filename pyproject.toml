@@ -22,6 +22,7 @@ dependencies = [
     "rich>=13.0.0",
     "questionary>=2.0.0",
     "mcp>=1.23.0",
+    "filelock>=3.12",
 ]
 
 [project.urls]

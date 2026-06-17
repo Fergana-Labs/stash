@@ -21,13 +21,40 @@ if [ -z "$PY" ] && command -v stash >/dev/null 2>&1; then
   # pyenv shim, pyenv prepends its version's bin dir to PATH, so a stale
   # pip-installed `stash` in that dir shadows the real pipx/uv install.
   STASH_BIN="$(command -v stash)"
-  STASH_REAL="$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$STASH_BIN" 2>/dev/null || true)"
-  if [ -n "$STASH_REAL" ]; then
-    CANDIDATE="$(dirname "$STASH_REAL")/python"
-    if [ -x "$CANDIDATE" ]; then
-      PY="$CANDIDATE"
-    fi
-  fi
+  # Find the interpreter that can import stashai. On Unix the pipx/uv shim is a
+  # symlink, so the venv python sits next to the resolved binary. On Windows the
+  # shim is a real .exe (not a symlink), so realpath stays in the shim dir and we
+  # also probe the uv tool venv. The path work is done in python because bash
+  # mishandles Windows backslash paths, and we only accept an interpreter that
+  # can actually import stashai — so we never silently pick the wrong one.
+  PY="$(python3 - "$STASH_BIN" <<'PY_EOF' 2>/dev/null || true
+import os, sys, shutil, subprocess
+stash = os.path.realpath(sys.argv[1])
+d = os.path.dirname(stash)
+cands = [os.path.join(d, "python"), os.path.join(d, "python.exe"),
+         os.path.join(d, "Scripts", "python.exe")]
+uv = shutil.which("uv")
+if uv:
+    try:
+        td = subprocess.run([uv, "tool", "dir"], capture_output=True,
+                            text=True, timeout=5).stdout.strip()
+    except Exception:
+        td = ""
+    if td:
+        cands += [os.path.join(td, "stashai", "bin", "python"),
+                  os.path.join(td, "stashai", "Scripts", "python.exe")]
+for c in cands:
+    if not os.path.exists(c):
+        continue
+    try:
+        subprocess.run([c, "-c", "import stashai"], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+    except Exception:
+        continue
+    print(c.replace(os.sep, "/"))
+    break
+PY_EOF
+)"
 fi
 
 if [ -z "$PY" ]; then

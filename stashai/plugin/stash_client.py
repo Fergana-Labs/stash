@@ -10,12 +10,12 @@ flush daemon.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import time
 from pathlib import Path
 
 import httpx
+from filelock import FileLock
 
 from stashai.plugin.upload_status import (
     record_upload_attempt,
@@ -149,6 +149,12 @@ class StashClient:
             return None
         return self._data_dir / QUEUE_FILENAME
 
+    def _queue_lock(self, qp: Path) -> FileLock:
+        # Cross-platform advisory lock on a sidecar file so concurrent hook
+        # processes don't corrupt the queue. fcntl is Unix-only; FileLock works
+        # on Windows too. Time out rather than hang a hook on a stuck lock.
+        return FileLock(str(qp) + ".lock", timeout=10)
+
     def _enqueue(self, path: str, body: dict) -> None:
         qp = self._queue_path()
         if not qp:
@@ -156,12 +162,8 @@ class StashClient:
         try:
             qp.parent.mkdir(parents=True, exist_ok=True)
             entry = json.dumps({"path": path, "body": body, "ts": time.time()})
-            with open(qp, "a") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                try:
-                    f.write(entry + "\n")
-                finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            with self._queue_lock(qp), open(qp, "a") as f:
+                f.write(entry + "\n")
             # Cheap upper bound: trim only when grossly oversized.
             self._maybe_trim_queue(qp)
         except Exception:
@@ -169,19 +171,15 @@ class StashClient:
 
     def _maybe_trim_queue(self, qp: Path) -> None:
         try:
-            with open(qp, "r+") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                try:
-                    lines = f.read().splitlines()
-                    if len(lines) <= QUEUE_MAX_ENTRIES:
-                        return
-                    # Keep the most recent QUEUE_MAX_ENTRIES; oldest are sacrificed.
-                    keep = lines[-QUEUE_MAX_ENTRIES:]
-                    f.seek(0)
-                    f.truncate()
-                    f.write("\n".join(keep) + ("\n" if keep else ""))
-                finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            with self._queue_lock(qp), open(qp, "r+") as f:
+                lines = f.read().splitlines()
+                if len(lines) <= QUEUE_MAX_ENTRIES:
+                    return
+                # Keep the most recent QUEUE_MAX_ENTRIES; oldest are sacrificed.
+                keep = lines[-QUEUE_MAX_ENTRIES:]
+                f.seek(0)
+                f.truncate()
+                f.write("\n".join(keep) + ("\n" if keep else ""))
         except Exception:
             pass
 
@@ -191,35 +189,31 @@ class StashClient:
             return True
         drained = True
         try:
-            with open(qp, "r+") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                try:
-                    lines = f.read().splitlines()
-                    if not lines:
-                        return True
-                    remaining: list[str] = []
-                    sent = 0
-                    for line in lines:
-                        if sent >= DRAIN_BATCH:
-                            remaining.append(line)
-                            continue
-                        try:
-                            entry = json.loads(line)
-                            self._post(entry["path"], json=entry["body"])
-                            sent += 1
-                        except Exception as e:
-                            # Backend still unhappy. Stop now; keep this and the rest.
-                            remaining.append(line)
-                            record_upload_failure(self._data_dir, "event_queue", e)
-                            drained = False
-                            # Don't try further entries — likely all will fail.
-                            sent = DRAIN_BATCH
-                    f.seek(0)
-                    f.truncate()
-                    if remaining:
-                        f.write("\n".join(remaining) + "\n")
-                finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            with self._queue_lock(qp), open(qp, "r+") as f:
+                lines = f.read().splitlines()
+                if not lines:
+                    return True
+                remaining: list[str] = []
+                sent = 0
+                for line in lines:
+                    if sent >= DRAIN_BATCH:
+                        remaining.append(line)
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        self._post(entry["path"], json=entry["body"])
+                        sent += 1
+                    except Exception as e:
+                        # Backend still unhappy. Stop now; keep this and the rest.
+                        remaining.append(line)
+                        record_upload_failure(self._data_dir, "event_queue", e)
+                        drained = False
+                        # Don't try further entries — likely all will fail.
+                        sent = DRAIN_BATCH
+                f.seek(0)
+                f.truncate()
+                if remaining:
+                    f.write("\n".join(remaining) + "\n")
         except Exception:
             return False
         return drained
