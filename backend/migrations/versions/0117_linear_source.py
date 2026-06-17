@@ -5,14 +5,14 @@ issue (identifier + title), search is federated live to Linear's API, and the
 issue body (description) is fetched lazily when a result is opened. This is in
 addition to the existing session-label enrichment, which is unchanged.
 
-Revision ID: 0116
-Revises: 0115
+Revision ID: 0117
+Revises: 0116
 """
 
 from alembic import op
 
-revision = "0116"
-down_revision = "0115"
+revision = "0117"
+down_revision = "0116"
 branch_labels = None
 depends_on = None
 
