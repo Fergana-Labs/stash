@@ -31,6 +31,11 @@ def _require_password_auth() -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Password auth is disabled; use Auth0",
         )
+    if settings.LAZYCAT_AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password auth is disabled; use Lazycat",
+        )
 
 
 def _require_manual_api_key_creation_enabled() -> None:
@@ -46,6 +51,11 @@ def _require_unauthenticated_invite_redemption_enabled() -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invite signup is disabled; use Auth0",
+        )
+    if settings.LAZYCAT_AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invite signup is disabled; use Lazycat",
         )
 
 

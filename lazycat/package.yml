@@ -1,0 +1,17 @@
+package: cloud.lazycat.app.stash
+version: 0.1.111
+name: Stash
+description: Agent-native workspace for shared sessions, files, pages, skills, and search.
+author: Fergana Labs
+license: MIT
+homepage: https://github.com/Fergana-Labs/stash
+locales:
+  zh-CN:
+    name: Stash
+    description: 面向 AI Agent 协作的工作区，支持共享会话、文件、页面、技能和搜索。
+  en-US:
+    name: Stash
+    description: Agent-native workspace for shared sessions, files, pages, skills, and search.
+permissions:
+  required:
+    - net.internet

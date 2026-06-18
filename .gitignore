@@ -22,6 +22,7 @@ htmlcov/
 .idea/
 .vscode/
 *.log
+*.lpk
 *.pem
 *.key
 *.cert
@@ -30,3 +31,4 @@ coverage/
 .vercel
 .claude/
 .global-agents/
+lazycat/.lzc-cli-cache/

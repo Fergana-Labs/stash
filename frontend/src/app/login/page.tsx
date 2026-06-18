@@ -6,10 +6,11 @@ import Header from "../../components/Header";
 import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { API_BASE, getToken, setToken, listMyWorkspaces } from "../../lib/api";
+import { API_BASE, getAuthToken, setToken, listMyWorkspaces } from "../../lib/api";
 import { consumeManualAuth0Logout } from "../../lib/authLogout";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
+const LAZYCAT_AUTH_ENABLED = process.env.NEXT_PUBLIC_LAZYCAT_AUTH_ENABLED === "true";
 
 // Dev-only: set in frontend/.env.local to land on /onboarding after every
 // login (not just first registration), so the wizard can be iterated on.
@@ -96,6 +97,16 @@ function LoginPageInner() {
         logout={logout}
         cliSession={cliSession}
         onCliApproved={() => setCliApproved(true)}
+      />
+    );
+  }
+
+  if (LAZYCAT_AUTH_ENABLED) {
+    return (
+      <LazycatLoginPanel
+        cliSession={cliSession}
+        onCliApproved={() => setCliApproved(true)}
+        refresh={refresh}
       />
     );
   }
@@ -236,6 +247,83 @@ function localNextPath(value: string | null): string {
   return value;
 }
 
+// --- Lazycat panel (MicroServer deployment) ---------------------------------
+
+function LazycatLoginPanel({
+  cliSession,
+  onCliApproved,
+  refresh,
+}: {
+  cliSession: string | null;
+  onCliApproved: () => void;
+  refresh: () => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleLazycatLogin() {
+    setError("");
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/users/me`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(formatApiError(data.detail, "Lazycat sign-in failed"));
+      }
+
+      if (cliSession) {
+        const approveRes = await fetch(
+          `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
+          { method: "POST" },
+        );
+        if (!approveRes.ok) {
+          const data = await approveRes.json().catch(() => ({}));
+          throw new Error(formatApiError(data.detail, "Could not authorize CLI"));
+        }
+        onCliApproved();
+      }
+
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const body = (
+    <div className="space-y-4">
+      {error && <ErrorLine message={error} />}
+      <BrandButton
+        submitting={submitting}
+        label={submitting ? "Signing in..." : "Sign in with Lazycat"}
+        onClick={handleLazycatLogin}
+      />
+    </div>
+  );
+
+  if (cliSession) {
+    return (
+      <CliShell user={null} logout={async () => {}} cliSession={cliSession}>
+        <FormCard>{body}</FormCard>
+        <p className="text-center text-[11px] text-muted leading-relaxed max-w-[340px] mx-auto">
+          By authorizing, you grant this terminal session a personal API key on your behalf.
+          You can revoke it any time from your account settings.
+        </p>
+      </CliShell>
+    );
+  }
+
+  return (
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in with your Lazycat MicroServer account."
+    >
+      <FormCard>{body}</FormCard>
+    </AuthShell>
+  );
+}
+
 // --- Authorize CLI (already signed-in) ---------------------------------------
 
 function AuthorizeCliPanel({
@@ -256,13 +344,13 @@ function AuthorizeCliPanel({
     setError("");
     setSubmitting(true);
     try {
-      const token = getToken();
-      if (!token) throw new Error("Not signed in");
+      const token = await getAuthToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const res = await fetch(
         `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
         },
       );
       if (!res.ok) {
@@ -555,10 +643,19 @@ function FormField({
   );
 }
 
-function BrandButton({ submitting, label }: { submitting: boolean; label: string }) {
+function BrandButton({
+  submitting,
+  label,
+  onClick,
+}: {
+  submitting: boolean;
+  label: string;
+  onClick?: () => void;
+}) {
   return (
     <button
-      type="submit"
+      type={onClick ? "button" : "submit"}
+      onClick={onClick}
       disabled={submitting}
       className="group relative w-full cursor-pointer bg-brand hover:bg-brand-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-[0_8px_24px_-8px_oklch(0.7_0.14_55_/_0.5)] hover:shadow-[0_10px_28px_-6px_oklch(0.7_0.14_55_/_0.6)]"
     >

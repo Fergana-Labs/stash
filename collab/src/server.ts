@@ -43,6 +43,13 @@ type CollabContext = {
   canWrite?: boolean;
 };
 
+type AuthHeaders = {
+  safeUid?: string;
+  safeUserGroups?: string;
+};
+
+type IncomingHeaders = Headers | Record<string, string | string[] | undefined>;
+
 const { Pool } = pg;
 
 const port = Number(process.env.PORT || "3458");
@@ -113,10 +120,12 @@ const server = new Server<CollabContext>({
 
   async onAuthenticate(data) {
     const doc = parseDocument(data.documentName);
+    const headers = lazycatAuthHeaders(data.requestHeaders);
     const auth = await authorize(
       doc.kind === "paste" ? "/api/v1/collab/authorize-paste" : "/api/v1/collab/authorize",
       data.documentName,
       data.token,
+      headers,
     );
     if (!auth.can_write) {
       data.connectionConfig.readOnly = true;
@@ -223,16 +232,46 @@ function parseDocument(documentName: string): CollabDocument {
   throw new Error("Unsupported collaboration document");
 }
 
-async function authorize(path: string, documentName: string, token: string): Promise<CollabAuth> {
-  if (!token) {
+function lazycatAuthHeaders(headers: IncomingHeaders): AuthHeaders {
+  return {
+    safeUid: headerValue(headers, "safe_uid"),
+    safeUserGroups: headerValue(headers, "safe_user_groups"),
+  };
+}
+
+function headerValue(headers: IncomingHeaders, name: string): string | undefined {
+  if (headers instanceof Headers) {
+    return headers.get(name) ?? headers.get(name.toUpperCase()) ?? undefined;
+  }
+  const value = headers[name] ?? headers[name.toLowerCase()] ?? headers[name.toUpperCase()];
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+async function authorize(
+  path: string,
+  documentName: string,
+  token: string,
+  authHeaders: AuthHeaders,
+): Promise<CollabAuth> {
+  if (!token && !authHeaders.safeUid) {
     throw new Error("Authentication token is required");
+  }
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  if (authHeaders.safeUid) {
+    headers.SAFE_UID = authHeaders.safeUid;
+  }
+  if (authHeaders.safeUserGroups) {
+    headers.SAFE_USER_GROUPS = authHeaders.safeUserGroups;
   }
   const response = await fetch(`${backendUrl}${path}`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({ document_name: documentName }),
   });
   if (!response.ok) {

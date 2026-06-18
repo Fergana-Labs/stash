@@ -3,7 +3,7 @@ import secrets
 import time
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .database import get_pool
@@ -137,34 +137,56 @@ async def _get_user_from_jwt(token: str) -> dict:
     return user
 
 
+async def _get_user_from_lazycat_headers(request: Request) -> dict:
+    user_id = request.headers.get("X-HC-User-ID")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-HC-User-ID header",
+        )
+
+    from .services import user_service
+
+    return await user_service.get_or_create_lazycat_user(user_id)
+
+
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
+    from .config import settings
+
+    if credentials is not None:
+        token: str = credentials.credentials
+        if token.startswith("mc_"):
+            return await _get_user_from_api_key(token, managed_auth_enabled=settings.AUTH0_ENABLED)
+
+        if settings.AUTH0_ENABLED:
+            return await _get_user_from_jwt(token)
+
+    if settings.LAZYCAT_AUTH_ENABLED:
+        return await _get_user_from_lazycat_headers(request)
+
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing Authorization header",
         )
 
-    token: str = credentials.credentials
-    from .config import settings
-
-    if token.startswith("mc_"):
-        return await _get_user_from_api_key(token, managed_auth_enabled=settings.AUTH0_ENABLED)
-
-    if settings.AUTH0_ENABLED:
-        return await _get_user_from_jwt(token)
-
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
 ) -> dict | None:
     if credentials is None:
-        return None
+        from .config import settings
+
+        if not settings.LAZYCAT_AUTH_ENABLED:
+            return None
     try:
-        return await get_current_user(credentials)
+        return await get_current_user(request, credentials)
     except HTTPException as e:
         if e.status_code == status.HTTP_401_UNAUTHORIZED:
             return None

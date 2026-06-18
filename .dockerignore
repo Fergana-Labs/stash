@@ -1,0 +1,17 @@
+.git
+.venv
+.pytest_cache
+.ruff_cache
+.coverage
+node_modules
+frontend/node_modules
+frontend/.next
+collab/node_modules
+collab/dist
+www/node_modules
+www/.next
+lazycat/.lzc-cli-cache
+*.lpk
+__pycache__
+*.pyc
+
