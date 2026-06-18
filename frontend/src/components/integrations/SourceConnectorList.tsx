@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "@/lib/api";
@@ -151,6 +152,8 @@ export default function SourceConnectorList({
                   enabled={enabled}
                   authKind={status?.auth_kind ?? "oauth"}
                   disabledReason={status?.disabled_reason ?? null}
+                  workspaceId={workspaceId}
+                  provider={connector.provider}
                   busy={busy === connector.provider}
                   expanded={expanded === connector.provider}
                   onConnect={() => void connect(connector)}
@@ -204,6 +207,8 @@ function ConnectorAction({
   enabled,
   authKind,
   disabledReason,
+  workspaceId,
+  provider,
   busy,
   expanded,
   onConnect,
@@ -214,6 +219,8 @@ function ConnectorAction({
   enabled: boolean;
   authKind: IntegrationStatus["auth_kind"];
   disabledReason: string | null;
+  workspaceId: string | null;
+  provider: string;
   busy: boolean;
   expanded: boolean;
   onConnect: () => void;
@@ -243,13 +250,24 @@ function ConnectorAction({
       </button>
     );
   }
-  // Once connected, the single action toggles to Disconnect. The dedicated
-  // integration page (for adding specific repos/pages) is still reachable from
-  // the sidebar's External Sources list.
+  // Once connected, offer "Open" alongside Disconnect. The dedicated integration
+  // page is the only place to add folders/repos/pages, but the sidebar only
+  // lists providers that already have a source — so without this link a freshly
+  // connected provider with no sources yet has no in-product path to its page.
   return (
-    <button type="button" onClick={onDisconnect} disabled={busy} className={secondaryButton()}>
-      {busy ? "Disconnecting..." : "Disconnect"}
-    </button>
+    <>
+      {workspaceId && (
+        <Link
+          href={`/workspaces/${workspaceId}/integrations/${provider}`}
+          className={secondaryButton()}
+        >
+          Open
+        </Link>
+      )}
+      <button type="button" onClick={onDisconnect} disabled={busy} className={secondaryButton()}>
+        {busy ? "Disconnecting..." : "Disconnect"}
+      </button>
+    </>
   );
 }
 
