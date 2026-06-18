@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash · Skills</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shell.css" />
+<style>
+  .phead{display:flex;align-items:center;margin-bottom:16px;}
+  .phead h1{font-family:var(--font-display);font-size:26px;font-weight:700;margin:0;letter-spacing:-.015em;}
+  .phead .acts{margin-left:auto;display:flex;gap:8px;}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:18px;}
+  .tab{padding:9px 13px;font-size:13.5px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+  .tab.on{color:var(--brand-700);font-weight:600;border-bottom-color:var(--brand-600);}
+  .tab .ct{font-size:11px;color:var(--muted);margin-left:5px;}
+
+  .quick{margin-bottom:22px;}
+  .quick .lbl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:9px;display:flex;align-items:center;gap:6px;}
+  .quick .lbl svg{width:12px;height:12px;}
+  .qrow{display:flex;gap:9px;flex-wrap:wrap;}
+  .qchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:9px;padding:7px 11px;font-size:13px;color:var(--dim);background:var(--bg-base);cursor:pointer;}
+  .qchip .sw{width:18px;height:18px;border-radius:5px;}
+
+  .toolbar{display:flex;align-items:center;margin-bottom:14px;}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .seg button{border:0;background:var(--bg-base);padding:6px 11px;font-size:12.5px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:5px;}
+  .seg button.on{background:var(--brand-50);color:var(--brand-700);font-weight:600;}
+  .seg button svg{width:14px;height:14px;}
+  .toolbar .count{margin-left:auto;font-size:12.5px;color:var(--muted);}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .pin{position:absolute;top:9px;right:9px;width:26px;height:26px;border-radius:7px;background:rgba(255,255,255,.92);border:1px solid var(--border);display:grid;place-items:center;color:var(--muted);}
+  .pin svg{width:13px;height:13px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <span data-shell="rail"></span>
+  <span data-shell="side"></span>
+  <section class="main">
+    <span data-shell="topbar"></span>
+    <div class="body"><div class="wrap">
+
+      <div class="phead">
+        <h1>Skills</h1>
+        <div class="acts">
+          <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New Skill</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab on">Yours <span class="ct">24</span></div>
+        <div class="tab">Shared with you <span class="ct">7</span></div>
+        <div class="tab">Discover</div>
+      </div>
+
+      <div class="quick">
+        <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17l-5 3 1-6-4-4 6-1 2-5 2 5 6 1-4 4 1 6z"/></svg> Pinned</div>
+        <div class="qrow">
+          <span class="qchip"><span class="sw" style="background:linear-gradient(135deg,#FDBA74,#EA580C)"></span> Onboarding</span>
+          <span class="qchip"><span class="sw" style="background:linear-gradient(135deg,#34D399,#0D9488)"></span> Billing Runbook</span>
+          <span class="qchip"><span class="sw" style="background:linear-gradient(135deg,#A78BFA,#6D28D9)"></span> Q3 Planning</span>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg">
+          <button class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Grid</button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg> List</button>
+        </div>
+        <span class="count">24 Skills</span>
+      </div>
+
+      <div class="grid" id="grid"></div>
+
+    </div></div>
+  </section>
+</div>
+<script>window.STASH={rail:"home",side:"skills",crumb:["Acme","Skills"],search:"Search Skills"};</script>
+<script src="shell.js"></script>
+<script>
+  const pin = '<span class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17l-5 3 1-6-4-4 6-1 2-5 2 5 6 1-4 4 1 6z"/></svg></span>';
+  const badge = (b)=>({Public:['p-pub','#34D399'],Shared:['p-sha','#60A5FA'],Private:['p-pri','#9B9A97']})[b];
+  const skills = [
+    ['Onboarding','linear-gradient(135deg,#FDBA74,#EA580C)','New-hire setup, accounts, and first-week checklist.','12 files','Updated 2h ago','Public'],
+    ['Q3 Planning','linear-gradient(135deg,#A78BFA,#6D28D9)','Roadmap, OKRs, and the renewal pipeline notes.','8 files','Updated 1h ago','Shared'],
+    ['Billing Runbook','linear-gradient(135deg,#34D399,#0D9488)','Stripe webhooks, the 402 gate, and recovery steps.','21 files','Updated 2h ago','Private'],
+    ['Brand Kit','linear-gradient(135deg,#F472B6,#DB2777)','Logos, color tokens, typography, and voice.','15 files','Updated yesterday','Public'],
+    ['Support Playbook','linear-gradient(135deg,#38BDF8,#2563EB)','Triage, macros, and escalation paths.','9 files','Updated 3d ago','Shared'],
+    ['Infra Notes','linear-gradient(135deg,#FBBF24,#D97706)','Render services, env groups, and deploy gotchas.','17 files','Updated 4d ago','Private'],
+  ];
+  document.getElementById('grid').innerHTML = skills.map(([n,cv,ds,f,u,b])=>{
+    const [bc,bd]=badge(b);
+    return `<div class="skill">
+      <div class="cv" style="background:${cv}">${pin}</div>
+      <div class="bd">
+        <div class="nm">${n}</div>
+        <div class="ds">${ds}</div>
+        <div class="mt"><span>${f}</span>·<span>${u}</span><span style="margin-left:auto"><span class="pill ${bc}"><span style="width:6px;height:6px;border-radius:50%;background:${bd}"></span>${b}</span></span></div>
+      </div></div>`;
+  }).join('');
+</script>
+</body>
+</html>
