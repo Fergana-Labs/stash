@@ -380,6 +380,27 @@ def stash_table_schema(table_id: str, workspace_id: str = "") -> str:
 
 
 @mcp.tool()
+def stash_describe_workspace(workspace_id: str = "") -> str:
+    """Describe a workspace's tables + columns for building a dashboard/UI on the data API.
+
+    Returns each table's name and column schema. Build the UI against the supabase-style
+    data API: GET/POST/PATCH/DELETE /rest/v1/{table} (filter col=op.value, select, order).
+    """
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    tables = client.list_tables(ws)
+    return _json(
+        {
+            "workspace_id": ws,
+            "tables": [
+                {"name": t["name"], "id": t["id"], "columns": t.get("columns", [])} for t in tables
+            ],
+            "data_api": "/rest/v1/{table} — PostgREST/supabase-js compatible. See /llms.txt.",
+        }
+    )
+
+
+@mcp.tool()
 def stash_query_table(
     table_id: str,
     limit: int = 50,

@@ -46,7 +46,7 @@ export interface Folder {
   updated_at: string;
 }
 
-export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width";
+export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width" | "app";
 
 export interface Page {
   id: string;

@@ -245,6 +245,25 @@ export async function createMyKey(name: string): Promise<ApiKeyCreated> {
   });
 }
 
+export interface DashboardToken {
+  token: string;
+  expires_at: number;
+}
+
+// A short-lived, read-only token a hosted HTML dashboard uses to read this
+// workspace's data via the data API. Returns null if the feature is off
+// (DASHBOARD_TOKEN_SECRET unset → 503) so callers can degrade silently.
+export async function createDashboardToken(workspaceId: string): Promise<DashboardToken | null> {
+  try {
+    return await apiFetch<DashboardToken>("/api/v1/dashboard-tokens", {
+      method: "POST",
+      body: JSON.stringify({ workspace_id: workspaceId }),
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }

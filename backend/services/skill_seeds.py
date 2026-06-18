@@ -132,18 +132,116 @@ Don't ship interactive controls — they won't survive the export.
 """
 
 
-async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
-    """Create `Skills/slides/SKILL.md` in the workspace if it doesn't exist.
+DASHBOARD_SKILL_FOLDER = "build-on-stash"
 
-    Returns True if the SKILL.md was created in this call, False if a
-    SKILL.md was already present in any folder named `slides` (we treat
-    that as "already seeded" and leave it alone), or if the env knob
-    `STASH_DISABLE_DEFAULT_SKILL_SEEDS=1` is set (test mode).
+DASHBOARD_SKILL_MARKDOWN = """---
+name: build-on-stash
+description: How to build a dashboard or vibe-coded UI on top of stash data — credentials, the supabase-style data API, realtime, and grounded AI.
+when_to_use: When the user asks to build a dashboard, a UI, or an app on top of their stash tables / data.
+version: "1"
+---
+
+# Building a UI on stash
+
+Stash is the backend: your tables are the database, and you build any UI on top.
+The data API is **PostgREST/supabase-js compatible**, so use code you already
+know. Read the live schema from `/openapi.json` and `/llms.txt` before coding —
+this guide is the stable how-to; those have the current tables and endpoints.
+
+## 1. Credentials — pick by who the data is for
+
+- **Your own private data** (a dashboard of *your* memory): mint a short-lived,
+  read-only **dashboard token** — `POST /api/v1/dashboard-tokens {workspace_id}`
+  → `{token, expires_at}`. Stash-hosted dashboards get one injected automatically.
+- **Public / shared data** (everyone sees the same rows): the workspace owner
+  creates a **publishable key** (`pk_…`) in settings and grants per-table
+  read (or write) policies. Safe to embed in browser JS.
+
+Never embed a long-lived `mc_` token in a browser.
+
+## 2. Read & write — the data API (`/rest/v1/{table}`)
+
+Point `supabase-js` at the stash URL, or use plain `fetch`. Tables are addressed
+by name; columns by name.
+
+```js
+// Filter + select + order, supabase-js style:
+GET /rest/v1/Sales?revenue=gt.1000&select=name,revenue&order=revenue.desc
+// Insert / update / delete:
+POST   /rest/v1/Sales            {"name": "Acme", "revenue": 5000}
+PATCH  /rest/v1/Sales?id=eq.<id> {"revenue": 6000}
+DELETE /rest/v1/Sales?id=eq.<id>
+```
+
+- Send the credential as `Authorization: Bearer <token>` or the `apikey` header.
+- For an `mc_` token, also send `X-Stash-Workspace: <workspace_id>` (dashboard
+  tokens and publishable keys already know their workspace).
+- Row count comes back in the `Content-Range` response header.
+- **Supported subset:** filters (`eq,neq,gt,gte,lt,lte,like,ilike,is.null`),
+  `select`, single-column `order`, `limit`/`offset`. Embedded joins
+  (`select=a,b(*)`), RPC, and `and/or/not` return **501** — don't use them.
+
+## 3. Live updates — SSE (no websockets)
+
+```js
+const es = new EventSource(`/rest/v1/Sales/subscribe?access_token=${token}`);
+es.onmessage = () => refetch();   // events are nudges: {type, row_id}
+```
+
+`EventSource` can't set headers, so the token goes in `?access_token=`.
+
+## 4. Grounded AI (authenticated users only)
+
+```js
+// Chat with your data — Vercel AI SDK useChat works drop-in:
+useChat({ api: `/ai/v1/${workspaceId}/chat` })
+// Or raw retrieval:
+POST /ai/v1/{workspace_id}/search {"query": "..."}
+```
+
+Publishable keys cannot call AI — broker it with a user token server-side.
+
+## 5. Hosting
+
+- **In stash:** save your single-file HTML dashboard as a Page with
+  `html_layout: "app"`. It runs in a sandboxed iframe and, when you (the owner)
+  view it, a `window.stash` client bound to your access is injected automatically
+  — so it reads (and, with your owner/editor role, writes) your data with no key:
+
+  ```html
+  <script>
+    const rows = await (await window.stash.rest(
+      "Sales?select=Name,Revenue&order=Revenue.desc")).json();   // read
+    await window.stash.rest("Sales", {                            // write
+      method: "POST",
+      body: JSON.stringify({ Name: "Acme", Revenue: 5000 }),
+    });
+  </script>
+  ```
+
+  A CSP egress-lock means an `app` page may call the stash API and load assets
+  from common CDNs (jsdelivr, unpkg, cdnjs, tailwind, google fonts) — but cannot
+  send data to any other origin. Use those CDNs for charting libs, etc.
+- **Anywhere else:** deploy normally and point at the stash API with a `pk_` key
+  (public/shared data) or a dashboard token.
+"""
+
+
+# The set of skills seeded into every new workspace. Add a one-liner here to
+# ship another default skill — workspace creation loops over this list.
+DEFAULT_SKILLS: list[tuple[str, str]] = [
+    (SLIDES_SKILL_FOLDER, SLIDES_SKILL_MARKDOWN),
+    (DASHBOARD_SKILL_FOLDER, DASHBOARD_SKILL_MARKDOWN),
+]
+
+
+async def _seed_skill(
+    workspace_id: UUID, creator_id: UUID, folder_name: str, markdown: str
+) -> bool:
+    """Create `Skills/<folder>/SKILL.md` if a SKILL.md isn't already in that
+    folder (we treat an existing one as already-seeded and leave user edits alone).
     """
-    if os.environ.get(DISABLE_ENV_VAR) == "1":
-        return False
     pool = get_pool()
-
     existing = await pool.fetchval(
         "SELECT p.id FROM pages p "
         "JOIN folders f ON f.id = p.folder_id "
@@ -151,7 +249,7 @@ async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
         "  AND p.name = $3 AND p.deleted_at IS NULL "
         "LIMIT 1",
         workspace_id,
-        SLIDES_SKILL_FOLDER,
+        folder_name,
         SKILL_MD_NAME,
     )
     if existing:
@@ -161,14 +259,14 @@ async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
         "SELECT id FROM folders WHERE workspace_id = $1 AND lower(name) = $2 "
         "  AND parent_folder_id IS NULL LIMIT 1",
         workspace_id,
-        SLIDES_SKILL_FOLDER,
+        folder_name,
     )
     if folder_row:
         folder_id = folder_row["id"]
     else:
         folder = await files_tree_service.create_folder(
             workspace_id=workspace_id,
-            name=SLIDES_SKILL_FOLDER,
+            name=folder_name,
             created_by=creator_id,
         )
         folder_id = folder["id"]
@@ -178,8 +276,27 @@ async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
         name=SKILL_MD_NAME,
         created_by=creator_id,
         folder_id=folder_id,
-        content=SLIDES_SKILL_MARKDOWN,
+        content=markdown,
         content_type="markdown",
     )
-    logger.info("seeded slides skill for workspace %s", workspace_id)
+    logger.info("seeded %s skill for workspace %s", folder_name, workspace_id)
     return True
+
+
+async def seed_default_skills(workspace_id: UUID, creator_id: UUID) -> None:
+    """Seed every skill in DEFAULT_SKILLS into a new workspace (idempotent).
+
+    No-op when `STASH_DISABLE_DEFAULT_SKILL_SEEDS=1` (test mode) — tests that
+    need a seed call the seed helpers directly with the knob cleared.
+    """
+    if os.environ.get(DISABLE_ENV_VAR) == "1":
+        return
+    for folder_name, markdown in DEFAULT_SKILLS:
+        await _seed_skill(workspace_id, creator_id, folder_name, markdown)
+
+
+async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
+    """Seed just the slides skill. Kept as a direct entry point for tests."""
+    if os.environ.get(DISABLE_ENV_VAR) == "1":
+        return False
+    return await _seed_skill(workspace_id, creator_id, SLIDES_SKILL_FOLDER, SLIDES_SKILL_MARKDOWN)

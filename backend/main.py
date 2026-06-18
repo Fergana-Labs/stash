@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse, Response
 
 from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
 from . import integrations as _integrations  # noqa: F401 — registers providers + importers
@@ -19,10 +20,14 @@ from .routers import (
     agent_chat,
     agent_docs,
     aggregate,
+    ai_api,
     analytics,
     batch,
     billing,
     collab,
+    dashboard_tokens,
+    data_access,
+    data_api,
     demo,
     discover,
     exports,
@@ -48,10 +53,36 @@ from .routers import (
     workspace_knowledge,
     workspaces,
 )
-from .services import demo_service
+from .services import demo_service, realtime
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
+
+# The browser-facing data + AI APIs are called from vibe-coded UIs on any
+# origin. They authenticate with bearer/apikey tokens (never cookies), so an
+# open CORS policy is safe here — and a null origin is allowed so a Page's
+# sandboxed iframe can call them. Other routes keep the credentialed allowlist.
+_BROWSER_API_PREFIXES = ("/rest/v1", "/ai/v1")
+_BROWSER_API_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-stash-workspace, prefer, range",
+    "Access-Control-Expose-Headers": "Content-Range",
+    "Access-Control-Max-Age": "86400",
+}
+
+
+class BrowserApiCORS(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not request.url.path.startswith(_BROWSER_API_PREFIXES):
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return Response(status_code=204, headers=_BROWSER_API_CORS)
+        response = await call_next(request)
+        for key, value in _BROWSER_API_CORS.items():
+            response.headers[key] = value
+        return response
+
 
 SECURITY_HEADERS = {
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
@@ -67,6 +98,7 @@ async def lifespan(app: FastAPI):
     # precompute, session summarizer) now run in the Celery `worker` and
     # `beat` services — see backend/celery_app.py.
     await init_db()
+    await realtime.start()
     try:
         await demo_service.seed_demo_workspace()
     except Exception:
@@ -74,6 +106,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await realtime.stop()
         await close_db()
 
 
@@ -106,6 +139,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Added last so it's outermost — handles /rest/v1 + /ai/v1 preflight before the
+# credentialed CORS middleware would reject a cross-origin request.
+app.add_middleware(BrowserApiCORS)
 app.include_router(users.router)
 app.include_router(collab.router)
 app.include_router(workspaces.router)
@@ -143,6 +179,10 @@ app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(billing.router)
+app.include_router(dashboard_tokens.router)
+app.include_router(data_access.router)
+app.include_router(data_api.router)
+app.include_router(ai_api.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 

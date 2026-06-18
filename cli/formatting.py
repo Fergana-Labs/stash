@@ -48,5 +48,3 @@ def print_user(user: dict, title: str = "Profile") -> None:
     lines.append(f"Created: {user.get('created_at', '')}")
     lines.append(f"Last seen: {user.get('last_seen', '')}")
     console.print(Panel("\n".join(lines), title=title))
-
-

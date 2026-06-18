@@ -94,6 +94,16 @@ const nextConfig: NextConfig = {
           destination: `${backend}/api/v1/:path*`,
         },
         {
+          // Data API + grounded AI for dashboards. The backend sets open CORS on
+          // these so a sandboxed-iframe dashboard (opaque origin) can call them.
+          source: "/rest/v1/:path*",
+          destination: `${backend}/rest/v1/:path*`,
+        },
+        {
+          source: "/ai/v1/:path*",
+          destination: `${backend}/ai/v1/:path*`,
+        },
+        {
           source: "/skill/:path*",
           destination: `${backend}/skill/:path*`,
         },

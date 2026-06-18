@@ -8,7 +8,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import permission_service
+from . import permission_service, realtime
 from .row_validation import RowValidationError, validate_row_data
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,23 @@ async def get_table(table_id: UUID) -> dict | None:
 async def get_table_metadata(table_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(f"SELECT {_TABLE_FIELDS} FROM tables WHERE id = $1", table_id)
+    return dict(row) if row else None
+
+
+async def get_table_by_name(workspace_id: UUID, name: str) -> dict | None:
+    """Resolve a table by case-insensitive name within a workspace (most recent wins).
+
+    The PostgREST-style data API addresses tables by name in the URL path.
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"SELECT t.{_TABLE_FIELDS.replace(', ', ', t.')}, "
+        "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
+        "FROM tables t WHERE t.workspace_id = $1 AND lower(t.name) = lower($2) "
+        "ORDER BY t.updated_at DESC LIMIT 1",
+        workspace_id,
+        name,
+    )
     return dict(row) if row else None
 
 
@@ -363,6 +380,9 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
     )
     result = dict(row)
     asyncio.create_task(maybe_embed_row(table_id, result["id"], validated))
+    realtime.emit(
+        realtime.table_key(table_id), {"type": "row.created", "row_id": str(result["id"])}
+    )
     return result
 
 
@@ -442,6 +462,9 @@ async def update_row(
         return None
     result = dict(row)
     asyncio.create_task(maybe_embed_row(result["table_id"], result["id"], result["data"]))
+    realtime.emit(
+        realtime.table_key(result["table_id"]), {"type": "row.updated", "row_id": str(result["id"])}
+    )
     return result
 
 
@@ -455,7 +478,10 @@ async def delete_row(row_id: UUID, table_id: UUID | None = None) -> bool:
         )
     else:
         result = await pool.execute("DELETE FROM table_rows WHERE id = $1", row_id)
-    return result == "DELETE 1"
+    deleted = result == "DELETE 1"
+    if deleted and table_id is not None:
+        realtime.emit(realtime.table_key(table_id), {"type": "row.deleted", "row_id": str(row_id)})
+    return deleted
 
 
 async def update_rows_batch(table_id: UUID, updates: list[dict], updated_by: UUID) -> list[dict]:
@@ -578,11 +604,17 @@ async def list_rows(
 
     where = " AND ".join(where_clauses)
 
-    # Sort — validate sort_by against schema
+    # Sort — validate sort_by against schema. Number columns must sort
+    # numerically, not lexicographically (otherwise '900' sorts before '7400').
     order = "row_order ASC"
     if sort_by and sort_by in valid_col_ids:
         direction = "DESC" if sort_order == "desc" else "ASC"
-        order = f"data->>'{sort_by}' {direction}, row_order ASC"
+        col_types = {c["id"]: c["type"] for c in table["columns"]}
+        if col_types.get(sort_by) == "number":
+            expr = f"NULLIF(data->>'{sort_by}', '')::numeric"
+        else:
+            expr = f"data->>'{sort_by}'"
+        order = f"{expr} {direction} NULLS LAST, row_order ASC"
 
     total_query = pool.fetchval(f"SELECT COUNT(*) FROM table_rows WHERE {where}", *args)
     if limit == 0:

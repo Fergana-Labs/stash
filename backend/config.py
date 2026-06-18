@@ -300,6 +300,12 @@ class Settings:
         os.getenv("INTERNAL_DOMAINS_FREE_PRO", "true").lower() == "true"
     )
 
+    # --- Dashboard tokens (generative-UI backend) ---
+    # Signs the short-lived, read-only tokens that stash-hosted dashboards use
+    # to read the owner's data from a sandboxed iframe. Leave unset to disable
+    # dashboard-token minting (same on/off idiom as STRIPE_SECRET_KEY).
+    DASHBOARD_TOKEN_SECRET: str | None = parse_optional_secret("DASHBOARD_TOKEN_SECRET")
+
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
