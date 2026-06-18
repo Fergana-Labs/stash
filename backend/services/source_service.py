@@ -93,6 +93,8 @@ PROVIDER_SOURCE_TYPES = {
     "gong": ("gong_calls",),
     "snowflake": ("snowflake",),
     "twitter": ("twitter",),
+    # Render exposes MCP tools only; it never creates indexed sources.
+    "render": (),
 }
 
 SOURCE_TYPE_PROVIDER = {

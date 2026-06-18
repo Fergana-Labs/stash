@@ -20,6 +20,7 @@ export type IntegrationProvider =
   | "asana"
   | "gong"
   | "snowflake"
+  | "render"
   | "twitter";
 
 export type CredentialField = {

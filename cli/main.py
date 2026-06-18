@@ -4433,6 +4433,26 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
                 save_config(base_url=new_url.strip().rstrip("/"))
 
 
+mcp_app = typer.Typer(
+    help="Reach connected integrations' read-only MCP tools (Render, …) "
+    "through Stash. Connect providers in Settings; agents use their "
+    "existing Stash auth."
+)
+app.add_typer(mcp_app, name="mcp")
+
+
+@mcp_app.command("connect")
+def mcp_connect():
+    """Print the command that connects a coding agent to the Stash MCP proxy."""
+    cfg = load_config()
+    endpoint = f"{cfg['base_url']}/api/v1/mcp"
+    console.print("Run this to connect Claude Code to the Stash MCP proxy:\n")
+    console.print(
+        f"  claude mcp add --transport http stash {endpoint} \\\n"
+        f'      --header "Authorization: Bearer {cfg.get("api_key", "<your stash api key>")}"'
+    )
+
+
 keys_app = typer.Typer(help="Manage your API keys across devices.")
 app.add_typer(keys_app, name="keys")
 

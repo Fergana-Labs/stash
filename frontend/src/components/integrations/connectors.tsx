@@ -12,6 +12,7 @@ import {
   JiraIcon,
   LinearIcon,
   NotionIcon,
+  RenderIcon,
   SlackIcon,
   SnowflakeIcon,
   TwitterIcon,
@@ -106,6 +107,13 @@ export const CONNECTORS: Connector[] = [
     blurb: "Run read-only SQL against your warehouse.",
   },
   {
+    provider: "render",
+    label: "Render",
+    sourceType: "render",
+    kind: "auto",
+    blurb: "Read-only services, deploys, and logs for your agents via MCP.",
+  },
+  {
     provider: "twitter",
     label: "Twitter / X",
     sourceType: "twitter",
@@ -161,6 +169,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <GranolaIcon />;
     case "gong":
       return <GongIcon />;
+    case "render":
+      return <RenderIcon />;
     case "snowflake":
       return <SnowflakeIcon />;
     case "twitter":
