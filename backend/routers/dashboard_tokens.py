@@ -34,8 +34,8 @@ async def create_dashboard_token(
     body: DashboardTokenRequest,
     current_user: dict = Depends(get_current_user),
 ) -> DashboardTokenResponse:
-    # A read-only dashboard token must not be able to mint more tokens.
-    if current_user.get("read_only"):
+    # A dashboard token must not be able to mint more tokens.
+    if current_user.get("dashboard_workspace_id"):
         raise HTTPException(status_code=403, detail="Dashboard tokens cannot mint tokens")
     if not await workspace_service.is_member(body.workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")

@@ -205,12 +205,17 @@ Publishable keys cannot call AI — broker it with a user token server-side.
 
 - **In stash:** save your single-file HTML dashboard as a Page with
   `html_layout: "app"`. It runs in a sandboxed iframe and, when you (the owner)
-  view it, a read-only `window.stash` client is injected automatically:
+  view it, a `window.stash` client bound to your access is injected automatically
+  — so it reads (and, with your owner/editor role, writes) your data with no key:
 
   ```html
   <script>
-    const res = await window.stash.rest("Sales?select=Name,Revenue&order=Revenue.desc");
-    const rows = await res.json();   // reads your data, no key needed
+    const rows = await (await window.stash.rest(
+      "Sales?select=Name,Revenue&order=Revenue.desc")).json();   // read
+    await window.stash.rest("Sales", {                            // write
+      method: "POST",
+      body: JSON.stringify({ Name: "Acme", Revenue: 5000 }),
+    });
   </script>
   ```
 

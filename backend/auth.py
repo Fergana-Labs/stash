@@ -145,9 +145,12 @@ async def _get_user_from_dashboard_token(token: str) -> dict:
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
 
+    # A dashboard token resolves to the user with their real permissions — writes
+    # are governed by check_access (their workspace role), not an artificial flag.
+    # `dashboard_workspace_id` both binds the token to one workspace and marks it
+    # as a dashboard token (so it can't be used to mint more tokens).
     user = dict(row)
     user["key_id"] = None
-    user["read_only"] = True
     user["dashboard_workspace_id"] = payload["ws"]
     return user
 

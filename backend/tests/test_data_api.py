@@ -163,7 +163,7 @@ async def test_missing_workspace_header(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_token_reads_but_cannot_write(client: AsyncClient, monkeypatch):
+async def test_dashboard_token_reads_and_writes_for_owner(client: AsyncClient, monkeypatch):
     monkeypatch.setattr(settings, "DASHBOARD_TOKEN_SECRET", _SECRET)
     _key, user, ws, _hdr = await _setup(client)
 
@@ -172,6 +172,25 @@ async def test_dashboard_token_reads_but_cannot_write(client: AsyncClient, monke
     read = await client.get("/rest/v1/Sales?order=Revenue.desc", headers=_auth(dt))
     assert read.status_code == 200
     assert len(read.json()) == 3
-    # Write is refused — the token is read-only.
+    # The owner's dashboard token grants their real access — writes are allowed.
     write = await client.post("/rest/v1/Sales", json={"Name": "X", "Revenue": 1}, headers=_auth(dt))
+    assert write.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_viewer_dashboard_token_cannot_write(client: AsyncClient, pool, monkeypatch):
+    monkeypatch.setattr(settings, "DASHBOARD_TOKEN_SECRET", _SECRET)
+    _key, _owner, ws, _hdr = await _setup(client)
+    # A second user, added to the workspace as a viewer.
+    _vkey, viewer = await _register(client)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+        uuid.UUID(ws["id"]),
+        uuid.UUID(viewer["id"]),
+    )
+    dt, _exp = auth.mint_dashboard_token(viewer["id"], ws["id"])
+    # The viewer can read...
+    assert (await client.get("/rest/v1/Sales", headers=_auth(dt))).status_code == 200
+    # ...but not write — check_access enforces the real role, not the token.
+    write = await client.post("/rest/v1/Sales", json={"Name": "Z", "Revenue": 1}, headers=_auth(dt))
     assert write.status_code == 403

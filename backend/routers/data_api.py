@@ -89,8 +89,8 @@ async def _load_table(
     row = await table_service.get_table_by_name(workspace_id, table)
     if not row:
         raise HTTPException(status_code=404, detail=f"No table named '{table}'")
-    if require != "read" and user.get("read_only"):
-        raise HTTPException(status_code=403, detail="This token is read-only")
+    # Writes (including via a dashboard token) are governed by the user's real
+    # workspace role — a viewer still can't write; an owner/editor can.
     allowed = await permission_service.check_access(
         "table", row["id"], user["id"], workspace_id=workspace_id, require=require
     )
