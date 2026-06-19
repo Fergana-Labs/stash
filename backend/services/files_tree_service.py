@@ -1018,16 +1018,17 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
 
 
 async def list_user_pages(user_id: UUID) -> list[dict]:
-    """Flat list of every page across every workspace the user is a member of."""
+    """Flat list of every page across every workspace the user can access."""
     pool = get_pool()
     readable_page = permission_service.readable_content_condition("page", "p", 1)
+    accessible_workspaces = permission_service.accessible_workspace_ids_sql(1)
     rows = await pool.fetch(
-        "WITH RECURSIVE member_workspaces AS ("
-        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
+        "WITH RECURSIVE accessible_workspaces AS ("
+        f"  {accessible_workspaces}"
         "), chain AS ("
         "  SELECT id, parent_folder_id, name, ARRAY[name]::text[] AS path, workspace_id "
         "  FROM folders WHERE parent_folder_id IS NULL "
-        "  AND workspace_id IN (SELECT workspace_id FROM member_workspaces)"
+        "  AND workspace_id IN (SELECT id FROM accessible_workspaces)"
         "  UNION ALL"
         "  SELECT f.id, f.parent_folder_id, f.name, c.path || f.name, f.workspace_id "
         "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id"
@@ -1036,7 +1037,7 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, "
         "w.name AS workspace_name, p.updated_at "
         "FROM pages p "
-        "JOIN member_workspaces mw ON mw.workspace_id = p.workspace_id "
+        "JOIN accessible_workspaces aw ON aw.id = p.workspace_id "
         "JOIN workspaces w ON w.id = p.workspace_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
         "WHERE p.deleted_at IS NULL "

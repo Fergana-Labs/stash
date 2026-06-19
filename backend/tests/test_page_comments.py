@@ -202,13 +202,20 @@ async def test_delete_thread_forbidden_for_other_user(client: AsyncClient) -> No
         )
     ).json()
 
-    # Join the workspace as a second user via the invite code.
-    workspace = (await client.get(f"/api/v1/workspaces/{ws_id}", headers=owner_headers)).json()
-    other_key = await _register(client)
+    # Give a second user write access to the page via a share. A sharee who did
+    # not create the thread still cannot delete it.
+    other_email = f"{unique_name()}@example.com"
+    other_key = await _register_with_email(client, other_email)
     other_headers = _auth(other_key)
     await client.post(
-        f"/api/v1/workspaces/join/{workspace['invite_code']}",
-        headers=other_headers,
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": other_email,
+            "permission": "write",
+        },
+        headers=owner_headers,
     )
 
     forbidden = await client.delete(

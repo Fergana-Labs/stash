@@ -211,11 +211,6 @@ async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
         user_id,
         uuid4().hex[:8],
     )
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) " "VALUES ($1, $2, 'owner')",
-        ws_id,
-        user_id,
-    )
     outside_page_id = await pool.fetchval(
         "INSERT INTO pages (workspace_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, created_by, updated_by) "

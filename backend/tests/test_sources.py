@@ -175,78 +175,6 @@ async def test_add_list_remove_source(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_viewer_cannot_mutate_sources(client: AsyncClient, pool, monkeypatch):
-    owner_key, _owner_id = await _register(client, "src_owner")
-    viewer_key, viewer_id = await _register(client, "src_viewer")
-    ws = await _create_workspace(client, owner_key)
-    viewer_headers = _auth(viewer_key)
-
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
-        ws,
-        viewer_id,
-    )
-
-    add = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
-        json={
-            "source_type": "github_repo",
-            "external_ref": "acme/viewer",
-            "display_name": "Viewer source",
-        },
-        headers=viewer_headers,
-    )
-    assert add.status_code == 403
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM workspace_sources WHERE workspace_id = $1 AND owner_user_id = $2",
-            ws,
-            viewer_id,
-        )
-        == 0
-    )
-
-    source = await source_service.create_source(
-        workspace_id=ws,
-        owner_user_id=viewer_id,
-        source_type="slack",
-        external_ref="T_VIEWER",
-        display_name="Viewer Slack",
-        settings={"allowed_channel_ids": ["C_VIEWER"]},
-    )
-    source_id = source["id"]
-
-    sent_tasks: list[dict] = []
-
-    def fake_send_task(*args, **kwargs):
-        sent_tasks.append({"args": args, "kwargs": kwargs})
-
-    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
-
-    history = await client.post(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/history",
-        json={"since": "2026-01-01"},
-        headers=viewer_headers,
-    )
-    assert history.status_code == 403
-
-    sync = await client.post(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/sync",
-        headers=viewer_headers,
-    )
-    assert sync.status_code == 403
-    assert sent_tasks == []
-    assert await pool.fetchval("SELECT COUNT(*) FROM task_records WHERE workspace_id = $1", ws) == 0
-
-    deleted = await client.delete(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}",
-        headers=viewer_headers,
-    )
-    assert deleted.status_code == 403
-    assert await source_service.get_owned_source(UUID(source_id), viewer_id) is not None
-
-
-@pytest.mark.asyncio
 async def test_disconnect_provider_removes_sources_and_copied_documents(
     client: AsyncClient,
     monkeypatch,
@@ -342,58 +270,10 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
 
 
 @pytest.mark.asyncio
-async def test_workspace_leave_removes_member_sources_and_copied_documents(
-    client: AsyncClient,
-    pool,
-):
-    owner_key, _owner_id = await _register(client, "src_leave_owner")
-    member_key, member_id = await _register(client, "src_leave_member")
-    ws = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Source offboarding"},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    joined = await client.post(
-        f"/api/v1/workspaces/join/{ws['invite_code']}",
-        headers=_auth(member_key),
-    )
-    assert joined.status_code == 200
-
-    source = await source_service.create_source(
-        workspace_id=UUID(ws["id"]),
-        owner_user_id=member_id,
-        source_type="slack",
-        external_ref="TWEBFLOW",
-        display_name="Webflow Slack",
-        settings={"allowed_channel_ids": ["CWEBFLOW"]},
-    )
-    source_id = UUID(source["id"])
-    await source_service.upsert_content_document(
-        table="slack_messages",
-        source_id=source_id,
-        workspace_id=UUID(ws["id"]),
-        path="CWEBFLOW/1720000000.000100",
-        name="confidential-launch",
-        content="Webflow confidential launch plan",
-    )
-
-    left = await client.post(
-        f"/api/v1/workspaces/{ws['id']}/leave",
-        headers=_auth(member_key),
-    )
-
-    assert left.status_code == 204
-    assert await source_service.get_owned_source(source_id, member_id) is None
-    assert (
-        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
-        == 0
-    )
-
-
-@pytest.mark.asyncio
-async def test_source_sync_requires_current_workspace_membership(client: AsyncClient, pool):
+async def test_source_sync_requires_owner_to_own_workspace(client: AsyncClient, pool):
+    """A source only syncs while its owner still owns the workspace it lives in.
+    If ownership of the scope changes out from under it, the sync queue and the
+    sync-task fetch both drop it (it would otherwise crawl with a stale token)."""
     owner_key, owner_id = await _register(client, "src_sync_owner")
     ws = await _create_workspace(client, owner_key)
     source = await source_service.create_source(
@@ -406,11 +286,9 @@ async def test_source_sync_requires_current_workspace_membership(client: AsyncCl
     )
     source_id = UUID(source["id"])
 
-    await pool.execute(
-        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        ws,
-        owner_id,
-    )
+    # Hand the scope to a different creator so owner_user_id != creator_id.
+    _, other_owner = await _register(client, "src_sync_other")
+    await pool.execute("UPDATE workspaces SET creator_id = $1 WHERE id = $2", other_owner, ws)
 
     due_ids = {UUID(source["id"]) for source in await source_service.due_sources(limit=20)}
 
@@ -1705,7 +1583,7 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_slack_event_ingest_requires_active_member_and_enabled_source(
+async def test_slack_event_ingest_requires_owning_workspace_and_enabled_source(
     client: AsyncClient,
     pool,
 ):
@@ -1741,10 +1619,10 @@ async def test_slack_event_ingest_requires_active_member_and_enabled_source(
         display_name="Webflow Slack",
         settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
     )
+    # The stale owner no longer owns their scope, so their source is skipped.
+    _, stale_new_owner = await _register(client, "stale_new_owner")
     await pool.execute(
-        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        stale_ws,
-        stale_owner,
+        "UPDATE workspaces SET creator_id = $1 WHERE id = $2", stale_new_owner, stale_ws
     )
     await pool.execute(
         "UPDATE workspace_sources SET sync_enabled = false WHERE id = $1",
@@ -2662,8 +2540,9 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
-    """A member can't browse / read / search another member's connected source —
-    every VFS endpoint resolves it as a not-found source."""
+    """Another user can't browse / read / search someone else's connected source —
+    every VFS endpoint resolves it as a not-found source (the scope itself is
+    owner-private, so the non-owner gets 404 on every path)."""
     owner_key, owner_id = await _register(client, "owner")
     ws = await _create_workspace(client, owner_key)
     src = await source_service.create_source(
@@ -2674,15 +2553,7 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
         display_name="Private",
     )
 
-    # A second member of the same workspace.
     other_key, _ = await _register(client, "other")
-    invite = await client.post(
-        f"/api/v1/workspaces/{ws}/invite-tokens", json={"max_uses": 1}, headers=_auth(owner_key)
-    )
-    token = invite.json()["token"]
-    await client.post(
-        "/api/v1/workspaces/redeem-invite", json={"token": token}, headers=_auth(other_key)
-    )
 
     for path, params in (
         (f"/api/v1/workspaces/{ws}/sources/{src['id']}/entries", {}),
@@ -2692,9 +2563,9 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
         resp = await client.get(path, params=params, headers=_auth(other_key))
         assert resp.status_code == 404, path
 
-    # The owner still does not see it leak into the other member's listing.
+    # The source never leaks into the other user's listing either.
     other_listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(other_key))
-    assert src["id"] not in {s["source"] for s in other_listing.json()["sources"]}
+    assert other_listing.status_code == 404
 
 
 # --- Linear: navigable + searchable source ----------------------------------

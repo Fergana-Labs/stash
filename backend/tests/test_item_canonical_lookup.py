@@ -49,7 +49,7 @@ async def _create_page(client: AsyncClient, api_key: str, workspace_id: str) -> 
 # like every other file-success path in this suite's environment.
 async def _insert_file_row(pool, workspace_id: str) -> str:
     uploader = await pool.fetchval(
-        "SELECT user_id FROM workspace_members WHERE workspace_id = $1 LIMIT 1",
+        "SELECT creator_id FROM workspaces WHERE id = $1",
         uuid.UUID(workspace_id),
     )
     return str(

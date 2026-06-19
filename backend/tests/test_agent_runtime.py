@@ -51,11 +51,6 @@ async def workspace(_db_pool):
         user_id,
         ws_id.hex[:12],
     )
-    await _db_pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
-        ws_id,
-        user_id,
-    )
     return ws_id
 
 
@@ -495,11 +490,6 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: U
         f"target_{target_workspace.hex[:6]}",
         owner_id,
         target_workspace.hex[:12],
-    )
-    await _db_pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
-        target_workspace,
-        owner_id,
     )
     folder_id = uuid4()
     await _db_pool.execute(

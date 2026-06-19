@@ -1,4 +1,8 @@
-"""Tests for workspace CRUD, invite codes, membership, and role enforcement."""
+"""Tests for scope (workspace) CRUD and owner enforcement.
+
+The multi-tenant membership/invite model is gone: each user owns exactly one
+scope (owner == workspaces.creator_id). Cross-user access is only via shares.
+"""
 
 from uuid import UUID
 
@@ -83,9 +87,9 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_get_workspace_does_not_auto_join_non_member(client: AsyncClient, pool):
+async def test_non_owner_cannot_read_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
-    stranger_key, stranger = await _register(client)
+    stranger_key, _ = await _register(client)
     workspace = (
         await client.post(
             "/api/v1/workspaces",
@@ -100,213 +104,6 @@ async def test_get_workspace_does_not_auto_join_non_member(client: AsyncClient, 
     )
 
     assert response.status_code == 404
-    assert not await pool.fetchval(
-        "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        UUID(workspace["id"]),
-        UUID(stranger["id"]),
-    )
-
-
-# --- Invite flow ---
-
-
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
-async def test_join_by_invite_code(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    joiner_key, _ = await _register(client)
-
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
-    ).json()
-    invite_code = ws["invite_code"]
-
-    resp = await client.post(
-        f"/api/v1/workspaces/join/{invite_code}",
-        headers=_auth(joiner_key),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["name"] == "Team"
-
-    members = (
-        await client.get(
-            f"/api/v1/workspaces/{ws['id']}/members",
-            headers=_auth(joiner_key),
-        )
-    ).json()
-    assert len(members) == 2
-
-
-@pytest.mark.asyncio
-async def test_invalid_invite_code_404(client: AsyncClient):
-    key, _ = await _register(client)
-    resp = await client.post("/api/v1/workspaces/join/badcode123", headers=_auth(key))
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_rotate_invite_code_owner(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
-    ).json()
-    old_code = ws["invite_code"]
-
-    resp = await client.post(
-        f"/api/v1/workspaces/{ws['id']}/invite-code/rotate",
-        headers=_auth(owner_key),
-    )
-    assert resp.status_code == 200
-    new_code = resp.json()["invite_code"]
-    assert new_code and new_code != old_code
-
-    # Old code no longer works
-    other_key, _ = await _register(client)
-    bad = await client.post(f"/api/v1/workspaces/join/{old_code}", headers=_auth(other_key))
-    assert bad.status_code == 404
-
-    # New code works
-    good = await client.post(f"/api/v1/workspaces/join/{new_code}", headers=_auth(other_key))
-    assert good.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_rotate_invite_code_member_forbidden(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    member_key, _ = await _register(client)
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
-    ).json()
-    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
-
-    resp = await client.post(
-        f"/api/v1/workspaces/{ws['id']}/invite-code/rotate",
-        headers=_auth(member_key),
-    )
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_managed_auth_disables_legacy_invite_codes(
-    client: AsyncClient,
-    pool,
-    monkeypatch,
-):
-    from backend.config import settings
-    from backend.managed.auth0 import jwt as auth0_jwt
-    from backend.managed.auth0.users import get_or_create_user_row_from_auth0
-
-    await pool.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS auth0_sub VARCHAR(128) UNIQUE")
-    token_to_sub = {
-        "owner-auth0-token": f"google-oauth2|{unique_name('managed_owner')}",
-        "joiner-auth0-token": f"google-oauth2|{unique_name('managed_joiner')}",
-    }
-
-    async def fake_validate_auth0_token(token: str) -> dict:
-        return {"sub": token_to_sub[token]}
-
-    await get_or_create_user_row_from_auth0(
-        auth0_sub=token_to_sub["owner-auth0-token"],
-        email="owner@example.com",
-        name="Managed Owner",
-    )
-    await get_or_create_user_row_from_auth0(
-        auth0_sub=token_to_sub["joiner-auth0-token"],
-        email="joiner@example.com",
-        name="Managed Joiner",
-    )
-    monkeypatch.setattr(settings, "AUTH0_ENABLED", True)
-    monkeypatch.setattr(auth0_jwt, "validate_auth0_token", fake_validate_auth0_token)
-    owner_headers = {"Authorization": "Bearer owner-auth0-token"}
-    joiner_headers = {"Authorization": "Bearer joiner-auth0-token"}
-
-    created = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "Managed Team"},
-        headers=owner_headers,
-    )
-    assert created.status_code == 201
-    workspace = created.json()
-    assert workspace["invite_code"] == ""
-
-    legacy_invite_code = await pool.fetchval(
-        "SELECT invite_code FROM workspaces WHERE id = $1",
-        UUID(workspace["id"]),
-    )
-    assert legacy_invite_code
-
-    listed = await client.get("/api/v1/workspaces/mine", headers=owner_headers)
-    assert listed.status_code == 200
-    assert all(w["invite_code"] == "" for w in listed.json()["workspaces"])
-
-    fetched = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}",
-        headers=owner_headers,
-    )
-    assert fetched.status_code == 200
-    assert fetched.json()["invite_code"] == ""
-
-    legacy_join = await client.post(
-        f"/api/v1/workspaces/join/{legacy_invite_code}",
-        headers=joiner_headers,
-    )
-    assert legacy_join.status_code == 404
-
-    rotate = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/invite-code/rotate",
-        headers=owner_headers,
-    )
-    assert rotate.status_code == 404
-
-    invite = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/invite-tokens",
-        json={"max_uses": 1, "ttl_days": 7},
-        headers=owner_headers,
-    )
-    assert invite.status_code == 201
-
-    redeemed = await client.post(
-        "/api/v1/workspaces/redeem-invite",
-        json={"token": invite.json()["token"]},
-        headers=joiner_headers,
-    )
-    assert redeemed.status_code == 200
-    assert redeemed.json()["invite_code"] == ""
-
-
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
-async def test_magic_invite_redeem_assigns_editor_role(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    joiner_key, joiner = await _register(client)
-    ws = (
-        await client.post(
-            "/api/v1/workspaces", json={"name": "Magic Team"}, headers=_auth(owner_key)
-        )
-    ).json()
-
-    invite = await client.post(
-        f"/api/v1/workspaces/{ws['id']}/invite-tokens",
-        json={"max_uses": 1, "ttl_days": 7},
-        headers=_auth(owner_key),
-    )
-    assert invite.status_code == 201
-
-    redeemed = await client.post(
-        "/api/v1/workspaces/redeem-invite",
-        json={"token": invite.json()["token"]},
-        headers=_auth(joiner_key),
-    )
-    assert redeemed.status_code == 200
-
-    members = (
-        await client.get(
-            f"/api/v1/workspaces/{ws['id']}/members",
-            headers=_auth(owner_key),
-        )
-    ).json()
-    roles = {member["user_id"]: member["role"] for member in members}
-    assert roles[joiner["id"]] == "editor"
 
 
 # --- Update / Delete ---
@@ -327,52 +124,19 @@ async def test_update_workspace(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
-async def test_viewer_cannot_update_workspace(client: AsyncClient):
+async def test_non_owner_cannot_update_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
-    member_key, member_body = await _register(client)
-    member_id = member_body["id"]
-
+    stranger_key, _ = await _register(client)
     ws = (
         await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
     ).json()
-    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
-
-    # Editors (the default for joiners) can update; demote to viewer to verify
-    # read-only access.
-    demote = await client.patch(
-        f"/api/v1/workspaces/{ws['id']}/members/{member_id}",
-        json={"role": "viewer"},
-        headers=_auth(owner_key),
-    )
-    assert demote.status_code == 200
 
     resp = await client.patch(
         f"/api/v1/workspaces/{ws['id']}",
         json={"name": "Hacked"},
-        headers=_auth(member_key),
+        headers=_auth(stranger_key),
     )
     assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_editor_can_update_workspace(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    member_key, _ = await _register(client)
-
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
-    ).json()
-    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
-
-    # Default role for joiners is editor; editors can rename/describe the skill.
-    resp = await client.patch(
-        f"/api/v1/workspaces/{ws['id']}",
-        json={"name": "Edited by member"},
-        headers=_auth(member_key),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["name"] == "Edited by member"
 
 
 @pytest.mark.asyncio
@@ -385,6 +149,18 @@ async def test_delete_workspace(client: AsyncClient):
 
     resp = await client.get(f"/api/v1/workspaces/{ws['id']}", headers=_auth(key))
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_delete_workspace(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    stranger_key, _ = await _register(client)
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
+
+    resp = await client.delete(f"/api/v1/workspaces/{ws['id']}", headers=_auth(stranger_key))
+    assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -549,248 +325,6 @@ async def test_delete_workspace_keeps_storage_keys_referenced_by_other_workspace
         )
         == 1
     )
-
-
-@pytest.mark.asyncio
-async def test_non_owner_cannot_delete_workspace(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    member_key, _ = await _register(client)
-
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
-    ).json()
-    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
-
-    resp = await client.delete(f"/api/v1/workspaces/{ws['id']}", headers=_auth(member_key))
-    assert resp.status_code == 403
-
-
-# --- Leave ---
-
-
-@pytest.mark.asyncio
-async def test_member_can_leave(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    member_key, _ = await _register(client)
-
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
-    ).json()
-    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
-
-    resp = await client.post(f"/api/v1/workspaces/{ws['id']}/leave", headers=_auth(member_key))
-    assert resp.status_code == 204
-
-    members = (
-        await client.get(
-            f"/api/v1/workspaces/{ws['id']}/members",
-            headers=_auth(owner_key),
-        )
-    ).json()
-    assert len(members) == 1
-
-
-@pytest.mark.asyncio
-async def test_member_leave_removes_workspace_shares_and_stash_access(
-    client: AsyncClient,
-    pool,
-):
-    """Shares confer access independently of membership, so leaving must
-    revoke the shares the member received and the ones they granted."""
-    owner_key, _owner = await _register(client, "offboarding_owner")
-    member_name = unique_name("offboarding_member")
-    member_email = f"{member_name}@example.com"
-    member_resp = await client.post(
-        "/api/v1/users/register",
-        json={
-            "name": member_name,
-            "email": member_email,
-            "password": "securepassword1",
-        },
-    )
-    assert member_resp.status_code == 201
-    member_key = member_resp.json()["api_key"]
-    member_id = UUID(member_resp.json()["id"])
-    _recipient_key, recipient = await _register(client, "offboarding_recipient")
-    recipient_id = UUID(recipient["id"])
-
-    ws = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Offboarding Team"},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    workspace_id = UUID(ws["id"])
-    joined = await client.post(
-        f"/api/v1/workspaces/join/{ws['invite_code']}",
-        headers=_auth(member_key),
-    )
-    assert joined.status_code == 200
-
-    page = (
-        await client.post(
-            f"/api/v1/workspaces/{ws['id']}/pages/new",
-            json={"name": "Confidential", "content": "Webflow confidential plan"},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    page_id = page["id"]
-    shared = await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "page",
-            "object_id": page_id,
-            "email": member_email,
-            "permission": "read",
-        },
-        headers=_auth(owner_key),
-    )
-    assert shared.status_code == 200
-    await pool.execute(
-        "INSERT INTO shares "
-        "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
-        "VALUES ($1, 'page', $2, 'user', $3, 'read', $4)",
-        workspace_id,
-        UUID(page_id),
-        recipient_id,
-        member_id,
-    )
-    await pool.execute(
-        "INSERT INTO share_invites "
-        "(workspace_id, object_type, object_id, email, permission, created_by) "
-        "VALUES ($1, 'page', $2, $3, 'read', $4)",
-        workspace_id,
-        UUID(page_id),
-        "future-webflow-user@example.com",
-        member_id,
-    )
-
-    left = await client.post(
-        f"/api/v1/workspaces/{ws['id']}/leave",
-        headers=_auth(member_key),
-    )
-
-    assert left.status_code == 204
-    # The share the member received must not outlive their membership.
-    assert (
-        await client.get(
-            f"/api/v1/workspaces/{ws['id']}/pages/{page_id}",
-            headers=_auth(member_key),
-        )
-    ).status_code == 404
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM shares "
-            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM shares WHERE workspace_id = $1 AND created_by = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM share_invites WHERE workspace_id = $1 AND created_by = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-
-
-@pytest.mark.asyncio
-async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, pool):
-    """Removal must offboard like a voluntary leave: shares confer access
-    independently of membership, so kicking a member has to revoke them too,
-    not just drop the membership row."""
-    owner_key, owner = await _register(client, "kick_owner")
-    member_key, member = await _register(client, "kick_member")
-    member_id = UUID(member["id"])
-
-    ws = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Kick Team"},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    workspace_id = UUID(ws["id"])
-    joined = await client.post(
-        f"/api/v1/workspaces/join/{ws['invite_code']}",
-        headers=_auth(member_key),
-    )
-    assert joined.status_code == 200
-
-    page = (
-        await client.post(
-            f"/api/v1/workspaces/{ws['id']}/pages/new",
-            json={"name": "Confidential", "content": "Kick offboarding plan"},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    await pool.execute(
-        "INSERT INTO shares "
-        "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
-        "VALUES ($1, 'page', $2, 'user', $3, 'read', $4)",
-        workspace_id,
-        UUID(page["id"]),
-        member_id,
-        UUID(owner["id"]),
-    )
-
-    # Members cannot kick — owner-only.
-    forbidden = await client.delete(
-        f"/api/v1/workspaces/{ws['id']}/members/{owner['id']}",
-        headers=_auth(member_key),
-    )
-    assert forbidden.status_code == 403
-
-    removed = await client.delete(
-        f"/api/v1/workspaces/{ws['id']}/members/{member_id}",
-        headers=_auth(owner_key),
-    )
-    assert removed.status_code == 204
-
-    assert (
-        await client.get(
-            f"/api/v1/workspaces/{ws['id']}/pages/{page['id']}",
-            headers=_auth(member_key),
-        )
-    ).status_code == 404
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM shares "
-            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT COUNT(*) FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-            workspace_id,
-            member_id,
-        )
-        == 0
-    )
-
-
-@pytest.mark.asyncio
-async def test_owner_cannot_leave(client: AsyncClient):
-    key, _ = await _register(client)
-    ws = (await client.post("/api/v1/workspaces", json={"name": "Mine"}, headers=_auth(key))).json()
-
-    resp = await client.post(f"/api/v1/workspaces/{ws['id']}/leave", headers=_auth(key))
-    assert resp.status_code == 400
 
 
 @pytest.mark.asyncio

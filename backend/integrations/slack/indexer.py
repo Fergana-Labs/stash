@@ -240,8 +240,8 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         "WHERE ws.source_type = 'slack' AND ws.external_ref = $1 "
         "AND ws.sync_enabled "
         "AND EXISTS ("
-        "  SELECT 1 FROM workspace_members wm "
-        "  WHERE wm.workspace_id = ws.workspace_id AND wm.user_id = ws.owner_user_id"
+        "  SELECT 1 FROM workspaces w "
+        "  WHERE w.id = ws.workspace_id AND w.creator_id = ws.owner_user_id"
         ")",
         team_id,
     )

@@ -96,59 +96,43 @@ async def test_publish_rejects_non_member_workspace(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_publish_rejects_viewer_without_creating_page(client: AsyncClient, pool):
-    """Publishing is a write action; viewers cannot create private draft pages."""
+async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
+    """Publishing is owner-only. A user with a share row into another user's
+    workspace is still not the owner, so the gate must fire before the skill
+    folder and page side effects are created."""
     owner_key = await _register(client)
-    viewer_key, viewer_id = await _register_user(client)
+    sharee_key, sharee_id = await _register_user(client)
 
     mine = await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))
     workspace_id = mine.json()["workspaces"][0]["id"]
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
+    owner_id = await pool.fetchval(
+        "SELECT creator_id FROM workspaces WHERE id = $1", workspace_id
+    )
+
+    folder_id = await pool.fetchval(
+        "INSERT INTO folders (name, workspace_id, created_by) VALUES ('shared', $1, $2) "
+        "RETURNING id",
         workspace_id,
-        viewer_id,
+        owner_id,
+    )
+    await pool.execute(
+        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) "
+        "VALUES ($1, 'folder', $2, 'user', $3, 'write', $4)",
+        workspace_id,
+        folder_id,
+        sharee_id,
+        owner_id,
     )
 
     resp = await client.post(
         "/api/v1/publish",
         json={
             "workspace_id": workspace_id,
-            "title": "Viewer draft",
+            "title": "Sharee draft",
             "content": "# should not persist",
         },
-        headers=_auth(viewer_key),
-    )
-
-    assert resp.status_code == 403
-    page_count = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1", workspace_id
-    )
-    assert page_count == 0
-
-
-@pytest.mark.asyncio
-async def test_publish_rejects_non_owner_editor_without_creating_page(client: AsyncClient, pool):
-    """Publishing is owner-only; the gate must fire before the skill folder
-    and page side effects are created."""
-    owner_key = await _register(client)
-    editor_key, editor_id = await _register_user(client)
-
-    mine = await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))
-    workspace_id = mine.json()["workspaces"][0]["id"]
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        workspace_id,
-        editor_id,
-    )
-
-    resp = await client.post(
-        "/api/v1/publish",
-        json={
-            "workspace_id": workspace_id,
-            "title": "Editor draft",
-            "content": "# should not persist",
-        },
-        headers=_auth(editor_key),
+        headers=_auth(sharee_key),
     )
 
     assert resp.status_code == 403

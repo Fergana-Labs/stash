@@ -98,16 +98,17 @@ async def list_my_sessions(
     timestamps, and a preview of the first prompt."""
     pool = get_pool()
     args: list = [current_user["id"]]
+    accessible_ws = permission_service.accessible_workspace_ids_sql(1)
     title_where = [
         "he_title.session_id IS NOT NULL",
-        "(he_title.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        f"(he_title.workspace_id IN {accessible_ws} "
         "OR (he_title.workspace_id IS NULL AND he_title.created_by = $1))",
         f"(he_title.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
         "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
     ]
     where = [
         "he.session_id IS NOT NULL",
-        "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        f"(he.workspace_id IN {accessible_ws} "
         "OR (he.workspace_id IS NULL AND he.created_by = $1))",
         f"(he.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
     ]

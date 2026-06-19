@@ -175,7 +175,7 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
 
 
 async def list_all_user_tables(user_id: UUID) -> list[dict]:
-    """All tables from workspaces user is member of + personal."""
+    """All tables from the user's scope (owned or shared) + personal."""
     pool = get_pool()
     readable_table = permission_service.readable_content_condition("table", "t", 1)
     rows = await pool.fetch(
@@ -187,10 +187,6 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
         "LEFT JOIN workspaces w ON w.id = t.workspace_id "
         "WHERE ("
         "  t.workspace_id IS NOT NULL "
-        "  AND EXISTS ("
-        "    SELECT 1 FROM workspace_members wm "
-        "    WHERE wm.workspace_id = t.workspace_id AND wm.user_id = $1"
-        "  ) "
         f"  AND {readable_table}"
         ") OR (t.workspace_id IS NULL AND t.created_by = $1) "
         "ORDER BY t.updated_at DESC",

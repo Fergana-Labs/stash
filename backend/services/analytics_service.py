@@ -81,7 +81,7 @@ def _accessible_events_cte(
     WITH accessible_events AS (
         SELECT he.id AS event_id
         FROM history_events he
-        WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+        WHERE (he.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
            OR (he.workspace_id IS NULL AND he.created_by = $1))
           AND (he.workspace_id IS NULL OR {readable_events})
     )
@@ -431,7 +431,7 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             """
             SELECT
                 (SELECT COUNT(*) FROM pages p
-                 WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                 WHERE p.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
                    AND """
             + permission_service.readable_content_condition("page", "p", 1)
@@ -439,14 +439,14 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                      SELECT t.id FROM tables t
-                     WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                     WHERE (t.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
                         OR (t.workspace_id IS NULL AND t.created_by = $1))
                        AND (t.workspace_id IS NULL OR """
             + permission_service.readable_content_condition("table", "t", 1)
             + """))
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
-                 WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                 WHERE (he.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
                     OR (he.workspace_id IS NULL AND he.created_by = $1))
                    AND (he.workspace_id IS NULL OR """
             + memory_service.readable_session_event_condition("he", 1)
@@ -478,7 +478,7 @@ async def get_overview_counts(user_id: UUID) -> dict:
                AND f.deleted_at IS NULL
                AND {readable_files}) AS files,
             (SELECT COUNT(*) FROM sessions s
-             WHERE s.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+             WHERE s.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
                AND s.deleted_at IS NULL) AS sessions
         """,
         user_id,

@@ -155,9 +155,7 @@ async def ensure_curator() -> tuple[UUID, UUID]:
         logger.info("created curator system user %s", owner_id)
 
     workspace_id = await pool.fetchval(
-        "SELECT w.id FROM workspaces w "
-        "JOIN workspace_members wm ON wm.workspace_id = w.id "
-        "WHERE wm.user_id = $1 AND w.name = $2 LIMIT 1",
+        "SELECT id FROM workspaces WHERE creator_id = $1 AND name = $2 LIMIT 1",
         owner_id,
         CURATOR_WORKSPACE_NAME,
     )
@@ -170,12 +168,6 @@ async def ensure_curator() -> tuple[UUID, UUID]:
             "Curated public skills imported from GitHub for Discover.",
             owner_id,
             invite_code,
-        )
-        await pool.execute(
-            "INSERT INTO workspace_members (workspace_id, user_id, role, is_primary) "
-            "VALUES ($1, $2, 'owner', false)",
-            workspace_id,
-            owner_id,
         )
         logger.info("created curator workspace %s", workspace_id)
     return workspace_id, owner_id

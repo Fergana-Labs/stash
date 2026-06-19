@@ -626,7 +626,7 @@ async def query_all_user_events(
     direction = "ASC" if order == "asc" else "DESC"
 
     conditions = [
-        "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        f"(he.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)} "
         "OR (he.workspace_id IS NULL AND he.created_by = $1))",
         f"(he.workspace_id IS NULL OR {readable_session_event_condition('he', 1)})",
     ]

@@ -51,7 +51,7 @@ async def test_collab_authorizes_markdown_page_writer(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_collab_authorizes_workspace_viewer_as_read_only(
+async def test_collab_authorizes_read_share_as_read_only(
     client: AsyncClient,
     pool,
 ):
@@ -64,11 +64,6 @@ async def test_collab_authorizes_workspace_viewer_as_read_only(
             headers=_auth(owner_key),
         )
     ).json()
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
-        uuid.UUID(workspace["id"]),
-        uuid.UUID(viewer["id"]),
-    )
     page = (
         await client.post(
             f"/api/v1/workspaces/{workspace['id']}/pages/new",
@@ -76,6 +71,17 @@ async def test_collab_authorizes_workspace_viewer_as_read_only(
             headers=_auth(owner_key),
         )
     ).json()
+    await pool.execute(
+        """
+        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+                            principal_id, permission, created_by)
+        VALUES ($1, 'page', $2, 'user', $3, 'read', $4)
+        """,
+        uuid.UUID(workspace["id"]),
+        uuid.UUID(page["id"]),
+        uuid.UUID(viewer["id"]),
+        uuid.UUID(_owner["id"]),
+    )
 
     response = await client.post(
         "/api/v1/collab/authorize",

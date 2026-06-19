@@ -44,27 +44,16 @@ async def _create_workspace(client: AsyncClient, api_key: str) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_security_events_are_workspace_admin_only(
+async def test_security_events_are_workspace_owner_only(
     client: AsyncClient,
-    _db_pool,
 ):
     owner_key, _ = await _register(client, "audit_owner")
-    editor_key, editor_id = await _register(client, "audit_editor")
     ws = await _create_workspace(client, owner_key)
-    await _db_pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws,
-        editor_id,
-    )
 
     owner_resp = await client.get(
         f"/api/v1/workspaces/{ws}/security-events", headers=_auth(owner_key)
     )
-    editor_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
-        headers=_auth(editor_key),
-    )
-    # Non-members get 404 like every other workspace route, so the endpoint
+    # Non-owners get 404 like every other workspace route, so the endpoint
     # never confirms a workspace's existence to outsiders.
     stranger_key, _ = await _register(client, "audit_stranger")
     stranger_resp = await client.get(
@@ -73,30 +62,17 @@ async def test_security_events_are_workspace_admin_only(
     )
 
     assert owner_resp.status_code == 200
-    assert editor_resp.status_code == 403
     assert stranger_resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_security_event_reads_are_audited_with_hashed_filters(
     client: AsyncClient,
-    _db_pool,
 ):
     owner_key, owner_id = await _register(client, "audit_reader_owner")
-    editor_key, editor_id = await _register(client, "audit_reader_editor")
     ws = await _create_workspace(client, owner_key)
-    await _db_pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws,
-        editor_id,
-    )
     sensitive_filter = "source.document_read token=secret-token customer transcript"
 
-    denied = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
-        params={"action": sensitive_filter, "limit": 5},
-        headers=_auth(editor_key),
-    )
     filtered_read = await client.get(
         f"/api/v1/workspaces/{ws}/security-events",
         params={"action": sensitive_filter, "limit": 5},
@@ -107,7 +83,6 @@ async def test_security_event_reads_are_audited_with_hashed_filters(
         headers=_auth(owner_key),
     )
 
-    assert denied.status_code == 403
     assert filtered_read.status_code == 200
     assert unfiltered_read.status_code == 200
 
@@ -124,20 +99,10 @@ async def test_security_event_reads_are_audited_with_hashed_filters(
         if event["action"] == "security_audit.read"
         and event["metadata"]["action_filter_hash"] == filter_hash
     )
-    denied_event = next(
-        event for event in events if event["action"] == "security_audit.read_denied"
-    )
 
     assert read_event["actor_user_id"] == str(owner_id)
     assert read_event["target_type"] == "security_audit_log"
     assert read_event["metadata"] == {"action_filter_hash": filter_hash, "limit": 5}
-    assert denied_event["actor_user_id"] == str(editor_id)
-    assert denied_event["target_type"] == "security_audit_log"
-    assert denied_event["metadata"] == {
-        "action_filter_hash": filter_hash,
-        "limit": 5,
-        "role": "editor",
-    }
 
 
 @pytest.mark.asyncio
@@ -385,132 +350,6 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
     assert recipient_email.upper() not in event_json
     assert page_name not in event_json
     assert page_content not in event_json
-
-
-@pytest.mark.asyncio
-async def test_workspace_invite_and_membership_changes_are_audited_without_tokens_or_names(
-    client: AsyncClient,
-):
-    owner_key, owner_id = await _register(client, "audit_workspace_owner")
-    joiner_name = unique_name("webflow_workspace_joiner")
-    joiner_display_name = "Webflow Workspace Joiner"
-    joiner_email = f"{joiner_name}@example.com"
-    joiner_resp = await client.post(
-        "/api/v1/users/register",
-        json={
-            "name": joiner_name,
-            "display_name": joiner_display_name,
-            "email": joiner_email,
-            "password": "securepassword1",
-        },
-    )
-    assert joiner_resp.status_code == 201
-    joiner_key = joiner_resp.json()["api_key"]
-    joiner_id = UUID(joiner_resp.json()["id"])
-    workspace_name = "Webflow confidential access hub"
-    workspace_resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": workspace_name},
-        headers=_auth(owner_key),
-    )
-    assert workspace_resp.status_code == 201
-    workspace_id = UUID(workspace_resp.json()["id"])
-    owner_headers = _auth(owner_key)
-
-    first_invite = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/invite-tokens",
-        json={"max_uses": 1, "ttl_days": 3},
-        headers=owner_headers,
-    )
-    assert first_invite.status_code == 201
-    first_invite_body = first_invite.json()
-    redeemed = await client.post(
-        "/api/v1/workspaces/redeem-invite",
-        json={"token": first_invite_body["token"]},
-        headers=_auth(joiner_key),
-    )
-    left = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/leave",
-        headers=_auth(joiner_key),
-    )
-    second_invite = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/invite-tokens",
-        json={"max_uses": 2, "ttl_days": 5},
-        headers=owner_headers,
-    )
-    assert second_invite.status_code == 201
-    second_invite_body = second_invite.json()
-    revoked = await client.delete(
-        f"/api/v1/workspaces/{workspace_id}/invite-tokens/{second_invite_body['id']}",
-        headers=owner_headers,
-    )
-    events_resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/security-events",
-        headers=owner_headers,
-    )
-
-    assert redeemed.status_code == 200
-    assert left.status_code == 204
-    assert revoked.status_code == 204
-    assert events_resp.status_code == 200
-
-    events = events_resp.json()["events"]
-    first_invite_hash = security_audit_service.hash_value(first_invite_body["id"])
-    second_invite_hash = security_audit_service.hash_value(second_invite_body["id"])
-    joiner_hash = security_audit_service.hash_value(str(joiner_id))
-    created_events = {
-        event["metadata"]["invite_token_id_hash"]: event
-        for event in events
-        if event["action"] == "workspace.invite_token_created"
-    }
-    joined_event = next(event for event in events if event["action"] == "workspace.member_joined")
-    left_event = next(event for event in events if event["action"] == "workspace.member_left")
-    revoked_event = next(
-        event for event in events if event["action"] == "workspace.invite_token_revoked"
-    )
-
-    assert created_events[first_invite_hash]["actor_user_id"] == str(owner_id)
-    assert created_events[first_invite_hash]["target_type"] == "workspace"
-    assert created_events[first_invite_hash]["target_id"] == str(workspace_id)
-    assert created_events[first_invite_hash]["metadata"] == {
-        "invite_token_id_hash": first_invite_hash,
-        "max_uses": 1,
-        "ttl_days": 3,
-    }
-    assert created_events[second_invite_hash]["metadata"] == {
-        "invite_token_id_hash": second_invite_hash,
-        "max_uses": 2,
-        "ttl_days": 5,
-    }
-    assert joined_event["actor_user_id"] == str(joiner_id)
-    assert joined_event["target_type"] == "workspace"
-    assert joined_event["target_id"] == str(workspace_id)
-    assert joined_event["metadata"] == {
-        "member_user_hash": joiner_hash,
-        "role": "editor",
-        "method": "invite_token",
-    }
-    assert left_event["actor_user_id"] == str(joiner_id)
-    assert left_event["metadata"] == {
-        "member_user_hash": joiner_hash,
-        "removed_source_count": 0,
-        "removed_share_count": 0,
-        "removed_granted_share_count": 0,
-        "removed_share_invite_count": 0,
-        "removed_skill_count": 0,
-    }
-    assert revoked_event["actor_user_id"] == str(owner_id)
-    assert revoked_event["metadata"] == {"invite_token_id_hash": second_invite_hash}
-
-    event_json = json.dumps(events)
-    assert first_invite_body["token"] not in event_json
-    assert first_invite_body["id"] not in event_json
-    assert second_invite_body["token"] not in event_json
-    assert second_invite_body["id"] not in event_json
-    assert joiner_name not in event_json
-    assert joiner_display_name not in event_json
-    assert joiner_email not in event_json
-    assert workspace_name not in event_json
 
 
 @pytest.mark.asyncio
@@ -1240,7 +1079,7 @@ async def test_workspace_delete_records_purge_event(client: AsyncClient, _db_poo
 
     row = await _db_pool.fetchrow(
         "SELECT workspace_id, actor_user_id, metadata FROM security_audit_events "
-        "WHERE action = 'content.workspace_purged' AND target_id = $1",
+        "WHERE action = 'content.scope_purged' AND target_id = $1",
         str(ws),
     )
     assert row is not None

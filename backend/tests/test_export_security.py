@@ -25,11 +25,6 @@ async def _make_workspace(pool, creator_id):
         creator_id,
         uuid.uuid4().hex[:12],
     )
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
-        row["id"],
-        creator_id,
-    )
     return row["id"]
 
 

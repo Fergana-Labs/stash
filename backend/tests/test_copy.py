@@ -31,11 +31,6 @@ async def workspace(_db_pool):
         user_id,
         ws_id.hex[:12],
     )
-    await _db_pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
-        ws_id,
-        user_id,
-    )
     return ws_id, user_id
 
 

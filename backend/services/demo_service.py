@@ -71,9 +71,7 @@ async def seed_demo_workspace() -> tuple[UUID, UUID] | None:
         logger.info("created demo system user %s", owner_id)
 
     workspace_id = await pool.fetchval(
-        "SELECT w.id FROM workspaces w "
-        "JOIN workspace_members wm ON wm.workspace_id = w.id "
-        "WHERE wm.user_id = $1 AND w.name = $2 LIMIT 1",
+        "SELECT id FROM workspaces WHERE creator_id = $1 AND name = $2 LIMIT 1",
         owner_id,
         DEMO_WORKSPACE_NAME,
     )
@@ -86,12 +84,6 @@ async def seed_demo_workspace() -> tuple[UUID, UUID] | None:
             DEMO_WORKSPACE_DESCRIPTION,
             owner_id,
             invite_code,
-        )
-        await pool.execute(
-            "INSERT INTO workspace_members (workspace_id, user_id, role, is_primary) "
-            "VALUES ($1, $2, 'owner', false)",
-            workspace_id,
-            owner_id,
         )
         logger.info("created demo workspace %s", workspace_id)
 

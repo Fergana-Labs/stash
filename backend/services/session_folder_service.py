@@ -136,8 +136,7 @@ async def ensure_default_folder(workspace_id: UUID) -> dict:
     if existing:
         return _row(existing)
     owner_id = await pool.fetchval(
-        "SELECT user_id FROM workspace_members "
-        "WHERE workspace_id = $1 AND role = 'owner' LIMIT 1",
+        "SELECT creator_id FROM workspaces WHERE id = $1",
         workspace_id,
     )
     return await create_folder(
@@ -156,8 +155,8 @@ async def list_folders(workspace_id: UUID, user_id: UUID) -> list[dict]:
         "AND (sf.owner_user_id = $2 "
         "  OR sf.public_permission != 'none' "
         "  OR (sf.workspace_permission != 'none' AND EXISTS ("
-        "    SELECT 1 FROM workspace_members wm "
-        "    WHERE wm.workspace_id = sf.workspace_id AND wm.user_id = $2"
+        "    SELECT 1 FROM workspaces w "
+        "    WHERE w.id = sf.workspace_id AND w.creator_id = $2"
         "  )) "
         "  OR EXISTS ("
         "    SELECT 1 FROM shares sh "

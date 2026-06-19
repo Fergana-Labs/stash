@@ -42,7 +42,6 @@ async def register_user(
         name="Stash",
         description="",
         creator_id=user["id"],
-        is_primary=True,
     )
 
     # Turn any pending share invites for this email into real shares.

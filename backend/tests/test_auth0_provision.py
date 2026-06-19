@@ -53,10 +53,10 @@ async def test_first_session_provision_reports_created(pool):
         auth0_sub=sub, email=None, name="New Person"
     )
     assert created is True
-    # First sign-in provisions a workspace, so a workspace lookup alone can't
+    # First sign-in provisions the user's scope, so a scope lookup alone can't
     # tell new from returning — only `created` can.
     ws_count = await pool.fetchval(
-        "SELECT count(*) FROM workspace_members WHERE user_id = $1", user["id"]
+        "SELECT count(*) FROM workspaces WHERE creator_id = $1", user["id"]
     )
     assert ws_count == 1
 
@@ -266,63 +266,6 @@ async def test_managed_auth0_cli_key_cannot_approve_cli_sessions(client, monkeyp
     assert sibling_approve.json()["detail"] == "CLI approval requires a browser session"
     repolled = await client.get(f"/api/v1/users/cli-auth/sessions/{session_id}")
     assert repolled.json()["status"] == "pending"
-
-
-@pytest.mark.asyncio
-async def test_managed_auth0_disables_unauthenticated_invite_api_key_redemption(
-    client,
-    pool,
-    monkeypatch,
-):
-    owner = await client.post(
-        "/api/v1/users/register",
-        json={
-            "name": unique_name("managed_invite_owner"),
-            "display_name": "Managed Invite Owner",
-            "password": "securepassword1",
-        },
-    )
-    assert owner.status_code == 201
-    owner_key = owner.json()["api_key"]
-
-    workspace = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "Managed Invite Workspace"},
-        headers={"Authorization": f"Bearer {owner_key}"},
-    )
-    assert workspace.status_code == 201
-    workspace_id = workspace.json()["id"]
-
-    invite = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/invite-tokens",
-        json={"max_uses": 1, "ttl_days": 7},
-        headers={"Authorization": f"Bearer {owner_key}"},
-    )
-    assert invite.status_code == 201
-    token = invite.json()["token"]
-    token_id = invite.json()["id"]
-
-    from backend.routers import users as users_router
-
-    monkeypatch.setattr(users_router.settings, "AUTH0_ENABLED", True)
-
-    redeemed = await client.post(
-        "/api/v1/users/cli-auth/redeem-invite",
-        json={"token": token, "display_name": "Webflow Teammate"},
-    )
-
-    assert redeemed.status_code == 403
-    assert redeemed.json()["detail"] == "Invite signup is disabled; use Auth0"
-    assert (
-        await pool.fetchval(
-            "SELECT uses_count FROM workspace_invite_tokens WHERE id = $1", token_id
-        )
-        == 0
-    )
-    assert (
-        await pool.fetchval("SELECT COUNT(*) FROM users WHERE display_name = 'Webflow Teammate'")
-        == 0
-    )
 
 
 @pytest.mark.asyncio

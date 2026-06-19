@@ -42,6 +42,19 @@ async def _register(client):
     return key
 
 
+async def _share(pool, ws, object_type, object_id, user_id, owner_id, permission="read"):
+    await pool.execute(
+        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1, $2, $3, 'user', $4, $5, $6)",
+        UUID(ws),
+        object_type,
+        object_id,
+        UUID(user_id),
+        permission,
+        UUID(owner_id),
+    )
+
+
 async def _workspace(client, key):
     r = await client.post(
         "/api/v1/workspaces",
@@ -148,63 +161,6 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
     )
     assert detail.status_code == 200
     assert detail.json()["session_id"] == "empty-shell"
-
-
-@pytest.mark.asyncio
-async def test_me_sessions_requires_current_workspace_access_for_authored_session(
-    client: AsyncClient,
-    pool,
-):
-    owner_key = await _register(client)
-    member_key, member_id = await _register_user(client)
-    ws = await _workspace(client, owner_key)
-    member_headers = {"Authorization": f"Bearer {member_key}"}
-
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        UUID(ws),
-        UUID(member_id),
-    )
-    pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events",
-        json={
-            "agent_name": "codex",
-            "event_type": "assistant_message",
-            "content": "Webflow launch plan",
-            "session_id": "former-member-session",
-        },
-        headers=member_headers,
-    )
-    before = await client.get(
-        "/api/v1/me/sessions",
-        params={"workspace_id": ws},
-        headers=member_headers,
-    )
-    left = await client.post(f"/api/v1/workspaces/{ws}/leave", headers=member_headers)
-    after_scoped = await client.get(
-        "/api/v1/me/sessions",
-        params={"workspace_id": ws},
-        headers=member_headers,
-    )
-    after_all = await client.get("/api/v1/me/sessions", headers=member_headers)
-    detail = await client.get(
-        f"/api/v1/workspaces/{ws}/sessions/former-member-session",
-        headers=member_headers,
-    )
-
-    assert pushed.status_code == 201
-    assert before.status_code == 200
-    assert [session["session_id"] for session in before.json()["sessions"]] == [
-        "former-member-session"
-    ]
-    assert left.status_code == 204
-    assert after_scoped.status_code == 200
-    assert after_scoped.json()["sessions"] == []
-    assert after_all.status_code == 200
-    assert "former-member-session" not in {
-        session["session_id"] for session in after_all.json()["sessions"]
-    }
-    assert detail.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -851,16 +807,19 @@ async def test_non_member_forbidden(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_viewer_cannot_write_session_ingress(client: AsyncClient, pool):
-    owner_key = await _register(client)
+    owner_key, owner_id = await _register_user(client)
     viewer_key, viewer_id = await _register_user(client)
     ws = await _workspace(client, owner_key)
+    owner_headers = {"Authorization": f"Bearer {owner_key}"}
     viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
 
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
-        ws,
-        viewer_id,
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Shared"},
+        headers=owner_headers,
     )
+    assert folder.status_code == 201
+    await _share(pool, ws, "folder", UUID(folder.json()["id"]), viewer_id, owner_id)
 
     event_resp = await client.post(
         f"/api/v1/workspaces/{ws}/sessions/events",
@@ -916,17 +875,12 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     client: AsyncClient,
     pool,
 ):
-    owner_key = await _register(client)
+    owner_key, owner_id = await _register_user(client)
     viewer_key, viewer_id = await _register_user(client)
     ws = await _workspace(client, owner_key)
     owner_headers = {"Authorization": f"Bearer {owner_key}"}
     viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
 
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
-        ws,
-        viewer_id,
-    )
     created = await client.post(
         f"/api/v1/workspaces/{ws}/sessions",
         json={"session_id": "owner-session", "agent_name": "codex"},
@@ -934,6 +888,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     )
     assert created.status_code == 201
     session_row_id = created.json()["id"]
+    await _share(pool, ws, "session", UUID(session_row_id), viewer_id, owner_id)
 
     pushed = await client.post(
         f"/api/v1/workspaces/{ws}/sessions/events",

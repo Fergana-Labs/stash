@@ -1,48 +1,29 @@
-"""Workspace service: CRUD, membership, invite codes."""
+"""User scope service: provisioning and CRUD for the single per-user scope.
+
+Each user owns exactly one scope. There is no membership, joining, or invites —
+the owner is the creator, and access for anyone else flows through `shares`.
+
+(Transitional note: the scope is still stored in the `workspaces` table and its
+`workspace_id` foreign keys; those names are renamed away in a later cleanup
+migration.)
+"""
 
 import logging
 import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import security_audit_service, skill_seeds
+from . import skill_seeds
 
 logger = logging.getLogger(__name__)
-
-
-async def _record_member_event(
-    *,
-    action: str,
-    actor_user_id: UUID,
-    workspace_id: UUID,
-    member_user_id: UUID,
-    metadata: dict | None = None,
-) -> None:
-    await security_audit_service.record_event(
-        action=action,
-        actor_user_id=actor_user_id,
-        workspace_id=workspace_id,
-        target_type="workspace",
-        target_id=str(workspace_id),
-        metadata={
-            "member_user_hash": security_audit_service.hash_value(str(member_user_id)),
-            **(metadata or {}),
-        },
-    )
 
 
 async def create_workspace(
     name: str,
     description: str,
     creator_id: UUID,
-    is_primary: bool = False,
 ) -> dict:
-    """Create a workspace with the creator as owner.
-
-    Pass is_primary=True to mark the creator's membership as their primary
-    workspace — used by /publish as the fallback target when no workspace_id
-    is supplied. Only the auto-provisioned signup workspace should pass this.
-    """
+    """Provision a user's scope, owned by the creator."""
     pool = get_pool()
     invite_code = ""
     for _ in range(5):
@@ -65,56 +46,47 @@ async def create_workspace(
         invite_code,
     )
     ws = dict(row)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role, is_primary) "
-        "VALUES ($1, $2, 'owner', $3)",
-        ws["id"],
-        creator_id,
-        is_primary,
-    )
     ws["member_count"] = 1
-    # Seed the default slides skill so the ask-the-workspace agent can
-    # discover it via list_skills/read_skill when the user asks for a deck.
-    # Failures here should not block workspace creation.
+    # Seed the default slides skill so the agent can discover it via
+    # list_skills/read_skill when the user asks for a deck. Failures here should
+    # not block scope creation.
     try:
         await skill_seeds.seed_slides_skill(ws["id"], creator_id)
     except Exception:
-        logger.exception("seed_slides_skill failed for workspace %s", ws["id"])
+        logger.exception("seed_slides_skill failed for scope %s", ws["id"])
     return ws
 
 
 async def get_primary_for_user(user_id: UUID) -> UUID | None:
-    """Return the workspace id the user has marked primary, or None."""
+    """The user's one scope id, or None if they have none."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id FROM workspace_members " "WHERE user_id = $1 AND is_primary LIMIT 1",
+        "SELECT id FROM workspaces WHERE creator_id = $1 ORDER BY created_at LIMIT 1",
         user_id,
     )
-    return row["workspace_id"] if row else None
+    return row["id"] if row else None
 
 
 async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, "
-        "w.created_at, w.updated_at, w.cover_image_url, w.icon_url, w.color_gradient, "
-        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
-        "FROM workspaces w WHERE w.id = $1",
+        "SELECT id, name, description, creator_id, invite_code, "
+        "created_at, updated_at, cover_image_url, icon_url, color_gradient, "
+        "1 AS member_count "
+        "FROM workspaces WHERE id = $1",
         workspace_id,
     )
     return dict(row) if row else None
 
 
 async def list_user_workspaces(user_id: UUID) -> list[dict]:
+    """The user's single scope, as a one-element list (the owner is the creator)."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, "
-        "w.created_at, w.updated_at, w.cover_image_url, w.icon_url, w.color_gradient, "
-        "wm.is_primary, "
-        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
-        "FROM workspaces w "
-        "JOIN workspace_members wm ON wm.workspace_id = w.id "
-        "WHERE wm.user_id = $1 ORDER BY wm.is_primary DESC, w.created_at DESC",
+        "SELECT id, name, description, creator_id, invite_code, "
+        "created_at, updated_at, cover_image_url, icon_url, color_gradient, "
+        "TRUE AS is_primary, 1 AS member_count "
+        "FROM workspaces WHERE creator_id = $1 ORDER BY created_at",
         user_id,
     )
     return [dict(r) for r in rows]
@@ -153,19 +125,18 @@ async def update_workspace(
 
 
 async def delete_workspace(workspace_id: UUID, user_id: UUID) -> list[str] | None:
-    """Delete a workspace (owner only; None when refused). Returns the storage
-    keys its rows referenced so the caller can purge the blobs — collected
-    before, but purged only after, the DB delete, so a failed delete can never
-    leave live rows pointing at destroyed storage objects."""
+    """Delete a scope (owner only; None when refused). Returns the storage keys
+    its rows referenced so the caller can purge the blobs — collected before, but
+    purged only after, the DB delete, so a failed delete can never leave live
+    rows pointing at destroyed storage objects."""
     pool = get_pool()
-    role = await get_member_role(workspace_id, user_id)
-    if role != "owner":
+    if not await is_owner(workspace_id, user_id):
         return None
 
     # Forks copy storage_key by reference (shared_skill_service._fork_file /
-    # _fork_session), so one S3 object can back rows in several workspaces.
-    # Only return keys referenced solely by this workspace; deleting a key that
-    # a surviving workspace still points at would 502 their downloads.
+    # _fork_session), so one S3 object can back rows in several scopes. Only
+    # return keys referenced solely by this scope; deleting a key another scope
+    # still points at would 502 their downloads.
     rows = await pool.fetch(
         """
         SELECT k.storage_key
@@ -200,258 +171,45 @@ async def delete_workspace(workspace_id: UUID, user_id: UUID) -> list[str] | Non
     return [row["storage_key"] for row in rows]
 
 
-def _deleted_count(result: str) -> int:
-    return int(result.rsplit(" ", 1)[-1])
+# --- Ownership helpers (the only role is "owner": the scope's creator) ---
 
-
-async def _delete_workspace_access_for_member(pool, workspace_id: UUID, user_id: UUID) -> dict:
-    removed_share_count = _deleted_count(
-        await pool.execute(
-            "DELETE FROM shares "
-            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
-            workspace_id,
-            user_id,
-        )
-    )
-    removed_granted_share_count = _deleted_count(
-        await pool.execute(
-            "DELETE FROM shares WHERE workspace_id = $1 AND created_by = $2",
-            workspace_id,
-            user_id,
-        )
-    )
-    removed_share_invite_count = _deleted_count(
-        await pool.execute(
-            "DELETE FROM share_invites WHERE workspace_id = $1 AND created_by = $2",
-            workspace_id,
-            user_id,
-        )
-    )
-    removed_skill_count = _deleted_count(
-        await pool.execute(
-            "DELETE FROM skills WHERE workspace_id = $1 AND owner_id = $2",
-            workspace_id,
-            user_id,
-        )
-    )
-    return {
-        "removed_share_count": removed_share_count,
-        "removed_granted_share_count": removed_granted_share_count,
-        "removed_share_invite_count": removed_share_invite_count,
-        "removed_skill_count": removed_skill_count,
-    }
-
-
-async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
-    pool = get_pool()
-    exists = await pool.fetchval(
-        "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        workspace_id,
-        user_id,
-    )
-    if exists:
-        return await get_workspace(workspace_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        workspace_id,
-        user_id,
-    )
-    await _record_member_event(
-        action="workspace.member_joined",
-        actor_user_id=user_id,
-        workspace_id=workspace_id,
-        member_user_id=user_id,
-        metadata={"role": "editor", "method": "legacy_invite"},
-    )
-    return await get_workspace(workspace_id)
-
-
-async def rotate_invite_code(workspace_id: UUID, user_id: UUID) -> dict | None:
-    """Generate a new invite_code, invalidating the previous one. Owner only."""
-    role = await get_member_role(workspace_id, user_id)
-    if role != "owner":
-        return None
-    pool = get_pool()
-    new_code = ""
-    for _ in range(5):
-        new_code = secrets.token_urlsafe(6)[:8]
-        exists = await pool.fetchval(
-            "SELECT 1 FROM workspaces WHERE invite_code = $1",
-            new_code,
-        )
-        if not exists:
-            break
-    await pool.execute(
-        "UPDATE workspaces SET invite_code = $1, updated_at = now() WHERE id = $2",
-        new_code,
-        workspace_id,
-    )
-    return await get_workspace(workspace_id)
-
-
-async def join_by_invite(invite_code: str, user_id: UUID) -> dict | None:
-    pool = get_pool()
-    ws = await pool.fetchrow(
-        "SELECT id FROM workspaces WHERE invite_code = $1",
-        invite_code,
-    )
-    if not ws:
-        return None
-    return await join_workspace(ws["id"], user_id)
-
-
-async def _revoke_member_access(conn, workspace_id: UUID, user_id: UUID) -> dict:
-    """Revoke everything that grants access independently of membership:
-    webhooks, connected sources, shares, and the member's published skills."""
-    from . import source_service
-
-    await conn.execute(
-        "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
-        workspace_id,
-        user_id,
-    )
-    removed_sources = await source_service.delete_sources_for_workspace_member(
-        conn,
-        workspace_id,
-        user_id,
-    )
-    removed_access = await _delete_workspace_access_for_member(conn, workspace_id, user_id)
-    return {"removed_source_count": removed_sources, **removed_access}
-
-
-async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
-    pool = get_pool()
-    # One transaction: the membership delete and the access revocation must
-    # land together, or a mid-sequence failure would strand shares/skill
-    # grants that confer access without membership — irrevocably, since a
-    # retry would match zero membership rows.
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            result = await conn.execute(
-                "DELETE FROM workspace_members "
-                "WHERE workspace_id = $1 AND user_id = $2 AND role != 'owner'",
-                workspace_id,
-                user_id,
-            )
-            if result != "DELETE 1":
-                return False
-            removed = await _revoke_member_access(conn, workspace_id, user_id)
-    await _record_member_event(
-        action="workspace.member_left",
-        actor_user_id=user_id,
-        workspace_id=workspace_id,
-        member_user_id=user_id,
-        metadata=removed,
-    )
-    return True
-
-
-async def get_members(workspace_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT u.id AS user_id, u.name, u.display_name, wm.role, wm.joined_at "
-        "FROM workspace_members wm JOIN users u ON u.id = wm.user_id "
-        "WHERE wm.workspace_id = $1 ORDER BY wm.joined_at",
-        workspace_id,
-    )
-    return [dict(r) for r in rows]
+ROLES_CAN_READ = {"owner"}
+ROLES_CAN_WRITE = {"owner"}
+ROLES_ADMIN = {"owner"}
 
 
 async def get_member_role(workspace_id: UUID, user_id: UUID) -> str | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        "SELECT 1 FROM workspaces WHERE id = $1 AND creator_id = $2",
         workspace_id,
         user_id,
     )
-    return row["role"] if row else None
+    return "owner" if row else None
 
 
 async def is_member(workspace_id: UUID, user_id: UUID) -> bool:
     return await get_member_role(workspace_id, user_id) is not None
 
 
-async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID) -> bool:
-    """Only owners can kick. Owners can't be kicked."""
+async def get_members(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
-    kicker_role = await get_member_role(workspace_id, kicker_id)
-    target_role = await get_member_role(workspace_id, target_user_id)
-    if not kicker_role or not target_role:
-        return False
-    if target_role == "owner":
-        return False
-    if kicker_role != "owner":
-        return False
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            result = await conn.execute(
-                "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-                workspace_id,
-                target_user_id,
-            )
-            if result != "DELETE 1":
-                return False
-            removed = await _revoke_member_access(conn, workspace_id, target_user_id)
-    await _record_member_event(
-        action="workspace.member_removed",
-        actor_user_id=kicker_id,
-        workspace_id=workspace_id,
-        member_user_id=target_user_id,
-        metadata=removed,
+    rows = await pool.fetch(
+        "SELECT u.id AS user_id, u.name, u.display_name, 'owner' AS role, "
+        "w.created_at AS joined_at "
+        "FROM workspaces w JOIN users u ON u.id = w.creator_id WHERE w.id = $1",
+        workspace_id,
     )
-    return True
-
-
-# Role-based authorization helpers (PR 7).
-ROLES_CAN_READ = {"owner", "editor", "viewer"}
-ROLES_CAN_WRITE = {"owner", "editor"}
-ROLES_ADMIN = {"owner"}
+    return [dict(r) for r in rows]
 
 
 async def can_read(workspace_id: UUID, user_id: UUID) -> bool:
-    role = await get_member_role(workspace_id, user_id)
-    return role in ROLES_CAN_READ
+    return await is_member(workspace_id, user_id)
 
 
 async def can_write(workspace_id: UUID, user_id: UUID) -> bool:
-    role = await get_member_role(workspace_id, user_id)
-    return role in ROLES_CAN_WRITE
+    return await is_member(workspace_id, user_id)
 
 
 async def is_owner(workspace_id: UUID, user_id: UUID) -> bool:
-    role = await get_member_role(workspace_id, user_id)
-    return role in ROLES_ADMIN
-
-
-async def set_member_role(
-    workspace_id: UUID,
-    target_user_id: UUID,
-    setter_id: UUID,
-    role: str,
-) -> bool:
-    """Only owners can change roles. Owners cannot demote themselves
-    (would lock the workspace if they're the only owner). Role must be
-    one of owner/editor/viewer."""
-    if role not in ("owner", "editor", "viewer"):
-        return False
-    if not await is_owner(workspace_id, setter_id):
-        return False
-    pool = get_pool()
-    target_role = await get_member_role(workspace_id, target_user_id)
-    if target_role is None:
-        return False
-    if target_role == "owner" and role != "owner":
-        # Prevent demoting the last owner.
-        owner_count = await pool.fetchval(
-            "SELECT COUNT(*) FROM workspace_members " "WHERE workspace_id = $1 AND role = 'owner'",
-            workspace_id,
-        )
-        if owner_count <= 1:
-            return False
-    await pool.execute(
-        "UPDATE workspace_members SET role = $1 " "WHERE workspace_id = $2 AND user_id = $3",
-        role,
-        workspace_id,
-        target_user_id,
-    )
-    return True
+    return await is_member(workspace_id, user_id)

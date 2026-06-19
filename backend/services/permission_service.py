@@ -1,12 +1,16 @@
 """Permission service.
 
-Private by default. Workspace roles grant baseline access: owners/editors can
-read and write, viewers can read only. Beyond that, access comes from the
-`shares` table: a row grants a principal access to an object. Folder /
-session-folder shares cascade to contents via the recursive folder chain.
+Private by default. Each user owns exactly one scope; they can read and write
+everything in it. Beyond their own scope, access comes from the `shares` table:
+a row grants a principal access to an object. Folder / session-folder shares
+cascade to contents via the recursive folder chain.
 
 A skill is a published folder: publishing makes its folder subtree publicly
 readable — never writable.
+
+(Transitional note: the per-user scope is still stored in the `workspace_id`
+column and anchored by the `workspaces.creator_id` owner. Those names are
+renamed away in a later cleanup migration.)
 """
 
 from uuid import UUID
@@ -112,9 +116,9 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
     return f"""
         (
           EXISTS (
-            SELECT 1 FROM workspace_members content_wm
-            WHERE content_wm.workspace_id = {object_alias}.workspace_id
-              AND content_wm.user_id = ${user_arg}
+            SELECT 1 FROM workspaces content_owner
+            WHERE content_owner.id = {object_alias}.workspace_id
+              AND content_owner.creator_id = ${user_arg}
           )
           OR EXISTS (
             SELECT 1 FROM shares content_share
@@ -129,12 +133,12 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
 
 
 def accessible_workspace_ids_sql(user_arg: int) -> str:
-    """Subquery: workspace ids whose content user ${user_arg} can possibly see —
-    workspaces they're a member of, plus workspaces that have shared something
-    with them. A coarse prefilter only: `readable_content_condition` still narrows
-    to the specific shared rows, so widening this set never over-exposes."""
+    """Subquery: scope ids whose content user ${user_arg} can possibly see —
+    the scope they own, plus scopes that have shared something with them. A
+    coarse prefilter only: `readable_content_condition` still narrows to the
+    specific shared rows, so widening this set never over-exposes."""
     return f"""(
-        SELECT workspace_id FROM workspace_members WHERE user_id = ${user_arg}
+        SELECT id FROM workspaces WHERE creator_id = ${user_arg}
         UNION
         SELECT workspace_id FROM shares
         WHERE principal_type = 'user' AND principal_id = ${user_arg}
@@ -367,13 +371,15 @@ async def check_access(
 
 
 async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:
+    """'owner' when the user owns this scope, else None. Every scope has exactly
+    one owner now; access for anyone else flows through `shares`."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        "SELECT 1 FROM workspaces WHERE id = $1 AND creator_id = $2",
         workspace_id,
         user_id,
     )
-    return row["role"] if row else None
+    return "owner" if row else None
 
 
 async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:

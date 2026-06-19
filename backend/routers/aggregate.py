@@ -86,11 +86,10 @@ async def list_activity(
         WITH member_workspaces AS (
           SELECT w.id, w.name
           FROM workspaces w
-          JOIN workspace_members wm ON wm.workspace_id = w.id
-          WHERE wm.user_id = $1
+          WHERE w.creator_id = $1
           AND ($3::uuid IS NULL OR w.id = $3)
         ),
-        -- Member workspaces plus any workspace that has shared content with the
+        -- Owned workspaces plus any workspace that has shared content with the
         -- user. Page/file rows still pass readable_content_condition, so a share
         -- only surfaces the specific shared rows — never the whole workspace.
         accessible_workspaces AS (
@@ -155,18 +154,6 @@ async def list_activity(
             AND """
         + permission_service.readable_content_condition("file", "f", 1)
         + """
-        )
-        UNION ALL
-        (
-          SELECT 'member.joined' AS kind,
-                 wm.joined_at AS ts,
-                 wm.user_id AS actor_id,
-                 wm.user_id::text AS target_id,
-                 '' AS target_label,
-                 aw.id AS workspace_id,
-                 aw.name AS workspace_name
-          FROM workspace_members wm
-          JOIN member_workspaces aw ON aw.id = wm.workspace_id
         )
         ) ev
         WHERE ($4::timestamptz IS NULL OR ev.ts < $4)

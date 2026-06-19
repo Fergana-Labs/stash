@@ -208,16 +208,16 @@ def enqueue_session_enrichment(workspace_id: UUID, session_row_id: UUID) -> None
 
 
 async def _workspace_linear_token(workspace_id: UUID) -> str | None:
-    """A Linear OAuth token for any member of this workspace, or None if no
-    member has connected Linear. Linear issues are workspace-shared, so any
-    member's token can read the tickets every session in the workspace cites."""
+    """A Linear OAuth token for this workspace's owner, or None if the owner
+    has not connected Linear. Linear issues are workspace-shared, so the
+    owner's token can read the tickets every session in the workspace cites."""
     pool = get_pool()
     row = await pool.fetchrow(
         """
         SELECT ui.user_id
         FROM user_integrations ui
-        JOIN workspace_members wm ON wm.user_id = ui.user_id
-        WHERE ui.provider = 'linear' AND wm.workspace_id = $1
+        JOIN workspaces w ON w.creator_id = ui.user_id
+        WHERE ui.provider = 'linear' AND w.id = $1
         ORDER BY ui.created_at
         LIMIT 1
         """,

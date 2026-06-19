@@ -412,8 +412,8 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
         "FROM workspace_sources ws "
         "WHERE id = $1 "
         "AND EXISTS ("
-        "  SELECT 1 FROM workspace_members wm "
-        "  WHERE wm.workspace_id = ws.workspace_id AND wm.user_id = ws.owner_user_id"
+        "  SELECT 1 FROM workspaces w "
+        "  WHERE w.id = ws.workspace_id AND w.creator_id = ws.owner_user_id"
         ")",
         source_id,
     )
@@ -437,8 +437,8 @@ async def due_sources(limit: int = 50) -> list[dict]:
         "FROM workspace_sources ws "
         "WHERE sync_enabled AND next_sync_at <= now() "
         "AND EXISTS ("
-        "  SELECT 1 FROM workspace_members wm "
-        "  WHERE wm.workspace_id = ws.workspace_id AND wm.user_id = ws.owner_user_id"
+        "  SELECT 1 FROM workspaces w "
+        "  WHERE w.id = ws.workspace_id AND w.creator_id = ws.owner_user_id"
         ") "
         "ORDER BY next_sync_at LIMIT $1",
         limit,
