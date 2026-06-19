@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import CanvasPanel from "../../../../../components/agents/CanvasPanel";
+import CanvasPicker from "../../../../../components/agents/CanvasPicker";
 import ChatPanel from "../../../../../components/agents/ChatPanel";
 
 // Agents is a chat surface. Each tab is a stored Session, so its session_id and
@@ -94,6 +95,12 @@ function AgentsPageInner() {
     setChats(state.chats);
     setNextId(state.nextId);
     setActive(state.active);
+
+    // Deep link: ?canvas=<id> reopens a saved canvas in the active chat's panel.
+    const canvasParam = searchParams.get("canvas");
+    if (canvasParam) {
+      setCanvasByTab((prev) => ({ ...prev, [state.active]: { id: canvasParam, reloadKey: 1 } }));
+    }
   }, [workspaceId, searchParams]);
 
   // Persist whenever tabs change (after the initial restore).
@@ -163,14 +170,20 @@ function AgentsPageInner() {
               Ask across this workspace from one place.
             </p>
           </div>
-          <a
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-[12.5px] font-medium text-dim hover:border-[var(--color-brand-300)] hover:bg-surface hover:text-foreground"
-            href="https://joinstash.ai/docs/mcp"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Setup docs
-          </a>
+          <div className="flex shrink-0 items-center gap-2">
+            <CanvasPicker
+              workspaceId={workspaceId}
+              onSelect={(canvasId) => openCanvas(active, canvasId)}
+            />
+            <a
+              className="rounded-md border border-border px-3 py-1.5 text-[12.5px] font-medium text-dim hover:border-[var(--color-brand-300)] hover:bg-surface hover:text-foreground"
+              href="https://joinstash.ai/docs/mcp"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Setup docs
+            </a>
+          </div>
         </div>
 
         <div className="flex min-w-0 items-center gap-1 border-b border-border">
@@ -228,6 +241,7 @@ function AgentsPageInner() {
                 {canvas && (
                   <div className="min-w-0 flex-1">
                     <CanvasPanel
+                      workspaceId={workspaceId}
                       canvasId={canvas.id}
                       reloadKey={canvas.reloadKey}
                       onClose={() => closeCanvas(t.id)}

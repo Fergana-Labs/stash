@@ -104,6 +104,35 @@ async def test_canvas_crud_via_api(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_table_row_insert_by_column_name(client: AsyncClient):
+    """Canvas table-bound forms POST row data keyed by column NAME; the table
+    API must resolve names to ids and coerce values (numeric strings)."""
+    headers = _auth(await _register(client))
+    ws = await client.post("/api/v1/workspaces", json={"name": "CRM"}, headers=headers)
+    ws_id = ws.json()["id"]
+    table = await client.post(
+        f"/api/v1/workspaces/{ws_id}/tables",
+        json={
+            "name": "Leads",
+            "columns": [{"name": "Company", "type": "text"}, {"name": "ARR", "type": "number"}],
+        },
+        headers=headers,
+    )
+    assert table.status_code == 201, table.text
+    table_id = table.json()["id"]
+
+    row = await client.post(
+        f"/api/v1/workspaces/{ws_id}/tables/{table_id}/rows",
+        json={"data": {"Company": "Acme", "ARR": "50000"}},
+        headers=headers,
+    )
+    assert row.status_code in (200, 201), row.text
+    values = list(row.json()["data"].values())
+    assert "Acme" in values
+    assert 50000 in values  # numeric string coerced to a number
+
+
+@pytest.mark.asyncio
 async def test_canvas_hidden_from_non_members(client: AsyncClient):
     owner = _auth(await _register(client))
     ws = await client.post("/api/v1/workspaces", json={"name": "Private"}, headers=owner)

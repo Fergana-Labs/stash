@@ -10,30 +10,39 @@ import type { CanvasBlock } from "@/lib/types";
 // degrade to a small placeholder rather than throwing — the agent may ship a
 // block type ahead of the renderer.
 //
-// `onAction` is the chat→canvas→chat loop: buttons and form submits send a
-// message back to the agent so a rendered UI can drive the next turn.
+// Two ways a canvas drives the next step:
+//   - `onAction(message)` — buttons (and message-only forms) send a message
+//     back to the agent: the chat → canvas → chat loop.
+//   - `onSubmit(block, values)` — a form bound to a `table_id` writes a row
+//     straight into that table (CRM-style data entry), no agent round-trip.
 export default function CanvasRenderer({
   blocks,
   onAction,
+  onSubmit,
 }: {
   blocks: CanvasBlock[];
   onAction: (message: string) => void;
+  onSubmit?: (block: CanvasBlock, values: Record<string, string>) => Promise<SubmitResult>;
 }) {
   return (
     <div className="space-y-4">
       {blocks.map((block, i) => (
-        <Block key={i} block={block} onAction={onAction} />
+        <Block key={i} block={block} onAction={onAction} onSubmit={onSubmit} />
       ))}
     </div>
   );
 }
 
+export type SubmitResult = { ok: boolean; message?: string };
+
 function Block({
   block,
   onAction,
+  onSubmit,
 }: {
   block: CanvasBlock;
   onAction: (message: string) => void;
+  onSubmit?: (block: CanvasBlock, values: Record<string, string>) => Promise<SubmitResult>;
 }) {
   switch (block.type) {
     case "heading":
@@ -57,7 +66,7 @@ function Block({
     case "chart":
       return <Chart block={block} />;
     case "form":
-      return <Form block={block} onAction={onAction} />;
+      return <Form block={block} onAction={onAction} onSubmit={onSubmit} />;
     case "button":
       return (
         <button
@@ -254,14 +263,42 @@ function LineChart({ points, max }: { points: { label: string; value: number }[]
   );
 }
 
-type FormField = { name: string; label?: string; type?: string; options?: string[] };
+type FormField = {
+  name: string;
+  label?: string;
+  type?: string;
+  options?: string[];
+  column?: string;
+};
 
-function Form({ block, onAction }: { block: CanvasBlock; onAction: (message: string) => void }) {
+function Form({
+  block,
+  onAction,
+  onSubmit,
+}: {
+  block: CanvasBlock;
+  onAction: (message: string) => void;
+  onSubmit?: (block: CanvasBlock, values: Record<string, string>) => Promise<SubmitResult>;
+}) {
   const fields = Array.isArray(block.fields) ? (block.fields as FormField[]) : [];
   const [values, setValues] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<"idle" | "submitting" | "ok" | "error">("idle");
+  const [statusMsg, setStatusMsg] = useState("");
   const set = (name: string, v: string) => setValues((prev) => ({ ...prev, [name]: v }));
 
-  function submit() {
+  async function submit() {
+    if (status === "submitting") return;
+    // A form bound to a table writes a row directly; otherwise it just relays a
+    // summary back to the agent. The host (CanvasPanel) owns onSubmit so the
+    // renderer stays free of API wiring.
+    if (onSubmit) {
+      setStatus("submitting");
+      const res = await onSubmit(block, values);
+      setStatus(res.ok ? "ok" : "error");
+      setStatusMsg(res.message ?? "");
+      if (res.ok && Boolean(block.table_id)) setValues({});
+      return;
+    }
     const parts = fields.map((f) => `${f.label || f.name}: ${values[f.name] ?? ""}`);
     const title = block.title ? str(block.title) : "Form";
     onAction(`${title} submitted — ${parts.join("; ")}`);
@@ -307,13 +344,22 @@ function Form({ block, onAction }: { block: CanvasBlock; onAction: (message: str
           </label>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={submit}
-        className="mt-4 cursor-pointer rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover"
-      >
-        {str(block.submitLabel) || "Submit"}
-      </button>
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={status === "submitting"}
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {status === "submitting" ? "Saving…" : str(block.submitLabel) || "Submit"}
+        </button>
+        {status === "ok" && (
+          <span className="text-[12px] text-success">{statusMsg || "Saved"}</span>
+        )}
+        {status === "error" && (
+          <span className="text-[12px] text-error">{statusMsg || "Couldn't save"}</span>
+        )}
+      </div>
     </div>
   );
 }

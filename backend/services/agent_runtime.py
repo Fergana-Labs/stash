@@ -1151,12 +1151,16 @@ _CANVAS_BLOCKS_DOC = (
     "  list:    {type, ordered?:bool, items:[str]}\n"
     "  chart:   {type, chartType:'bar'|'line', title?, data:[{label, value}]}\n"
     "  form:    {type, title?, fields:[{name, label, type?:'text'|'textarea'|'select', "
-    "options?:[str]}], submitLabel?}  — submitting sends the values back to you\n"
+    "options?:[str], column?:str}], submitLabel?, table_id?}  — submitting sends the "
+    "values back to you; set `table_id` to instead write a row straight into that "
+    "table (point each field's `column` at the target column name)\n"
     "  button:  {type, label, message}  — clicking sends `message` back to you\n"
     "  divider: {type}\n"
     "  html:    {type, html, height?:int}  — custom HTML in a sandboxed frame; "
     "use only when no block fits\n"
-    "Prefer the pre-built blocks; reach for html only for layouts they can't express."
+    "Prefer the pre-built blocks; reach for html only for layouts they can't express. "
+    "To collect structured data (CRM-style), create_table first, then render a form "
+    "with `table_id` set so the user adds rows directly — no round-trip through you."
 )
 
 

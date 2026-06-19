@@ -2,21 +2,26 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { getCanvas } from "@/lib/api";
-import type { Canvas } from "@/lib/types";
+import { ApiError, createTableRow, getCanvas } from "@/lib/api";
+import type { Canvas, CanvasBlock } from "@/lib/types";
 
-import CanvasRenderer from "./CanvasRenderer";
+import CanvasRenderer, { type SubmitResult } from "./CanvasRenderer";
+
+type FieldDef = { name: string; label?: string; column?: string };
 
 // The "UI" half of the agent: the generative-UI panel beside the chat. It owns
 // fetching the canvas by id and re-fetching when the agent updates it (the chat
 // stream fires a fresh `canvasId`/`reloadKey` each time). `onAction` carries a
-// button/form interaction back into the chat as the next message.
+// button/form interaction back into the chat as the next message; a form bound
+// to a `table_id` instead writes a row straight into that table.
 export default function CanvasPanel({
+  workspaceId,
   canvasId,
   reloadKey,
   onClose,
   onAction,
 }: {
+  workspaceId: string;
   canvasId: string;
   reloadKey: number;
   onClose: () => void;
@@ -45,6 +50,36 @@ export default function CanvasPanel({
   // Reload on a new canvas id or when the agent updates the same one.
   useEffect(() => load(), [load, reloadKey]);
 
+  // Form submit: a table-bound form writes a row; otherwise relay to the chat.
+  // The row is keyed by column name — the backend resolves names to column ids
+  // and coerces values, so the agent only needs the table id and column names.
+  const handleSubmit = useCallback(
+    async (block: CanvasBlock, values: Record<string, string>): Promise<SubmitResult> => {
+      const tableId = typeof block.table_id === "string" ? block.table_id : null;
+      if (!tableId) {
+        const fields = Array.isArray(block.fields) ? (block.fields as FieldDef[]) : [];
+        const parts = fields.map((f) => `${f.label || f.name}: ${values[f.name] ?? ""}`);
+        const title = typeof block.title === "string" ? block.title : "Form";
+        onAction(`${title} submitted — ${parts.join("; ")}`);
+        return { ok: true, message: "Sent to agent" };
+      }
+      const fields = Array.isArray(block.fields) ? (block.fields as FieldDef[]) : [];
+      const data: Record<string, string> = {};
+      for (const f of fields) {
+        const v = values[f.name];
+        if (v === undefined || v === "") continue; // skip blanks; backend fills defaults
+        data[f.column || f.label || f.name] = v;
+      }
+      try {
+        await createTableRow(workspaceId, tableId, data);
+        return { ok: true, message: "Added to table" };
+      } catch (e) {
+        return { ok: false, message: e instanceof ApiError ? e.message : "Couldn't save" };
+      }
+    },
+    [workspaceId, onAction],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-base">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -70,7 +105,7 @@ export default function CanvasPanel({
             {error}
           </div>
         ) : canvas ? (
-          <CanvasRenderer blocks={canvas.blocks} onAction={onAction} />
+          <CanvasRenderer blocks={canvas.blocks} onAction={onAction} onSubmit={handleSubmit} />
         ) : (
           <div className="text-[13px] text-muted">Loading…</div>
         )}
