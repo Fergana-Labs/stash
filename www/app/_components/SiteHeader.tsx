@@ -43,6 +43,12 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
             </div>
           </div>
           <Link
+            href="/teams"
+            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:block"
+          >
+            For teams
+          </Link>
+          <Link
             href="/docs"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
           >

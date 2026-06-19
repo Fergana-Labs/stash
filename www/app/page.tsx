@@ -1,5 +1,5 @@
-import HomePage from "./_components/HomePage";
+import PlgHomePage from "./_components/PlgHomePage";
 
 export default function Page() {
-  return <HomePage />;
+  return <PlgHomePage />;
 }

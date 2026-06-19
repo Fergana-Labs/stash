@@ -18,7 +18,9 @@ export default function HomePage() {
       <Hero />
       <Logos />
       <Problem />
+      <CompoundingLoop />
       <HowItWorks />
+      <Messaging />
       <KarpathyQuote />
       <Comparisons />
       <VisualizationsShowcase />
@@ -136,15 +138,16 @@ function Hero() {
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
           <div>
             <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-              Knowledge bases for
+              Build long-running
               <br />
-              the <span className="text-brand">agent era.</span>
+              <span className="text-brand">agents.</span>
             </h1>
 
             <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-              The one place your agents connect to all your data — GitHub, Drive,
-              Gmail, Notion, Slack and more. Plus an agent-native Drive to store
-              your agent-generated docs and data in.
+              Bring your own agent and give your team a workspace where every
+              session compounds. Stash connects your agents to all your data,
+              remembers what they did, and turns it into a moat that makes the
+              whole team faster the longer you run.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -284,6 +287,93 @@ function Problem() {
             an agent-native Drive in Markdown and HTML where sessions, files, and
             pages all land. Bundle any slice into a link you can publish or fork.
           </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const LOOP_STEPS: { n: string; title: string; body: string }[] = [
+  { n: "01", title: "Run your agent", body: "Bring your own — Claude Code, Cursor, Codex, OpenCode. Every session streams into Stash automatically." },
+  { n: "02", title: "Capture the work", body: "Transcripts, plans, docs, dashboards, tables — the output lands as real files instead of evaporating." },
+  { n: "03", title: "Build the memory", body: "It compounds into a shared, retrievable world model your whole team and their agents read from." },
+  { n: "04", title: "Get better next run", body: "The next agent starts where the last one left off. The moat deepens every time you run." },
+];
+
+// The compounding cycle is the core teams pitch: agents don't just run, they
+// leave the workspace smarter than they found it.
+function CompoundingLoop() {
+  return (
+    <section className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <EyebrowDot>The compounding cycle</EyebrowDot>
+        <h2 className="mt-4 max-w-[880px] text-balance font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink">
+          Agents that leave the workspace
+          <br />
+          <span className="font-medium text-dim">smarter than they found it.</span>
+        </h2>
+        <div className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {LOOP_STEPS.map((s, i) => (
+            <div
+              key={s.n}
+              className="relative flex flex-col rounded-[14px] border border-border bg-background p-6"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] tracking-[0.14em] text-muted">{s.n}</span>
+                {i < LOOP_STEPS.length - 1 ? (
+                  <span className="font-mono text-[16px] text-brand">→</span>
+                ) : (
+                  <span className="font-mono text-[16px] text-brand">↺</span>
+                )}
+              </div>
+              <h3 className="mt-5 font-display text-[18px] font-bold tracking-[-0.015em] text-ink">
+                {s.title}
+              </h3>
+              <p className="mt-2.5 text-[14px] leading-[1.6] text-dim">{s.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const MESSAGING: { label: string; body: string }[] = [
+  { label: "Bring your own agent", body: "Use the best engine for the job — Claude Code, Cursor, Codex, OpenCode. Stash is the agent-agnostic layer underneath, not another model to adopt." },
+  { label: "Continual learning", body: "Every session feeds the next. Your agents improve continuously instead of starting cold on each run." },
+  { label: "A compounding data moat", body: "The work your team does becomes proprietary context no competitor has — and it grows on its own, every run." },
+  { label: "Memory that takes action", body: "Not just facts to look up. Stash holds the processes and artifacts your agents act on, so memory does work instead of sitting still." },
+  { label: "Collaborate in a workspace", body: "Humans and agents read and write the same files in real time. Memory you can see, edit, and trust — not a per-agent black box." },
+  { label: "Memory-max, not token-max", body: "Optimizing for tokens is Goodhart's law in action. We optimize for what your agents actually remember and reuse." },
+  { label: "Permanent, not disposable", body: "Agents and their artifacts are throwaway today. Stash makes them durable — kept, searchable, and reusable across the team." },
+  { label: "Your agent's native language", body: "The whole workspace mounts as a VFS your agent can ls, find, and grep. No new API to learn — it speaks the shell it already knows." },
+  { label: "We do the maintenance", body: "We keep your integrations current and roll out the latest memory techniques, so you stay on the frontier without chasing it." },
+  { label: "Systematize tribal knowledge", body: "The institutional memory stuck in people's heads becomes shared context every agent and teammate can draw on." },
+  { label: "A world model, not an index", body: "Memory is a reasoning problem — staleness, consistency, stability. We prevent slop and model collapse, not just retrieve text." },
+  { label: "We coach your team", body: "The tooling moves fast. We help your team keep up with how to actually use agents well as the space changes." },
+];
+
+function Messaging() {
+  return (
+    <section className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="flex max-w-[880px] flex-col gap-4">
+          <EyebrowDot>Why Stash</EyebrowDot>
+          <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+            Memory is the moat.
+            <br />
+            <span className="font-medium text-dim">We treat it like one.</span>
+          </h2>
+        </div>
+        <div className="mt-14 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+          {MESSAGING.map((m) => (
+            <div key={m.label} className="flex flex-col gap-2.5 bg-background p-6">
+              <h3 className="font-display text-[16px] font-bold tracking-[-0.01em] text-ink">
+                {m.label}
+              </h3>
+              <p className="text-[13.5px] leading-[1.6] text-dim">{m.body}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>

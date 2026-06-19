@@ -14,9 +14,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stash · One place your agents connect to all your data",
+  title: "Stash · A workspace for your agents",
   description:
-    "The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack and more — plus an agent-native Drive in Markdown and HTML to write the work back into.",
+    "Bring your own agent and give it somewhere to work. Stash turns it into decks, dashboards, docs, and spreadsheets you can share — backed by a memory that compounds every time you use it.",
 };
 
 export default function RootLayout({
