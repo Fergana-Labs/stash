@@ -998,6 +998,7 @@ export function Footer() {
       links: [
         ["Connect your data", "/connect-your-data"],
         ["Agent-native Drive", "/agent-native-drive"],
+        ["Audit agent sessions", "/audit-agent-sessions"],
         ["Discover", "/discover"],
         ["Pricing", "/#pricing"],
         ["Docs", "/docs"],
