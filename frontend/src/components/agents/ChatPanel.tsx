@@ -17,10 +17,17 @@ export default function ChatPanel({
   workspaceId,
   sessionId,
   onSessionId,
+  onCanvas,
+  actionSignal,
 }: {
   workspaceId: string;
   sessionId: string | null;
   onSessionId: (id: string) => void;
+  // The agent rendered/updated a generative-UI canvas during a turn.
+  onCanvas?: (canvasId: string) => void;
+  // A canvas button/form interaction to send as the next message. The nonce
+  // makes repeat sends of the same text distinct so the effect re-fires.
+  actionSignal?: { text: string; nonce: number } | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -100,6 +107,7 @@ export default function ChatPanel({
               ...m,
               citations: (m.citations ?? []).filter((x) => x.id !== id),
             })),
+          onCanvas: (canvasId) => onCanvas?.(canvasId),
         });
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
@@ -110,8 +118,16 @@ export default function ChatPanel({
         abortRef.current = null;
       }
     },
-    [workspaceId, sessionId, streaming, onSessionId],
+    [workspaceId, sessionId, streaming, onSessionId, onCanvas],
   );
+
+  // Send a canvas interaction (button click / form submit) as the next turn.
+  const lastActionNonce = useRef(0);
+  useEffect(() => {
+    if (!actionSignal || actionSignal.nonce === lastActionNonce.current) return;
+    lastActionNonce.current = actionSignal.nonce;
+    void send(actionSignal.text);
+  }, [actionSignal, send]);
 
   return (
     <div className="flex h-full min-h-[520px] flex-col rounded-xl border border-border bg-base">

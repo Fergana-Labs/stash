@@ -9,6 +9,7 @@ import {
   RegisterResponse,
   User,
   UserSearchResult,
+  Canvas,
   Table,
   TableRow,
   TableWithWorkspace,
@@ -779,6 +780,20 @@ export async function listTables(
 
 export async function getTable(tableId: string): Promise<Table> {
   return apiFetch(`/api/v1/tables/${tableId}`);
+}
+
+// --- Canvas (agent-generated generative UI) ---
+
+export async function getCanvas(canvasId: string): Promise<Canvas> {
+  return apiFetch(`/api/v1/canvases/${canvasId}`);
+}
+
+export async function listCanvases(
+  workspaceId: string,
+  sessionId?: string
+): Promise<{ canvases: Canvas[] }> {
+  const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return apiFetch(`${scope(workspaceId)}/canvases${q}`);
 }
 
 export async function updateTable(

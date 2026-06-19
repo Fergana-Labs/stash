@@ -150,6 +150,24 @@ export interface TableWithWorkspace extends Table {
   workspace_name: string | null;
 }
 
+// --- Canvas (agent-generated generative UI) ---
+// A block is a `type` plus type-specific fields. The catalog of types is shared
+// between the agent prompt and CanvasRenderer, not pinned here, so new block
+// types ship without a type change.
+export type CanvasBlock = { type: string; [key: string]: unknown };
+
+export interface Canvas {
+  id: string;
+  workspace_id: string;
+  session_id: string | null;
+  title: string;
+  blocks: CanvasBlock[];
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Files ---
 
 export interface FileInfo {

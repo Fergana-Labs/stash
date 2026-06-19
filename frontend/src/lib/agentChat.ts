@@ -58,6 +58,8 @@ type StreamHandlers = {
   onText?: (delta: string) => void;
   onTool?: (citation: Citation) => void;
   onToolError?: (id: string) => void;
+  // The agent rendered/updated a generative-UI canvas; open it in the side panel.
+  onCanvas?: (canvasId: string) => void;
 };
 
 // POST a message and dispatch streamed events. Resolves when the stream ends.
@@ -114,6 +116,8 @@ export async function streamAgentChat(
         });
       } else if (evt.type === "tool_result" && evt.ok === false) {
         opts.onToolError?.(String(evt.id));
+      } else if (evt.type === "canvas" && typeof evt.id === "string") {
+        opts.onCanvas?.(evt.id);
       }
     }
   }

@@ -31,6 +31,7 @@ from claude_agent_sdk import (
 
 from ..config import settings
 from . import (
+    canvas_service,
     files_tree_service,
     memory_service,
     permission_service,
@@ -1132,6 +1133,126 @@ async def _batch_restore(args: dict) -> dict:
     return _text_result(json.dumps(result))
 
 
+# --- Canvas tools (generative UI) ------------------------------------------
+#
+# The canvas is the UI half of the agent: a panel rendered beside the chat. The
+# agent composes it from pre-built blocks (or an html escape hatch) and refines
+# it over the conversation. The block catalog below is the contract shared with
+# the frontend renderer (frontend/src/components/agents/CanvasRenderer.tsx).
+
+_CANVAS_BLOCKS_DOC = (
+    "`blocks` is an ordered list of UI blocks; each is an object with a `type`:\n"
+    "  heading: {type, text, level?:1|2|3}\n"
+    "  text:    {type, text}  — a paragraph of plain text\n"
+    "  stat:    {type, label, value, delta?}\n"
+    "  stats:   {type, items:[{label, value, delta?}]}  — a row of stat cards\n"
+    "  card:    {type, title?, body}\n"
+    "  table:   {type, columns:[str], rows:[[cell, ...]]}\n"
+    "  list:    {type, ordered?:bool, items:[str]}\n"
+    "  chart:   {type, chartType:'bar'|'line', title?, data:[{label, value}]}\n"
+    "  form:    {type, title?, fields:[{name, label, type?:'text'|'textarea'|'select', "
+    "options?:[str]}], submitLabel?}  — submitting sends the values back to you\n"
+    "  button:  {type, label, message}  — clicking sends `message` back to you\n"
+    "  divider: {type}\n"
+    "  html:    {type, html, height?:int}  — custom HTML in a sandboxed frame; "
+    "use only when no block fits\n"
+    "Prefer the pre-built blocks; reach for html only for layouts they can't express."
+)
+
+
+@tool(
+    "create_canvas",
+    "Render a generative UI canvas in the panel beside the chat. Use this to SHOW "
+    "the user something — a dashboard, comparison, summary, chart, or a small "
+    "form/buttons to act on — instead of only describing it in text. Returns the "
+    "canvas id; keep it to update the same canvas later.\n" + _CANVAS_BLOCKS_DOC,
+    {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "blocks": {"type": "array", "items": {"type": "object"}, "default": []},
+        },
+        "required": ["title", "blocks"],
+    },
+)
+async def _create_canvas(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    canvas = await canvas_service.create_canvas(
+        workspace_id,
+        args["title"],
+        args.get("blocks") or [],
+        user_id,
+        session_id=_current_session(),
+    )
+    return _text_result(json.dumps({"id": str(canvas["id"]), "title": canvas["title"]}))
+
+
+@tool(
+    "update_canvas",
+    "Replace the title and/or blocks of an existing canvas by id — refine the UI "
+    "you already rendered rather than creating duplicates. Omit a field to leave "
+    "it unchanged; `blocks` replaces the whole list.\n" + _CANVAS_BLOCKS_DOC,
+    {
+        "type": "object",
+        "properties": {
+            "canvas_id": {"type": "string"},
+            "title": {"type": "string"},
+            "blocks": {"type": "array", "items": {"type": "object"}},
+        },
+        "required": ["canvas_id"],
+    },
+)
+async def _update_canvas(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    canvas = await canvas_service.get_canvas(UUID(args["canvas_id"]))
+    if not canvas or canvas["workspace_id"] != workspace_id:
+        return _text_result(json.dumps({"error": "canvas not found"}))
+    updated = await canvas_service.update_canvas(
+        UUID(args["canvas_id"]),
+        _current_user(),
+        title=args.get("title"),
+        blocks=args.get("blocks"),
+    )
+    return _text_result(json.dumps({"id": str(updated["id"]), "title": updated["title"]}))
+
+
+@tool(
+    "read_canvas",
+    "Read a canvas (title + blocks) by id — call before update_canvas to refine it.",
+    {
+        "type": "object",
+        "properties": {"canvas_id": {"type": "string"}},
+        "required": ["canvas_id"],
+    },
+)
+async def _read_canvas(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    canvas = await canvas_service.get_canvas(UUID(args["canvas_id"]))
+    if not canvas or canvas["workspace_id"] != workspace_id:
+        return _text_result(json.dumps({"error": "canvas not found"}))
+    return _text_result(
+        json.dumps(
+            {"id": str(canvas["id"]), "title": canvas["title"], "blocks": canvas["blocks"]}
+        )
+    )
+
+
+@tool(
+    "list_canvases",
+    "List canvases in this Stash Workspace (most recent first): id, title, updated_at.",
+    {"type": "object", "properties": {}},
+)
+async def _list_canvases(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    canvases = await canvas_service.list_canvases(workspace_id)
+    out = [
+        {"id": str(c["id"]), "title": c["title"], "updated_at": str(c["updated_at"])}
+        for c in canvases
+    ]
+    return _text_result(json.dumps(out))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
@@ -1152,6 +1273,10 @@ _TOOLS_BY_NAME = {
     "batch_move": _batch_move,
     "batch_delete": _batch_delete,
     "batch_restore": _batch_restore,
+    "create_canvas": _create_canvas,
+    "update_canvas": _update_canvas,
+    "read_canvas": _read_canvas,
+    "list_canvases": _list_canvases,
     "grep_pages": _grep_pages,
     "list_files": _list_files,
     "read_file": _read_file,

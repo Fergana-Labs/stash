@@ -3,6 +3,7 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
+import CanvasPanel from "../../../../../components/agents/CanvasPanel";
 import ChatPanel from "../../../../../components/agents/ChatPanel";
 
 // Agents is a chat surface. Each tab is a stored Session, so its session_id and
@@ -42,6 +43,15 @@ function AgentsPageInner() {
   const [nextId, setNextId] = useState(initialTabs.nextId);
   const [active, setActive] = useState(initialTabs.active);
   const restored = useRef(false);
+  // The generative-UI canvas open in each tab's side panel, and the pending
+  // canvas→chat action for each tab. Kept out of localStorage: a canvas is a
+  // stored workspace object, but which one is open is session-ephemeral.
+  const [canvasByTab, setCanvasByTab] = useState<
+    Record<number, { id: string; reloadKey: number }>
+  >({});
+  const [actionByTab, setActionByTab] = useState<
+    Record<number, { text: string; nonce: number }>
+  >({});
   // Resume a specific chat from a `?resume=<sessionId>` link (e.g. from the
   // Agent Sessions list).
 
@@ -117,9 +127,33 @@ function AgentsPageInner() {
     setChats((c) => c.map((t) => (t.id === id ? { ...t, sessionId } : t)));
   }
 
+  // Open (or refresh, when the agent updates the same id) a tab's canvas.
+  function openCanvas(tabId: number, canvasId: string) {
+    setCanvasByTab((prev) => ({
+      ...prev,
+      [tabId]: { id: canvasId, reloadKey: (prev[tabId]?.reloadKey ?? 0) + 1 },
+    }));
+  }
+
+  function closeCanvas(tabId: number) {
+    setCanvasByTab((prev) => {
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+  }
+
+  // A canvas button/form interaction becomes the chat's next message.
+  function canvasAction(tabId: number, message: string) {
+    setActionByTab((prev) => ({
+      ...prev,
+      [tabId]: { text: message, nonce: (prev[tabId]?.nonce ?? 0) + 1 },
+    }));
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col px-4 py-5 sm:px-6 lg:px-8">
         <div className="mb-4 flex min-w-0 items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate text-[20px] font-semibold text-foreground">
@@ -173,16 +207,37 @@ function AgentsPageInner() {
 
         <div className="min-h-0 flex-1 pt-4">
           {/* All panels stay mounted (toggled with `hidden`) so a chat keeps
-              its transcript, scroll, and in-flight stream when you switch tabs. */}
-          {chats.map((t) => (
-            <div key={t.id} className={active === t.id ? "h-full" : "hidden"}>
-              <ChatPanel
-                workspaceId={workspaceId}
-                sessionId={t.sessionId}
-                onSessionId={(id) => setChatSession(t.id, id)}
-              />
-            </div>
-          ))}
+              its transcript, scroll, and in-flight stream when you switch tabs.
+              When a tab has a canvas open it splits into chat + canvas. */}
+          {chats.map((t) => {
+            const canvas = canvasByTab[t.id];
+            return (
+              <div
+                key={t.id}
+                className={active === t.id ? "flex h-full min-h-0 gap-4" : "hidden"}
+              >
+                <div className={canvas ? "min-w-0 flex-1" : "mx-auto w-full max-w-3xl"}>
+                  <ChatPanel
+                    workspaceId={workspaceId}
+                    sessionId={t.sessionId}
+                    onSessionId={(id) => setChatSession(t.id, id)}
+                    onCanvas={(canvasId) => openCanvas(t.id, canvasId)}
+                    actionSignal={actionByTab[t.id] ?? null}
+                  />
+                </div>
+                {canvas && (
+                  <div className="min-w-0 flex-1">
+                    <CanvasPanel
+                      canvasId={canvas.id}
+                      reloadKey={canvas.reloadKey}
+                      onClose={() => closeCanvas(t.id)}
+                      onAction={(message) => canvasAction(t.id, message)}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

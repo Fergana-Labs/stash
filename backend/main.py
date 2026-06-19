@@ -22,6 +22,7 @@ from .routers import (
     analytics,
     batch,
     billing,
+    canvases,
     collab,
     demo,
     discover,
@@ -119,6 +120,8 @@ app.include_router(files_tree.canonical_router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)
 app.include_router(tables.router)
+app.include_router(canvases.ws_router)
+app.include_router(canvases.router)
 app.include_router(files.ws_router)
 app.include_router(files.canonical_router)
 app.include_router(batch.router)

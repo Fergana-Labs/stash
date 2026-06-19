@@ -21,6 +21,7 @@ it succeeded), and a final `end` marker.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -39,7 +40,24 @@ from .llm import ModelTier, _model_for
 
 logger = logging.getLogger(__name__)
 
+# Tools whose result the UI acts on beyond a citation: a canvas tool returns the
+# id of the generative-UI panel, which we surface as a `canvas` event so the
+# frontend opens/refreshes that panel live during the turn.
+_UI_TOOLS = frozenset({"create_canvas", "update_canvas"})
+
 _client: AsyncAnthropic | None = None
+
+
+def _canvas_event(name: str, text: str) -> dict | None:
+    """Build a `canvas` event from a canvas tool's JSON result, or None."""
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    canvas_id = data.get("id")
+    if not canvas_id:
+        return None
+    return {"type": "canvas", "id": canvas_id, "name": name}
 
 
 def _get_client() -> AsyncAnthropic:
@@ -200,6 +218,7 @@ async def stream_tool_loop(
             for use in tool_uses:
                 executor = _TOOLS_BY_NAME.get(use["name"])
                 ok = True
+                canvas_event: dict | None = None
                 if executor is None:
                     ok = False
                     logger.warning("agent requested unknown tool: %s", use["name"])
@@ -222,6 +241,8 @@ async def stream_tool_loop(
                                 "content": text or "(empty)",
                             }
                         )
+                        if use["name"] in _UI_TOOLS:
+                            canvas_event = _canvas_event(use["name"], text)
                     except Exception as exc:
                         ok = False
                         logger.error(
@@ -243,6 +264,8 @@ async def stream_tool_loop(
                 # as a hang. The flag lets the UI drop a citation for a tool that
                 # errored rather than claim it grounded the answer.
                 yield {"type": "tool_result", "id": use["id"], "name": use["name"], "ok": ok}
+                if canvas_event is not None:
+                    yield canvas_event
 
             messages.append({"role": "user", "content": tool_results})
     finally:

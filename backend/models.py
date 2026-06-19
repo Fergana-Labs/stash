@@ -488,6 +488,39 @@ class TableListResponse(BaseModel):
     tables: list[TableResponse]
 
 
+# --- Canvas (agent-generated generative UI) ---
+# Blocks are intentionally freeform dicts: the catalog of block types is owned
+# by the agent prompt + the frontend renderer, not pinned in the API schema, so
+# new block types ship without a model change.
+
+
+class CanvasCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    blocks: list[dict] = Field(default_factory=list)
+    session_id: str | None = None
+
+
+class CanvasUpdateRequest(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=255)
+    blocks: list[dict] | None = None
+
+
+class CanvasResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    session_id: str | None = None
+    title: str
+    blocks: list[dict]
+    created_by: UUID
+    updated_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CanvasListResponse(BaseModel):
+    canvases: list[CanvasResponse]
+
+
 class ColumnAddRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     type: str = Field(

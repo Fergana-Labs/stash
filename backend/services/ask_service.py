@@ -97,7 +97,7 @@ async def stream_chat(
     yield _sse({"type": "session", "session_id": session_id})
 
     sources = await source_service.list_sources(workspace_id, user_id)
-    system = prompts.render_ask_system(workspace_name, sources)
+    system = prompts.render_ask_system(workspace_name, sources, can_render_ui=True)
 
     answer: list[str] = []
     async for event in tool_loop.stream_tool_loop(
