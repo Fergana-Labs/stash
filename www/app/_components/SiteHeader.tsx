@@ -38,21 +38,10 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
                 <UseCaseItem href="/agent-native-drive" title="Agent-native Drive" desc="A workspace agents read and write like a repo." />
                 <UseCaseItem href="/memory" title="Memory" desc="Best-in-class retrieval: wiki + vectors + grep." />
                 <UseCaseItem href="/audit-agent-sessions" title="Audit agent sessions" desc="Onboard, coach, and monitor like Granola or Gong." />
+                <UseCaseItem href="/skills" title="Skills" desc="Bundle repeatable processes, share them, fork them." />
               </div>
             </div>
           </div>
-          <Link
-            href="/pages"
-            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
-          >
-            Share docs
-          </Link>
-          <Link
-            href="/discover"
-            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
-          >
-            Discover
-          </Link>
           <Link
             href="/docs"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"

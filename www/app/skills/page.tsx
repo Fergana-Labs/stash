@@ -6,43 +6,39 @@ import SiteHeader from "../_components/SiteHeader";
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export const metadata: Metadata = {
-  title: "Agent-native Drive · Stash",
+  title: "Skills · Stash",
   description:
-    "An agent-native Google Drive in Markdown and HTML. Real-time collaborative editing for you and your agents, reachable through the CLI, MCP, and API.",
+    "Package any repeatable process into a Skill — a folder of pages, files, prompts, and sessions your agents can run. Share it with a link, fork it, and keep it in sync.",
 };
 
 const FEATURES = [
   [
-    "Markdown & HTML, natively",
-    "Pages are real Markdown and HTML — plus CSV, PDF, and images. The formats your agent already reads and writes, not a proprietary block format.",
+    "A Skill is a folder",
+    "Just a folder with a SKILL.md and the pages, files, and sessions it needs. No proprietary format — your agent reads it like a repo.",
   ],
   [
-    "WYSIWYG HTML editing",
-    "When your agent builds an HTML page — a report, a dashboard, a deck — you edit it visually in a WYSIWYG editor. Tweak the result by hand without touching the markup.",
+    "Bundle a repeatable process",
+    "Capture how a task actually gets done — the steps, the context, the examples — into one Skill your team and their agents can run again.",
   ],
   [
-    "Real-time collaboration",
-    "You and your agent edit the same page at the same time — two cursors at once. Edits save automatically.",
+    "Share with a link",
+    "Publish a Skill public on Discover or share it privately with specific people. They bring their own agents and run the same process.",
   ],
   [
-    "A virtual filesystem",
-    "The whole Drive mounts as a filesystem your agent can ls, find, and rg — pages, files, and session transcripts side by side.",
+    "Fork and stay in sync",
+    "Anyone can fork a Skill into their own workspace, and it stays live with the source as it changes — improvements flow downstream.",
   ],
   [
-    "Reachable everywhere",
-    "Through the CLI, the Stash MCP server, or the HTTP API. Point Claude Code, Cursor, Codex, or OpenCode at it and they read and write directly.",
+    "Run it anywhere",
+    "Skills are reachable through the CLI, the Stash MCP server, and the API. Point Claude Code, Cursor, Codex, or OpenCode at one and it loads the process.",
   ],
   [
-    "Sessions land here too",
-    "Every coding-agent session streams in automatically, indexed alongside your docs — no manual upload, no copy-paste.",
-  ],
-  [
-    "Share a slice",
-    "Bundle any set of pages into a Skill with a link, or share a folder with specific people — teammates and their agents work from the same docs.",
+    "Compounds over time",
+    "Promote your best sessions and docs into Skills, so a process you figure out once becomes something the whole team repeats.",
   ],
 ];
 
-export default function AgentNativeDrivePage() {
+export default function SkillsPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -51,18 +47,17 @@ export default function AgentNativeDrivePage() {
         <div className="mx-auto max-w-[1200px] px-7">
           <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Agent-native Drive
+            Skills
           </p>
           <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-            A Google Drive your{" "}
-            <span className="text-brand">agents can actually use.</span>
+            Package any repeatable process into a{" "}
+            <span className="text-brand">Skill.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
-            Write with your agent in real time on pages that are real Markdown and
-            HTML — and when it builds an HTML page, edit the result visually in a
-            WYSIWYG editor. The whole Drive — pages, files, and session
-            transcripts — is reachable through the CLI, MCP, and API, so your
-            agent reads and writes it as naturally as you do.
+            A Skill bundles the pages, files, prompts, and sessions behind a
+            workflow into one folder your agents can run. Share it with a link,
+            fork it into your own workspace, and keep it in sync — so a process
+            you figure out once becomes something your whole team repeats.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link
@@ -72,10 +67,10 @@ export default function AgentNativeDrivePage() {
               Start free →
             </Link>
             <Link
-              href="/docs/quickstart"
+              href="/discover"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Quickstart →
+              Browse Discover →
             </Link>
           </div>
         </div>
@@ -84,7 +79,7 @@ export default function AgentNativeDrivePage() {
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Built for the way agents read and write.
+            Repeatable processes, packaged and shared.
           </h2>
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(([name, blurb]) => (
@@ -106,43 +101,36 @@ export default function AgentNativeDrivePage() {
         <div className="mx-auto max-w-[1200px] px-7">
           <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Sharing
+            Discover
           </p>
           <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Sharing is built in, not bolted on.
+            Public Skills from teams building in the open.
           </h2>
           <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-foreground">
-            Everything in your Drive is one step away from being shared — with a
-            teammate, a client, or the public. The people you share with bring
-            their own agents, and everyone works from the same source.
+            Discover is where published Skills live. Browse sessions, pages,
+            tables, and files from public Skills, open one to read it without
+            signing in, and fork the ones you want into your own workspace.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
-            <Point title="Publish a doc or site">
-              Publish a Markdown doc or a mini HTML site and get a public view
-              link plus a private edit link. No signup for the people you share
-              with.
+            <Point title="Publish in one step">
+              Turn any folder into a public Skill with a link. It shows up on
+              Discover for anyone to find, read, and fork.
             </Point>
-            <Point title="Share a folder">
-              Give specific people read or write access to a folder. Their agents
-              get the same access, so context is shared, not copy-pasted.
+            <Point title="Browse what others ship">
+              See how other teams package their workflows, and read the real
+              sessions and docs behind them — no signup to look.
             </Point>
-            <Point title="Everyone edits one source">
-              Shared pages stay live — teammates and their agents edit the same
-              doc, not a copy that drifts out of date.
+            <Point title="Fork into your workspace">
+              Pull a Skill into your own Stash and run it with your agents. It
+              stays live with the source as the author improves it.
             </Point>
           </div>
-          <div className="mt-10 flex flex-wrap gap-3">
+          <div className="mt-10">
             <Link
-              href="/pages"
+              href="/discover"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Share a doc →
-            </Link>
-            <Link
-              href="/skills"
-              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              Bundle a Skill →
+              Browse Discover →
             </Link>
           </div>
         </div>
@@ -151,7 +139,7 @@ export default function AgentNativeDrivePage() {
       <section className="bg-surface py-28 text-center">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
-            Give your agents somewhere to write.
+            Build a process once. Share it everywhere.
           </h2>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
@@ -161,10 +149,10 @@ export default function AgentNativeDrivePage() {
               Start free →
             </Link>
             <Link
-              href="/connect-your-data"
+              href="/agent-native-drive"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Connect your data →
+              Agent-native Drive →
             </Link>
           </div>
         </div>
