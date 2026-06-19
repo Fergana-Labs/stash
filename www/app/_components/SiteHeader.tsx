@@ -37,6 +37,7 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
                 <UseCaseItem href="/connect-your-data" title="Connect your data" desc="Plug in GitHub, Drive, Gmail, Notion, Slack." />
                 <UseCaseItem href="/agent-native-drive" title="Agent-native Drive" desc="A workspace agents read and write like a repo." />
                 <UseCaseItem href="/memory" title="Memory" desc="Best-in-class retrieval: wiki + vectors + grep." />
+                <UseCaseItem href="/audit-agent-sessions" title="Audit agent sessions" desc="Onboard, coach, and monitor like Granola or Gong." />
               </div>
             </div>
           </div>
