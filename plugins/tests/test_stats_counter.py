@@ -53,7 +53,7 @@ def test_reset_stats_clears(tmp_path):
 
 
 def test_stream_tool_use_writes_counter(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"agent_name": "h", "client": "claude_code"}
     state = {"session_id": "s1"}
     c = _FakeClient()
 
@@ -87,7 +87,7 @@ def test_stream_tool_use_writes_counter(tmp_path):
 
 
 def test_stream_session_end_reads_counter(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"agent_name": "h", "client": "claude_code"}
     state = {
         "session_id": "s1",
         "stats": {
@@ -110,7 +110,7 @@ def test_stream_session_end_reads_counter(tmp_path):
 
 
 def test_stream_session_end_is_idempotent_for_same_session(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"agent_name": "h", "client": "claude_code"}
     state = {"session_id": "s1"}
     c = _FakeClient()
 
@@ -121,7 +121,7 @@ def test_stream_session_end_is_idempotent_for_same_session(tmp_path):
 
 
 def test_stream_session_end_with_no_prior_tool_use(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"agent_name": "h", "client": "claude_code"}
     state = {"session_id": "s1"}
     c = _FakeClient()
 

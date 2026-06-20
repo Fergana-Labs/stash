@@ -61,14 +61,13 @@ def test_failed_push_enqueues(tmp_path):
     client = _make_client(tmp_path, fail_first_n=1)
     with pytest.raises(Exception):
         client.push_event(
-            workspace_id="ws-1",
             agent_name="a",
             event_type="tool_use",
             content="x",
         )
     queued = _queue_lines(tmp_path)
     assert len(queued) == 1
-    assert queued[0]["path"] == "/api/v1/workspaces/ws-1/sessions/events"
+    assert queued[0]["path"] == "/api/v1/me/sessions/events"
     assert queued[0]["body"]["event_type"] == "tool_use"
     assert queued[0]["body"]["content"] == "x"
     status = read_upload_status(tmp_path)
@@ -85,11 +84,11 @@ def test_successful_push_drains_backlog(tmp_path):
     client = _make_client(tmp_path, fail_first_n=2)
     for i in range(2):
         with pytest.raises(Exception):
-            client.push_event(workspace_id="ws-1", agent_name="a", event_type="t", content=f"e{i}")
+            client.push_event(agent_name="a", event_type="t", content=f"e{i}")
     assert len(_queue_lines(tmp_path)) == 2
 
     # Third push: succeeds + drains backlog.
-    client.push_event(workspace_id="ws-1", agent_name="a", event_type="t", content="e2")
+    client.push_event(agent_name="a", event_type="t", content="e2")
 
     # Queue should be empty after drain.
     assert _queue_lines(tmp_path) == []
@@ -106,13 +105,13 @@ def test_drain_stops_on_first_failure(tmp_path):
     """If backend is still down during drain, leftover entries stay queued."""
     client = _make_client(tmp_path, fail_first_n=1)
     with pytest.raises(Exception):
-        client.push_event(workspace_id="ws-1", agent_name="a", event_type="t", content="e0")
+        client.push_event(agent_name="a", event_type="t", content="e0")
     assert len(_queue_lines(tmp_path)) == 1
 
     # Force the recorder to fail the next 5 POSTs (live push + drain attempts).
     client._http.fail_first_n = len(client._http.calls) + 5
     with pytest.raises(Exception):
-        client.push_event(workspace_id="ws-1", agent_name="a", event_type="t", content="e1")
+        client.push_event(agent_name="a", event_type="t", content="e1")
 
     # Both events should still be queued (live push failed; drain never ran).
     queued = _queue_lines(tmp_path)
@@ -125,5 +124,5 @@ def test_no_data_dir_no_queue(tmp_path):
     client = StashClient(base_url="https://example.test", api_key="k")
     client._http = _Recorder(fail_first_n=1)
     with pytest.raises(Exception):
-        client.push_event(workspace_id="ws-1", agent_name="a", event_type="t", content="x")
+        client.push_event(agent_name="a", event_type="t", content="x")
     assert not (tmp_path / QUEUE_FILENAME).exists()

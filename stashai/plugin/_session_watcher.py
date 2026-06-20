@@ -5,7 +5,7 @@ The session row is created eagerly at session start so the URL is known
 immediately. Session content flows in live via hooks.push_event — this
 watcher no longer needs to upload the transcript itself.
 
-argv: script.py <agent_pid> <session_id> <workspace_id> <agent_name>
+argv: script.py <agent_pid> <session_id> <agent_name>
                 <base_url> <api_key> <cwd> <data_dir> <session_row_id>
                 [transcript_path]
 """
@@ -60,7 +60,6 @@ def main() -> None:
         _,
         agent_pid_str,
         session_id,
-        workspace_id,
         agent_name,
         base_url,
         api_key,
@@ -108,7 +107,6 @@ def main() -> None:
         transcript_path=transcript_path,
         cwd=cwd,
         files_touched=files_touched,
-        workspace_id=workspace_id,
         session_id=session_id,
         agent_name=agent_name,
         base_url=base_url,

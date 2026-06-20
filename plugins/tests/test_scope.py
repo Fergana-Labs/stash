@@ -1,103 +1,63 @@
-"""Scope gate — manifest presence is the only opt-in signal.
+"""Scope gate — global, single-player streaming switch.
 
-The gate checks for a flat `.stash` file walking up from cwd:
-- Repo-level `.stash` in cwd or ancestor → in scope.
-- Nothing → out of scope.
+There is no `.stash` manifest and no cwd/path-based scope. A session streams
+iff the plugin is configured (an `api_key` is present in the user CLI config)
+AND streaming has not been globally stopped (`stopped_streaming` flag). The
+`cwd` argument is kept only for call-site compatibility.
 
-Regression test: out-of-scope sessions must short-circuit before any event
-reaches the transport.
+Regression test: when the global gate is off, no event reaches the transport.
 """
 
 from __future__ import annotations
+
+import json
 
 from stashai.plugin import scope as scope_mod
 from stashai.plugin.event import HookEvent
 
 
-def test_manifest_in_cwd_is_in_scope(tmp_path):
-    (tmp_path / ".stash").write_text('{"workspace_id": "test"}')
-    assert scope_mod.cwd_in_scope(str(tmp_path))
+def _write_config(tmp_path, data: dict):
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps(data))
+    return cfg
 
 
-def test_manifest_in_ancestor_is_in_scope(tmp_path):
-    (tmp_path / ".stash").write_text('{"workspace_id": "test"}')
-    sub = tmp_path / "packages" / "foo"
-    sub.mkdir(parents=True)
-    assert scope_mod.cwd_in_scope(str(sub))
+def test_configured_and_not_stopped_streams(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k"})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert scope_mod.streaming_enabled()
+    assert scope_mod.cwd_in_scope("/anywhere")
 
 
-def test_no_manifest_rejected(tmp_path):
-    assert not scope_mod.cwd_in_scope(str(tmp_path))
+def test_not_configured_does_not_stream(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"stopped_streaming": False})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert not scope_mod.streaming_enabled()
+    assert not scope_mod.cwd_in_scope("/anywhere")
 
 
-def test_empty_cwd_rejected():
-    assert not scope_mod.cwd_in_scope("")
-    assert not scope_mod.cwd_in_scope(None)
+def test_stopped_does_not_stream(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "stopped_streaming": True})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert not scope_mod.streaming_enabled()
+    assert not scope_mod.cwd_in_scope("/anywhere")
 
 
-def test_repo_manifest_wins_over_shallower_one(tmp_path):
-    (tmp_path / ".stash").write_text('{"workspace_id": "A"}')
-
-    repo = tmp_path / "projects" / "repo"
-    repo.mkdir(parents=True)
-    (repo / ".stash").write_text('{"workspace_id": "B"}')
-
-    assert scope_mod.cwd_in_scope(str(repo))
-    assert scope_mod.cwd_in_scope(str(tmp_path))
+def test_missing_config_does_not_stream(tmp_path, monkeypatch):
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", tmp_path / "config.json")
+    assert not scope_mod.streaming_enabled()
+    assert not scope_mod.cwd_in_scope("/anywhere")
 
 
-def test_worktree_resolves_to_main_repo_manifest(tmp_path, monkeypatch):
-    """A git worktree without its own manifest should find the main repo's manifest."""
-    main_repo = tmp_path / "main-repo"
-    main_repo.mkdir()
-    (main_repo / ".stash").write_text('{"workspace_id": "W"}')
-
-    worktree = tmp_path / "worktree-checkout"
-    worktree.mkdir()
-
-    monkeypatch.setattr(scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo))
-
-    manifest = scope_mod.find_manifest(str(worktree))
-    assert manifest is not None
-    assert manifest["workspace_id"] == "W"
+def test_cwd_is_ignored(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k"})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert scope_mod.cwd_in_scope("")
+    assert scope_mod.cwd_in_scope(None)
+    assert scope_mod.cwd_in_scope("/some/deep/path")
 
 
-def test_worktree_manifest_beats_global(tmp_path, monkeypatch):
-    """Main repo manifest takes precedence over an ancestor's .stash file."""
-    main_repo = tmp_path / "main-repo"
-    main_repo.mkdir()
-    (main_repo / ".stash").write_text('{"workspace_id": "company"}')
-
-    (tmp_path / ".stash").write_text('{"workspace_id": "personal"}')
-
-    worktree = tmp_path / "worktrees" / "feature"
-    worktree.mkdir(parents=True)
-
-    monkeypatch.setattr(scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo))
-
-    manifest = scope_mod.find_manifest(str(worktree))
-    assert manifest is not None
-    assert manifest["workspace_id"] == "company"
-
-
-def test_main_repo_manifest_beats_worktree_local(tmp_path, monkeypatch):
-    """Main repo manifest wins even if the worktree has its own."""
-    main_repo = tmp_path / "main-repo"
-    main_repo.mkdir()
-    (main_repo / ".stash").write_text('{"workspace_id": "main"}')
-
-    worktree = tmp_path / "worktree-checkout"
-    worktree.mkdir()
-    (worktree / ".stash").write_text('{"workspace_id": "local"}')
-
-    monkeypatch.setattr(scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo))
-
-    manifest = scope_mod.find_manifest(str(worktree))
-    assert manifest is not None
-    assert manifest["workspace_id"] == "main"
-
-
-# --- Regression: the gate must short-circuit live events -------------------
+# --- Regression: the global gate must short-circuit live events ------------
 
 
 class _RecordingClient:
@@ -109,33 +69,33 @@ class _RecordingClient:
         return {"ok": True}
 
 
-def test_out_of_scope_blocks_live_events(monkeypatch):
+def test_gate_off_blocks_live_events(monkeypatch):
     from stashai.plugin import hooks
-    from stashai.plugin import scope as s
     from stashai.plugin.hooks import stream_user_message
 
-    monkeypatch.setattr(s, "cwd_in_scope", lambda cwd: False)
-    monkeypatch.setattr(hooks, "cwd_in_scope", lambda cwd: False)
+    monkeypatch.setattr(hooks, "streaming_enabled", lambda: False)
 
     c = _RecordingClient()
     stream_user_message(
         c,
-        {"workspace_id": "ws1", "agent_name": "a"},
+        {"agent_name": "a"},
         {"session_id": "s"},
         "hello",
-        HookEvent(kind="prompt", cwd="/other"),
+        HookEvent(kind="prompt", cwd="/anywhere"),
     )
     assert c.calls == []
 
 
-def test_in_scope_allows_live_events(monkeypatch):
+def test_gate_on_allows_live_events(monkeypatch):
+    from stashai.plugin import hooks
     from stashai.plugin.hooks import stream_user_message
 
-    # Autouse fixture in conftest already patches cwd_in_scope → True.
+    monkeypatch.setattr(hooks, "streaming_enabled", lambda: True)
+
     c = _RecordingClient()
     stream_user_message(
         c,
-        {"workspace_id": "ws1", "agent_name": "a"},
+        {"agent_name": "a"},
         {"session_id": "s"},
         "hello",
         HookEvent(kind="prompt", cwd="/anywhere"),

@@ -1,75 +1,37 @@
-"""Plugin hooks only push events when a `.stash` manifest file is discoverable
-from cwd (in the current directory or any ancestor), or from the main worktree
-when cwd is inside a git worktree.
+"""Global streaming gate for the plugin.
+
+There is no `.stash` manifest and no cwd/path-based scope anymore. A session
+streams iff the plugin is configured (an api_key is present in the user CLI
+config) and streaming has not been globally stopped (`stopped_streaming` in the
+user config). The `cwd` argument is kept only for call-site compatibility; it
+does not affect the result.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
-_MANIFEST_FILE = ".stash"
+_CONFIG_FILE = Path.home() / ".stash" / "config.json"
 
 
-def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
-    """Return (worktree_toplevel, main_worktree_root) for cwd.
-
-    For linked worktrees these differ; for the main worktree they're the same.
-    Returns (None, None) if not inside a git repo.
-    """
+def _read_user_config() -> dict:
+    if not _CONFIG_FILE.exists():
+        return {}
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel", "--git-common-dir"],
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-        )
-        if result.returncode != 0:
-            return None, None
-        lines = result.stdout.strip().splitlines()
-        if len(lines) < 2:
-            return None, None
-        toplevel = Path(lines[0]).resolve()
-        common_dir = Path(lines[1])
-        if not common_dir.is_absolute():
-            common_dir = (toplevel / common_dir).resolve()
-        main_root = common_dir.parent
-        return toplevel, main_root
+        return json.loads(_CONFIG_FILE.read_text())
     except Exception:
-        return None, None
+        return {}
 
 
-def find_manifest(cwd: str | None) -> dict | None:
-    """Return the parsed `.stash` manifest for cwd.
-
-    If inside a git repo, checks the main worktree root (works for both
-    regular checkouts and linked worktrees). Falls back to walking up
-    from cwd for non-git directories.
-    """
-    if not cwd:
-        return None
-    cur = Path(cwd).resolve()
-
-    _toplevel, main_root = _git_repo_info(cur)
-    if main_root:
-        main_path = main_root / _MANIFEST_FILE
-        if main_path.is_file():
-            try:
-                return json.loads(main_path.read_text())
-            except Exception:
-                return None
-
-    for parent in [cur, *cur.parents]:
-        path = parent / _MANIFEST_FILE
-        if path.is_file():
-            try:
-                return json.loads(path.read_text())
-            except Exception:
-                return None
-    return None
+def streaming_enabled() -> bool:
+    """True if the plugin is configured and not globally stopped."""
+    cfg = _read_user_config()
+    if not cfg.get("api_key"):
+        return False
+    return not cfg.get("stopped_streaming")
 
 
-def cwd_in_scope(cwd: str | None) -> bool:
-    """True if a `.stash` manifest file exists in cwd or any ancestor."""
-    return find_manifest(cwd) is not None
+def cwd_in_scope(cwd: str | None = None) -> bool:
+    """True if streaming is globally enabled. `cwd` is ignored."""
+    return streaming_enabled()

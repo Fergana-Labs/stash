@@ -41,7 +41,6 @@ def main():
         data_dir=DATA_DIR,
         transcript_path=event.transcript_path,
         session_id=state.get("session_id", ""),
-        workspace_id=cfg["workspace_id"],
         agent_name=cfg["agent_name"],
         cwd=event.cwd,
         base_url=cfg["api_endpoint"],

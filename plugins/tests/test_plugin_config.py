@@ -36,13 +36,40 @@ def _clear_claude_env(monkeypatch):
         "CLAUDE_PLUGIN_USER_CONFIG_api_key",
         "CLAUDE_PLUGIN_USER_CONFIG_agent_name",
         "CLAUDE_PLUGIN_USER_CONFIG_api_endpoint",
-        "CLAUDE_PLUGIN_USER_CONFIG_workspace_id",
     ):
         monkeypatch.delenv(key, raising=False)
 
 
 @pytest.mark.parametrize("config_path", CONFIG_PATHS, ids=lambda p: str(p.relative_to(ROOT)))
-def test_plugin_config_uses_dot_stash_manifest_base_url(config_path, tmp_path, monkeypatch):
+def test_plugin_config_reads_user_scoped_config(config_path, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    home_config = home / ".stash" / "config.json"
+    home_config.parent.mkdir(parents=True)
+    home_config.write_text(
+        json.dumps(
+            {
+                "base_url": "https://user.example",
+                "api_key": "user-key",
+                "username": "alice-agent",
+            }
+        )
+    )
+    repo.mkdir()
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(repo)
+
+    cfg = _load_config(config_path).get_config()
+
+    assert cfg["api_endpoint"] == "https://user.example"
+    assert cfg["api_key"] == "user-key"
+    assert cfg["agent_name"] == "alice-agent"
+    assert "workspace_id" not in cfg
+
+
+@pytest.mark.parametrize("config_path", CONFIG_PATHS, ids=lambda p: str(p.relative_to(ROOT)))
+def test_plugin_config_ignores_repo_dot_stash(config_path, tmp_path, monkeypatch):
     home = tmp_path / "home"
     repo = tmp_path / "repo"
     home_config = home / ".stash" / "config.json"
@@ -62,45 +89,7 @@ def test_plugin_config_uses_dot_stash_manifest_base_url(config_path, tmp_path, m
             {
                 "workspace_id": "ws-manifest",
                 "base_url": "https://repo.example",
-            }
-        )
-    )
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.chdir(repo)
-
-    cfg = _load_config(config_path).get_config()
-
-    assert cfg["api_endpoint"] == "https://repo.example"
-    assert cfg["api_key"] == ""
-    assert cfg["agent_name"] == "alice-agent"
-    assert cfg["workspace_id"] == "ws-manifest"
-
-
-@pytest.mark.parametrize("config_path", CONFIG_PATHS, ids=lambda p: str(p.relative_to(ROOT)))
-def test_plugin_config_ignores_project_dot_stash_config_json(config_path, tmp_path, monkeypatch):
-    home = tmp_path / "home"
-    repo = tmp_path / "repo"
-    home_config = home / ".stash" / "config.json"
-    home_config.parent.mkdir(parents=True)
-    home_config.write_text(
-        json.dumps(
-            {
-                "base_url": "https://user.example",
-                "api_key": "user-key",
-                "username": "alice-agent",
-            }
-        )
-    )
-    project_config = repo / ".stash" / "config.json"
-    project_config.parent.mkdir(parents=True)
-    project_config.write_text(
-        json.dumps(
-            {
-                "workspace_id": "ws-wrong",
-                "base_url": "https://wrong.example",
-                "api_key": "wrong-key",
-                "username": "wrong-agent",
+                "api_key": "repo-key",
             }
         )
     )
@@ -113,4 +102,4 @@ def test_plugin_config_ignores_project_dot_stash_config_json(config_path, tmp_pa
     assert cfg["api_endpoint"] == "https://user.example"
     assert cfg["api_key"] == "user-key"
     assert cfg["agent_name"] == "alice-agent"
-    assert cfg["workspace_id"] == ""
+    assert "workspace_id" not in cfg

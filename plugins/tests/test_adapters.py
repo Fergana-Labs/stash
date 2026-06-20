@@ -62,8 +62,6 @@ def test_prompt(plugin):
     if plugin in _PLUGINS_WITH_PROMPT_SID:
         assert event.session_id
     assert event.prompt_text  # non-empty
-    # cwd must be populated — the repo-scope gate in stashai.plugin.scope
-    # drops events with empty cwd under the default scope="repo".
     assert event.cwd
 
 
@@ -192,7 +190,6 @@ def test_push_event_stamps_client_into_metadata():
     c = FakeClient(base_url="http://x", api_key="k")
 
     c.push_event(
-        workspace_id="ws1",
         agent_name="henry",
         event_type="tool_use",
         content="...",
@@ -200,12 +197,11 @@ def test_push_event_stamps_client_into_metadata():
         metadata={"cwd": "/tmp"},
         client="cursor",
     )
-    assert calls[-1][0] == "/api/v1/workspaces/ws1/sessions/events"
+    assert calls[-1][0] == "/api/v1/me/sessions/events"
     body = calls[-1][1]["json"]
     assert body["metadata"] == {"cwd": "/tmp", "client": "cursor"}
 
     c.push_event(
-        workspace_id="ws1",
         agent_name="henry",
         event_type="user_message",
         content="hi",
@@ -215,26 +211,12 @@ def test_push_event_stamps_client_into_metadata():
     assert body["metadata"] == {"client": "claude_code"}
 
     c.push_event(
-        workspace_id="ws1",
         agent_name="henry",
         event_type="user_message",
         content="hi",
     )
     body = calls[-1][1]["json"]
     assert "metadata" not in body
-
-
-def test_push_event_requires_workspace_id():
-    from stashai.plugin.stash_client import StashClient
-
-    client = StashClient(base_url="http://x", api_key="k")
-    with pytest.raises(ValueError):
-        client.push_event(
-            workspace_id=None,
-            agent_name="henry",
-            event_type="user_message",
-            content="hi",
-        )
 
 
 def test_tool_name_normalization():
@@ -288,7 +270,7 @@ def test_client_facet_flows_through_stream_paths():
     for client_name in ("cursor", "gemini_cli", "codex_cli", "opencode"):
         calls.clear()
         cfg = {
-            "workspace_id": "ws1",
+            "session_folder_id": "fld1",
             "agent_name": "henry",
             "client": client_name,
         }
@@ -342,7 +324,7 @@ def test_model_metadata_flows_through_stream_paths():
             calls.append(kwargs.get("json", {}))
             return {}
 
-    cfg = {"workspace_id": "ws1", "agent_name": "henry", "client": "codex_cli"}
+    cfg = {"session_folder_id": "fld1", "agent_name": "henry", "client": "codex_cli"}
     state = {"session_id": "s1"}
     c = FakeClient(base_url="http://x", api_key="k")
     extras = {"model": "gpt-4o", "permission_mode": "default"}
@@ -412,7 +394,7 @@ def test_stream_session_end_not_emitted_on_assistant_message():
             return {}
 
     c = FakeClient(base_url="http://x", api_key="k")
-    cfg = {"workspace_id": "ws1", "agent_name": "henry", "client": "claude_code"}
+    cfg = {"session_folder_id": "fld1", "agent_name": "henry", "client": "claude_code"}
     state = {"session_id": "s1"}
     stream_assistant_message(
         c,

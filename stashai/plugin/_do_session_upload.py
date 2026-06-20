@@ -3,7 +3,7 @@
 Invoked by session_upload.spawn_session_upload(). Runs outside the hook
 timeout so large uploads don't block the agent.
 
-argv: script.py <session_row_id> <transcript_path> <cwd> <workspace_id>
+argv: script.py <session_row_id> <transcript_path> <cwd>
                 <session_id> <agent_name> <base_url> <api_key> <data_dir>
 
 env: SESSION_FILES_TOUCHED = JSON list of file paths from the session
@@ -96,7 +96,7 @@ def _resolve_paths(files_touched: list[str], cwd: str) -> list[str]:
 
 
 def main() -> None:
-    _, session_row_id, _, cwd, workspace_id, _, _, base_url, api_key, data_dir = sys.argv
+    _, session_row_id, _, cwd, _, _, base_url, api_key, data_dir = sys.argv
     files_touched = json.loads(os.environ.get("SESSION_FILES_TOUCHED", "[]"))
 
     with StashClient(base_url=base_url, api_key=api_key, data_dir=data_dir) as client:
@@ -115,7 +115,7 @@ def main() -> None:
                     display_path = str(p.relative_to(cwd))
                 except ValueError:
                     display_path = str(p)
-                client.upload_session_artifact(workspace_id, session_row_id, display_path, content)
+                client.upload_session_artifact(session_row_id, display_path, content)
             except Exception:
                 continue
 

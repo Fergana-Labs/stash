@@ -11,7 +11,6 @@ import os
 import sys
 from pathlib import Path
 
-from stashai.plugin.scope import find_manifest
 from stashai.plugin.stash_client import StashClient
 
 DATA_DIR = Path(
@@ -39,7 +38,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _load_cli_config() -> dict:
-    """User-scoped CLI config only. Repo config lives in the `.stash` manifest."""
+    """User-scoped CLI config (`~/.stash/config.json`)."""
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
         return _read_json(user_path)
@@ -52,16 +51,12 @@ def get_config() -> dict:
 
     if not api_key:
         cli = _load_cli_config()
-        manifest = find_manifest(os.getcwd())
-        manifest_base = (manifest or {}).get("base_url")
-        user_base = cli.get("base_url", PRODUCTION_BASE_URL)
-        api_endpoint = manifest_base or user_base
-        api_key = cli.get("api_key", "") if api_endpoint == user_base else ""
         return {
-            "api_endpoint": api_endpoint,
-            "api_key": api_key,
+            "api_endpoint": cli.get("base_url", PRODUCTION_BASE_URL),
+            "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
-            "workspace_id": (manifest or {}).get("workspace_id", ""),
+            "session_folder_id": cli.get("session_folder_id", ""),
+            "stopped_streaming": bool(cli.get("stopped_streaming")),
             "client": "claude_code",
         }
 
@@ -71,7 +66,12 @@ def get_config() -> dict:
         ),
         "api_key": api_key,
         "agent_name": agent_name,
-        "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
+        "session_folder_id": os.environ.get(
+            "CLAUDE_PLUGIN_USER_CONFIG_session_folder_id", ""
+        ),
+        "stopped_streaming": bool(
+            os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_stopped_streaming")
+        ),
         "client": "claude_code",
     }
 
