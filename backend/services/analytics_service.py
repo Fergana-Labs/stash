@@ -14,7 +14,7 @@ from . import memory_service, permission_service
 logger = logging.getLogger(__name__)
 
 # Density cache lives in knowledge_density_cache (migration 0017, extended in
-# 0018 to include an optional workspace_id so workspace-scoped density reuses
+# 0018 to include an optional owner_user_id so workspace-scoped density reuses
 # the same cache table). A precompute worker keeps it warm for active users;
 # the endpoint only recomputes inline if the row is missing or the source
 # signature drifted. Treat drift as "any source count changed by at least
@@ -73,7 +73,7 @@ def _accessible_events_cte(
         WITH accessible_events AS (
             SELECT he.id AS event_id
             FROM history_events he
-            WHERE he.workspace_id = ${ws_idx}
+            WHERE he.owner_user_id = ${ws_idx}
               AND {readable_events}
         )
         """
@@ -81,9 +81,9 @@ def _accessible_events_cte(
     WITH accessible_events AS (
         SELECT he.id AS event_id
         FROM history_events he
-        WHERE (he.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
-           OR (he.workspace_id IS NULL AND he.created_by = $1))
-          AND (he.workspace_id IS NULL OR {readable_events})
+        WHERE (he.owner_user_id = $1
+           OR (he.owner_user_id IS NULL AND he.created_by = $1))
+          AND (he.owner_user_id IS NULL OR {readable_events})
     )
     """
 
@@ -98,7 +98,7 @@ def _accessible_pages_cte(
         WITH accessible_pages AS (
             SELECT p.id AS page_id
             FROM pages p
-            WHERE p.workspace_id = ${ws_idx}
+            WHERE p.owner_user_id = ${ws_idx}
               AND {readable_pages}
         )
         """
@@ -106,7 +106,7 @@ def _accessible_pages_cte(
     WITH accessible_pages AS (
         SELECT p.id AS page_id
         FROM pages p
-        WHERE p.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
+        WHERE p.owner_user_id IN {permission_service.accessible_scope_ids_sql(1)}
           AND {readable_pages}
     )
     """
@@ -122,7 +122,7 @@ def _accessible_tables_cte(
         WITH accessible_tables AS (
             SELECT t.id AS table_id
             FROM tables t
-            WHERE t.workspace_id = ${ws_idx}
+            WHERE t.owner_user_id = ${ws_idx}
               AND {readable_tables}
         )
         """
@@ -130,9 +130,9 @@ def _accessible_tables_cte(
     WITH accessible_tables AS (
         SELECT t.id AS table_id
         FROM tables t
-        WHERE (t.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
-           OR (t.workspace_id IS NULL AND t.created_by = $1))
-          AND (t.workspace_id IS NULL OR {readable_tables})
+        WHERE (t.owner_user_id IN {permission_service.accessible_scope_ids_sql(1)}
+           OR (t.owner_user_id IS NULL AND t.created_by = $1))
+          AND (t.owner_user_id IS NULL OR {readable_tables})
     )
     """
 
@@ -147,7 +147,7 @@ def _accessible_files_cte(
         WITH accessible_files AS (
             SELECT f.id AS file_id
             FROM files f
-            WHERE f.workspace_id = ${ws_idx}
+            WHERE f.owner_user_id = ${ws_idx}
               AND f.deleted_at IS NULL
               AND {readable_files}
         )
@@ -156,7 +156,7 @@ def _accessible_files_cte(
     WITH accessible_files AS (
         SELECT f.id AS file_id
         FROM files f
-        WHERE f.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)}
+        WHERE f.owner_user_id IN {permission_service.accessible_scope_ids_sql(1)}
           AND f.deleted_at IS NULL
           AND {readable_files}
     )
@@ -167,11 +167,11 @@ async def get_activity_timeline(
     user_id: UUID,
     days: int = 30,
     bucket: str = "day",
-    workspace_id: UUID | None = None,
+    owner_user_id: UUID | None = None,
 ) -> dict:
     """Human + coding-agent session commits bucketed by time.
 
-    Pass ``workspace_id`` to scope to one workspace."""
+    Pass ``owner_user_id`` to scope to one workspace."""
     pool = get_pool()
     days = min(days, 365)
     if bucket not in ("hour", "day", "week"):
@@ -183,15 +183,15 @@ async def get_activity_timeline(
 
     args: list = [user_id, bucket, cutoff, end_exclusive]
     ws_idx = None
-    if workspace_id is not None:
-        args.append(workspace_id)
+    if owner_user_id is not None:
+        args.append(owner_user_id)
         ws_idx = 5
 
     rows = await pool.fetch(
         _accessible_events_cte(ws_idx=ws_idx) + """
         , timeline_events AS (
             SELECT
-                me.workspace_id,
+                me.owner_user_id,
                 me.session_id,
                 me.created_at,
                 me.agent_name,
@@ -210,7 +210,7 @@ async def get_activity_timeline(
         )
         , session_commits AS (
             SELECT
-                timeline_events.workspace_id,
+                timeline_events.owner_user_id,
                 timeline_events.session_id,
                 DATE_TRUNC($2, MIN(timeline_events.created_at)) AS bucket_date,
                 (
@@ -229,7 +229,7 @@ async def get_activity_timeline(
                     FILTER (WHERE timeline_events.created_by IS NOT NULL)
                 )[1] AS actor_id
             FROM timeline_events
-            GROUP BY timeline_events.workspace_id, timeline_events.session_id
+            GROUP BY timeline_events.owner_user_id, timeline_events.session_id
         )
         SELECT
             sc.bucket_date,
@@ -395,16 +395,16 @@ def _is_noise_stem(stem: str) -> bool:
     return False
 
 
-async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) -> dict:
+async def _get_source_counts(user_id: UUID, owner_user_id: UUID | None = None) -> dict:
     """Page / row / event counts in one round-trip. Used as both TF-IDF
     denominator and as a cheap fingerprint for cache invalidation."""
     pool = get_pool()
-    if workspace_id is not None:
+    if owner_user_id is not None:
         row = await pool.fetchrow(
             """
             SELECT
                 (SELECT COUNT(*) FROM pages p
-                 WHERE p.workspace_id = $2
+                 WHERE p.owner_user_id = $2
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
                    AND """
             + permission_service.readable_content_condition("page", "p", 1)
@@ -412,26 +412,26 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                    SELECT t.id FROM tables t
-                   WHERE t.workspace_id = $2
+                   WHERE t.owner_user_id = $2
                      AND """
             + permission_service.readable_content_condition("table", "t", 1)
             + """)
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
-                 WHERE he.workspace_id = $2
+                 WHERE he.owner_user_id = $2
                    AND """
             + memory_service.readable_session_event_condition("he", 1)
             + """) AS events
             """,
             user_id,
-            workspace_id,
+            owner_user_id,
         )
     else:
         row = await pool.fetchrow(
             """
             SELECT
                 (SELECT COUNT(*) FROM pages p
-                 WHERE p.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
+                 WHERE p.owner_user_id = $1
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
                    AND """
             + permission_service.readable_content_condition("page", "p", 1)
@@ -439,16 +439,16 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                      SELECT t.id FROM tables t
-                     WHERE (t.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
-                        OR (t.workspace_id IS NULL AND t.created_by = $1))
-                       AND (t.workspace_id IS NULL OR """
+                     WHERE (t.owner_user_id = $1
+                        OR (t.owner_user_id IS NULL AND t.created_by = $1))
+                       AND (t.owner_user_id IS NULL OR """
             + permission_service.readable_content_condition("table", "t", 1)
             + """))
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
-                 WHERE (he.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
-                    OR (he.workspace_id IS NULL AND he.created_by = $1))
-                   AND (he.workspace_id IS NULL OR """
+                 WHERE (he.owner_user_id = $1
+                    OR (he.owner_user_id IS NULL AND he.created_by = $1))
+                   AND (he.owner_user_id IS NULL OR """
             + memory_service.readable_session_event_condition("he", 1)
             + """)) AS events
             """,
@@ -463,22 +463,22 @@ async def get_overview_counts(user_id: UUID) -> dict:
     so a share only surfaces the specific shared rows. Sessions stay member-scoped —
     session sharing isn't reflected in these counts yet."""
     pool = get_pool()
-    accessible_ws = permission_service.accessible_workspace_ids_sql(1)
+    accessible_ws = permission_service.accessible_scope_ids_sql(1)
     readable_pages = permission_service.readable_content_condition("page", "p", 1)
     readable_files = permission_service.readable_content_condition("file", "f", 1)
     row = await pool.fetchrow(
         f"""
         SELECT
             (SELECT COUNT(*) FROM pages p
-             WHERE p.workspace_id IN {accessible_ws}
+             WHERE p.owner_user_id IN {accessible_ws}
                AND p.deleted_at IS NULL
                AND {readable_pages}) AS pages,
             (SELECT COUNT(*) FROM files f
-             WHERE f.workspace_id IN {accessible_ws}
+             WHERE f.owner_user_id IN {accessible_ws}
                AND f.deleted_at IS NULL
                AND {readable_files}) AS files,
             (SELECT COUNT(*) FROM sessions s
-             WHERE s.workspace_id IN (SELECT id FROM workspaces WHERE creator_id = $1)
+             WHERE s.owner_user_id = $1
                AND s.deleted_at IS NULL) AS sessions
         """,
         user_id,
@@ -511,7 +511,7 @@ def _signature_drifted(cached_sig: int, current_counts: dict) -> bool:
 
 
 async def compute_knowledge_density(
-    user_id: UUID, workspace_id: UUID | None = None
+    user_id: UUID, owner_user_id: UUID | None = None
 ) -> tuple[list[dict], int]:
     """Compute the full top-50 cluster list for a user and return (clusters, signature).
 
@@ -519,7 +519,7 @@ async def compute_knowledge_density(
     events. Label prettification is done in Python from one bulk word-frequency
     query — no per-stem LATERAL subqueries."""
     pool = get_pool()
-    counts = await _get_source_counts(user_id, workspace_id=workspace_id)
+    counts = await _get_source_counts(user_id, owner_user_id=owner_user_id)
     total_docs = counts["pages"] + counts["rows"] + counts["events"]
     signature = _signature(counts)
 
@@ -528,13 +528,13 @@ async def compute_knowledge_density(
 
     content_args = [user_id]
     content_ws_idx = None
-    if workspace_id is not None:
-        content_args.append(workspace_id)
+    if owner_user_id is not None:
+        content_args.append(owner_user_id)
         content_ws_idx = 2
     event_args = [user_id]
     event_ws_idx = None
-    if workspace_id is not None:
-        event_args.append(workspace_id)
+    if owner_user_id is not None:
+        event_args.append(owner_user_id)
         event_ws_idx = 2
 
     # One scan per source: stem → doc_count + newest_at.
@@ -660,7 +660,7 @@ async def compute_knowledge_density(
 async def get_knowledge_density(
     user_id: UUID,
     max_clusters: int = 20,
-    workspace_id: UUID | None = None,
+    owner_user_id: UUID | None = None,
 ) -> dict:
     """Topic clusters for the key topics treemap.
 
@@ -672,34 +672,34 @@ async def get_knowledge_density(
     max_clusters = min(max_clusters, 50)
 
     cached = None
-    use_cache = workspace_id is not None
+    use_cache = owner_user_id is not None
     if use_cache:
         cached = await pool.fetchrow(
             "SELECT clusters, source_signature, computed_at FROM knowledge_density_cache "
-            "WHERE user_id = $1 AND workspace_id IS NOT DISTINCT FROM $2",
+            "WHERE user_id = $1 AND owner_user_id IS NOT DISTINCT FROM $2",
             user_id,
-            workspace_id,
+            owner_user_id,
         )
     now = datetime.now(UTC)
 
     if cached and now - cached["computed_at"] < _DENSITY_CACHE_TTL:
-        current_counts = await _get_source_counts(user_id, workspace_id=workspace_id)
+        current_counts = await _get_source_counts(user_id, owner_user_id=owner_user_id)
         if not _signature_drifted(cached["source_signature"], current_counts):
             return {"clusters": cached["clusters"][:max_clusters]}
 
-    clusters, signature = await compute_knowledge_density(user_id, workspace_id=workspace_id)
+    clusters, signature = await compute_knowledge_density(user_id, owner_user_id=owner_user_id)
     if use_cache:
         await pool.execute(
             """
-            INSERT INTO knowledge_density_cache (user_id, workspace_id, clusters, source_signature, computed_at)
+            INSERT INTO knowledge_density_cache (user_id, owner_user_id, clusters, source_signature, computed_at)
             VALUES ($1, $2, $3, $4, now())
-            ON CONFLICT (user_id, workspace_id)
+            ON CONFLICT (user_id, owner_user_id)
             DO UPDATE SET clusters = EXCLUDED.clusters,
                           source_signature = EXCLUDED.source_signature,
                           computed_at = EXCLUDED.computed_at
             """,
             user_id,
-            workspace_id,
+            owner_user_id,
             clusters,
             signature,
         )
@@ -710,11 +710,11 @@ async def get_embedding_projection(
     user_id: UUID,
     max_points: int = 500,
     source: str | None = None,
-    workspace_id: UUID | None = None,
+    owner_user_id: UUID | None = None,
 ) -> dict:
     """3D PCA projection of embeddings for the space explorer.
 
-    Pass ``workspace_id`` to scope to one workspace.
+    Pass ``owner_user_id`` to scope to one workspace.
 
     Only explicit workspace-scoped requests use the embedding_projections cache.
     User-wide results depend on current workspace memberships."""
@@ -725,28 +725,28 @@ async def get_embedding_projection(
 
     content_count_args = [user_id]
     content_count_ws_idx = None
-    if workspace_id is not None:
-        content_count_args.append(workspace_id)
+    if owner_user_id is not None:
+        content_count_args.append(owner_user_id)
         content_count_ws_idx = 2
     event_count_args = [user_id]
     event_ws_idx = None
-    if workspace_id is not None:
-        event_count_args.append(workspace_id)
+    if owner_user_id is not None:
+        event_count_args.append(owner_user_id)
         event_ws_idx = 2
 
-    # Cache row keyed by (user_id, source_type, workspace_id), workspace
+    # Cache row keyed by (user_id, source_type, owner_user_id), workspace
     # scopes only: user-wide results depend on the user's current memberships
     # and must be recomputed (offboarding).
     cache = None
-    use_cache = workspace_id is not None
+    use_cache = owner_user_id is not None
     if use_cache:
         cache = await pool.fetchrow(
             "SELECT points, embedding_count, computed_at FROM embedding_projections "
             "WHERE user_id = $1 AND source_type = $2 "
-            "AND workspace_id IS NOT DISTINCT FROM $3",
+            "AND owner_user_id IS NOT DISTINCT FROM $3",
             user_id,
             source_key,
-            workspace_id,
+            owner_user_id,
         )
 
     # Count current embeddings
@@ -815,13 +815,13 @@ async def get_embedding_projection(
     per_source_limit = max_points if source else max(max_points // 4, 1)
     content_fetch_args = [user_id, per_source_limit]
     content_fetch_ws_idx = None
-    if workspace_id is not None:
-        content_fetch_args.append(workspace_id)
+    if owner_user_id is not None:
+        content_fetch_args.append(owner_user_id)
         content_fetch_ws_idx = 3
     event_fetch_args = [user_id, per_source_limit]
     event_fetch_ws_idx = None
-    if workspace_id is not None:
-        event_fetch_args.append(workspace_id)
+    if owner_user_id is not None:
+        event_fetch_args.append(owner_user_id)
         event_fetch_ws_idx = 3
 
     if source is None or source == "pages":
@@ -958,15 +958,15 @@ async def get_embedding_projection(
     if use_cache:
         await pool.execute(
             "INSERT INTO embedding_projections "
-            "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+            "(user_id, source_type, owner_user_id, points, embedding_count, computed_at) "
             "VALUES ($1, $2, $3, $4, $5, NOW()) "
-            "ON CONFLICT (user_id, source_type, workspace_id) "
+            "ON CONFLICT (user_id, source_type, owner_user_id) "
             "DO UPDATE SET points = EXCLUDED.points, "
             "              embedding_count = EXCLUDED.embedding_count, "
             "              computed_at = NOW()",
             user_id,
             source_key,
-            workspace_id,
+            owner_user_id,
             points,
             total_count,
         )

@@ -21,7 +21,7 @@ from ..services import (
     permission_service,
     session_title_service,
     skill_service,
-    workspace_service,
+    user_scope_service,
 )
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
@@ -38,10 +38,10 @@ SIDEBAR_ETAG_VERSION = "sidebar-skill-folders-v4"
 # ---------------------------------------------------------------------------
 
 
-async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
+async def _list_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """Sessions in this workspace, sourced from history_events rows."""
-    sessions = await memory_service.list_workspace_sessions(workspace_id, user_id)
-    titles = await session_title_service.titles_for_sessions(workspace_id, sessions)
+    sessions = await memory_service.list_workspace_sessions(owner_user_id, user_id)
+    titles = await session_title_service.titles_for_sessions(owner_user_id, sessions)
     return [
         {
             "id": s["id"],
@@ -58,7 +58,7 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
     ]
 
 
-async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
+async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
     """One unified file tree: folders, pages, and uploaded files.
 
     The viewer's read permission is pushed into each SELECT via
@@ -76,28 +76,28 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
             "        AND fi.deleted_at IS NULL) AS file_count "
-            f"FROM folders f WHERE f.workspace_id = $1 AND {readable_folder} ORDER BY f.name",
-            workspace_id,
+            f"FROM folders f WHERE f.owner_user_id = $1 AND {readable_folder} ORDER BY f.name",
+            owner_user_id,
             user_id,
         ),
         pool.fetch(
             "SELECT p.id, p.name, p.content_type, p.folder_id FROM pages p "
-            f"WHERE p.workspace_id = $1 AND p.deleted_at IS NULL AND {readable_page} "
+            f"WHERE p.owner_user_id = $1 AND p.deleted_at IS NULL AND {readable_page} "
             "ORDER BY p.name",
-            workspace_id,
+            owner_user_id,
             user_id,
         ),
         pool.fetch(
             "SELECT fi.id, fi.name, fi.folder_id, fi.size_bytes, fi.content_type, "
             "       fi.created_at, fi.linked_table_id "
-            f"FROM files fi WHERE fi.workspace_id = $1 AND fi.deleted_at IS NULL "
+            f"FROM files fi WHERE fi.owner_user_id = $1 AND fi.deleted_at IS NULL "
             f"AND {readable_file} ORDER BY fi.created_at DESC",
-            workspace_id,
+            owner_user_id,
             user_id,
         ),
     )
 
-    hidden = await skill_service.skill_subtree_folder_ids(workspace_id)
+    hidden = await skill_service.skill_subtree_folder_ids(owner_user_id)
     folder_rows = [r for r in folder_rows if r["id"] not in hidden]
     page_rows = [r for r in page_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
     file_rows = [r for r in file_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
@@ -138,9 +138,9 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
     }
 
 
-async def _list_sidebar_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
+async def _list_sidebar_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """Skill folders (+ publish info when shared) for the sidebar/overview."""
-    return await skill_service.list_skills(workspace_id, user_id)
+    return await skill_service.list_skills(owner_user_id, user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -158,17 +158,14 @@ class AskRequest(BaseModel):
     scope: str = "workspace"
 
 
-@router.post("/{workspace_id}/ask")
+@router.post("/{owner_user_id}/ask")
 async def ask_workspace(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     req: AskRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+    if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    workspace = await workspace_service.get_workspace(workspace_id)
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=503,
@@ -183,9 +180,10 @@ async def ask_workspace(
             detail="Ask currently accepts exactly one user message per request.",
         )
     prompt = req.messages[0].content
+    scope_name = current_user.get("display_name") or current_user["name"]
 
     return StreamingResponse(
-        ask_service.stream_ask(workspace_id, workspace["name"], prompt, current_user["id"]),
+        ask_service.stream_ask(owner_user_id, scope_name, prompt, current_user["id"]),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -217,19 +215,19 @@ _FALLBACK_DEMO = MemoryDemoResponse(
 )
 
 
-@router.post("/{workspace_id}/memory-demo", response_model=MemoryDemoResponse)
+@router.post("/{owner_user_id}/memory-demo", response_model=MemoryDemoResponse)
 async def memory_demo(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Generate a personalized before/after demo for the Memory onboarding
     step. If the workspace has session(s), summon Claude (FAST tier) with
     the most recent session's title + a short snippet of its first events;
     otherwise return a canned fallback."""
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+    if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
-    sessions = await memory_service.list_workspace_sessions(workspace_id, current_user["id"])
+    sessions = await memory_service.list_workspace_sessions(owner_user_id, current_user["id"])
     if not sessions:
         return _FALLBACK_DEMO
 
@@ -239,7 +237,7 @@ async def memory_demo(
 
     snippet = ""
     events = await memory_service.read_session_events(
-        workspace_id, newest["session_id"], current_user["id"]
+        owner_user_id, newest["session_id"], current_user["id"]
     )
     user_event_types = {"user_message", "user_prompt", "prompt", "message", "user"}
     if events:
@@ -297,44 +295,44 @@ async def memory_demo(
         )
 
 
-@router.get("/{workspace_id}/overview")
+@router.get("/{owner_user_id}/overview")
 async def get_workspace_overview(
-    workspace_id: UUID, current_user: dict = Depends(get_current_user)
+    owner_user_id: UUID, current_user: dict = Depends(get_current_user)
 ):
     """{sessions, files, skills} for the workspace home page.
 
     `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
     """
-    await _check_overview_access(workspace_id, current_user["id"])
+    await _check_overview_access(owner_user_id, current_user["id"])
 
     sessions, files, skills = await asyncio.gather(
-        _list_sessions(workspace_id, current_user["id"]),
-        _files_tree(workspace_id, current_user["id"]),
-        _list_sidebar_skills(workspace_id, current_user["id"]),
+        _list_sessions(owner_user_id, current_user["id"]),
+        _files_tree(owner_user_id, current_user["id"]),
+        _list_sidebar_skills(owner_user_id, current_user["id"]),
     )
     return {"sessions": sessions, "files": files, "skills": skills}
 
 
-@router.get("/{workspace_id}/sidebar")
+@router.get("/{owner_user_id}/sidebar")
 async def get_workspace_sidebar(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     """Lighter payload for the nav sidebar: sessions + files + skills. Carries an
     ETag derived from the workspace's mutation timestamps so navigation
     between workspaces hits 304 instead of re-fetching."""
-    await _check_overview_access(workspace_id, current_user["id"])
+    await _check_overview_access(owner_user_id, current_user["id"])
 
-    etag = await _sidebar_etag(workspace_id, current_user["id"])
+    etag = await _sidebar_etag(owner_user_id, current_user["id"])
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
     sessions, files, skills = await asyncio.gather(
-        _list_sessions(workspace_id, current_user["id"]),
-        _files_tree(workspace_id, current_user["id"]),
-        _list_sidebar_skills(workspace_id, current_user["id"]),
+        _list_sessions(owner_user_id, current_user["id"]),
+        _files_tree(owner_user_id, current_user["id"]),
+        _list_sidebar_skills(owner_user_id, current_user["id"]),
     )
     return Response(
         content=json.dumps(
@@ -346,12 +344,12 @@ async def get_workspace_sidebar(
     )
 
 
-async def _check_overview_access(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.is_member(workspace_id, user_id):
+async def _check_overview_access(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.is_member(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 
-async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
+async def _sidebar_etag(owner_user_id: UUID, user_id: UUID) -> str:
     """One short string that changes any time the sidebar's content
     changes. Concatenates last-modified timestamps across the workspace's
     mutating tables."""
@@ -360,52 +358,51 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         f"""
         SELECT
           (SELECT MAX(updated_at) FROM pages
-            WHERE workspace_id = $1
+            WHERE owner_user_id = $1
             AND deleted_at IS NULL) AS p,
           (SELECT MAX(created_at) FROM files
-            WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
-          (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
+            WHERE owner_user_id = $1 AND deleted_at IS NULL)                       AS f,
+          (SELECT MAX(updated_at) FROM folders WHERE owner_user_id = $1)          AS d,
           (SELECT MAX(GREATEST(COALESCE(finished_at, started_at), started_at))
            FROM sessions sidebar_session
-           WHERE sidebar_session.workspace_id = $1
+           WHERE sidebar_session.owner_user_id = $1
              AND sidebar_session.deleted_at IS NULL
              AND EXISTS (
                SELECT 1 FROM history_events sidebar_event
-               WHERE sidebar_event.workspace_id = sidebar_session.workspace_id
+               WHERE sidebar_event.owner_user_id = sidebar_session.owner_user_id
                  AND sidebar_event.session_id = sidebar_session.session_id
              ))                                                                   AS s,
           (SELECT MAX(he.created_at) FROM history_events he
-            WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
+            WHERE he.owner_user_id = $1 AND he.session_id IS NOT NULL
             AND {memory_service.readable_session_event_condition('he', 2)})        AS he,
           (SELECT COUNT(*) FROM history_events he
-            WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
+            WHERE he.owner_user_id = $1 AND he.session_id IS NOT NULL
             AND {memory_service.readable_session_event_condition('he', 2)})        AS hc,
           (SELECT MAX(stt.updated_at) FROM session_titles stt
            JOIN sessions stt_session
-             ON stt_session.workspace_id = stt.workspace_id
+             ON stt_session.owner_user_id = stt.owner_user_id
             AND stt_session.session_id = stt.session_id
-           WHERE stt.workspace_id = $1
+           WHERE stt.owner_user_id = $1
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tt,
           (SELECT COUNT(*) FROM session_titles stt
            JOIN sessions stt_session
-             ON stt_session.workspace_id = stt.workspace_id
+             ON stt_session.owner_user_id = stt.owner_user_id
             AND stt_session.session_id = stt.session_id
-           WHERE stt.workspace_id = $1
+           WHERE stt.owner_user_id = $1
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
-          (SELECT MAX(updated_at) FROM skills WHERE workspace_id = $1)            AS st,
+          (SELECT MAX(updated_at) FROM skills WHERE owner_user_id = $1)            AS st,
           (SELECT MAX(sh.created_at) FROM shares sh
-           WHERE sh.workspace_id = $1 AND sh.principal_type = 'user'
-             AND sh.principal_id = $2)                                            AS sm,
-          (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
+           WHERE sh.owner_user_id = $1 AND sh.principal_type = 'user'
+             AND sh.principal_id = $2)                                            AS sm
         """,
-        workspace_id,
+        owner_user_id,
         user_id,
     )
     raw = "|".join(
         [SIDEBAR_ETAG_VERSION]
-        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "tt", "tc", "st", "sm", "w")]
+        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "tt", "tc", "st", "sm")]
     )
     return f'W/"{_short_hash(raw)}"'
 

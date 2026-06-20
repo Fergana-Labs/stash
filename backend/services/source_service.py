@@ -202,7 +202,6 @@ def _content_hash(content: str | None) -> str:
 def _source_row(row) -> dict:
     return {
         "id": str(row["id"]),
-        "workspace_id": str(row["workspace_id"]),
         "owner_user_id": str(row["owner_user_id"]),
         "source_type": row["source_type"],
         "external_ref": row["external_ref"],
@@ -240,7 +239,6 @@ def _source_search_hint(source: dict) -> str | None:
 
 async def create_source(
     *,
-    workspace_id: UUID,
     owner_user_id: UUID,
     source_type: str,
     external_ref: str,
@@ -261,18 +259,17 @@ async def create_source(
     row = await get_pool().fetchrow(
         """
         INSERT INTO workspace_sources (
-            workspace_id, owner_user_id, source_type, external_ref,
+            owner_user_id, source_type, external_ref,
             display_name, capability, sync_interval_s, sync_enabled, settings
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-        ON CONFLICT (workspace_id, owner_user_id, source_type, external_ref)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        ON CONFLICT (owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
             settings = EXCLUDED.settings,
             updated_at = now()
         RETURNING *
         """,
-        workspace_id,
         owner_user_id,
         source_type,
         external_ref,
@@ -328,14 +325,14 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
+async def list_connected_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """The user's own connected sources in this workspace. User-scoped: a
     member never sees another member's connected sources."""
     rows = await get_pool().fetch(
         "SELECT * FROM workspace_sources "
-        "WHERE workspace_id = $1 AND owner_user_id = $2 "
+        "WHERE owner_user_id = $1 AND owner_user_id = $2 "
         "ORDER BY source_type, display_name",
-        workspace_id,
+        owner_user_id,
         user_id,
     )
     return [_source_row(r) for r in rows]
@@ -355,15 +352,15 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
 async def get_owned_source_in_workspace(
     source_id: UUID,
     user_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
 ) -> dict | None:
     """Fetch a connected source only within the workspace route boundary."""
     row = await get_pool().fetchrow(
         "SELECT * FROM workspace_sources "
-        "WHERE id = $1 AND owner_user_id = $2 AND workspace_id = $3",
+        "WHERE id = $1 AND owner_user_id = $2 AND owner_user_id = $3",
         source_id,
         user_id,
-        workspace_id,
+        owner_user_id,
     )
     return _source_row(row) if row else None
 
@@ -395,10 +392,10 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict
     return [_source_row(row) for row in rows]
 
 
-async def delete_sources_for_workspace_member(conn, workspace_id: UUID, user_id: UUID) -> int:
+async def delete_sources_for_workspace_member(conn, owner_user_id: UUID, user_id: UUID) -> int:
     result = await conn.execute(
-        "DELETE FROM workspace_sources WHERE workspace_id = $1 AND owner_user_id = $2",
-        workspace_id,
+        "DELETE FROM workspace_sources WHERE owner_user_id = $1 AND owner_user_id = $2",
+        owner_user_id,
         user_id,
     )
     return int(result.rsplit(" ", 1)[-1])
@@ -408,20 +405,14 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
     """Everything a sync task needs to crawl one source. Not owner-gated —
     sync runs server-side on behalf of the owner via their stored token."""
     row = await get_pool().fetchrow(
-        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM workspace_sources ws "
-        "WHERE id = $1 "
-        "AND EXISTS ("
-        "  SELECT 1 FROM workspaces w "
-        "  WHERE w.id = ws.workspace_id AND w.creator_id = ws.owner_user_id"
-        ")",
+        "SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings "
+        "FROM workspace_sources WHERE id = $1",
         source_id,
     )
     if not row:
         return None
     return {
         "id": str(row["id"]),
-        "workspace_id": str(row["workspace_id"]),
         "owner_user_id": str(row["owner_user_id"]),
         "source_type": row["source_type"],
         "external_ref": row["external_ref"],
@@ -433,20 +424,15 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
 async def due_sources(limit: int = 50) -> list[dict]:
     """Pull sources whose scheduled sync is due (for the Beat reconciler)."""
     rows = await get_pool().fetch(
-        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM workspace_sources ws "
+        "SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings "
+        "FROM workspace_sources "
         "WHERE sync_enabled AND next_sync_at <= now() "
-        "AND EXISTS ("
-        "  SELECT 1 FROM workspaces w "
-        "  WHERE w.id = ws.workspace_id AND w.creator_id = ws.owner_user_id"
-        ") "
         "ORDER BY next_sync_at LIMIT $1",
         limit,
     )
     return [
         {
             "id": str(r["id"]),
-            "workspace_id": str(r["workspace_id"]),
             "owner_user_id": str(r["owner_user_id"]),
             "source_type": r["source_type"],
             "external_ref": r["external_ref"],
@@ -551,7 +537,7 @@ async def upsert_content_document(
     *,
     table: str,
     source_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     path: str,
     name: str,
     kind: str = "file",
@@ -584,7 +570,7 @@ async def upsert_content_document(
 
     cols = [
         "source_id",
-        "workspace_id",
+        "owner_user_id",
         "path",
         "name",
         "kind",
@@ -596,7 +582,7 @@ async def upsert_content_document(
     ]
     vals = [
         source_id,
-        workspace_id,
+        owner_user_id,
         path,
         name,
         kind,
@@ -624,7 +610,7 @@ async def upsert_index_row(
     *,
     table: str,
     source_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     path: str,
     name: str,
     kind: str = "file",
@@ -654,13 +640,13 @@ async def upsert_index_row(
         return "unchanged"
     await pool.execute(
         f"INSERT INTO {table} "
-        f"(source_id, workspace_id, path, name, kind, external_ref, external_updated_at) "
+        f"(source_id, owner_user_id, path, name, kind, external_ref, external_updated_at) "
         f"VALUES ($1, $2, $3, $4, $5, $6, $7) "
         f"ON CONFLICT (source_id, path) DO UPDATE SET "
         f"name = EXCLUDED.name, kind = EXCLUDED.kind, external_ref = EXCLUDED.external_ref, "
         f"external_updated_at = EXCLUDED.external_updated_at, deleted_at = NULL, updated_at = now()",
         source_id,
-        workspace_id,
+        owner_user_id,
         path,
         name,
         kind,
@@ -1029,7 +1015,7 @@ async def _federated_search(
 
 async def search_documents(
     *,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     query: str,
     source: dict | None = None,
@@ -1072,7 +1058,7 @@ async def search_documents(
                        websearch_to_tsquery('english', $3)) AS rank
         FROM {t} d
         JOIN workspace_sources s ON s.id = d.source_id
-        WHERE d.workspace_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
+        WHERE d.owner_user_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
           AND ($4::uuid IS NULL OR d.source_id = $4)
           AND to_tsvector('english', coalesce(d.content, ''))
               @@ websearch_to_tsquery('english', $3)
@@ -1083,7 +1069,7 @@ async def search_documents(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
         f"FROM ({union}) u JOIN workspace_sources ws ON ws.id = u.source_id "
         f"ORDER BY u.rank DESC LIMIT $5",
-        workspace_id,
+        owner_user_id,
         user_id,
         query,
         source_id,
@@ -1104,7 +1090,7 @@ async def search_documents(
 # --- list_sources: native + connected --------------------------------------
 
 
-async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
+async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """Every source visible to this user: the two native sources (workspace-
     scoped) plus the user's own connected sources."""
     sources = [
@@ -1121,7 +1107,7 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "display_name": "Session transcripts",
         },
     ]
-    for s in await list_connected_sources(workspace_id, user_id):
+    for s in await list_connected_sources(owner_user_id, user_id):
         item = {
             "source": s["id"],
             "type": s["source_type"],
@@ -1184,19 +1170,19 @@ async def source_item_count(source: dict) -> int | None:
 # --- unified VFS over native + connected sources ----------------------------
 
 
-async def _resolve_connected(source: str, workspace_id: UUID, user_id: UUID) -> dict | None:
+async def _resolve_connected(source: str, owner_user_id: UUID, user_id: UUID) -> dict | None:
     """Resolve a connected-source handle inside the current workspace boundary."""
     try:
         source_id = UUID(source)
     except ValueError:
         return None
-    return await get_owned_source_in_workspace(source_id, user_id, workspace_id)
+    return await get_owned_source_in_workspace(source_id, user_id, owner_user_id)
 
 
 async def _audit_source_read(
     *,
     action: str,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     source: str | None,
     connected: dict | None,
@@ -1221,7 +1207,7 @@ async def _audit_source_read(
     await security_audit_service.record_event(
         action=action,
         actor_user_id=user_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type=target_type,
         target_id=target_id,
         provider=provider,
@@ -1231,7 +1217,7 @@ async def _audit_source_read(
 
 
 async def source_entries(
-    workspace_id: UUID, user_id: UUID, source: str, prefix: str = ""
+    owner_user_id: UUID, user_id: UUID, source: str, prefix: str = ""
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
@@ -1240,18 +1226,18 @@ async def source_entries(
     if source == NATIVE_FILES:
         from .files_tree_service import list_workspace_pages
 
-        pages = await list_workspace_pages(workspace_id, user_id)
+        pages = await list_workspace_pages(owner_user_id, user_id)
         entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
     elif source == NATIVE_SESSIONS:
         from .memory_service import list_workspace_sessions
 
-        sessions = await list_workspace_sessions(workspace_id, user_id)
+        sessions = await list_workspace_sessions(owner_user_id, user_id)
         entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
         ]
     else:
-        connected = await _resolve_connected(source, workspace_id, user_id)
+        connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
         if connected["capability"] == "queryable":
@@ -1277,7 +1263,7 @@ async def source_entries(
 
     await _audit_source_read(
         action="source.entries_listed",
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         source=source,
         connected=connected,
@@ -1359,7 +1345,7 @@ def _session_title(session: dict) -> str:
 
 
 async def sources_tree(
-    workspace_id: UUID, user_id: UUID, depth: int = 3, per_dir: int = 50
+    owner_user_id: UUID, user_id: UUID, depth: int = 3, per_dir: int = 50
 ) -> list[dict]:
     """Every source the user can see, each with a nested entry tree — one call
     renders the whole workspace as a filesystem (`stash ls`)."""
@@ -1367,8 +1353,8 @@ async def sources_tree(
     from .memory_service import list_workspace_sessions
 
     depth = max(1, min(depth, 10))
-    pages = await list_workspace_pages(workspace_id, user_id)
-    sessions = await list_workspace_sessions(workspace_id, user_id)
+    pages = await list_workspace_pages(owner_user_id, user_id)
+    sessions = await list_workspace_sessions(owner_user_id, user_id)
     out = [
         {
             "source": NATIVE_FILES,
@@ -1397,7 +1383,7 @@ async def sources_tree(
         },
     ]
 
-    for source in await list_connected_sources(workspace_id, user_id):
+    for source in await list_connected_sources(owner_user_id, user_id):
         item = {
             "source": source["id"],
             "type": source["source_type"],
@@ -1415,7 +1401,7 @@ async def sources_tree(
 
     await _audit_source_read(
         action="source.tree_listed",
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         source=None,
         connected=None,
@@ -1462,7 +1448,7 @@ def source_document_url(
 
 
 async def source_document(
-    workspace_id: UUID, user_id: UUID, source: str, ref: str
+    owner_user_id: UUID, user_id: UUID, source: str, ref: str
 ) -> tuple[bool, dict | None]:
     """Read one document. `ref` is a page id (files), a session id (sessions),
     or a document path (connected sources). Returns `(source_ok, doc)`:
@@ -1473,7 +1459,7 @@ async def source_document(
     if source == NATIVE_FILES:
         from .files_tree_service import get_page
 
-        page = await get_page(UUID(ref), workspace_id, user_id)
+        page = await get_page(UUID(ref), owner_user_id, user_id)
         doc = (
             {
                 "name": page["name"],
@@ -1485,13 +1471,13 @@ async def source_document(
     elif source == NATIVE_SESSIONS:
         from .memory_service import read_session_events
 
-        events = await read_session_events(workspace_id, ref, user_id)
+        events = await read_session_events(owner_user_id, ref, user_id)
         transcript = "\n".join(
             f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
         )
         doc = {"session": ref, "transcript": transcript[:8000]}
     else:
-        connected = await _resolve_connected(source, workspace_id, user_id)
+        connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return False, None
         if connected["capability"] == "queryable":
@@ -1518,7 +1504,7 @@ async def source_document(
     if doc is not None:
         await _audit_source_read(
             action="source.document_read",
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             user_id=user_id,
             source=source,
             connected=connected,
@@ -1562,12 +1548,12 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
 
 
 async def query_source(
-    workspace_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
+    owner_user_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
 ) -> dict | None:
     """Run a read-only SQL query against a queryable source (Snowflake). Returns
     None when the handle is unknown / not owned, or an error dict when the source
     isn't queryable or the SQL is rejected."""
-    connected = await _resolve_connected(source, workspace_id, user_id)
+    connected = await _resolve_connected(source, owner_user_id, user_id)
     if connected is None:
         return None
     if connected["capability"] != "queryable":
@@ -1588,7 +1574,7 @@ async def query_source(
         result = {"error": "Snowflake query failed"}
     await _audit_source_read(
         action="source.queried",
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         source=source,
         connected=connected,
@@ -1613,7 +1599,7 @@ def _parse_dt(value: str | None):
 
 
 async def fetch_history(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     source: str,
     since: str,
@@ -1625,7 +1611,7 @@ async def fetch_history(
     the local table (so they become searchable) and returned. Returns None when
     the handle is unknown / not owned; an error dict for unsupported sources or
     bad input."""
-    connected = await _resolve_connected(source, workspace_id, user_id)
+    connected = await _resolve_connected(source, owner_user_id, user_id)
     if connected is None:
         return None
     if connected["source_type"] not in HISTORY_FETCH_TYPES:
@@ -1654,7 +1640,7 @@ async def fetch_history(
         result = {"error": "source history fetch failed"}
     await _audit_source_read(
         action="source.history_fetched",
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         source=source,
         connected=connected,
@@ -1670,7 +1656,7 @@ async def fetch_history(
 
 
 async def search_all(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     query: str,
     source: str | None = None,
@@ -1684,7 +1670,7 @@ async def search_all(
     if source in (None, NATIVE_SESSIONS):
         from .memory_service import search_workspace_events
 
-        events = await search_workspace_events(workspace_id, user_id, query, limit=limit)
+        events = await search_workspace_events(owner_user_id, user_id, query, limit=limit)
         results += [
             {
                 "source": NATIVE_SESSIONS,
@@ -1697,7 +1683,7 @@ async def search_all(
     if source in (None, NATIVE_FILES):
         from .files_tree_service import search_pages_fts
 
-        pages = await search_pages_fts(workspace_id, query, limit=limit, user_id=user_id)
+        pages = await search_pages_fts(owner_user_id, query, limit=limit, user_id=user_id)
         results += [
             {
                 "source": NATIVE_FILES,
@@ -1711,14 +1697,14 @@ async def search_all(
     # Connected sources: all of the user's own when unscoped, else the one named.
     connected: dict | None = None
     if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
-        connected = await _resolve_connected(source, workspace_id, user_id)
+        connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
     if source is None or connected is not None:
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match).
         docs = await search_documents(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             user_id=user_id,
             query=query,
             source=connected,
@@ -1746,7 +1732,7 @@ async def search_all(
         else:
             federated = [
                 s
-                for s in await list_connected_sources(workspace_id, user_id)
+                for s in await list_connected_sources(owner_user_id, user_id)
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
                 and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]
@@ -1757,7 +1743,7 @@ async def search_all(
 
     await _audit_source_read(
         action="source.searched",
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         source=source,
         connected=connected,

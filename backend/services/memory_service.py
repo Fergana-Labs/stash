@@ -1,6 +1,6 @@
 """Session event service: structured agent event storage with FTS, vector search, and batch insert.
 
-Events belong directly to a workspace (or are personal with workspace_id=NULL).
+Events belong directly to a workspace (or are personal with owner_user_id=NULL).
 Grouped by agent_name → session_id for display.
 """
 
@@ -91,7 +91,7 @@ async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> Non
 
 
 async def push_event(
-    workspace_id: UUID | None,
+    owner_user_id: UUID | None,
     agent_name: str,
     event_type: str,
     content: str,
@@ -112,11 +112,11 @@ async def push_event(
         ts = _normalize_ts(created_at)
     row = await pool.fetchrow(
         "INSERT INTO history_events "
-        "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
-        "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "RETURNING id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
-        workspace_id,
+        owner_user_id,
         created_by,
         agent_name,
         event_type,
@@ -130,9 +130,9 @@ async def push_event(
     event = dict(row)
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
-    if workspace_id is not None and session_id:
+    if owner_user_id is not None and session_id:
         session = await session_service.upsert_session(
-            workspace_id,
+            owner_user_id,
             session_id,
             agent_name=agent_name,
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
@@ -140,14 +140,14 @@ async def push_event(
             session_folder_id=session_folder_id,
         )
         if linear_ticket_service.has_ticket_hint([content]):
-            await linear_ticket_service.sync_session_labels(workspace_id, session["id"], session_id)
+            await linear_ticket_service.sync_session_labels(owner_user_id, session["id"], session_id)
         if github_pr_service.has_pull_request_hint([content]):
             github_pr_service.enqueue_session_discovery(session["id"])
     return event
 
 
 async def push_events_batch(
-    workspace_id: UUID | None,
+    owner_user_id: UUID | None,
     created_by: UUID,
     events: list[dict],
 ) -> list[dict]:
@@ -176,7 +176,7 @@ async def push_events_batch(
     rows = await pool.fetch(
         """
         INSERT INTO history_events
-            (workspace_id, created_by, agent_name, event_type, content,
+            (owner_user_id, created_by, agent_name, event_type, content,
              session_id, tool_name, metadata, attachments, created_at)
         SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
                u.sid, u.tn, u.md::jsonb,
@@ -187,10 +187,10 @@ async def push_events_batch(
             $6::varchar[], $7::varchar[],
             $8::text[], $9::text[], $10::timestamptz[]
         ) AS u(an, et, c, sid, tn, md, att, ts)
-        RETURNING id, workspace_id, created_by, agent_name, event_type,
+        RETURNING id, owner_user_id, created_by, agent_name, event_type,
                   session_id, tool_name, content, metadata, attachments, created_at
         """,
-        workspace_id,
+        owner_user_id,
         created_by,
         agent_names,
         event_types,
@@ -202,7 +202,7 @@ async def push_events_batch(
         timestamps,
     )
     results = [dict(r) for r in rows]
-    await _upsert_sessions_for_events(workspace_id, created_by, events)
+    await _upsert_sessions_for_events(owner_user_id, created_by, events)
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
         contents_for_embed = [r["content"] for r in results]
@@ -211,11 +211,11 @@ async def push_events_batch(
 
 
 async def _upsert_sessions_for_events(
-    workspace_id: UUID | None,
+    owner_user_id: UUID | None,
     created_by: UUID,
     events: list[dict],
 ) -> None:
-    if workspace_id is None:
+    if owner_user_id is None:
         return
 
     sessions: dict[str, dict] = {}
@@ -231,7 +231,7 @@ async def _upsert_sessions_for_events(
 
     for session_id, session in sessions.items():
         row = await session_service.upsert_session(
-            workspace_id,
+            owner_user_id,
             session_id,
             agent_name=session["agent_name"],
             cwd=session["cwd"],
@@ -241,7 +241,7 @@ async def _upsert_sessions_for_events(
             event.get("content") or "" for event in events if event.get("session_id") == session_id
         ]
         if linear_ticket_service.has_ticket_hint(contents):
-            await linear_ticket_service.sync_session_labels(workspace_id, row["id"], session_id)
+            await linear_ticket_service.sync_session_labels(owner_user_id, row["id"], session_id)
         if github_pr_service.has_pull_request_hint(contents):
             github_pr_service.enqueue_session_discovery(row["id"])
 
@@ -259,7 +259,7 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
             OR EXISTS (
               SELECT 1
               FROM sessions readable_session
-              WHERE readable_session.workspace_id = {event_alias}.workspace_id
+              WHERE readable_session.owner_user_id = {event_alias}.owner_user_id
                 AND readable_session.session_id = {event_alias}.session_id
                 AND readable_session.deleted_at IS NULL
             )
@@ -268,55 +268,55 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """
 
 
-async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -> bool:
-    session = await session_service.get_session(workspace_id, session_id)
+async def can_read_session(owner_user_id: UUID, session_id: str, user_id: UUID) -> bool:
+    session = await session_service.get_session(owner_user_id, session_id)
     if not session:
         return False
     return await permission_service.check_access(
         "session",
         session["id"],
         user_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )
 
 
 async def read_session_events(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_id: str,
     user_id: UUID | None = None,
 ) -> list[dict]:
     """Ordered events for a session within a workspace. The canonical
     source for session-thread rendering — replaces reading the R2 transcript
     blob."""
-    if user_id is not None and not await can_read_session(workspace_id, session_id, user_id):
+    if user_id is not None and not await can_read_session(owner_user_id, session_id, user_id):
         return []
 
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, agent_name, event_type, tool_name, content, metadata, created_at "
-        "FROM history_events WHERE workspace_id = $1 AND session_id = $2 "
+        "FROM history_events WHERE owner_user_id = $1 AND session_id = $2 "
         "ORDER BY created_at, id",
-        workspace_id,
+        owner_user_id,
         session_id,
     )
     return [dict(r) for r in rows]
 
 
-async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
+async def list_workspace_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """One row per session_id in this workspace. Powers the spine sessions
     list — replaces a SELECT against session_transcripts."""
     pool = get_pool()
     rows = await pool.fetch(
         "WITH title_sources AS ( "
-        "  SELECT DISTINCT ON (ht.workspace_id, ht.session_id) "
-        "    ht.workspace_id, "
+        "  SELECT DISTINCT ON (ht.owner_user_id, ht.session_id) "
+        "    ht.owner_user_id, "
         "    ht.session_id, "
         "    LEFT(ht.content, 240) AS title_source "
         "  FROM history_events ht "
-        "  WHERE ht.workspace_id = $1 "
+        "  WHERE ht.owner_user_id = $1 "
         "    AND ht.session_id IS NOT NULL "
         "    AND NULLIF(BTRIM(ht.content), '') IS NOT NULL "
-        "  ORDER BY ht.workspace_id, ht.session_id, CASE "
+        "  ORDER BY ht.owner_user_id, ht.session_id, CASE "
         "    WHEN ht.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0 "
         "    WHEN ht.event_type IN ('assistant_message', 'assistant') THEN 1 "
         "    ELSE 2 "
@@ -334,15 +334,15 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         "       MIN(h.created_at) AS started_at, "
         "       MAX(h.created_at) AS last_at "
         "FROM history_events h "
-        "JOIN sessions s ON s.workspace_id = h.workspace_id AND s.session_id = h.session_id "
-        "LEFT JOIN title_sources ON title_sources.workspace_id = h.workspace_id "
+        "JOIN sessions s ON s.owner_user_id = h.owner_user_id AND s.session_id = h.session_id "
+        "LEFT JOIN title_sources ON title_sources.owner_user_id = h.owner_user_id "
         "  AND title_sources.session_id = h.session_id "
         "LEFT JOIN users u ON u.id = h.created_by "
-        "WHERE h.workspace_id = $1 AND h.session_id IS NOT NULL "
+        "WHERE h.owner_user_id = $1 AND h.session_id IS NOT NULL "
         f"AND {readable_session_event_condition('h', 2)} "
         "GROUP BY h.session_id, s.id, title_sources.title_source "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
-        workspace_id,
+        owner_user_id,
         user_id,
     )
     sessions = [dict(r) for r in rows]
@@ -352,13 +352,13 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
     return sessions
 
 
-async def get_workspace_event(event_id: UUID, workspace_id: UUID, user_id: UUID) -> dict | None:
+async def get_workspace_event(event_id: UUID, owner_user_id: UUID, user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT * FROM history_events he WHERE he.id = $1 AND he.workspace_id = $2 "
+        "SELECT * FROM history_events he WHERE he.id = $1 AND he.owner_user_id = $2 "
         f"AND {readable_session_event_condition('he', 3)}",
         event_id,
-        workspace_id,
+        owner_user_id,
         user_id,
     )
     return dict(row) if row else None
@@ -368,7 +368,7 @@ async def get_personal_event(event_id: UUID, user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT * FROM history_events "
-        "WHERE id = $1 AND workspace_id IS NULL AND created_by = $2",
+        "WHERE id = $1 AND owner_user_id IS NULL AND created_by = $2",
         event_id,
         user_id,
     )
@@ -424,7 +424,7 @@ async def _query_events(
     direction = "ASC" if order == "asc" else "DESC"
     args = [*args, limit + 1]
     rows = await pool.fetch(
-        f"SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        f"SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         f"tool_name, content, metadata, attachments, created_at "
         f"FROM history_events WHERE {where} "
         f"ORDER BY created_at {direction} LIMIT ${limit_idx}",
@@ -438,7 +438,7 @@ async def _query_events(
 
 
 async def query_workspace_events(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     agent_name: str | None = None,
     session_id: str | None = None,
@@ -451,8 +451,8 @@ async def query_workspace_events(
     """Query events in a workspace. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
-        f"workspace_id = $1 AND {readable_session_event_condition('history_events', 2)}",
-        [workspace_id, user_id],
+        f"owner_user_id = $1 AND {readable_session_event_condition('history_events', 2)}",
+        [owner_user_id, user_id],
         agent_name,
         session_id,
         event_type,
@@ -475,7 +475,7 @@ async def query_personal_events(
     """Query personal (non-workspace) events for a user. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
-        "workspace_id IS NULL AND created_by = $1",
+        "owner_user_id IS NULL AND created_by = $1",
         [user_id],
         agent_name,
         session_id,
@@ -487,7 +487,7 @@ async def query_personal_events(
 
 
 async def search_workspace_events(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     query: str,
     limit: int = 50,
@@ -496,15 +496,15 @@ async def search_workspace_events(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
-        "WHERE workspace_id = $1 "
+        "WHERE owner_user_id = $1 "
         f"AND {readable_session_event_condition('history_events', 4)} "
         "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
-        workspace_id,
+        owner_user_id,
         query,
         limit,
         user_id,
@@ -513,7 +513,7 @@ async def search_workspace_events(
 
 
 async def recent_workspace_events(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     days: int = 7,
     limit: int = 20,
@@ -525,11 +525,11 @@ async def recent_workspace_events(
     rows = await pool.fetch(
         "SELECT id, agent_name, event_type, session_id, tool_name, content, created_at "
         "FROM history_events "
-        "WHERE workspace_id = $1 "
+        "WHERE owner_user_id = $1 "
         f"AND {readable_session_event_condition('history_events', 4)} "
         "AND created_at >= now() - ($2 || ' days')::interval "
         "ORDER BY created_at DESC LIMIT $3",
-        workspace_id,
+        owner_user_id,
         str(days),
         limit,
         user_id,
@@ -546,11 +546,11 @@ async def search_personal_events(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
-        "WHERE workspace_id IS NULL AND created_by = $1 "
+        "WHERE owner_user_id IS NULL AND created_by = $1 "
         "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
         user_id,
@@ -561,7 +561,7 @@ async def search_personal_events(
 
 
 async def search_workspace_events_vector(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     query_embedding: np.ndarray,
     limit: int = 20,
@@ -570,15 +570,15 @@ async def search_workspace_events_vector(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
-        "WHERE workspace_id = $1 "
+        "WHERE owner_user_id = $1 "
         f"AND {readable_session_event_condition('history_events', 4)} "
         "AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
-        workspace_id,
+        owner_user_id,
         query_embedding,
         limit,
         user_id,
@@ -595,11 +595,11 @@ async def search_personal_events_vector(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
-        "WHERE workspace_id IS NULL AND created_by = $1 AND embedding IS NOT NULL "
+        "WHERE owner_user_id IS NULL AND created_by = $1 AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
         user_id,
         query_embedding,
@@ -626,9 +626,9 @@ async def query_all_user_events(
     direction = "ASC" if order == "asc" else "DESC"
 
     conditions = [
-        f"(he.workspace_id IN {permission_service.accessible_workspace_ids_sql(1)} "
-        "OR (he.workspace_id IS NULL AND he.created_by = $1))",
-        f"(he.workspace_id IS NULL OR {readable_session_event_condition('he', 1)})",
+        f"(he.owner_user_id IN {permission_service.accessible_scope_ids_sql(1)} "
+        "OR (he.owner_user_id IS NULL AND he.created_by = $1))",
+        f"(he.owner_user_id IS NULL OR {readable_session_event_condition('he', 1)})",
     ]
     args: list = [user_id]
     idx = 2
@@ -654,12 +654,12 @@ async def query_all_user_events(
     args.append(limit + 1)
 
     rows = await pool.fetch(
-        f"SELECT he.id, he.workspace_id, he.created_by, he.agent_name, he.event_type, "
+        f"SELECT he.id, he.owner_user_id, he.created_by, he.agent_name, he.event_type, "
         f"he.session_id, he.tool_name, he.content, he.metadata, he.created_at, "
-        f"w.name AS workspace_name, "
+        f"owner.display_name AS workspace_name, "
         f"u.display_name AS created_by_name "
         f"FROM history_events he "
-        f"LEFT JOIN workspaces w ON w.id = he.workspace_id "
+        f"LEFT JOIN users owner ON owner.id = he.owner_user_id "
         f"LEFT JOIN users u ON u.id = he.created_by "
         f"WHERE {where} "
         f"ORDER BY he.created_at {direction} LIMIT ${idx}",
@@ -673,13 +673,13 @@ async def query_all_user_events(
     return events, has_more
 
 
-async def delete_workspace_agent_events(agent_name: str, workspace_id: UUID) -> int:
+async def delete_workspace_agent_events(agent_name: str, owner_user_id: UUID) -> int:
     """Delete all workspace events for a given agent. Returns count deleted."""
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id = $2",
+        "DELETE FROM history_events WHERE agent_name = $1 AND owner_user_id = $2",
         agent_name,
-        workspace_id,
+        owner_user_id,
     )
     return int(result.split()[-1]) if result else 0
 
@@ -688,20 +688,20 @@ async def delete_personal_agent_events(agent_name: str, user_id: UUID) -> int:
     """Delete all personal events for a given agent. Returns count deleted."""
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id IS NULL AND created_by = $2",
+        "DELETE FROM history_events WHERE agent_name = $1 AND owner_user_id IS NULL AND created_by = $2",
         agent_name,
         user_id,
     )
     return int(result.split()[-1]) if result else 0
 
 
-async def get_workspace_event_count(workspace_id: UUID) -> int:
+async def get_workspace_event_count(owner_user_id: UUID) -> int:
     """Count events in a workspace."""
     pool = get_pool()
     return (
         await pool.fetchval(
-            "SELECT COUNT(*) FROM history_events WHERE workspace_id = $1",
-            workspace_id,
+            "SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1",
+            owner_user_id,
         )
         or 0
     )

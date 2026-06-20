@@ -132,7 +132,7 @@ Don't ship interactive controls — they won't survive the export.
 """
 
 
-async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
+async def seed_slides_skill(owner_user_id: UUID, creator_id: UUID) -> bool:
     """Create `Skills/slides/SKILL.md` in the workspace if it doesn't exist.
 
     Returns True if the SKILL.md was created in this call, False if a
@@ -147,10 +147,10 @@ async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
     existing = await pool.fetchval(
         "SELECT p.id FROM pages p "
         "JOIN folders f ON f.id = p.folder_id "
-        "WHERE f.workspace_id = $1 AND lower(f.name) = $2 "
+        "WHERE f.owner_user_id = $1 AND lower(f.name) = $2 "
         "  AND p.name = $3 AND p.deleted_at IS NULL "
         "LIMIT 1",
-        workspace_id,
+        owner_user_id,
         SLIDES_SKILL_FOLDER,
         SKILL_MD_NAME,
     )
@@ -158,28 +158,28 @@ async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
         return False
 
     folder_row = await pool.fetchrow(
-        "SELECT id FROM folders WHERE workspace_id = $1 AND lower(name) = $2 "
+        "SELECT id FROM folders WHERE owner_user_id = $1 AND lower(name) = $2 "
         "  AND parent_folder_id IS NULL LIMIT 1",
-        workspace_id,
+        owner_user_id,
         SLIDES_SKILL_FOLDER,
     )
     if folder_row:
         folder_id = folder_row["id"]
     else:
         folder = await files_tree_service.create_folder(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             name=SLIDES_SKILL_FOLDER,
             created_by=creator_id,
         )
         folder_id = folder["id"]
 
     await files_tree_service.create_page(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         name=SKILL_MD_NAME,
         created_by=creator_id,
         folder_id=folder_id,
         content=SLIDES_SKILL_MARKDOWN,
         content_type="markdown",
     )
-    logger.info("seeded slides skill for workspace %s", workspace_id)
+    logger.info("seeded slides skill for workspace %s", owner_user_id)
     return True

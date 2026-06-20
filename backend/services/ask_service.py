@@ -27,19 +27,19 @@ def _sse(event: dict) -> str:
 
 
 async def stream_ask(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     workspace_name: str,
     prompt: str,
     user_id: UUID,
 ) -> AsyncIterator[str]:
     """Single-turn ask: one user prompt in, one streamed response out."""
-    sources = await source_service.list_sources(workspace_id, user_id)
+    sources = await source_service.list_sources(owner_user_id, user_id)
     system = prompts.render_ask_system(workspace_name, sources)
     async for event in tool_loop.stream_tool_loop(
         tier=llm.ModelTier.QUALITY,
         system=system,
         prompt=prompt,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         tool_set=prompts.ASK_TOOL_SET,
     ):
@@ -47,14 +47,14 @@ async def stream_ask(
 
 
 async def _load_history(
-    workspace_id: UUID, session_id: str, user_id: UUID, limit: int | None = None
+    owner_user_id: UUID, session_id: str, user_id: UUID, limit: int | None = None
 ) -> list[dict]:
     """Rebuild the [{role, content}] conversation from stored session events.
 
     `limit` caps the replay to the most recent N turns — for the Slack agent's
     single ever-growing per-user session, older context is recalled via the
     `search_history` tool rather than replayed verbatim."""
-    events = await memory_service.read_session_events(workspace_id, session_id, user_id)
+    events = await memory_service.read_session_events(owner_user_id, session_id, user_id)
     history: list[dict] = []
     for e in events:
         content = (e.get("content") or "").strip()
@@ -70,7 +70,7 @@ async def _load_history(
 
 
 async def stream_chat(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     workspace_name: str,
     user_id: UUID,
     session_id: str,
@@ -80,12 +80,12 @@ async def stream_chat(
     replays the full conversation to the model, streams the reply, then persists
     the assistant turn. The leading `session` event tells the client which
     session this chat lives in (so it can reload it later)."""
-    history = await _load_history(workspace_id, session_id, user_id)
+    history = await _load_history(owner_user_id, session_id, user_id)
 
     # Persist the user's turn first, so the conversation survives even if the
     # stream is interrupted before the model replies.
     await memory_service.push_event(
-        workspace_id,
+        owner_user_id,
         AGENT_NAME,
         "user_message",
         message,
@@ -96,7 +96,7 @@ async def stream_chat(
 
     yield _sse({"type": "session", "session_id": session_id})
 
-    sources = await source_service.list_sources(workspace_id, user_id)
+    sources = await source_service.list_sources(owner_user_id, user_id)
     system = prompts.render_ask_system(workspace_name, sources)
 
     answer: list[str] = []
@@ -104,7 +104,7 @@ async def stream_chat(
         tier=llm.ModelTier.QUALITY,
         system=system,
         history=history,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         tool_set=prompts.STASH_TOOL_SET,
         session_id=session_id,
@@ -117,7 +117,7 @@ async def stream_chat(
     final = "".join(answer).strip()
     if final:
         await memory_service.push_event(
-            workspace_id,
+            owner_user_id,
             AGENT_NAME,
             "assistant_message",
             final,
@@ -133,7 +133,7 @@ SLACK_HISTORY_REPLAY_LIMIT = 30
 
 
 async def run_chat(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     workspace_name: str,
     user_id: UUID,
     session_id: str,
@@ -145,14 +145,14 @@ async def run_chat(
     `SLACK_TOOL_SET` and returns the final answer text instead of streaming
     (Slack wants one message). The agent core (tool_loop) is untouched."""
     history = await _load_history(
-        workspace_id, session_id, user_id, limit=SLACK_HISTORY_REPLAY_LIMIT
+        owner_user_id, session_id, user_id, limit=SLACK_HISTORY_REPLAY_LIMIT
     )
     await memory_service.push_event(
-        workspace_id, AGENT_NAME, "user_message", message, user_id, session_id=session_id
+        owner_user_id, AGENT_NAME, "user_message", message, user_id, session_id=session_id
     )
     history.append({"role": "user", "content": message})
 
-    sources = await source_service.list_sources(workspace_id, user_id)
+    sources = await source_service.list_sources(owner_user_id, user_id)
     system = prompts.render_ask_system(workspace_name, sources)
 
     answer: list[str] = []
@@ -160,7 +160,7 @@ async def run_chat(
         tier=llm.ModelTier.QUALITY,
         system=system,
         history=history,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=user_id,
         tool_set=prompts.SLACK_TOOL_SET,
         session_id=session_id,
@@ -172,7 +172,7 @@ async def run_chat(
     final = "".join(answer).strip()
     if final:
         await memory_service.push_event(
-            workspace_id, AGENT_NAME, "assistant_message", final, user_id, session_id=session_id
+            owner_user_id, AGENT_NAME, "assistant_message", final, user_id, session_id=session_id
         )
     return final
 

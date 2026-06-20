@@ -51,8 +51,8 @@ def image_source_kind(src: str | None) -> str:
 class ImageFetcher:
     """Per-run cache so the same URL is fetched at most once per export."""
 
-    def __init__(self, workspace_id: UUID | None = None, user_id: UUID | None = None) -> None:
-        self.workspace_id = workspace_id
+    def __init__(self, owner_user_id: UUID | None = None, user_id: UUID | None = None) -> None:
+        self.owner_user_id = owner_user_id
         self.user_id = user_id
         self._cache: dict[str, bytes | None] = {}
 
@@ -85,7 +85,7 @@ class ImageFetcher:
             return await _download_skill_file(
                 UUID(stash.group("wid")),
                 UUID(stash.group("fid")),
-                self.workspace_id,
+                self.owner_user_id,
                 self.user_id,
             )
 
@@ -141,18 +141,18 @@ async def _download_skill_file(
 
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id, storage_key FROM files WHERE id = $1",
+        "SELECT owner_user_id, storage_key FROM files WHERE id = $1",
         file_id,
     )
     if not row or not row["storage_key"]:
         return None
-    if row["workspace_id"] != export_workspace_id:
+    if row["owner_user_id"] != export_workspace_id:
         return None
     can_read = await permission_service.check_access(
         "file",
         file_id,
         user_id,
-        workspace_id=export_workspace_id,
+        owner_user_id=export_workspace_id,
     )
     if not can_read:
         return None

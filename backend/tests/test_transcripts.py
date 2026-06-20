@@ -44,7 +44,7 @@ async def _register(client):
 
 async def _share(pool, ws, object_type, object_id, user_id, owner_id, permission="read"):
     await pool.execute(
-        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by) VALUES ($1, $2, $3, 'user', $4, $5, $6)",
         UUID(ws),
         object_type,
@@ -149,7 +149,7 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 
     my_sessions = await client.get(
         "/api/v1/me/sessions",
-        params={"workspace_id": ws},
+        params={"owner_user_id": ws},
         headers=headers,
     )
     assert my_sessions.status_code == 200
@@ -185,7 +185,7 @@ async def test_event_created_session_lands_in_default_folder(client: AsyncClient
     assert pushed.status_code == 201
 
     listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
     )
     assert listed.status_code == 200
     session = next(
@@ -222,7 +222,7 @@ async def test_transcript_upload_targets_explicit_session_folder(client: AsyncCl
     assert upload.status_code == 201
 
     listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
     )
     session = next(
         s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session"
@@ -259,7 +259,7 @@ async def test_event_stream_pin_targets_folder(client: AsyncClient):
     assert pushed.status_code == 201
 
     listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
     )
     session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-pinned")
     assert session["session_folder_id"] == folder_id
@@ -293,7 +293,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
 
     await push()
     listed = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
     )
     row_id = next(
         s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session"
@@ -308,7 +308,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
 
     await push()  # another turn keeps streaming the pin
     after = await client.get(
-        "/api/v1/me/sessions", params={"workspace_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
     )
     session = next(s for s in after.json()["sessions"] if s["session_id"] == "moved-session")
     assert session["session_folder_id"] is None
@@ -487,7 +487,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     assert detail.json()["linear_tickets"][0]["ticket_identifier"] == "FER-19"
 
     mine = await client.get(
-        f"/api/v1/me/sessions?workspace_id={ws}",
+        f"/api/v1/me/sessions?owner_user_id={ws}",
         headers=headers,
     )
     assert mine.status_code == 200
@@ -528,7 +528,7 @@ async def test_workspace_sidebar_etag_changes_after_generated_title(
 
     await pool.execute(
         """
-        INSERT INTO session_titles (workspace_id, session_id, title, source_hash)
+        INSERT INTO session_titles (owner_user_id, session_id, title, source_hash)
         VALUES ($1, $2, $3, $4)
         """,
         UUID(ws),
@@ -639,7 +639,7 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
 ):
     key, user_id = await _register_user(client)
     ws = await _workspace(client, key)
-    workspace_id = UUID(ws)
+    owner_user_id = UUID(ws)
     user_uuid = UUID(user_id)
     headers = {"Authorization": f"Bearer {key}"}
 
@@ -661,9 +661,9 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
 
     await pool.execute(
         "INSERT INTO files "
-        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5, $6)",
-        workspace_id,
+        owner_user_id,
         "shared-file.pdf",
         "application/pdf",
         12,
@@ -865,9 +865,9 @@ async def test_viewer_cannot_write_session_ingress(client: AsyncClient, pool):
     assert session_resp.status_code == 403
 
     assert (
-        await pool.fetchval("SELECT COUNT(*) FROM history_events WHERE workspace_id = $1", ws) == 0
+        await pool.fetchval("SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1", ws) == 0
     )
-    assert await pool.fetchval("SELECT COUNT(*) FROM sessions WHERE workspace_id = $1", ws) == 0
+    assert await pool.fetchval("SELECT COUNT(*) FROM sessions WHERE owner_user_id = $1", ws) == 0
 
 
 @pytest.mark.asyncio
@@ -930,4 +930,4 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
         )
         == 0
     )
-    assert await pool.fetchval("SELECT COUNT(*) FROM pages WHERE workspace_id = $1", ws) == 0
+    assert await pool.fetchval("SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", ws) == 0

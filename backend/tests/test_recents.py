@@ -72,4 +72,4 @@ async def test_shared_page_recent_is_recordable_and_listed(client: AsyncClient):
     recents = resp.json()
     assert [r["object_id"] for r in recents] == [page_id]
     assert recents[0]["kind"] == "page"
-    assert recents[0]["workspace_id"] == workspace["id"]
+    assert recents[0]["owner_user_id"] == workspace["id"]

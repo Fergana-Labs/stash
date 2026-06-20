@@ -33,9 +33,9 @@ async def _new_workspace(client: AsyncClient, api_key: str) -> str:
     return resp.json()["id"]
 
 
-async def _create_page(client: AsyncClient, api_key: str, workspace_id: str) -> str:
+async def _create_page(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/pages/new",
+        f"/api/v1/workspaces/{owner_user_id}/pages/new",
         json={"name": "Notes", "content": "# hello"},
         headers=_auth(api_key),
     )
@@ -47,25 +47,21 @@ async def _create_page(client: AsyncClient, api_key: str, workspace_id: str) -> 
 # inserted directly and only the resolve-and-gate behavior is pinned here —
 # the success path's response building needs storage and stays uncovered,
 # like every other file-success path in this suite's environment.
-async def _insert_file_row(pool, workspace_id: str) -> str:
-    uploader = await pool.fetchval(
-        "SELECT creator_id FROM workspaces WHERE id = $1",
-        uuid.UUID(workspace_id),
-    )
+async def _insert_file_row(pool, owner_user_id: str) -> str:
+    # The scope IS the user, so the owner_user_id is also the uploader.
     return str(
         await pool.fetchval(
-            "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
-            "VALUES ($1, 'report.pdf', 'application/pdf', 13, 'test/fake-key', $2) RETURNING id",
-            uuid.UUID(workspace_id),
-            uploader,
+            "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+            "VALUES ($1, 'report.pdf', 'application/pdf', 13, 'test/fake-key', $1) RETURNING id",
+            uuid.UUID(owner_user_id),
         )
     )
 
 
-async def _create_session(client: AsyncClient, api_key: str, workspace_id: str) -> str:
+async def _create_session(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
     session_id = f"sess-{uuid.uuid4()}"
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/sessions",
+        f"/api/v1/workspaces/{owner_user_id}/sessions",
         json={"session_id": session_id, "agent_name": "claude"},
         headers=_auth(api_key),
     )
@@ -76,21 +72,21 @@ async def _create_session(client: AsyncClient, api_key: str, workspace_id: str) 
 @pytest.mark.asyncio
 async def test_member_resolves_page_by_id_alone(client: AsyncClient):
     api_key = await _register(client)
-    workspace_id = await _new_workspace(client, api_key)
-    page_id = await _create_page(client, api_key, workspace_id)
+    owner_user_id = await _new_workspace(client, api_key)
+    page_id = await _create_page(client, api_key, owner_user_id)
 
     resp = await client.get(f"/api/v1/pages/{page_id}", headers=_auth(api_key))
 
     assert resp.status_code == 200
     assert resp.json()["id"] == page_id
-    assert resp.json()["workspace_id"] == workspace_id
+    assert resp.json()["owner_user_id"] == owner_user_id
 
 
 @pytest.mark.asyncio
 async def test_non_member_page_lookup_is_404_not_403(client: AsyncClient):
     owner_key = await _register(client)
-    workspace_id = await _new_workspace(client, owner_key)
-    page_id = await _create_page(client, owner_key, workspace_id)
+    owner_user_id = await _new_workspace(client, owner_key)
+    page_id = await _create_page(client, owner_key, owner_user_id)
     outsider_key = await _register(client)
 
     resp = await client.get(f"/api/v1/pages/{page_id}", headers=_auth(outsider_key))
@@ -101,8 +97,8 @@ async def test_non_member_page_lookup_is_404_not_403(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_non_member_file_lookup_is_404_not_403(client: AsyncClient, pool):
     owner_key = await _register(client)
-    workspace_id = await _new_workspace(client, owner_key)
-    file_id = await _insert_file_row(pool, workspace_id)
+    owner_user_id = await _new_workspace(client, owner_key)
+    file_id = await _insert_file_row(pool, owner_user_id)
     outsider_key = await _register(client)
 
     resp = await client.get(f"/api/v1/files/{file_id}", headers=_auth(outsider_key))
@@ -113,14 +109,14 @@ async def test_non_member_file_lookup_is_404_not_403(client: AsyncClient, pool):
 @pytest.mark.asyncio
 async def test_member_resolves_session_by_external_id_alone(client: AsyncClient):
     api_key = await _register(client)
-    workspace_id = await _new_workspace(client, api_key)
-    session_id = await _create_session(client, api_key, workspace_id)
+    owner_user_id = await _new_workspace(client, api_key)
+    session_id = await _create_session(client, api_key, owner_user_id)
 
     resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(api_key))
 
     assert resp.status_code == 200
     assert resp.json()["session_id"] == session_id
-    assert resp.json()["workspace_id"] == workspace_id
+    assert resp.json()["owner_user_id"] == owner_user_id
     # The record link must point at the web app (PUBLIC_URL), not the API host,
     # so the plugin can hand it back as a clickable session URL.
     assert resp.json()["app_url"] == f"{settings.PUBLIC_URL.rstrip('/')}/sessions/{session_id}"
@@ -148,14 +144,14 @@ async def test_session_id_in_two_workspaces_resolves_to_readable_one(client: Asy
     resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(owner_a))
 
     assert resp.status_code == 200
-    assert resp.json()["workspace_id"] == ws_a
+    assert resp.json()["owner_user_id"] == ws_a
 
 
 @pytest.mark.asyncio
 async def test_non_member_session_lookup_is_404(client: AsyncClient):
     owner_key = await _register(client)
-    workspace_id = await _new_workspace(client, owner_key)
-    session_id = await _create_session(client, owner_key, workspace_id)
+    owner_user_id = await _new_workspace(client, owner_key)
+    session_id = await _create_session(client, owner_key, owner_user_id)
     outsider_key = await _register(client)
 
     resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(outsider_key))

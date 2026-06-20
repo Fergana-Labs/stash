@@ -50,7 +50,7 @@ async def _index_page(
     client: httpx.AsyncClient,
     *,
     source_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     page_id: str,
     prefix: str,
     present: list[str],
@@ -69,7 +69,7 @@ async def _index_page(
     await source_service.upsert_content_document(
         table="notion_index",
         source_id=source_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         path=path,
         name=title,
         kind="note",
@@ -81,7 +81,7 @@ async def _index_page(
         await _index_page(
             client,
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             page_id=child_id,
             prefix=f"{path}/",
             present=present,
@@ -93,7 +93,7 @@ async def _index_database(
     client: httpx.AsyncClient,
     *,
     source_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     database_id: str,
     present: list[str],
 ) -> None:
@@ -119,7 +119,7 @@ async def _index_database(
             await source_service.upsert_content_document(
                 table="notion_index",
                 source_id=source_id,
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 path=path,
                 name=title,
                 kind="note",
@@ -141,7 +141,7 @@ def _notion_client(token: str) -> httpx.AsyncClient:
 
 async def index_notion(source: dict) -> str | None:
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
     resource_id = normalize_resource_id(source["external_ref"])
 
@@ -154,7 +154,7 @@ async def index_notion(source: dict) -> str | None:
             await _index_page(
                 client,
                 source_id=source_id,
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 page_id=resource_id,
                 prefix="",
                 present=present,
@@ -164,7 +164,7 @@ async def index_notion(source: dict) -> str | None:
             await _index_database(
                 client,
                 source_id=source_id,
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 database_id=resource_id,
                 present=present,
             )

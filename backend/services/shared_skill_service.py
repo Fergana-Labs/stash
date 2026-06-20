@@ -23,7 +23,7 @@ from . import (
     skill_service,
     source_service,
     storage_service,
-    workspace_service,
+    user_scope_service,
 )
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -70,7 +70,7 @@ def _content_hash(content: str) -> str:
 
 
 _SKILL_COLS = (
-    "v.id, v.workspace_id, v.folder_id, v.slug, v.title, v.description, v.owner_id, "
+    "v.id, v.owner_user_id, v.folder_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.source_github_url, v.view_count, "
     "v.created_at, v.updated_at"
@@ -117,7 +117,7 @@ def skill_md_template(name: str, description: str = "") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
-async def _ensure_skill_md(workspace_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
+async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
     pool = get_pool()
     existing = await pool.fetchval(
         "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
@@ -127,7 +127,7 @@ async def _ensure_skill_md(workspace_id: UUID, folder_id: UUID, user_id: UUID, t
     if existing:
         return
     await files_tree_service.create_page(
-        workspace_id,
+        owner_user_id,
         "SKILL.md",
         user_id,
         folder_id=folder_id,
@@ -140,7 +140,7 @@ async def _ensure_skill_md(workspace_id: UUID, folder_id: UUID, user_id: UUID, t
 
 
 async def publish_folder(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     owner_id: UUID,
     folder_id: UUID,
     *,
@@ -156,14 +156,14 @@ async def publish_folder(
     folder doesn't have one yet."""
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT id, name, workspace_id FROM folders WHERE id = $1", folder_id
+        "SELECT id, name, owner_user_id FROM folders WHERE id = $1", folder_id
     )
-    if not folder or folder["workspace_id"] != workspace_id:
+    if not folder or folder["owner_user_id"] != owner_user_id:
         raise ValueError("Folder not found in this workspace")
-    if not await workspace_service.is_owner(workspace_id, owner_id):
+    if not await user_scope_service.is_owner(owner_user_id, owner_id):
         raise ValueError("Only workspace owners can publish Skills")
     if not await permission_service.check_access(
-        "folder", folder_id, owner_id, workspace_id=workspace_id, require="write"
+        "folder", folder_id, owner_id, owner_user_id=owner_user_id, require="write"
     ):
         raise PermissionError("Not allowed to publish this folder")
 
@@ -177,13 +177,13 @@ async def publish_folder(
         title = meta.get("name") or folder["name"]
         description = description or meta.get("description", "")
 
-    await _ensure_skill_md(workspace_id, folder_id, owner_id, title)
+    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title)
     try:
         inserted = await pool.fetchrow(
-            "INSERT INTO skills (workspace_id, folder_id, slug, title, description, owner_id, "
+            "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "
             "discoverable, cover_image_url, icon_url, source_github_url) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
-            workspace_id,
+            owner_user_id,
             folder_id,
             _slugify(title),
             title,
@@ -263,9 +263,9 @@ async def get_public_skill(slug: str, viewer_id: UUID | None = None) -> dict | N
     await pool.execute("UPDATE skills SET view_count = view_count + 1 WHERE id = $1", skill["id"])
 
     names = await pool.fetchrow(
-        "SELECT w.name AS workspace_name, f.name AS folder_name "
-        "FROM workspaces w, folders f WHERE w.id = $1 AND f.id = $2",
-        skill["workspace_id"],
+        "SELECT COALESCE(u.display_name, u.name) AS workspace_name, f.name AS folder_name "
+        "FROM users u, folders f WHERE u.id = $1 AND f.id = $2",
+        skill["owner_user_id"],
         skill["folder_id"],
     )
     skill["_workspace_name"] = names["workspace_name"] if names else ""
@@ -317,9 +317,9 @@ async def list_public_skills(
         order = "v.updated_at DESC, v.id DESC"
 
     rows = await pool.fetch(
-        f"SELECT {_SKILL_COLS}, w.name AS workspace_name "
+        f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS workspace_name "
         f"{_SKILL_FROM} "
-        f"JOIN workspaces w ON w.id = v.workspace_id "
+        f"JOIN users scope_user ON scope_user.id = v.owner_user_id "
         f"WHERE {' AND '.join(where)} ORDER BY {order} LIMIT {int(limit)}",
         *args,
     )
@@ -339,7 +339,7 @@ async def list_public_skills(
                 "view_count": skill["view_count"],
                 "owner_name": skill.get("owner_name"),
                 "owner_display_name": skill.get("owner_display_name"),
-                "workspace_id": str(skill["workspace_id"]),
+                "owner_user_id": str(skill["owner_user_id"]),
                 "workspace_name": skill.get("workspace_name"),
                 "item_count": int(await _live_item_count(skill["folder_id"]) or 0),
                 "created_at": skill["created_at"].isoformat(),
@@ -356,19 +356,19 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         """
         SELECT f.id AS folder_id, f.name AS folder_name, sh.permission,
-               w.name AS workspace_name, w.id AS workspace_id,
+               COALESCE(ow.display_name, ow.name) AS workspace_name, ow.id AS owner_user_id,
                COALESCE(u.display_name, u.name) AS shared_by,
                p.content_markdown AS skill_md,
                v.slug
         FROM shares sh
         JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder'
         JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
-        JOIN workspaces w ON w.id = sh.workspace_id
+        JOIN users ow ON ow.id = sh.owner_user_id
         LEFT JOIN users u ON u.id = sh.created_by
         LEFT JOIN skills v ON v.folder_id = f.id
         WHERE sh.principal_type = 'user' AND sh.principal_id = $1
           AND (sh.expires_at IS NULL OR sh.expires_at > now())
-        ORDER BY w.name, f.name
+        ORDER BY workspace_name, f.name
         """,
         user_id,
     )
@@ -380,7 +380,7 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
                 "folder_id": str(r["folder_id"]),
                 "name": meta.get("name") or r["folder_name"],
                 "description": meta.get("description", ""),
-                "workspace_id": str(r["workspace_id"]),
+                "owner_user_id": str(r["owner_user_id"]),
                 "workspace_name": r["workspace_name"],
                 "shared_by": r["shared_by"],
                 "permission": r["permission"],
@@ -517,7 +517,7 @@ async def _fork_page(
     conn,
     source_page_id: UUID,
     *,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     folder_id: UUID | None,
     user_id: UUID,
 ) -> UUID:
@@ -535,11 +535,11 @@ async def _fork_page(
     active_content = _strip_html(content_html) if content_type == "html" else content_markdown
     row = await conn.fetchrow(
         "INSERT INTO pages "
-        "(workspace_id, folder_id, name, content_markdown, content_html, content_type, "
+        "(owner_user_id, folder_id, name, content_markdown, content_html, content_type, "
         "html_layout, content_hash, metadata, created_by, updated_by) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10) "
         "RETURNING id",
-        workspace_id,
+        owner_user_id,
         folder_id,
         page["name"],
         content_markdown,
@@ -554,7 +554,7 @@ async def _fork_page(
 
 
 async def _fork_table(
-    conn, source_table_id: UUID, *, workspace_id: UUID, user_id: UUID, folder_id: UUID | None = None
+    conn, source_table_id: UUID, *, owner_user_id: UUID, user_id: UUID, folder_id: UUID | None = None
 ) -> UUID:
     table = await conn.fetchrow(
         "SELECT name, description, columns, views, embedding_config FROM tables WHERE id = $1",
@@ -565,9 +565,9 @@ async def _fork_table(
 
     new_table = await conn.fetchrow(
         "INSERT INTO tables "
-        "(workspace_id, folder_id, name, description, columns, views, embedding_config, created_by, updated_by) "
+        "(owner_user_id, folder_id, name, description, columns, views, embedding_config, created_by, updated_by) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING id",
-        workspace_id,
+        owner_user_id,
         folder_id,
         table["name"],
         table["description"],
@@ -596,7 +596,7 @@ async def _fork_file(
     conn,
     source_file_id: UUID,
     *,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     folder_id: UUID | None,
     user_id: UUID,
 ) -> UUID:
@@ -614,17 +614,17 @@ async def _fork_file(
         linked_table_id = await _fork_table(
             conn,
             file["linked_table_id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             user_id=user_id,
             folder_id=folder_id,
         )
 
     new_file = await conn.fetchrow(
         "INSERT INTO files "
-        "(workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, "
+        "(owner_user_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, "
         "extracted_text, extraction_status, extraction_error, extraction_attempts, linked_table_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
-        workspace_id,
+        owner_user_id,
         folder_id,
         file["name"],
         file["content_type"],
@@ -644,7 +644,7 @@ async def _fork_folder(
     conn,
     source_folder_id: UUID,
     *,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     parent_folder_id: UUID | None,
     user_id: UUID,
     name_override: str | None = None,
@@ -654,9 +654,9 @@ async def _fork_folder(
         raise ValueError("Skill folder not found")
 
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
         "VALUES ($1, $2, $3, $4) RETURNING id",
-        workspace_id,
+        owner_user_id,
         parent_folder_id,
         name_override or folder["name"],
         user_id,
@@ -670,7 +670,7 @@ async def _fork_folder(
         await _fork_folder(
             conn,
             child["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             parent_folder_id=new_folder["id"],
             user_id=user_id,
         )
@@ -683,7 +683,7 @@ async def _fork_folder(
         await _fork_page(
             conn,
             page["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             folder_id=new_folder["id"],
             user_id=user_id,
         )
@@ -696,7 +696,7 @@ async def _fork_folder(
         await _fork_file(
             conn,
             file["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             folder_id=new_folder["id"],
             user_id=user_id,
         )
@@ -709,7 +709,7 @@ async def _fork_folder(
         await _fork_table(
             conn,
             table["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             user_id=user_id,
             folder_id=new_folder["id"],
         )
@@ -717,7 +717,7 @@ async def _fork_folder(
     return new_folder["id"]
 
 
-async def fork_skill(workspace_id: UUID, slug: str, added_by: UUID) -> dict | None:
+async def fork_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | None:
     """Deep-copy the skill's folder into the forker's workspace. The copy lands
     as a private (unpublished) skill — SKILL.md travels with the folder."""
     pool = get_pool()
@@ -725,7 +725,7 @@ async def fork_skill(workspace_id: UUID, slug: str, added_by: UUID) -> dict | No
     if not row:
         return None
     skill = dict(row)
-    if skill["workspace_id"] == workspace_id:
+    if skill["owner_user_id"] == owner_user_id:
         return {"folder_id": str(skill["folder_id"]), "name": skill["title"]}
 
     source_name = await pool.fetchval("SELECT name FROM folders WHERE id = $1", skill["folder_id"])
@@ -739,7 +739,7 @@ async def fork_skill(workspace_id: UUID, slug: str, added_by: UUID) -> dict | No
                         new_folder_id = await _fork_folder(
                             conn,
                             skill["folder_id"],
-                            workspace_id=workspace_id,
+                            owner_user_id=owner_user_id,
                             parent_folder_id=None,
                             user_id=added_by,
                             name_override=name,
@@ -777,7 +777,7 @@ async def snapshot_source_into_skill(
     if doc is None or "error" in doc:
         return None
     return await files_tree_service.create_page(
-        skill["workspace_id"],
+        skill["owner_user_id"],
         doc["name"],
         user_id,
         folder_id=skill["folder_id"],
@@ -787,7 +787,7 @@ async def snapshot_source_into_skill(
 
 
 async def materialize_session_page(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_id: str,
     folder_id: UUID,
     user_id: UUID,
@@ -797,8 +797,8 @@ async def materialize_session_page(
     pool = get_pool()
     session = await pool.fetchrow(
         "SELECT id, session_id, agent_name, files_touched FROM sessions "
-        "WHERE workspace_id = $1 AND session_id = $2 AND deleted_at IS NULL",
-        workspace_id,
+        "WHERE owner_user_id = $1 AND session_id = $2 AND deleted_at IS NULL",
+        owner_user_id,
         session_id,
     )
     if not session:
@@ -816,8 +816,8 @@ async def materialize_session_page(
         lines.extend(f"- {path}" for path in files_touched)
     events = await pool.fetch(
         "SELECT agent_name, event_type, content FROM history_events "
-        "WHERE workspace_id = $1 AND session_id = $2 ORDER BY created_at LIMIT $3",
-        workspace_id,
+        "WHERE owner_user_id = $1 AND session_id = $2 ORDER BY created_at LIMIT $3",
+        owner_user_id,
         session_id,
         _SESSION_EVENT_LIMIT,
     )
@@ -834,7 +834,7 @@ async def materialize_session_page(
             )
 
     return await files_tree_service.create_page(
-        workspace_id,
+        owner_user_id,
         f"Session {session['session_id']}.md",
         user_id,
         folder_id=folder_id,

@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import permission_service, security_audit_service, workspace_service
+from . import permission_service, security_audit_service, user_scope_service
 
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table"}
 _PERMISSIONS = {"read", "comment", "write"}
@@ -25,17 +25,17 @@ _PERMISSIONS = {"read", "comment", "write"}
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
     """The caller must be an owner of the object's workspace."""
-    workspace_id = await permission_service.resolve_workspace_id(object_type, object_id)
-    if workspace_id is None or not await workspace_service.is_owner(workspace_id, user_id):
+    owner_user_id = await permission_service.resolve_owner_user_id(object_type, object_id)
+    if owner_user_id is None or not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Not found")
-    return workspace_id
+    return owner_user_id
 
 
 async def _record_share_event(
     *,
     action: str,
     actor_user_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     object_type: str,
     object_id: UUID,
     metadata: dict,
@@ -43,7 +43,7 @@ async def _record_share_event(
     await security_audit_service.record_event(
         action=action,
         actor_user_id=actor_user_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type=object_type,
         target_id=str(object_id),
         metadata=metadata,
@@ -63,7 +63,7 @@ async def share_with_user_by_email(
         raise HTTPException(status_code=400, detail=f"can't share a {object_type}")
     if permission not in _PERMISSIONS:
         raise HTTPException(status_code=400, detail="permission must be read, comment, or write")
-    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    owner_user_id = await _require_owner(object_type, object_id, owner_id)
     normalized_email = email.strip().lower()
 
     pool = get_pool()
@@ -81,13 +81,13 @@ async def share_with_user_by_email(
         # share; the owner sees it as "invited" until it converts.
         await pool.execute(
             """
-            INSERT INTO share_invites (workspace_id, object_type, object_id, email,
+            INSERT INTO share_invites (owner_user_id, object_type, object_id, email,
                                        permission, created_by, expires_at)
             VALUES ($1, $2, $3, lower($4), $5, $6, $7)
             ON CONFLICT (object_type, object_id, email)
             DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
             """,
-            workspace_id,
+            owner_user_id,
             object_type,
             object_id,
             normalized_email,
@@ -98,7 +98,7 @@ async def share_with_user_by_email(
         await _record_share_event(
             action="share.invited",
             actor_user_id=owner_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             object_type=object_type,
             object_id=object_id,
             metadata={
@@ -111,13 +111,13 @@ async def share_with_user_by_email(
         raise HTTPException(status_code=400, detail="You already own this")
     await pool.execute(
         """
-        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+        INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by, expires_at)
         VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
         ON CONFLICT (object_type, object_id, principal_type, principal_id)
         DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
         """,
-        workspace_id,
+        owner_user_id,
         object_type,
         object_id,
         user["id"],
@@ -128,7 +128,7 @@ async def share_with_user_by_email(
     await _record_share_event(
         action="share.granted",
         actor_user_id=owner_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         object_type=object_type,
         object_id=object_id,
         metadata={
@@ -154,7 +154,7 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
         email,
     )
     invites = await pool.fetch(
-        "SELECT id, workspace_id, object_type, object_id, email, permission, created_by, "
+        "SELECT id, owner_user_id, object_type, object_id, email, permission, created_by, "
         "expires_at "
         "FROM share_invites WHERE lower(email) = lower($1)",
         email,
@@ -168,13 +168,13 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
         # enforces shares.expires_at at read time.
         await pool.execute(
             """
-            INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+            INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
                                 principal_id, permission, created_by, expires_at)
             VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
             ON CONFLICT (object_type, object_id, principal_type, principal_id)
             DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
             """,
-            inv["workspace_id"],
+            inv["owner_user_id"],
             inv["object_type"],
             inv["object_id"],
             user_id,
@@ -186,7 +186,7 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
         await _record_share_event(
             action="share.invite_converted",
             actor_user_id=inv["created_by"],
-            workspace_id=inv["workspace_id"],
+            owner_user_id=inv["owner_user_id"],
             object_type=inv["object_type"],
             object_id=inv["object_id"],
             metadata={
@@ -202,7 +202,7 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
 async def unshare(
     *, object_type: str, object_id: UUID, principal_type: str, principal_id: UUID, owner_id: UUID
 ) -> None:
-    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    owner_user_id = await _require_owner(object_type, object_id, owner_id)
     removed = await get_pool().fetchrow(
         "DELETE FROM shares WHERE object_type = $1 AND object_id = $2 "
         "AND principal_type = $3 AND principal_id = $4 "
@@ -217,7 +217,7 @@ async def unshare(
         await _record_share_event(
             action="share.revoked",
             actor_user_id=owner_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             object_type=object_type,
             object_id=object_id,
             metadata={
@@ -235,7 +235,7 @@ async def revoke_pending_invite_by_email(
     email: str,
     owner_id: UUID,
 ) -> None:
-    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    owner_user_id = await _require_owner(object_type, object_id, owner_id)
     normalized_email = email.strip().lower()
     removed = await get_pool().fetchrow(
         "DELETE FROM share_invites "
@@ -249,7 +249,7 @@ async def revoke_pending_invite_by_email(
         await _record_share_event(
             action="share.invite_revoked",
             actor_user_id=owner_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             object_type=object_type,
             object_id=object_id,
             metadata={
@@ -320,8 +320,8 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
     owning workspace, and who shared it."""
     rows = await get_pool().fetch(
         """
-        SELECT s.object_type, s.object_id, s.permission, s.workspace_id,
-               w.name AS workspace_name,
+        SELECT s.object_type, s.object_id, s.permission, s.owner_user_id,
+               COALESCE(ow.display_name, ow.name) AS workspace_name,
                COALESCE(u.display_name, u.name) AS shared_by,
                COALESCE(
                  (SELECT name FROM folders         WHERE id = s.object_id AND s.object_type = 'folder'),
@@ -332,15 +332,15 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
                  (SELECT COALESCE(st.title, sess.session_id)
                     FROM sessions sess
                     LEFT JOIN session_titles st
-                      ON st.workspace_id = sess.workspace_id AND st.session_id = sess.session_id
+                      ON st.owner_user_id = sess.owner_user_id AND st.session_id = sess.session_id
                     WHERE sess.id = s.object_id AND s.object_type = 'session')
                ) AS name
         FROM shares s
-        JOIN workspaces w ON w.id = s.workspace_id
+        JOIN users ow ON ow.id = s.owner_user_id
         LEFT JOIN users u ON u.id = s.created_by
         WHERE s.principal_type = 'user' AND s.principal_id = $1
           AND (s.expires_at IS NULL OR s.expires_at > now())
-        ORDER BY w.name, s.object_type, name
+        ORDER BY workspace_name, s.object_type, name
         """,
         user_id,
     )
@@ -350,7 +350,7 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
             "object_type": r["object_type"],
             "object_id": str(r["object_id"]),
             "name": r["name"],
-            "workspace_id": str(r["workspace_id"]),
+            "owner_user_id": str(r["owner_user_id"]),
             "workspace_name": r["workspace_name"],
             "shared_by": r["shared_by"],
             "permission": r["permission"],
@@ -367,23 +367,24 @@ async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) ->
     if not await permission_service.check_access("session_folder", folder_id, user_id):
         raise HTTPException(status_code=404, detail="Not found")
     rows = await get_pool().fetch(
-        "SELECT s.id, s.workspace_id, w.name AS workspace_name, s.session_id, s.agent_name, "
+        "SELECT s.id, s.owner_user_id, "
+        "       COALESCE(ow.display_name, ow.name) AS workspace_name, s.session_id, s.agent_name, "
         "       st.title, s.started_at, sf.name AS session_folder_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       COUNT(he.id)::int AS event_count, "
         "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
         "FROM sessions s "
-        "LEFT JOIN workspaces w ON w.id = s.workspace_id "
+        "LEFT JOIN users ow ON ow.id = s.owner_user_id "
         "LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
         "LEFT JOIN session_titles st "
-        "  ON st.workspace_id = s.workspace_id AND st.session_id = s.session_id "
+        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
         "LEFT JOIN history_events he "
-        "  ON he.workspace_id = s.workspace_id AND he.session_id = s.session_id "
+        "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
         "LEFT JOIN users u ON u.id = he.created_by "
         "WHERE s.session_folder_id = $1 AND s.deleted_at IS NULL "
-        "GROUP BY s.id, s.workspace_id, w.name, s.session_id, s.agent_name, st.title, "
-        "         s.started_at, sf.name "
+        "GROUP BY s.id, s.owner_user_id, ow.display_name, ow.name, s.session_id, "
+        "         s.agent_name, st.title, s.started_at, sf.name "
         "ORDER BY last_event_at DESC",
         folder_id,
     )
@@ -393,7 +394,7 @@ async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) ->
             "session_id": r["session_id"],
             "title": r["title"] or r["session_id"],
             "linear_tickets": [],
-            "workspace_id": str(r["workspace_id"]),
+            "owner_user_id": str(r["owner_user_id"]),
             "workspace_name": r["workspace_name"],
             "user_name": r["user_name"] or (r["agent_name"] or "agent"),
             "agent_name": r["agent_name"],

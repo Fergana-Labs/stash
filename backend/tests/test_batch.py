@@ -14,26 +14,19 @@ from backend.services import batch_service, files_tree_service
 @pytest_asyncio.fixture
 async def workspace(_db_pool):
     user_id = uuid4()
-    ws_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )
-    await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
-        ws_id,
-        f"ws_{ws_id.hex[:6]}",
-        user_id,
-        ws_id.hex[:12],
-    )
-    return ws_id, user_id
+    # The scope is the user: owner_user_id == user_id.
+    return user_id, user_id
 
 
 async def _make_file(pool, ws_id, user_id, folder_id=None):
     fid = uuid4()
     await pool.execute(
-        "INSERT INTO files (id, workspace_id, name, content_type, size_bytes, storage_key, "
+        "INSERT INTO files (id, owner_user_id, name, content_type, size_bytes, storage_key, "
         "uploaded_by, folder_id) VALUES ($1, $2, $3, 'text/plain', 1, $4, $5, $6)",
         fid,
         ws_id,
@@ -51,7 +44,7 @@ async def test_batch_move_partial_success(workspace, _db_pool):
     the bad one comes back as an error — the batch isn't all-or-nothing."""
     ws_id, user_id = workspace
     folder = await files_tree_service.create_folder(ws_id, "Dest", user_id)
-    page = await files_tree_service.create_page(workspace_id=ws_id, name="P", created_by=user_id)
+    page = await files_tree_service.create_page(owner_user_id=ws_id, name="P", created_by=user_id)
     file_id = await _make_file(_db_pool, ws_id, user_id)
     stranger_page = uuid4()  # never inserted → not found
 
@@ -80,7 +73,7 @@ async def test_batch_move_partial_success(workspace, _db_pool):
 @pytest.mark.asyncio
 async def test_batch_delete_and_restore_pages_and_files(workspace, _db_pool):
     ws_id, user_id = workspace
-    page = await files_tree_service.create_page(workspace_id=ws_id, name="P2", created_by=user_id)
+    page = await files_tree_service.create_page(owner_user_id=ws_id, name="P2", created_by=user_id)
     file_id = await _make_file(_db_pool, ws_id, user_id)
     items = [
         {"object_type": "page", "object_id": str(page["id"])},
@@ -119,14 +112,12 @@ async def test_batch_move_rejects_cross_workspace_item(workspace, _db_pool):
     ws_id, user_id = workspace
     other_ws = uuid4()
     await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         other_ws,
-        f"ws_{other_ws.hex[:6]}",
-        user_id,
-        other_ws.hex[:12],
+        f"u_{other_ws.hex[:6]}",
     )
     other_page = await files_tree_service.create_page(
-        workspace_id=other_ws, name="Other", created_by=user_id
+        owner_user_id=other_ws, name="Other", created_by=user_id
     )
     result = await batch_service.batch_move(
         ws_id,

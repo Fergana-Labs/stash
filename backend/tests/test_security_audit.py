@@ -33,22 +33,17 @@ async def _register(client: AsyncClient, prefix: str = "audit") -> tuple[str, UU
     return body["api_key"], UUID(body["id"])
 
 
-async def _create_workspace(client: AsyncClient, api_key: str) -> UUID:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": unique_name("audit_ws")},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
-    return UUID(resp.json()["id"])
+def _scope_for_user(user_id: UUID) -> UUID:
+    """The scope id is just the user's id; there is no separate workspace row."""
+    return user_id
 
 
 @pytest.mark.asyncio
 async def test_security_events_are_workspace_owner_only(
     client: AsyncClient,
 ):
-    owner_key, _ = await _register(client, "audit_owner")
-    ws = await _create_workspace(client, owner_key)
+    owner_key, owner_id = await _register(client, "audit_owner")
+    ws = _scope_for_user(owner_id)
 
     owner_resp = await client.get(
         f"/api/v1/workspaces/{ws}/security-events", headers=_auth(owner_key)
@@ -70,7 +65,7 @@ async def test_security_event_reads_are_audited_with_hashed_filters(
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_reader_owner")
-    ws = await _create_workspace(client, owner_key)
+    ws = _scope_for_user(owner_id)
     sensitive_filter = "source.document_read token=secret-token customer transcript"
 
     filtered_read = await client.get(
@@ -124,7 +119,7 @@ async def test_object_share_changes_are_audited_without_recipient_or_content(
     )
     assert recipient_resp.status_code == 201
     recipient_id = UUID(recipient_resp.json()["id"])
-    ws = await _create_workspace(client, owner_key)
+    ws = _scope_for_user(owner_id)
     headers = _auth(owner_key)
 
     page_name = "Webflow board escalation plan"
@@ -204,7 +199,7 @@ async def test_pending_share_invite_conversion_is_audited_without_email_or_conte
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_pending_share_owner")
-    ws = await _create_workspace(client, owner_key)
+    ws = _scope_for_user(owner_id)
     headers = _auth(owner_key)
 
     page_name = "Webflow confidential partner plan"
@@ -287,7 +282,7 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_pending_share_revoke_owner")
-    ws = await _create_workspace(client, owner_key)
+    ws = _scope_for_user(owner_id)
     headers = _auth(owner_key)
 
     page_name = "Webflow revoked partner plan"
@@ -354,8 +349,8 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
 
 @pytest.mark.asyncio
 async def test_source_access_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
-    api_key, _ = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    api_key, user_id = await _register(client)
+    ws = _scope_for_user(user_id)
 
     added = await client.post(
         f"/api/v1/workspaces/{ws}/sources",
@@ -373,7 +368,7 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path=ref,
         name="secret-launch-plan.md",
         content="secret launch plan",
@@ -419,8 +414,8 @@ async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes
 ):
     from backend.integrations.jira import indexer
 
-    api_key, _ = await _register(client, "audit_lazy_read")
-    ws = await _create_workspace(client, api_key)
+    api_key, user_id = await _register(client, "audit_lazy_read")
+    ws = _scope_for_user(user_id)
     headers = _auth(api_key)
     ref = "PROJ-9"
     external_ref = "cloud-1:PROJ-9"
@@ -451,7 +446,7 @@ async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes
     await source_service.upsert_index_row(
         table="jira_documents",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path=ref,
         name="PROJ-9: confidential launch bug",
         kind="issue",
@@ -514,8 +509,8 @@ async def test_query_source_failure_redacts_snowflake_error_and_sql(
 ):
     from backend.integrations.snowflake import client as snowflake_client
 
-    api_key, _ = await _register(client, "audit_query")
-    ws = await _create_workspace(client, api_key)
+    api_key, user_id = await _register(client, "audit_query")
+    ws = _scope_for_user(user_id)
     headers = _auth(api_key)
     sensitive_sql = "SELECT secret FROM confidential_webflow_pipeline"
     captured_logs = []
@@ -594,8 +589,8 @@ async def test_snowflake_metadata_failures_are_redacted_and_audited(
 ):
     from backend.integrations.snowflake import client as snowflake_client
 
-    api_key, _ = await _register(client, "audit_snowflake_metadata")
-    ws = await _create_workspace(client, api_key)
+    api_key, user_id = await _register(client, "audit_snowflake_metadata")
+    ws = _scope_for_user(user_id)
     headers = _auth(api_key)
     sensitive_path = "token=secret-token customer table list"
     sensitive_ref = "DB.SCHEMA.confidential_customer_data"
@@ -693,13 +688,12 @@ async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
     from backend.integrations.slack import indexer as slack_indexer
 
     api_key, owner_id = await _register(client, "audit_history")
-    ws = await _create_workspace(client, api_key)
+    ws = _scope_for_user(owner_id)
     headers = _auth(api_key)
     sensitive_since = "2026-01-01T00:00:00Z"
     sensitive_until = "2026-02-01T00:00:00Z"
     source = await source_service.create_source(
-        workspace_id=ws,
-        owner_user_id=owner_id,
+        owner_user_id=ws,
         source_type="slack",
         external_ref="T_SECRET",
         display_name="Webflow confidential Slack",
@@ -765,8 +759,8 @@ async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
 
 @pytest.mark.asyncio
 async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
-    api_key, _ = await _register(client, "audit_snapshot")
-    ws = await _create_workspace(client, api_key)
+    api_key, user_id = await _register(client, "audit_snapshot")
+    ws = _scope_for_user(user_id)
     headers = _auth(api_key)
 
     added = await client.post(
@@ -784,7 +778,7 @@ async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: As
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path=ref,
         name="private-webflow-pricing.md",
         content="Webflow confidential pricing notes",
@@ -840,7 +834,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     that front door too, not just the REST endpoints, or a prompt-injected
     agent could exfiltrate source content without leaving a trace."""
     api_key, user_id = await _register(client, "audit_agent")
-    ws = await _create_workspace(client, api_key)
+    ws = _scope_for_user(user_id)
 
     added = await client.post(
         f"/api/v1/workspaces/{ws}/sources",
@@ -856,7 +850,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="docs/launch.md",
         name="launch.md",
         content="secret launch plan",
@@ -888,10 +882,9 @@ async def test_integration_disconnect_audits_workspace_source_purge(
     from backend.integrations import router as integrations_router
 
     api_key, owner_id = await _register(client, "audit_disconnect")
-    ws = await _create_workspace(client, api_key)
+    ws = _scope_for_user(owner_id)
     source = await source_service.create_source(
-        workspace_id=ws,
-        owner_user_id=owner_id,
+        owner_user_id=ws,
         source_type="slack",
         external_ref="T123",
         display_name="Webflow Slack",
@@ -937,7 +930,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
     monkeypatch,
 ):
     api_key, owner_id = await _register(client, "audit_content")
-    ws = await _create_workspace(client, api_key)
+    ws = _scope_for_user(owner_id)
     headers = _auth(api_key)
 
     page = await client.post(
@@ -950,7 +943,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
 
     file_id = await _db_pool.fetchval(
         "INSERT INTO files "
-        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, 'text/plain', 12, $3, $4) RETURNING id",
         ws,
         "Webflow board notes.txt",
@@ -1035,7 +1028,7 @@ async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
     the single-item routers — the audit trail must cover that front door too,
     or a bulk deletion leaves no trace."""
     api_key, owner_id = await _register(client, "audit_batch")
-    ws = await _create_workspace(client, api_key)
+    ws = _scope_for_user(owner_id)
     headers = _auth(api_key)
 
     page = await client.post(
@@ -1064,28 +1057,3 @@ async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
     for action in ["content.page_deleted", "content.page_restored"]:
         assert by_action[action]["target_id"] == page_id
         assert by_action[action]["actor_user_id"] == str(owner_id)
-
-
-@pytest.mark.asyncio
-async def test_workspace_delete_records_purge_event(client: AsyncClient, _db_pool):
-    """Deleting a workspace destroys everything in it — the most destructive
-    action must leave an audit row. workspace_id stays NULL because the FK
-    cascade would otherwise erase the row with the workspace."""
-    api_key, owner_id = await _register(client, "audit_ws_purge")
-    ws = await _create_workspace(client, api_key)
-
-    deleted = await client.delete(f"/api/v1/workspaces/{ws}", headers=_auth(api_key))
-    assert deleted.status_code == 204
-
-    row = await _db_pool.fetchrow(
-        "SELECT workspace_id, actor_user_id, metadata FROM security_audit_events "
-        "WHERE action = 'content.scope_purged' AND target_id = $1",
-        str(ws),
-    )
-    assert row is not None
-    assert row["workspace_id"] is None
-    assert row["actor_user_id"] == owner_id
-    metadata = row["metadata"]
-    if isinstance(metadata, str):
-        metadata = json.loads(metadata)
-    assert metadata == {"storage_key_count": 0}

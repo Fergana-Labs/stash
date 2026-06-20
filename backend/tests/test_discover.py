@@ -21,29 +21,25 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _create_workspace(client: AsyncClient, api_key: str, name: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": name},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
-    return resp.json()
+def _scope(user: dict) -> dict:
+    """The scope is the user: its id is the owner_user_id, its name is the
+    owner's display name (what Discover surfaces as `workspace_name`)."""
+    return {"id": user["id"], "name": user["display_name"]}
 
 
 async def _create_skill_folder(
-    client: AsyncClient, api_key: str, workspace_id: str, name: str
+    client: AsyncClient, api_key: str, owner_user_id: str, name: str
 ) -> str:
     """A folder holding one content page — the publishable unit for a skill."""
     folder = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/folders",
+        f"/api/v1/workspaces/{owner_user_id}/folders",
         json={"name": name},
         headers=_auth(api_key),
     )
     assert folder.status_code == 201
     folder_id = folder.json()["id"]
     page = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/pages/new",
+        f"/api/v1/workspaces/{owner_user_id}/pages/new",
         json={"name": f"{name} brief", "content": f"# {name}", "folder_id": folder_id},
         headers=_auth(api_key),
     )
@@ -54,7 +50,7 @@ async def _create_skill_folder(
 @pytest.mark.asyncio
 async def test_discover_lists_discoverable_public_product_stashes(client: AsyncClient):
     api_key, user = await _register(client)
-    workspace = await _create_workspace(client, api_key, "Discovery workspace")
+    workspace = _scope(user)
     unlisted_folder = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted")
     public_folder = await _create_skill_folder(client, api_key, workspace["id"], "Public notes")
 
@@ -121,8 +117,8 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
     """Discoverable is purely an opt-in catalog flag: a default publish is
     publicly readable at its slug (anonymously) yet never surfaces in
     Discover."""
-    api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key, "Unlisted workspace")
+    api_key, user = await _register(client)
+    workspace = _scope(user)
     folder_id = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted only")
 
     published = await client.post(
@@ -145,8 +141,8 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
 
 @pytest.mark.asyncio
 async def test_discover_search_filters_product_stashes(client: AsyncClient):
-    api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key, "Search workspace")
+    api_key, user = await _register(client)
+    workspace = _scope(user)
 
     for title, folder_name in (("Alpha launch notes", "Alpha"), ("Beta roadmap", "Beta")):
         folder_id = await _create_skill_folder(client, api_key, workspace["id"], folder_name)

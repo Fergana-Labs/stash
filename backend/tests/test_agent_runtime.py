@@ -37,30 +37,23 @@ async def test_current_workspace_raises_outside_context():
 
 @pytest_asyncio.fixture
 async def workspace(_db_pool):
+    """The user IS the scope: the returned id is the user's id (owner_user_id)."""
     user_id = uuid4()
-    ws_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )
-    await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) " "VALUES ($1, $2, $3, $4)",
-        ws_id,
-        f"ws_{ws_id.hex[:6]}",
-        user_id,
-        ws_id.hex[:12],
-    )
-    return ws_id
+    return user_id
 
 
 @pytest.mark.asyncio
 async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
     """Verifies the workspace-context plumbing end-to-end on one tool: the
     response should contain only this workspace's files."""
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
     await _db_pool.execute(
-        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5, $6)",
         workspace,
         "scoped.txt",
@@ -88,7 +81,7 @@ async def test_skill_tools_create_publish_update_and_unpublish(workspace: UUID, 
     """The agent's skill lifecycle: create makes a SKILL.md folder, publish
     mints the share record (and a public URL), update edits the record, and
     unpublish removes only the record — the folder stays a skill."""
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
 
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
@@ -166,7 +159,7 @@ def test_page_tools_are_writable_surfaces_only():
 async def test_create_and_update_page_round_trip(workspace: UUID, _db_pool):
     """create_page persists markdown + html; update_page edits an existing page
     by id. Both must bind to the active workspace context."""
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
 
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
@@ -191,9 +184,9 @@ async def test_create_and_update_page_round_trip(workspace: UUID, _db_pool):
     assert html_page["name"] == "Dashboard"
     # Persisted to this workspace, scoped by context.
     stored = await _db_pool.fetchrow(
-        "SELECT workspace_id, content_html FROM pages WHERE id = $1", UUID(html_page["id"])
+        "SELECT owner_user_id, content_html FROM pages WHERE id = $1", UUID(html_page["id"])
     )
-    assert stored["workspace_id"] == workspace
+    assert stored["owner_user_id"] == workspace
     assert "<h1>Live</h1>" in (stored["content_html"] or "")
     # update_page edited the markdown body in place.
     assert "Hello again" in json.loads(read_back["content"][0]["text"])["content"]
@@ -228,11 +221,11 @@ async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: U
     (human/REST) write logs an edit row but leaves the agent/session NULL."""
     from backend.services import files_tree_service
 
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
 
     # Human/REST path: no agent context → NULL stamp, but still logged.
     human = await files_tree_service.create_page(
-        workspace_id=workspace, name="Human", created_by=user_id, content="hi"
+        owner_user_id=workspace, name="Human", created_by=user_id, content="hi"
     )
     h_cols = await _db_pool.fetchrow(
         "SELECT last_edit_session_id, last_edit_agent_name FROM pages WHERE id = $1", human["id"]
@@ -284,13 +277,13 @@ async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
     loud (writing nothing) when the anchor isn't unique."""
     from backend.services import files_tree_service
 
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
 
     md = await files_tree_service.create_page(
-        workspace_id=workspace, name="Doc", created_by=user_id, content="alpha beta gamma"
+        owner_user_id=workspace, name="Doc", created_by=user_id, content="alpha beta gamma"
     )
     html = await files_tree_service.create_page(
-        workspace_id=workspace,
+        owner_user_id=workspace,
         name="Page",
         created_by=user_id,
         content_type="html",
@@ -336,9 +329,9 @@ async def test_edit_page_multi_match_writes_nothing(workspace: UUID, _db_pool):
     """A >1 match must not partially write — the body is untouched."""
     from backend.services import files_tree_service
 
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
     page = await files_tree_service.create_page(
-        workspace_id=workspace, name="Dup", created_by=user_id, content="x x x"
+        owner_user_id=workspace, name="Dup", created_by=user_id, content="x x x"
     )
 
     with pytest.raises(files_tree_service.EditMatchError):
@@ -353,7 +346,7 @@ async def test_edit_page_multi_match_writes_nothing(workspace: UUID, _db_pool):
 async def test_tree_mutation_tools_round_trip(workspace: UUID, _db_pool):
     """create_folder + the page move/rename/delete tools let the agent organize
     the workspace, all bound to the active workspace context."""
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
 
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
@@ -392,7 +385,7 @@ async def test_tree_mutation_tools_round_trip(workspace: UUID, _db_pool):
 async def test_table_mutation_tools_round_trip(workspace: UUID, _db_pool):
     """create_table + row/column tools wrap table_service, guarded so an agent
     can only touch tables in its own workspace."""
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    user_id = workspace  # the scope id is the user id
 
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
@@ -444,18 +437,16 @@ async def test_table_mutation_tools_round_trip(workspace: UUID, _db_pool):
 async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
     """A table id from another workspace must be invisible to the agent's
     write tools — the workspace guard returns 'table not found'."""
-    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
-    other_ws = uuid4()
+    user_id = workspace  # the scope id is the user id
+    other_ws = uuid4()  # a different user's scope
     await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         other_ws,
-        f"ws_{other_ws.hex[:6]}",
-        user_id,
-        other_ws.hex[:12],
+        f"u_{other_ws.hex[:6]}",
     )
     other_table = uuid4()
     await _db_pool.execute(
-        "INSERT INTO tables (id, workspace_id, name, description, columns, created_by, updated_by) "
+        "INSERT INTO tables (id, owner_user_id, name, description, columns, created_by, updated_by) "
         "VALUES ($1, $2, 'Secret', '', '[]'::jsonb, $3, $3)",
         other_table,
         other_ws,
@@ -482,18 +473,16 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: U
     """Forking deep-copies the skill folder into the target workspace as a
     private (unpublished) skill: contents are point-in-time copies, not live
     references, and no skills row is minted for the fork."""
-    owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
-    target_workspace = uuid4()
+    owner_id = workspace  # the scope id is the user id
+    target_workspace = uuid4()  # the fork target is another user's scope
     await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         target_workspace,
-        f"target_{target_workspace.hex[:6]}",
-        owner_id,
-        target_workspace.hex[:12],
+        f"u_{target_workspace.hex[:6]}",
     )
     folder_id = uuid4()
     await _db_pool.execute(
-        "INSERT INTO folders (id, workspace_id, name, created_by) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO folders (id, owner_user_id, name, created_by) VALUES ($1, $2, $3, $4)",
         folder_id,
         workspace,
         "Fork source",
@@ -501,7 +490,7 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: U
     )
     page_id = uuid4()
     await _db_pool.execute(
-        "INSERT INTO pages (id, workspace_id, folder_id, name, content_markdown, created_by) "
+        "INSERT INTO pages (id, owner_user_id, folder_id, name, content_markdown, created_by) "
         "VALUES ($1, $2, $3, $4, $5, $6)",
         page_id,
         workspace,
@@ -526,13 +515,13 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: U
     fork_folder_id = UUID(attached["folder_id"])
     assert fork_folder_id != folder_id
     fork_folder_ws = await _db_pool.fetchval(
-        "SELECT workspace_id FROM folders WHERE id = $1", fork_folder_id
+        "SELECT owner_user_id FROM folders WHERE id = $1", fork_folder_id
     )
     assert fork_folder_ws == target_workspace
 
     # The fork has no publish record of its own — it's a private skill folder.
     record = await _db_pool.fetchval(
-        "SELECT 1 FROM skills WHERE workspace_id = $1", target_workspace
+        "SELECT 1 FROM skills WHERE owner_user_id = $1", target_workspace
     )
     assert record is None
 

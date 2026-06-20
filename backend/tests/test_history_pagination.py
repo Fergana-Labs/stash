@@ -29,11 +29,11 @@ async def _workspace(client: AsyncClient, api_key: str) -> dict:
     return resp.json()
 
 
-async def _seed_events(client: AsyncClient, api_key: str, workspace_id: str) -> None:
+async def _seed_events(client: AsyncClient, api_key: str, owner_user_id: str) -> None:
     headers = _auth(api_key)
     for day in range(1, 4):
         resp = await client.post(
-            f"/api/v1/workspaces/{workspace_id}/sessions/events",
+            f"/api/v1/workspaces/{owner_user_id}/sessions/events",
             json={
                 "agent_name": "tester",
                 "event_type": "note",

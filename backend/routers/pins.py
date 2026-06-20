@@ -14,35 +14,35 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import permission_service, workspace_service
+from ..services import permission_service, user_scope_service
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["pins"])
+router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}", tags=["pins"])
 
 PIN_KINDS = {"skills", "sessions", "files"}
 RECENTS_LIMIT = 24
 
 
-async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.is_member(workspace_id, user_id):
+async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.is_member(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
 async def _require_member_or_readable(
-    workspace_id: UUID, user_id: UUID, kind: str, object_id: str
+    owner_user_id: UUID, user_id: UUID, kind: str, object_id: str
 ) -> None:
     """Members can stamp anything; non-members only objects shared with them.
 
     Lets opening a shared page/file/folder record a recent in the object's
     home workspace, which powers the Shared-with-me Recent strip.
     """
-    if await workspace_service.is_member(workspace_id, user_id):
+    if await user_scope_service.is_member(owner_user_id, user_id):
         return
     try:
         parsed_id = UUID(object_id)
     except ValueError:
         raise HTTPException(status_code=403, detail="Not a workspace member")
     readable = await permission_service.check_access(
-        kind, parsed_id, user_id, workspace_id=workspace_id
+        kind, parsed_id, user_id, owner_user_id=owner_user_id
     )
     if not readable:
         raise HTTPException(status_code=403, detail="Not a workspace member")
@@ -59,15 +59,15 @@ class RecordRecentRequest(BaseModel):
 
 @router.get("/pins")
 async def get_pins(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ) -> dict[str, list[str]]:
-    await _require_member(workspace_id, current_user["id"])
+    await _require_member(owner_user_id, current_user["id"])
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT kind, object_ids FROM user_pins WHERE user_id = $1 AND workspace_id = $2",
+        "SELECT kind, object_ids FROM user_pins WHERE user_id = $1 AND owner_user_id = $2",
         current_user["id"],
-        workspace_id,
+        owner_user_id,
     )
     result: dict[str, list[str]] = {kind: [] for kind in PIN_KINDS}
     for row in rows:
@@ -81,24 +81,24 @@ async def get_pins(
 
 @router.put("/pins/{kind}", status_code=204)
 async def set_pins(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     kind: str,
     req: SetPinsRequest,
     current_user: dict = Depends(get_current_user),
 ) -> None:
     if kind not in PIN_KINDS:
         raise HTTPException(status_code=400, detail="Unknown pin kind")
-    await _require_member(workspace_id, current_user["id"])
+    await _require_member(owner_user_id, current_user["id"])
     pool = get_pool()
     await pool.execute(
         """
-        INSERT INTO user_pins (user_id, workspace_id, kind, object_ids, updated_at)
+        INSERT INTO user_pins (user_id, owner_user_id, kind, object_ids, updated_at)
         VALUES ($1, $2, $3, $4::jsonb, now())
-        ON CONFLICT (user_id, workspace_id, kind)
+        ON CONFLICT (user_id, owner_user_id, kind)
         DO UPDATE SET object_ids = EXCLUDED.object_ids, updated_at = now()
         """,
         current_user["id"],
-        workspace_id,
+        owner_user_id,
         kind,
         json.dumps(req.ids),
     )
@@ -106,17 +106,17 @@ async def set_pins(
 
 @router.get("/recents")
 async def get_recents(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ) -> list[dict]:
-    await _require_member(workspace_id, current_user["id"])
+    await _require_member(owner_user_id, current_user["id"])
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT object_id, kind FROM user_recents "
-        "WHERE user_id = $1 AND workspace_id = $2 "
+        "WHERE user_id = $1 AND owner_user_id = $2 "
         "ORDER BY viewed_at DESC LIMIT $3",
         current_user["id"],
-        workspace_id,
+        owner_user_id,
         RECENTS_LIMIT,
     )
     return [{"object_id": r["object_id"], "kind": r["kind"]} for r in rows]
@@ -124,21 +124,21 @@ async def get_recents(
 
 @router.post("/recents", status_code=204)
 async def record_recent(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     req: RecordRecentRequest,
     current_user: dict = Depends(get_current_user),
 ) -> None:
-    await _require_member_or_readable(workspace_id, current_user["id"], req.kind, req.object_id)
+    await _require_member_or_readable(owner_user_id, current_user["id"], req.kind, req.object_id)
     pool = get_pool()
     await pool.execute(
         """
-        INSERT INTO user_recents (user_id, workspace_id, object_id, kind, viewed_at)
+        INSERT INTO user_recents (user_id, owner_user_id, object_id, kind, viewed_at)
         VALUES ($1, $2, $3, $4, now())
-        ON CONFLICT (user_id, workspace_id, object_id)
+        ON CONFLICT (user_id, owner_user_id, object_id)
         DO UPDATE SET viewed_at = now(), kind = EXCLUDED.kind
         """,
         current_user["id"],
-        workspace_id,
+        owner_user_id,
         req.object_id,
         req.kind,
     )

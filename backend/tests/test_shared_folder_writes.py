@@ -32,9 +32,9 @@ async def _workspace(client: AsyncClient, api_key: str) -> str:
     return resp.json()["id"]
 
 
-async def _folder(client: AsyncClient, api_key: str, workspace_id: str) -> str:
+async def _folder(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/folders",
+        f"/api/v1/workspaces/{owner_user_id}/folders",
         json={"name": "Drop zone"},
         headers=_auth(api_key),
     )
@@ -74,7 +74,7 @@ async def test_member_can_move_file_into_folder(client: AsyncClient, _db_pool, m
 
     file_id = await _db_pool.fetchval(
         "INSERT INTO files "
-        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, 'notes.txt', 'text/plain', 5, 'test/key', $2) RETURNING id",
         ws,
         user_id,

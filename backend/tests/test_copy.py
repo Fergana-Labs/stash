@@ -18,27 +18,20 @@ from backend.services import agent_runtime, files_tree_service, table_service
 @pytest_asyncio.fixture
 async def workspace(_db_pool):
     user_id = uuid4()
-    ws_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )
-    await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
-        ws_id,
-        f"ws_{ws_id.hex[:6]}",
-        user_id,
-        ws_id.hex[:12],
-    )
-    return ws_id, user_id
+    # The scope is the user; content is keyed by owner_user_id = user_id.
+    return user_id, user_id
 
 
 @pytest.mark.asyncio
 async def test_copy_page_uses_copy_of_name_and_increments(workspace, _db_pool):
     ws_id, user_id = workspace
     src = await files_tree_service.create_page(
-        workspace_id=ws_id, name="Spec", created_by=user_id, content="body"
+        owner_user_id=ws_id, name="Spec", created_by=user_id, content="body"
     )
     first = await files_tree_service.copy_page(src["id"], ws_id, user_id)
     second = await files_tree_service.copy_page(src["id"], ws_id, user_id)
@@ -54,10 +47,10 @@ async def test_copy_folder_is_deep(workspace, _db_pool):
     root = await files_tree_service.create_folder(ws_id, "Project", user_id)
     sub = await files_tree_service.create_folder(ws_id, "Sub", user_id, parent_folder_id=root["id"])
     await files_tree_service.create_page(
-        workspace_id=ws_id, name="Top page", created_by=user_id, folder_id=root["id"], content="t"
+        owner_user_id=ws_id, name="Top page", created_by=user_id, folder_id=root["id"], content="t"
     )
     await files_tree_service.create_page(
-        workspace_id=ws_id, name="Nested page", created_by=user_id, folder_id=sub["id"], content="n"
+        owner_user_id=ws_id, name="Nested page", created_by=user_id, folder_id=sub["id"], content="n"
     )
     table = await table_service.create_table(
         ws_id, "Data", "", [{"name": "Col", "type": "text"}], user_id, folder_id=root["id"]
@@ -92,7 +85,7 @@ async def test_copy_folder_is_deep(workspace, _db_pool):
 async def test_agent_copy_page_tool(workspace, _db_pool):
     ws_id, user_id = workspace
     src = await files_tree_service.create_page(
-        workspace_id=ws_id, name="Doc", created_by=user_id, content="x"
+        owner_user_id=ws_id, name="Doc", created_by=user_id, content="x"
     )
     workspace_token = agent_runtime._workspace_ctx.set(ws_id)
     user_token = agent_runtime._user_ctx.set(user_id)

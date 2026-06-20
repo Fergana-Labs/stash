@@ -59,7 +59,7 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     assert get_resp.json()["title"] == "Investigate flaky auth test"
 
     row = await pool.fetchrow(
-        "SELECT title, user_set FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
+        "SELECT title, user_set FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
         workspace["id"],
         "sess-rename-1",
     )
@@ -138,7 +138,7 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     # Seed an event so the generator sees content to work with.
     await pool.execute(
         "INSERT INTO history_events "
-        "(workspace_id, session_id, agent_name, event_type, content, created_at) "
+        "(owner_user_id, session_id, agent_name, event_type, content, created_at) "
         "VALUES ($1, $2, 'claude', 'user_message', 'first prompt', now())",
         workspace["id"],
         "sess-rename-6",
@@ -160,7 +160,7 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     assert result == "user-set"
 
     row = await pool.fetchrow(
-        "SELECT title, user_set FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
+        "SELECT title, user_set FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
         workspace["id"],
         "sess-rename-6",
     )

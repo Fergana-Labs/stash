@@ -27,41 +27,38 @@ def enable_seed():
             os.environ[skill_seeds.DISABLE_ENV_VAR] = prev
 
 
-async def _register_and_create_workspace(client: AsyncClient) -> tuple[str, str]:
-    """Returns (api_key, workspace_id) for a freshly registered user."""
+async def _register_user(client: AsyncClient) -> tuple[str, str]:
+    """Returns (api_key, owner_user_id) for a freshly registered user.
+
+    The scope is the user, so owner_user_id is just the user's id."""
     resp = await client.post(
         "/api/v1/users/register",
         json={"name": unique_name(), "password": "securepassword1"},
     )
     assert resp.status_code == 201
     api_key = resp.json()["api_key"]
-    auth = {"Authorization": f"Bearer {api_key}"}
-    ws = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "Slide Studio", "description": ""},
-        headers=auth,
+    me = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {api_key}"},
     )
-    assert ws.status_code == 201
-    return api_key, ws.json()["id"]
-
-
-async def _seed(workspace_id: str, api_key: str, client: AsyncClient) -> None:
-    """Run the seed against the workspace as the registered owner."""
-    me = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {api_key}"})
     assert me.status_code == 200
-    user_id = me.json()["id"]
+    return api_key, me.json()["id"]
+
+
+async def _seed(owner_user_id: str) -> None:
+    """Run the seed against the scope as the registered owner."""
     from uuid import UUID
 
-    await skill_seeds.seed_slides_skill(UUID(workspace_id), UUID(user_id))
+    await skill_seeds.seed_slides_skill(UUID(owner_user_id), UUID(owner_user_id))
 
 
 @pytest.mark.asyncio
 async def test_seeded_workspace_has_slides_skill(client: AsyncClient, enable_seed):
-    api_key, workspace_id = await _register_and_create_workspace(client)
-    await _seed(workspace_id, api_key, client)
+    api_key, owner_user_id = await _register_user(client)
+    await _seed(owner_user_id)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/skills",
+        f"/api/v1/workspaces/{owner_user_id}/skills",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200
@@ -75,11 +72,11 @@ async def test_slides_skill_body_covers_canvas(client: AsyncClient, enable_seed)
     """The seeded SKILL.md must teach the 1920x1080 canvas — that's the
     whole reason the skill exists. Guard against an accidental edit that
     drops the dimension constraint."""
-    api_key, workspace_id = await _register_and_create_workspace(client)
-    await _seed(workspace_id, api_key, client)
+    api_key, owner_user_id = await _register_user(client)
+    await _seed(owner_user_id)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/skills/slides",
+        f"/api/v1/workspaces/{owner_user_id}/skills/slides",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200, resp.text
@@ -96,12 +93,12 @@ async def test_slides_skill_body_covers_canvas(client: AsyncClient, enable_seed)
 @pytest.mark.asyncio
 async def test_seed_is_idempotent(client: AsyncClient, enable_seed):
     """Re-running the seed shouldn't create duplicate folders or pages."""
-    api_key, workspace_id = await _register_and_create_workspace(client)
-    await _seed(workspace_id, api_key, client)
-    await _seed(workspace_id, api_key, client)
+    api_key, owner_user_id = await _register_user(client)
+    await _seed(owner_user_id)
+    await _seed(owner_user_id)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/skills",
+        f"/api/v1/workspaces/{owner_user_id}/skills",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200

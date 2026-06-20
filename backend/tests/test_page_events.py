@@ -15,20 +15,13 @@ from backend.services import files_tree_service, page_events
 @pytest_asyncio.fixture
 async def workspace(_db_pool):
     user_id = uuid4()
-    ws_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )
-    await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
-        ws_id,
-        f"ws_{ws_id.hex[:6]}",
-        user_id,
-        ws_id.hex[:12],
-    )
-    return ws_id, user_id
+    # The scope IS the user; content is owned by owner_user_id = user_id.
+    return user_id, user_id
 
 
 def test_pubsub_delivers_then_stops_after_unsubscribe():
@@ -52,11 +45,11 @@ def test_pubsub_delivers_then_stops_after_unsubscribe():
 async def test_update_page_notifies_and_invalidates_collab(workspace, _db_pool):
     ws_id, user_id = workspace
     page = await files_tree_service.create_page(
-        workspace_id=ws_id, name="Live", created_by=user_id, content="v1"
+        owner_user_id=ws_id, name="Live", created_by=user_id, content="v1"
     )
     # Simulate a persisted collab doc (as if the page had been opened in the editor).
     await _db_pool.execute(
-        "INSERT INTO page_collab_documents (page_id, workspace_id, yjs_state) VALUES ($1, $2, $3)",
+        "INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state) VALUES ($1, $2, $3)",
         page["id"],
         ws_id,
         b"\x00",
@@ -85,10 +78,10 @@ async def test_collab_projection_save_does_not_notify(workspace, _db_pool):
     wipe collab state — that would fight the live editor."""
     ws_id, user_id = workspace
     page = await files_tree_service.create_page(
-        workspace_id=ws_id, name="Editing", created_by=user_id, content="a"
+        owner_user_id=ws_id, name="Editing", created_by=user_id, content="a"
     )
     await _db_pool.execute(
-        "INSERT INTO page_collab_documents (page_id, workspace_id, yjs_state) VALUES ($1, $2, $3)",
+        "INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state) VALUES ($1, $2, $3)",
         page["id"],
         ws_id,
         b"\x00",

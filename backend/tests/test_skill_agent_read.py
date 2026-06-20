@@ -18,25 +18,20 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _create_workspace(client: AsyncClient, api_key: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": unique_name("agent_read_workspace")},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
-    return resp.json()
+def _scope(register_body: dict) -> dict:
+    """The scope IS the user; registration seeds it. The scope id is the user id."""
+    return {"id": register_body["id"]}
 
 
 async def _create_page(
     client: AsyncClient,
     api_key: str,
-    workspace_id: str,
+    owner_user_id: str,
     name: str,
     content: str,
 ) -> dict:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/pages/new",
+        f"/api/v1/workspaces/{owner_user_id}/pages/new",
         json={"name": name, "content": content},
         headers=_auth(api_key),
     )
@@ -46,8 +41,8 @@ async def _create_page(
 
 @pytest.mark.asyncio
 async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
-    api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key)
+    api_key, register_body = await _register(client)
+    workspace = _scope(register_body)
     folder = (
         await client.post(
             f"/api/v1/workspaces/{workspace['id']}/folders",
@@ -106,13 +101,13 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_public_skill_item_text_strips_html_page_content(client: AsyncClient):
-    api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key)
+    api_key, register_body = await _register(client)
+    workspace = _scope(register_body)
 
     published = await client.post(
         "/api/v1/publish",
         json={
-            "workspace_id": workspace["id"],
+            "owner_user_id": workspace["id"],
             "title": "HTML strategy memo",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",

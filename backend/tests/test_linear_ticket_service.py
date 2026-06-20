@@ -57,7 +57,7 @@ async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch
             self.executed = []
 
         async def fetch(self, *args):
-            return [{"ticket_identifier": "FER-19", "workspace_id": WORKSPACE_ID}]
+            return [{"ticket_identifier": "FER-19", "owner_user_id": WORKSPACE_ID}]
 
         async def execute(self, *args):
             self.executed.append(args)
@@ -80,8 +80,8 @@ async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch
             updated_at=updated_at,
         )
 
-    async def workspace_token(workspace_id):
-        assert workspace_id == WORKSPACE_ID
+    async def workspace_token(owner_user_id):
+        assert owner_user_id == WORKSPACE_ID
         return "test-token"
 
     monkeypatch.setattr(linear_ticket_service, "get_pool", lambda: pool)

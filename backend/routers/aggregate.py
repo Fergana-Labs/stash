@@ -58,7 +58,7 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
     """
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT object_id, kind, workspace_id FROM user_recents "
+        "SELECT object_id, kind, owner_user_id FROM user_recents "
         "WHERE user_id = $1 ORDER BY viewed_at DESC LIMIT 30",
         current_user["id"],
     )
@@ -66,7 +66,7 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
         {
             "object_id": r["object_id"],
             "kind": r["kind"],
-            "workspace_id": r["workspace_id"],
+            "owner_user_id": r["owner_user_id"],
         }
         for r in rows
     ]
@@ -76,7 +76,7 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
 async def list_activity(
     limit: int = Query(50, ge=1, le=200),
     before: datetime | None = Query(None),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Recent product activity across accessible workspaces, cursor-paginated by ts."""
@@ -84,21 +84,21 @@ async def list_activity(
     events = await pool.fetch(
         """
         WITH member_workspaces AS (
-          SELECT w.id, w.name
-          FROM workspaces w
-          WHERE w.creator_id = $1
-          AND ($3::uuid IS NULL OR w.id = $3)
+          SELECT u.id, u.name
+          FROM users u
+          WHERE u.id = $1
+          AND ($3::uuid IS NULL OR u.id = $3)
         ),
-        -- Owned workspaces plus any workspace that has shared content with the
+        -- The user's own scope plus any scope that has shared content with the
         -- user. Page/file rows still pass readable_content_condition, so a share
-        -- only surfaces the specific shared rows — never the whole workspace.
+        -- only surfaces the specific shared rows — never the whole scope.
         accessible_workspaces AS (
-          SELECT w.id, w.name
-          FROM workspaces w
-          WHERE w.id IN """
-        + permission_service.accessible_workspace_ids_sql(1)
+          SELECT u.id, u.name
+          FROM users u
+          WHERE u.id IN """
+        + permission_service.accessible_scope_ids_sql(1)
         + """
-          AND ($3::uuid IS NULL OR w.id = $3)
+          AND ($3::uuid IS NULL OR u.id = $3)
         )
         SELECT * FROM (
         (
@@ -113,10 +113,10 @@ async def list_activity(
                    ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
                    FILTER (WHERE he.agent_name IS NOT NULL)
                  )[1] || ': ' || he.session_id AS target_label,
-                 aw.id AS workspace_id,
+                 aw.id AS owner_user_id,
                  aw.name AS workspace_name
           FROM history_events he
-          JOIN member_workspaces aw ON aw.id = he.workspace_id
+          JOIN member_workspaces aw ON aw.id = he.owner_user_id
           WHERE he.session_id IS NOT NULL
             AND """
         + memory_service.readable_session_event_condition("he", 1)
@@ -130,10 +130,10 @@ async def list_activity(
                  COALESCE(p.updated_by, p.created_by) AS actor_id,
                  p.id::text AS target_id,
                  p.name AS target_label,
-                 aw.id AS workspace_id,
+                 aw.id AS owner_user_id,
                  aw.name AS workspace_name
           FROM pages p
-          JOIN accessible_workspaces aw ON aw.id = p.workspace_id
+          JOIN accessible_workspaces aw ON aw.id = p.owner_user_id
           WHERE p.deleted_at IS NULL
             AND """
         + permission_service.readable_content_condition("page", "p", 1)
@@ -146,10 +146,10 @@ async def list_activity(
                  f.uploaded_by AS actor_id,
                  f.id::text AS target_id,
                  f.name AS target_label,
-                 aw.id AS workspace_id,
+                 aw.id AS owner_user_id,
                  aw.name AS workspace_name
           FROM files f
-          JOIN accessible_workspaces aw ON aw.id = f.workspace_id
+          JOIN accessible_workspaces aw ON aw.id = f.owner_user_id
           WHERE f.deleted_at IS NULL
             AND """
         + permission_service.readable_content_condition("file", "f", 1)
@@ -161,7 +161,7 @@ async def list_activity(
         """,
         current_user["id"],
         limit + 1,
-        workspace_id,
+        owner_user_id,
         before,
     )
     has_more = len(events) > limit
@@ -184,7 +184,7 @@ async def list_activity(
                 "actor": users[r["actor_id"]],
                 "target_id": r["target_id"],
                 "target_label": r["target_label"],
-                "workspace_id": r["workspace_id"],
+                "owner_user_id": r["owner_user_id"],
                 "workspace_name": r["workspace_name"],
             }
             for r in events
@@ -207,13 +207,13 @@ async def overview_counts(current_user: dict = Depends(get_current_user)):
     return await analytics_service.get_overview_counts(current_user["id"])
 
 
-async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
+async def _verify_workspace_access(owner_user_id: UUID, user_id: UUID) -> None:
     """Raise 403 if the user isn't a member of the workspace."""
     from fastapi import HTTPException
 
-    from ..services import permission_service
+    from ..services import user_scope_service
 
-    role = await permission_service.get_workspace_role(workspace_id, user_id)
+    role = await user_scope_service.get_member_role(owner_user_id, user_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
@@ -222,33 +222,33 @@ async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
 async def activity_timeline(
     days: int = Query(30, ge=1, le=365),
     bucket: str = Query("day"),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Human + coding-agent session commits bucketed by time for the dashboard timeline."""
-    if workspace_id is not None:
-        await _verify_workspace_access(workspace_id, current_user["id"])
+    if owner_user_id is not None:
+        await _verify_workspace_access(owner_user_id, current_user["id"])
     return await analytics_service.get_activity_timeline(
         current_user["id"],
         days=days,
         bucket=bucket,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )
 
 
 @router.get("/knowledge-density")
 async def knowledge_density(
     max_clusters: int = Query(20, ge=1, le=50),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Topic clusters for the knowledge density heatmap."""
-    if workspace_id is not None:
-        await _verify_workspace_access(workspace_id, current_user["id"])
+    if owner_user_id is not None:
+        await _verify_workspace_access(owner_user_id, current_user["id"])
     return await analytics_service.get_knowledge_density(
         current_user["id"],
         max_clusters=max_clusters,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )
 
 
@@ -256,15 +256,15 @@ async def knowledge_density(
 async def embedding_projection(
     max_points: int = Query(500, ge=1, le=2000),
     source: str | None = Query(None),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """2D UMAP projection of embeddings for the space explorer."""
-    if workspace_id is not None:
-        await _verify_workspace_access(workspace_id, current_user["id"])
+    if owner_user_id is not None:
+        await _verify_workspace_access(owner_user_id, current_user["id"])
     return await analytics_service.get_embedding_projection(
         current_user["id"],
         max_points=max_points,
         source=source,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )

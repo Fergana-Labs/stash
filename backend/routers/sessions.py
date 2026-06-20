@@ -26,7 +26,7 @@ from ..services import (
     session_service,
     session_title_service,
     storage_service,
-    workspace_service,
+    user_scope_service,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
@@ -53,7 +53,7 @@ def _session_response(row: dict, title: str | None = None) -> dict:
         files_touched = json.loads(files_touched)
     return {
         "id": str(row["id"]),
-        "workspace_id": str(row["workspace_id"]),
+        "owner_user_id": str(row["owner_user_id"]),
         "session_id": row["session_id"],
         "app_url": _session_app_url(row["session_id"]),
         "title": title
@@ -89,7 +89,7 @@ async def _session_artifacts(session_row_id: UUID) -> list[dict]:
 
 @router.get("/me/sessions")
 async def list_my_sessions(
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
@@ -98,36 +98,36 @@ async def list_my_sessions(
     timestamps, and a preview of the first prompt."""
     pool = get_pool()
     args: list = [current_user["id"]]
-    accessible_ws = permission_service.accessible_workspace_ids_sql(1)
+    accessible_ws = permission_service.accessible_scope_ids_sql(1)
     title_where = [
         "he_title.session_id IS NOT NULL",
-        f"(he_title.workspace_id IN {accessible_ws} "
-        "OR (he_title.workspace_id IS NULL AND he_title.created_by = $1))",
-        f"(he_title.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
+        f"(he_title.owner_user_id IN {accessible_ws} "
+        "OR (he_title.owner_user_id IS NULL AND he_title.created_by = $1))",
+        f"(he_title.owner_user_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
         "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
     ]
     where = [
         "he.session_id IS NOT NULL",
-        f"(he.workspace_id IN {accessible_ws} "
-        "OR (he.workspace_id IS NULL AND he.created_by = $1))",
-        f"(he.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
+        f"(he.owner_user_id IN {accessible_ws} "
+        "OR (he.owner_user_id IS NULL AND he.created_by = $1))",
+        f"(he.owner_user_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
     ]
-    if workspace_id is not None:
-        args.append(workspace_id)
-        where.append(f"he.workspace_id = ${len(args)}")
-        title_where.append(f"he_title.workspace_id = ${len(args)}")
+    if owner_user_id is not None:
+        args.append(owner_user_id)
+        where.append(f"he.owner_user_id = ${len(args)}")
+        title_where.append(f"he_title.owner_user_id = ${len(args)}")
 
     rows = await pool.fetch(
         f"""
         WITH title_sources AS (
-          SELECT DISTINCT ON (he_title.workspace_id, he_title.session_id)
-            he_title.workspace_id,
+          SELECT DISTINCT ON (he_title.owner_user_id, he_title.session_id)
+            he_title.owner_user_id,
             he_title.session_id,
             LEFT(he_title.content, 240) AS title_source
           FROM history_events he_title
           WHERE {' AND '.join(title_where)}
           ORDER BY
-            he_title.workspace_id,
+            he_title.owner_user_id,
             he_title.session_id,
             CASE
               WHEN he_title.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
@@ -142,8 +142,8 @@ async def list_my_sessions(
           s.id AS id,
           s.session_folder_id,
           sf.name AS session_folder_name,
-          he.workspace_id,
-          w.name AS workspace_name,
+          he.owner_user_id,
+          owner.display_name AS workspace_name,
           {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
@@ -154,15 +154,15 @@ async def list_my_sessions(
           MAX(he.created_at) AS last_event_at
         FROM history_events he
         LEFT JOIN title_sources ON title_sources.session_id = he.session_id
-          AND title_sources.workspace_id IS NOT DISTINCT FROM he.workspace_id
-        LEFT JOIN workspaces w ON w.id = he.workspace_id
+          AND title_sources.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
+        LEFT JOIN users owner ON owner.id = he.owner_user_id
         LEFT JOIN users u ON u.id = he.created_by
-        LEFT JOIN sessions s ON s.workspace_id IS NOT DISTINCT FROM he.workspace_id
+        LEFT JOIN sessions s ON s.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
         LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {' AND '.join(where)}
-        GROUP BY he.session_id, he.workspace_id, w.name, s.id, s.session_folder_id,
+        GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
           sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
@@ -175,10 +175,10 @@ async def list_my_sessions(
             raise RuntimeError(f"Session {session['session_id']} has no author display_name")
     sessions_by_workspace: dict[UUID, list[dict]] = {}
     for session in sessions:
-        sessions_by_workspace.setdefault(session["workspace_id"], []).append(session)
+        sessions_by_workspace.setdefault(session["owner_user_id"], []).append(session)
     for session_group in sessions_by_workspace.values():
         titles = await session_title_service.titles_for_sessions(
-            session_group[0]["workspace_id"],
+            session_group[0]["owner_user_id"],
             session_group,
         )
         for session in session_group:
@@ -190,27 +190,27 @@ async def list_my_sessions(
     return {"sessions": sessions}
 
 
-@router.post("/workspaces/{workspace_id}/sessions", status_code=201)
+@router.post("/workspaces/{owner_user_id}/sessions", status_code=201)
 async def upsert_workspace_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     req: SessionUpsertRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not create sessions")
 
     # A session always lands in a folder: the one it was pushed to, or the
     # workspace's Default folder (resolved by upsert_session when unset).
     folder_id = req.session_folder_id
     if folder_id is not None and not await session_folder_service.can_add_session_to_folder(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         user_id=current_user["id"],
         folder_id=folder_id,
     ):
         raise HTTPException(status_code=404, detail="Session folder not found")
 
     row = await session_service.upsert_session(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         session_id=req.session_id,
         agent_name=req.agent_name,
         cwd=req.cwd,
@@ -224,7 +224,7 @@ async def upsert_workspace_session(
 
 
 async def _session_detail_payload(
-    workspace_id: UUID, session_id: str, user_id: UUID
+    owner_user_id: UUID, session_id: str, user_id: UUID
 ) -> dict | None:
     """Full session detail if the user may read it, else None.
 
@@ -232,17 +232,17 @@ async def _session_detail_payload(
     non-member. can_read_session enforces check_access (owner OR share OR
     open skill).
     """
-    if not await memory_service.can_read_session(workspace_id, session_id, user_id):
+    if not await memory_service.can_read_session(owner_user_id, session_id, user_id):
         return None
 
-    session = await session_service.get_session(workspace_id, session_id)
+    session = await session_service.get_session(owner_user_id, session_id)
     if not session:
         return None
 
-    events = await memory_service.read_session_events(workspace_id, session_id, user_id)
+    events = await memory_service.read_session_events(owner_user_id, session_id, user_id)
     payload = _session_response(
         session,
-        title=await session_title_service.title_for_events(workspace_id, session_id, events),
+        title=await session_title_service.title_for_events(owner_user_id, session_id, events),
     )
     payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
@@ -259,19 +259,19 @@ async def get_session_canonical(
     can read. Any failure is a 404: an unscoped lookup must not confirm
     that an unreadable session exists."""
     for row in await session_service.list_sessions_for_session_id(session_id):
-        payload = await _session_detail_payload(row["workspace_id"], session_id, current_user["id"])
+        payload = await _session_detail_payload(row["owner_user_id"], session_id, current_user["id"])
         if payload:
             return payload
     raise HTTPException(status_code=404, detail="Session not found")
 
 
-@router.get("/workspaces/{workspace_id}/sessions/{session_id}")
+@router.get("/workspaces/{owner_user_id}/sessions/{session_id}")
 async def get_workspace_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    payload = await _session_detail_payload(workspace_id, session_id, current_user["id"])
+    payload = await _session_detail_payload(owner_user_id, session_id, current_user["id"])
     if not payload:
         raise HTTPException(status_code=404, detail="Session not found")
     return payload
@@ -281,17 +281,17 @@ class SessionTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 
 
-@router.patch("/workspaces/{workspace_id}/sessions/{session_id}/title")
+@router.patch("/workspaces/{owner_user_id}/sessions/{session_id}/title")
 async def rename_workspace_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_id: str,
     body: SessionTitleRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+    if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
-    session = await session_service.get_session(workspace_id, session_id)
+    session = await session_service.get_session(owner_user_id, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -299,21 +299,21 @@ async def rename_workspace_session(
         "session",
         session["id"],
         current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         require="write",
     )
     if not can_write:
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
-        title = await session_title_service.set_user_title(workspace_id, session_id, body.title)
+        title = await session_title_service.set_user_title(owner_user_id, session_id, body.title)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"title": title}
 
 
 async def _check_session_write(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     user_id: UUID,
 ) -> dict:
@@ -324,16 +324,16 @@ async def _check_session_write(
     """
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id FROM sessions WHERE id = $1",
+        "SELECT id, owner_user_id FROM sessions WHERE id = $1",
         session_row_id,
     )
-    if not row or row["workspace_id"] != workspace_id:
+    if not row or row["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Session not found")
     can_write = await permission_service.check_access(
         "session",
         session_row_id,
         user_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         require="write",
     )
     if not can_write:
@@ -341,76 +341,76 @@ async def _check_session_write(
     return dict(row)
 
 
-@router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}", status_code=204)
+@router.delete("/workspaces/{owner_user_id}/sessions/{session_row_id}", status_code=204)
 async def delete_workspace_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Soft delete: stamps deleted_at + deleted_by."""
-    await _check_session_write(workspace_id, session_row_id, current_user["id"])
-    deleted = await session_service.delete_session(session_row_id, workspace_id, current_user["id"])
+    await _check_session_write(owner_user_id, session_row_id, current_user["id"])
+    deleted = await session_service.delete_session(session_row_id, owner_user_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
 
 
-@router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/restore", status_code=204)
+@router.post("/workspaces/{owner_user_id}/sessions/{session_row_id}/restore", status_code=204)
 async def restore_workspace_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     restored = await session_service.restore_session(
-        session_row_id, workspace_id, current_user["id"]
+        session_row_id, owner_user_id, current_user["id"]
     )
     if not restored:
         raise HTTPException(status_code=404, detail="Session not in trash")
 
 
-@router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}/purge", status_code=204)
+@router.delete("/workspaces/{owner_user_id}/sessions/{session_row_id}/purge", status_code=204)
 async def purge_workspace_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a session already in trash."""
-    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     storage_keys = await session_service.list_trashed_session_artifact_storage_keys(
         session_row_id,
-        workspace_id,
+        owner_user_id,
     )
     for storage_key in storage_keys:
         await storage_service.delete_file(storage_key)
-    purged = await session_service.purge_session(session_row_id, workspace_id)
+    purged = await session_service.purge_session(session_row_id, owner_user_id)
     if not purged:
         raise HTTPException(status_code=404, detail="Session not in trash")
     await security_audit_service.record_content_lifecycle_event(
         operation="purged",
         actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type="session",
         target_id=session_row_id,
         metadata={"storage_key_count": len(storage_keys)},
     )
 
 
-@router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts", status_code=201)
+@router.post("/workspaces/{owner_user_id}/sessions/{session_row_id}/artifacts", status_code=201)
 async def upload_session_artifact(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     file: UploadFile = File(...),
     file_path: str = Form(...),
     current_user: dict = Depends(get_current_user),
 ):
     session = await session_service.get_session_by_id(session_row_id)
-    if not session or session["workspace_id"] != workspace_id:
+    if not session or session["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Session not found")
     can_write = await permission_service.check_access(
         "session",
         session_row_id,
         current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         require="write",
     )
     if not can_write:
@@ -424,7 +424,7 @@ async def upload_session_artifact(
         raise HTTPException(status_code=413, detail="Artifact too large (max 1 MB)")
 
     storage_key = await storage_service.upload_file(
-        str(workspace_id),
+        str(owner_user_id),
         file.filename or file_path.split("/")[-1],
         content,
         file.content_type or "application/octet-stream",
@@ -442,9 +442,9 @@ async def upload_session_artifact(
     return dict(row)
 
 
-async def _find_or_create_sessions_folder(workspace_id: UUID, user_id: UUID) -> dict:
+async def _find_or_create_sessions_folder(owner_user_id: UUID, user_id: UUID) -> dict:
     return await files_tree_service.find_or_create_root_folder(
-        workspace_id, SESSIONS_FOLDER_NAME, user_id
+        owner_user_id, SESSIONS_FOLDER_NAME, user_id
     )
 
 
@@ -469,9 +469,9 @@ def _format_session_markdown(events: list[dict]) -> str:
     return "\n".join(parts)
 
 
-@router.post("/workspaces/{workspace_id}/sessions/{session_id}/materialize")
+@router.post("/workspaces/{owner_user_id}/sessions/{session_id}/materialize")
 async def materialize_session(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -479,23 +479,23 @@ async def materialize_session(
     Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather
     than spawning duplicates."""
-    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
-    if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+    if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="No events for that session in this workspace")
 
     pool = get_pool()
     events = await pool.fetch(
         "SELECT agent_name, event_type, tool_name, content, created_at "
-        "FROM history_events WHERE session_id = $1 AND workspace_id = $2 "
+        "FROM history_events WHERE session_id = $1 AND owner_user_id = $2 "
         "ORDER BY created_at",
         session_id,
-        workspace_id,
+        owner_user_id,
     )
     if not events:
         raise HTTPException(status_code=404, detail="No events for that session in this workspace")
 
-    folder = await _find_or_create_sessions_folder(workspace_id, current_user["id"])
+    folder = await _find_or_create_sessions_folder(owner_user_id, current_user["id"])
 
     agent = (events[0]["agent_name"] or "agent").strip() or "agent"
     started = events[0]["created_at"]
@@ -508,22 +508,22 @@ async def materialize_session(
     # the display name format without orphaning previously-materialized pages.
     existing = await pool.fetchrow(
         "SELECT id FROM pages "
-        "WHERE workspace_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 "
+        "WHERE owner_user_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 "
         "AND deleted_at IS NULL LIMIT 1",
-        workspace_id,
+        owner_user_id,
         folder["id"],
         session_id,
     )
     if existing:
         page = await files_tree_service.update_page(
             existing["id"],
-            workspace_id,
+            owner_user_id,
             current_user["id"],
             content=content,
         )
     else:
         page = await files_tree_service.create_page(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             name=page_name,
             content=content,
             created_by=current_user["id"],

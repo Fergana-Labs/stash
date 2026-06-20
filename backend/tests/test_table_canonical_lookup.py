@@ -28,10 +28,10 @@ async def _table_in_new_workspace(client: AsyncClient, api_key: str) -> tuple[st
         "/api/v1/workspaces", json={"name": "Canonical lookup"}, headers=headers
     )
     assert ws_resp.status_code == 201
-    workspace_id = ws_resp.json()["id"]
+    owner_user_id = ws_resp.json()["id"]
 
     table_resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/tables",
+        f"/api/v1/workspaces/{owner_user_id}/tables",
         json={
             "name": "Prospects",
             "columns": [{"id": "col_name", "name": "Name", "type": "text"}],
@@ -39,30 +39,30 @@ async def _table_in_new_workspace(client: AsyncClient, api_key: str) -> tuple[st
         headers=headers,
     )
     assert table_resp.status_code == 201
-    return workspace_id, table_resp.json()["id"]
+    return owner_user_id, table_resp.json()["id"]
 
 
 @pytest.mark.asyncio
 async def test_member_resolves_table_by_id_alone(client: AsyncClient):
     api_key = await _register(client)
-    workspace_id, table_id = await _table_in_new_workspace(client, api_key)
+    owner_user_id, table_id = await _table_in_new_workspace(client, api_key)
 
     resp = await client.get(f"/api/v1/tables/{table_id}", headers=_auth(api_key))
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["id"] == table_id
-    assert body["workspace_id"] == workspace_id
+    assert body["owner_user_id"] == owner_user_id
     assert body["columns"][0]["id"] == "col_name"
 
 
 @pytest.mark.asyncio
 async def test_column_width_updates_table_metadata(client: AsyncClient):
     api_key = await _register(client)
-    workspace_id, table_id = await _table_in_new_workspace(client, api_key)
+    owner_user_id, table_id = await _table_in_new_workspace(client, api_key)
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/columns/col_name",
+        f"/api/v1/workspaces/{owner_user_id}/tables/{table_id}/columns/col_name",
         json={"width": 260},
         headers=_auth(api_key),
     )

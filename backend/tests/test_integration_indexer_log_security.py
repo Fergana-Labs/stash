@@ -43,7 +43,6 @@ class _ToolErrorSession:
 def _source(external_ref: str) -> dict:
     return {
         "id": str(uuid4()),
-        "workspace_id": str(uuid4()),
         "owner_user_id": str(uuid4()),
         "external_ref": external_ref,
     }

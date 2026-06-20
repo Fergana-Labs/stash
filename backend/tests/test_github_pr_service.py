@@ -71,13 +71,13 @@ async def test_discover_session_labels_records_pr_and_upserts_ticket(
     monkeypatch,
 ):
     key = await _register(client)
-    workspace_id = await _workspace(client, key)
+    owner_user_id = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     monkeypatch.setattr(github_pr_service, "enqueue_session_discovery", lambda _session_id: None)
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/sessions/events/batch",
+        f"/api/v1/workspaces/{owner_user_id}/sessions/events/batch",
         json={
             "events": [
                 {
@@ -93,8 +93,8 @@ async def test_discover_session_labels_records_pr_and_upserts_ticket(
     assert pushed.status_code == 201
 
     session = await pool.fetchrow(
-        "SELECT id FROM sessions WHERE workspace_id = $1 AND session_id = $2",
-        workspace_id,
+        "SELECT id FROM sessions WHERE owner_user_id = $1 AND session_id = $2",
+        owner_user_id,
         "sess-pr-linear",
     )
 

@@ -34,14 +34,14 @@ from ..services import (
     security_audit_service,
     storage_service,
     table_service,
-    workspace_service,
+    user_scope_service,
 )
 from ..services.csv_inference import coerce_value, infer_column_type
 from ..services.xlsx_ingest import ingest_xlsx_bytes
 
 logger = logging.getLogger(__name__)
 
-ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/files", tags=["files"])
+ws_router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}/files", tags=["files"])
 canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -49,22 +49,22 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 # File rows are always read joined to their uploader so responses can show
 # attribution ("Uploaded by Sam") without a second round trip.
 _FILE_COLS = (
-    "f.id, f.workspace_id, f.folder_id, f.name, f.content_type, f.size_bytes, "
+    "f.id, f.owner_user_id, f.folder_id, f.name, f.content_type, f.size_bytes, "
     "f.storage_key, f.uploaded_by, f.created_at, f.linked_table_id, "
     "u.name AS uploaded_by_name, u.display_name AS uploaded_by_display_name"
 )
 _FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
 
 
-async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
+async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     """Read gate: any member."""
-    if not await workspace_service.is_member(workspace_id, user_id):
+    if not await user_scope_service.is_member(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
-async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
+async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
     """Write gate: owner or editor only."""
-    if not await workspace_service.can_write(workspace_id, user_id):
+    if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(
             status_code=403,
             detail="Viewers can read but not modify files",
@@ -73,7 +73,7 @@ async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
 
 async def _can_access_file(
     file_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID | None,
     *,
     require_write: bool = False,
@@ -82,7 +82,7 @@ async def _can_access_file(
         "file",
         file_id,
         user_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         require="write" if require_write else "read",
     ):
         return True
@@ -109,7 +109,7 @@ async def _file_to_response(row: dict) -> FileResponse:
     url = await storage_service.get_file_url(row["storage_key"])
     return FileResponse(
         id=row["id"],
-        workspace_id=row["workspace_id"],
+        owner_user_id=row["owner_user_id"],
         folder_id=row.get("folder_id"),
         name=row["name"],
         content_type=row["content_type"],
@@ -124,13 +124,13 @@ async def _file_to_response(row: dict) -> FileResponse:
     )
 
 
-async def _fetch_file_row(file_id: UUID, workspace_id: UUID) -> dict | None:
+async def _fetch_file_row(file_id: UUID, owner_user_id: UUID) -> dict | None:
     """Fetch a single workspace file joined to its uploader, or None."""
     row = await get_pool().fetchrow(
         f"SELECT {_FILE_COLS} {_FILE_FROM} "
-        "WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL",
+        "WHERE f.id = $1 AND f.owner_user_id = $2 AND f.deleted_at IS NULL",
         file_id,
-        workspace_id,
+        owner_user_id,
     )
     return dict(row) if row else None
 
@@ -152,19 +152,19 @@ async def _download_storage_file_or_502(storage_key: str, operation: str) -> byt
 
 @ws_router.post("", response_model=UploadResponse, status_code=201)
 async def upload_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file: UploadFile,
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     # Workspace writers can upload anywhere; non-members can upload into a
     # specific folder shared with them with write permission.
-    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         can_write_folder = folder_id is not None and await permission_service.check_access(
             "folder",
             folder_id,
             current_user["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             require="write",
         )
         if not can_write_folder:
@@ -189,9 +189,9 @@ async def upload_ws_file(
         if folder_id is not None:
             pool = get_pool()
             owns = await pool.fetchval(
-                "SELECT 1 FROM folders WHERE id = $1 AND workspace_id = $2",
+                "SELECT 1 FROM folders WHERE id = $1 AND owner_user_id = $2",
                 folder_id,
-                workspace_id,
+                owner_user_id,
             )
             if not owns:
                 raise HTTPException(
@@ -207,7 +207,7 @@ async def upload_ws_file(
 
         try:
             page = await files_tree_service.create_page(
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 name=name,
                 created_by=current_user["id"],
                 folder_id=folder_id,
@@ -222,7 +222,7 @@ async def upload_ws_file(
         return UploadResponse(
             kind="page",
             id=page["id"],
-            workspace_id=page["workspace_id"],
+            owner_user_id=page["owner_user_id"],
             folder_id=page.get("folder_id"),
             name=page["name"],
             content_type=page["content_type"],
@@ -246,7 +246,7 @@ async def upload_ws_file(
     )
 
     storage_key = await storage_service.upload_file(
-        str(workspace_id),
+        str(owner_user_id),
         filename,
         content,
         content_type,
@@ -255,17 +255,17 @@ async def upload_ws_file(
     pool = get_pool()
     if folder_id is not None:
         owns = await pool.fetchval(
-            "SELECT 1 FROM folders WHERE id = $1 AND workspace_id = $2",
+            "SELECT 1 FROM folders WHERE id = $1 AND owner_user_id = $2",
             folder_id,
-            workspace_id,
+            owner_user_id,
         )
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
     row = await pool.fetchrow(
-        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
+        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
-        "RETURNING id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
-        workspace_id,
+        "RETURNING id, owner_user_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
+        owner_user_id,
         filename,
         content_type,
         len(content),
@@ -281,7 +281,7 @@ async def upload_ws_file(
     return UploadResponse(
         kind="file",
         id=row_dict["id"],
-        workspace_id=row_dict["workspace_id"],
+        owner_user_id=row_dict["owner_user_id"],
         folder_id=row_dict.get("folder_id"),
         name=row_dict["name"],
         content_type=row_dict["content_type"],
@@ -296,18 +296,18 @@ async def upload_ws_file(
 
 @ws_router.get("", response_model=FileListResponse)
 async def list_ws_files(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_member(owner_user_id, current_user["id"])
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 2)
     rows = await pool.fetch(
         f"SELECT {_FILE_COLS} {_FILE_FROM} "
-        "WHERE f.workspace_id = $1 AND f.deleted_at IS NULL "
+        "WHERE f.owner_user_id = $1 AND f.deleted_at IS NULL "
         f"AND {readable_file} "
         "ORDER BY f.created_at DESC",
-        workspace_id,
+        owner_user_id,
         current_user["id"],
     )
     files = [await _file_to_response(dict(row)) for row in rows]
@@ -328,28 +328,28 @@ async def get_file_by_id(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, row["workspace_id"], current_user["id"]):
+    if not await _can_access_file(file_id, row["owner_user_id"], current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
 
 @ws_router.get("/{file_id}", response_model=FileResponse)
 async def get_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    row = await _fetch_file_row(file_id, workspace_id)
+    row = await _fetch_file_row(file_id, owner_user_id)
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="You don't have access to this file")
     return await _file_to_response(row)
 
 
 @ws_router.get("/{file_id}/download")
 async def download_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict | None = Depends(get_current_user_optional),
 ):
@@ -357,14 +357,14 @@ async def download_ws_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT name, content_type, storage_key FROM files "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         file_id,
-        workspace_id,
+        owner_user_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
     viewer_id = current_user["id"] if current_user else None
-    if not await _can_access_file(file_id, workspace_id, viewer_id):
+    if not await _can_access_file(file_id, owner_user_id, viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
     content_type = row["content_type"] or "application/octet-stream"
@@ -387,19 +387,19 @@ async def download_ws_file(
 
 @ws_router.get("/{file_id}/text")
 async def get_ws_file_text(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_member(owner_user_id, current_user["id"])
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(
         "SELECT extracted_text, extraction_status, extraction_error "
-        "FROM files f WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL "
+        "FROM files f WHERE f.id = $1 AND f.owner_user_id = $2 AND f.deleted_at IS NULL "
         f"AND {readable_file}",
         file_id,
-        workspace_id,
+        owner_user_id,
         current_user["id"],
     )
     if not row:
@@ -413,7 +413,7 @@ async def get_ws_file_text(
 
 @ws_router.patch("/{file_id}", response_model=FileResponse)
 async def update_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     req: FileUpdateRequest,
     current_user: dict = Depends(get_current_user),
@@ -423,13 +423,13 @@ async def update_ws_file(
     request returns the file unchanged."""
     pool = get_pool()
     file_row = await pool.fetchrow(
-        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "SELECT * FROM files WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         file_id,
-        workspace_id,
+        owner_user_id,
     )
     if not file_row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
 
     # Build the SET clause dynamically so we only touch fields the caller
@@ -452,16 +452,16 @@ async def update_ws_file(
         # could escape their workspace by getting reparented across the
         # boundary.
         owner = await pool.fetchrow(
-            "SELECT workspace_id FROM folders WHERE id = $1",
+            "SELECT owner_user_id FROM folders WHERE id = $1",
             req.folder_id,
         )
-        if not owner or owner["workspace_id"] != workspace_id:
+        if not owner or owner["owner_user_id"] != owner_user_id:
             raise HTTPException(status_code=404, detail="Folder not found")
         can_write_folder = await permission_service.check_access(
             "folder",
             req.folder_id,
             current_user["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             require="write",
         )
         if not can_write_folder:
@@ -470,90 +470,90 @@ async def update_ws_file(
         updates.append(f"folder_id = ${len(params)}")
 
     if not updates:
-        return await _file_to_response(await _fetch_file_row(file_id, workspace_id))
+        return await _file_to_response(await _fetch_file_row(file_id, owner_user_id))
 
     params.append(file_id)
     file_id_pos = len(params)
-    params.append(workspace_id)
+    params.append(owner_user_id)
     ws_pos = len(params)
     await pool.execute(
-        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos}",
+        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND owner_user_id = ${ws_pos}",
         *params,
     )
-    return await _file_to_response(await _fetch_file_row(file_id, workspace_id))
+    return await _file_to_response(await _fetch_file_row(file_id, owner_user_id))
 
 
 @ws_router.delete("/{file_id}", status_code=204)
 async def delete_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Soft delete: stamps deleted_at + deleted_by. Object storage blob stays
     so a restore is fully reversible. Use POST /restore to undo or DELETE
     /purge to wipe permanently."""
-    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
-    trashed = await files_service.delete_file(file_id, workspace_id, current_user["id"])
+    trashed = await files_service.delete_file(file_id, owner_user_id, current_user["id"])
     if not trashed:
         raise HTTPException(status_code=404, detail="File not found")
 
 
 @ws_router.post("/{file_id}/copy", response_model=FileResponse, status_code=201)
 async def copy_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     req: CopyRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Duplicate a file (and its S3 blob) as 'Copy of <name>'."""
-    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     if req.target_folder_id is not None:
         can_write_folder = await permission_service.check_access(
             "folder",
             req.target_folder_id,
             current_user["id"],
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             require="write",
         )
         if not can_write_folder:
             raise HTTPException(status_code=404, detail="Folder not found")
     else:
-        await _check_write(workspace_id, current_user["id"])
+        await _check_write(owner_user_id, current_user["id"])
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
     copied = await files_tree_service.copy_file(
-        file_id, workspace_id, current_user["id"], target_folder_id=req.target_folder_id
+        file_id, owner_user_id, current_user["id"], target_folder_id=req.target_folder_id
     )
     if not copied:
         raise HTTPException(status_code=404, detail="File not found")
-    return await _file_to_response(await _fetch_file_row(copied["id"], workspace_id))
+    return await _file_to_response(await _fetch_file_row(copied["id"], owner_user_id))
 
 
 @ws_router.post("/{file_id}/restore", status_code=204)
 async def restore_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
-    restored = await files_service.restore_file(file_id, workspace_id, current_user["id"])
+    restored = await files_service.restore_file(file_id, owner_user_id, current_user["id"])
     if not restored:
         raise HTTPException(status_code=404, detail="File not in trash")
 
 
 @ws_router.delete("/{file_id}/purge", status_code=204)
 async def purge_ws_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a file already in trash."""
-    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
-    row = await files_service.get_trashed_file(file_id, workspace_id)
+    row = await files_service.get_trashed_file(file_id, owner_user_id)
     if not row:
         raise HTTPException(status_code=404, detail="File not in trash")
     keep_blob = await files_service.storage_key_referenced_elsewhere(
@@ -562,13 +562,13 @@ async def purge_ws_file(
     )
     if not keep_blob:
         await storage_service.delete_file(row["storage_key"])
-    purged = await files_service.purge_file(file_id, workspace_id)
+    purged = await files_service.purge_file(file_id, owner_user_id)
     if not purged:
         raise HTTPException(status_code=404, detail="File not in trash")
     await security_audit_service.record_content_lifecycle_event(
         operation="purged",
         actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type="file",
         target_id=file_id,
         metadata={"storage_key_count": 0 if keep_blob else 1},
@@ -580,7 +580,7 @@ async def purge_ws_file(
 
 @ws_router.post("/{file_id}/ingest-csv", response_model=TableResponse)
 async def ingest_csv_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -588,17 +588,17 @@ async def ingest_csv_file(
 
     Idempotent: if the file is already linked, returns the existing table.
     """
-    await _check_write(workspace_id, current_user["id"])
+    await _check_write(owner_user_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "SELECT id, owner_user_id, name, content_type, storage_key, linked_table_id "
+        "FROM files WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         file_id,
-        workspace_id,
+        owner_user_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     if "csv" not in (row["content_type"] or ""):
         raise HTTPException(status_code=400, detail="File is not a CSV")
@@ -637,7 +637,7 @@ async def ingest_csv_file(
 
     table_name = row["name"].rsplit(".", 1)[0] or row["name"]
     table = await table_service.create_table(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         name=table_name,
         description=f"Imported from {row['name']}",
         columns=columns,
@@ -670,7 +670,7 @@ _XLSX_CONTENT_TYPES = {
 
 @ws_router.post("/{file_id}/ingest-xlsx", response_model=TableListResponse)
 async def ingest_xlsx_file(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -682,17 +682,17 @@ async def ingest_xlsx_file(
     ingest. (Re-import as a new file if the source workbook changes
     sheets.)
     """
-    await _check_write(workspace_id, current_user["id"])
+    await _check_write(owner_user_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "SELECT id, owner_user_id, name, content_type, storage_key, linked_table_id "
+        "FROM files WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         file_id,
-        workspace_id,
+        owner_user_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+    if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
 
     ct = (row["content_type"] or "").lower()
@@ -709,7 +709,7 @@ async def ingest_xlsx_file(
     base_name = row["name"].rsplit(".", 1)[0] or row["name"]
     try:
         created = await ingest_xlsx_bytes(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             user_id=current_user["id"],
             content=content,
             base_name=base_name,

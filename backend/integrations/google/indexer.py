@@ -96,7 +96,7 @@ async def _shared_drives(client: httpx.AsyncClient) -> list[dict]:
 
 async def index_google_drive(source: dict) -> str | None:
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
     root = source["external_ref"] or "root"
 
@@ -115,7 +115,7 @@ async def index_google_drive(source: dict) -> str | None:
             await source_service.upsert_index_row(
                 table="drive_index",
                 source_id=source_id,
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 path=path,
                 name=name,
                 kind="file",

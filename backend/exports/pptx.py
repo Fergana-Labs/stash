@@ -47,7 +47,7 @@ async def build_pptx_bytes_for_page(user_id: UUID, page_id: UUID) -> tuple[str, 
     """
     pool = get_pool()
     page_row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, content_html, content_type, html_layout "
+        "SELECT id, owner_user_id, name, content_html, content_type, html_layout "
         "FROM pages WHERE id = $1",
         page_id,
     )
@@ -59,7 +59,7 @@ async def build_pptx_bytes_for_page(user_id: UUID, page_id: UUID) -> tuple[str, 
         "page",
         page_id,
         user_id,
-        workspace_id=page_row["workspace_id"],
+        owner_user_id=page_row["owner_user_id"],
     )
     if not can_read:
         raise RuntimeError("page not found")
@@ -78,21 +78,21 @@ async def build_pptx_bytes_for_page(user_id: UUID, page_id: UUID) -> tuple[str, 
         source_html,
         base_url=base_url,
         token=token,
-        image_fetcher=ImageFetcher(workspace_id=page_row["workspace_id"], user_id=user_id),
+        image_fetcher=ImageFetcher(owner_user_id=page_row["owner_user_id"], user_id=user_id),
     )
     return page_row["name"] or "slides", pptx_bytes
 
 
 async def _export(user_id: UUID, page_id: UUID) -> dict:
     pool = get_pool()
-    workspace_id = await pool.fetchval("SELECT workspace_id FROM pages WHERE id = $1", page_id)
+    owner_user_id = await pool.fetchval("SELECT owner_user_id FROM pages WHERE id = $1", page_id)
     stem, pptx_bytes = await build_pptx_bytes_for_page(user_id, page_id)
     # SigV4 signing breaks on spaces / parens / other punctuation in S3 keys
     # once the URL gets percent-encoded. Collapse to an alnum-safe stem.
     safe_stem = re.sub(r"[^\w.-]+", "_", stem).strip("_") or "slides"
     filename = f"{safe_stem}-{uuid4().hex[:8]}.pptx"
     storage_key = await storage_service.upload_file(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         filename=filename,
         content=pptx_bytes,
         content_type=("application/vnd.openxmlformats-officedocument.presentationml.presentation"),

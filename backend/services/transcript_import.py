@@ -145,7 +145,7 @@ def parse_jsonl_to_events(
     """Parse a transcript blob into event dicts ready for push_events_batch.
 
     Each event dict has: agent_name, event_type, content, session_id,
-    tool_name, metadata, created_at. Caller supplies workspace_id and
+    tool_name, metadata, created_at. Caller supplies owner_user_id and
     created_by when calling push_events_batch.
     """
     text = _decompress(blob)

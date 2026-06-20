@@ -34,13 +34,13 @@ async def _workspace(client: AsyncClient, api_key: str, name: str) -> dict:
 async def _event(
     client: AsyncClient,
     api_key: str,
-    workspace_id: str,
+    owner_user_id: str,
     session_id: str,
     agent_name: str = "tester",
     created_at: str = "2026-01-02T00:00:00Z",
 ) -> None:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/sessions/events",
+        f"/api/v1/workspaces/{owner_user_id}/sessions/events",
         json={
             "agent_name": agent_name,
             "event_type": "assistant_message",
@@ -89,7 +89,7 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 365, "workspace_id": workspace["id"]},
+        params={"days": 365, "owner_user_id": workspace["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -121,7 +121,7 @@ async def test_user_wide_knowledge_density_ignores_stale_cache_without_current_a
 
     await pool.execute(
         "INSERT INTO knowledge_density_cache "
-        "(user_id, workspace_id, clusters, source_signature, computed_at) "
+        "(user_id, owner_user_id, clusters, source_signature, computed_at) "
         "VALUES ($1, NULL, $2::jsonb, 0, now())",
         user_id,
         json.dumps(
@@ -159,7 +159,7 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
 
     await pool.execute(
         "INSERT INTO embedding_projections "
-        "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+        "(user_id, source_type, owner_user_id, points, embedding_count, computed_at) "
         "VALUES ($1, '_all', NULL, $2::jsonb, 0, now())",
         user_id,
         json.dumps(
@@ -207,7 +207,7 @@ async def test_activity_timeline_includes_blank_day_buckets(client: AsyncClient)
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 3, "bucket": "day", "workspace_id": workspace["id"]},
+        params={"days": 3, "bucket": "day", "owner_user_id": workspace["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -265,7 +265,7 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 365, "workspace_id": workspace["id"]},
+        params={"days": 365, "owner_user_id": workspace["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -297,7 +297,7 @@ async def test_activity_timeline_normalizes_claude_code_agent_names(client: Asyn
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 365, "workspace_id": workspace["id"]},
+        params={"days": 365, "owner_user_id": workspace["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -343,33 +343,12 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     ]
 
     assert len(visible) == 1
-    assert visible[0]["workspace_id"] == owner_workspace["id"]
-    assert visible[0]["workspace_name"] == "Team Activity"
+    assert visible[0]["owner_user_id"] == owner_workspace["id"]
+    assert visible[0]["workspace_name"] == owner_workspace["name"]
     assert "skill_id" not in visible[0]
     assert "stash_name" not in visible[0]
     assert visible[0]["target_label"] == "tester: visible-session"
     assert hidden == []
-
-
-@pytest.mark.asyncio
-async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
-    api_key = await _register(client, "activity_filter")
-    first_workspace = await _workspace(client, api_key, "First Activity")
-    second_workspace = await _workspace(client, api_key, "Second Activity")
-
-    await _event(client, api_key, first_workspace["id"], "first-session")
-    await _event(client, api_key, second_workspace["id"], "second-session")
-
-    resp = await client.get(
-        "/api/v1/me/activity",
-        params={"limit": 200, "workspace_id": first_workspace["id"]},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 200
-
-    events = [event for event in resp.json()["events"] if event["kind"] == "session.uploaded"]
-    assert {event["target_id"] for event in events} == {"first-session"}
-    assert {event["workspace_id"] for event in events} == {first_workspace["id"]}
 
 
 @pytest.mark.asyncio

@@ -43,12 +43,12 @@ def _fake_github(monkeypatch, files: dict[str, bytes], branch: str = "main") -> 
 
 
 async def _import_repo(repo_url: str) -> list[str]:
-    workspace_id, owner_id = await gsi.ensure_curator()
+    owner_user_id, owner_id = await gsi.ensure_curator()
     results = []
     for skill in await gsi.fetch_repo_skills(repo_url):
         results.append(
             await gsi.import_skill(
-                workspace_id,
+                owner_user_id,
                 owner_id,
                 source_url=skill["source_url"],
                 fallback_title=skill["fallback_title"],
@@ -145,22 +145,22 @@ async def test_reimport_updates_in_place(client: AsyncClient, pool, monkeypatch)
         for r in await pool.fetch("SELECT name FROM pages WHERE folder_id = $1", folder_id)
     }
     assert names == {"SKILL.md", "CHANGELOG.md"}
-    workspace_id = await pool.fetchval(
-        "SELECT workspace_id FROM skills WHERE id = $1::uuid", second["id"]
+    owner_user_id = await pool.fetchval(
+        "SELECT owner_user_id FROM skills WHERE id = $1::uuid", second["id"]
     )
     orphans = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1 AND folder_id IS NULL",
-        workspace_id,
+        "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1 AND folder_id IS NULL",
+        owner_user_id,
     )
     assert orphans == 0
 
 
 @pytest.mark.asyncio
 async def test_import_requires_skill_md(pool):
-    workspace_id, owner_id = await gsi.ensure_curator()
+    owner_user_id, owner_id = await gsi.ensure_curator()
     with pytest.raises(ValueError, match="no SKILL.md"):
         await gsi.import_skill(
-            workspace_id,
+            owner_user_id,
             owner_id,
             source_url="https://github.com/acme/empty",
             fallback_title="empty",

@@ -137,7 +137,7 @@ def _render_meeting(meeting: dict, transcript) -> str:
 
 async def index_granola(source: dict) -> str | None:
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
 
     access_token = await get_valid_access_token(owner_user_id)
@@ -187,7 +187,7 @@ async def index_granola(source: dict) -> str | None:
             await source_service.upsert_content_document(
                 table="granola_notes",
                 source_id=source_id,
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 path=meeting_id,
                 name=meeting.get("title") or "Untitled meeting",
                 kind="note",

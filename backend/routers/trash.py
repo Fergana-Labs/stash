@@ -10,14 +10,14 @@ from ..services import (
     files_service,
     files_tree_service,
     session_service,
-    workspace_service,
+    user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["trash"])
+router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}", tags=["trash"])
 
 
-async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.can_write(workspace_id, user_id):
+async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(
             status_code=403,
             detail="Viewers can read but not modify trash",
@@ -26,7 +26,7 @@ async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
 
 @router.get("/trash")
 async def list_trash(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Trash listing: pages + files + sessions, each sorted by deleted_at DESC.
@@ -34,11 +34,11 @@ async def list_trash(
     Includes deleted_by display name so the UI can show "Deleted by Alice"
     without a second round-trip.
     """
-    await _check_write(workspace_id, current_user["id"])
+    await _check_write(owner_user_id, current_user["id"])
 
-    pages = await files_tree_service.list_trashed_pages(workspace_id)
-    files = await files_service.list_trashed_files(workspace_id)
-    sessions = await session_service.list_trashed_sessions(workspace_id)
+    pages = await files_tree_service.list_trashed_pages(owner_user_id)
+    files = await files_service.list_trashed_files(owner_user_id)
+    sessions = await session_service.list_trashed_sessions(owner_user_id)
 
     actor_ids = {row["deleted_by"] for row in pages + files + sessions if row.get("deleted_by")}
     actors: dict[UUID, dict] = {}

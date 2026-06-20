@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..auth import get_current_user
 from ..config import settings
 from ..models import PublishRequest, PublishResponse
-from ..services import files_tree_service, shared_skill_service, workspace_service
+from ..services import files_tree_service, shared_skill_service, user_scope_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -16,29 +16,29 @@ async def publish(
     current_user: dict = Depends(get_current_user),
 ):
     """Create a skill folder containing the content page and publish it."""
-    if req.workspace_id is None:
-        workspace_id = await workspace_service.get_primary_for_user(current_user["id"])
-        if workspace_id is None:
+    if req.owner_user_id is None:
+        owner_user_id = await user_scope_service.scope_id_for_user(current_user["id"])
+        if owner_user_id is None:
             raise HTTPException(
                 status_code=400,
-                detail="No primary workspace; pass workspace_id explicitly",
+                detail="No primary workspace; pass owner_user_id explicitly",
             )
     else:
-        workspace_id = req.workspace_id
-        if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        owner_user_id = req.owner_user_id
+        if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
             raise HTTPException(status_code=403, detail="Not a workspace member")
 
-    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not publish")
 
     # Gate before any side effects: publish_folder would reject non-owners
     # anyway, but only after the folder and page were already created.
-    if not await workspace_service.is_owner(workspace_id, current_user["id"]):
+    if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Only workspace owners can publish Skills")
 
     if req.folder_id is not None:
         folder = await files_tree_service.get_folder(req.folder_id)
-        if not folder or folder["workspace_id"] != workspace_id:
+        if not folder or folder["owner_user_id"] != owner_user_id:
             raise HTTPException(status_code=404, detail="Folder not found in this workspace")
         target_folder = folder
     else:
@@ -49,7 +49,7 @@ async def publish(
         while True:
             try:
                 target_folder = await files_tree_service.create_folder(
-                    workspace_id, name, current_user["id"]
+                    owner_user_id, name, current_user["id"]
                 )
                 break
             except files_tree_service.DuplicateFolderName:
@@ -57,7 +57,7 @@ async def publish(
                 n += 1
 
     page = await files_tree_service.create_page(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         name=req.title,
         created_by=current_user["id"],
         folder_id=target_folder["id"],
@@ -69,7 +69,7 @@ async def publish(
 
     try:
         skill = await shared_skill_service.publish_folder(
-            workspace_id,
+            owner_user_id,
             current_user["id"],
             target_folder["id"],
             title=req.title,
@@ -81,7 +81,7 @@ async def publish(
     return PublishResponse(
         page_id=page["id"],
         folder_id=target_folder["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         url=f"{base}/skills/{skill['slug']}",
         skill_id=skill["id"],
         skill_slug=skill["slug"],

@@ -14,23 +14,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
-from ..services import permission_service, session_folder_service, workspace_service
+from ..services import session_folder_service, user_scope_service
 
 ws_router = APIRouter(
-    prefix="/api/v1/workspaces/{workspace_id}/session-folders", tags=["session-folders"]
+    prefix="/api/v1/workspaces/{owner_user_id}/session-folders", tags=["session-folders"]
 )
 public_router = APIRouter(prefix="/api/v1/session-folders", tags=["session-folders"])
 
 GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
 
 
-async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
-    if not await permission_service.is_workspace_member(workspace_id, user_id):
+async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.is_member(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 
-async def _require_write(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.can_write(workspace_id, user_id):
+async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Viewers can read but not edit this workspace")
 
 
@@ -42,14 +42,14 @@ class CreateFolderRequest(BaseModel):
 
 
 async def _require_workspace_owner_for_folder_visibility(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     body: CreateFolderRequest,
 ) -> None:
     """Workspace-visible folders are the everyday default any editor may create;
     only publishing a folder beyond the workspace is owner-gated."""
     is_public = body.public_permission != "none" or body.discoverable
-    if is_public and not await workspace_service.is_owner(workspace_id, user_id):
+    if is_public and not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(
             status_code=403,
             detail="Only workspace owners can create public session folders",
@@ -71,15 +71,14 @@ class AssignRequest(BaseModel):
 
 @ws_router.post("")
 async def create_folder(
-    workspace_id: UUID, body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
+    owner_user_id: UUID, body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
 ):
-    await _require_member(workspace_id, current_user["id"])
-    await _require_write(workspace_id, current_user["id"])
-    await _require_workspace_owner_for_folder_visibility(workspace_id, current_user["id"], body)
+    await _require_member(owner_user_id, current_user["id"])
+    await _require_write(owner_user_id, current_user["id"])
+    await _require_workspace_owner_for_folder_visibility(owner_user_id, current_user["id"], body)
     try:
         return await session_folder_service.create_folder(
-            workspace_id,
-            current_user["id"],
+            owner_user_id,
             body.name,
             workspace_permission=body.workspace_permission,
             public_permission=body.public_permission,
@@ -90,17 +89,17 @@ async def create_folder(
 
 
 @ws_router.get("")
-async def list_folders(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
+async def list_folders(owner_user_id: UUID, current_user: dict = Depends(get_current_user)):
     # Non-members may still see folders shared with them, so this isn't gated on
     # membership. Members get a Default folder lazily ensured on first listing.
-    if await permission_service.is_workspace_member(workspace_id, current_user["id"]):
-        await session_folder_service.ensure_default_folder(workspace_id)
-    return {"folders": await session_folder_service.list_folders(workspace_id, current_user["id"])}
+    if await user_scope_service.is_member(owner_user_id, current_user["id"]):
+        await session_folder_service.ensure_default_folder(owner_user_id)
+    return {"folders": await session_folder_service.list_folders(owner_user_id, current_user["id"])}
 
 
 @ws_router.patch("/{folder_id}")
 async def update_folder(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     folder_id: UUID,
     body: UpdateFolderRequest,
     current_user: dict = Depends(get_current_user),
@@ -120,7 +119,7 @@ async def update_folder(
 
 @ws_router.delete("/{folder_id}", status_code=204)
 async def delete_folder(
-    workspace_id: UUID, folder_id: UUID, current_user: dict = Depends(get_current_user)
+    owner_user_id: UUID, folder_id: UUID, current_user: dict = Depends(get_current_user)
 ):
     deleted = await session_folder_service.delete_folder(folder_id, current_user["id"])
     if not deleted:
@@ -129,12 +128,12 @@ async def delete_folder(
 
 @ws_router.post("/assign")
 async def assign_sessions(
-    workspace_id: UUID, body: AssignRequest, current_user: dict = Depends(get_current_user)
+    owner_user_id: UUID, body: AssignRequest, current_user: dict = Depends(get_current_user)
 ):
-    await _require_member(workspace_id, current_user["id"])
-    await _require_write(workspace_id, current_user["id"])
+    await _require_member(owner_user_id, current_user["id"])
+    await _require_write(owner_user_id, current_user["id"])
     assigned = await session_folder_service.assign_sessions(
-        workspace_id,
+        owner_user_id,
         current_user["id"],
         body.session_row_ids,
         body.folder_id,

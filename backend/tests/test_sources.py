@@ -38,13 +38,10 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _create_workspace(client: AsyncClient, api_key: str) -> UUID:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": unique_name("src_ws")},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
+async def _user_scope(client: AsyncClient, api_key: str) -> UUID:
+    """The scope a user owns is just the user id (owner_user_id == user id)."""
+    resp = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    assert resp.status_code == 200
     return UUID(resp.json()["id"])
 
 
@@ -80,7 +77,7 @@ def _settings_for_source_type(source_type: str) -> dict:
 
 async def _insert_representative_source_document(
     *,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     source: dict,
 ) -> None:
     table = source_service.SOURCE_TABLE.get(source["source_type"])
@@ -92,7 +89,7 @@ async def _insert_representative_source_document(
         await source_service.upsert_index_row(
             table=table,
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path="record-1",
             name="Record 1",
             external_ref="provider-record-1",
@@ -108,7 +105,7 @@ async def _insert_representative_source_document(
     await source_service.upsert_content_document(
         table=table,
         source_id=source_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         path="record-1",
         name="Record 1",
         content="confidential customer content",
@@ -117,19 +114,18 @@ async def _insert_representative_source_document(
     )
 
 
-async def _insert_slack_source_without_channels(ws: UUID, owner_id: UUID) -> dict:
+async def _insert_slack_source_without_channels(owner_id: UUID) -> dict:
     from backend.database import get_pool
 
     row = await get_pool().fetchrow(
         """
         INSERT INTO workspace_sources (
-            workspace_id, owner_user_id, source_type, external_ref,
+            owner_user_id, source_type, external_ref,
             display_name, capability, sync_interval_s, sync_enabled, settings
         )
-        VALUES ($1, $2, 'slack', 'T1', 'Slack', 'searchable', 21600, true, '{}'::jsonb)
+        VALUES ($1, 'slack', 'T1', 'Slack', 'searchable', 21600, true, '{}'::jsonb)
         RETURNING id
         """,
-        ws,
         owner_id,
     )
     source = await source_service.get_source_for_sync(row["id"])
@@ -143,7 +139,7 @@ async def _insert_slack_source_without_channels(ws: UUID, owner_id: UUID) -> dic
 @pytest.mark.asyncio
 async def test_add_list_remove_source(client: AsyncClient):
     api_key, _ = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
 
     add = await client.post(
         f"/api/v1/workspaces/{ws}/sources",
@@ -183,9 +179,8 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
     from backend.integrations import router as integrations_router
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     slack = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T123",
@@ -193,7 +188,6 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
         settings={"allowed_channel_ids": ["C123"]},
     )
     github = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/widgets",
@@ -204,7 +198,7 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=slack_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="C123/1720000000.000100",
         name="launch-discussion",
         content="confidential launch plan",
@@ -245,9 +239,8 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
     source_type: str,
 ):
     api_key, owner_id = await _register(client, "src_cleanup")
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type=source_type,
         external_ref=_external_ref_for_source_type(source_type),
@@ -255,7 +248,7 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
         settings=_settings_for_source_type(source_type),
     )
     source_id = UUID(source["id"])
-    await _insert_representative_source_document(workspace_id=ws, source=source)
+    await _insert_representative_source_document(owner_user_id=ws, source=source)
 
     removed_sources = await source_service.delete_sources_for_provider(owner_id, provider)
 
@@ -270,14 +263,12 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
 
 
 @pytest.mark.asyncio
-async def test_source_sync_requires_owner_to_own_workspace(client: AsyncClient, pool):
-    """A source only syncs while its owner still owns the workspace it lives in.
-    If ownership of the scope changes out from under it, the sync queue and the
-    sync-task fetch both drop it (it would otherwise crawl with a stale token)."""
+async def test_source_sync_resolves_via_owner(client: AsyncClient):
+    """A source's scope is its owner_user_id, which is the user itself — it can't
+    be handed off, so the sync queue and the sync-task fetch always resolve it
+    from that owner directly."""
     owner_key, owner_id = await _register(client, "src_sync_owner")
-    ws = await _create_workspace(client, owner_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="TWEBFLOW",
@@ -286,20 +277,18 @@ async def test_source_sync_requires_owner_to_own_workspace(client: AsyncClient, 
     )
     source_id = UUID(source["id"])
 
-    # Hand the scope to a different creator so owner_user_id != creator_id.
-    _, other_owner = await _register(client, "src_sync_other")
-    await pool.execute("UPDATE workspaces SET creator_id = $1 WHERE id = $2", other_owner, ws)
-
     due_ids = {UUID(source["id"]) for source in await source_service.due_sources(limit=20)}
 
-    assert source_id not in due_ids
-    assert await source_service.get_source_for_sync(source_id) is None
+    assert source_id in due_ids
+    fetched = await source_service.get_source_for_sync(source_id)
+    assert fetched is not None
+    assert UUID(fetched["owner_user_id"]) == owner_id
 
 
 @pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     resp = await client.post(
         f"/api/v1/workspaces/{ws}/sources",
         json={"source_type": "dropbox", "external_ref": "x", "display_name": "x"},
@@ -311,7 +300,7 @@ async def test_unknown_source_type_rejected(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_add_jira_source_rejects_unsafe_external_ref(client: AsyncClient):
     api_key, _ = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     resp = await client.post(
         f"/api/v1/workspaces/{ws}/sources",
         json={
@@ -330,7 +319,7 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
     from backend.routers import sources as sources_router
 
     api_key, _ = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
 
     async def fake_get_valid_token(user_id, provider):
         assert provider == "slack"
@@ -434,10 +423,9 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
 async def test_connected_source_is_user_scoped(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     other_key, other_id = await _register(client, "other")
-    ws = await _create_workspace(client, owner_key)
+    ws = await _user_scope(client, owner_key)
 
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T123",
@@ -461,10 +449,11 @@ async def test_connected_source_handles_are_workspace_scoped(
     monkeypatch,
 ):
     owner_key, owner_id = await _register(client, "owner")
-    ws_a = await _create_workspace(client, owner_key)
-    ws_b = await _create_workspace(client, owner_key)
+    # Sources are user-scoped: another user's scope can't reach them.
+    _, other_id = await _register(client, "other")
+    ws_a = await _user_scope(client, owner_key)
+    ws_b = other_id
     src = await source_service.create_source(
-        workspace_id=ws_a,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T1",
@@ -475,7 +464,7 @@ async def test_connected_source_handles_are_workspace_scoped(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(source_id),
-        workspace_id=ws_a,
+        owner_user_id=ws_a,
         path="eng/1",
         name="#eng",
         kind="message",
@@ -532,10 +521,9 @@ async def test_connected_source_handles_are_workspace_scoped(
 async def test_search_documents_owner_scoped(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     _, other_id = await _register(client, "other")
-    ws = await _create_workspace(client, owner_key)
+    ws = await _user_scope(client, owner_key)
 
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T1",
@@ -545,7 +533,7 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="#eng/1.ts",
         name="msg",
         kind="message",
@@ -554,11 +542,11 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
     )
 
     owner_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_id, query="postgres migration"
+        owner_user_id=ws, user_id=owner_id, query="postgres migration"
     )
     assert len(owner_hits) == 1
     other_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=other_id, query="postgres migration"
+        owner_user_id=ws, user_id=other_id, query="postgres migration"
     )
     assert other_hits == []
 
@@ -572,9 +560,8 @@ async def test_upsert_idempotency_and_missing_copied_content_delete(
     pool,
 ):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/widgets",
@@ -586,7 +573,7 @@ async def test_upsert_idempotency_and_missing_copied_content_delete(
         return source_service.upsert_content_document(
             table="github_documents",
             source_id=sid,
-            workspace_id=ws,
+            owner_user_id=ws,
             path=path,
             name=name,
             content=content,
@@ -615,9 +602,8 @@ async def test_upsert_idempotency_and_missing_copied_content_delete(
 @pytest.mark.asyncio
 async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, pool):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="google_drive",
         external_ref="drive-root",
@@ -627,7 +613,7 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
     await source_service.upsert_index_row(
         table="drive_index",
         source_id=sid,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="old-doc",
         name="Old Doc",
         external_ref="provider-doc",
@@ -661,7 +647,6 @@ async def _create_twitter_source(ws: UUID, owner_id: UUID) -> dict:
     # external_ref is the connected X account's numeric user id (see
     # _resolve_twitter_source) — reads address personal feeds with it directly.
     return await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="twitter",
         external_ref="111",
@@ -710,7 +695,7 @@ async def test_prune_index_rows_removes_only_stale_rows(client: AsyncClient):
     from backend.database import get_pool
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
     sid = UUID(src["id"])
 
@@ -718,7 +703,7 @@ async def test_prune_index_rows_removes_only_stale_rows(client: AsyncClient):
         await source_service.upsert_index_row(
             table="twitter_posts",
             source_id=sid,
-            workspace_id=ws,
+            owner_user_id=ws,
             path=path,
             name=f"@stash - post {path}",
             kind="post",
@@ -743,7 +728,7 @@ async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient)
     sit "due" forever at the front of the due_sources window and starve every
     real sync behind it."""
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     assert src["sync_enabled"] is False
@@ -764,7 +749,7 @@ async def test_unscoped_search_skips_scoped_only_federated_sources(client, monke
     from backend.integrations.twitter import indexer as twitter_indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     queries: list[str] = []
@@ -792,7 +777,7 @@ async def test_unscoped_search_skips_scoped_only_federated_sources(client, monke
 @pytest.mark.asyncio
 async def test_twitter_list_sources_exposes_my_posts_search_hint(client):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     sources = await source_service.list_sources(ws, owner_id)
@@ -808,7 +793,7 @@ async def test_twitter_list_sources_exposes_my_posts_search_hint(client):
 @pytest.mark.asyncio
 async def test_twitter_source_lists_live_personal_refs(client):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     entries = await source_service.source_entries(ws, owner_id, src["id"])
@@ -822,7 +807,7 @@ async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
     from backend.integrations.twitter import indexer as twitter_indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     fetched: list[tuple[str, str]] = []
@@ -850,7 +835,7 @@ async def test_twitter_live_read_failure_returns_generic_error_doc(client, monke
     from backend.integrations.twitter import indexer as twitter_indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     async def fail_fetch(owner, account_id, ref):
@@ -881,7 +866,7 @@ async def test_scoped_search_maps_provider_errors_to_http_errors(client, monkeyp
     from backend.integrations.twitter import indexer as twitter_indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
 
     async def rate_limited(source, query, limit):
@@ -907,14 +892,14 @@ async def test_upsert_index_row_updates_on_name_change(client: AsyncClient):
     mutable username, which can change without external_updated_at changing.
     Dropping the comparison would leave stale names in list/search forever."""
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_twitter_source(ws, owner_id)
     sid = UUID(src["id"])
 
     kwargs = dict(
         table="twitter_posts",
         source_id=sid,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="1",
         kind="post",
         external_ref="1",
@@ -933,7 +918,7 @@ async def test_upsert_index_row_updates_on_name_change(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_source_tools_span_native_and_connected(client: AsyncClient):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
 
     # A native page.
     page = await client.post(
@@ -946,7 +931,6 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
     # A connected source with one document (github copies content, so list/
     # read/search all resolve from the stored body).
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/specs",
@@ -955,7 +939,7 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="specs/auth.md",
         name="auth.md",
         content="auth spec: rotate tokens hourly",
@@ -1012,9 +996,7 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
     from backend.tasks import sources as sources_task
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/widgets",
@@ -1064,9 +1046,7 @@ async def test_sync_source_unknown_type_is_noop(client: AsyncClient, monkeypatch
     from backend.tasks import sources as sources_task
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/x",
@@ -1083,9 +1063,8 @@ async def test_sync_source_status_redacts_provider_exception(client: AsyncClient
     from backend.tasks import sources as sources_task
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/private",
@@ -1174,12 +1153,12 @@ async def test_slack_webhook_rejects_bad_signature(client: AsyncClient, monkeypa
 @pytest.mark.asyncio
 async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
-    unconfigured = await _insert_slack_source_without_channels(ws, owner_id)
+    ws = await _user_scope(client, api_key)
+    unconfigured = await _insert_slack_source_without_channels(owner_id)
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(unconfigured["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="general/1",
         name="#general",
         kind="message",
@@ -1193,13 +1172,12 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert await source_service.source_item_count(unconfigured) == 0
     assert (
         await source_service.search_documents(
-            workspace_id=ws, user_id=owner_id, query="secret launch"
+            owner_user_id=ws, user_id=owner_id, query="secret launch"
         )
         == []
     )
 
     configured = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T2",
@@ -1209,7 +1187,7 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(configured["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="general/1",
         name="#general",
         kind="message",
@@ -1220,7 +1198,7 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(configured["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="exec/1",
         name="#exec",
         kind="message",
@@ -1234,10 +1212,10 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert await source_service.read_document(configured, "exec/1") is None
     assert await source_service.source_item_count(configured) == 1
     allowed_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_id, query="allowed roadmap"
+        owner_user_id=ws, user_id=owner_id, query="allowed roadmap"
     )
     blocked_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_id, query="blocked board"
+        owner_user_id=ws, user_id=owner_id, query="blocked board"
     )
     assert len(allowed_hits) == 1
     assert blocked_hits == []
@@ -1246,9 +1224,8 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     unconfigured = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="gong_calls",
         external_ref="calls",
@@ -1257,7 +1234,7 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
     await source_service.upsert_content_document(
         table="gong_documents",
         source_id=UUID(unconfigured["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="call-1",
         name="Launch Call",
         kind="call",
@@ -1271,13 +1248,12 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
     assert await source_service.source_item_count(unconfigured) == 0
     assert (
         await source_service.search_documents(
-            workspace_id=ws, user_id=owner_id, query="secret revenue"
+            owner_user_id=ws, user_id=owner_id, query="secret revenue"
         )
         == []
     )
 
     configured = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="gong_calls",
         external_ref="calls-2",
@@ -1287,7 +1263,7 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
     await source_service.upsert_content_document(
         table="gong_documents",
         source_id=UUID(configured["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="call-1",
         name="Allowed Call",
         kind="call",
@@ -1298,7 +1274,7 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
     await source_service.upsert_content_document(
         table="gong_documents",
         source_id=UUID(configured["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="call-2",
         name="Blocked Call",
         kind="call",
@@ -1312,10 +1288,10 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
     assert await source_service.read_document(configured, "call-2") is None
     assert await source_service.source_item_count(configured) == 1
     allowed_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_id, query="allowed revenue"
+        owner_user_id=ws, user_id=owner_id, query="allowed revenue"
     )
     blocked_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_id, query="blocked revenue"
+        owner_user_id=ws, user_id=owner_id, query="blocked revenue"
     )
     assert len(allowed_hits) == 1
     assert blocked_hits == []
@@ -1327,9 +1303,8 @@ async def test_slack_allowlist_update_purges_disallowed_copied_messages(
     pool,
 ):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T1",
@@ -1340,7 +1315,7 @@ async def test_slack_allowlist_update_purges_disallowed_copied_messages(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="old/1",
         name="#old",
         kind="message",
@@ -1351,7 +1326,7 @@ async def test_slack_allowlist_update_purges_disallowed_copied_messages(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="keep/1",
         name="#keep",
         kind="message",
@@ -1361,7 +1336,6 @@ async def test_slack_allowlist_update_purges_disallowed_copied_messages(
     )
 
     updated = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T1",
@@ -1392,9 +1366,8 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
     pool,
 ):
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="gong_calls",
         external_ref="calls",
@@ -1405,7 +1378,7 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
     await source_service.upsert_content_document(
         table="gong_documents",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="old-call",
         name="Old Call",
         kind="call",
@@ -1416,7 +1389,7 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
     await source_service.upsert_content_document(
         table="gong_documents",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="keep-call",
         name="Keep Call",
         kind="call",
@@ -1426,7 +1399,6 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
     )
 
     updated = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="gong_calls",
         external_ref="calls",
@@ -1462,9 +1434,8 @@ async def test_slack_indexer_backfills_only_allowed_channels(
     from backend.integrations.slack import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T1",
@@ -1475,7 +1446,7 @@ async def test_slack_indexer_backfills_only_allowed_channels(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="exec/1",
         name="#exec",
         kind="message",
@@ -1524,8 +1495,8 @@ async def test_slack_sync_without_channels_records_sync_error(client: AsyncClien
     # A malformed Slack source with no channel allowlist must not report a
     # successful sync that silently ingested nothing.
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
-    src = await _insert_slack_source_without_channels(ws, owner_id)
+    ws = await _user_scope(client, api_key)
+    src = await _insert_slack_source_without_channels(owner_id)
 
     result = await sources_task._sync_source(UUID(src["id"]))
 
@@ -1546,9 +1517,8 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
     owner_b_key, owner_b = await _register(client, "b")
-    ws = await _create_workspace(client, owner_a_key)
+    ws = await _user_scope(client, owner_a_key)
     src_a = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_a,
         source_type="slack",
         external_ref="T_SHARED",
@@ -1556,7 +1526,6 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
         settings={"allowed_channel_ids": ["C1"]},
     )
     src_b = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_b,
         source_type="slack",
         external_ref="T_SHARED",
@@ -1572,57 +1541,38 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
 
     # Each owner sees only their own source and only if that source allowed the channel.
     a_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_a, query="ship sources"
+        owner_user_id=ws, user_id=owner_a, query="ship sources"
     )
     assert any(h["source_id"] == src_a["id"] for h in a_hits)
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
     b_hits = await source_service.search_documents(
-        workspace_id=ws, user_id=owner_b, query="ship sources"
+        owner_user_id=ws, user_id=owner_b, query="ship sources"
     )
     assert b_hits == []
 
 
 @pytest.mark.asyncio
-async def test_slack_event_ingest_requires_owning_workspace_and_enabled_source(
+async def test_slack_event_ingest_requires_enabled_source(
     client: AsyncClient,
     pool,
 ):
     from backend.integrations.slack.indexer import ingest_slack_message
 
-    active_key, active_owner = await _register(client, "active_slack")
-    stale_key, stale_owner = await _register(client, "stale_slack")
-    disabled_key, disabled_owner = await _register(client, "disabled_slack")
-    active_ws = await _create_workspace(client, active_key)
-    stale_ws = await _create_workspace(client, stale_key)
-    disabled_ws = await _create_workspace(client, disabled_key)
+    _, active_owner = await _register(client, "active_slack")
+    _, disabled_owner = await _register(client, "disabled_slack")
     active_source = await source_service.create_source(
-        workspace_id=active_ws,
         owner_user_id=active_owner,
         source_type="slack",
         external_ref="T_WEBFLOW",
         display_name="Webflow Slack",
         settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
     )
-    stale_source = await source_service.create_source(
-        workspace_id=stale_ws,
-        owner_user_id=stale_owner,
-        source_type="slack",
-        external_ref="T_WEBFLOW",
-        display_name="Webflow Slack",
-        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
-    )
     disabled_source = await source_service.create_source(
-        workspace_id=disabled_ws,
         owner_user_id=disabled_owner,
         source_type="slack",
         external_ref="T_WEBFLOW",
         display_name="Webflow Slack",
         settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
-    )
-    # The stale owner no longer owns their scope, so their source is skipped.
-    _, stale_new_owner = await _register(client, "stale_new_owner")
-    await pool.execute(
-        "UPDATE workspaces SET creator_id = $1 WHERE id = $2", stale_new_owner, stale_ws
     )
     await pool.execute(
         "UPDATE workspace_sources SET sync_enabled = false WHERE id = $1",
@@ -1644,17 +1594,13 @@ async def test_slack_event_ingest_requires_owning_workspace_and_enabled_source(
             "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
             UUID(active_source["id"]),
         ),
-        "stale": await pool.fetchval(
-            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
-            UUID(stale_source["id"]),
-        ),
         "disabled": await pool.fetchval(
             "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
             UUID(disabled_source["id"]),
         ),
     }
     assert ingested == 1
-    assert counts == {"active": 1, "stale": 0, "disabled": 0}
+    assert counts == {"active": 1, "disabled": 0}
 
 
 @pytest.mark.asyncio
@@ -1662,9 +1608,8 @@ async def test_slack_event_ingest_deletes_removed_messages(client: AsyncClient, 
     from backend.integrations.slack.indexer import ingest_slack_message
 
     api_key, owner_id = await _register(client, "slack_delete")
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T_DELETE",
@@ -1675,7 +1620,7 @@ async def test_slack_event_ingest_deletes_removed_messages(client: AsyncClient, 
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="general/1717.0001",
         name="#general",
         kind="message",
@@ -1709,9 +1654,8 @@ async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
     from backend.integrations.slack.indexer import ingest_slack_message
 
     api_key, owner_id = await _register(client, "slack_change")
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T_CHANGE",
@@ -1722,7 +1666,7 @@ async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
-        workspace_id=ws,
+        owner_user_id=ws,
         path="general/1717.0001",
         name="#general",
         kind="message",
@@ -1766,9 +1710,7 @@ async def test_slack_event_ingest_drops_edits_of_subtyped_messages(
     from backend.integrations.slack.indexer import ingest_slack_message
 
     api_key, owner_id = await _register(client, "slack_bot_edit")
-    ws = await _create_workspace(client, api_key)
     source = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T_BOT_EDIT",
@@ -1810,9 +1752,8 @@ async def test_drive_index_only_reads_lazily(client: AsyncClient, monkeypatch):
     from backend.integrations.google import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="google_drive",
         external_ref="root",
@@ -1822,7 +1763,7 @@ async def test_drive_index_only_reads_lazily(client: AsyncClient, monkeypatch):
     await source_service.upsert_index_row(
         table="drive_index",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="Auth",
         name="Auth",
         kind="file",
@@ -1847,9 +1788,8 @@ async def test_notion_is_full_text_searchable(client: AsyncClient):
     """Notion now copies content, so its docs are served from the table and show
     up in full-text search — no lazy provider fetch on read."""
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="notion",
         external_ref="page-root",
@@ -1858,7 +1798,7 @@ async def test_notion_is_full_text_searchable(client: AsyncClient):
     await source_service.upsert_content_document(
         table="notion_index",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="Auth",
         name="Auth",
         kind="note",
@@ -1882,9 +1822,8 @@ async def test_jira_is_index_only_with_federated_search(client: AsyncClient, mon
     from backend.integrations.jira import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="jira_project",
         external_ref="cloud-1:PROJ",
@@ -1894,7 +1833,7 @@ async def test_jira_is_index_only_with_federated_search(client: AsyncClient, mon
     await source_service.upsert_index_row(
         table="jira_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="PROJ-9",
         name="PROJ-9: login bug",
         kind="issue",
@@ -1926,9 +1865,8 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     from backend.integrations.jira import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="jira_project",
         external_ref="cloud-1:PROJ",
@@ -1967,9 +1905,8 @@ async def test_lazy_source_read_failure_logs_only_failure_metadata(
     from backend.integrations.jira import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="jira_project",
         external_ref="cloud-1:PROJ",
@@ -1978,7 +1915,7 @@ async def test_lazy_source_read_failure_logs_only_failure_metadata(
     await source_service.upsert_index_row(
         table="jira_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="PROJ-9",
         name="PROJ-9: confidential login bug",
         kind="issue",
@@ -2029,9 +1966,8 @@ async def test_jira_deep_link_logs_only_failure_metadata(client: AsyncClient, mo
     from backend.integrations.jira import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="jira_project",
         external_ref="cloud-1:PROJ",
@@ -2040,7 +1976,7 @@ async def test_jira_deep_link_logs_only_failure_metadata(client: AsyncClient, mo
     await source_service.upsert_index_row(
         table="jira_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="PROJ-9",
         name="PROJ-9: login bug",
         kind="issue",
@@ -2084,9 +2020,8 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
     from backend.integrations.slack import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     slack = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T123",
@@ -2094,7 +2029,6 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
         settings={"allowed_channel_ids": ["C1"]},
     )
     github = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/x",
@@ -2126,9 +2060,8 @@ async def test_fetch_history_provider_failures_are_redacted(client, monkeypatch)
     from backend.integrations.slack import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     slack = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T123",
@@ -2168,9 +2101,8 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
     carries the status fields, and /status reports the indexed-doc count (None for
     queryable sources with no table)."""
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/widgets",
@@ -2179,7 +2111,7 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="README.md",
         name="README.md",
         content="hi",
@@ -2197,7 +2129,6 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
 
     # A queryable source (snowflake) has no document table → count is None.
     sf = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="snowflake",
         external_ref="acct",
@@ -2213,9 +2144,8 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
 async def test_read_source_rejects_unowned_connected_source(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     _, other_id = await _register(client, "other")
-    ws = await _create_workspace(client, owner_key)
+    ws = await _user_scope(client, owner_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/secret",
@@ -2224,7 +2154,7 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="README.md",
         name="README.md",
         content="top secret",
@@ -2281,10 +2211,9 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     from backend.integrations.google import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
 
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="google_drive",
         external_ref="root",
@@ -2293,7 +2222,7 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     await source_service.upsert_index_row(
         table="drive_index",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="Auth",
         name="Auth",
         kind="file",
@@ -2346,10 +2275,9 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
     from backend.integrations.google import indexer
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
 
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="google_drive",
         external_ref="root",
@@ -2358,7 +2286,7 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
     await source_service.upsert_index_row(
         table="drive_index",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="Auth",
         name="Auth",
         kind="file",
@@ -2390,12 +2318,12 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
         headers=_auth(api_key),
     )
     copied_pages = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1 AND name = 'Auth'",
+        "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1 AND name = 'Auth'",
         ws,
     )
     snapshot_events = await pool.fetchval(
         "SELECT COUNT(*) FROM security_audit_events "
-        "WHERE workspace_id = $1 AND action = 'source.document_snapshotted'",
+        "WHERE owner_user_id = $1 AND action = 'source.document_snapshotted'",
         ws,
     )
 
@@ -2406,11 +2334,12 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
 
 @pytest.mark.asyncio
 async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncClient, pool):
+    # Sources are user-scoped: a different user can't snapshot the owner's source.
     api_key, owner_id = await _register(client)
-    ws_a = await _create_workspace(client, api_key)
-    ws_b = await _create_workspace(client, api_key)
+    other_key, other_id = await _register(client, "other_snap")
+    ws_a = await _user_scope(client, api_key)
+    ws_b = other_id
     src = await source_service.create_source(
-        workspace_id=ws_a,
         owner_user_id=owner_id,
         source_type="slack",
         external_ref="T1",
@@ -2420,7 +2349,7 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=UUID(src["id"]),
-        workspace_id=ws_a,
+        owner_user_id=ws_a,
         path="eng/1",
         name="#eng",
         kind="message",
@@ -2431,14 +2360,14 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
     folder = await client.post(
         f"/api/v1/workspaces/{ws_b}/folders",
         json={"name": "Bundle"},
-        headers=_auth(api_key),
+        headers=_auth(other_key),
     )
     assert folder.status_code == 201
     folder_id = folder.json()["id"]
     skill = await client.post(
         f"/api/v1/workspaces/{ws_b}/skills",
         json={"folder_id": folder_id, "title": "Bundle"},
-        headers=_auth(api_key),
+        headers=_auth(other_key),
     )
     assert skill.status_code == 201
     skill_id = skill.json()["id"]
@@ -2446,7 +2375,7 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
     snap = await client.post(
         f"/api/v1/workspaces/{ws_b}/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "eng/1"},
-        headers=_auth(api_key),
+        headers=_auth(other_key),
     )
     copied_pages = await pool.fetchval(
         "SELECT COUNT(*) FROM pages WHERE folder_id = $1 AND name = '#eng'",
@@ -2465,7 +2394,7 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
     """The unified VFS surface the agent uses is also reachable over REST so the
     CLI + MCP can browse, read, and search sources the same way."""
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
 
     page = await client.post(
         f"/api/v1/workspaces/{ws}/pages/new",
@@ -2476,7 +2405,6 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
     page_id = page.json()["id"]
 
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/specs",
@@ -2485,7 +2413,7 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=UUID(src["id"]),
-        workspace_id=ws,
+        owner_user_id=ws,
         path="specs/auth.md",
         name="auth.md",
         content="auth spec: rotate tokens hourly",
@@ -2544,9 +2472,8 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
     every VFS endpoint resolves it as a not-found source (the scope itself is
     owner-private, so the non-owner gets 404 on every path)."""
     owner_key, owner_id = await _register(client, "owner")
-    ws = await _create_workspace(client, owner_key)
+    ws = await _user_scope(client, owner_key)
     src = await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="github_repo",
         external_ref="acme/private",
@@ -2573,7 +2500,6 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
 
 async def _create_linear_source(ws: UUID, owner_id: UUID) -> dict:
     return await source_service.create_source(
-        workspace_id=ws,
         owner_user_id=owner_id,
         source_type="linear",
         external_ref="me",
@@ -2606,7 +2532,7 @@ async def test_linear_index_builds_navigable_issue_rows(client: AsyncClient, mon
     from backend.services import linear_api_service
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_linear_source(ws, owner_id)
 
     async def fake_token(user_id, provider):
@@ -2638,7 +2564,7 @@ async def test_linear_source_reads_issue_body_lazily(client: AsyncClient, monkey
     from backend.services import linear_api_service
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_linear_source(ws, owner_id)
 
     async def fake_token(user_id, provider):
@@ -2680,7 +2606,7 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
     from backend.services import linear_api_service
 
     api_key, owner_id = await _register(client)
-    ws = await _create_workspace(client, api_key)
+    ws = await _user_scope(client, api_key)
     src = await _create_linear_source(ws, owner_id)
 
     async def fake_token(user_id, provider):

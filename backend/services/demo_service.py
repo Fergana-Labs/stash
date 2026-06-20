@@ -44,7 +44,7 @@ DISABLE_ENV_VAR = "STASH_DISABLE_DEMO_SEED"
 async def seed_demo_workspace() -> tuple[UUID, UUID] | None:
     """Ensure the Demo system user and workspace exist.
 
-    Returns (workspace_id, owner_user_id), or None if seeding is disabled.
+    Returns (owner_user_id, owner_user_id), or None if seeding is disabled.
     Idempotent — safe to call on every boot.
     """
     if os.environ.get(DISABLE_ENV_VAR) == "1":
@@ -70,28 +70,14 @@ async def seed_demo_workspace() -> tuple[UUID, UUID] | None:
         )
         logger.info("created demo system user %s", owner_id)
 
-    workspace_id = await pool.fetchval(
-        "SELECT id FROM workspaces WHERE creator_id = $1 AND name = $2 LIMIT 1",
-        owner_id,
-        DEMO_WORKSPACE_NAME,
-    )
-    if workspace_id is None:
-        invite_code = secrets.token_urlsafe(6)[:8]
-        workspace_id = await pool.fetchval(
-            "INSERT INTO workspaces (name, description, creator_id, invite_code) "
-            "VALUES ($1, $2, $3, $4) RETURNING id",
-            DEMO_WORKSPACE_NAME,
-            DEMO_WORKSPACE_DESCRIPTION,
-            owner_id,
-            invite_code,
-        )
-        logger.info("created demo workspace %s", workspace_id)
+    # The demo scope IS the demo system user; content is keyed by its user id.
+    owner_user_id = owner_id
 
-    await _seed_kb_folder(workspace_id, owner_id)
-    return workspace_id, owner_id
+    await _seed_kb_folder(owner_user_id, owner_id)
+    return owner_user_id, owner_id
 
 
-async def _seed_kb_folder(workspace_id: UUID, owner_id: UUID) -> UUID:
+async def _seed_kb_folder(owner_user_id: UUID, owner_id: UUID) -> UUID:
     """Ensure the canonical Stash knowledge base folder + two pages exist.
 
     Every published demo Stash references this single folder so visitors
@@ -100,30 +86,30 @@ async def _seed_kb_folder(workspace_id: UUID, owner_id: UUID) -> UUID:
     """
     pool = get_pool()
     folder_id = await pool.fetchval(
-        "SELECT id FROM folders WHERE workspace_id = $1 AND name = $2 "
+        "SELECT id FROM folders WHERE owner_user_id = $1 AND name = $2 "
         "AND parent_folder_id IS NULL LIMIT 1",
-        workspace_id,
+        owner_user_id,
         DEMO_KB_FOLDER_NAME,
     )
     if folder_id is None:
         folder = await files_tree_service.create_folder(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             name=DEMO_KB_FOLDER_NAME,
             created_by=owner_id,
         )
         folder_id = folder["id"]
 
     await _ensure_kb_page(
-        workspace_id, owner_id, folder_id, DEMO_SKILL_FILENAME, SLIDES_SKILL_MARKDOWN
+        owner_user_id, owner_id, folder_id, DEMO_SKILL_FILENAME, SLIDES_SKILL_MARKDOWN
     )
     await _ensure_kb_page(
-        workspace_id, owner_id, folder_id, DEMO_ABOUT_FILENAME, ABOUT_STASH_MARKDOWN
+        owner_user_id, owner_id, folder_id, DEMO_ABOUT_FILENAME, ABOUT_STASH_MARKDOWN
     )
     return folder_id
 
 
 async def _ensure_kb_page(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     owner_id: UUID,
     folder_id: UUID,
     name: str,
@@ -131,16 +117,16 @@ async def _ensure_kb_page(
 ) -> None:
     pool = get_pool()
     existing = await pool.fetchval(
-        "SELECT id FROM pages WHERE workspace_id = $1 AND folder_id = $2 "
+        "SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 "
         "AND name = $3 AND deleted_at IS NULL LIMIT 1",
-        workspace_id,
+        owner_user_id,
         folder_id,
         name,
     )
     if existing is not None:
         return
     await files_tree_service.create_page(
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         name=name,
         created_by=owner_id,
         folder_id=folder_id,
@@ -151,12 +137,12 @@ async def _ensure_kb_page(
 
 async def get_kb_folder_id() -> UUID:
     """Return the canonical KB folder id inside the Demo workspace."""
-    workspace_id, _ = await get_demo_workspace()
+    owner_user_id, _ = await get_demo_workspace()
     pool = get_pool()
     folder_id = await pool.fetchval(
-        "SELECT id FROM folders WHERE workspace_id = $1 AND name = $2 "
+        "SELECT id FROM folders WHERE owner_user_id = $1 AND name = $2 "
         "AND parent_folder_id IS NULL LIMIT 1",
-        workspace_id,
+        owner_user_id,
         DEMO_KB_FOLDER_NAME,
     )
     if folder_id is None:
@@ -165,20 +151,16 @@ async def get_kb_folder_id() -> UUID:
 
 
 async def get_demo_workspace() -> tuple[UUID, UUID]:
-    """Resolve (workspace_id, owner_id) for the demo. Raises if missing.
+    """Resolve (owner_user_id, owner_id) for the demo. Raises if missing.
 
     Callers should rely on `seed_demo_workspace` running at startup; this
     is a fast read used by request handlers.
     """
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT w.id AS workspace_id, w.creator_id AS owner_id "
-        "FROM workspaces w "
-        "JOIN users u ON u.id = w.creator_id "
-        "WHERE u.name = $1 AND w.name = $2 LIMIT 1",
+    owner_id = await pool.fetchval(
+        "SELECT id FROM users WHERE name = $1",
         DEMO_SYSTEM_USERNAME,
-        DEMO_WORKSPACE_NAME,
     )
-    if row is None:
+    if owner_id is None:
         raise RuntimeError("Demo workspace is not seeded. Did startup run " "seed_demo_workspace?")
-    return row["workspace_id"], row["owner_id"]
+    return owner_id, owner_id

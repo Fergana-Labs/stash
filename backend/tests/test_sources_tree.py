@@ -78,10 +78,10 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         "last_synced_at": None,
     }
 
-    async def fake_pages(workspace_id, user_id):
+    async def fake_pages(owner_user_id, user_id):
         return [{"id": "p1", "name": "Welcome"}]
 
-    async def fake_sessions(workspace_id, user_id):
+    async def fake_sessions(owner_user_id, user_id):
         return [
             {
                 "session_id": "s1",
@@ -91,7 +91,7 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
             {"session_id": "s2", "agent_name": "claude", "title_source": None},
         ]
 
-    async def fake_connected(workspace_id, user_id):
+    async def fake_connected(owner_user_id, user_id):
         return [github, snowflake]
 
     async def fake_documents(source, prefix="", limit=200):

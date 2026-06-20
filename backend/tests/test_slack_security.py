@@ -25,7 +25,6 @@ class _SlackErrorClient:
 def _source() -> dict:
     return {
         "id": str(uuid4()),
-        "workspace_id": str(uuid4()),
         "owner_user_id": str(uuid4()),
         "source_type": "slack",
         "settings": {"allowed_channel_ids": ["C_SECRET"]},

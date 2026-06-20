@@ -86,7 +86,7 @@ async def discover_session_labels(session_row_id: UUID) -> int:
     pool = get_pool()
     session = await pool.fetchrow(
         """
-        SELECT workspace_id, session_id, created_by
+        SELECT owner_user_id, session_id, created_by
         FROM sessions
         WHERE id = $1 AND deleted_at IS NULL
         """,
@@ -99,10 +99,10 @@ async def discover_session_labels(session_row_id: UUID) -> int:
         """
         SELECT content
         FROM history_events
-        WHERE workspace_id = $1 AND session_id = $2
+        WHERE owner_user_id = $1 AND session_id = $2
         ORDER BY created_at, id
         """,
-        session["workspace_id"],
+        session["owner_user_id"],
         session["session_id"],
     )
     refs = extract_pull_request_refs([row["content"] for row in rows])[
@@ -116,19 +116,19 @@ async def discover_session_labels(session_row_id: UUID) -> int:
     for ref in refs:
         pr = await fetch_pull_request(ref, token)
         if pr is None:
-            await _record_pull_request_check(pool, session["workspace_id"], session_row_id, ref)
+            await _record_pull_request_check(pool, session["owner_user_id"], session_row_id, ref)
             continue
 
-        await _record_pull_request(pool, session["workspace_id"], session_row_id, pr)
+        await _record_pull_request(pool, session["owner_user_id"], session_row_id, pr)
         labels.extend(labels_for_pull_request(pr))
 
     await linear_ticket_service.upsert_session_labels(
-        session["workspace_id"],
+        session["owner_user_id"],
         session_row_id,
         labels,
     )
     if labels:
-        linear_ticket_service.enqueue_session_enrichment(session["workspace_id"], session_row_id)
+        linear_ticket_service.enqueue_session_enrichment(session["owner_user_id"], session_row_id)
     return len(labels)
 
 
@@ -147,7 +147,7 @@ async def discover_unprocessed_sessions(limit: int) -> int:
           AND EXISTS (
             SELECT 1
             FROM history_events he
-            WHERE he.workspace_id = s.workspace_id
+            WHERE he.owner_user_id = s.owner_user_id
               AND he.session_id = s.session_id
               AND he.content ~* $2
           )
@@ -214,14 +214,14 @@ async def _github_token_for_user(user_id: UUID | None) -> str | None:
 
 async def _record_pull_request(
     pool,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     pr: GitHubPullRequest,
 ) -> None:
     await pool.execute(
         """
         INSERT INTO session_github_pull_requests (
-          workspace_id,
+          owner_user_id,
           session_row_id,
           owner,
           repo,
@@ -239,7 +239,7 @@ async def _record_pull_request(
           fetched_at = now(),
           updated_at = now()
         """,
-        workspace_id,
+        owner_user_id,
         session_row_id,
         pr.ref.owner,
         pr.ref.repo,
@@ -252,14 +252,14 @@ async def _record_pull_request(
 
 async def _record_pull_request_check(
     pool,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     ref: PullRequestRef,
 ) -> None:
     await pool.execute(
         """
         INSERT INTO session_github_pull_requests (
-          workspace_id,
+          owner_user_id,
           session_row_id,
           owner,
           repo,
@@ -272,7 +272,7 @@ async def _record_pull_request_check(
           fetched_at = now(),
           updated_at = now()
         """,
-        workspace_id,
+        owner_user_id,
         session_row_id,
         ref.owner,
         ref.repo,

@@ -20,20 +20,15 @@ async def _make_user(pool):
 
 
 async def _make_workspace(pool, creator_id):
-    row = await pool.fetchrow(
-        "INSERT INTO workspaces (name, creator_id, invite_code) VALUES ('ws', $1, $2) RETURNING id",
-        creator_id,
-        uuid.uuid4().hex[:12],
-    )
-    return row["id"]
+    return creator_id
 
 
-async def _make_file(pool, workspace_id, uploaded_by):
+async def _make_file(pool, owner_user_id, uploaded_by):
     return await pool.fetchval(
         "INSERT INTO files "
-        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, 'logo.png', 'image/png', 10, $2, $3) RETURNING id",
-        workspace_id,
+        owner_user_id,
         f"test/{uuid.uuid4().hex}.png",
         uploaded_by,
     )
@@ -54,8 +49,8 @@ async def test_image_fetcher_only_reads_authorized_stash_file(pool, monkeypatch)
     monkeypatch.setattr(storage_service, "download_file", fake_download_file)
     src = f"/api/v1/workspaces/{ws}/files/{file_id}/download"
 
-    assert await ImageFetcher(workspace_id=ws, user_id=owner).fetch(src) == b"image-bytes"
-    assert await ImageFetcher(workspace_id=ws, user_id=stranger).fetch(src) is None
+    assert await ImageFetcher(owner_user_id=ws, user_id=owner).fetch(src) == b"image-bytes"
+    assert await ImageFetcher(owner_user_id=ws, user_id=stranger).fetch(src) is None
     assert len(calls) == 1
 
 
@@ -75,7 +70,7 @@ async def test_image_fetcher_rejects_cross_workspace_stash_file(pool, monkeypatc
     monkeypatch.setattr(storage_service, "download_file", fake_download_file)
     src = f"/api/v1/workspaces/{second_ws}/files/{file_id}/download"
 
-    assert await ImageFetcher(workspace_id=first_ws, user_id=first_owner).fetch(src) is None
+    assert await ImageFetcher(owner_user_id=first_ws, user_id=first_owner).fetch(src) is None
     assert calls == []
 
 

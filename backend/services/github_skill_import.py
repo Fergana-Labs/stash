@@ -26,7 +26,6 @@ from . import files_tree_service, shared_skill_service, skill_service
 logger = logging.getLogger(__name__)
 
 CURATOR_USERNAME = "stash-curated"
-CURATOR_WORKSPACE_NAME = "Stash Curated"
 MAX_FILE_BYTES = 50 * 1024 * 1024  # matches the upload endpoint's limit
 
 _REPO_URL_RE = re.compile(r"^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$")
@@ -133,10 +132,10 @@ async def fetch_repo_skills(repo_url: str) -> list[dict]:
 
 
 async def ensure_curator() -> tuple[UUID, UUID]:
-    """Ensure the curator system user and workspace exist.
+    """Ensure the curator system user exists.
 
-    Returns (workspace_id, owner_id). Idempotent — mirrors
-    demo_service.seed_demo_workspace.
+    Returns (owner_user_id, owner_id) — both the curator user id, since a user
+    IS their own scope. Idempotent.
     """
     pool = get_pool()
     owner_id = await pool.fetchval("SELECT id FROM users WHERE name = $1", CURATOR_USERNAME)
@@ -153,28 +152,11 @@ async def ensure_curator() -> tuple[UUID, UUID]:
             "System user that owns GitHub-imported Discover skills.",
         )
         logger.info("created curator system user %s", owner_id)
-
-    workspace_id = await pool.fetchval(
-        "SELECT id FROM workspaces WHERE creator_id = $1 AND name = $2 LIMIT 1",
-        owner_id,
-        CURATOR_WORKSPACE_NAME,
-    )
-    if workspace_id is None:
-        invite_code = secrets.token_urlsafe(6)[:8]
-        workspace_id = await pool.fetchval(
-            "INSERT INTO workspaces (name, description, creator_id, invite_code) "
-            "VALUES ($1, $2, $3, $4) RETURNING id",
-            CURATOR_WORKSPACE_NAME,
-            "Curated public skills imported from GitHub for Discover.",
-            owner_id,
-            invite_code,
-        )
-        logger.info("created curator workspace %s", workspace_id)
-    return workspace_id, owner_id
+    return owner_id, owner_id
 
 
 async def import_skill(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     owner_id: UUID,
     *,
     source_url: str,
@@ -196,7 +178,7 @@ async def import_skill(
     if existing:
         await files_tree_service.clear_folder_contents(existing["folder_id"])
         await files_tree_service.write_folder_files(
-            workspace_id, owner_id, existing["folder_id"], files
+            owner_user_id, owner_id, existing["folder_id"], files
         )
         await pool.execute(
             "UPDATE skills SET title = $1, description = $2, updated_at = now() WHERE id = $3",
@@ -206,10 +188,10 @@ async def import_skill(
         )
         return "updated"
 
-    folder_id = await _create_root_folder(workspace_id, owner_id, title)
-    await files_tree_service.write_folder_files(workspace_id, owner_id, folder_id, files)
+    folder_id = await _create_root_folder(owner_user_id, owner_id, title)
+    await files_tree_service.write_folder_files(owner_user_id, owner_id, folder_id, files)
     await shared_skill_service.publish_folder(
-        workspace_id,
+        owner_user_id,
         owner_id,
         folder_id,
         title=title,
@@ -220,14 +202,14 @@ async def import_skill(
     return "created"
 
 
-async def _create_root_folder(workspace_id: UUID, owner_id: UUID, title: str) -> UUID:
+async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -> UUID:
     # Skills from different repos can share a title; folder names are unique
     # per parent, so suffix like fork_skill does.
     name = title
     for n in range(2, 50):
         try:
             folder = await files_tree_service.create_folder(
-                workspace_id=workspace_id, name=name, created_by=owner_id
+                owner_user_id=owner_user_id, name=name, created_by=owner_id
             )
             return folder["id"]
         except files_tree_service.DuplicateFolderName:
@@ -243,12 +225,12 @@ async def import_repo(repo_url: str) -> dict:
 
     Returns a summary: how many skills the repo had and how many were newly
     created vs updated in place. Idempotent — re-running tracks upstream."""
-    workspace_id, owner_id = await ensure_curator()
+    owner_user_id, owner_id = await ensure_curator()
     skills = await fetch_repo_skills(repo_url)
     created = updated = 0
     for skill in skills:
         result = await import_skill(
-            workspace_id,
+            owner_user_id,
             owner_id,
             source_url=skill["source_url"],
             fallback_title=skill["fallback_title"],

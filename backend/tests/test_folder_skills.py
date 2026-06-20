@@ -8,8 +8,6 @@ A skill is a folder containing a SKILL.md page. Two properties matter:
   subtree to whoever can open the skill, and never write.
 """
 
-import uuid
-
 import pytest
 from httpx import AsyncClient
 
@@ -142,18 +140,12 @@ async def _make_user(pool):
 
 
 async def _make_workspace(pool, creator_id):
-    ws_id = await pool.fetchval(
-        "INSERT INTO workspaces (name, creator_id, invite_code) "
-        "VALUES ('ws', $1, $2) RETURNING id",
-        creator_id,
-        uuid.uuid4().hex[:12],
-    )
-    return ws_id
+    return creator_id
 
 
 async def _make_folder(pool, ws, created_by, name, parent_folder_id=None):
     return await pool.fetchval(
-        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
         "VALUES ($1, $2, $3, $4) RETURNING id",
         ws,
         parent_folder_id,
@@ -164,7 +156,7 @@ async def _make_folder(pool, ws, created_by, name, parent_folder_id=None):
 
 async def _make_page(pool, ws, created_by, folder_id, name="page"):
     return await pool.fetchval(
-        "INSERT INTO pages (workspace_id, folder_id, name, content_markdown, created_by) "
+        "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by) "
         "VALUES ($1, $2, $3, 'body', $4) RETURNING id",
         ws,
         folder_id,

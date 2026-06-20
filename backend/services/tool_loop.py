@@ -83,7 +83,7 @@ async def stream_tool_loop(
     system: str,
     prompt: str | None = None,
     history: list[dict] | None = None,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID | None = None,
     tool_set: tuple[str, ...],
     max_turns: int = 8,
@@ -112,7 +112,7 @@ async def stream_tool_loop(
         [dict(m) for m in history] if history else [{"role": "user", "content": prompt or ""}]
     )
 
-    workspace_token = _workspace_ctx.set(workspace_id)
+    workspace_token = _workspace_ctx.set(owner_user_id)
     user_token = _user_ctx.set(user_id)
     session_token = _session_ctx.set(session_id)
     agent_name_token = _agent_name_ctx.set(agent_name)

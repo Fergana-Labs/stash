@@ -56,20 +56,14 @@ def _auth(api_key: str) -> dict:
 
 
 async def _make_workspace(pool, creator_id):
-    invite = uuid.uuid4().hex[:12]
-    row = await pool.fetchrow(
-        "INSERT INTO workspaces (name, creator_id, invite_code) VALUES ('ws', $1, $2) RETURNING id",
-        creator_id,
-        invite,
-    )
-    return row["id"]
+    return creator_id
 
 
-async def _make_folder(pool, workspace_id, created_by, name="folder", parent_folder_id=None):
+async def _make_folder(pool, owner_user_id, created_by, name="folder", parent_folder_id=None):
     row = await pool.fetchrow(
-        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
         "VALUES ($1, $2, $3, $4) RETURNING id",
-        workspace_id,
+        owner_user_id,
         parent_folder_id,
         name,
         created_by,
@@ -78,12 +72,12 @@ async def _make_folder(pool, workspace_id, created_by, name="folder", parent_fol
 
 
 async def _make_page(
-    pool, workspace_id, created_by, folder_id=None, name="page", content="content"
+    pool, owner_user_id, created_by, folder_id=None, name="page", content="content"
 ):
     row = await pool.fetchrow(
-        "INSERT INTO pages (workspace_id, folder_id, name, content_markdown, created_by) "
+        "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by) "
         "VALUES ($1, $2, $3, $4, $5) RETURNING id",
-        workspace_id,
+        owner_user_id,
         folder_id,
         name,
         content,
@@ -92,22 +86,22 @@ async def _make_page(
     return row["id"]
 
 
-async def _make_session(pool, workspace_id, created_by, session_id="session-1"):
+async def _make_session(pool, owner_user_id, created_by, session_id="session-1"):
     row = await pool.fetchrow(
-        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "INSERT INTO sessions (owner_user_id, session_id, agent_name, created_by) "
         "VALUES ($1, $2, 'codex', $3) RETURNING id",
-        workspace_id,
+        owner_user_id,
         session_id,
         created_by,
     )
     return row["id"]
 
 
-async def _make_table(pool, workspace_id, created_by, folder_id=None, name="table"):
+async def _make_table(pool, owner_user_id, created_by, folder_id=None, name="table"):
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, folder_id, name, created_by) "
+        "INSERT INTO tables (owner_user_id, folder_id, name, created_by) "
         "VALUES ($1, $2, $3, $4) RETURNING id",
-        workspace_id,
+        owner_user_id,
         folder_id,
         name,
         created_by,
@@ -116,13 +110,13 @@ async def _make_table(pool, workspace_id, created_by, folder_id=None, name="tabl
 
 
 async def _make_file(
-    pool, workspace_id, uploaded_by, folder_id=None, name="file.txt", content_type="text/plain"
+    pool, owner_user_id, uploaded_by, folder_id=None, name="file.txt", content_type="text/plain"
 ):
     row = await pool.fetchrow(
         "INSERT INTO files "
-        "(workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "(owner_user_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, $4, 12, $5, $6) RETURNING id",
-        workspace_id,
+        owner_user_id,
         folder_id,
         name,
         content_type,
@@ -134,7 +128,7 @@ async def _make_file(
 
 async def _make_history_event(
     pool,
-    workspace_id,
+    owner_user_id,
     created_by,
     session_id=None,
     content="hello",
@@ -142,9 +136,9 @@ async def _make_history_event(
 ):
     return await pool.fetchval(
         "INSERT INTO history_events "
-        "(workspace_id, created_by, agent_name, event_type, content, session_id) "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id) "
         "VALUES ($1, $2, 'agent', $3, $4, $5) RETURNING id",
-        workspace_id,
+        owner_user_id,
         created_by,
         event_type,
         content,
@@ -157,7 +151,7 @@ async def _make_history_event(
 
 async def _share(pool, ws_id, object_type, object_id, user_id, permission="read", by=None):
     await pool.execute(
-        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by) VALUES ($1,$2,$3,'user',$4,$5,$6)",
         ws_id,
         object_type,
@@ -248,7 +242,7 @@ async def test_expired_share_grants_nothing(pool):
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
     await pool.execute(
-        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by, expires_at) "
         "VALUES ($1,'page',$2,'user',$3,'write',$4, now() - interval '1 hour')",
         ws,
@@ -269,7 +263,7 @@ async def test_future_expiry_still_grants(pool):
     ws = await _make_workspace(pool, owner)
     page = await _make_page(pool, ws, owner)
     await pool.execute(
-        "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by, expires_at) "
         "VALUES ($1,'page',$2,'user',$3,'read',$4, now() + interval '1 day')",
         ws,
@@ -376,7 +370,6 @@ async def test_public_session_folder_grants_read_only(pool):
     ws = await _make_workspace(pool, owner)
     folder = await session_folder_service.create_folder(
         ws,
-        owner,
         "Public Sessions",
         public_permission="read",
     )
@@ -432,11 +425,10 @@ async def test_session_folder_share_cascades_to_sessions(pool):
     friend = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     folder = await pool.fetchval(
-        "INSERT INTO session_folders (workspace_id, owner_user_id, name, slug) "
-        "VALUES ($1, $2, 'launch', 'launch-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
+        "INSERT INTO session_folders (owner_user_id, name, slug) "
+        "VALUES ($1, 'launch', 'launch-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
         "RETURNING id",
         ws,
-        owner,
     )
     session_row = await _make_session(pool, ws, owner, session_id="s-folder-1")
     await pool.execute(
@@ -1186,7 +1178,7 @@ async def test_shared_with_me_lists_incoming_not_outgoing(pool):
     assert match[0]["object_type"] == "folder"
     assert match[0]["name"] == "Shared Folder"
     assert match[0]["permission"] == "write"
-    assert match[0]["workspace_id"] == str(ws)
+    assert match[0]["owner_user_id"] == str(ws)
     # The owner is on the giving end — nothing is shared *with* them.
     assert await share_service.list_shared_with_user(owner) == []
 
@@ -1202,11 +1194,10 @@ async def test_shared_session_folder_sessions_gated_on_share(pool):
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     sf = await pool.fetchval(
-        "INSERT INTO session_folders (workspace_id, owner_user_id, name, slug) "
-        "VALUES ($1, $2, 'SF', 'sf-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
+        "INSERT INTO session_folders (owner_user_id, name, slug) "
+        "VALUES ($1, 'SF', 'sf-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
         "RETURNING id",
         ws,
-        owner,
     )
     session_row = await _make_session(pool, ws, owner, session_id="shared-sess-1")
     await pool.execute("UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, sf)

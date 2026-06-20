@@ -32,16 +32,16 @@ async def _workspace_id(client: AsyncClient, api_key: str) -> uuid.UUID:
 async def _make_file(
     pool,
     *,
-    workspace_id: uuid.UUID,
+    owner_user_id: uuid.UUID,
     uploaded_by: uuid.UUID,
     name: str,
     content_type: str,
 ) -> uuid.UUID:
     return await pool.fetchval(
         "INSERT INTO files "
-        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, 12, $4, $5) RETURNING id",
-        workspace_id,
+        owner_user_id,
         name,
         content_type,
         f"customer/webflow/{uuid.uuid4().hex}",
@@ -52,10 +52,10 @@ async def _make_file(
 @pytest.mark.asyncio
 async def test_file_download_storage_errors_are_redacted(client: AsyncClient, pool, monkeypatch):
     api_key, owner = await _register(client)
-    workspace_id = await _workspace_id(client, api_key)
+    owner_user_id = await _workspace_id(client, api_key)
     file_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="board-notes.txt",
         content_type="text/plain",
@@ -72,7 +72,7 @@ async def test_file_download_storage_errors_are_redacted(client: AsyncClient, po
     monkeypatch.setattr(storage_service, "download_file", fail_download)
     monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
+        f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/download",
         headers=_auth(api_key),
     )
 
@@ -94,10 +94,10 @@ async def test_file_download_storage_errors_are_redacted(client: AsyncClient, po
 @pytest.mark.asyncio
 async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool, monkeypatch):
     api_key, owner = await _register(client)
-    workspace_id = await _workspace_id(client, api_key)
+    owner_user_id = await _workspace_id(client, api_key)
     file_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="pipeline.csv",
         content_type="text/csv",
@@ -114,7 +114,7 @@ async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool
     monkeypatch.setattr(storage_service, "download_file", fail_download)
     monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/files/{file_id}/ingest-csv",
+        f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/ingest-csv",
         headers=_auth(api_key),
     )
 
@@ -136,10 +136,10 @@ async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool
 @pytest.mark.asyncio
 async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeypatch):
     api_key, owner = await _register(client)
-    workspace_id = await _workspace_id(client, api_key)
+    owner_user_id = await _workspace_id(client, api_key)
     file_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="pipeline.xlsx",
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -160,7 +160,7 @@ async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeyp
     monkeypatch.setattr(files_router, "ingest_xlsx_bytes", fail_ingest_xlsx_bytes)
     monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/files/{file_id}/ingest-xlsx",
+        f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/ingest-xlsx",
         headers=_auth(api_key),
     )
 
@@ -182,10 +182,10 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
     """SVG executes embedded script when rendered inline, so user uploads must
     never come back inline on the API origin; passive image types stay inline."""
     api_key, owner = await _register(client)
-    workspace_id = await _workspace_id(client, api_key)
+    owner_user_id = await _workspace_id(client, api_key)
     svg_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="logo.svg",
         content_type="image/svg+xml",
@@ -194,21 +194,21 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
     # bypass the SVG attachment rule.
     svg_charset_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="logo2.svg",
         content_type="image/svg+xml;charset=utf-8",
     )
     svg_upper_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="logo3.svg",
         content_type="image/SVG+xml",
     )
     png_id = await _make_file(
         pool,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         uploaded_by=uuid.UUID(owner["id"]),
         name="logo.png",
         content_type="image/png",
@@ -221,7 +221,7 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
 
     async def download(file_id):
         return await client.get(
-            f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
+            f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/download",
             headers=_auth(api_key),
         )
 
@@ -245,15 +245,15 @@ async def test_file_purge_keeps_storage_keys_still_referenced(
     so purging the origin file must not delete an S3 object a surviving fork
     still serves downloads from. Unreferenced keys are still deleted."""
     api_key, owner = await _register(client)
-    workspace_id = await _workspace_id(client, api_key)
+    owner_user_id = await _workspace_id(client, api_key)
     owner_id = uuid.UUID(owner["id"])
 
     async def insert_file(name: str, storage_key: str) -> uuid.UUID:
         return await pool.fetchval(
             "INSERT INTO files "
-            "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+            "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
             "VALUES ($1, $2, 'text/plain', 12, $3, $4) RETURNING id",
-            workspace_id,
+            owner_user_id,
             name,
             storage_key,
             owner_id,
@@ -272,12 +272,12 @@ async def test_file_purge_keeps_storage_keys_still_referenced(
 
     for file_id in (shared_id, unique_id):
         trashed = await client.delete(
-            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            f"/api/v1/workspaces/{owner_user_id}/files/{file_id}",
             headers=_auth(api_key),
         )
         assert trashed.status_code == 204
         purged = await client.delete(
-            f"/api/v1/workspaces/{workspace_id}/files/{file_id}/purge",
+            f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/purge",
             headers=_auth(api_key),
         )
         assert purged.status_code == 204

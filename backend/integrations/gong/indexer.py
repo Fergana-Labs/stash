@@ -89,7 +89,7 @@ async def _fetch_transcripts(
 
 async def index_gong(source: dict) -> str | None:
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
@@ -116,7 +116,7 @@ async def index_gong(source: dict) -> str | None:
         await source_service.upsert_content_document(
             table="gong_documents",
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path=call_id,
             name=meta.get("title") or call_id,
             kind="call",
@@ -137,7 +137,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     afterward, and returns the call ids found. No soft-delete: this adds to the
     cache, it doesn't define the live set."""
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
     if not allowed_workspace_ids:
@@ -167,7 +167,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
         await source_service.upsert_content_document(
             table="gong_documents",
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path=call_id,
             name=meta.get("title") or call_id,
             kind="call",

@@ -37,13 +37,13 @@ def _schedule_row_embed(row_id: UUID, text: str, text_hash: str) -> None:
 
 
 _TABLE_FIELDS = (
-    "id, workspace_id, folder_id, name, description, columns, views, "
+    "id, owner_user_id, folder_id, name, description, columns, views, "
     "created_by, updated_by, created_at, updated_at"
 )
 
 
 async def create_table(
-    workspace_id: UUID | None,
+    owner_user_id: UUID | None,
     name: str,
     description: str,
     columns: list[dict],
@@ -52,8 +52,8 @@ async def create_table(
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
-        folder = await pool.fetchrow("SELECT workspace_id FROM folders WHERE id = $1", folder_id)
-        if not folder or folder["workspace_id"] != workspace_id:
+        folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
+        if not folder or folder["owner_user_id"] != owner_user_id:
             raise ValueError("folder_id does not belong to workspace")
     # Assign server-generated IDs and order to columns
     for i, col in enumerate(columns):
@@ -62,11 +62,11 @@ async def create_table(
         col["order"] = i
         col.setdefault("width", 180)
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, folder_id, name, description, columns, created_by, updated_by) "
+        "INSERT INTO tables (owner_user_id, folder_id, name, description, columns, created_by, updated_by) "
         "VALUES ($1, $2, $3, $4, $5, $6, $6) "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        workspace_id,
+        owner_user_id,
         folder_id,
         name,
         description,
@@ -126,7 +126,7 @@ async def update_table(
     args.append(table_id)
     row = await pool.fetchrow(
         f"UPDATE tables SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         *args,
     )
@@ -147,16 +147,16 @@ async def delete_table(table_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
-async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
+async def list_tables(owner_user_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
     pool = get_pool()
-    if workspace_id is not None:
-        args: list = [workspace_id]
-        where = "t.workspace_id = $1"
+    if owner_user_id is not None:
+        args: list = [owner_user_id]
+        where = "t.owner_user_id = $1"
         if user_id is not None:
             args.append(user_id)
             where += " AND " + permission_service.readable_content_condition("table", "t", 2)
         rows = await pool.fetch(
-            "SELECT t.id, t.workspace_id, t.folder_id, t.name, t.description, t.columns, "
+            "SELECT t.id, t.owner_user_id, t.folder_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
             f"FROM tables t WHERE {where} ORDER BY t.updated_at DESC",
@@ -164,10 +164,10 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
         )
     else:
         rows = await pool.fetch(
-            "SELECT t.id, t.workspace_id, t.folder_id, t.name, t.description, t.columns, "
+            "SELECT t.id, t.owner_user_id, t.folder_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
-            "FROM tables t WHERE t.workspace_id IS NULL AND t.created_by = $1 "
+            "FROM tables t WHERE t.owner_user_id IS NULL AND t.created_by = $1 "
             "ORDER BY t.updated_at DESC",
             user_id,
         )
@@ -179,16 +179,16 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
     pool = get_pool()
     readable_table = permission_service.readable_content_condition("table", "t", 1)
     rows = await pool.fetch(
-        "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.views, "
+        "SELECT t.id, t.owner_user_id, t.name, t.description, t.columns, t.views, "
         "t.created_by, t.updated_by, t.created_at, t.updated_at, "
-        "w.name AS workspace_name, "
+        "owner.display_name AS workspace_name, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t "
-        "LEFT JOIN workspaces w ON w.id = t.workspace_id "
+        "LEFT JOIN users owner ON owner.id = t.owner_user_id "
         "WHERE ("
-        "  t.workspace_id IS NOT NULL "
+        "  t.owner_user_id IS NOT NULL "
         f"  AND {readable_table}"
-        ") OR (t.workspace_id IS NULL AND t.created_by = $1) "
+        ") OR (t.owner_user_id IS NULL AND t.created_by = $1) "
         "ORDER BY t.updated_at DESC",
         user_id,
     )
@@ -219,7 +219,7 @@ async def add_column(table_id: UUID, column: dict, updated_by: UUID) -> dict:
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols,
         updated_by,
@@ -251,7 +251,7 @@ async def update_column(
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols,
         updated_by,
@@ -274,7 +274,7 @@ async def delete_column(table_id: UUID, column_id: str, updated_by: UUID) -> dic
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols,
         updated_by,
@@ -301,7 +301,7 @@ async def reorder_columns(table_id: UUID, column_ids: list[str], updated_by: UUI
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         reordered,
         updated_by,
@@ -614,7 +614,7 @@ async def save_view(table_id: UUID, view: dict, updated_by: UUID) -> dict | None
     row = await pool.fetchrow(
         "UPDATE tables SET views = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         views,
         updated_by,
@@ -634,7 +634,7 @@ async def delete_view(table_id: UUID, view_id: str, updated_by: UUID) -> dict | 
     row = await pool.fetchrow(
         "UPDATE tables SET views = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, folder_id, name, description, columns, views, "
+        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         views,
         updated_by,
@@ -822,7 +822,7 @@ async def set_embedding_config(table_id: UUID, config: dict, updated_by: UUID) -
     row = await pool.fetchrow(
         "UPDATE tables SET embedding_config = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, views, embedding_config, "
+        "RETURNING id, owner_user_id, name, description, columns, views, embedding_config, "
         "created_by, updated_by, created_at, updated_at",
         config,
         updated_by,

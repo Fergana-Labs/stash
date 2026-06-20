@@ -97,7 +97,7 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
     pool = get_pool()
     page_row = await pool.fetchrow(
         """
-        SELECT id, workspace_id, name, content_html, content_type, html_layout
+        SELECT id, owner_user_id, name, content_html, content_type, html_layout
         FROM pages WHERE id = $1
         """,
         page_id,
@@ -110,7 +110,7 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
         "page",
         page_id,
         user_id,
-        workspace_id=page_row["workspace_id"],
+        owner_user_id=page_row["owner_user_id"],
     )
     if not can_read:
         raise RuntimeError("page not found")
@@ -121,7 +121,7 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
 
     filename = f"{_safe_stem(page_row['name'] or 'slides')}-{uuid4().hex[:8]}.pdf"
     storage_key = await storage_service.upload_file(
-        workspace_id=page_row["workspace_id"],
+        owner_user_id=page_row["owner_user_id"],
         filename=filename,
         content=pdf_bytes,
         content_type="application/pdf",

@@ -16,20 +16,13 @@ from backend.services import files_tree_service
 @pytest_asyncio.fixture
 async def workspace(_db_pool):
     user_id = uuid4()
-    ws_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )
-    await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
-        ws_id,
-        f"ws_{ws_id.hex[:6]}",
-        user_id,
-        ws_id.hex[:12],
-    )
-    return ws_id, user_id
+    # The user IS the scope: content is owned by owner_user_id = user_id.
+    return user_id, user_id
 
 
 @pytest.mark.asyncio
@@ -46,7 +39,7 @@ async def test_create_page_strips_scripts_keeps_structure(workspace, _db_pool):
         "</section>"
     )
     page = await files_tree_service.create_page(
-        workspace_id=ws_id,
+        owner_user_id=ws_id,
         name="Deck",
         created_by=user_id,
         content_type="html",
@@ -76,7 +69,7 @@ async def test_title_text_does_not_leak_into_body(workspace, _db_pool):
         "</head><body><h1>Report</h1></body></html>"
     )
     page = await files_tree_service.create_page(
-        workspace_id=ws_id,
+        owner_user_id=ws_id,
         name="Doc",
         created_by=user_id,
         content_type="html",
@@ -96,7 +89,7 @@ async def test_content_hash_matches_sanitized_bytes(workspace, _db_pool):
     optimistic-concurrency guard on the next edit doesn't spuriously conflict."""
     ws_id, user_id = workspace
     page = await files_tree_service.create_page(
-        workspace_id=ws_id,
+        owner_user_id=ws_id,
         name="Hashed",
         created_by=user_id,
         content_type="html",
@@ -113,7 +106,7 @@ async def test_content_hash_matches_sanitized_bytes(workspace, _db_pool):
 async def test_update_page_sanitizes_html(workspace, _db_pool):
     ws_id, user_id = workspace
     page = await files_tree_service.create_page(
-        workspace_id=ws_id,
+        owner_user_id=ws_id,
         name="Live",
         created_by=user_id,
         content_type="html",
@@ -121,7 +114,7 @@ async def test_update_page_sanitizes_html(workspace, _db_pool):
     )
     await files_tree_service.update_page(
         page_id=page["id"],
-        workspace_id=ws_id,
+        owner_user_id=ws_id,
         updated_by=user_id,
         content_html="<p>updated</p><script>evil()</script>",
     )

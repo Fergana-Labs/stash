@@ -17,7 +17,7 @@ import logging
 import re
 
 from ...config import settings
-from ...services import ask_service, user_service, workspace_service
+from ...services import ask_service, user_scope_service, user_service
 from . import client, installs, links
 
 logger = logging.getLogger(__name__)
@@ -75,21 +75,13 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
         await client.post_message(bot_token, channel, _connect_prompt(), thread_ts)
         return
 
-    workspace_id = await workspace_service.get_primary_for_user(user["id"])
-    if workspace_id is None:
-        spaces = await workspace_service.list_user_workspaces(user["id"])
-        workspace_id = spaces[0]["id"] if spaces else None
-    if workspace_id is None:
-        await client.post_message(
-            bot_token, channel, "You don't have a Stash workspace yet.", thread_ts
-        )
-        return
-
-    workspace = await workspace_service.get_workspace(workspace_id)
+    owner_user_id = await user_scope_service.scope_id_for_user(user["id"])
+    # The scope is the user, so its name is the user's display name.
+    workspace_name = user["display_name"] or user["name"]
     # One continuous session per user → memory accumulates across DMs/channels/time.
     session_id = f"slack-agent-{user['id']}"
     answer = await ask_service.run_chat(
-        workspace_id, workspace["name"], user["id"], session_id, text
+        owner_user_id, workspace_name, user["id"], session_id, text
     )
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts

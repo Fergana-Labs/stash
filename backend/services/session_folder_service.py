@@ -15,7 +15,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import permission_service, workspace_service
+from . import permission_service, user_scope_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
@@ -23,7 +23,7 @@ _GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
 DEFAULT_FOLDER_NAME = "Default"
 
 _FOLDER_COLS = (
-    "sf.id, sf.workspace_id, sf.slug, sf.name, sf.owner_user_id, "
+    "sf.id, sf.owner_user_id, sf.slug, sf.name, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "CASE WHEN sf.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
     "sf.workspace_permission, sf.public_permission, "
@@ -70,10 +70,9 @@ def _validate_permissions(
 def _row(r) -> dict:
     return {
         "id": str(r["id"]),
-        "workspace_id": str(r["workspace_id"]),
+        "owner_user_id": str(r["owner_user_id"]),
         "slug": r["slug"],
         "name": r["name"],
-        "owner_user_id": str(r["owner_user_id"]),
         "owner_name": r["owner_name"],
         "owner_display_name": r["owner_display_name"],
         "access": r["access"],
@@ -91,7 +90,6 @@ def _row(r) -> dict:
 
 
 async def create_folder(
-    workspace_id: UUID,
     owner_user_id: UUID,
     name: str,
     *,
@@ -104,12 +102,11 @@ async def create_folder(
     r = await get_pool().fetchrow(
         f"WITH inserted AS ("
         "  INSERT INTO session_folders "
-        "    (workspace_id, owner_user_id, name, slug, workspace_permission, "
+        "    (owner_user_id, name, slug, workspace_permission, "
         "     public_permission, discoverable, is_default) "
-        "  VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
+        "  VALUES ($1, $2, $3, $4, $5, $6, $7) "
         "  RETURNING *"
         f") {_FOLDER_SELECT.replace('session_folders sf', 'inserted sf')}",
-        workspace_id,
         owner_user_id,
         name,
         _slugify(name),
@@ -121,7 +118,7 @@ async def create_folder(
     return _row(r)
 
 
-async def ensure_default_folder(workspace_id: UUID) -> dict:
+async def ensure_default_folder(owner_user_id: UUID) -> dict:
     """Get-or-create the workspace's single Default folder. Sessions that aren't
     pushed to a specific folder land here (chat-UI + un-targeted CLI sessions).
 
@@ -130,41 +127,33 @@ async def ensure_default_folder(workspace_id: UUID) -> dict:
     """
     pool = get_pool()
     existing = await pool.fetchrow(
-        f"{_FOLDER_SELECT} WHERE sf.workspace_id = $1 AND sf.is_default",
-        workspace_id,
+        f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.is_default",
+        owner_user_id,
     )
     if existing:
         return _row(existing)
-    owner_id = await pool.fetchval(
-        "SELECT creator_id FROM workspaces WHERE id = $1",
-        workspace_id,
-    )
     return await create_folder(
-        workspace_id,
-        owner_id,
+        owner_user_id,
         DEFAULT_FOLDER_NAME,
         workspace_permission="read",
         is_default=True,
     )
 
 
-async def list_folders(workspace_id: UUID, user_id: UUID) -> list[dict]:
+async def list_folders(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
         f"{_FOLDER_SELECT} "
-        "WHERE sf.workspace_id = $1 "
+        "WHERE sf.owner_user_id = $1 "
         "AND (sf.owner_user_id = $2 "
         "  OR sf.public_permission != 'none' "
-        "  OR (sf.workspace_permission != 'none' AND EXISTS ("
-        "    SELECT 1 FROM workspaces w "
-        "    WHERE w.id = sf.workspace_id AND w.creator_id = $2"
-        "  )) "
+        "  OR (sf.workspace_permission != 'none' AND sf.owner_user_id = $2) "
         "  OR EXISTS ("
         "    SELECT 1 FROM shares sh "
         "    WHERE sh.object_type = 'session_folder' AND sh.object_id = sf.id "
         "      AND sh.principal_type = 'user' AND sh.principal_id = $2"
         "  )) "
         "ORDER BY sf.is_default DESC, sf.name",
-        workspace_id,
+        owner_user_id,
         user_id,
     )
     return [_row(r) for r in rows]
@@ -179,23 +168,22 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
     """Folder management (rename/delete/visibility) is for the folder owner and
     workspace owners/editors — never public-link or explicit-share writers."""
     row = await get_pool().fetchrow(
-        "SELECT workspace_id, owner_user_id FROM session_folders WHERE id = $1",
+        "SELECT owner_user_id FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not row:
         return False
-    if not await workspace_service.can_write(row["workspace_id"], user_id):
+    if not await user_scope_service.can_write(row["owner_user_id"], user_id):
         return False
     if row["owner_user_id"] == user_id:
         return True
-    role = await permission_service.get_workspace_role(row["workspace_id"], user_id)
-    return role in workspace_service.ROLES_CAN_WRITE
+    return await user_scope_service.is_owner(row["owner_user_id"], user_id)
 
 
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT workspace_id, workspace_permission, public_permission, discoverable "
+        "SELECT owner_user_id, workspace_permission, public_permission, discoverable "
         "FROM session_folders WHERE id = $1",
         folder_id,
     )
@@ -224,7 +212,7 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
     if (
         publicity_changed
         and _is_public(next_public_permission, bool(next_discoverable))
-        and not await workspace_service.is_owner(folder["workspace_id"], user_id)
+        and not await user_scope_service.is_owner(folder["owner_user_id"], user_id)
     ):
         raise PermissionError("Only workspace owners can make a session folder public")
     if updates.get("public_permission") == "none" and updates.get("discoverable") is None:
@@ -270,29 +258,29 @@ async def delete_folder(folder_id: UUID, user_id: UUID) -> bool:
 
 async def can_add_session_to_folder(
     *,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     folder_id: UUID,
 ) -> bool:
     """Owner-only for public folders (adding a session there publishes it);
     workspace-visible folders accept sessions from any workspace writer."""
     folder = await get_pool().fetchrow(
-        "SELECT id, workspace_id, workspace_permission, public_permission, discoverable, is_default "
+        "SELECT id, owner_user_id, workspace_permission, public_permission, discoverable, is_default "
         "FROM session_folders WHERE id = $1",
         folder_id,
     )
-    if not folder or folder["workspace_id"] != workspace_id:
+    if not folder or folder["owner_user_id"] != owner_user_id:
         return False
     is_public = _is_public(folder["public_permission"], bool(folder["discoverable"]))
     if is_public and not folder["is_default"]:
-        return await workspace_service.is_owner(workspace_id, user_id)
+        return await user_scope_service.is_owner(owner_user_id, user_id)
     if folder["workspace_permission"] != "none":
-        return await workspace_service.can_write(workspace_id, user_id)
+        return await user_scope_service.can_write(owner_user_id, user_id)
     return await user_can_manage(folder_id, user_id)
 
 
 async def assign_sessions(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     session_row_ids: list[UUID],
     folder_id: UUID | None,
@@ -303,7 +291,7 @@ async def assign_sessions(
 
     if folder_id is not None:
         if not await can_add_session_to_folder(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             user_id=user_id,
             folder_id=folder_id,
         ):
@@ -311,9 +299,9 @@ async def assign_sessions(
 
     for session_row_id in session_row_ids:
         session = await pool.fetchrow(
-            "SELECT id FROM sessions WHERE id = $1 AND workspace_id = $2",
+            "SELECT id FROM sessions WHERE id = $1 AND owner_user_id = $2",
             session_row_id,
-            workspace_id,
+            owner_user_id,
         )
         if not session:
             return False
@@ -321,17 +309,17 @@ async def assign_sessions(
             "session",
             session_row_id,
             user_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             require="write",
         )
         if not can_write_session:
             return False
 
     await pool.execute(
-        "UPDATE sessions SET session_folder_id = $2 WHERE id = ANY($1) AND workspace_id = $3",
+        "UPDATE sessions SET session_folder_id = $2 WHERE id = ANY($1) AND owner_user_id = $3",
         session_row_ids,
         folder_id,
-        workspace_id,
+        owner_user_id,
     )
     return True
 
@@ -349,7 +337,7 @@ async def get_public_folder(slug: str, viewer_id: UUID | None = None) -> dict | 
         return None
     folder = _row(row)
     if not await permission_service.check_access(
-        "session_folder", UUID(folder["id"]), viewer_id, workspace_id=UUID(folder["workspace_id"])
+        "session_folder", UUID(folder["id"]), viewer_id, owner_user_id=UUID(folder["owner_user_id"])
     ):
         return None
     await pool.execute(
@@ -365,9 +353,9 @@ async def list_folder_sessions(folder_id: UUID) -> list[dict]:
         "SELECT s.id, s.session_id, s.agent_name, s.cwd, s.started_at, s.finished_at, "
         "  u.display_name AS user_name, "
         "  (SELECT COUNT(*) FROM history_events he "
-        "   WHERE he.session_id = s.session_id AND he.workspace_id = s.workspace_id) AS event_count, "
+        "   WHERE he.session_id = s.session_id AND he.owner_user_id = s.owner_user_id) AS event_count, "
         "  (SELECT MAX(he.created_at) FROM history_events he "
-        "   WHERE he.session_id = s.session_id AND he.workspace_id = s.workspace_id) AS last_event_at "
+        "   WHERE he.session_id = s.session_id AND he.owner_user_id = s.owner_user_id) AS last_event_at "
         "FROM sessions s "
         "LEFT JOIN users u ON u.id = s.created_by "
         "WHERE s.session_folder_id = $1 AND s.deleted_at IS NULL "

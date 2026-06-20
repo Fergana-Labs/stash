@@ -123,7 +123,6 @@ async def test_extraction_child_persists_redacted_error_with_exception_type(
 @pytest_asyncio.fixture
 async def extraction_file(_db_pool):
     user_id = uuid.uuid4()
-    ws_id = uuid.uuid4()
     file_id = uuid.uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
@@ -131,17 +130,10 @@ async def extraction_file(_db_pool):
         f"u_{user_id.hex[:6]}",
     )
     await _db_pool.execute(
-        "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
-        ws_id,
-        f"ws_{ws_id.hex[:6]}",
-        user_id,
-        ws_id.hex[:12],
-    )
-    await _db_pool.execute(
-        "INSERT INTO files (id, workspace_id, name, content_type, size_bytes, storage_key, "
+        "INSERT INTO files (id, owner_user_id, name, content_type, size_bytes, storage_key, "
         "uploaded_by) VALUES ($1, $2, 'doc.txt', 'text/plain', 1, $3, $4)",
         file_id,
-        ws_id,
+        user_id,
         f"key_{file_id.hex[:6]}",
         user_id,
     )

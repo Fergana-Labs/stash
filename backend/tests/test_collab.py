@@ -73,7 +73,7 @@ async def test_collab_authorizes_read_share_as_read_only(
     ).json()
     await pool.execute(
         """
-        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+        INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by)
         VALUES ($1, 'page', $2, 'user', $3, 'read', $4)
         """,
@@ -118,7 +118,7 @@ async def test_collab_authorizes_non_member_with_page_share(
     ).json()
     await pool.execute(
         """
-        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+        INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by)
         VALUES ($1, 'page', $2, 'user', $3, 'write', $4)
         """,

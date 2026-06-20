@@ -8,24 +8,22 @@ cascade to contents via the recursive folder chain.
 A skill is a published folder: publishing makes its folder subtree publicly
 readable — never writable.
 
-(Transitional note: the per-user scope is still stored in the `workspace_id`
-column and anchored by the `workspaces.creator_id` owner. Those names are
-renamed away in a later cleanup migration.)
+Scope is the user: every content row carries an `owner_user_id`, and the owner
+can do anything in their own scope.
 """
 
 from uuid import UUID
 
 from ..database import get_pool
-from . import workspace_service
 
-_WORKSPACE_LOOKUP = {
-    "table": ("tables", "workspace_id"),
-    "file": ("files", "workspace_id"),
-    "session": ("sessions", "workspace_id"),
-    "session_folder": ("session_folders", "workspace_id"),
-    "skill": ("skills", "workspace_id"),
-    "folder": ("folders", "workspace_id"),
-    "page": ("pages", "workspace_id"),
+_OWNER_LOOKUP = {
+    "table": ("tables", "owner_user_id"),
+    "file": ("files", "owner_user_id"),
+    "session": ("sessions", "owner_user_id"),
+    "session_folder": ("session_folders", "owner_user_id"),
+    "skill": ("skills", "owner_user_id"),
+    "folder": ("folders", "owner_user_id"),
+    "page": ("pages", "owner_user_id"),
 }
 
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
@@ -109,17 +107,13 @@ def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -
 
 def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
     """SQL predicate: may user ${user_arg} READ the content row at object_alias?
-    Owner (workspace member) OR a user share (direct/ancestor folder) OR the
-    object sits inside the folder of a skill the user can open."""
+    Owner OR a user share (direct/ancestor folder) OR the object sits inside the
+    folder of a skill the user can open."""
     share_target = _share_target_condition(object_type, object_alias, "content_share")
     skill_grant = _skill_grant_condition(object_type, object_alias, user_arg)
     return f"""
         (
-          EXISTS (
-            SELECT 1 FROM workspaces content_owner
-            WHERE content_owner.id = {object_alias}.workspace_id
-              AND content_owner.creator_id = ${user_arg}
-          )
+          {object_alias}.owner_user_id = ${user_arg}
           OR EXISTS (
             SELECT 1 FROM shares content_share
             WHERE content_share.principal_type = 'user'
@@ -132,26 +126,26 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
     """
 
 
-def accessible_workspace_ids_sql(user_arg: int) -> str:
-    """Subquery: scope ids whose content user ${user_arg} can possibly see —
-    the scope they own, plus scopes that have shared something with them. A
-    coarse prefilter only: `readable_content_condition` still narrows to the
-    specific shared rows, so widening this set never over-exposes."""
+def accessible_scope_ids_sql(user_arg: int) -> str:
+    """Subquery: owner ids whose content user ${user_arg} can possibly see —
+    themselves, plus owners who have shared something with them. A coarse
+    prefilter only: `readable_content_condition` still narrows to the specific
+    shared rows, so widening this set never over-exposes."""
     return f"""(
-        SELECT id FROM workspaces WHERE creator_id = ${user_arg}
+        SELECT ${user_arg}::uuid AS id
         UNION
-        SELECT workspace_id FROM shares
+        SELECT owner_user_id AS id FROM shares
         WHERE principal_type = 'user' AND principal_id = ${user_arg}
     )"""
 
 
-async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None:
+async def resolve_owner_user_id(object_type: str, object_id: UUID) -> UUID | None:
     pool = get_pool()
-    if object_type not in _WORKSPACE_LOOKUP:
+    if object_type not in _OWNER_LOOKUP:
         return None
-    table, col = _WORKSPACE_LOOKUP[object_type]
-    row = await pool.fetchrow(f"SELECT {col} AS ws FROM {table} WHERE id = $1", object_id)
-    return row["ws"] if row else None
+    table, col = _OWNER_LOOKUP[object_type]
+    row = await pool.fetchrow(f"SELECT {col} AS owner FROM {table} WHERE id = $1", object_id)
+    return row["owner"] if row else None
 
 
 async def _folder_chain_for_page(page_id: UUID) -> list[UUID]:
@@ -271,7 +265,7 @@ async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
         return []
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, workspace_id, owner_id FROM skills WHERE folder_id = ANY($1::uuid[])",
+        "SELECT id, owner_user_id, owner_id FROM skills WHERE folder_id = ANY($1::uuid[])",
         ancestor_folder_ids,
     )
     return [dict(row) for row in rows]
@@ -281,18 +275,11 @@ async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
     """Can the user access this session folder? Public link (read-only),
-    owner, or an explicit user share. Workspace members are granted earlier
-    in check_access (the workspace is the trust boundary)."""
+    owner, or an explicit user share."""
     public = folder["public_permission"]
     if require == "read" and public != "none":
         return True
     if user_id is None:
-        return False
-    if (
-        require == "write"
-        and await get_workspace_role(folder["workspace_id"], user_id)
-        not in workspace_service.ROLES_CAN_WRITE
-    ):
         return False
     if folder["owner_user_id"] == user_id:
         return True
@@ -303,21 +290,16 @@ async def check_access(
     object_type: str,
     object_id: UUID,
     user_id: UUID | None,
-    workspace_id: UUID | None = None,
+    owner_user_id: UUID | None = None,
     require: str = "read",
 ) -> bool:
     """`require` is the permission level needed: read < comment < write."""
-    if workspace_id is None:
-        workspace_id = await resolve_workspace_id(object_type, object_id)
+    if owner_user_id is None:
+        owner_user_id = await resolve_owner_user_id(object_type, object_id)
 
-    # Workspace roles grant baseline access: owners/editors get everything,
-    # viewers can read and comment but never write.
-    if user_id is not None and workspace_id is not None:
-        role = await get_workspace_role(workspace_id, user_id)
-        if role in workspace_service.ROLES_CAN_WRITE:
-            return True
-        if require in ("read", "comment") and role in workspace_service.ROLES_CAN_READ:
-            return True
+    # The owner can do anything in their own scope.
+    if user_id is not None and owner_user_id is not None and owner_user_id == user_id:
+        return True
 
     # The publish record itself: existence == publicly readable; owner manages.
     if object_type == "skill":
@@ -336,8 +318,7 @@ async def check_access(
     if object_type == "session_folder":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT workspace_id, owner_user_id, public_permission, workspace_permission "
-            "FROM session_folders WHERE id = $1",
+            "SELECT owner_user_id, public_permission FROM session_folders WHERE id = $1",
             object_id,
         )
         if not row:
@@ -355,7 +336,7 @@ async def check_access(
     if object_type == "session" and require == "read":
         pool = get_pool()
         frow = await pool.fetchrow(
-            "SELECT sf.id, sf.owner_user_id, sf.public_permission, sf.workspace_permission "
+            "SELECT sf.id, sf.owner_user_id, sf.public_permission "
             "FROM sessions s JOIN session_folders sf ON sf.id = s.session_folder_id "
             "WHERE s.id = $1",
             object_id,
@@ -368,22 +349,6 @@ async def check_access(
         return True
 
     return False
-
-
-async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:
-    """'owner' when the user owns this scope, else None. Every scope has exactly
-    one owner now; access for anyone else flows through `shares`."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT 1 FROM workspaces WHERE id = $1 AND creator_id = $2",
-        workspace_id,
-        user_id,
-    )
-    return "owner" if row else None
-
-
-async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
-    return await get_workspace_role(workspace_id, user_id) is not None
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
