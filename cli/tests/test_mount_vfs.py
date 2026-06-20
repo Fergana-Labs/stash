@@ -14,11 +14,7 @@ class FakeClient:
         self.page_updates = []
         self.source_entry_calls = 0
 
-    def list_workspaces(self):
-        return [{"id": "workspace-12345678", "name": "Demo Workspace", "description": "Demo"}]
-
-    def get_workspace_overview(self, workspace_id):
-        assert workspace_id == "workspace-12345678"
+    def get_overview(self):
         return {
             "files": {
                 "folders": [{"id": "folder-12345678", "name": "Notes", "parent_folder_id": None}],
@@ -57,17 +53,15 @@ class FakeClient:
             ],
         }
 
-    def get_page(self, workspace_id, page_id):
-        assert workspace_id == "workspace-12345678"
+    def get_page(self, page_id):
         assert page_id == "page-12345678"
         return {"content_type": "markdown", "content_markdown": "# Plan\n", "content_html": ""}
 
-    def update_page(self, workspace_id, page_id, **kwargs):
-        self.page_updates.append((workspace_id, page_id, kwargs))
+    def update_page(self, page_id, **kwargs):
+        self.page_updates.append((page_id, kwargs))
         return {}
 
-    def download_ws_file(self, workspace_id, file_id):
-        assert workspace_id == "workspace-12345678"
+    def download_file(self, file_id):
         assert file_id == "file-12345678"
         return b"diagram body"
 
@@ -75,15 +69,13 @@ class FakeClient:
         assert slug == "demo-stash"
         return "# Demo Stash\n"
 
-    def list_sources(self, workspace_id):
-        assert workspace_id == "workspace-12345678"
+    def list_sources(self):
         return [
             {"type": "native_files", "source": "files", "display_name": "Files"},
             {"type": "gmail", "source": "src-gmail-1", "display_name": "Gmail (demo@x.com)"},
         ]
 
-    def list_source_entries(self, workspace_id, source, path=""):
-        assert workspace_id == "workspace-12345678"
+    def list_source_entries(self, source, path=""):
         assert source == "src-gmail-1"
         self.source_entry_calls += 1
         return [
@@ -91,33 +83,27 @@ class FakeClient:
             {"path": "threads/msg-2", "name": "Nested note", "kind": "message"},
         ]
 
-    def read_source_doc(self, workspace_id, source, ref):
-        assert workspace_id == "workspace-12345678"
+    def read_source_doc(self, source, ref):
         assert source == "src-gmail-1"
         return {"content": f"BODY of {ref}"}
 
-    def get_transcript_events(self, workspace_id, session_id):
-        assert workspace_id == "workspace-12345678"
+    def get_transcript_events(self, session_id):
         assert session_id == "session-abc"
         return [{"role": "user", "content": "hello", "created_at": "2026-05-19T10:00:00Z"}]
 
-    def export_transcript_jsonl(self, workspace_id, session_id):
-        assert workspace_id == "workspace-12345678"
+    def export_transcript_jsonl(self, session_id):
         assert session_id == "session-abc"
         return '{"type":"user"}\n'
 
-    def list_tables(self, workspace_id):
-        assert workspace_id == "workspace-12345678"
+    def list_tables(self):
         return [{"id": "table-12345678", "name": "Ideas", "columns": [], "row_count": 1}]
 
-    def get_table(self, workspace_id, table_id):
-        assert workspace_id == "workspace-12345678"
+    def get_table(self, table_id):
         assert table_id == "table-12345678"
         return {"id": table_id, "name": "Ideas", "columns": []}
 
     def list_table_rows(
         self,
-        workspace_id,
         table_id,
         limit=1000,
         offset=0,
@@ -125,7 +111,6 @@ class FakeClient:
         sort_order="asc",
         filters="",
     ):
-        assert workspace_id == "workspace-12345678"
         assert table_id == "table-12345678"
         assert limit == 1000
         assert offset == 0
@@ -142,12 +127,10 @@ def _model():
     return model
 
 
-def test_vfs_exposes_workspace_sections():
+def test_vfs_exposes_user_sections():
     model = _model()
-    workspace_name = model.list_dir("/workspaces")[0]
-    workspace_path = f"/workspaces/{workspace_name}"
 
-    assert set(model.list_dir(workspace_path)) == {
+    assert set(model.list_dir("/me")) == {
         "README.md",
         "files",
         "sessions",
@@ -155,18 +138,14 @@ def test_vfs_exposes_workspace_sections():
         "tables",
         "sources",
     }
-    assert model.read_file(f"{workspace_path}/skills/Demo Skill--skillfol.md") == b"# Demo Stash\n"
-    assert b"hello" in model.read_file(
-        f"{workspace_path}/sessions/Fix login--session-/transcript.md"
-    )
-    assert b'"Name": "Mount"' in model.read_file(
-        f"{workspace_path}/tables/Ideas--table-12/rows.json"
-    )
+    assert model.read_file("/me/skills/Demo Skill--skillfol.md") == b"# Demo Stash\n"
+    assert b"hello" in model.read_file("/me/sessions/Fix login--session-/transcript.md")
+    assert b'"Name": "Mount"' in model.read_file("/me/tables/Ideas--table-12/rows.json")
 
     # Connected sources are mounted read-only; native sources are skipped
     # (files/sessions already appear above). Document bodies load lazily.
-    assert model.list_dir(f"{workspace_path}/sources") == ["gmail-demo-x.com"]
-    gmail = f"{workspace_path}/sources/gmail-demo-x.com"
+    assert model.list_dir("/me/sources") == ["gmail-demo-x.com"]
+    gmail = "/me/sources/gmail-demo-x.com"
     assert "Welcome email" in model.list_dir(gmail)
     assert model.read_file(f"{gmail}/Welcome email") == b"BODY of msg-1"
     assert model.read_file(f"{gmail}/threads/Nested note") == b"BODY of threads/msg-2"
@@ -178,8 +157,7 @@ def test_vfs_loads_source_entries_lazily():
     client = FakeClient()
     model = StashVfsModel(client)
     model.refresh()
-    workspace_name = model.list_dir("/workspaces")[0]
-    sources_path = f"/workspaces/{workspace_name}/sources"
+    sources_path = "/me/sources"
 
     assert model.list_dir(sources_path) == ["gmail-demo-x.com"]
     assert client.source_entry_calls == 0
@@ -195,8 +173,7 @@ def test_vfs_reads_files_and_writes_pages():
     client = FakeClient()
     model = StashVfsModel(client)
     model.refresh()
-    workspace_name = model.list_dir("/workspaces")[0]
-    files_path = f"/workspaces/{workspace_name}/files"
+    files_path = "/me/files"
     upload_name = next(name for name in model.list_dir(files_path) if name.startswith("diagram--"))
 
     assert model.read_file(f"{files_path}/{upload_name}") == b"diagram body"
@@ -210,7 +187,6 @@ def test_vfs_reads_files_and_writes_pages():
 
     assert client.page_updates == [
         (
-            "workspace-12345678",
             "page-12345678",
             {"content": "# Updated\n"},
         )
@@ -221,8 +197,7 @@ def test_fuse_operations_commit_page_writes_on_flush():
     client = FakeClient()
     model = StashVfsModel(client)
     model.refresh()
-    workspace_name = model.list_dir("/workspaces")[0]
-    files_path = f"/workspaces/{workspace_name}/files"
+    files_path = "/me/files"
     folder_name = next(name for name in model.list_dir(files_path) if name.startswith("Notes--"))
     folder_path = f"{files_path}/{folder_name}"
     page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan--"))
@@ -236,7 +211,6 @@ def test_fuse_operations_commit_page_writes_on_flush():
 
     assert client.page_updates == [
         (
-            "workspace-12345678",
             "page-12345678",
             {"content": "# Edited through FUSE\n"},
         )
@@ -245,18 +219,16 @@ def test_fuse_operations_commit_page_writes_on_flush():
 
 def test_fuse_operations_support_fusepy_dispatch():
     model = _model()
-    workspace_name = model.list_dir("/workspaces")[0]
-    workspace_path = f"/workspaces/{workspace_name}"
     ops = SkillFuseOperations(model)
 
     assert ops("getattr", "/")["st_nlink"] == 2
-    assert "files" in [entry[0] for entry in ops("readdir", workspace_path, None)]
-    dir_handle = ops("opendir", workspace_path)
+    assert "files" in [entry[0] for entry in ops("readdir", "/me", None)]
+    dir_handle = ops("opendir", "/me")
     assert dir_handle > 0
-    assert ops("releasedir", workspace_path, dir_handle) == 0
-    assert ops("access", f"{workspace_path}/README.md", os.R_OK) == 0
-    assert ops("listxattr", workspace_path) == []
-    assert ops("statfs", workspace_path)["f_bsize"] == 4096
+    assert ops("releasedir", "/me", dir_handle) == 0
+    assert ops("access", "/me/README.md", os.R_OK) == 0
+    assert ops("listxattr", "/me") == []
+    assert ops("statfs", "/me")["f_bsize"] == 4096
 
 
 def test_macos_fskit_mountpoints_must_live_under_volumes():

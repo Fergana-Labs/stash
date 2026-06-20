@@ -57,9 +57,8 @@ class OpenFile:
 
 
 class StashVfsModel:
-    def __init__(self, client: StashClient, workspace_id: str | None = None):
+    def __init__(self, client: StashClient):
         self.client = client
-        self.workspace_id = workspace_id
         self.nodes: dict[str, VfsNode] = {}
         # Source-root path -> thunk that fetches that source's entries. A source's
         # contents are materialized only when something first descends into it, so
@@ -70,35 +69,24 @@ class StashVfsModel:
         self.nodes = {}
         self._expanders = {}
         self._add_dir("/")
+        self._add_me()
         self._add_static_file(
-            "/README.md",
+            "/me/README.md",
             "\n".join(
                 [
                     "# Stash",
                     "",
                     "This is a virtual filesystem view over Stash.",
                     "",
-                    "- `workspaces/*/files` exposes folders, pages, and uploaded files.",
+                    "- `me/files` exposes folders, pages, and uploaded files.",
                     "- Markdown and HTML pages are writable; saves sync back to Stash.",
                     "- Uploaded files, sessions, skills, and tables are read-only projections.",
-                    "- `workspaces/*/sources` exposes connected integrations (Gmail, "
+                    "- `me/sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
                     "",
                 ]
             ),
         )
-        self._add_dir("/workspaces")
-
-        workspaces = self.client.list_workspaces()
-        if self.workspace_id:
-            workspaces = [
-                workspace for workspace in workspaces if str(workspace["id"]) == self.workspace_id
-            ]
-            if not workspaces:
-                raise MountError(f"Workspace not found: {self.workspace_id}")
-
-        for workspace in workspaces:
-            self._add_workspace(workspace)
 
     def exists(self, path: str) -> bool:
         path = self._clean_path(path)
@@ -153,31 +141,19 @@ class StashVfsModel:
             "st_atime": now,
         }
 
-    def _add_workspace(self, workspace: dict) -> None:
-        workspace_id = str(workspace["id"])
-        workspace_name = _object_dir_name(workspace.get("name") or "workspace", workspace_id)
-        workspace_path = f"/workspaces/{workspace_name}"
-        overview = self.client.get_workspace_overview(workspace_id)
+    def _add_me(self) -> None:
+        me_path = "/me"
+        overview = self.client.get_overview()
 
-        self._add_dir(workspace_path)
-        self._add_static_file(
-            f"{workspace_path}/README.md",
-            _json_header(
-                {
-                    "id": workspace_id,
-                    "name": workspace.get("name", ""),
-                    "description": workspace.get("description", ""),
-                }
-            ),
-        )
-        self._add_files_tree(workspace_path, workspace_id, overview.get("files", {}))
-        self._add_skills(workspace_path, overview.get("skills", []))
-        self._add_sessions(workspace_path, workspace_id, overview.get("sessions", []))
-        self._add_tables(workspace_path, workspace_id)
-        self._add_sources(workspace_path, workspace_id)
+        self._add_dir(me_path)
+        self._add_files_tree(me_path, overview.get("files", {}))
+        self._add_skills(me_path, overview.get("skills", []))
+        self._add_sessions(me_path, overview.get("sessions", []))
+        self._add_tables(me_path)
+        self._add_sources(me_path)
 
-    def _add_files_tree(self, workspace_path: str, workspace_id: str, tree: dict) -> None:
-        root_path = f"{workspace_path}/files"
+    def _add_files_tree(self, me_path: str, tree: dict) -> None:
+        root_path = f"{me_path}/files"
         self._add_dir(root_path)
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         folder_paths: dict[str, str] = {}
@@ -208,9 +184,8 @@ class StashVfsModel:
             name = _object_file_name(page.get("name") or "page", page_id, extension)
             self._add_file(
                 f"{parent_path}/{name}",
-                loader=lambda ws=workspace_id, pid=page_id: self._load_page(ws, pid),
-                writer=lambda body, ws=workspace_id, pid=page_id, ctype=content_type: self._write_page(
-                    ws,
+                loader=lambda pid=page_id: self._load_page(pid),
+                writer=lambda body, pid=page_id, ctype=content_type: self._write_page(
                     pid,
                     ctype,
                     body,
@@ -226,12 +201,12 @@ class StashVfsModel:
             name = _object_file_name(file.get("name") or "file", file_id, "")
             self._add_file(
                 f"{parent_path}/{name}",
-                loader=lambda ws=workspace_id, fid=file_id: self.client.download_ws_file(ws, fid),
+                loader=lambda fid=file_id: self.client.download_file(fid),
                 size_hint=file.get("size_bytes"),
             )
 
-    def _add_skills(self, workspace_path: str, skills: list[dict]) -> None:
-        skills_path = f"{workspace_path}/skills"
+    def _add_skills(self, me_path: str, skills: list[dict]) -> None:
+        skills_path = f"{me_path}/skills"
         self._add_dir(skills_path)
         self._add_jsonl_file(f"{skills_path}/_index.jsonl", skills)
         for skill in skills:
@@ -247,8 +222,8 @@ class StashVfsModel:
                     loader=lambda s=slug: _text_bytes(self.client.get_skill_text(s)),
                 )
 
-    def _add_sessions(self, workspace_path: str, workspace_id: str, sessions: list[dict]) -> None:
-        sessions_path = f"{workspace_path}/sessions"
+    def _add_sessions(self, me_path: str, sessions: list[dict]) -> None:
+        sessions_path = f"{me_path}/sessions"
         self._add_dir(sessions_path)
         self._add_jsonl_file(f"{sessions_path}/_index.jsonl", sessions)
         for session in sessions:
@@ -261,27 +236,27 @@ class StashVfsModel:
             self._add_json_file(f"{session_path}/metadata.json", session)
             self._add_file(
                 f"{session_path}/events.json",
-                loader=lambda ws=workspace_id, sid=session_id: _json_bytes(
-                    {"events": self.client.get_transcript_events(ws, sid)}
+                loader=lambda sid=session_id: _json_bytes(
+                    {"events": self.client.get_transcript_events(sid)}
                 ),
             )
             self._add_file(
                 f"{session_path}/transcript.jsonl",
-                loader=lambda ws=workspace_id, sid=session_id: _text_bytes(
-                    self.client.export_transcript_jsonl(ws, sid)
+                loader=lambda sid=session_id: _text_bytes(
+                    self.client.export_transcript_jsonl(sid)
                 ),
             )
             self._add_file(
                 f"{session_path}/transcript.md",
-                loader=lambda ws=workspace_id, sid=session_id: _text_bytes(
-                    _session_markdown(self.client.get_transcript_events(ws, sid))
+                loader=lambda sid=session_id: _text_bytes(
+                    _session_markdown(self.client.get_transcript_events(sid))
                 ),
             )
 
-    def _add_tables(self, workspace_path: str, workspace_id: str) -> None:
-        tables_path = f"{workspace_path}/tables"
+    def _add_tables(self, me_path: str) -> None:
+        tables_path = f"{me_path}/tables"
         self._add_dir(tables_path)
-        tables = self.client.list_tables(workspace_id)
+        tables = self.client.list_tables()
         self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
         for table in tables:
             table_id = str(table["id"])
@@ -291,37 +266,33 @@ class StashVfsModel:
             )
             self._add_file(
                 f"{table_path}/schema.json",
-                loader=lambda ws=workspace_id, tid=table_id: _json_bytes(
-                    self.client.get_table(ws, tid)
-                ),
+                loader=lambda tid=table_id: _json_bytes(self.client.get_table(tid)),
             )
             self._add_file(
                 f"{table_path}/rows.json",
-                loader=lambda ws=workspace_id, tid=table_id: _json_bytes(
-                    self._load_all_table_rows(ws, tid)
-                ),
+                loader=lambda tid=table_id: _json_bytes(self._load_all_table_rows(tid)),
             )
             self._add_file(
                 f"{table_path}/rows.jsonl",
-                loader=lambda ws=workspace_id, tid=table_id: _jsonl_bytes(
-                    self._load_all_table_rows(ws, tid).get("rows", [])
+                loader=lambda tid=table_id: _jsonl_bytes(
+                    self._load_all_table_rows(tid).get("rows", [])
                 ),
             )
 
-    def _add_sources(self, workspace_path: str, workspace_id: str) -> None:
+    def _add_sources(self, me_path: str) -> None:
         """Expose connected integrations (Gmail, GitHub, Slack, Jira, …) as
         read-only document trees. Native files/sessions are already mounted
         above, so skip them. Each source's full entry list is materialized;
         document bodies load lazily on read."""
         try:
-            sources = self.client.list_sources(workspace_id)
+            sources = self.client.list_sources()
         except StashError:
             return
         connected = [s for s in sources if not str(s.get("type", "")).startswith("native_")]
         if not connected:
             return
 
-        sources_path = self._add_dir(f"{workspace_path}/sources")
+        sources_path = self._add_dir(f"{me_path}/sources")
         for source in connected:
             handle = str(source.get("source") or "")
             if not handle:
@@ -330,18 +301,18 @@ class StashVfsModel:
                 sources_path, _source_slug(source.get("display_name") or handle)
             )
             self._expanders[source_root] = (
-                lambda root=source_root, ws=workspace_id, h=handle: self._expand_source(root, ws, h)
+                lambda root=source_root, h=handle: self._expand_source(root, h)
             )
 
-    def _expand_source(self, source_root: str, workspace_id: str, handle: str) -> None:
+    def _expand_source(self, source_root: str, handle: str) -> None:
         try:
-            entries = self.client.list_source_entries(workspace_id, handle, "")
+            entries = self.client.list_source_entries(handle, "")
         except StashError:
             return
-        self._add_source_entries(source_root, workspace_id, handle, entries)
+        self._add_source_entries(source_root, handle, entries)
 
     def _add_source_entries(
-        self, source_root: str, workspace_id: str, handle: str, entries: list[dict]
+        self, source_root: str, handle: str, entries: list[dict]
     ) -> None:
         for entry in entries:
             ref = str(entry.get("path") or "")
@@ -357,33 +328,31 @@ class StashVfsModel:
                 continue
             self._add_file(
                 f"{parent}/{display}",
-                loader=lambda ws=workspace_id, h=handle, r=ref: _text_bytes(
-                    _source_doc_text(self.client.read_source_doc(ws, h, r))
+                loader=lambda h=handle, r=ref: _text_bytes(
+                    _source_doc_text(self.client.read_source_doc(h, r))
                 ),
             )
 
-    def _load_page(self, workspace_id: str, page_id: str) -> bytes:
-        page = self.client.get_page(workspace_id, page_id)
+    def _load_page(self, page_id: str) -> bytes:
+        page = self.client.get_page(page_id)
         if page.get("content_type") == "html":
             return _text_bytes(page.get("content_html") or "")
         return _text_bytes(page.get("content_markdown") or "")
 
-    def _write_page(
-        self, workspace_id: str, page_id: str, content_type: str, content: bytes
-    ) -> None:
+    def _write_page(self, page_id: str, content_type: str, content: bytes) -> None:
         text = content.decode("utf-8")
         if content_type == "html":
-            self.client.update_page(workspace_id, page_id, content_type="html", content_html=text)
+            self.client.update_page(page_id, content_type="html", content_html=text)
             return
-        self.client.update_page(workspace_id, page_id, content=text)
+        self.client.update_page(page_id, content=text)
 
-    def _load_all_table_rows(self, workspace_id: str, table_id: str) -> dict:
+    def _load_all_table_rows(self, table_id: str) -> dict:
         limit = 1000
         offset = 0
         rows: list[dict] = []
         total_count = 0
         while True:
-            page = self.client.list_table_rows(workspace_id, table_id, limit=limit, offset=offset)
+            page = self.client.list_table_rows(table_id, limit=limit, offset=offset)
             page_rows = page.get("rows", [])
             rows.extend(page_rows)
             total_count = int(page.get("total_count", len(rows)))
@@ -692,10 +661,10 @@ class SkillFuseOperations:
         opened.dirty = False
 
 
-def mount_workspace(client: StashClient, mountpoint: Path, workspace_id: str | None = None) -> None:
+def mount_stash(client: StashClient, mountpoint: Path) -> None:
     FUSE = _load_fuse_class()
     mountpoint.mkdir(parents=True, exist_ok=True)
-    model = StashVfsModel(client, workspace_id=workspace_id)
+    model = StashVfsModel(client)
     model.refresh()
     try:
         FUSE(
@@ -859,10 +828,6 @@ def _object_file_name(name: str, object_id: str, default_extension: str) -> str:
 
 def _text_bytes(text: str) -> bytes:
     return text.encode("utf-8")
-
-
-def _json_header(payload: dict) -> str:
-    return f"```json\n{json.dumps(payload, indent=2, sort_keys=True, default=str)}\n```\n"
 
 
 def _json_bytes(payload: dict) -> bytes:

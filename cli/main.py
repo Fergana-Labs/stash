@@ -1,4 +1,4 @@
-"""Stash CLI — command-line interface for workspaces, files, tables, sessions, and search."""
+"""Stash CLI — command-line interface for files, tables, sessions, and search."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from .formatting import console, output_json, print_user
 
 app = typer.Typer(
     name="stash",
-    help="Stash CLI — workspaces, Skills, files, tables, and sessions.",
+    help="Stash CLI — Skills, files, tables, and sessions.",
 )
 
 
@@ -98,28 +98,6 @@ def _client() -> StashClient:
 
 def _use_json(flag: bool) -> bool:
     return flag
-
-
-def _resolve_workspace() -> str:
-    manifest = load_manifest()
-    if manifest and manifest.get("workspace_id"):
-        return manifest["workspace_id"]
-
-    with _client() as c:
-        mine = c.list_workspaces()
-    if not mine:
-        console.print("[red]No workspaces found. Run [bold]stash connect[/bold] first.[/red]")
-        raise typer.Exit(1)
-    if len(mine) == 1:
-        return str(mine[0]["id"])
-
-    choice = questionary.select(
-        "Which workspace?",
-        choices=[questionary.Choice(w.get("name", str(w["id"])), value=str(w["id"])) for w in mine],
-    ).ask()
-    if choice is None:
-        raise typer.Exit(1)
-    return choice
 
 
 def _err(e: StashError) -> None:
@@ -692,7 +670,7 @@ def browse(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Browse the public Skill catalog. Works from any directory — no workspace binding required."""
+    """Browse the public Skill catalog."""
     with _client() as c:
         try:
             data = c.list_discover_skills(query=query, sort=sort)
@@ -712,7 +690,7 @@ def browse(
         for skill in skills:
             owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
             console.print(
-                f"[bold]{skill['title']}[/bold]  [dim]by {owner} in {skill['workspace_name']}[/dim]  "
+                f"[bold]{skill['title']}[/bold]  [dim]by {owner}[/dim]  "
                 f"{skill['item_count']} items · {skill['view_count']} views"
             )
             if skill.get("description"):
@@ -741,8 +719,7 @@ def browse(
                 (summary + "\n\n", ""),
                 (f"by {picked.get('owner_display_name') or picked['owner_name']}  ", "dim"),
                 (
-                    f"{picked['item_count']} items · {picked['view_count']} views · "
-                    f"{picked['workspace_name']}",
+                    f"{picked['item_count']} items · {picked['view_count']} views",
                     "dim",
                 ),
             ),
@@ -755,7 +732,7 @@ def browse(
         "What now?",
         choices=[
             questionary.Choice("Open in browser", value="open"),
-            questionary.Choice("Add to current workspace", value="add"),
+            questionary.Choice("Add to your Skills", value="add"),
             questionary.Choice("Print share URL", value="url"),
             questionary.Choice("Cancel", value=None),
         ],
@@ -772,13 +749,12 @@ def browse(
     elif action == "url":
         console.print(url)
     elif action == "add":
-        workspace_id = _resolve_workspace()
         with _client() as c:
             try:
-                c.fork_skill(picked["slug"], workspace_id)
+                c.fork_skill(picked["slug"])
             except StashError as e:
                 _err(e)
-        console.print(f"[green]Added[/green] {picked['title']} to workspace {workspace_id}")
+        console.print(f"[green]Added[/green] {picked['title']} to your Skills")
 
 
 # ===========================================================================
@@ -913,7 +889,6 @@ def share_session(
         "", "--session", "-s", help="Session ID. Auto-detected if omitted."
     ),
     files: list[str] = typer.Option([], "--file", "-f", help="Files to attach (repeatable)."),
-    workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Share a session as a public Skill.
 
@@ -922,7 +897,6 @@ def share_session(
     """
     _require_auth()
     telemetry.record("share")
-    ws = workspace_id or _resolve_workspace()
 
     # Resolve session ID
     sid = session_id or _current_session_id()
@@ -974,13 +948,13 @@ def share_session(
 
     with _client() as c:
         # Create a folder for this session, then drop Summary + Full Transcript inside.
-        folder = c.create_folder(ws, page_title)
-        c.create_page(ws, "Summary", content=summary_md, folder_id=folder["id"])
-        c.create_page(ws, "Full Transcript", content=full_md, folder_id=folder["id"])
+        folder = c.create_folder(page_title)
+        c.create_page("Summary", content=summary_md, folder_id=folder["id"])
+        c.create_page("Full Transcript", content=full_md, folder_id=folder["id"])
 
         for sa_label, sa_raw, _sa_path in subagent_entries:
             sa_md = _transcript_to_markdown(sa_raw)
-            c.create_page(ws, f"Subagent: {sa_label}", content=sa_md, folder_id=folder["id"])
+            c.create_page(f"Subagent: {sa_label}", content=sa_md, folder_id=folder["id"])
             console.print(f"  [dim]Included subagent: {sa_label}[/dim]")
 
         # Upload attached files into the session folder
@@ -989,13 +963,13 @@ def share_session(
             if not p.exists():
                 console.print(f"[yellow]Skipping {fp} (not found)[/yellow]")
                 continue
-            c.upload_ws_file(ws, str(p), folder_id=folder["id"])
+            c.upload_file(str(p), folder_id=folder["id"])
             console.print(f"  [dim]Attached {p.name}[/dim]")
 
         # Upload the full transcript blob (may already exist via hooks — that's fine)
         try:
             c.upload_transcript(
-                ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent)
+                sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent)
             )
         except StashError as e:
             if e.status_code != 409:
@@ -1005,7 +979,6 @@ def share_session(
             sa_session_id = Path(sa_path).stem
             try:
                 c.upload_transcript(
-                    ws,
                     sa_session_id,
                     sa_path,
                     agent_name="claude-subagent",
@@ -1017,7 +990,6 @@ def share_session(
 
         # Publish the session folder so the anonymous URL works immediately.
         skill = c.publish_skill_folder(
-            ws,
             folder["id"],
             title=page_title,
             description="Shared session Skill",
@@ -1091,7 +1063,6 @@ def _upload_file_list(target: Path) -> list[Path]:
 
 def _upload_folder_for_file(
     c: StashClient,
-    workspace_id: str,
     root_folder_id: str,
     folder_cache: dict[tuple[str, str], str],
     relative_path: Path,
@@ -1101,7 +1072,6 @@ def _upload_folder_for_file(
         key = (parent_id, folder_name)
         if key not in folder_cache:
             folder_cache[key] = c.create_folder(
-                workspace_id,
                 folder_name,
                 parent_folder_id=parent_id,
             )["id"]
@@ -1113,13 +1083,12 @@ def _upload_folder_for_file(
 def upload(
     path: str = typer.Argument(..., help="Directory or file to upload."),
     name: str = typer.Option("", "--name", "-n", help="Name for the uploaded folder."),
-    workspace_id: str = typer.Option(None, "--ws"),
     skill: str = typer.Option(
         "",
         "--skill",
         help=(
             "Also bundle the upload into a new Skill with this title. Omit "
-            "for a workspace-only upload (the common case)."
+            "for a plain upload (the common case)."
         ),
     ),
     public: bool = typer.Option(
@@ -1129,11 +1098,11 @@ def upload(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload a local file or directory into a workspace.
+    """Upload a local file or directory into your Files.
 
-    A single file lands directly in the workspace (Markdown/HTML become
+    A single file lands directly in your Files (Markdown/HTML become
     editable pages, everything else a binary file) and the returned
-    ``app_url`` is the share link. A directory becomes a workspace folder.
+    ``app_url`` is the share link. A directory becomes a folder.
     **No Skill is created.**
 
     Pass ``--skill <title>`` to *also* bundle the upload into a shareable
@@ -1148,13 +1117,12 @@ def upload(
         console.print(f"[red]Not found: {path}[/red]")
         raise typer.Exit(1)
 
-    # A single file with no Skill goes straight into the workspace — no
-    # wrapping folder. The server routes Markdown/HTML to pages.
+    # A single file with no Skill goes straight into Files — no wrapping
+    # folder. The server routes Markdown/HTML to pages.
     if target.is_file() and not skill:
-        ws = workspace_id or _resolve_workspace()
         with _client() as c:
             try:
-                data = _upload_path(c, ws, str(target))
+                data = _upload_path(c, str(target))
             except StashError as e:
                 _err(e)
         if _use_json(as_json):
@@ -1173,11 +1141,10 @@ def upload(
     root_name = name or (target.stem if target.is_file() else target.name)
     skill_title = skill.strip() or root_name
     create_skill = bool(skill)
-    ws = workspace_id or _resolve_workspace()
     console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
 
     with _client() as c:
-        root_folder = c.create_folder(ws, root_name)
+        root_folder = c.create_folder(root_name)
         folder_cache: dict[tuple[str, str], str] = {}
 
         for file_path in files:
@@ -1186,7 +1153,6 @@ def upload(
             )
             folder_id = _upload_folder_for_file(
                 c,
-                ws,
                 root_folder["id"],
                 folder_cache,
                 relative_path,
@@ -1194,27 +1160,25 @@ def upload(
 
             if _is_upload_text_file(file_path):
                 content = file_path.read_text(errors="replace")
-                c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
+                c.create_page(file_path.name, content=content, folder_id=folder_id)
                 console.print(f"  [dim]Page: {relative_path}[/dim]")
                 continue
 
-            uploaded = c.upload_ws_file(ws, str(file_path))
+            uploaded = c.upload_file(str(file_path))
             c.create_page(
-                ws,
                 file_path.name,
                 content=_markdown_snippet(uploaded),
                 folder_id=folder_id,
             )
             console.print(f"  [dim]File: {relative_path}[/dim]")
 
-        folder_url = f"{_web_app_url()}/workspaces/{ws}/folders/{root_folder['id']}"
+        folder_url = f"{_web_app_url()}/folders/{root_folder['id']}"
         result: dict = {"folder": root_folder, "app_url": folder_url}
 
         if create_skill:
             # A skill is a folder with a SKILL.md; publishing makes it public.
             try:
                 c.create_page(
-                    ws,
                     name="SKILL.md",
                     content=f"---\nname: {skill_title}\ndescription: Uploaded from {target.name}\n---\n\n# {skill_title}\n",
                     folder_id=root_folder["id"],
@@ -1225,7 +1189,6 @@ def upload(
                     raise
             if public:
                 skill_row = c.publish_skill_folder(
-                    ws,
                     root_folder["id"],
                     title=skill_title,
                     description=f"Uploaded from {target.name}",
@@ -1293,9 +1256,8 @@ app.add_typer(skills_app, name="skills")
 @skills_app.command("add")
 def skills_add(
     folder: str = typer.Argument(..., help="Local folder containing a SKILL.md file."),
-    workspace_id: str = typer.Option("", "--ws", help="Workspace ID; falls back to .stash."),
 ):
-    """Upload a local skill folder (must contain a SKILL.md) into workspace Files."""
+    """Upload a local skill folder (must contain a SKILL.md) into your Files."""
     src = Path(folder)
     if not src.is_dir():
         console.print(f"[red]Not a folder: {folder}[/red]")
@@ -1305,16 +1267,14 @@ def skills_add(
         console.print(f"[red]Missing SKILL.md in {folder}[/red]")
         raise typer.Exit(1)
 
-    ws_id = workspace_id or _resolve_workspace()
     folder_name = src.name
     with _client() as c:
         try:
             # Skills are represented as folders containing markdown pages.
-            new_folder = c.create_folder(ws_id, folder_name)
+            new_folder = c.create_folder(folder_name)
             folder_id = new_folder["id"]
             for md_file in sorted(src.glob("*.md")):
                 c.create_page(
-                    ws_id,
                     name=md_file.name,
                     content=md_file.read_text(),
                     folder_id=folder_id,
@@ -1322,13 +1282,12 @@ def skills_add(
                 )
         except StashError as e:
             _err(e)
-    console.print(f"[green]Added skill '{folder_name}' to workspace {ws_id}.[/green]")
+    console.print(f"[green]Added skill '{folder_name}' to your Files.[/green]")
 
 
 @skills_app.command("create")
 def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
-    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     description: str = typer.Option("", "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
@@ -1338,13 +1297,11 @@ def skills_create(
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
-    ws_id = workspace_id or _resolve_workspace()
     skill_md = f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
     with _client() as c:
         try:
-            folder = c.create_folder(ws_id, name)
+            folder = c.create_folder(name)
             c.create_page(
-                ws_id,
                 name="SKILL.md",
                 content=skill_md,
                 folder_id=folder["id"],
@@ -1353,7 +1310,6 @@ def skills_create(
             skill = None
             if public:
                 skill = c.publish_skill_folder(
-                    ws_id,
                     folder["id"],
                     discoverable=discover,
                 )
@@ -1370,16 +1326,13 @@ def skills_create(
 @skills_app.command("publish")
 def skills_publish(
     folder_id: str = typer.Argument(..., help="Skill folder ID to publish."),
-    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Publish a skill folder: mint its share record and print the public URL."""
-    ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             skill = c.publish_skill_folder(
-                ws_id,
                 folder_id,
                 discoverable=discover,
             )
@@ -1541,16 +1494,16 @@ def skills_install(
     console.print("[dim]The agent loads it at its next session start.[/dim]")
 
 
-# --- skills sync: two-way local <-> workspace skill sync ---
+# --- skills sync: two-way local <-> Stash skill sync ---
 
 _SYNC_STATE_DIR = Path.home() / ".stash" / "skills_sync"
 
 
-def _sync_state_path(workspace_id: str, root: Path) -> Path:
-    # One state file per (workspace, local root): the same workspace can sync
-    # to both ~/.claude/skills and a repo's .claude/skills independently.
+def _sync_state_path(root: Path) -> Path:
+    # One state file per local root: the user's skills can sync to both
+    # ~/.claude/skills and a repo's .claude/skills independently.
     root_key = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:8]
-    return _SYNC_STATE_DIR / f"{workspace_id}--{root_key}.json"
+    return _SYNC_STATE_DIR / f"{root_key}.json"
 
 
 def _local_skill_dirs(root: Path) -> dict[str, Path]:
@@ -1602,17 +1555,17 @@ def _hash_remote_contents(contents: dict) -> str:
 
 
 def _sync_skills(
-    c, workspace_id: str, root: Path, state: dict, push_new: bool, fetch_bytes
+    c, root: Path, state: dict, push_new: bool, fetch_bytes
 ) -> tuple[dict, dict]:
-    """Three-way sync between root and the workspace's skills.
+    """Three-way sync between root and your skills.
 
     state maps skill folder name -> {folder_id, local_hash, remote_hash}
     captured at the last sync; comparing each side against it tells us which
     side moved. Both moved -> conflict, skipped loudly. Returns
     (summary, new_state)."""
     remote: dict[str, dict] = {}
-    for s in c.list_skills(workspace_id):
-        detail = c.get_skill_contents(workspace_id, s["folder_id"])
+    for s in c.list_skills():
+        detail = c.get_skill_contents(s["folder_id"])
         remote[detail["folder_name"]] = detail
 
     local = _local_skill_dirs(root)
@@ -1640,8 +1593,8 @@ def _sync_skills(
         summary["pulled"].append(name)
 
     def push(name: str, folder_id: str) -> None:
-        c.replace_skill_contents(workspace_id, folder_id, _collect_local_files(local[name]))
-        record(name, c.get_skill_contents(workspace_id, folder_id))
+        c.replace_skill_contents(folder_id, _collect_local_files(local[name]))
+        record(name, c.get_skill_contents(folder_id))
         summary["pushed"].append(name)
 
     for name in sorted(set(remote) | set(local)):
@@ -1654,23 +1607,23 @@ def _sync_skills(
                 pull(name, detail)
             elif name in local and not detail:
                 if rec:
-                    summary["ignored"].append(f"{name} (deleted in workspace; kept local copy)")
+                    summary["ignored"].append(f"{name} (deleted in Stash; kept local copy)")
                 elif push_new:
-                    folder = c.create_folder(workspace_id, name)
+                    folder = c.create_folder(name)
                     push(name, folder["id"])
                 else:
                     summary["ignored"].append(f"{name} (local-only; `stash skills add` to share)")
             elif rec is None:
                 summary["conflicts"].append(
                     f"{name} (exists on both sides but was never synced; "
-                    "rename one or delete the local copy to adopt the workspace's)"
+                    "rename one or delete the local copy to adopt the Stash copy)"
                 )
             else:
                 local_changed = _hash_local_skill(local[name]) != rec["local_hash"]
                 remote_changed = _hash_remote_contents(detail["contents"]) != rec["remote_hash"]
                 if local_changed and remote_changed:
                     new_state[name] = rec
-                    summary["conflicts"].append(f"{name} (changed locally AND in the workspace)")
+                    summary["conflicts"].append(f"{name} (changed locally AND in Stash)")
                 elif local_changed:
                     push(name, detail["folder_id"])
                 elif remote_changed:
@@ -1687,21 +1640,19 @@ def _sync_skills(
 
 @skills_app.command("sync")
 def skills_sync(
-    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     directory: str = typer.Option("", "--dir", help="Skills directory to sync."),
     project: bool = typer.Option(
         False, "--project", help="Sync ./.claude/skills and push new local skills too."
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Two-way sync between the local skills directory and the workspace.
+    """Two-way sync between the local skills directory and your Skills.
 
-    Every workspace skill is materialized under ~/.claude/skills (so agents
-    load it next session), and local edits to synced skills are pushed back.
-    New local skills are pushed only in --project mode — the global skills
-    dir holds personal skills that don't belong to the team; share one
-    deliberately with `stash skills add`. Skills changed on both sides are
-    skipped loudly: resolve, then re-run.
+    Every Skill is materialized under ~/.claude/skills (so agents load it
+    next session), and local edits to synced skills are pushed back. New
+    local skills are pushed only in --project mode — the global skills dir
+    holds personal skills; share one deliberately with `stash skills add`.
+    Skills changed on both sides are skipped loudly: resolve, then re-run.
     """
     if directory and project:
         console.print("[red]Error:[/red] pass either --dir or --project, not both.")
@@ -1712,9 +1663,8 @@ def skills_sync(
         root = Path(".claude") / "skills"
     else:
         root = Path.home() / ".claude" / "skills"
-    ws_id = workspace_id or _resolve_workspace()
 
-    state_path = _sync_state_path(ws_id, root)
+    state_path = _sync_state_path(root)
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
 
     def fetch_bytes(url: str) -> bytes:
@@ -1725,7 +1675,7 @@ def skills_sync(
     with _client() as c:
         try:
             summary, new_state = _sync_skills(
-                c, ws_id, root, state, push_new=project, fetch_bytes=fetch_bytes
+                c, root, state, push_new=project, fetch_bytes=fetch_bytes
             )
         except StashError as e:
             _err(e)
@@ -1753,14 +1703,12 @@ def skills_sync(
 @skills_app.command("fork")
 def skills_fork(
     slug: str = typer.Argument(..., help="Public slug of the Skill."),
-    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Fork a public Skill into a workspace."""
-    ws_id = workspace_id or _resolve_workspace()
+    """Fork a public Skill into your own Skills."""
     with _client() as c:
         try:
-            skill = c.fork_skill(slug, ws_id)
+            skill = c.fork_skill(slug)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1773,132 +1721,21 @@ def skills_fork(
 def skills_snapshot_source(
     skill_id: str = typer.Argument(...),
     source: str = typer.Option(
-        ..., "--source", help="Connected-source handle (see /workspaces/<ws>/sources via `stash vfs`)."
+        ..., "--source", help="Connected-source handle (see /me/sources via `stash vfs`)."
     ),
     path: str = typer.Option(..., "--path", help="Document path within the source."),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Snapshot one connected-source document into a Skill as a page."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.snapshot_source_into_skill(ws, skill_id, source, path)
+            data = c.snapshot_source_into_skill(skill_id, source, path)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
         return
     console.print(f"[green]Snapshotted[/green] {path}  [dim]→ page {data.get('id')}[/dim]")
-
-
-# ===========================================================================
-# Magic-link invites
-# ===========================================================================
-
-invite_app = typer.Typer(
-    help="Magic-link invites — single-use, TTL-bounded tokens for zero-friction workspace onboarding.",
-    invoke_without_command=True,
-)
-app.add_typer(invite_app, name="invite")
-
-
-def _format_invite_share_block(
-    token: str, base_url: str, workspace_name: str, max_uses: int, expires_at: str
-) -> str:
-    """The prose the sender copies into Slack/DMs to share a workspace."""
-    return (
-        "\n"
-        f"  pipx install stashai && \\\n"
-        f"    stash connect --invite {token} --endpoint {base_url.rstrip('/')}\n"
-        "\n"
-    )
-
-
-@invite_app.callback()
-def invite_default(
-    ctx: typer.Context,
-    workspace_id: str = typer.Option(None, "--ws"),
-    uses: int = typer.Option(1, "--uses", help="Maximum times the link can be redeemed."),
-    days: int = typer.Option(7, "--days", help="Days until the link expires."),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Mint a shareable invite link for a workspace (default: your default workspace)."""
-    if ctx.invoked_subcommand is not None:
-        return
-    ws = workspace_id or _resolve_workspace()
-    cfg = load_config()
-    with _client() as c:
-        try:
-            data = c.create_invite_token(ws, max_uses=uses, ttl_days=days)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    share_block = _format_invite_share_block(
-        token=data["token"],
-        base_url=cfg.get("base_url", ""),
-        workspace_name=data["workspace_name"],
-        max_uses=data["max_uses"],
-        expires_at=str(data["expires_at"])[:10],
-    )
-    console.print(
-        f"\n[green]Generated invite for [bold]{data['workspace_name']}[/bold][/green]"
-        f"  [dim](id: {data['id']})[/dim]\n"
-    )
-    console.print(
-        Panel(
-            share_block,
-            title="[bold]Have your teammate paste this into claude code[/bold]",
-            border_style="green",
-            padding=(1, 2),
-        )
-    )
-    console.print(
-        "\n[dim]Revoke anytime with:[/dim] " f"[cyan]stash invite revoke {data['id']}[/cyan]\n"
-    )
-
-
-@invite_app.command("list")
-def invite_list(
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List active invite tokens for a workspace."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            tokens = c.list_invite_tokens(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(tokens)
-        return
-    if not tokens:
-        console.print("[dim]No invite tokens.[/dim]")
-        return
-    console.print(f"[bold]Invite tokens for workspace {ws[:8]}…[/bold]\n")
-    for t in tokens:
-        status = "revoked" if t.get("revoked_at") else f"{t['uses_count']}/{t['max_uses']} used"
-        console.print(
-            f"  [dim]{str(t['id'])[:8]}…[/dim]  {status}  " f"expires {str(t['expires_at'])[:10]}"
-        )
-
-
-@invite_app.command("revoke")
-def invite_revoke(
-    token_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
-    """Revoke an invite token so it can no longer be redeemed."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            c.revoke_invite_token(ws, token_id)
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Revoked invite token {token_id[:8]}…[/green]")
 
 
 # ===========================================================================
@@ -1912,15 +1749,13 @@ app.add_typer(files_app, name="files")
 @files_app.command("create-folder")
 def files_create_folder(
     name: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     parent: str = typer.Option(None, "--parent", help="parent folder id (omit for root)"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a folder. Omit --parent to create at workspace root."""
+    """Create a folder. Omit --parent to create at the root."""
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.create_folder(ws, name, parent_folder_id=parent)
+            data = c.create_folder(name, parent_folder_id=parent)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1933,14 +1768,12 @@ def files_create_folder(
 def files_edit_folder(
     folder_id: str = typer.Argument(...),
     name: str = typer.Option(..., "--name", help="New folder name."),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Rename a folder. Use `stash mv` to relocate it."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.update_folder(ws, folder_id, name=name)
+            data = c.update_folder(folder_id, name=name)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1959,12 +1792,10 @@ def _markdown_snippet(file_resp: dict) -> str:
     return f"[{name}]({url})"
 
 
-def _prepend_attachments(
-    c: StashClient, workspace_id: str, content: str, attach: list[str] | None
-) -> str:
+def _prepend_attachments(c: StashClient, content: str, attach: list[str] | None) -> str:
     if not attach:
         return content
-    snippets = [_markdown_snippet(c.upload_ws_file(workspace_id, p)) for p in attach]
+    snippets = [_markdown_snippet(c.upload_file(p)) for p in attach]
     block = "\n\n".join(snippets)
     return f"{block}\n\n{content}" if content else block
 
@@ -1972,8 +1803,7 @@ def _prepend_attachments(
 @files_app.command("add-page")
 def files_add_page(
     name: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    folder: str = typer.Option(None, "--folder", help="folder id; omit for workspace root"),
+    folder: str = typer.Option(None, "--folder", help="folder id; omit for root"),
     content: str = typer.Option(""),
     page_type: str = typer.Option(
         "markdown", "--type", help="Page type: markdown (default) or html.", case_sensitive=False
@@ -1993,7 +1823,7 @@ def files_add_page(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a page. --folder drops it into a folder, otherwise it goes to the workspace root."""
+    """Create a page. --folder drops it into a folder, otherwise it goes to the root."""
     page_type = page_type.lower()
     if page_type not in ("markdown", "html"):
         console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
@@ -2022,19 +1852,17 @@ def files_add_page(
 
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
             for p in attach or []:
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
             if page_type == "markdown":
-                body = _prepend_attachments(c, ws, content, attach)
+                body = _prepend_attachments(c, content, attach)
             else:
                 body = ""
                 if attach:
                     console.print("[yellow]--attach is ignored for html pages[/yellow]")
             data = c.create_page(
-                ws,
                 name,
                 content=body,
                 folder_id=folder,
@@ -2058,7 +1886,6 @@ def files_edit_page(
     page_id: str = typer.Argument(...),
     content: str = typer.Option(None, "--content"),
     name: str = typer.Option(None, "--name"),
-    workspace_id: str = typer.Option(None, "--ws"),
     page_type: str = typer.Option(
         None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
     ),
@@ -2107,7 +1934,6 @@ def files_edit_page(
 
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
             for p in attach or []:
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
@@ -2116,9 +1942,9 @@ def files_edit_page(
                 base = (
                     content
                     if content is not None
-                    else c.get_page(ws, page_id).get("content_markdown", "")
+                    else c.get_page(page_id).get("content_markdown", "")
                 )
-                content = _prepend_attachments(c, ws, base, attach)
+                content = _prepend_attachments(c, base, attach)
             elif attach:
                 console.print("[yellow]--attach is ignored for html pages[/yellow]")
             kwargs: dict = {}
@@ -2132,7 +1958,7 @@ def files_edit_page(
                 kwargs["content_html"] = html_body
             if layout is not None:
                 kwargs["html_layout"] = layout
-            data = c.update_page(ws, page_id, **kwargs)
+            data = c.update_page(page_id, **kwargs)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2154,17 +1980,15 @@ app.add_typer(hist_app, name="sessions")
 @hist_app.callback()
 def hist_default(
     ctx: typer.Context,
-    workspace_id: str = typer.Option(None, "--ws"),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Sessions — agent transcripts and event logs."""
     if ctx.invoked_subcommand is not None:
         return
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.query_events(ws, limit=limit)
+            data = c.query_events(limit=limit)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2178,14 +2002,11 @@ def hist_default(
 
 
 @hist_app.command("agents")
-def hist_agents(
-    workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
-):
-    """List distinct agent names that have logged events in this workspace."""
-    ws = workspace_id or _resolve_workspace()
+def hist_agents(as_json: bool = typer.Option(False, "--json")):
+    """List distinct agent names that have logged events."""
     with _client() as c:
         try:
-            data = c.list_agent_names(ws)
+            data = c.list_agent_names()
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2199,14 +2020,11 @@ def hist_agents(
 
 
 @hist_app.command("folders")
-def hist_folders(
-    workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
-):
+def hist_folders(as_json: bool = typer.Option(False, "--json")):
     """List session folders (shareable groupings of sessions)."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.list_session_folders(ws)
+            data = c.list_session_folders()
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2222,14 +2040,12 @@ def hist_folders(
 @hist_app.command("new-folder")
 def hist_new_folder(
     name: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create a session folder."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.create_session_folder(ws, name)
+            data = c.create_session_folder(name)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2244,9 +2060,8 @@ def hist_use_folder(
         None, help="Folder name or id to pin this repo's sessions to. A new name is created."
     ),
     use_default: bool = typer.Option(
-        False, "--default", help="Clear the pin so sessions land in the workspace Default folder."
+        False, "--default", help="Clear the pin so sessions land in the Default folder."
     ),
-    workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Pin this repo's agent sessions to a session folder (writes `.stash`)."""
     if load_manifest() is None:
@@ -2258,16 +2073,15 @@ def hist_use_folder(
 
     if use_default:
         write_manifest({"session_folder_id": ""})
-        console.print("[green]✓[/green] Sessions will land in the workspace Default folder.")
+        console.print("[green]✓[/green] Sessions will land in the Default folder.")
         return
 
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            folders = c.list_session_folders(ws)
+            folders = c.list_session_folders()
             match = next((f for f in folders if folder in (f.get("id"), f.get("name"))), None)
             if match is None:
-                match = c.create_session_folder(ws, folder)
+                match = c.create_session_folder(folder)
                 console.print(f"[green]Created folder[/green] {folder}")
         except StashError as e:
             _err(e)
@@ -2282,7 +2096,6 @@ def hist_use_folder(
 @hist_app.command("push")
 def hist_push(
     content: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     agent_name: str = typer.Option("cli", "--agent"),
     event_type: str = typer.Option("message", "--type"),
     session_id: str = typer.Option(None, "--session"),
@@ -2298,24 +2111,22 @@ def hist_push(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Push an event to the workspace session stream."""
+    """Push an event to your session stream."""
     telemetry.record("history.push")
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             attachments: list[dict] = []
             for path in attach or []:
-                f = _upload_path(c, ws, path)
+                f = _upload_path(c, path)
                 attachments.append(
                     {"file_id": f["id"], "name": f["name"], "content_type": f["content_type"]}
                 )
             for fid in attach_id or []:
-                f = _get_file_meta(c, ws, fid)
+                f = _get_file_meta(c, fid)
                 attachments.append(
                     {"file_id": f["id"], "name": f["name"], "content_type": f["content_type"]}
                 )
             data = c.push_event(
-                ws,
                 agent_name=agent_name,
                 event_type=event_type,
                 content=content,
@@ -2401,7 +2212,6 @@ def _transcript_to_markdown(raw_jsonl: str) -> str:
 
 @hist_app.command("import")
 def hist_import(
-    workspace_id: str = typer.Option(None, "--ws"),
     agent_name: str = typer.Option(None, "--agent", help="Only import from this agent."),
     limit: int = typer.Option(0, "-n", "--limit", help="Max conversations to import (0 = all)."),
     replace: bool = typer.Option(False, "--replace", help="Replace sessions that already exist."),
@@ -2411,7 +2221,7 @@ def hist_import(
     """Import historical conversations from coding agents on this machine.
 
     Discovers conversations from Claude Code, Cursor, and Codex, then uploads
-    them as transcripts to the workspace.
+    them as transcripts.
     """
     from .import_history import discover_conversations, summarize_discovery, upload_conversation
 
@@ -2443,12 +2253,10 @@ def hist_import(
 
     if not yes:
         ok = questionary.confirm(
-            f"Import {len(conversations)} conversations into workspace?", default=True
+            f"Import {len(conversations)} conversations?", default=True
         ).ask()
         if not ok:
             raise typer.Exit(0)
-
-    ws = workspace_id or _resolve_workspace()
 
     from rich.progress import Progress
 
@@ -2460,7 +2268,6 @@ def hist_import(
             try:
                 upload_conversation(
                     c,
-                    ws,
                     conv,
                     replace=replace,
                 )
@@ -2485,18 +2292,17 @@ def hist_import(
 
 sources_app = typer.Typer(
     help="Sources — connect, sync, and disconnect external sources. "
-    "Browse and read their contents with `stash vfs` under /workspaces/<ws>/sources."
+    "Browse and read their contents with `stash vfs` under /me/sources."
 )
 app.add_typer(sources_app, name="sources")
 
 
-def _print_search(query: str, source: str, workspace_id: str, limit: int, as_json: bool) -> None:
+def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
     """Shared body for `stash search`."""
     telemetry.record("sources.search")
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.search_sources(ws, query, source=source or None, limit=limit)
+            data = c.search_sources(query, source=source or None, limit=limit)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2520,12 +2326,11 @@ def search(
     source: str = typer.Option(
         "", "--source", help="Scope to one source handle (omit to search everything)."
     ),
-    workspace_id: str = typer.Option(None, "--ws"),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Search everything you can see — files, sessions, and connected sources."""
-    _print_search(query, source, workspace_id, limit, as_json)
+    _print_search(query, source, limit, as_json)
 
 
 @sources_app.command("add")
@@ -2537,15 +2342,13 @@ def sources_add(
         "", "--ref", help="external_ref, e.g. a repo 'owner/name' or Gmail address."
     ),
     name: str = typer.Option("", "--name", help="Display name."),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Connect a source. Slack/Granola resolve their ref from your token."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.add_source(
-                ws, source_type, external_ref=ref or None, display_name=name or None
+                source_type, external_ref=ref or None, display_name=name or None
             )
         except StashError as e:
             _err(e)
@@ -2558,14 +2361,12 @@ def sources_add(
 @sources_app.command("sync")
 def sources_sync(
     source_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Trigger an immediate re-index of a connected source you own."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.sync_source(ws, source_id)
+            data = c.sync_source(source_id)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2575,15 +2376,11 @@ def sources_sync(
 
 
 @sources_app.command("rm")
-def sources_rm(
-    source_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
+def sources_rm(source_id: str = typer.Argument(...)):
     """Disconnect a source you own (its indexed documents cascade away)."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            c.delete_source(ws, source_id)
+            c.delete_source(source_id)
         except StashError as e:
             _err(e)
     console.print("[green]Source removed.[/green]")
@@ -2637,7 +2434,6 @@ def ls_cmd(
     path: str = typer.Argument(
         "", help="Source or path to list, e.g. 'gong' or 'my-repo/docs'. Omit for everything."
     ),
-    workspace_id: str = typer.Option(None, "--ws"),
     depth: int = typer.Option(2, "-L", "--depth", help="How many levels deep to render."),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -2645,15 +2441,14 @@ def ls_cmd(
     transcripts, and every connected integration (GitHub, Slack, Gong, …)."""
     telemetry.record("ls")
     _require_auth()
-    ws = workspace_id or _resolve_workspace()
 
     with _client() as c:
         try:
-            sources = c.sources_tree(ws, depth=depth)
+            sources = c.sources_tree(depth=depth)
             if not path:
                 _print_ls_overview(sources, as_json)
                 return
-            _print_ls_path(c, ws, sources, path, as_json)
+            _print_ls_path(c, sources, path, as_json)
         except StashError as e:
             _err(e)
 
@@ -2671,14 +2466,14 @@ def _print_ls_overview(sources: list[dict], as_json: bool) -> None:
     console.print(root)
 
 
-def _print_ls_path(c: StashClient, ws: str, sources: list[dict], path: str, as_json: bool) -> None:
+def _print_ls_path(c: StashClient, sources: list[dict], path: str, as_json: bool) -> None:
     dir_name, _, rest = path.strip("/").partition("/")
     source = _source_dir_names(sources).get(dir_name)
     if source is None:
         console.print(f"[red]No source named '{dir_name}'. Run `stash ls` to see them.[/red]")
         raise typer.Exit(1)
 
-    entries = c.list_source_entries(ws, source["source"], path=rest)
+    entries = c.list_source_entries(source["source"], path=rest)
     if _use_json(as_json):
         output_json({"entries": entries})
         return
@@ -2733,7 +2528,6 @@ def _parse_refs(refs: list[str]) -> list[tuple[str, str]]:
 @app.command("rm")
 def rm_cmd(
     refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | session"),
-    workspace_id: str = typer.Option(None, "--ws"),
     permanent: bool = typer.Option(
         False, "--permanent", help="Skip the trash window — delete immediately."
     ),
@@ -2742,11 +2536,10 @@ def rm_cmd(
 
     Example: stash rm page:<id> file:<id> session:<id>
     """
-    ws = workspace_id or _resolve_workspace()
     trash = {
-        "page": (lambda c, i: c.delete_page(ws, i), lambda c, i: c.purge_page(ws, i)),
-        "file": (lambda c, i: c.delete_ws_file(ws, i), lambda c, i: c.purge_ws_file(ws, i)),
-        "session": (lambda c, i: c.delete_session(ws, i), lambda c, i: c.purge_session(ws, i)),
+        "page": (lambda c, i: c.delete_page(i), lambda c, i: c.purge_page(i)),
+        "file": (lambda c, i: c.delete_file(i), lambda c, i: c.purge_file(i)),
+        "session": (lambda c, i: c.delete_session(i), lambda c, i: c.purge_session(i)),
     }
     items = _parse_refs(refs)
     with _client() as c:
@@ -2768,17 +2561,15 @@ def rm_cmd(
 @app.command("restore")
 def restore_cmd(
     refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | session"),
-    workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Restore pages, files, or sessions from trash.
 
     Example: stash restore page:<id> session:<id>
     """
-    ws = workspace_id or _resolve_workspace()
     restore = {
-        "page": lambda c, i: c.restore_page(ws, i),
-        "file": lambda c, i: c.restore_ws_file(ws, i),
-        "session": lambda c, i: c.restore_session(ws, i),
+        "page": lambda c, i: c.restore_page(i),
+        "file": lambda c, i: c.restore_file(i),
+        "session": lambda c, i: c.restore_session(i),
     }
     items = _parse_refs(refs)
     with _client() as c:
@@ -2797,26 +2588,24 @@ def restore_cmd(
 def mv_cmd(
     refs: list[str] = typer.Argument(..., help=f"Items as type:id. Types: {_OBJECT_TYPES}"),
     to_folder: str = typer.Option(None, "--to-folder", help="Target folder id."),
-    to_root: bool = typer.Option(False, "--to-root", help="Move to the workspace root."),
-    workspace_id: str = typer.Option(None, "--ws"),
+    to_root: bool = typer.Option(False, "--to-root", help="Move to the root."),
 ):
-    """Move objects into a folder (or to the workspace root with --to-root).
+    """Move objects into a folder (or to the root with --to-root).
 
     Example: stash mv page:<id> file:<id> --to-folder <id>
     """
     if not to_folder and not to_root:
         console.print("[red]Pass --to-folder <id> or --to-root.[/red]")
         raise typer.Exit(1)
-    ws = workspace_id or _resolve_workspace()
     items = _parse_refs(refs)
     sessions = [i for t, i in items if t == "session"]
     others = [{"object_type": t, "object_id": i} for t, i in items if t != "session"]
     with _client() as c:
         try:
             if others:
-                c.batch_move(ws, others, target_folder_id=to_folder, move_to_root=to_root)
+                c.batch_move(others, target_folder_id=to_folder, move_to_root=to_root)
             for session_id in sessions:
-                c.assign_session_folder(ws, session_id, folder_id=None if to_root else to_folder)
+                c.assign_session_folder(session_id, folder_id=None if to_root else to_folder)
         except StashError as e:
             _err(e)
     console.print(f"[green]{len(items)} item(s) moved.[/green]")
@@ -2826,17 +2615,15 @@ def mv_cmd(
 def cp_cmd(
     refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | folder"),
     to_folder: str = typer.Option(None, "--to-folder", help="Target folder id."),
-    workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Duplicate pages, files, or folders as 'Copy of <name>'.
 
     Example: stash cp page:<id> folder:<id> --to-folder <id>
     """
-    ws = workspace_id or _resolve_workspace()
     copy = {
-        "page": lambda c, i: c.copy_page(ws, i, target_folder_id=to_folder or None),
-        "file": lambda c, i: c.copy_ws_file(ws, i, target_folder_id=to_folder or None),
-        "folder": lambda c, i: c.copy_folder(ws, i, target_folder_id=to_folder or None),
+        "page": lambda c, i: c.copy_page(i, target_folder_id=to_folder or None),
+        "file": lambda c, i: c.copy_file(i, target_folder_id=to_folder or None),
+        "folder": lambda c, i: c.copy_folder(i, target_folder_id=to_folder or None),
     }
     for object_type, object_id in _parse_refs(refs):
         if object_type not in copy:
@@ -2936,15 +2723,11 @@ app.add_typer(trash_app, name="trash")
 
 
 @trash_app.command("list")
-def trash_list(
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """List trashed pages, files, and sessions in this workspace."""
-    ws = workspace_id or _resolve_workspace()
+def trash_list(as_json: bool = typer.Option(False, "--json")):
+    """List trashed pages, files, and sessions."""
     with _client() as c:
         try:
-            data = c.get_trash(ws)
+            data = c.get_trash()
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3020,7 +2803,6 @@ def _resolve_sort_name(table: dict, sort_by: str) -> str:
 @tables_app.command("create")
 def tables_create(
     name: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     description: str = typer.Option(""),
     columns: str = typer.Option(None, "--columns", help='JSON: [{"name":"Col","type":"text"}]'),
     as_json: bool = typer.Option(False, "--json"),
@@ -3029,8 +2811,7 @@ def tables_create(
     cols = json.loads(columns) if columns else []
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.create_table(ws, name, description=description, columns=cols)
+            data = c.create_table(name, description=description, columns=cols)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3042,7 +2823,6 @@ def tables_create(
 @tables_app.command("update")
 def tables_update(
     table_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     name: str = typer.Option(None, "--name"),
     description: str = typer.Option(None, "--description"),
     as_json: bool = typer.Option(False, "--json"),
@@ -3058,8 +2838,7 @@ def tables_update(
         raise typer.Exit(1)
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.update_table(ws, table_id, **kwargs)
+            data = c.update_table(table_id, **kwargs)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3089,15 +2868,13 @@ def _parse_uploads(upload: list[str] | None) -> dict[str, str]:
     return out
 
 
-def _apply_uploads(
-    c: StashClient, workspace_id: str, row_data: dict, uploads: dict[str, str]
-) -> dict:
+def _apply_uploads(c: StashClient, row_data: dict, uploads: dict[str, str]) -> dict:
     """Upload each file and set the file URL as the value for the named column.
     Explicit values already in row_data for the same column take precedence."""
     for col, path in uploads.items():
         if col in row_data:
             continue
-        f = c.upload_ws_file(workspace_id, path)
+        f = c.upload_file(path)
         row_data[col] = f["url"]
     return row_data
 
@@ -3106,7 +2883,6 @@ def _apply_uploads(
 def tables_insert(
     table_id: str = typer.Argument(...),
     data: str = typer.Argument(..., help='JSON: {"Name":"Alice","Status":"active"}'),
-    workspace_id: str = typer.Option(None, "--ws"),
     upload: list[str] = typer.Option(
         None, "--upload", help="col=path — upload file and set URL as cell (repeatable)."
     ),
@@ -3117,11 +2893,10 @@ def tables_insert(
     uploads = _parse_uploads(upload)
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            row_data = _apply_uploads(c, ws, row_data, uploads)
-            table = c.get_table(ws, table_id)
+            row_data = _apply_uploads(c, row_data, uploads)
+            table = c.get_table(table_id)
             resolved = _resolve_col_names(table, row_data)
-            result = c.insert_table_row(ws, table_id, resolved)
+            result = c.insert_table_row(table_id, resolved)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3139,7 +2914,6 @@ def tables_import(
     format_: str = typer.Option(
         "auto", "--format", help="csv, json, or auto (detect from extension/content)"
     ),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Bulk import rows from CSV or JSON. Auto-chunks into batches of 5000.
@@ -3181,8 +2955,7 @@ def tables_import(
 
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            table = c.get_table(ws, table_id)
+            table = c.get_table(table_id)
 
             # Resolve column names to IDs
             resolved_rows = [_resolve_col_names(table, r) for r in rows_data]
@@ -3192,7 +2965,7 @@ def tables_import(
             total_inserted = 0
             for i in range(0, len(resolved_rows), batch_size):
                 batch = resolved_rows[i : i + batch_size]
-                c.insert_table_rows_batch(ws, table_id, batch)
+                c.insert_table_rows_batch(table_id, batch)
                 total_inserted += len(batch)
                 if len(resolved_rows) > batch_size:
                     console.print(
@@ -3212,7 +2985,6 @@ def tables_update_row(
     table_id: str = typer.Argument(...),
     row_id: str = typer.Argument(...),
     data: str = typer.Argument(..., help='JSON: {"Status":"done"}'),
-    workspace_id: str = typer.Option(None, "--ws"),
     upload: list[str] = typer.Option(
         None, "--upload", help="col=path — upload file and set URL as cell (repeatable)."
     ),
@@ -3223,11 +2995,10 @@ def tables_update_row(
     uploads = _parse_uploads(upload)
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            row_data = _apply_uploads(c, ws, row_data, uploads)
-            table = c.get_table(ws, table_id)
+            row_data = _apply_uploads(c, row_data, uploads)
+            table = c.get_table(table_id)
             resolved = _resolve_col_names(table, row_data)
-            result = c.update_table_row(ws, table_id, row_id, resolved)
+            result = c.update_table_row(table_id, row_id, resolved)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3240,13 +3011,11 @@ def tables_update_row(
 def tables_delete_row(
     table_id: str = typer.Argument(...),
     row_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Delete a row from a table."""
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            c.delete_table_row(ws, table_id, row_id)
+            c.delete_table_row(table_id, row_id)
         except StashError as e:
             _err(e)
     console.print("[green]Row deleted.[/green]")
@@ -3260,15 +3029,13 @@ def tables_add_column(
     options: str = typer.Option(
         "", "--options", help="Comma-separated options for select/multiselect"
     ),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Add a column to a table."""
     opts = [o.strip() for o in options.split(",") if o.strip()] if options else None
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
+            result = c.add_table_column(table_id, name, col_type=col_type, options=opts)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3281,20 +3048,18 @@ def tables_add_column(
 def tables_delete_column(
     table_id: str = typer.Argument(...),
     column_id: str = typer.Argument(..., help="Column ID (col_xxx) or column name"),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Delete a column from a table."""
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
             # Resolve column name to ID if needed
             if not column_id.startswith("col_"):
-                table = c.get_table(ws, table_id)
+                table = c.get_table(table_id)
                 name_to_id = {col["name"]: col["id"] for col in table.get("columns", [])}
                 if column_id in name_to_id:
                     column_id = name_to_id[column_id]
-            result = c.delete_table_column(ws, table_id, column_id)
+            result = c.delete_table_column(table_id, column_id)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3306,21 +3071,19 @@ def tables_delete_column(
 @tables_app.command("count")
 def tables_count(
     table_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     filters: str = typer.Option("", "--filter", help="JSON filter array"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Count rows, optionally with filters."""
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
             if filters:
-                table = c.get_table(ws, table_id)
+                table = c.get_table(table_id)
                 filters = _resolve_filter_names(table, filters)
             params: dict = {}
             if filters:
                 params["filters"] = filters
-            result = c._get(f"/api/v1/workspaces/{ws}/tables/{table_id}/rows/count", **params)
+            result = c._get(f"/api/v1/me/tables/{table_id}/rows/count", **params)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3332,7 +3095,6 @@ def tables_count(
 @tables_app.command("export")
 def tables_export(
     table_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     file: str = typer.Option(None, "--file", "-f", help="Output file (default: stdout)"),
     filters: str = typer.Option("", "--filter"),
     sort_by: str = typer.Option("", "--sort"),
@@ -3341,17 +3103,16 @@ def tables_export(
     """Export table as CSV."""
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
             params: dict = {"sort_order": sort_order}
             if sort_by:
-                table = c.get_table(ws, table_id)
+                table = c.get_table(table_id)
                 params["sort_by"] = _resolve_sort_name(table, sort_by)
             if filters:
                 if "table" not in dir():
-                    table = c.get_table(ws, table_id)
+                    table = c.get_table(table_id)
                 params["filters"] = _resolve_filter_names(table, filters)
             resp = c._request(
-                "GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params
+                "GET", f"/api/v1/me/tables/{table_id}/export/csv", params=params
             )
             csv_content = resp.text
         except StashError as e:
@@ -3367,7 +3128,6 @@ def tables_export(
 @tables_app.command("delete")
 def tables_delete(
     table_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ):
     """Delete a table and all its data."""
@@ -3375,8 +3135,7 @@ def tables_delete(
         typer.confirm("Delete this table and all its data?", abort=True)
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            c.delete_table(ws, table_id)
+            c.delete_table(table_id)
         except StashError as e:
             _err(e)
     console.print("[green]Table deleted.[/green]")
@@ -3387,30 +3146,28 @@ def tables_delete(
 # ===========================================================================
 
 
-def _upload_path(c: StashClient, workspace_id: str, path: str) -> dict:
-    """Upload `path` to the given workspace. Returns FileResponse dict."""
+def _upload_path(c: StashClient, path: str) -> dict:
+    """Upload `path` to your Files. Returns FileResponse dict."""
     if not Path(path).is_file():
         console.print(f"[red]Not a file: {path}[/red]")
         raise typer.Exit(1)
-    return c.upload_ws_file(workspace_id, path)
+    return c.upload_file(path)
 
 
-def _get_file_meta(c: StashClient, workspace_id: str, file_id: str) -> dict:
-    return c.get_ws_file(workspace_id, file_id)
+def _get_file_meta(c: StashClient, file_id: str) -> dict:
+    return c.get_file(file_id)
 
 
 @files_app.command("edit-file")
 def files_edit_file(
     file_id: str = typer.Argument(...),
     name: str = typer.Option(..., "--name", help="New file name."),
-    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Rename a file. Use `stash mv` to relocate it."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.update_ws_file(ws, file_id, name=name)
+            data = c.update_file(file_id, name=name)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -3420,15 +3177,11 @@ def files_edit_file(
 
 
 @files_app.command("text")
-def files_text(
-    file_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-):
+def files_text(file_id: str = typer.Argument(...)):
     """Print extracted text for a file (PDFs with embedded text, or plain text)."""
-    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.get_ws_file_text(ws, file_id)
+            data = c.get_file_text(file_id)
         except StashError as e:
             _err(e)
     text = data.get("text") if isinstance(data, dict) else None
@@ -3510,6 +3263,11 @@ def _derive_display_name() -> str:
     return os.environ.get("USER") or os.environ.get("USERNAME") or "teammate"
 
 
+# Streaming is user-scoped now. The on/off toggle keys off the repo's pinned
+# session folder, or this constant for the user's default destination.
+_DEFAULT_STREAMING_SCOPE = "me"
+
+
 def _require_auth() -> dict:
     """Return loaded config if authenticated, otherwise print error and exit."""
     cfg = load_config()
@@ -3519,56 +3277,24 @@ def _require_auth() -> dict:
     return cfg
 
 
-def _handle_not_member(ws_id: str) -> None:
-    """Handle the case where .stash exists but the user isn't a member."""
-    console.print(f"\n  This repo is connected to workspace [bold]{ws_id[:8]}…[/bold].")
-    console.print("  You're not a member. Ask a workspace admin for an invite link.")
-
-
 def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
-    """Connect a repo to a workspace, auto-creating one named after the repo directory."""
+    """Connect a repo to Stash: write `.stash`, enable streaming, append CLAUDE.md."""
     manifest_path = repo_root / MANIFEST_FILE
 
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-        if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text())
-            ws_id = manifest.get("workspace_id", "")
-            try:
-                c.get_workspace(ws_id)
-                console.print(
-                    f"  [green]✓[/green] Already connected to workspace "
-                    f"[bold]{ws_id[:8]}…[/bold]"
-                )
-                return
-            except StashError as e:
-                if e.status_code in (403, 404):
-                    console.print(
-                        f"  [yellow]Workspace {ws_id[:8]}… not found — "
-                        f"replacing stale .stash[/yellow]"
-                    )
-                    manifest_path.unlink()
-                else:
-                    raise
-
-        repo_name = repo_root.name
-        my_workspaces = c.list_workspaces()
-        matched = next((ws for ws in my_workspaces if ws["name"] == repo_name), None)
-        if matched:
-            console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
-        else:
-            matched = c.create_workspace(repo_name)
-            console.print(f"  [green]✓[/green] Created workspace [bold]{matched['name']}[/bold]")
+    if manifest_path.is_file():
+        console.print("  [green]✓[/green] Already connected.")
+        return
 
     base_url = cfg.get("base_url", PRODUCTION_BASE_URL)
 
-    manifest: Manifest = {"workspace_id": str(matched["id"])}
+    manifest: Manifest = {}
     if base_url != PRODUCTION_BASE_URL:
         manifest["base_url"] = base_url
 
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
-    set_streaming(str(matched["id"]))
+    set_streaming(_DEFAULT_STREAMING_SCOPE)
 
     _append_claude_md(repo_root)
 
@@ -3623,14 +3349,14 @@ Run `stash prompts agent-guidance` to reprint this rule mid-session.
 
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
 - `stash vfs ls /`
-- `stash vfs "find /workspaces -maxdepth 3 -type f"`
-- `stash vfs "rg 'query' /workspaces"`
-- `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
+- `stash vfs "find /me -maxdepth 3 -type f"`
+- `stash vfs "rg 'query' /me"`
+- `stash vfs "cat '/me/files/README.md' | sed -n '1,80p'"`
 
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
-- `stash vfs "ls /workspaces"` — browse workspaces: files, sessions, tables, skills, and connected sources
-- `stash vfs "cat '/workspaces/<workspace>/sessions/_index.jsonl'"` — recent sessions
+- `stash vfs "ls /me"` — browse your files, sessions, tables, skills, and connected sources
+- `stash vfs "cat '/me/sessions/_index.jsonl'"` — recent sessions
 - `stash sessions agents` — who's been active
 
 Common writes:
@@ -3801,7 +3527,7 @@ def signin(
 
     # --- Step 5: Which repo? ---
     # Outside a git repo, treat the current directory as the repo root: the
-    # .stash manifest lands there and the workspace is named after it.
+    # .stash manifest lands there.
     repo_root = _git_toplevel() or Path.cwd()
 
     repo_choices = [
@@ -3866,7 +3592,7 @@ def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "
 
 @app.command("connect")
 def connect_cmd():
-    """Connect this repo to a Stash workspace."""
+    """Connect this repo to Stash so its agent sessions stream to your scope."""
     cfg = _require_auth()
     telemetry.record("connect")
 
@@ -3878,97 +3604,27 @@ def connect_cmd():
     _auto_connect_repo(repo_root, cfg)
 
 
-@app.command("join")
-def join_cmd():
-    """Request to join this repo's workspace."""
-    _require_auth()
-
-    repo_root = _git_toplevel()
-    if not repo_root:
-        console.print("[red]Not inside a git repo.[/red]")
-        raise typer.Exit(1)
-
-    manifest_path = repo_root / MANIFEST_FILE
-    if not manifest_path.is_file():
-        console.print("[yellow]No .stash file found. Run `stash connect` first.[/yellow]")
-        raise typer.Exit(1)
-
-    manifest = json.loads(manifest_path.read_text())
-    ws_id = manifest.get("workspace_id", "")
-    _handle_not_member(ws_id)
-
-
-@app.command("leave")
-def leave_cmd():
-    """Leave this repo's workspace."""
-    cfg = _require_auth()
-
-    repo_root = _git_toplevel()
-    if not repo_root:
-        console.print("[red]Not inside a git repo.[/red]")
-        raise typer.Exit(1)
-
-    manifest_path = repo_root / MANIFEST_FILE
-    if not manifest_path.is_file():
-        console.print("[yellow]No .stash file found. Nothing to leave.[/yellow]")
-        raise typer.Exit(1)
-
-    manifest = json.loads(manifest_path.read_text())
-    ws_id = manifest.get("workspace_id", "")
-
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-        try:
-            c.leave_workspace(ws_id)
-        except StashError as e:
-            if "owner" in str(e.detail).lower():
-                console.print("  [red]Owners cannot leave their own workspace.[/red]")
-                return
-            console.print(f"  [red]{e.detail}[/red]")
-            return
-
-    clear_streaming(ws_id)
-    console.print(f"  [green]✓[/green] Left workspace {ws_id[:8]}…")
-
-
 def _streaming_scope(manifest: dict) -> str:
-    """The on/off key for streaming: the destination folder the repo pins, else
-    the workspace (its Default destination). Mirrors the plugin's _streaming_scope."""
-    return manifest.get("session_folder_id") or manifest.get("workspace_id", "")
+    """The on/off key for streaming: the session folder the repo pins, else the
+    user's default destination. Mirrors the plugin's _streaming_scope."""
+    return manifest.get("session_folder_id") or _DEFAULT_STREAMING_SCOPE
 
 
 def _scope_label(manifest: dict) -> str:
     if manifest.get("session_folder_id"):
         return "this repo's session folder"
-    return f"workspace {manifest.get('workspace_id', '')[:8]}… (Default folder)"
+    return "your default folder"
 
 
 @app.command("start")
 def start_cmd():
     """Resume streaming transcripts (undoes `stash stop`)."""
-    cfg = _require_auth()
+    _require_auth()
 
     manifest = load_manifest()
     if not manifest:
         console.print("[yellow]No .stash file found in this repo.[/yellow]")
         raise typer.Exit(1)
-
-    workspace_id = manifest.get("workspace_id", "")
-    if not workspace_id:
-        console.print("[red].stash file is missing workspace_id.[/red]")
-        raise typer.Exit(1)
-
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-        try:
-            c.get_workspace(workspace_id)
-        except StashError as e:
-            if e.status_code in (403, 404):
-                console.print(
-                    "  [yellow]You're not a member of this workspace.[/yellow] "
-                    "Ask a workspace admin for an invite link."
-                )
-                return
-            else:
-                raise
 
     scope = _streaming_scope(manifest)
     set_streaming(scope)
@@ -3977,17 +3633,12 @@ def start_cmd():
 
 @app.command("stop")
 def stop_cmd():
-    """Stop streaming transcripts for this repo's workspace."""
+    """Stop streaming transcripts for this repo."""
     _require_auth()
 
     manifest = load_manifest()
     if not manifest:
         console.print("[yellow]No .stash file found in this repo.[/yellow]")
-        raise typer.Exit(1)
-
-    workspace_id = manifest.get("workspace_id", "")
-    if not workspace_id:
-        console.print("[red].stash file is missing workspace_id.[/red]")
         raise typer.Exit(1)
 
     scope = _streaming_scope(manifest)
@@ -4054,23 +3705,9 @@ def _frontend_base_url() -> str:
     return base_url
 
 
-def _workspace_url(ws_id: str) -> str:
-    """Build the user-facing URL for a workspace's page on the configured frontend."""
-    return f"{_frontend_base_url()}/workspaces/{ws_id}"
-
-
-def _current_workspace_url() -> str:
-    """Return the link to the manifest's workspace, or "" if no manifest."""
-    m = load_manifest()
-    ws_id = (m.get("workspace_id") if m else None) or ""
-    return _workspace_url(ws_id) if ws_id else ""
-
-
-def _transcripts_url() -> str:
-    """Best-effort link to where the user can see their transcripts in the web
-    UI. Uses the manifest's workspace if available; falls back to the frontend
-    root so we still hand the user a usable link."""
-    return _current_workspace_url() or _frontend_base_url()
+def _home_url() -> str:
+    """The user-facing link to the signed-in user's home on the configured frontend."""
+    return _frontend_base_url()
 
 
 def _install_claude_plugin() -> bool:
@@ -4129,7 +3766,6 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
     if not ok:
         return
 
-    ws = _resolve_workspace()
     from rich.progress import Progress
 
     imported = 0
@@ -4139,7 +3775,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
-                upload_conversation(c, ws, conv)
+                upload_conversation(c, conv)
                 imported += 1
             except (StashError, httpx.HTTPError) as e:
                 errors += 1
@@ -4151,28 +3787,27 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         console.print(f"  [yellow]{errors} failed — {last_error}[/yellow]")
 
 
-def _setup_complete_intro(ws_url: str) -> str:
-    workspace_link_section = (
-        "[bold]See your workspace[/bold]   [dim](transcripts and team activity)[/dim]\n"
-        f"  [link={ws_url}][bold #1e3a8a]{ws_url}[/bold #1e3a8a][/link]\n"
+def _setup_complete_intro(home_url: str, connected: bool) -> str:
+    home_link_section = (
+        "[bold]See your Stash[/bold]   [dim](transcripts and activity)[/dim]\n"
+        f"  [link={home_url}][bold #1e3a8a]{home_url}[/bold #1e3a8a][/link]\n"
         "\n"
-        if ws_url
+        if connected
         else ""
     )
     memory_section = (
-        "It can read the transcripts your teammates' coding agents push to this\n"
-        "workspace — so it knows what the rest of your team is working on.\n"
+        "It can read the transcripts your coding agents push to Stash — so it\n"
+        "knows what you've been working on.\n"
         "\n"
-        if ws_url
+        if connected
         else "No repo is connected yet. Run [cyan]stash connect[/cyan] from a git repo when\n"
-        "you're ready to upload transcripts to a workspace.\n"
+        "you're ready to upload transcripts.\n"
         "\n"
     )
-    team_section = (
-        "[bold]Share with your team[/bold]\n"
-        "Commit the [cyan].stash[/cyan] file and push. Teammates who clone the repo\n"
-        "will see a prompt to run [cyan]stash start[/cyan]."
-        if ws_url
+    next_section = (
+        "[bold]You're streaming[/bold]\n"
+        "This repo's agent sessions now upload to your Stash automatically."
+        if connected
         else "[bold]Connect a repo when ready[/bold]\n"
         "Run [cyan]stash connect[/cyan] from the repo you want Stash to remember."
     )
@@ -4180,15 +3815,15 @@ def _setup_complete_intro(ws_url: str) -> str:
         "[bold]What just happened[/bold]\n"
         "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
         f"{memory_section}"
-        f"{workspace_link_section}"
+        f"{home_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
-        '  [#1e3a8a]stash vfs "find /workspaces -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
+        '  [#1e3a8a]stash vfs "find /me -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
         '  [#1e3a8a]stash search "<query>"[/#1e3a8a]   full-text search across files, sessions, and sources\n'
         "  [#1e3a8a]stash sessions agents[/#1e3a8a]   see which agents have been active\n"
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
-        f"{team_section}"
+        f"{next_section}"
     )
 
 
@@ -4202,12 +3837,11 @@ def _show_setup_complete_splash() -> None:
     console.print(Align.center(Text.from_markup(f"[bold #1e3a8a]{logo}[/bold #1e3a8a]")))
     console.print("  [bold green]You're all set up.[/bold green]\n")
 
-    ws_url = _current_workspace_url()
-    title = "Your team's shared agent memory" if ws_url else "Stash CLI ready"
+    connected = load_manifest() is not None
     console.print(
         Panel(
-            Text.from_markup(_setup_complete_intro(ws_url)),
-            title=f"[bold #1e3a8a]{title}[/bold #1e3a8a]",
+            Text.from_markup(_setup_complete_intro(_home_url(), connected)),
+            title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
         )
@@ -4338,15 +3972,13 @@ def _render_settings_header(cfg: dict) -> None:
     console.clear()
     console.print("[bold]Stash settings[/bold]\n")
 
-    manifest = load_manifest()
-    workspace_id = (manifest.get("workspace_id") if manifest else None) or ""
-    workspace_label = workspace_id[:12] + "…" if workspace_id else "(none — no .stash file)"
+    repo_label = "connected" if load_manifest() is not None else "(none — no .stash file)"
 
     def row(label: str, value: str, *, highlight: bool = True) -> None:
         console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
 
     row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
-    row(f"{'Workspace:':<14}", workspace_label, highlight=False)
+    row(f"{'Repo:':<14}", repo_label, highlight=False)
 
     enabled = load_enabled_agents()
     detected = _detected_agents()
@@ -4499,10 +4131,8 @@ def disconnect_cmd():
         return
 
     manifest = load_manifest()
-    workspace_id = (manifest.get("workspace_id") or "") if manifest else ""
+    clear_streaming(_streaming_scope(manifest or {}))
     manifest_path.unlink()
-    if workspace_id:
-        clear_streaming(workspace_id)
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
@@ -4512,11 +4142,6 @@ def mount_command(
         None,
         help="Directory where Stash should be mounted. Defaults to /Volumes/Stash on macOS.",
     ),
-    workspace_id: str = typer.Option(
-        None,
-        "--ws",
-        help="Mount one workspace by id. By default every accessible workspace is exposed.",
-    ),
     check: bool = typer.Option(
         False,
         "--check",
@@ -4524,7 +4149,7 @@ def mount_command(
     ),
 ):
     """Experimentally mount Stash as a local FUSE filesystem."""
-    from .mount import MountError, check_fuse_runtime, mount_workspace
+    from .mount import MountError, check_fuse_runtime, mount_stash
 
     telemetry.record("mount")
     if check:
@@ -4552,7 +4177,7 @@ def mount_command(
     try:
         console.print(f"[green]Mounting Stash at {mountpoint}[/green]")
         console.print("[dim]Press Ctrl-C to unmount.[/dim]")
-        mount_workspace(client, Path(mountpoint).expanduser(), workspace_id=workspace_id)
+        mount_stash(client, Path(mountpoint).expanduser())
     except MountError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -4563,11 +4188,6 @@ def mount_command(
 @app.command("vfs", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def vfs_command(
     ctx: typer.Context,
-    workspace_id: str = typer.Option(
-        None,
-        "--ws",
-        help="Use one workspace by id. By default every accessible workspace is exposed.",
-    ),
     cwd: str = typer.Option("/", "--cwd", help="Virtual working directory."),
 ):
     """Run bash-shaped commands against Stash without mounting a filesystem."""
@@ -4581,7 +4201,7 @@ def vfs_command(
 
     client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
     try:
-        model = StashVfsModel(client, workspace_id=workspace_id)
+        model = StashVfsModel(client)
         model.refresh()
         shell = SkillAppVfsShell(model, cwd=cwd)
 
@@ -4629,11 +4249,11 @@ What a Skill is
 ===============
 
 A Skill is a special folder — one containing a SKILL.md — holding related
-workspace artifacts (pages, files, tables) that shares like any folder and
-gains a public URL when published. Use one when you're publishing a
-collection of related things together — a project writeup with its
-supporting files, a research thread with its sources, a session transcript
-frozen as a page with its outputs.
+artifacts (pages, files, tables) that shares like any folder and gains a
+public URL when published. Use one when you're publishing a collection of
+related things together — a project writeup with its supporting files, a
+research thread with its sources, a session transcript frozen as a page
+with its outputs.
 
 When to create a Skill
 ----------------------
@@ -4645,8 +4265,8 @@ Create a Skill when:
   to hand a teammate everything at once (share the folder).
 
 Do NOT create a Skill when:
-- The user just wants to share one file or page internally. Workspace
-  members can already see it — give them the workspace `app_url`.
+- The user just wants the link to one file or page. Give them its
+  `app_url`.
 - You're emitting incidental artifacts (logs, intermediate outputs).
   Upload them with `stash upload` and pass the `app_url` back.
 
@@ -4654,9 +4274,9 @@ Commands to reach for
 ---------------------
 
 - `stash upload <path> --json` — a single file (Markdown/HTML become pages,
-  everything else a binary file) or a folder, into workspace storage.
-  Returns `app_url`. No Skill created. This is the default for "share this
-  one file with my team."
+  everything else a binary file) or a folder, into your storage. Returns
+  `app_url`. No Skill created. This is the default for "share this one
+  file."
 - `stash upload <path> --skill "<title>" --json` — same as above AND
   publish the uploaded folder as a Skill with the given title. Use only
   when you're producing a shareable collection.
@@ -4671,28 +4291,28 @@ Commands to reach for
   Discover) into ~/.claude/skills so the local agent loads it next
   session. `--project` targets ./.claude/skills instead.
 - `stash skills sync` — two-way sync between the local skills directory
-  and the workspace's skills: workspace skills materialize locally, local
-  edits to synced skills push back. Runs automatically at session start,
-  targeting each agent's own skills dir (Claude `~/.claude/skills`, Codex/
-  Gemini/OpenCode `~/.agents/skills`, OpenClaw `~/.openclaw/skills`).
+  and your skills: your skills materialize locally, local edits to synced
+  skills push back. Runs automatically at session start, targeting each
+  agent's own skills dir (Claude `~/.claude/skills`, Codex/Gemini/OpenCode
+  `~/.agents/skills`, OpenClaw `~/.openclaw/skills`).
 
 Browsing Stash
 --------------
 
-`stash ls` shows everything Stash can reach as one filesystem — workspace
-files, session transcripts, and every connected integration (GitHub, Slack,
-Gong, Gmail, Drive, Notion, …). When asked what you have access to, run it
-and show the tree. Drill in with `stash ls <source>/<path>`, and read a
-document with `stash vfs "cat '/workspaces/<ws>/sources/<source>/<path>'"`.
+`stash ls` shows everything Stash can reach as one filesystem — your files,
+session transcripts, and every connected integration (GitHub, Slack, Gong,
+Gmail, Drive, Notion, …). When asked what you have access to, run it and
+show the tree. Drill in with `stash ls <source>/<path>`, and read a
+document with `stash vfs "cat '/me/sources/<source>/<path>'"`.
 
 Use `stash vfs` when you want to browse Stash like a filesystem without
 mounting anything into the OS. It accepts bash-shaped commands over the
 virtual Stash tree:
 
 - `stash vfs ls /`
-- `stash vfs "find /workspaces -maxdepth 3 -type f"`
-- `stash vfs "rg 'query' /workspaces"`
-- `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
+- `stash vfs "find /me -maxdepth 3 -type f"`
+- `stash vfs "rg 'query' /me"`
+- `stash vfs "cat '/me/files/README.md' | sed -n '1,80p'"`
 
 Anti-pattern: minting one Stash per file you happen to share. Skills
 exist to group related things; one item per Stash defeats the model and

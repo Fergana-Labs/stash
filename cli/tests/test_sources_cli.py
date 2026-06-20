@@ -17,12 +17,12 @@ class _FakeClient:
     def __exit__(self, *_args):
         return None
 
-    def search_sources(self, workspace_id, query, source=None, limit=20):
-        self._calls.append(("search", workspace_id, query, source, limit))
+    def search_sources(self, query, source=None, limit=20):
+        self._calls.append(("search", query, source, limit))
         return [{"source": "files", "ref": "p1", "name": "Runbook", "snippet": "deploy"}]
 
-    def list_sources(self, workspace_id):
-        self._calls.append(("list", workspace_id))
+    def list_sources(self):
+        self._calls.append(("list",))
         return [
             {
                 "source": "files",
@@ -32,33 +32,32 @@ class _FakeClient:
             }
         ]
 
-    def list_source_entries(self, workspace_id, source, path=""):
-        self._calls.append(("entries", workspace_id, source, path))
+    def list_source_entries(self, source, path=""):
+        self._calls.append(("entries", source, path))
         return [{"path": "specs/auth.md", "name": "auth.md", "kind": "file"}]
 
-    def read_source_doc(self, workspace_id, source, ref):
-        self._calls.append(("read", workspace_id, source, ref))
+    def read_source_doc(self, source, ref):
+        self._calls.append(("read", source, ref))
         return {"name": "auth.md", "content": "rotate tokens hourly"}
 
 
 def _wire(monkeypatch) -> list:
     calls: list = []
     monkeypatch.setattr(main, "_require_auth", lambda: None)
-    monkeypatch.setattr(main, "_resolve_workspace", lambda: "ws-1")
     monkeypatch.setattr(main, "_client", lambda: _FakeClient(calls))
     return calls
 
 
 def test_search_everything_passes_no_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.search("migration", source="", workspace_id=None, limit=20, as_json=True)
-    assert calls == [("search", "ws-1", "migration", None, 20)]
+    main.search("migration", source="", limit=20, as_json=True)
+    assert calls == [("search", "migration", None, 20)]
 
 
 def test_search_scoped_passes_the_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.search("rotate", source="src-9", workspace_id=None, limit=5, as_json=True)
-    assert calls == [("search", "ws-1", "rotate", "src-9", 5)]
+    main.search("rotate", source="src-9", limit=5, as_json=True)
+    assert calls == [("search", "rotate", "src-9", 5)]
 
 
 def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
@@ -77,8 +76,8 @@ def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
 
     client = StashClient("http://test")
     monkeypatch.setattr(client, "_request", fake_request)
-    entries = client.list_source_entries("ws-1", "src-9", path="specs/")
+    entries = client.list_source_entries("src-9", path="specs/")
     assert entries == [{"path": "a.md"}]
     assert requests == [
-        ("GET", "/api/v1/workspaces/ws-1/sources/src-9/entries", {"path": "specs/"})
+        ("GET", "/api/v1/me/sources/src-9/entries", {"path": "specs/"})
     ]
