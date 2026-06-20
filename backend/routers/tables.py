@@ -26,7 +26,7 @@ from ..models import (
 )
 from ..services import permission_service, table_service, user_scope_service
 
-ws_router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}/tables", tags=["tables"])
+ws_router = APIRouter(prefix="/api/v1/me/tables", tags=["tables"])
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 
 
@@ -124,10 +124,10 @@ async def get_table_by_id(
 
 @ws_router.post("", response_model=TableResponse, status_code=201)
 async def create_ws_table(
-    owner_user_id: UUID,
     req: TableCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     columns = [c.model_dump() for c in req.columns]
     try:
@@ -146,9 +146,9 @@ async def create_ws_table(
 
 @ws_router.get("", response_model=TableListResponse)
 async def list_ws_tables(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     tables = await table_service.list_tables(owner_user_id, current_user["id"])
     return TableListResponse(tables=[TableResponse(**t) for t in tables])
@@ -156,10 +156,10 @@ async def list_ws_tables(
 
 @ws_router.get("/{table_id}", response_model=TableResponse)
 async def get_ws_table(
-    owner_user_id: UUID,
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     table = await _check_ws_table(owner_user_id, table_id, with_row_count=True)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -168,11 +168,11 @@ async def get_ws_table(
 
 @ws_router.patch("/{table_id}", response_model=TableResponse)
 async def update_ws_table(
-    owner_user_id: UUID,
     table_id: UUID,
     req: TableUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -191,10 +191,10 @@ async def update_ws_table(
 
 @ws_router.delete("/{table_id}", status_code=204)
 async def delete_ws_table(
-    owner_user_id: UUID,
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Editors and owners can delete tables")
     await _check_ws_table(owner_user_id, table_id)
@@ -209,11 +209,11 @@ async def delete_ws_table(
 
 @ws_router.post("/{table_id}/columns", response_model=TableResponse, status_code=201)
 async def add_ws_column(
-    owner_user_id: UUID,
     table_id: UUID,
     req: ColumnAddRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -225,12 +225,12 @@ async def add_ws_column(
 
 @ws_router.patch("/{table_id}/columns/{column_id}", response_model=TableResponse)
 async def update_ws_column(
-    owner_user_id: UUID,
     table_id: UUID,
     column_id: str,
     req: ColumnUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -247,11 +247,11 @@ async def update_ws_column(
 
 @ws_router.delete("/{table_id}/columns/{column_id}", response_model=TableResponse)
 async def delete_ws_column(
-    owner_user_id: UUID,
     table_id: UUID,
     column_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -263,11 +263,11 @@ async def delete_ws_column(
 
 @ws_router.put("/{table_id}/columns/reorder", response_model=TableResponse)
 async def reorder_ws_columns(
-    owner_user_id: UUID,
     table_id: UUID,
     req: ColumnReorderRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -282,7 +282,6 @@ async def reorder_ws_columns(
 
 @ws_router.get("/{table_id}/rows", response_model=RowListResponse)
 async def list_ws_rows(
-    owner_user_id: UUID,
     table_id: UUID,
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc", pattern=r"^(asc|desc)$"),
@@ -291,6 +290,7 @@ async def list_ws_rows(
     filters: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -312,11 +312,11 @@ async def list_ws_rows(
 
 @ws_router.post("/{table_id}/rows", response_model=RowResponse, status_code=201)
 async def create_ws_row(
-    owner_user_id: UUID,
     table_id: UUID,
     req: RowCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -326,11 +326,11 @@ async def create_ws_row(
 
 @ws_router.post("/{table_id}/rows/batch", status_code=201)
 async def create_ws_rows_batch(
-    owner_user_id: UUID,
     table_id: UUID,
     req: RowBatchCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -341,13 +341,13 @@ async def create_ws_rows_batch(
 
 @ws_router.get("/{table_id}/rows/semantic-search")
 async def semantic_search_ws_rows(
-    owner_user_id: UUID,
     table_id: UUID,
     q: str,
     limit: int = 20,
     current_user: dict = Depends(get_current_user),
 ):
     """Semantic search on table rows using embeddings."""
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -364,12 +364,12 @@ async def semantic_search_ws_rows(
 
 @ws_router.patch("/{table_id}/rows/{row_id}", response_model=RowResponse)
 async def update_ws_row(
-    owner_user_id: UUID,
     table_id: UUID,
     row_id: UUID,
     req: RowUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -381,11 +381,11 @@ async def update_ws_row(
 
 @ws_router.delete("/{table_id}/rows/{row_id}", status_code=204)
 async def delete_ws_row(
-    owner_user_id: UUID,
     table_id: UUID,
     row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -396,11 +396,11 @@ async def delete_ws_row(
 
 @ws_router.post("/{table_id}/rows/delete", status_code=200)
 async def delete_ws_rows_batch(
-    owner_user_id: UUID,
     table_id: UUID,
     body: dict,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -411,11 +411,11 @@ async def delete_ws_rows_batch(
 
 @ws_router.post("/{table_id}/rows/update", status_code=200)
 async def update_ws_rows_batch(
-    owner_user_id: UUID,
     table_id: UUID,
     req: RowBatchUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -426,11 +426,11 @@ async def update_ws_rows_batch(
 
 @ws_router.get("/{table_id}/rows/count")
 async def count_ws_rows(
-    owner_user_id: UUID,
     table_id: UUID,
     filters: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -441,7 +441,6 @@ async def count_ws_rows(
 
 @ws_router.put("/{table_id}/embedding")
 async def set_ws_embedding_config(
-    owner_user_id: UUID,
     table_id: UUID,
     config: dict,
     current_user: dict = Depends(get_current_user),
@@ -450,6 +449,7 @@ async def set_ws_embedding_config(
 
     Config: {"enabled": true, "columns": ["col_id1", "col_id2"]}
     """
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -461,11 +461,11 @@ async def set_ws_embedding_config(
 
 @ws_router.post("/{table_id}/embedding/backfill")
 async def backfill_ws_embeddings(
-    owner_user_id: UUID,
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Re-embed all rows in the table based on current embedding config."""
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -474,7 +474,6 @@ async def backfill_ws_embeddings(
 
 @ws_router.get("/{table_id}/export/csv")
 async def export_ws_csv(
-    owner_user_id: UUID,
     table_id: UUID,
     filters: str | None = Query(None),
     sort_by: str | None = Query(None),
@@ -482,6 +481,7 @@ async def export_ws_csv(
     current_user: dict = Depends(get_current_user),
 ):
     """Export table as CSV. Streams all rows matching filters."""
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     table = await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -520,13 +520,13 @@ async def export_ws_csv(
 
 @ws_router.get("/{table_id}/rows/search")
 async def search_ws_rows(
-    owner_user_id: UUID,
     table_id: UUID,
     q: str = Query(..., min_length=1),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -540,11 +540,11 @@ async def search_ws_rows(
 
 @ws_router.get("/{table_id}/rows/summary")
 async def summarize_ws_rows(
-    owner_user_id: UUID,
     table_id: UUID,
     filters: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_read(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
@@ -554,11 +554,11 @@ async def summarize_ws_rows(
 
 @ws_router.post("/{table_id}/rows/{row_id}/duplicate", response_model=RowResponse, status_code=201)
 async def duplicate_ws_row(
-    owner_user_id: UUID,
     table_id: UUID,
     row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -573,11 +573,11 @@ async def duplicate_ws_row(
 
 @ws_router.post("/{table_id}/views", status_code=201)
 async def save_ws_view(
-    owner_user_id: UUID,
     table_id: UUID,
     body: dict,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
@@ -589,11 +589,11 @@ async def save_ws_view(
 
 @ws_router.delete("/{table_id}/views/{view_id}")
 async def delete_ws_view(
-    owner_user_id: UUID,
     table_id: UUID,
     view_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)

@@ -68,12 +68,11 @@ async def test_gmail_tokens_are_keyed_by_mailbox(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_gmail_sources_target_specific_mailboxes(client: AsyncClient):
     api_key, user_id = await _register(client)
-    owner_user_id = user_id
     await _store_gmail(user_id, "htdowling@gmail.com", "token-personal")
     await _store_gmail(user_id, "henry@joinstash.ai", "token-work")
 
     ambiguous = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/sources",
+        "/api/v1/me/sources",
         json={"source_type": "gmail"},
         headers=_auth(api_key),
     )
@@ -82,7 +81,7 @@ async def test_gmail_sources_target_specific_mailboxes(client: AsyncClient):
 
     for email in ("htdowling@gmail.com", "henry@joinstash.ai"):
         added = await client.post(
-            f"/api/v1/workspaces/{owner_user_id}/sources",
+            "/api/v1/me/sources",
             json={"source_type": "gmail", "external_ref": email},
             headers=_auth(api_key),
         )
@@ -90,7 +89,7 @@ async def test_gmail_sources_target_specific_mailboxes(client: AsyncClient):
         assert added.json()["external_ref"] == email
         assert added.json()["display_name"] == f"Gmail ({email})"
 
-    listing = await client.get(f"/api/v1/workspaces/{owner_user_id}/sources", headers=_auth(api_key))
+    listing = await client.get("/api/v1/me/sources", headers=_auth(api_key))
     gmail_sources = [s for s in listing.json()["sources"] if s["type"] == "gmail"]
 
     assert {s["external_ref"] for s in gmail_sources} == {

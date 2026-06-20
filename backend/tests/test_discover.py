@@ -32,14 +32,14 @@ async def _create_skill_folder(
 ) -> str:
     """A folder holding one content page — the publishable unit for a skill."""
     folder = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/folders",
+        "/api/v1/me/folders",
         json={"name": name},
         headers=_auth(api_key),
     )
     assert folder.status_code == 201
     folder_id = folder.json()["id"]
     page = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": f"{name} brief", "content": f"# {name}", "folder_id": folder_id},
         headers=_auth(api_key),
     )
@@ -55,14 +55,14 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     public_folder = await _create_skill_folder(client, api_key, workspace["id"], "Public notes")
 
     public_unlisted = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": unlisted_folder, "title": "Public but unlisted"},
         headers=_auth(api_key),
     )
     assert public_unlisted.status_code == 201
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
+        "/api/v1/me/skills",
         json={
             "folder_id": public_folder,
             "title": "Public notes",
@@ -78,7 +78,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert published_skill["owner_display_name"] == user["display_name"]
 
     workspace_skills = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
+        "/api/v1/me/skills",
         headers=_auth(api_key),
     )
     assert workspace_skills.status_code == 200
@@ -122,7 +122,7 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
     folder_id = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted only")
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder_id, "title": "Unlisted only"},
         headers=_auth(api_key),
     )
@@ -147,7 +147,7 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
     for title, folder_name in (("Alpha launch notes", "Alpha"), ("Beta roadmap", "Beta")):
         folder_id = await _create_skill_folder(client, api_key, workspace["id"], folder_name)
         resp = await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/skills",
+            "/api/v1/me/skills",
             json={"folder_id": folder_id, "title": title, "discoverable": True},
             headers=_auth(api_key),
         )

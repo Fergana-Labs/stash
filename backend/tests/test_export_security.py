@@ -47,7 +47,7 @@ async def test_image_fetcher_only_reads_authorized_stash_file(pool, monkeypatch)
         return b"image-bytes"
 
     monkeypatch.setattr(storage_service, "download_file", fake_download_file)
-    src = f"/api/v1/workspaces/{ws}/files/{file_id}/download"
+    src = f"/api/v1/me/files/{file_id}/download"
 
     assert await ImageFetcher(owner_user_id=ws, user_id=owner).fetch(src) == b"image-bytes"
     assert await ImageFetcher(owner_user_id=ws, user_id=stranger).fetch(src) is None
@@ -68,7 +68,7 @@ async def test_image_fetcher_rejects_cross_workspace_stash_file(pool, monkeypatc
         return b"image-bytes"
 
     monkeypatch.setattr(storage_service, "download_file", fake_download_file)
-    src = f"/api/v1/workspaces/{second_ws}/files/{file_id}/download"
+    src = f"/api/v1/me/files/{file_id}/download"
 
     assert await ImageFetcher(owner_user_id=first_ws, user_id=first_owner).fetch(src) is None
     assert calls == []

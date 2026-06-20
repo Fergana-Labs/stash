@@ -1,4 +1,12 @@
-"""Writes into folders: member moves, and non-member writes via write shares."""
+"""Writes into folders under the /me routing model.
+
+A user only ever reaches their OWN scope through /api/v1/me/... Uploads and
+moves therefore land in the caller's own scope; a folder_id always refers to a
+folder the caller owns. Cross-user isolation: another user's folder is simply
+not in your scope, so targeting it fails (400) — there is no membership/role
+gate to trip anymore, and the upload endpoint has no canonical cross-scope
+variant to write into someone else's folder.
+"""
 
 import pytest
 from httpx import AsyncClient
@@ -24,17 +32,9 @@ async def _register(client: AsyncClient, prefix: str) -> tuple[str, str, str]:
     return body["api_key"], name, body["id"]
 
 
-async def _workspace(client: AsyncClient, api_key: str) -> str:
+async def _folder(client: AsyncClient, api_key: str) -> str:
     resp = await client.post(
-        "/api/v1/workspaces", json={"name": "Folder Writes"}, headers=_auth(api_key)
-    )
-    assert resp.status_code == 201
-    return resp.json()["id"]
-
-
-async def _folder(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
-    resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/folders",
+        "/api/v1/me/folders",
         json={"name": "Drop zone"},
         headers=_auth(api_key),
     )
@@ -42,24 +42,8 @@ async def _folder(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
     return resp.json()["id"]
 
 
-async def _share_folder(
-    client: AsyncClient, owner_key: str, folder_id: str, email: str, permission: str
-) -> None:
-    resp = await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "folder",
-            "object_id": folder_id,
-            "email": email,
-            "permission": permission,
-        },
-        headers=_auth(owner_key),
-    )
-    assert resp.status_code == 200
-
-
 @pytest.mark.asyncio
-async def test_member_can_move_file_into_folder(client: AsyncClient, _db_pool, monkeypatch):
+async def test_owner_can_move_file_into_folder(client: AsyncClient, _db_pool, monkeypatch):
     """Regression: this PATCH 500'd (check_access called with a bad kwarg)."""
 
     # The response serializer resolves a download URL; S3 isn't configured in CI.
@@ -69,19 +53,17 @@ async def test_member_can_move_file_into_folder(client: AsyncClient, _db_pool, m
     monkeypatch.setattr(storage_service, "get_file_url", _fake_url)
 
     api_key, _, user_id = await _register(client, "fmove_owner")
-    ws = await _workspace(client, api_key)
-    folder_id = await _folder(client, api_key, ws)
+    folder_id = await _folder(client, api_key)
 
     file_id = await _db_pool.fetchval(
         "INSERT INTO files "
         "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
-        "VALUES ($1, 'notes.txt', 'text/plain', 5, 'test/key', $2) RETURNING id",
-        ws,
+        "VALUES ($1, 'notes.txt', 'text/plain', 5, 'test/key', $1) RETURNING id",
         user_id,
     )
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{ws}/files/{file_id}",
+        f"/api/v1/me/files/{file_id}",
         json={"folder_id": folder_id},
         headers=_auth(api_key),
     )
@@ -90,84 +72,65 @@ async def test_member_can_move_file_into_folder(client: AsyncClient, _db_pool, m
 
 
 @pytest.mark.asyncio
-async def test_write_share_allows_upload_and_move_into_shared_folder(client: AsyncClient):
-    owner_key, _, _ = await _register(client, "fshare_owner")
-    guest_key, guest_name, _ = await _register(client, "fshare_guest")
-    ws = await _workspace(client, owner_key)
-    folder_id = await _folder(client, owner_key, ws)
+async def test_owner_can_upload_and_move_page_into_own_folder(client: AsyncClient):
+    """Uploading markdown into a folder you own creates a page in that folder,
+    and an existing page can be moved into it — all within the caller's scope."""
+    owner_key, _, _ = await _register(client, "fown_owner")
+    folder_id = await _folder(client, owner_key)
 
-    # Before the share: a non-member can't upload at all.
-    denied = await client.post(
-        f"/api/v1/workspaces/{ws}/files",
-        files={"file": ("notes.md", b"# hi", "text/markdown")},
-        data={"folder_id": folder_id},
-        headers=_auth(guest_key),
-    )
-    assert denied.status_code == 403
-
-    await _share_folder(client, owner_key, folder_id, f"{guest_name}@test.local", "write")
-
-    # Markdown upload into the shared folder becomes a page in that folder.
+    # Markdown upload into the folder becomes a page in that folder.
     uploaded = await client.post(
-        f"/api/v1/workspaces/{ws}/files",
+        "/api/v1/me/files",
         files={"file": ("notes.md", b"# hi", "text/markdown")},
         data={"folder_id": folder_id},
-        headers=_auth(guest_key),
+        headers=_auth(owner_key),
     )
     assert uploaded.status_code == 201
     assert uploaded.json()["kind"] == "page"
     assert uploaded.json()["folder_id"] == folder_id
 
-    # Upload without a target folder stays forbidden for non-members.
-    rootless = await client.post(
-        f"/api/v1/workspaces/{ws}/files",
-        files={"file": ("more.md", b"# hi", "text/markdown")},
-        headers=_auth(guest_key),
-    )
-    assert rootless.status_code == 403
-
-    # A page shared writable with the guest can be moved into the folder
-    # (the share on the folder cascades to its contents).
+    # A loose page can be moved into the folder.
     page = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Loose doc"},
         headers=_auth(owner_key),
     )
     assert page.status_code == 201
     page_id = page.json()["id"]
-    share = await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "page",
-            "object_id": page_id,
-            "email": f"{guest_name}@test.local",
-            "permission": "write",
-        },
-        headers=_auth(owner_key),
-    )
-    assert share.status_code == 200
 
     moved = await client.patch(
-        f"/api/v1/workspaces/{ws}/pages/{page_id}",
+        f"/api/v1/me/pages/{page_id}",
         json={"folder_id": folder_id},
-        headers=_auth(guest_key),
+        headers=_auth(owner_key),
     )
     assert moved.status_code == 200
     assert moved.json()["folder_id"] == folder_id
 
 
 @pytest.mark.asyncio
-async def test_read_share_does_not_allow_upload(client: AsyncClient):
-    owner_key, _, _ = await _register(client, "fread_owner")
-    guest_key, guest_name, _ = await _register(client, "fread_guest")
-    ws = await _workspace(client, owner_key)
-    folder_id = await _folder(client, owner_key, ws)
-    await _share_folder(client, owner_key, folder_id, f"{guest_name}@test.local", "read")
+async def test_stranger_cannot_upload_into_another_users_folder(client: AsyncClient):
+    """Cross-user isolation: a folder owned by someone else is not in the
+    caller's scope, so targeting it from /me/files fails. The stranger's own
+    scope still accepts an unscoped upload."""
+    owner_key, _, _ = await _register(client, "fiso_owner")
+    stranger_key, _, _ = await _register(client, "fiso_stranger")
+    folder_id = await _folder(client, owner_key)
 
-    resp = await client.post(
-        f"/api/v1/workspaces/{ws}/files",
+    # The owner's folder_id does not belong to the stranger's scope.
+    denied = await client.post(
+        "/api/v1/me/files",
         files={"file": ("notes.md", b"# hi", "text/markdown")},
         data={"folder_id": folder_id},
-        headers=_auth(guest_key),
+        headers=_auth(stranger_key),
     )
-    assert resp.status_code == 403
+    assert denied.status_code == 400
+
+    # An unscoped upload lands in the stranger's own root.
+    rootless = await client.post(
+        "/api/v1/me/files",
+        files={"file": ("more.md", b"# hi", "text/markdown")},
+        headers=_auth(stranger_key),
+    )
+    assert rootless.status_code == 201
+    assert rootless.json()["kind"] == "page"
+    assert rootless.json()["folder_id"] is None

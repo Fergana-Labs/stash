@@ -58,7 +58,7 @@ async def test_seeded_workspace_has_slides_skill(client: AsyncClient, enable_see
     await _seed(owner_user_id)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{owner_user_id}/skills",
+        "/api/v1/me/skills",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200
@@ -76,7 +76,7 @@ async def test_slides_skill_body_covers_canvas(client: AsyncClient, enable_seed)
     await _seed(owner_user_id)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{owner_user_id}/skills/slides",
+        "/api/v1/me/skills/slides",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200, resp.text
@@ -98,7 +98,7 @@ async def test_seed_is_idempotent(client: AsyncClient, enable_seed):
     await _seed(owner_user_id)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{owner_user_id}/skills",
+        "/api/v1/me/skills",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     assert resp.status_code == 200

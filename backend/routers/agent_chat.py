@@ -8,7 +8,7 @@ streams replies from here.
 
 from __future__ import annotations
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -16,9 +16,9 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
-from ..services import ask_service, user_scope_service
+from ..services import ask_service
 
-router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}/agent-chat", tags=["agent-chat"])
+router = APIRouter(prefix="/api/v1/me/agent-chat", tags=["agent-chat"])
 
 
 class ChatRequest(BaseModel):
@@ -27,18 +27,12 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
-async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-
-
 @router.post("")
 async def chat(
-    owner_user_id: UUID,
     req: ChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=503,
@@ -57,11 +51,10 @@ async def chat(
 
 @router.get("/{session_id}")
 async def get_chat(
-    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
     """The chat's turns as [{role, content}], for restoring a tab."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     messages = await ask_service._load_history(owner_user_id, session_id, current_user["id"])
     return {"session_id": session_id, "messages": messages}

@@ -59,11 +59,10 @@ async def test_agent_chat_persists_and_replays_history(client: AsyncClient, monk
     monkeypatch.setattr(tool_loop, "stream_tool_loop", fake_loop)
 
     key, _ = await _register(client)
-    ws = await _ws(client, key)
 
     # First turn — no session_id; server mints one and streams a session event.
     r1 = await client.post(
-        f"/api/v1/workspaces/{ws}/agent-chat",
+        "/api/v1/me/agent-chat",
         json={"message": "what did I do yesterday?"},
         headers=_auth(key),
     )
@@ -80,7 +79,7 @@ async def test_agent_chat_persists_and_replays_history(client: AsyncClient, monk
 
     # Second turn on the same session — the model now sees the full conversation.
     r2 = await client.post(
-        f"/api/v1/workspaces/{ws}/agent-chat",
+        "/api/v1/me/agent-chat",
         json={"message": "and the day before?", "session_id": session_id},
         headers=_auth(key),
     )
@@ -89,23 +88,7 @@ async def test_agent_chat_persists_and_replays_history(client: AsyncClient, monk
     assert seen_histories[1][-1]["content"] == "and the day before?"
 
     # The chat is a stored session: GET returns both turns' messages.
-    got = await client.get(f"/api/v1/workspaces/{ws}/agent-chat/{session_id}", headers=_auth(key))
+    got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
     assert got.status_code == 200
     roles = [m["role"] for m in got.json()["messages"]]
     assert roles == ["user", "assistant", "user", "assistant"]
-
-
-@pytest.mark.asyncio
-async def test_agent_chat_requires_membership(client: AsyncClient, monkeypatch):
-    from backend.config import settings
-
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
-    owner_key, _ = await _register(client)
-    ws = await _ws(client, owner_key)
-    other_key, _ = await _register(client)
-    r = await client.post(
-        f"/api/v1/workspaces/{ws}/agent-chat",
-        json={"message": "hi"},
-        headers=_auth(other_key),
-    )
-    assert r.status_code == 403

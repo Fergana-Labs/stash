@@ -28,7 +28,7 @@ from ..services import (
     user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}/transcripts", tags=["transcripts"])
+router = APIRouter(prefix="/api/v1/me/transcripts", tags=["transcripts"])
 
 MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
 
@@ -47,7 +47,6 @@ async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
 
 @router.post("", status_code=201)
 async def upload_transcript(
-    owner_user_id: UUID,
     file: UploadFile,
     session_id: str = Form(...),
     agent_name: str = Form(...),
@@ -61,6 +60,7 @@ async def upload_transcript(
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
+    owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     if not _is_jsonl(file.filename):
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
@@ -169,13 +169,13 @@ def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
 
 @router.get("/{session_id}")
 async def get_transcript_metadata(
-    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Metadata-only response. The frontend follows up with /events for
     the bytes. No membership gate: read_session_events enforces
     can_read_session, so a non-member with a share can read it."""
+    owner_user_id = current_user["id"]
     events = await memory_service.read_session_events(owner_user_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
@@ -201,7 +201,6 @@ async def get_transcript_metadata(
 
 @router.get("/{session_id}/events")
 async def get_transcript_events(
-    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -210,6 +209,7 @@ async def get_transcript_events(
 
     No workspace-membership gate: read_session_events enforces
     can_read_session, so a non-member the session is shared with can read it."""
+    owner_user_id = current_user["id"]
     events = await memory_service.read_session_events(owner_user_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
@@ -218,13 +218,13 @@ async def get_transcript_events(
 
 @router.get("/{session_id}/export.jsonl")
 async def export_transcript_jsonl(
-    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
     """JSONL projection of the session — one event per line. No membership
     gate: read_session_events enforces can_read_session, so a non-member with
     a share can export it."""
+    owner_user_id = current_user["id"]
     import json as json_mod
 
     events = await memory_service.read_session_events(owner_user_id, session_id, current_user["id"])

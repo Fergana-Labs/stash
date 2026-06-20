@@ -33,7 +33,7 @@ async def _seed_events(client: AsyncClient, api_key: str, owner_user_id: str) ->
     headers = _auth(api_key)
     for day in range(1, 4):
         resp = await client.post(
-            f"/api/v1/workspaces/{owner_user_id}/sessions/events",
+            "/api/v1/me/sessions/events",
             json={
                 "agent_name": "tester",
                 "event_type": "note",
@@ -54,7 +54,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     await _seed_events(client, api_key, ws["id"])
 
     first = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2},
         headers=headers,
     )
@@ -64,7 +64,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     assert first_body["has_more"] is True
 
     older = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2, "before": first_body["events"][-1]["created_at"]},
         headers=headers,
     )
@@ -74,7 +74,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     assert older_body["has_more"] is False
 
     asc = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2, "order": "asc"},
         headers=headers,
     )
@@ -83,7 +83,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     assert [e["content"] for e in asc_body["events"]] == ["event-1", "event-2"]
 
     newer = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2, "order": "asc", "after": asc_body["events"][-1]["created_at"]},
         headers=headers,
     )

@@ -39,25 +39,35 @@ def _scope_for_user(user_id: UUID) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_security_events_are_workspace_owner_only(
+async def test_security_events_are_isolated_per_user(
     client: AsyncClient,
 ):
+    """Security events live only in the caller's own /me scope. A stranger
+    reading /me/security-events sees their own (empty) log, never another
+    user's events — there is no route to read someone else's audit trail."""
     owner_key, owner_id = await _register(client, "audit_owner")
-    ws = _scope_for_user(owner_id)
 
+    # Generate an auditable event in the owner's scope (the read itself is logged).
     owner_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events", headers=_auth(owner_key)
+        "/api/v1/me/security-events", headers=_auth(owner_key)
     )
-    # Non-owners get 404 like every other workspace route, so the endpoint
-    # never confirms a workspace's existence to outsiders.
+
     stranger_key, _ = await _register(client, "audit_stranger")
     stranger_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=_auth(stranger_key),
     )
 
     assert owner_resp.status_code == 200
-    assert stranger_resp.status_code == 404
+    assert stranger_resp.status_code == 200
+
+    owner_events = (
+        await client.get("/api/v1/me/security-events", headers=_auth(owner_key))
+    ).json()["events"]
+    stranger_events = stranger_resp.json()["events"]
+
+    assert any(event["actor_user_id"] == str(owner_id) for event in owner_events)
+    assert all(event["actor_user_id"] != str(owner_id) for event in stranger_events)
 
 
 @pytest.mark.asyncio
@@ -65,16 +75,15 @@ async def test_security_event_reads_are_audited_with_hashed_filters(
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_reader_owner")
-    ws = _scope_for_user(owner_id)
     sensitive_filter = "source.document_read token=secret-token customer transcript"
 
     filtered_read = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         params={"action": sensitive_filter, "limit": 5},
         headers=_auth(owner_key),
     )
     unfiltered_read = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=_auth(owner_key),
     )
 
@@ -119,13 +128,12 @@ async def test_object_share_changes_are_audited_without_recipient_or_content(
     )
     assert recipient_resp.status_code == 201
     recipient_id = UUID(recipient_resp.json()["id"])
-    ws = _scope_for_user(owner_id)
     headers = _auth(owner_key)
 
     page_name = "Webflow board escalation plan"
     page_content = "confidential Webflow security escalation notes"
     page_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": page_name, "content": page_content},
         headers=headers,
     )
@@ -154,7 +162,7 @@ async def test_object_share_changes_are_audited_without_recipient_or_content(
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -199,13 +207,12 @@ async def test_pending_share_invite_conversion_is_audited_without_email_or_conte
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_pending_share_owner")
-    ws = _scope_for_user(owner_id)
     headers = _auth(owner_key)
 
     page_name = "Webflow confidential partner plan"
     page_content = "private Webflow integration launch narrative"
     page_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": page_name, "content": page_content},
         headers=headers,
     )
@@ -235,7 +242,7 @@ async def test_pending_share_invite_conversion_is_audited_without_email_or_conte
         },
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -282,13 +289,12 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
     client: AsyncClient,
 ):
     owner_key, owner_id = await _register(client, "audit_pending_share_revoke_owner")
-    ws = _scope_for_user(owner_id)
     headers = _auth(owner_key)
 
     page_name = "Webflow revoked partner plan"
     page_content = "private Webflow revocation launch narrative"
     page_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": page_name, "content": page_content},
         headers=headers,
     )
@@ -318,7 +324,7 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -353,7 +359,7 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
     ws = _scope_for_user(user_id)
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "github_repo",
             "external_ref": "webflow/confidential-roadmap",
@@ -375,12 +381,12 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
     )
 
     search = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/search",
+        "/api/v1/me/sources/search",
         params={"q": query, "source": str(source_id)},
         headers=_auth(api_key),
     )
     doc = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/doc",
+        f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": ref},
         headers=_auth(api_key),
     )
@@ -388,7 +394,7 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
     assert doc.status_code == 200
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=_auth(api_key),
     )
     assert events_resp.status_code == 200
@@ -433,7 +439,7 @@ async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "jira_project",
             "external_ref": "cloud-1:PROJ",
@@ -454,12 +460,12 @@ async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes
     )
 
     doc = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/doc",
+        f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": ref},
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -510,7 +516,6 @@ async def test_query_source_failure_redacts_snowflake_error_and_sql(
     from backend.integrations.snowflake import client as snowflake_client
 
     api_key, user_id = await _register(client, "audit_query")
-    ws = _scope_for_user(user_id)
     headers = _auth(api_key)
     sensitive_sql = "SELECT secret FROM confidential_webflow_pipeline"
     captured_logs = []
@@ -529,7 +534,7 @@ async def test_query_source_failure_redacts_snowflake_error_and_sql(
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "snowflake",
             "external_ref": "webflow-confidential-account",
@@ -541,12 +546,12 @@ async def test_query_source_failure_redacts_snowflake_error_and_sql(
     source_id = added.json()["id"]
 
     query = await client.post(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/query",
+        f"/api/v1/me/sources/{source_id}/query",
         json={"sql": sensitive_sql, "limit": 10},
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -590,7 +595,6 @@ async def test_snowflake_metadata_failures_are_redacted_and_audited(
     from backend.integrations.snowflake import client as snowflake_client
 
     api_key, user_id = await _register(client, "audit_snowflake_metadata")
-    ws = _scope_for_user(user_id)
     headers = _auth(api_key)
     sensitive_path = "token=secret-token customer table list"
     sensitive_ref = "DB.SCHEMA.confidential_customer_data"
@@ -610,7 +614,7 @@ async def test_snowflake_metadata_failures_are_redacted_and_audited(
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "snowflake",
             "external_ref": "webflow-confidential-account",
@@ -622,17 +626,17 @@ async def test_snowflake_metadata_failures_are_redacted_and_audited(
     source_id = added.json()["id"]
 
     entries = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/entries",
+        f"/api/v1/me/sources/{source_id}/entries",
         params={"path": sensitive_path},
         headers=headers,
     )
     doc = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}/doc",
+        f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": sensitive_ref},
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -713,12 +717,12 @@ async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
     fetched = await client.post(
-        f"/api/v1/workspaces/{ws}/sources/{source['id']}/history",
+        f"/api/v1/me/sources/{source['id']}/history",
         json={"since": sensitive_since, "until": sensitive_until, "limit": 77},
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -764,7 +768,7 @@ async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: As
     headers = _auth(api_key)
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "github_repo",
             "external_ref": "webflow/confidential-sales",
@@ -784,13 +788,13 @@ async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: As
         content="Webflow confidential pricing notes",
     )
     folder = await client.post(
-        f"/api/v1/workspaces/{ws}/folders",
+        "/api/v1/me/folders",
         json={"name": "Snapshot bundle"},
         headers=headers,
     )
     assert folder.status_code == 201
     skill = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder.json()["id"], "title": "Snapshot bundle"},
         headers=headers,
     )
@@ -798,12 +802,12 @@ async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: As
     skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
+        f"/api/v1/me/skills/{skill_id}/snapshot-source",
         json={"source_id": str(source_id), "path": ref},
         headers=headers,
     )
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
 
@@ -837,7 +841,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     ws = _scope_for_user(user_id)
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "github_repo",
             "external_ref": "webflow/confidential-roadmap",
@@ -864,7 +868,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     assert source_ok and doc is not None
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=_auth(api_key),
     )
     events = events_resp.json()["events"]
@@ -905,7 +909,7 @@ async def test_integration_disconnect_audits_workspace_source_purge(
     assert disconnected.json()["removed_sources"] == 1
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=_auth(api_key),
     )
     events = events_resp.json()["events"]
@@ -934,7 +938,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
     headers = _auth(api_key)
 
     page = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Webflow Roadmap", "content": "secret launch plan"},
         headers=headers,
     )
@@ -952,7 +956,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
     )
 
     session = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": "webflow-session", "agent_name": "codex"},
         headers=headers,
     )
@@ -974,9 +978,9 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
     monkeypatch.setattr("backend.routers.sessions.storage_service.delete_file", fake_delete_file)
 
     for object_type, object_id, base_url in [
-        ("page", page_id, f"/api/v1/workspaces/{ws}/pages/{page_id}"),
-        ("file", file_id, f"/api/v1/workspaces/{ws}/files/{file_id}"),
-        ("session", session_row_id, f"/api/v1/workspaces/{ws}/sessions/{session_row_id}"),
+        ("page", page_id, f"/api/v1/me/pages/{page_id}"),
+        ("file", file_id, f"/api/v1/me/files/{file_id}"),
+        ("session", session_row_id, f"/api/v1/me/sessions/{session_row_id}"),
     ]:
         deleted = await client.delete(base_url, headers=headers)
         restored = await client.post(f"{base_url}/restore", headers=headers)
@@ -989,7 +993,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
         assert purged.status_code == 204, object_type
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -1028,11 +1032,10 @@ async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
     the single-item routers — the audit trail must cover that front door too,
     or a bulk deletion leaves no trace."""
     api_key, owner_id = await _register(client, "audit_batch")
-    ws = _scope_for_user(owner_id)
     headers = _auth(api_key)
 
     page = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Bulk target", "content": "doomed"},
         headers=headers,
     )
@@ -1041,16 +1044,16 @@ async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
     items = {"items": [{"object_type": "page", "object_id": page_id}]}
 
     deleted = await client.post(
-        f"/api/v1/workspaces/{ws}/batch/delete", json=items, headers=headers
+        "/api/v1/me/batch/delete", json=items, headers=headers
     )
     restored = await client.post(
-        f"/api/v1/workspaces/{ws}/batch/restore", json=items, headers=headers
+        "/api/v1/me/batch/restore", json=items, headers=headers
     )
     assert deleted.status_code == 200 and not deleted.json()["errors"]
     assert restored.status_code == 200 and not restored.json()["errors"]
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/security-events",
+        "/api/v1/me/security-events",
         headers=headers,
     )
     by_action = {event["action"]: event for event in events_resp.json()["events"]}

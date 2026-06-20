@@ -40,7 +40,7 @@ async def _event(
     created_at: str = "2026-01-02T00:00:00Z",
 ) -> None:
     resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": agent_name,
             "event_type": "assistant_message",
@@ -69,7 +69,7 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
 
     for content in ("first event", "second event"):
         event_resp = await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+            "/api/v1/me/sessions/events",
             json={
                 "agent_name": "codex",
                 "event_type": "assistant_message",
@@ -81,7 +81,7 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
         assert event_resp.status_code == 201
 
     page_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Not a contributor", "content": "page content"},
         headers=_auth(api_key),
     )
@@ -238,7 +238,7 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
     workspace = await _workspace(client, api_key, "Client Label Workspace")
 
     event_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "user",
             "event_type": "assistant_message",
@@ -251,7 +251,7 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
     assert event_resp.status_code == 201
 
     claude_event_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "user",
             "event_type": "assistant_message",

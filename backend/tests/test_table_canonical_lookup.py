@@ -31,7 +31,7 @@ async def _table_in_new_workspace(client: AsyncClient, api_key: str) -> tuple[st
     owner_user_id = ws_resp.json()["id"]
 
     table_resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/tables",
+        "/api/v1/me/tables",
         json={
             "name": "Prospects",
             "columns": [{"id": "col_name", "name": "Name", "type": "text"}],
@@ -62,7 +62,7 @@ async def test_column_width_updates_table_metadata(client: AsyncClient):
     owner_user_id, table_id = await _table_in_new_workspace(client, api_key)
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{owner_user_id}/tables/{table_id}/columns/col_name",
+        f"/api/v1/me/tables/{table_id}/columns/col_name",
         json={"width": 260},
         headers=_auth(api_key),
     )

@@ -44,7 +44,7 @@ async def _folder(client, api_key, ws, name, parent_folder_id=None) -> str:
     body = {"name": name}
     if parent_folder_id:
         body["parent_folder_id"] = parent_folder_id
-    resp = await client.post(f"/api/v1/workspaces/{ws}/folders", json=body, headers=_auth(api_key))
+    resp = await client.post("/api/v1/me/folders", json=body, headers=_auth(api_key))
     assert resp.status_code == 201
     return resp.json()["id"]
 
@@ -54,7 +54,7 @@ async def _page(client, api_key, ws, name, folder_id=None, content="content") ->
     if folder_id:
         body["folder_id"] = folder_id
     resp = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new", json=body, headers=_auth(api_key)
+        "/api/v1/me/pages/new", json=body, headers=_auth(api_key)
     )
     assert resp.status_code == 201
     return resp.json()["id"]
@@ -85,14 +85,14 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     nested_page = await _page(client, api_key, ws, "notes", folder_id=nested)
 
     # /tree hides the whole skill subtree (the SKILL.md folder + descendants).
-    tree = (await client.get(f"/api/v1/workspaces/{ws}/tree", headers=_auth(api_key))).json()
+    tree = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     tree_folder_ids = _all_tree_folder_ids(tree)
     assert docs in tree_folder_ids
     assert skill_folder not in tree_folder_ids
     assert nested not in tree_folder_ids
 
     # /sidebar files payload hides the subtree's folders and pages too.
-    sidebar = (await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=_auth(api_key))).json()
+    sidebar = (await client.get("/api/v1/me/sidebar", headers=_auth(api_key))).json()
     sidebar_folder_ids = {f["id"] for f in sidebar["files"]["folders"]}
     sidebar_page_ids = {p["id"] for p in sidebar["files"]["pages"]}
     assert docs in sidebar_folder_ids
@@ -105,13 +105,13 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
 
     # The parent folder's contents skip the skill subfolder.
     docs_contents = (
-        await client.get(f"/api/v1/workspaces/{ws}/folders/{docs}/contents", headers=_auth(api_key))
+        await client.get(f"/api/v1/me/folders/{docs}/contents", headers=_auth(api_key))
     ).json()
     assert [f["id"] for f in docs_contents["subfolders"]] == []
 
     # Opening the skill folder directly still works and is flagged as a skill.
     skill_contents = await client.get(
-        f"/api/v1/workspaces/{ws}/folders/{skill_folder}/contents",
+        f"/api/v1/me/folders/{skill_folder}/contents",
         headers=_auth(api_key),
     )
     assert skill_contents.status_code == 200
@@ -122,10 +122,10 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
 
     # Deleting SKILL.md ends skill-ness: the folder rejoins the Files tree.
     deleted = await client.delete(
-        f"/api/v1/workspaces/{ws}/pages/{skill_md}", headers=_auth(api_key)
+        f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key)
     )
     assert deleted.status_code == 204
-    tree_after = (await client.get(f"/api/v1/workspaces/{ws}/tree", headers=_auth(api_key))).json()
+    tree_after = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     assert skill_folder in _all_tree_folder_ids(tree_after)
 
 
@@ -210,7 +210,7 @@ async def test_materialize_session_creates_transcript_page_in_folder(client: Asy
     ws = await _workspace(client, api_key)
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "tester",
             "event_type": "assistant_message",
@@ -225,7 +225,7 @@ async def test_materialize_session_creates_transcript_page_in_folder(client: Asy
     await _page(client, api_key, ws, "SKILL.md", folder_id=skill_folder)
 
     materialized = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/mat-sess-1/materialize",
+        "/api/v1/me/sessions/mat-sess-1/materialize",
         json={"folder_id": skill_folder},
         headers=_auth(api_key),
     )
@@ -244,7 +244,7 @@ async def test_materialize_unknown_session_404(client: AsyncClient):
     folder = await _folder(client, api_key, ws, "empty-skill")
 
     resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/no-such-session/materialize",
+        "/api/v1/me/sessions/no-such-session/materialize",
         json={"folder_id": folder},
         headers=_auth(api_key),
     )
@@ -263,7 +263,7 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
     folder = await _folder(client, api_key, ws, "bare-folder")
 
     published = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder, "title": "Minted skill"},
         headers=_auth(api_key),
     )
@@ -273,7 +273,7 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
     # Publishing turned the bare folder into a skill by minting SKILL.md.
     contents = (
         await client.get(
-            f"/api/v1/workspaces/{ws}/folders/{folder}/contents", headers=_auth(api_key)
+            f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key)
         )
     ).json()
     assert contents["folder"]["is_skill"] is True
@@ -281,7 +281,7 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
 
     # The publish record is 1:1 with the folder — a second publish must 400.
     again = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder, "title": "Minted skill"},
         headers=_auth(api_key),
     )
@@ -322,7 +322,7 @@ async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client:
         client, owner_key, ws, "private plan", folder_id=skill_folder, content="private context"
     )
     published = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": skill_folder, "title": "Partner Playbook"},
         headers=_auth(owner_key),
     )
@@ -355,9 +355,10 @@ async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client:
     assert skill["permission"] == "read"
     assert skill["slug"] == slug
 
-    # The folder share grants subtree read of the skill's contents.
+    # The folder share grants subtree read of the skill's contents. The
+    # recipient reaches the owner's page through the canonical object route.
     page_read = await client.get(
-        f"/api/v1/workspaces/{ws}/pages/{nested_page}", headers=_auth(recipient_key)
+        f"/api/v1/pages/{nested_page}", headers=_auth(recipient_key)
     )
     assert page_read.status_code == 200
     assert page_read.json()["content_markdown"] == "private context"

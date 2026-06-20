@@ -24,9 +24,9 @@ def _auth(api_key: str) -> dict:
 
 
 async def _workspace_id(client: AsyncClient, api_key: str) -> uuid.UUID:
-    resp = await client.get("/api/v1/workspaces/mine", headers=_auth(api_key))
+    resp = await client.get("/api/v1/users/me", headers=_auth(api_key))
     assert resp.status_code == 200
-    return uuid.UUID(resp.json()["workspaces"][0]["id"])
+    return uuid.UUID(resp.json()["id"])
 
 
 async def _make_file(
@@ -72,7 +72,7 @@ async def test_file_download_storage_errors_are_redacted(client: AsyncClient, po
     monkeypatch.setattr(storage_service, "download_file", fail_download)
     monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.get(
-        f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/download",
+        f"/api/v1/me/files/{file_id}/download",
         headers=_auth(api_key),
     )
 
@@ -114,7 +114,7 @@ async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool
     monkeypatch.setattr(storage_service, "download_file", fail_download)
     monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/ingest-csv",
+        f"/api/v1/me/files/{file_id}/ingest-csv",
         headers=_auth(api_key),
     )
 
@@ -160,7 +160,7 @@ async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeyp
     monkeypatch.setattr(files_router, "ingest_xlsx_bytes", fail_ingest_xlsx_bytes)
     monkeypatch.setattr(files_router.logger, "warning", capture_warning)
     resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/ingest-xlsx",
+        f"/api/v1/me/files/{file_id}/ingest-xlsx",
         headers=_auth(api_key),
     )
 
@@ -221,7 +221,7 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
 
     async def download(file_id):
         return await client.get(
-            f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/download",
+            f"/api/v1/me/files/{file_id}/download",
             headers=_auth(api_key),
         )
 
@@ -272,12 +272,12 @@ async def test_file_purge_keeps_storage_keys_still_referenced(
 
     for file_id in (shared_id, unique_id):
         trashed = await client.delete(
-            f"/api/v1/workspaces/{owner_user_id}/files/{file_id}",
+            f"/api/v1/me/files/{file_id}",
             headers=_auth(api_key),
         )
         assert trashed.status_code == 204
         purged = await client.delete(
-            f"/api/v1/workspaces/{owner_user_id}/files/{file_id}/purge",
+            f"/api/v1/me/files/{file_id}/purge",
             headers=_auth(api_key),
         )
         assert purged.status_code == 204

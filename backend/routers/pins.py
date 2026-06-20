@@ -7,45 +7,17 @@ stamped by non-members for objects shared with them.
 """
 
 import json
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import permission_service, user_scope_service
 
-router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}", tags=["pins"])
+router = APIRouter(prefix="/api/v1/me", tags=["pins"])
 
 PIN_KINDS = {"skills", "sessions", "files"}
 RECENTS_LIMIT = 24
-
-
-async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-
-
-async def _require_member_or_readable(
-    owner_user_id: UUID, user_id: UUID, kind: str, object_id: str
-) -> None:
-    """Members can stamp anything; non-members only objects shared with them.
-
-    Lets opening a shared page/file/folder record a recent in the object's
-    home workspace, which powers the Shared-with-me Recent strip.
-    """
-    if await user_scope_service.is_member(owner_user_id, user_id):
-        return
-    try:
-        parsed_id = UUID(object_id)
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-    readable = await permission_service.check_access(
-        kind, parsed_id, user_id, owner_user_id=owner_user_id
-    )
-    if not readable:
-        raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
 class SetPinsRequest(BaseModel):
@@ -59,10 +31,9 @@ class RecordRecentRequest(BaseModel):
 
 @router.get("/pins")
 async def get_pins(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ) -> dict[str, list[str]]:
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT kind, object_ids FROM user_pins WHERE user_id = $1 AND owner_user_id = $2",
@@ -81,14 +52,13 @@ async def get_pins(
 
 @router.put("/pins/{kind}", status_code=204)
 async def set_pins(
-    owner_user_id: UUID,
     kind: str,
     req: SetPinsRequest,
     current_user: dict = Depends(get_current_user),
 ) -> None:
+    owner_user_id = current_user["id"]
     if kind not in PIN_KINDS:
         raise HTTPException(status_code=400, detail="Unknown pin kind")
-    await _require_member(owner_user_id, current_user["id"])
     pool = get_pool()
     await pool.execute(
         """
@@ -106,10 +76,9 @@ async def set_pins(
 
 @router.get("/recents")
 async def get_recents(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ) -> list[dict]:
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT object_id, kind FROM user_recents "
@@ -124,11 +93,10 @@ async def get_recents(
 
 @router.post("/recents", status_code=204)
 async def record_recent(
-    owner_user_id: UUID,
     req: RecordRecentRequest,
     current_user: dict = Depends(get_current_user),
 ) -> None:
-    await _require_member_or_readable(owner_user_id, current_user["id"], req.kind, req.object_id)
+    owner_user_id = current_user["id"]
     pool = get_pool()
     await pool.execute(
         """

@@ -41,7 +41,7 @@ from ..services.xlsx_ingest import ingest_xlsx_bytes
 
 logger = logging.getLogger(__name__)
 
-ws_router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}/files", tags=["files"])
+ws_router = APIRouter(prefix="/api/v1/me/files", tags=["files"])
 canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -152,11 +152,11 @@ async def _download_storage_file_or_502(storage_key: str, operation: str) -> byt
 
 @ws_router.post("", response_model=UploadResponse, status_code=201)
 async def upload_ws_file(
-    owner_user_id: UUID,
     file: UploadFile,
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     # Workspace writers can upload anywhere; non-members can upload into a
     # specific folder shared with them with write permission.
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
@@ -296,9 +296,9 @@ async def upload_ws_file(
 
 @ws_router.get("", response_model=FileListResponse)
 async def list_ws_files(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 2)
@@ -335,10 +335,10 @@ async def get_file_by_id(
 
 @ws_router.get("/{file_id}", response_model=FileResponse)
 async def get_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     row = await _fetch_file_row(file_id, owner_user_id)
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
@@ -349,11 +349,13 @@ async def get_ws_file(
 
 @ws_router.get("/{file_id}/download")
 async def download_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Permanent workspace URL for file links embedded in wiki pages."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    owner_user_id = current_user["id"]
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT name, content_type, storage_key FROM files "
@@ -387,10 +389,10 @@ async def download_ws_file(
 
 @ws_router.get("/{file_id}/text")
 async def get_ws_file_text(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 3)
@@ -413,7 +415,6 @@ async def get_ws_file_text(
 
 @ws_router.patch("/{file_id}", response_model=FileResponse)
 async def update_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     req: FileUpdateRequest,
     current_user: dict = Depends(get_current_user),
@@ -421,6 +422,7 @@ async def update_ws_file(
     """Update a file. Supports rename (`name`) and reparent
     (`folder_id` / `move_to_root`). Any subset can be passed; an empty
     request returns the file unchanged."""
+    owner_user_id = current_user["id"]
     pool = get_pool()
     file_row = await pool.fetchrow(
         "SELECT * FROM files WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
@@ -485,13 +487,13 @@ async def update_ws_file(
 
 @ws_router.delete("/{file_id}", status_code=204)
 async def delete_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Soft delete: stamps deleted_at + deleted_by. Object storage blob stays
     so a restore is fully reversible. Use POST /restore to undo or DELETE
     /purge to wipe permanently."""
+    owner_user_id = current_user["id"]
     if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     trashed = await files_service.delete_file(file_id, owner_user_id, current_user["id"])
@@ -501,12 +503,12 @@ async def delete_ws_file(
 
 @ws_router.post("/{file_id}/copy", response_model=FileResponse, status_code=201)
 async def copy_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     req: CopyRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Duplicate a file (and its S3 blob) as 'Copy of <name>'."""
+    owner_user_id = current_user["id"]
     if not await _can_access_file(file_id, owner_user_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     if req.target_folder_id is not None:
@@ -533,10 +535,10 @@ async def copy_ws_file(
 
 @ws_router.post("/{file_id}/restore", status_code=204)
 async def restore_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     restored = await files_service.restore_file(file_id, owner_user_id, current_user["id"])
@@ -546,11 +548,11 @@ async def restore_ws_file(
 
 @ws_router.delete("/{file_id}/purge", status_code=204)
 async def purge_ws_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a file already in trash."""
+    owner_user_id = current_user["id"]
     if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     row = await files_service.get_trashed_file(file_id, owner_user_id)
@@ -580,7 +582,6 @@ async def purge_ws_file(
 
 @ws_router.post("/{file_id}/ingest-csv", response_model=TableResponse)
 async def ingest_csv_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -588,6 +589,7 @@ async def ingest_csv_file(
 
     Idempotent: if the file is already linked, returns the existing table.
     """
+    owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
@@ -670,7 +672,6 @@ _XLSX_CONTENT_TYPES = {
 
 @ws_router.post("/{file_id}/ingest-xlsx", response_model=TableListResponse)
 async def ingest_xlsx_file(
-    owner_user_id: UUID,
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -682,6 +683,7 @@ async def ingest_xlsx_file(
     ingest. (Re-import as a new file if the source workbook changes
     sheets.)
     """
+    owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(

@@ -20,7 +20,7 @@ from ..models import (
 from ..services import memory_service, user_scope_service
 from ..tasks.session_titles import generate_session_title
 
-ws_router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}/sessions", tags=["sessions"])
+ws_router = APIRouter(prefix="/api/v1/me/sessions", tags=["sessions"])
 
 _TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_message", "session_end"}
 
@@ -43,10 +43,10 @@ async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
 
 @ws_router.post("/events", response_model=HistoryEventResponse, status_code=201)
 async def push_ws_event(
-    owner_user_id: UUID,
     req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
@@ -69,10 +69,10 @@ async def push_ws_event(
 
 @ws_router.post("/events/batch", response_model=list[HistoryEventResponse], status_code=201)
 async def push_ws_events_batch(
-    owner_user_id: UUID,
     req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(owner_user_id, current_user["id"], events_data)
@@ -91,7 +91,6 @@ async def push_ws_events_batch(
 
 @ws_router.get("/events", response_model=HistoryEventListResponse)
 async def query_ws_events(
-    owner_user_id: UUID,
     agent_name: str | None = Query(None),
     session_id: str | None = Query(None),
     event_type: str | None = Query(None),
@@ -101,6 +100,7 @@ async def query_ws_events(
     order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     events, has_more = await memory_service.query_workspace_events(
         owner_user_id,
@@ -121,11 +121,11 @@ async def query_ws_events(
 
 @ws_router.get("/events/search", response_model=HistoryEventListResponse)
 async def search_ws_events(
-    owner_user_id: UUID,
     q: str = Query(..., min_length=1),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     events = await memory_service.search_workspace_events(
         owner_user_id,
@@ -141,10 +141,10 @@ async def search_ws_events(
 
 @ws_router.get("/events/{event_id}", response_model=HistoryEventResponse)
 async def get_ws_event(
-    owner_user_id: UUID,
     event_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     event = await memory_service.get_workspace_event(event_id, owner_user_id, current_user["id"])
     if not event:
@@ -154,11 +154,11 @@ async def get_ws_event(
 
 @ws_router.delete("/agents/{agent_name}", status_code=204)
 async def delete_ws_agent(
-    owner_user_id: UUID,
     agent_name: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Delete all events for an agent in this workspace."""
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     role = await user_scope_service.get_member_role(owner_user_id, current_user["id"])
     if role not in ("owner", "admin"):
@@ -168,10 +168,10 @@ async def delete_ws_agent(
 
 @ws_router.get("/agent-names")
 async def list_ws_agent_names(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """List distinct agent names in this workspace."""
+    owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     from ..database import get_pool
 

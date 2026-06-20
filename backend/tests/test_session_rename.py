@@ -30,7 +30,7 @@ async def _make_workspace_with_session(client: AsyncClient, api_key: str, sessio
     workspace = workspace_resp.json()
 
     session_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": session_id, "agent_name": "claude"},
         headers=_auth(api_key),
     )
@@ -44,7 +44,7 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-1")
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-1/title",
+        "/api/v1/me/sessions/sess-rename-1/title",
         json={"title": "  Investigate flaky auth test  "},
         headers=_auth(api_key),
     )
@@ -52,7 +52,7 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     assert resp.json() == {"title": "Investigate flaky auth test"}
 
     get_resp = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-1",
+        "/api/v1/me/sessions/sess-rename-1",
         headers=_auth(api_key),
     )
     assert get_resp.status_code == 200
@@ -74,7 +74,7 @@ async def test_rename_session_truncates_overlong_title(client: AsyncClient, pool
 
     long_title = "a" * 200
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-2/title",
+        "/api/v1/me/sessions/sess-rename-2/title",
         json={"title": long_title},
         headers=_auth(api_key),
     )
@@ -89,7 +89,7 @@ async def test_rename_session_rejects_empty_title(client: AsyncClient):
     workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-3")
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-3/title",
+        "/api/v1/me/sessions/sess-rename-3/title",
         json={"title": "   "},
         headers=_auth(api_key),
     )
@@ -104,7 +104,7 @@ async def test_rename_session_rejects_unknown_session(client: AsyncClient):
     workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-4")
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/does-not-exist/title",
+        "/api/v1/me/sessions/does-not-exist/title",
         json={"title": "noop"},
         headers=_auth(api_key),
     )
@@ -118,7 +118,7 @@ async def test_rename_session_blocks_non_member(client: AsyncClient):
 
     outsider_key, _outsider = await _register(client)
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-5/title",
+        "/api/v1/me/sessions/sess-rename-5/title",
         json={"title": "should not stick"},
         headers=_auth(outsider_key),
     )
@@ -145,7 +145,7 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     )
 
     rename_resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-6/title",
+        "/api/v1/me/sessions/sess-rename-6/title",
         json={"title": "User wrote this"},
         headers=_auth(api_key),
     )

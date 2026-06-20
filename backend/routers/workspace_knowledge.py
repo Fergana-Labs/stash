@@ -24,7 +24,7 @@ from ..services import (
     user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
+router = APIRouter(prefix="/api/v1/me", tags=["workspaces"])
 
 SIDEBAR_ETAG_VERSION = "sidebar-skill-folders-v4"
 
@@ -158,14 +158,12 @@ class AskRequest(BaseModel):
     scope: str = "workspace"
 
 
-@router.post("/{owner_user_id}/ask")
+@router.post("/ask")
 async def ask_workspace(
-    owner_user_id: UUID,
     req: AskRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    owner_user_id = current_user["id"]
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=503,
@@ -215,17 +213,15 @@ _FALLBACK_DEMO = MemoryDemoResponse(
 )
 
 
-@router.post("/{owner_user_id}/memory-demo", response_model=MemoryDemoResponse)
+@router.post("/memory-demo", response_model=MemoryDemoResponse)
 async def memory_demo(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Generate a personalized before/after demo for the Memory onboarding
     step. If the workspace has session(s), summon Claude (FAST tier) with
     the most recent session's title + a short snippet of its first events;
     otherwise return a canned fallback."""
-    if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    owner_user_id = current_user["id"]
 
     sessions = await memory_service.list_workspace_sessions(owner_user_id, current_user["id"])
     if not sessions:
@@ -295,15 +291,16 @@ async def memory_demo(
         )
 
 
-@router.get("/{owner_user_id}/overview")
+@router.get("/overview")
 async def get_workspace_overview(
-    owner_user_id: UUID, current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """{sessions, files, skills} for the workspace home page.
 
     `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
     """
+    owner_user_id = current_user["id"]
     await _check_overview_access(owner_user_id, current_user["id"])
 
     sessions, files, skills = await asyncio.gather(
@@ -314,15 +311,15 @@ async def get_workspace_overview(
     return {"sessions": sessions, "files": files, "skills": skills}
 
 
-@router.get("/{owner_user_id}/sidebar")
+@router.get("/sidebar")
 async def get_workspace_sidebar(
-    owner_user_id: UUID,
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     """Lighter payload for the nav sidebar: sessions + files + skills. Carries an
     ETag derived from the workspace's mutation timestamps so navigation
     between workspaces hits 304 instead of re-fetching."""
+    owner_user_id = current_user["id"]
     await _check_overview_access(owner_user_id, current_user["id"])
 
     etag = await _sidebar_etag(owner_user_id, current_user["id"])

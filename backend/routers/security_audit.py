@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
 from ..services import security_audit_service, user_scope_service
 
 router = APIRouter(
-    prefix="/api/v1/workspaces/{owner_user_id}/security-events",
+    prefix="/api/v1/me/security-events",
     tags=["security-audit"],
 )
 
 
 @router.get("")
 async def list_security_events(
-    owner_user_id: UUID,
     action: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     role = await user_scope_service.get_member_role(owner_user_id, current_user["id"])
     if role is None:
         # Match the sibling workspace routers: never confirm a workspace's

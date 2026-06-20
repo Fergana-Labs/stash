@@ -31,7 +31,7 @@ async def _create_page(
     content: str,
 ) -> dict:
     resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": name, "content": content},
         headers=_auth(api_key),
     )
@@ -42,24 +42,23 @@ async def _create_page(
 @pytest.mark.asyncio
 async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     api_key, register_body = await _register(client)
-    workspace = _scope(register_body)
     folder = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/folders",
+            "/api/v1/me/folders",
             json={"name": "Auth 401 spike"},
             headers=_auth(api_key),
         )
     ).json()
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Root cause", "content": "# Finding", "folder_id": folder["id"]},
             headers=_auth(api_key),
         )
     ).json()
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
+        "/api/v1/me/skills",
         json={
             "folder_id": folder["id"],
             "title": "Auth 401 spike",

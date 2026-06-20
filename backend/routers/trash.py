@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -10,23 +10,13 @@ from ..services import (
     files_service,
     files_tree_service,
     session_service,
-    user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces/{owner_user_id}", tags=["trash"])
-
-
-async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.can_write(owner_user_id, user_id):
-        raise HTTPException(
-            status_code=403,
-            detail="Viewers can read but not modify trash",
-        )
+router = APIRouter(prefix="/api/v1/me", tags=["trash"])
 
 
 @router.get("/trash")
 async def list_trash(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Trash listing: pages + files + sessions, each sorted by deleted_at DESC.
@@ -34,7 +24,7 @@ async def list_trash(
     Includes deleted_by display name so the UI can show "Deleted by Alice"
     without a second round-trip.
     """
-    await _check_write(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
 
     pages = await files_tree_service.list_trashed_pages(owner_user_id)
     files = await files_service.list_trashed_files(owner_user_id)

@@ -190,12 +190,12 @@ async def list_my_sessions(
     return {"sessions": sessions}
 
 
-@router.post("/workspaces/{owner_user_id}/sessions", status_code=201)
+@router.post("/me/sessions", status_code=201)
 async def upsert_workspace_session(
-    owner_user_id: UUID,
     req: SessionUpsertRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not create sessions")
 
@@ -265,12 +265,12 @@ async def get_session_canonical(
     raise HTTPException(status_code=404, detail="Session not found")
 
 
-@router.get("/workspaces/{owner_user_id}/sessions/{session_id}")
+@router.get("/me/sessions/{session_id}")
 async def get_workspace_session(
-    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     payload = await _session_detail_payload(owner_user_id, session_id, current_user["id"])
     if not payload:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -281,13 +281,13 @@ class SessionTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 
 
-@router.patch("/workspaces/{owner_user_id}/sessions/{session_id}/title")
+@router.patch("/me/sessions/{session_id}/title")
 async def rename_workspace_session(
-    owner_user_id: UUID,
     session_id: str,
     body: SessionTitleRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -341,12 +341,12 @@ async def _check_session_write(
     return dict(row)
 
 
-@router.delete("/workspaces/{owner_user_id}/sessions/{session_row_id}", status_code=204)
+@router.delete("/me/sessions/{session_row_id}", status_code=204)
 async def delete_workspace_session(
-    owner_user_id: UUID,
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     """Soft delete: stamps deleted_at + deleted_by."""
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     deleted = await session_service.delete_session(session_row_id, owner_user_id, current_user["id"])
@@ -354,12 +354,12 @@ async def delete_workspace_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
 
-@router.post("/workspaces/{owner_user_id}/sessions/{session_row_id}/restore", status_code=204)
+@router.post("/me/sessions/{session_row_id}/restore", status_code=204)
 async def restore_workspace_session(
-    owner_user_id: UUID,
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     restored = await session_service.restore_session(
         session_row_id, owner_user_id, current_user["id"]
@@ -368,12 +368,12 @@ async def restore_workspace_session(
         raise HTTPException(status_code=404, detail="Session not in trash")
 
 
-@router.delete("/workspaces/{owner_user_id}/sessions/{session_row_id}/purge", status_code=204)
+@router.delete("/me/sessions/{session_row_id}/purge", status_code=204)
 async def purge_workspace_session(
-    owner_user_id: UUID,
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     """Permanent delete — only callable on a session already in trash."""
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     storage_keys = await session_service.list_trashed_session_artifact_storage_keys(
@@ -395,14 +395,14 @@ async def purge_workspace_session(
     )
 
 
-@router.post("/workspaces/{owner_user_id}/sessions/{session_row_id}/artifacts", status_code=201)
+@router.post("/me/sessions/{session_row_id}/artifacts", status_code=201)
 async def upload_session_artifact(
-    owner_user_id: UUID,
     session_row_id: UUID,
     file: UploadFile = File(...),
     file_path: str = Form(...),
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     session = await session_service.get_session_by_id(session_row_id)
     if not session or session["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -469,12 +469,12 @@ def _format_session_markdown(events: list[dict]) -> str:
     return "\n".join(parts)
 
 
-@router.post("/workspaces/{owner_user_id}/sessions/{session_id}/materialize")
+@router.post("/me/sessions/{session_id}/materialize")
 async def materialize_session(
-    owner_user_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    owner_user_id = current_user["id"]
     """Idempotent: turn a session_id into a page in the workspace's
     Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather

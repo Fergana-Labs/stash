@@ -112,12 +112,10 @@ async def test_export_registers_user_owned_task(
     monkeypatch: pytest.MonkeyPatch,
 ):
     owner_key, owner = await _register(client)
-    owner_user_id = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
-        "workspaces"
-    ][0]["id"]
+    owner_user_id = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
     page = (
         await client.post(
-            f"/api/v1/workspaces/{owner_user_id}/pages/new",
+            "/api/v1/me/pages/new",
             json={
                 "name": "Deck",
                 "content_type": "html",
@@ -164,9 +162,7 @@ async def test_source_sync_registers_user_owned_task(
     monkeypatch: pytest.MonkeyPatch,
 ):
     api_key, owner = await _register(client)
-    owner_user_id = (await client.get("/api/v1/workspaces/mine", headers=_auth(api_key))).json()[
-        "workspaces"
-    ][0]["id"]
+    owner_user_id = (await client.get("/api/v1/users/me", headers=_auth(api_key))).json()["id"]
     source = await source_service.create_source(
         owner_user_id=UUID(owner_user_id),
         source_type="github_repo",
@@ -181,7 +177,7 @@ async def test_source_sync_registers_user_owned_task(
     monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
 
     response = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/sources/{source['id']}/sync",
+        f"/api/v1/me/sources/{source['id']}/sync",
         headers=_auth(api_key),
     )
 

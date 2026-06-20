@@ -2,7 +2,7 @@
 
 Supports two flavours we see in agent-authored decks:
     - `data:image/...;base64,…` URIs (inline)
-    - `/api/v1/workspaces/{wid}/files/{fid}/download` (local Stash files)
+    - `/api/v1/me/files/{fid}/download` (local Stash files)
 
 The fetcher is per-run: instantiate once at the top of pptx_builder.build
 so a deck that uses the same image on multiple slides only downloads it
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _DATA_URI_RE = re.compile(r"^data:[^;,]+;base64,(?P<b64>.+)$", re.DOTALL)
 _DATA_URI_PLAIN_RE = re.compile(r"^data:[^;,]+,(?P<raw>.+)$", re.DOTALL)
 _STASH_FILE_RE = re.compile(
-    r"^(?:https?://[^/]+)?/api/v1/workspaces/(?P<wid>[0-9a-f-]+)/files/(?P<fid>[0-9a-f-]+)/download",
+    r"^(?:https?://[^/]+)?/api/v1/me/files/(?P<fid>[0-9a-f-]+)/download",
     re.IGNORECASE,
 )
 
@@ -83,9 +83,7 @@ class ImageFetcher:
         if kind == "stash_file":
             stash = _STASH_FILE_RE.match(src)
             return await _download_skill_file(
-                UUID(stash.group("wid")),
                 UUID(stash.group("fid")),
-                self.owner_user_id,
                 self.user_id,
             )
 
@@ -131,12 +129,10 @@ def _svg_to_png(svg: bytes) -> bytes | None:
 
 
 async def _download_skill_file(
-    url_workspace_id: UUID,
     file_id: UUID,
-    export_workspace_id: UUID | None,
     user_id: UUID | None,
 ) -> bytes | None:
-    if export_workspace_id is None or user_id is None or url_workspace_id != export_workspace_id:
+    if user_id is None:
         return None
 
     pool = get_pool()
@@ -146,13 +142,11 @@ async def _download_skill_file(
     )
     if not row or not row["storage_key"]:
         return None
-    if row["owner_user_id"] != export_workspace_id:
-        return None
     can_read = await permission_service.check_access(
         "file",
         file_id,
         user_id,
-        owner_user_id=export_workspace_id,
+        owner_user_id=row["owner_user_id"],
     )
     if not can_read:
         return None

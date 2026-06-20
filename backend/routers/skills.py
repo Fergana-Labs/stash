@@ -26,7 +26,7 @@ from ..services import (
     user_scope_service,
 )
 
-ws_router = APIRouter(prefix="/api/v1/workspaces", tags=["skills"])
+ws_router = APIRouter(prefix="/api/v1/me", tags=["skills"])
 public_router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 
 _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
@@ -37,14 +37,13 @@ async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
-@ws_router.post("/{owner_user_id}/skills", response_model=SkillResponse, status_code=201)
+@ws_router.post("/skills", response_model=SkillResponse, status_code=201)
 async def publish_skill(
-    owner_user_id: UUID,
     req: SkillPublishRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Mint the publish record for a skill folder (share/publish it)."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     try:
         skill = await shared_skill_service.publish_folder(
             owner_user_id,
@@ -63,25 +62,23 @@ async def publish_skill(
     return SkillResponse(**skill)
 
 
-@ws_router.get("/{owner_user_id}/skills")
+@ws_router.get("/skills")
 async def list_skills(
-    owner_user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Every skill folder in the workspace, with publish info when shared."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     skills = await skill_service.list_skills(owner_user_id, current_user["id"])
     return {"skills": skills}
 
 
-@ws_router.get("/{owner_user_id}/skills/{name}")
+@ws_router.get("/skills/{name}")
 async def get_local_skill(
-    owner_user_id: UUID,
     name: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Read a skill by name: SKILL.md + sibling files concatenated."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     skill = await skill_service.read_skill(owner_user_id, name, current_user["id"])
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -99,24 +96,22 @@ async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: U
     return folder
 
 
-@ws_router.get("/{owner_user_id}/skills/{folder_id}/contents")
+@ws_router.get("/skills/{folder_id}/contents")
 async def get_skill_contents(
-    owner_user_id: UUID,
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """The skill folder's full subtree, inlined — same shape as the public
     skill payload, but for workspace members on unpublished skills. This is
     what `stash skills sync` pulls."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     folder = await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
     contents = await shared_skill_service.folder_contents({"folder_id": folder_id})
     return {"folder_id": str(folder_id), "folder_name": folder["name"], "contents": contents}
 
 
-@ws_router.put("/{owner_user_id}/skills/{folder_id}/contents")
+@ws_router.put("/skills/{folder_id}/contents")
 async def replace_skill_contents(
-    owner_user_id: UUID,
     folder_id: UUID,
     files: list[UploadFile],
     current_user: dict = Depends(get_current_user),
@@ -124,7 +119,7 @@ async def replace_skill_contents(
     """Replace the skill folder's contents with the uploaded file set — each
     upload's filename is its path relative to the skill folder. This is what
     `stash skills sync` pushes."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
     if not await permission_service.check_access(
         "folder", folder_id, current_user["id"], owner_user_id=owner_user_id, require="write"
@@ -164,19 +159,18 @@ class SnapshotSourceRequest(BaseModel):
 
 
 @ws_router.post(
-    "/{owner_user_id}/skills/{skill_id}/snapshot-source",
+    "/skills/{skill_id}/snapshot-source",
     response_model=PageResponse,
     status_code=201,
 )
 async def snapshot_source(
-    owner_user_id: UUID,
     skill_id: UUID,
     req: SnapshotSourceRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Copy a point-in-time snapshot of one connected-source document into the
     skill's folder as a page, so the skill stays self-contained and curl-able."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     skill = await shared_skill_service.get_skill(skill_id)
     if not skill or skill["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -216,19 +210,18 @@ class MaterializeSessionRequest(BaseModel):
 
 
 @ws_router.post(
-    "/{owner_user_id}/sessions/{session_id}/materialize",
+    "/sessions/{session_id}/materialize",
     response_model=PageResponse,
     status_code=201,
 )
 async def materialize_session(
-    owner_user_id: UUID,
     session_id: str,
     req: MaterializeSessionRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Freeze a session transcript into a markdown page inside a folder —
     how sessions travel into skills (sessions can't live in folders)."""
-    await _require_member(owner_user_id, current_user["id"])
+    owner_user_id = current_user["id"]
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
     page = await shared_skill_service.materialize_session_page(

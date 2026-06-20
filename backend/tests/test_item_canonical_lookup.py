@@ -35,7 +35,7 @@ async def _new_workspace(client: AsyncClient, api_key: str) -> str:
 
 async def _create_page(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
     resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Notes", "content": "# hello"},
         headers=_auth(api_key),
     )
@@ -61,7 +61,7 @@ async def _insert_file_row(pool, owner_user_id: str) -> str:
 async def _create_session(client: AsyncClient, api_key: str, owner_user_id: str) -> str:
     session_id = f"sess-{uuid.uuid4()}"
     resp = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": session_id, "agent_name": "claude"},
         headers=_auth(api_key),
     )
@@ -135,7 +135,7 @@ async def test_session_id_in_two_workspaces_resolves_to_readable_one(client: Asy
     session_id = f"sess-{uuid.uuid4()}"
     for key, ws in ((owner_a, ws_a), (owner_b, ws_b)):
         resp = await client.post(
-            f"/api/v1/workspaces/{ws}/sessions",
+            "/api/v1/me/sessions",
             json={"session_id": session_id, "agent_name": "claude"},
             headers=_auth(key),
         )

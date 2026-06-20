@@ -17,7 +17,7 @@ from ..auth import get_current_user, get_current_user_optional
 from ..services import session_folder_service, user_scope_service
 
 ws_router = APIRouter(
-    prefix="/api/v1/workspaces/{owner_user_id}/session-folders", tags=["session-folders"]
+    prefix="/api/v1/me/session-folders", tags=["session-folders"]
 )
 public_router = APIRouter(prefix="/api/v1/session-folders", tags=["session-folders"])
 
@@ -71,8 +71,9 @@ class AssignRequest(BaseModel):
 
 @ws_router.post("")
 async def create_folder(
-    owner_user_id: UUID, body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
+    body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
 ):
+    owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
     await _require_workspace_owner_for_folder_visibility(owner_user_id, current_user["id"], body)
@@ -89,7 +90,8 @@ async def create_folder(
 
 
 @ws_router.get("")
-async def list_folders(owner_user_id: UUID, current_user: dict = Depends(get_current_user)):
+async def list_folders(current_user: dict = Depends(get_current_user)):
+    owner_user_id = current_user["id"]
     # Non-members may still see folders shared with them, so this isn't gated on
     # membership. Members get a Default folder lazily ensured on first listing.
     if await user_scope_service.is_member(owner_user_id, current_user["id"]):
@@ -99,7 +101,6 @@ async def list_folders(owner_user_id: UUID, current_user: dict = Depends(get_cur
 
 @ws_router.patch("/{folder_id}")
 async def update_folder(
-    owner_user_id: UUID,
     folder_id: UUID,
     body: UpdateFolderRequest,
     current_user: dict = Depends(get_current_user),
@@ -119,7 +120,7 @@ async def update_folder(
 
 @ws_router.delete("/{folder_id}", status_code=204)
 async def delete_folder(
-    owner_user_id: UUID, folder_id: UUID, current_user: dict = Depends(get_current_user)
+    folder_id: UUID, current_user: dict = Depends(get_current_user)
 ):
     deleted = await session_folder_service.delete_folder(folder_id, current_user["id"])
     if not deleted:
@@ -128,8 +129,9 @@ async def delete_folder(
 
 @ws_router.post("/assign")
 async def assign_sessions(
-    owner_user_id: UUID, body: AssignRequest, current_user: dict = Depends(get_current_user)
+    body: AssignRequest, current_user: dict = Depends(get_current_user)
 ):
+    owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
     assigned = await session_folder_service.assign_sessions(

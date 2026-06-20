@@ -21,25 +21,22 @@ def _auth(api_key: str) -> dict:
 async def test_search_pages_finds_workspace_pages(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    workspace = (
-        await client.post("/api/v1/workspaces", json={"name": "Searchable"}, headers=headers)
-    ).json()
 
     alpha = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Alpha", "content": "alpha result lives here"},
         headers=headers,
     )
     assert alpha.status_code == 201
     beta = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Beta", "content": "nothing relevant"},
         headers=headers,
     )
     assert beta.status_code == 201
 
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/pages/search",
+        "/api/v1/me/pages/search",
         params={"q": "alpha", "limit": 10},
         headers=headers,
     )
@@ -53,12 +50,9 @@ async def test_search_pages_finds_workspace_pages(client: AsyncClient) -> None:
 async def test_search_pages_finds_html_page_text(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    workspace = (
-        await client.post("/api/v1/workspaces", json={"name": "Searchable HTML"}, headers=headers)
-    ).json()
 
     created = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={
             "name": "HTML Guide",
             "content_type": "html",
@@ -69,7 +63,7 @@ async def test_search_pages_finds_html_page_text(client: AsyncClient) -> None:
     assert created.status_code == 201
 
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/pages/search",
+        "/api/v1/me/pages/search",
         params={"q": "sentinelhtmlword", "limit": 10},
         headers=headers,
     )

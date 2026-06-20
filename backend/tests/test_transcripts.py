@@ -68,11 +68,10 @@ async def _workspace(client, key):
 @pytest.mark.asyncio
 async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     up = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
         data={"session_id": "sess-1", "agent_name": "claude"},
         headers=headers,
@@ -83,14 +82,14 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     assert payload["skipped"] is False
 
     meta = await client.get(
-        f"/api/v1/workspaces/{ws}/transcripts/sess-1",
+        "/api/v1/me/transcripts/sess-1",
         headers=headers,
     )
     assert meta.status_code == 200
     assert meta.json()["event_count"] == 2
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/transcripts/sess-1/events",
+        "/api/v1/me/transcripts/sess-1/events",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -103,11 +102,10 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     first = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
         data={"session_id": "sess-dup", "agent_name": "claude"},
         headers=headers,
@@ -116,7 +114,7 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
     assert first.json()["imported"] == 2
 
     second = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
         data={"session_id": "sess-dup", "agent_name": "claude"},
         headers=headers,
@@ -133,17 +131,17 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
     headers = {"Authorization": f"Bearer {key}"}
 
     created = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": "empty-shell", "agent_name": "claude"},
         headers=headers,
     )
     assert created.status_code == 201
 
-    overview = await client.get(f"/api/v1/workspaces/{ws}/overview", headers=headers)
+    overview = await client.get("/api/v1/me/overview", headers=headers)
     assert overview.status_code == 200
     assert overview.json()["sessions"] == []
 
-    sidebar = await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=headers)
+    sidebar = await client.get("/api/v1/me/sidebar", headers=headers)
     assert sidebar.status_code == 200
     assert sidebar.json()["sessions"] == []
 
@@ -156,7 +154,7 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
     assert my_sessions.json()["sessions"] == []
 
     detail = await client.get(
-        f"/api/v1/workspaces/{ws}/sessions/empty-shell",
+        "/api/v1/me/sessions/empty-shell",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -173,7 +171,7 @@ async def test_event_created_session_lands_in_default_folder(client: AsyncClient
     headers = {"Authorization": f"Bearer {key}"}
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "codex",
             "event_type": "assistant_message",
@@ -204,13 +202,13 @@ async def test_transcript_upload_targets_explicit_session_folder(client: AsyncCl
     headers = {"Authorization": f"Bearer {key}"}
 
     folder = await client.post(
-        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Pinned"}, headers=headers
+        "/api/v1/me/session-folders", json={"name": "Pinned"}, headers=headers
     )
     assert folder.status_code in (200, 201)
     folder_id = folder.json()["id"]
 
     upload = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("t.jsonl", io.BytesIO(BODY), "application/jsonl")},
         data={
             "session_id": "pinned-session",
@@ -241,12 +239,12 @@ async def test_event_stream_pin_targets_folder(client: AsyncClient):
     headers = {"Authorization": f"Bearer {key}"}
 
     folder = await client.post(
-        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Repo"}, headers=headers
+        "/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers
     )
     folder_id = folder.json()["id"]
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "codex",
             "event_type": "assistant_message",
@@ -274,13 +272,13 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
     headers = {"Authorization": f"Bearer {key}"}
 
     folder = await client.post(
-        f"/api/v1/workspaces/{ws}/session-folders", json={"name": "Repo"}, headers=headers
+        "/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers
     )
     folder_id = folder.json()["id"]
 
     async def push():
         return await client.post(
-            f"/api/v1/workspaces/{ws}/sessions/events",
+            "/api/v1/me/sessions/events",
             json={
                 "agent_name": "codex",
                 "event_type": "assistant_message",
@@ -300,7 +298,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
     )
 
     moved = await client.post(
-        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        "/api/v1/me/session-folders/assign",
         json={"session_row_ids": [row_id], "folder_id": None},
         headers=headers,
     )
@@ -317,7 +315,6 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
 @pytest.mark.asyncio
 async def test_replace_reimports_existing_session(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
     replacement = (
         json.dumps(
@@ -331,7 +328,7 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     ).encode()
 
     first = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
         data={"session_id": "sess-replace", "agent_name": "claude"},
         headers=headers,
@@ -340,7 +337,7 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     assert first.json()["imported"] == 2
 
     second = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(replacement), "application/jsonl")},
         data={"session_id": "sess-replace", "agent_name": "claude", "replace": "true"},
         headers=headers,
@@ -350,7 +347,7 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     assert second.json()["imported"] == 1
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/transcripts/sess-replace/events",
+        "/api/v1/me/transcripts/sess-replace/events",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -361,14 +358,13 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
     me = await client.get("/api/v1/users/me", headers=headers)
     assert me.status_code == 200
     author = me.json()["display_name"]
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
@@ -383,13 +379,13 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
     )
     assert pushed.status_code == 201
 
-    overview = await client.get(f"/api/v1/workspaces/{ws}/overview", headers=headers)
+    overview = await client.get("/api/v1/me/overview", headers=headers)
     assert overview.status_code == 200
     [overview_session] = overview.json()["sessions"]
     assert overview_session["user_name"] == author
     assert overview_session["agent_name"] == "claude"
 
-    sidebar = await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=headers)
+    sidebar = await client.get("/api/v1/me/sidebar", headers=headers)
     assert sidebar.status_code == 200
     [sidebar_session] = sidebar.json()["sessions"]
     assert sidebar_session["user_name"] == author
@@ -397,7 +393,7 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
     etag = sidebar.headers["etag"]
 
     updated = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
@@ -414,7 +410,7 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
     assert updated.status_code == 201
 
     refreshed = await client.get(
-        f"/api/v1/workspaces/{ws}/sidebar",
+        "/api/v1/me/sidebar",
         headers={**headers, "If-None-Match": etag},
     )
     assert refreshed.status_code == 200
@@ -437,7 +433,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
 """
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
@@ -452,7 +448,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     )
     assert pushed.status_code == 201
 
-    overview = await client.get(f"/api/v1/workspaces/{ws}/overview", headers=headers)
+    overview = await client.get("/api/v1/me/overview", headers=headers)
     assert overview.status_code == 200
     [overview_session] = overview.json()["sessions"]
     assert overview_session["linear_tickets"] == [
@@ -480,7 +476,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     ]
 
     detail = await client.get(
-        f"/api/v1/workspaces/{ws}/sessions/sess-linear",
+        "/api/v1/me/sessions/sess-linear",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -504,7 +500,7 @@ async def test_workspace_sidebar_etag_changes_after_generated_title(
     headers = {"Authorization": f"Bearer {key}"}
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
@@ -520,7 +516,7 @@ async def test_workspace_sidebar_etag_changes_after_generated_title(
     )
     assert pushed.status_code == 201
 
-    sidebar = await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=headers)
+    sidebar = await client.get("/api/v1/me/sidebar", headers=headers)
     assert sidebar.status_code == 200
     etag = sidebar.headers["etag"]
     [fallback_session] = sidebar.json()["sessions"]
@@ -538,7 +534,7 @@ async def test_workspace_sidebar_etag_changes_after_generated_title(
     )
 
     refreshed = await client.get(
-        f"/api/v1/workspaces/{ws}/sidebar",
+        "/api/v1/me/sidebar",
         headers={**headers, "If-None-Match": etag},
     )
     assert refreshed.status_code == 200
@@ -550,11 +546,10 @@ async def test_workspace_sidebar_etag_changes_after_generated_title(
 @pytest.mark.asyncio
 async def test_session_detail_returns_files_touched_and_artifacts_list(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     created = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={
             "session_id": "sess-files",
             "agent_name": "codex",
@@ -565,7 +560,7 @@ async def test_session_detail_returns_files_touched_and_artifacts_list(client: A
     assert created.status_code == 201
 
     detail = await client.get(
-        f"/api/v1/workspaces/{ws}/sessions/sess-files",
+        "/api/v1/me/sessions/sess-files",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -583,11 +578,10 @@ async def test_session_purge_deletes_artifacts_from_storage(
     monkeypatch,
 ):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     created = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": "sess-purge", "agent_name": "codex"},
         headers=headers,
     )
@@ -611,13 +605,13 @@ async def test_session_purge_deletes_artifacts_from_storage(
     monkeypatch.setattr("backend.routers.sessions.storage_service.delete_file", fake_delete_file)
 
     trashed = await client.delete(
-        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}",
+        f"/api/v1/me/sessions/{session_row_id}",
         headers=headers,
     )
     assert trashed.status_code == 204
 
     purged = await client.delete(
-        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}/purge",
+        f"/api/v1/me/sessions/{session_row_id}/purge",
         headers=headers,
     )
     assert purged.status_code == 204
@@ -644,7 +638,7 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
     headers = {"Authorization": f"Bearer {key}"}
 
     created = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": "sess-shared-artifacts", "agent_name": "codex"},
         headers=headers,
     )
@@ -652,7 +646,7 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
     session_row_id = UUID(created.json()["id"])
 
     other_created = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": "sess-other-artifacts", "agent_name": "codex"},
         headers=headers,
     )
@@ -693,13 +687,13 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
     monkeypatch.setattr("backend.routers.sessions.storage_service.delete_file", fake_delete_file)
 
     trashed = await client.delete(
-        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}",
+        f"/api/v1/me/sessions/{session_row_id}",
         headers=headers,
     )
     assert trashed.status_code == 204
 
     purged = await client.delete(
-        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}/purge",
+        f"/api/v1/me/sessions/{session_row_id}/purge",
         headers=headers,
     )
 
@@ -728,11 +722,10 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
 @pytest.mark.asyncio
 async def test_transcript_viewer_includes_streamed_legacy_event_types(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
@@ -764,7 +757,7 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
     assert pushed.status_code == 201
 
     events_resp = await client.get(
-        f"/api/v1/workspaces/{ws}/transcripts/sess-streamed/events",
+        "/api/v1/me/transcripts/sess-streamed/events",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -780,94 +773,14 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
 @pytest.mark.asyncio
 async def test_oversize_rejected(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
     big = b"x" * (50 * 1024 * 1024 + 1)
     r = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
+        "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(big), "application/jsonl")},
         data={"session_id": "sess-big", "agent_name": "claude"},
         headers={"Authorization": f"Bearer {key}"},
     )
     assert r.status_code == 413
-
-
-@pytest.mark.asyncio
-async def test_non_member_forbidden(client: AsyncClient):
-    owner = await _register(client)
-    other = await _register(client)
-    ws = await _workspace(client, owner)
-    r = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
-        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
-        data={"session_id": "sess", "agent_name": "claude"},
-        headers={"Authorization": f"Bearer {other}"},
-    )
-    assert r.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_viewer_cannot_write_session_ingress(client: AsyncClient, pool):
-    owner_key, owner_id = await _register_user(client)
-    viewer_key, viewer_id = await _register_user(client)
-    ws = await _workspace(client, owner_key)
-    owner_headers = {"Authorization": f"Bearer {owner_key}"}
-    viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
-
-    folder = await client.post(
-        f"/api/v1/workspaces/{ws}/folders",
-        json={"name": "Shared"},
-        headers=owner_headers,
-    )
-    assert folder.status_code == 201
-    await _share(pool, ws, "folder", UUID(folder.json()["id"]), viewer_id, owner_id)
-
-    event_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events",
-        json={
-            "agent_name": "codex",
-            "event_type": "assistant_message",
-            "content": "viewer should not write",
-            "session_id": "viewer-event",
-        },
-        headers=viewer_headers,
-    )
-    assert event_resp.status_code == 403
-
-    batch_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events/batch",
-        json={
-            "events": [
-                {
-                    "agent_name": "codex",
-                    "event_type": "assistant_message",
-                    "content": "viewer should not batch write",
-                    "session_id": "viewer-batch",
-                }
-            ]
-        },
-        headers=viewer_headers,
-    )
-    assert batch_resp.status_code == 403
-
-    transcript_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/transcripts",
-        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
-        data={"session_id": "viewer-transcript", "agent_name": "codex"},
-        headers=viewer_headers,
-    )
-    assert transcript_resp.status_code == 403
-
-    session_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
-        json={"session_id": "viewer-shell", "agent_name": "codex"},
-        headers=viewer_headers,
-    )
-    assert session_resp.status_code == 403
-
-    assert (
-        await pool.fetchval("SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1", ws) == 0
-    )
-    assert await pool.fetchval("SELECT COUNT(*) FROM sessions WHERE owner_user_id = $1", ws) == 0
 
 
 @pytest.mark.asyncio
@@ -882,7 +795,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
 
     created = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": "owner-session", "agent_name": "codex"},
         headers=owner_headers,
     )
@@ -891,7 +804,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     await _share(pool, ws, "session", UUID(session_row_id), viewer_id, owner_id)
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "codex",
             "event_type": "assistant_message",
@@ -903,7 +816,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     assert pushed.status_code == 201
 
     artifact_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/{session_row_id}/artifacts",
+        f"/api/v1/me/sessions/{session_row_id}/artifacts",
         files={"file": ("artifact.txt", io.BytesIO(b"secret"), "text/plain")},
         data={"file_path": "artifact.txt"},
         headers=viewer_headers,
@@ -911,17 +824,17 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     assert artifact_resp.status_code == 404
 
     folder_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/folders",
+        "/api/v1/me/folders",
         json={"name": "Materialized"},
         headers=owner_headers,
     )
     assert folder_resp.status_code == 201
     materialize_resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sessions/owner-session/materialize",
+        "/api/v1/me/sessions/owner-session/materialize",
         json={"folder_id": folder_resp.json()["id"]},
         headers=viewer_headers,
     )
-    assert materialize_resp.status_code == 403
+    assert materialize_resp.status_code == 404
 
     assert (
         await pool.fetchval(

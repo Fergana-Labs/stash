@@ -77,7 +77,7 @@ async def test_discover_session_labels_records_pr_and_upserts_ticket(
     monkeypatch.setattr(github_pr_service, "enqueue_session_discovery", lambda _session_id: None)
 
     pushed = await client.post(
-        f"/api/v1/workspaces/{owner_user_id}/sessions/events/batch",
+        "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {

@@ -56,8 +56,8 @@ async def test_publish_with_explicit_workspace(client: AsyncClient):
     """Explicit owner_user_id works the same as before for members."""
     key = await _register(client)
 
-    mine = await client.get("/api/v1/workspaces/mine", headers=_auth(key))
-    owner_user_id = mine.json()["workspaces"][0]["id"]
+    mine = await client.get("/api/v1/users/me", headers=_auth(key))
+    owner_user_id = mine.json()["id"]
 
     resp = await client.post(
         "/api/v1/publish",
@@ -79,8 +79,8 @@ async def test_publish_rejects_non_member_workspace(client: AsyncClient):
     key_a = await _register(client)
     key_b = await _register(client)
 
-    mine_b = await client.get("/api/v1/workspaces/mine", headers=_auth(key_b))
-    foreign_workspace = mine_b.json()["workspaces"][0]["id"]
+    mine_b = await client.get("/api/v1/users/me", headers=_auth(key_b))
+    foreign_workspace = mine_b.json()["id"]
 
     resp = await client.post(
         "/api/v1/publish",
@@ -103,8 +103,8 @@ async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
     owner_key = await _register(client)
     sharee_key, sharee_id = await _register_user(client)
 
-    mine = await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))
-    owner_user_id = mine.json()["workspaces"][0]["id"]
+    mine = await client.get("/api/v1/users/me", headers=_auth(owner_key))
+    owner_user_id = mine.json()["id"]
     owner_id = owner_user_id
 
     folder_id = await pool.fetchval(

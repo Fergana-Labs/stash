@@ -139,10 +139,9 @@ async def _insert_slack_source_without_channels(owner_id: UUID) -> dict:
 @pytest.mark.asyncio
 async def test_add_list_remove_source(client: AsyncClient):
     api_key, _ = await _register(client)
-    ws = await _user_scope(client, api_key)
 
     add = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "github_repo",
             "external_ref": "acme/widgets",
@@ -153,7 +152,7 @@ async def test_add_list_remove_source(client: AsyncClient):
     assert add.status_code == 200
     source_id = add.json()["id"]
 
-    listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(api_key))
+    listing = await client.get("/api/v1/me/sources", headers=_auth(api_key))
     assert listing.status_code == 200
     sources = listing.json()["sources"]
     handles = {s["source"] for s in sources}
@@ -163,10 +162,10 @@ async def test_add_list_remove_source(client: AsyncClient):
     assert source_id in handles
 
     removed = await client.delete(
-        f"/api/v1/workspaces/{ws}/sources/{source_id}", headers=_auth(api_key)
+        f"/api/v1/me/sources/{source_id}", headers=_auth(api_key)
     )
     assert removed.status_code == 200
-    after = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(api_key))
+    after = await client.get("/api/v1/me/sources", headers=_auth(api_key))
     assert source_id not in {s["source"] for s in after.json()["sources"]}
 
 
@@ -288,9 +287,8 @@ async def test_source_sync_resolves_via_owner(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
-    ws = await _user_scope(client, api_key)
     resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={"source_type": "dropbox", "external_ref": "x", "display_name": "x"},
         headers=_auth(api_key),
     )
@@ -300,9 +298,8 @@ async def test_unknown_source_type_rejected(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_add_jira_source_rejects_unsafe_external_ref(client: AsyncClient):
     api_key, _ = await _register(client)
-    ws = await _user_scope(client, api_key)
     resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "jira_project",
             "external_ref": 'cloud-1:PROJ" OR project IS NOT EMPTY',
@@ -319,7 +316,6 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
     from backend.routers import sources as sources_router
 
     api_key, _ = await _register(client)
-    ws = await _user_scope(client, api_key)
 
     async def fake_get_valid_token(user_id, provider):
         assert provider == "slack"
@@ -334,7 +330,7 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
     monkeypatch.setattr(sources_router, "get_provider", lambda provider: FakeSlackProvider())
 
     added = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={
             "source_type": "slack",
             "settings": {"allowed_channel_ids": ["C1", " C2 ", "C1"]},
@@ -345,7 +341,7 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
     assert added.json()["settings"] == {"allowed_channel_ids": ["C1", "C2"]}
 
     missing = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={"source_type": "slack"},
         headers=_auth(api_key),
     )
@@ -353,7 +349,7 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
     assert "allowed_channel_ids" in missing.json()["detail"]
 
     invalid = await client.post(
-        f"/api/v1/workspaces/{ws}/sources",
+        "/api/v1/me/sources",
         json={"source_type": "slack", "settings": {"allowed_channel_ids": "C1"}},
         headers=_auth(api_key),
     )
@@ -450,9 +446,8 @@ async def test_connected_source_handles_are_workspace_scoped(
 ):
     owner_key, owner_id = await _register(client, "owner")
     # Sources are user-scoped: another user's scope can't reach them.
-    _, other_id = await _register(client, "other")
+    other_key, other_id = await _register(client, "other")
     ws_a = await _user_scope(client, owner_key)
-    ws_b = other_id
     src = await source_service.create_source(
         owner_user_id=owner_id,
         source_type="slack",
@@ -474,7 +469,7 @@ async def test_connected_source_handles_are_workspace_scoped(
     )
 
     same_workspace = await client.get(
-        f"/api/v1/workspaces/{ws_a}/sources/{source_id}/doc",
+        f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": "eng/1"},
         headers=_auth(owner_key),
     )
@@ -485,25 +480,25 @@ async def test_connected_source_handles_are_workspace_scoped(
 
     monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
     cross_workspace_doc = await client.get(
-        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/doc",
+        f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": "eng/1"},
-        headers=_auth(owner_key),
+        headers=_auth(other_key),
     )
     cross_workspace_entries = await client.get(
-        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/entries",
-        headers=_auth(owner_key),
+        f"/api/v1/me/sources/{source_id}/entries",
+        headers=_auth(other_key),
     )
     cross_workspace_status = await client.get(
-        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/status",
-        headers=_auth(owner_key),
+        f"/api/v1/me/sources/{source_id}/status",
+        headers=_auth(other_key),
     )
     cross_workspace_sync = await client.post(
-        f"/api/v1/workspaces/{ws_b}/sources/{source_id}/sync",
-        headers=_auth(owner_key),
+        f"/api/v1/me/sources/{source_id}/sync",
+        headers=_auth(other_key),
     )
     cross_workspace_delete = await client.delete(
-        f"/api/v1/workspaces/{ws_b}/sources/{source_id}",
-        headers=_auth(owner_key),
+        f"/api/v1/me/sources/{source_id}",
+        headers=_auth(other_key),
     )
 
     assert same_workspace.status_code == 200
@@ -736,7 +731,7 @@ async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient)
 
     # Manual sync-now is refused too — the queued task would silently no-op.
     resp = await client.post(
-        f"/api/v1/workspaces/{ws}/sources/{src['id']}/sync", headers=_auth(api_key)
+        f"/api/v1/me/sources/{src['id']}/sync", headers=_auth(api_key)
     )
     assert resp.status_code == 400
 
@@ -922,7 +917,7 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
 
     # A native page.
     page = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Runbook", "content": "# Deploy steps\nrun the migration first"},
         headers=_auth(api_key),
     )
@@ -1063,7 +1058,6 @@ async def test_sync_source_status_redacts_provider_exception(client: AsyncClient
     from backend.tasks import sources as sources_task
 
     api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
         owner_user_id=owner_id,
         source_type="github_repo",
@@ -1094,7 +1088,7 @@ async def test_sync_source_status_redacts_provider_exception(client: AsyncClient
     assert "customer transcript" not in str(captured_logs)
 
     status = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{src['id']}/status",
+        f"/api/v1/me/sources/{src['id']}/status",
         headers=_auth(api_key),
     )
     assert status.status_code == 200
@@ -2117,12 +2111,12 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
         content="hi",
     )
 
-    listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(api_key))
+    listing = await client.get("/api/v1/me/sources", headers=_auth(api_key))
     connected = next(s for s in listing.json()["sources"] if s["source"] == src["id"])
     assert "sync_status" in connected and "last_synced_at" in connected
 
     status = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{src['id']}/status", headers=_auth(api_key)
+        f"/api/v1/me/sources/{src['id']}/status", headers=_auth(api_key)
     )
     assert status.status_code == 200
     assert status.json()["item_count"] == 1
@@ -2135,7 +2129,7 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
         display_name="Snowflake",
     )
     sf_status = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{sf['id']}/status", headers=_auth(api_key)
+        f"/api/v1/me/sources/{sf['id']}/status", headers=_auth(api_key)
     )
     assert sf_status.json()["item_count"] is None
 
@@ -2235,13 +2229,13 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
 
     folder = await client.post(
-        f"/api/v1/workspaces/{ws}/folders",
+        "/api/v1/me/folders",
         json={"name": "Bundle"},
         headers=_auth(api_key),
     )
     assert folder.status_code == 201
     skill = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder.json()["id"], "title": "Bundle"},
         headers=_auth(api_key),
     )
@@ -2249,7 +2243,7 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
+        f"/api/v1/me/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "Auth"},
         headers=_auth(api_key),
     )
@@ -2299,13 +2293,13 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
     monkeypatch.setattr(indexer, "fetch_drive_content", fail_fetch)
 
     folder = await client.post(
-        f"/api/v1/workspaces/{ws}/folders",
+        "/api/v1/me/folders",
         json={"name": "Bundle"},
         headers=_auth(api_key),
     )
     assert folder.status_code == 201
     skill = await client.post(
-        f"/api/v1/workspaces/{ws}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder.json()["id"], "title": "Bundle"},
         headers=_auth(api_key),
     )
@@ -2313,7 +2307,7 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
     skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
+        f"/api/v1/me/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "Auth"},
         headers=_auth(api_key),
     )
@@ -2338,7 +2332,6 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
     api_key, owner_id = await _register(client)
     other_key, other_id = await _register(client, "other_snap")
     ws_a = await _user_scope(client, api_key)
-    ws_b = other_id
     src = await source_service.create_source(
         owner_user_id=owner_id,
         source_type="slack",
@@ -2358,14 +2351,14 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
     folder = await client.post(
-        f"/api/v1/workspaces/{ws_b}/folders",
+        "/api/v1/me/folders",
         json={"name": "Bundle"},
         headers=_auth(other_key),
     )
     assert folder.status_code == 201
     folder_id = folder.json()["id"]
     skill = await client.post(
-        f"/api/v1/workspaces/{ws_b}/skills",
+        "/api/v1/me/skills",
         json={"folder_id": folder_id, "title": "Bundle"},
         headers=_auth(other_key),
     )
@@ -2373,7 +2366,7 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
     skill_id = skill.json()["id"]
 
     snap = await client.post(
-        f"/api/v1/workspaces/{ws_b}/skills/{skill_id}/snapshot-source",
+        f"/api/v1/me/skills/{skill_id}/snapshot-source",
         json={"source_id": src["id"], "path": "eng/1"},
         headers=_auth(other_key),
     )
@@ -2397,7 +2390,7 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
     ws = await _user_scope(client, api_key)
 
     page = await client.post(
-        f"/api/v1/workspaces/{ws}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Runbook", "content": "# Deploy\nrun the migration first"},
         headers=_auth(api_key),
     )
@@ -2421,21 +2414,21 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
 
     # Browse a connected source like a file system.
     entries = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{src['id']}/entries", headers=_auth(api_key)
+        f"/api/v1/me/sources/{src['id']}/entries", headers=_auth(api_key)
     )
     assert entries.status_code == 200
     assert any(e["path"] == "specs/auth.md" for e in entries.json()["entries"])
 
     # Browse native files.
     files = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{source_service.NATIVE_FILES}/entries",
+        f"/api/v1/me/sources/{source_service.NATIVE_FILES}/entries",
         headers=_auth(api_key),
     )
     assert any(e["name"] == "Runbook" for e in files.json()["entries"])
 
     # Read a connected-source document and a native page.
     doc = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{src['id']}/doc",
+        f"/api/v1/me/sources/{src['id']}/doc",
         params={"ref": "specs/auth.md"},
         headers=_auth(api_key),
     )
@@ -2443,7 +2436,7 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
     assert "rotate tokens hourly" in doc.json()["content"]
 
     native_doc = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/{source_service.NATIVE_FILES}/doc",
+        f"/api/v1/me/sources/{source_service.NATIVE_FILES}/doc",
         params={"ref": page_id},
         headers=_auth(api_key),
     )
@@ -2452,14 +2445,14 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
 
     # Unscoped search spans native pages + the connected source.
     everything = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/search", params={"q": "migration"}, headers=_auth(api_key)
+        "/api/v1/me/sources/search", params={"q": "migration"}, headers=_auth(api_key)
     )
     assert everything.status_code == 200
     assert any(h["source"] == source_service.NATIVE_FILES for h in everything.json()["results"])
 
     # Scoped search hits only the named source.
     scoped = await client.get(
-        f"/api/v1/workspaces/{ws}/sources/search",
+        "/api/v1/me/sources/search",
         params={"q": "rotate tokens", "source": src["id"]},
         headers=_auth(api_key),
     )
@@ -2472,7 +2465,6 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
     every VFS endpoint resolves it as a not-found source (the scope itself is
     owner-private, so the non-owner gets 404 on every path)."""
     owner_key, owner_id = await _register(client, "owner")
-    ws = await _user_scope(client, owner_key)
     src = await source_service.create_source(
         owner_user_id=owner_id,
         source_type="github_repo",
@@ -2483,16 +2475,17 @@ async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
     other_key, _ = await _register(client, "other")
 
     for path, params in (
-        (f"/api/v1/workspaces/{ws}/sources/{src['id']}/entries", {}),
-        (f"/api/v1/workspaces/{ws}/sources/{src['id']}/doc", {"ref": "x"}),
-        (f"/api/v1/workspaces/{ws}/sources/search", {"q": "anything", "source": src["id"]}),
+        (f"/api/v1/me/sources/{src['id']}/entries", {}),
+        (f"/api/v1/me/sources/{src['id']}/doc", {"ref": "x"}),
+        ("/api/v1/me/sources/search", {"q": "anything", "source": src["id"]}),
     ):
         resp = await client.get(path, params=params, headers=_auth(other_key))
         assert resp.status_code == 404, path
 
-    # The source never leaks into the other user's listing either.
-    other_listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(other_key))
-    assert other_listing.status_code == 404
+    # The source never leaks into the other user's own listing either.
+    other_listing = await client.get("/api/v1/me/sources", headers=_auth(other_key))
+    assert other_listing.status_code == 200
+    assert src["id"] not in {s["source"] for s in other_listing.json()["sources"]}
 
 
 # --- Linear: navigable + searchable source ----------------------------------
