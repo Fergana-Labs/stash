@@ -7,17 +7,16 @@ import remarkGfm from "remark-gfm";
 import { DocumentBodySkeleton, SkeletonBlock } from "../SkeletonStates";
 
 // Single source of truth for "show this file inline by content type."
-// Used from the workspace file viewer (/workspaces/{ws}/f/{fileId}) and
-// from the skill detail page's SingleFilePreview, so both surfaces render
-// PDFs, images, markdown, and plain text the same way. CSV stays out of
-// scope — the workspace viewer redirects CSVs to /tables/{id}, and the
-// skill viewer doesn't ingest.
+// Used from the file viewer (/f/{fileId}) and from the skill detail page's
+// SingleFilePreview, so both surfaces render PDFs, images, markdown, and
+// plain text the same way. CSV stays out of scope — the file viewer
+// redirects CSVs to /tables/{id}, and the skill viewer doesn't ingest.
 
 interface Props {
   url: string;
   name: string;
   contentType: string;
-  /** Layout for the markdown article. The workspace viewer wraps in
+  /** Layout for the markdown article. The file viewer wraps in
    *  a flex container with overflow-auto; the skill detail page sits
    *  inside a fixed-width column. Both want a centered article. */
   className?: string;

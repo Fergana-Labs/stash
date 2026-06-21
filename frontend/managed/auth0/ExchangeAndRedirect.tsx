@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { API_BASE, getAuth0AccessToken, listMyWorkspaces, revokeStoredApiKey } from "@/lib/api";
+import { API_BASE, getAuth0AccessToken, revokeStoredApiKey } from "@/lib/api";
 
 type Props = {
   cliSession?: string | null;
@@ -61,15 +61,8 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
         router.push("/onboarding");
         return;
       }
-      // Returning user. If the workspace lookup hiccups (transient backend),
-      // don't flash a "sign-in failed" error; just land on /, which can
-      // reload the list itself.
-      const target = await listMyWorkspaces()
-        .then(({ workspaces }) =>
-          workspaces.length === 1 ? `/workspaces/${workspaces[0].id}` : "/",
-        )
-        .catch(() => "/");
-      if (!cancelled) router.push(target);
+      // Returning user: land on their home.
+      if (!cancelled) router.push("/");
     })();
     return () => {
       cancelled = true;

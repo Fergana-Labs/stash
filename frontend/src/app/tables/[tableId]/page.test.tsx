@@ -86,7 +86,7 @@ vi.mock("../../../lib/api", () => api);
 
 const table = {
   id: "table-1",
-  workspace_id: "ws-1",
+  owner_user_id: "user-1",
   name: "Prospects",
   description: "",
   columns: [
@@ -152,7 +152,6 @@ describe("TableEditorPage row creation", () => {
     api.summarizeTableRows.mockResolvedValue({ total_rows: 2, columns: {} });
     api.listTableRows.mockImplementation(
       async (
-        _workspaceId: string | null,
         _tableId: string,
         params?: { offset?: number },
       ) => {
@@ -176,15 +175,13 @@ describe("TableEditorPage row creation", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads the table by ID alone and scopes rows to its canonical workspace", async () => {
+  it("loads the table by ID alone and scopes rows to the current user", async () => {
     render(<TableEditorPage />);
 
     expect(await screen.findByText("Alice")).toBeInTheDocument();
-    // The URL carries no workspaceId; the table's own workspace_id must
-    // drive every workspace-scoped call, so links can never go stale.
+    // The scope is the current user; calls take only the table ID.
     expect(api.getTable).toHaveBeenCalledWith("table-1");
     expect(api.listTableRows).toHaveBeenCalledWith(
-      "ws-1",
       "table-1",
       expect.objectContaining({ offset: 0 }),
     );
@@ -207,7 +204,7 @@ describe("TableEditorPage row creation", () => {
     fireEvent.pointerUp(document, { clientX: 180 });
 
     await waitFor(() =>
-      expect(api.updateTableColumn).toHaveBeenCalledWith("ws-1", "table-1", "name", {
+      expect(api.updateTableColumn).toHaveBeenCalledWith("table-1", "name", {
         width: 260,
       }),
     );
@@ -221,13 +218,12 @@ describe("TableEditorPage row creation", () => {
     fireEvent.click(screen.getByRole("button", { name: /\+ New row/i }));
 
     await waitFor(() =>
-      expect(api.createTableRow).toHaveBeenCalledWith("ws-1", "table-1", {}),
+      expect(api.createTableRow).toHaveBeenCalledWith("table-1", {}),
     );
 
     expect(screen.queryByText("1 more rows")).not.toBeInTheDocument();
     expect(screen.getAllByText("Joao Nunes")).toHaveLength(1);
     expect(api.listTableRows).not.toHaveBeenCalledWith(
-      "ws-1",
       "table-1",
       expect.objectContaining({ offset: 2 }),
     );
@@ -239,9 +235,8 @@ describe("TableEditorPage row creation", () => {
       skill: {
         id: "skill-1",
         title: "Shared Skill",
-        workspace_id: "ws-1",
+        owner_user_id: "user-1",
       },
-      workspace_name: "Demo",
       folder_name: "Shared Skill",
       contents: {
         subfolders: [],
@@ -283,7 +278,7 @@ describe("TableEditorPage row creation", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+      expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-1", {
         name: "Alicia",
       }),
     );
@@ -292,7 +287,7 @@ describe("TableEditorPage row creation", () => {
     fireEvent.keyDown(document, { key: "z", metaKey: true });
 
     await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenLastCalledWith("ws-1", "table-1", "row-1", {
+      expect(api.updateTableRow).toHaveBeenLastCalledWith("table-1", "row-1", {
         name: "Alice",
       }),
     );
@@ -363,12 +358,12 @@ describe("TableEditorPage row creation", () => {
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
 
-  it("undoes a committed cell edit while another cell editor is focused", async () => {
+  it("leaves cmd-z to native text undo while another cell editor is focused", async () => {
     const editedRow = {
       ...existingRows[0],
       data: { name: "Alicia" },
     };
-    api.updateTableRow.mockResolvedValueOnce(editedRow).mockResolvedValueOnce(existingRows[0]);
+    api.updateTableRow.mockResolvedValueOnce(editedRow);
 
     render(<TableEditorPage />);
 
@@ -382,16 +377,15 @@ describe("TableEditorPage row creation", () => {
       await Promise.resolve();
     });
 
+    // With a cell editor focused, cmd-z must stay as the browser's native
+    // text undo — it must not be hijacked into a table-level undo that
+    // silently reverts the already-committed edit in another row.
     fireEvent.click(screen.getByText("Bob"));
     const nextInput = await screen.findByLabelText("Edit row 2 Name");
-    fireEvent.keyDown(nextInput, { key: "z", metaKey: true });
+    expect(fireEvent.keyDown(nextInput, { key: "z", metaKey: true })).toBe(true);
 
-    await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenLastCalledWith("ws-1", "table-1", "row-1", {
-        name: "Alice",
-      }),
-    );
-    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(api.updateTableRow).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Alicia")).toBeInTheDocument();
   });
 
   it("leaves native cell input undo alone when there is no table undo history", async () => {
@@ -430,7 +424,7 @@ describe("TableEditorPage row creation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+      expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-1", {
         name: linkedValue,
       }),
     );
@@ -474,7 +468,7 @@ describe("TableEditorPage row creation", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() =>
-      expect(api.createTableRow).toHaveBeenCalledWith("ws-1", "table-1", {
+      expect(api.createTableRow).toHaveBeenCalledWith("table-1", {
         name: "Charlie",
       }),
     );
@@ -503,7 +497,7 @@ describe("TableEditorPage row creation", () => {
     fireEvent.keyDown(document, { key: "z", metaKey: true });
 
     await waitFor(() =>
-      expect(api.deleteTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-4"),
+      expect(api.deleteTableRow).toHaveBeenCalledWith("table-1", "row-4"),
     );
     expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
   });
@@ -555,7 +549,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
       has_more: false,
     });
     api.updateTableRow.mockImplementation(
-      async (_ws: string, _t: string, rowId: string, data: Record<string, unknown>) => {
+      async (_t: string, rowId: string, data: Record<string, unknown>) => {
         const base = twoColRows.find((r) => r.id === rowId)!;
         return { ...base, data: { ...base.data, ...data } };
       },
@@ -583,12 +577,12 @@ describe("TableEditorPage block paste from spreadsheets", () => {
     pasteInto(input, "A1\tB1\tdropped\nA2\tB2\tdropped\n");
 
     await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+      expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-1", {
         name: "A1",
         role: "B1",
       }),
     );
-    expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-2", {
+    expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-2", {
       name: "A2",
       role: "B2",
     });
@@ -605,11 +599,11 @@ describe("TableEditorPage block paste from spreadsheets", () => {
     pasteInto(input, "Designer\nSales\n");
 
     await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+      expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-1", {
         role: "Designer",
       }),
     );
-    expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-2", {
+    expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-2", {
       role: "Sales",
     });
   });
@@ -628,11 +622,11 @@ describe("TableEditorPage block paste from spreadsheets", () => {
     pasteInto(input, "Bobby\tCOO\nCarol\tCTO\n");
 
     await waitFor(() =>
-      expect(api.createTableRowsBatch).toHaveBeenCalledWith("ws-1", "table-1", [
+      expect(api.createTableRowsBatch).toHaveBeenCalledWith("table-1", [
         { data: { name: "Carol", role: "CTO" } },
       ]),
     );
-    expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-2", {
+    expect(api.updateTableRow).toHaveBeenCalledWith("table-1", "row-2", {
       name: "Bobby",
       role: "COO",
     });
@@ -655,7 +649,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
     pasteInto(input, "Carol\tCTO\nDan\tCFO\n");
 
     await waitFor(() =>
-      expect(api.createTableRowsBatch).toHaveBeenCalledWith("ws-1", "table-1", [
+      expect(api.createTableRowsBatch).toHaveBeenCalledWith("table-1", [
         { data: { name: "Carol", role: "CTO" } },
         { data: { name: "Dan", role: "CFO" } },
       ]),
@@ -676,7 +670,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
     fireEvent.keyDown(document, { key: "z", metaKey: true });
 
     await waitFor(() =>
-      expect(api.updateTableRow).toHaveBeenLastCalledWith("ws-1", "table-1", "row-2", {
+      expect(api.updateTableRow).toHaveBeenLastCalledWith("table-1", "row-2", {
         name: "Bob",
         role: "PM",
       }),

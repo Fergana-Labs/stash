@@ -12,7 +12,7 @@ import {
   deleteFolder,
   deleteTable,
   getFolderContents,
-  getWorkspaceTree,
+  getTree,
   listFiles,
   listTables,
   restoreItem,
@@ -27,9 +27,9 @@ import {
 import type {
   FolderTreeNode,
   PageSummary,
-  WorkspaceTree,
+  Tree,
 } from "../../../lib/types";
-import { refreshWorkspaceSidebar } from "../../../lib/skillNavigationCache";
+import { refreshSidebar } from "../../../lib/skillNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
 import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { useWorkspaceRecents } from "../../../lib/pins";
@@ -43,7 +43,6 @@ import QuickAccess from "./QuickAccess";
 import { type GridItem, type ItemKind } from "./kind";
 
 interface Props {
-  workspaceId: string;
   folderId: string | null;
   // Base path for folder links. Defaults to the plain Files folder route;
   // the skill browser passes its own route so navigation stays in skill-land.
@@ -64,17 +63,17 @@ export interface FBDragPayload {
 }
 
 type View = "list" | "column" | "grid";
-// Which set of files you're looking at: your workspace's drive, or items other
+// Which set of files you're looking at: your own drive, or items other
 // people shared with you. Only selectable at root — folders are always "mine".
 type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
-export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHrefBase }: Props) {
+export default function WorkspaceFileBrowser({ folderId, folderHrefBase }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
 
-  const [tree, setTree] = useState<WorkspaceTree | null>(null);
+  const [tree, setTree] = useState<Tree | null>(null);
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [contentsLoaded, setContentsLoaded] = useState(false);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
@@ -83,14 +82,14 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
   const [view, setView] = useState<View>("grid");
   const [scope, setScope] = useState<Scope>("mine");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const pins = useFilePins(workspaceId);
-  const recents = useWorkspaceRecents(workspaceId);
+  const pins = useFilePins();
+  const recents = useWorkspaceRecents();
 
   // Selection is scoped to the current listing, so reset it when the folder
-  // (or workspace) changes.
+  // changes.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [folderId, workspaceId]);
+  }, [folderId]);
 
   function toggleSelect(item: GridItem) {
     setSelectedIds((current) => {
@@ -132,19 +131,19 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     return () => window.clearTimeout(t);
   }, [undo]);
 
-  // Load workspace tree once per workspace; powers the Column view + Quick
-  // Access. It's supplementary — a non-member opening a *shared* folder can't
-  // read the whole tree (403), but the folder's own contents still load below,
-  // so a tree failure must not surface a blocking "Not a workspace member" error.
+  // Load the file tree; powers the Column view + Quick Access. It's
+  // supplementary — opening a *shared* folder you don't own can't read the
+  // whole tree (403), but the folder's own contents still load below, so a
+  // tree failure must not surface a blocking error.
   const loadTree = useCallback(async () => {
     try {
-      const t = await getWorkspaceTree(workspaceId);
+      const t = await getTree();
       setTree(t);
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) return;
-      setError(e instanceof Error ? e.message : "Failed to load workspace");
+      setError(e instanceof Error ? e.message : "Failed to load files");
     }
-  }, [workspaceId]);
+  }, []);
 
   // Load whatever is in the center grid right now. For a real folder this is
   // /folders/{id}/contents. For the root view there's no such endpoint, so we
@@ -153,7 +152,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     setContentsLoaded(false);
     if (folderId) {
       try {
-        const c = await getFolderContents(workspaceId, folderId);
+        const c = await getFolderContents(folderId);
         setContents(c);
         setRootFiles([]);
         setRootTables([]);
@@ -165,9 +164,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     } else {
       try {
         const [t, allFiles, tablesResp] = await Promise.all([
-          getWorkspaceTree(workspaceId),
-          listFiles(workspaceId),
-          listTables(workspaceId),
+          getTree(),
+          listFiles(),
+          listTables(),
         ]);
         setTree(t);
         setContents(null);
@@ -191,7 +190,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
         setContentsLoaded(true);
       }
     }
-  }, [workspaceId, folderId]);
+  }, [folderId]);
 
   useEffect(() => {
     loadTree();
@@ -263,7 +262,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     ];
   }, [folderId, contents, tree, rootFiles, rootTables]);
 
-  // Every folder/page/file in the workspace, flattened, so Pinned + Recent can
+  // Every folder/page/file you own, flattened, so Pinned + Recent can
   // resolve and surface items that live anywhere — not just at the root.
   const allItems: GridItem[] = useMemo(() => {
     if (!tree) return [];
@@ -321,7 +320,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     if (payload.kind === "folder" && payload.id === targetFolderId) return;
     if (payload.kind === "folder") {
       await updateFolder(
-        workspaceId,
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
@@ -329,7 +327,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
       );
     } else if (payload.kind === "page" || payload.kind === "html") {
       await updatePage(
-        workspaceId,
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
@@ -338,7 +335,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     } else if (payload.kind === "datatable") {
       // Standalone tables live in their own `tables` table.
       await updateTable(
-        workspaceId,
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
@@ -348,7 +344,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
       // A "table" item here is a CSV file linked to a table — it lives in the
       // files table, so it moves like any other file.
       await updateFile(
-        workspaceId,
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
@@ -379,7 +374,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
 
   function hrefForItem(item: GridItem): string {
     if (item.kind === "folder") {
-      return `${folderHrefBase ?? `/workspaces/${workspaceId}/folders`}/${item.id}`;
+      return `${folderHrefBase ?? "/folders"}/${item.id}`;
     }
     if (item.kind === "page" || item.kind === "html") {
       return `/p/${item.id}`;
@@ -409,7 +404,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
       const file = input.files?.[0];
       if (!file) return;
       try {
-        const result = await uploadFileOrPage(workspaceId, file, folderId ?? undefined);
+        const result = await uploadFileOrPage(file, folderId ?? undefined);
         if (result.kind === "page") {
           router.push(`/p/${result.page.id}`);
           return;
@@ -424,8 +419,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
 
   async function handleNewPage() {
     try {
-      const p = await createPage(workspaceId, "Untitled", folderId ?? undefined);
-      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      const p = await createPage("Untitled", folderId ?? undefined);
+      refreshSidebar().catch(() => {});
       router.push(`/p/${p.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create page");
@@ -434,13 +429,13 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
 
   async function handleNewTable() {
     try {
-      const table = await createTable(workspaceId, "Untitled table");
+      const table = await createTable("Untitled table");
       // createTable has no folder param, so move the new table into the
       // current folder before navigating.
       if (folderId) {
-        await updateTable(workspaceId, table.id, { folder_id: folderId });
+        await updateTable(table.id, { folder_id: folderId });
       }
-      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      refreshSidebar().catch(() => {});
       router.push(`/tables/${table.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create table");
@@ -451,9 +446,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     const name = window.prompt("Folder name?");
     if (!name?.trim()) return;
     try {
-      await createFolder(workspaceId, name.trim(), folderId ?? undefined);
+      await createFolder(name.trim(), folderId ?? undefined);
       await refreshAll();
-      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      refreshSidebar().catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create folder");
     }
@@ -468,7 +463,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
       });
       if (!yes) return;
       try {
-        await deleteFolder(workspaceId, item.id);
+        await deleteFolder(item.id);
         await refreshAll();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Delete failed");
@@ -484,7 +479,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
       });
       if (!yes) return;
       try {
-        await deleteTable(workspaceId, item.id);
+        await deleteTable(item.id);
         await refreshAll();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Delete failed");
@@ -493,7 +488,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     }
     const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
     try {
-      await trashItem(workspaceId, kind, item.id);
+      await trashItem(kind, item.id);
       await refreshAll();
       setUndo({ kind, id: item.id, name: item.name });
     } catch (e) {
@@ -515,12 +510,12 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     try {
       for (const item of targets) {
         if (item.kind === "folder") {
-          await deleteFolder(workspaceId, item.id);
+          await deleteFolder(item.id);
         } else if (item.kind === "datatable") {
-          await deleteTable(workspaceId, item.id);
+          await deleteTable(item.id);
         } else {
           const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
-          await trashItem(workspaceId, kind, item.id);
+          await trashItem(kind, item.id);
         }
       }
       await refreshAll();
@@ -535,7 +530,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     const { kind, id } = undo;
     setUndo(null);
     try {
-      await restoreItem(workspaceId, kind, id);
+      await restoreItem(kind, id);
       await refreshAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
@@ -550,21 +545,21 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
     next: string
   ): Promise<string> {
     if (kind === "folder") {
-      const updated = await updateFolder(workspaceId, id, { name: next });
+      const updated = await updateFolder(id, { name: next });
       await refreshAll();
       return updated.name;
     }
     if (kind === "page" || kind === "html") {
-      const updated = await updatePage(workspaceId, id, { name: next });
+      const updated = await updatePage(id, { name: next });
       await refreshAll();
       return updated.name;
     }
     if (kind === "datatable") {
-      const updated = await updateTable(workspaceId, id, { name: next });
+      const updated = await updateTable(id, { name: next });
       await refreshAll();
       return updated.name;
     }
-    const updated = await updateFile(workspaceId, id, { name: next });
+    const updated = await updateFile(id, { name: next });
     await refreshAll();
     return updated.name;
   }
@@ -679,7 +674,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
               )}
               {view === "column" && (
                 <ItemsColumns
-                  workspaceId={workspaceId}
                   rootItems={rootItems}
                   onNavigate={navigateTo}
                   onReparent={reparent}
@@ -743,7 +737,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId, folderHref
   );
 }
 
-// Drive-style root selector: your workspace's files vs items shared with you.
+// Drive-style root selector: your own files vs items shared with you.
 function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) => void }) {
   const tabs: { key: Scope; label: string }[] = [
     { key: "mine", label: "My files" },

@@ -12,8 +12,8 @@ import SkillPageClient from "./SkillPageClient";
 import {
   ShellChromeProvider,
   useShellChromeValue,
-} from "../../../../components/ShellChromeContext";
-import { ConfirmDialogProvider } from "../../../../components/ConfirmDialog";
+} from "@/components/ShellChromeContext";
+import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 import {
   getPublicSkill,
   listObjectShares,
@@ -21,7 +21,7 @@ import {
   unpublishSkill,
   updateSkill,
   type PublicSkillDetail,
-} from "../../../../lib/api";
+} from "@/lib/api";
 
 const authState = vi.hoisted(() => ({
   user: null as null | {
@@ -112,7 +112,7 @@ function skillDetail(
   return {
     skill: {
       id: "skill-1",
-      workspace_id: "workspace-1",
+      owner_user_id: "user-1",
       folder_id: "folder-1",
       slug: "shared-skill",
       title: "Shared Skill",
@@ -129,7 +129,6 @@ function skillDetail(
       updated_at: "2026-05-11T00:00:00Z",
       ...skill,
     },
-    workspace_name: "Demo Workspace",
     folder_name: "Shared Skill",
     contents: emptyContents(),
     can_write: false,

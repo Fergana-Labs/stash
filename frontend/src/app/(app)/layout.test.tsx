@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppGroupLayout from "./layout";
 
 const route = vi.hoisted(() => ({
-  pathname: "/workspaces/ws-1",
+  pathname: "/",
   search: "",
   push: vi.fn(),
   auth: {
@@ -53,7 +53,7 @@ const user = {
 
 describe("AppGroupLayout", () => {
   beforeEach(() => {
-    route.pathname = "/workspaces/ws-1";
+    route.pathname = "/";
     route.search = "";
     route.auth = {
       user,
@@ -70,15 +70,15 @@ describe("AppGroupLayout", () => {
   it("keeps normal signed-in app routes inside the app shell", () => {
     render(
       <AppGroupLayout>
-        <div>Workspace content</div>
+        <div>App content</div>
       </AppGroupLayout>,
     );
 
-    expect(screen.getByTestId("app-shell")).toHaveTextContent("Workspace content");
+    expect(screen.getByTestId("app-shell")).toHaveTextContent("App content");
   });
 
-  it("renders workspace Skill item routes without app chrome", () => {
-    route.pathname = "/workspaces/ws-1/p/page-1";
+  it("renders Skill item deep-link routes without app chrome", () => {
+    route.pathname = "/p/page-1";
     route.search = "skill=shared-skill";
 
     render(

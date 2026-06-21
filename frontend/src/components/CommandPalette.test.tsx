@@ -2,11 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommandPalette from "./CommandPalette";
-import {
-  getCachedWorkspaceSidebar,
-  readCachedWorkspaceSidebar,
-} from "../lib/skillNavigationCache";
-import { listAllTables, semanticSearchPages } from "../lib/api";
+import { getSidebar, listAllTables, semanticSearchPages } from "../lib/api";
 
 const searchPlaceholder = "Search Skill or jump to a page, session, file, or table...";
 
@@ -42,12 +38,8 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("../lib/skillNavigationCache", () => ({
-  readCachedWorkspaceSidebar: vi.fn(),
-  getCachedWorkspaceSidebar: vi.fn(),
-}));
-
 vi.mock("../lib/api", () => ({
+  getSidebar: vi.fn(),
   listAllTables: vi.fn(),
   semanticSearchPages: vi.fn(),
 }));
@@ -75,13 +67,11 @@ function renderPalette() {
       open
       onClose={vi.fn()}
       anchorRef={{ current: null }}
-      workspaceId="ws-1"
-      workspaceName="Demo Workspace"
       searchScope={{
-        kind: "workspace",
-        label: "Demo Workspace",
-        detail: "Search this workspace",
-        params: { workspace: "ws-1" },
+        kind: "all",
+        label: "Stash",
+        detail: "Search everything",
+        params: {},
       }}
     />
   );
@@ -91,8 +81,7 @@ describe("CommandPalette search", () => {
   beforeEach(() => {
     router.push.mockClear();
     vi.clearAllMocks();
-    vi.mocked(readCachedWorkspaceSidebar).mockReturnValue(sidebar);
-    vi.mocked(getCachedWorkspaceSidebar).mockResolvedValue(sidebar);
+    vi.mocked(getSidebar).mockResolvedValue(sidebar);
     vi.mocked(listAllTables).mockResolvedValue({ tables: [] });
     vi.mocked(semanticSearchPages).mockResolvedValue([]);
   });
@@ -109,29 +98,37 @@ describe("CommandPalette search", () => {
     });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(router.push).toHaveBeenCalledWith("/search?workspace=ws-1&q=roadmap");
+    expect(router.push).toHaveBeenCalledWith("/search?q=roadmap");
   });
 
-  it("keeps jump results available after the full-page search action", () => {
+  it("keeps jump results available after the full-page search action", async () => {
     renderPalette();
 
     fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
       target: { value: "roadmap" },
     });
+
+    expect(await screen.findByText("Launch Roadmap")).toBeInTheDocument();
+
+    // The window keydown listener re-subscribes in a passive effect after the
+    // page result lands; flush it so ArrowDown binds to the full result list
+    // (search action + page) rather than the stale search-only list.
+    await act(async () => {});
+
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });
 
     expect(router.push).toHaveBeenCalledWith("/p/page-1");
   });
 
-  it("finds matching tables in the active workspace", async () => {
+  it("finds matching tables", async () => {
     vi.mocked(listAllTables).mockResolvedValue({
       tables: [
         {
           id: "table-1",
-          workspace_id: "ws-1",
+          owner_user_id: "user-1",
           folder_id: null,
-          workspace_name: "Demo Workspace",
+          owner_display_name: "Demo User",
           name: "Hiring Outreach CRM",
           description: "",
           columns: [],

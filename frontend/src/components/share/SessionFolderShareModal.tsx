@@ -32,12 +32,10 @@ function permissionsFor(v: SessionFolderVisibility): {
 
 export default function SessionFolderShareModal({
   folder,
-  workspaceId,
   onClose,
   onChanged,
 }: {
   folder: SessionFolder;
-  workspaceId: string;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -69,7 +67,7 @@ export default function SessionFolderShareModal({
     setBusy(true);
     setError("");
     try {
-      await updateSessionFolder(workspaceId, folder.id, permissionsFor(next));
+      await updateSessionFolder(folder.id, permissionsFor(next));
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update visibility");

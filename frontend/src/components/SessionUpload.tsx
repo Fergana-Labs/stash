@@ -6,7 +6,6 @@ import { uploadTranscript } from "../lib/api";
 type Status = "idle" | "uploading" | "done" | "error";
 
 interface SessionUploadProps {
-  workspaceId: string;
   onUploaded?: () => void;
 }
 
@@ -18,7 +17,7 @@ function defaultSessionId(file: File): string {
   return file.name.replace(/\.jsonl$/i, "").trim();
 }
 
-export default function SessionUpload({ workspaceId, onUploaded }: SessionUploadProps) {
+export default function SessionUpload({ onUploaded }: SessionUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
@@ -41,7 +40,7 @@ export default function SessionUpload({ workspaceId, onUploaded }: SessionUpload
     setStatus("uploading");
     setMessage(`Uploading ${file.name}...`);
     try {
-      const result = await uploadTranscript(workspaceId, file, sessionId, "manual-upload");
+      const result = await uploadTranscript(file, sessionId, "manual-upload");
       setStatus("done");
       setMessage(
         result.skipped

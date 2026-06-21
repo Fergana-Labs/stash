@@ -5,11 +5,9 @@ import { useEffect } from "react";
 import SourceConnectorList from "./SourceConnectorList";
 
 export default function AddSourceModal({
-  workspaceId,
   returnTo,
   onClose,
 }: {
-  workspaceId: string;
   returnTo: string;
   onClose: () => void;
 }) {
@@ -46,7 +44,7 @@ export default function AddSourceModal({
             ×
           </button>
         </div>
-        <SourceConnectorList workspaceId={workspaceId} returnTo={returnTo} />
+        <SourceConnectorList returnTo={returnTo} />
       </div>
     </div>
   );

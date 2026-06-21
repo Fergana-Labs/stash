@@ -14,11 +14,9 @@ import {
 // (the chat is a stored Session), so `sessionId` lets a reopened tab reload
 // its history. `onSessionId` fires when the server mints one on the first turn.
 export default function ChatPanel({
-  workspaceId,
   sessionId,
   onSessionId,
 }: {
-  workspaceId: string;
   sessionId: string | null;
   onSessionId: (id: string) => void;
 }) {
@@ -35,12 +33,12 @@ export default function ChatPanel({
   useEffect(() => {
     if (!sessionId || loadedSession === sessionId) return;
     setLoadedSession(sessionId);
-    getAgentChat(workspaceId, sessionId)
+    getAgentChat(sessionId)
       .then((msgs) => {
         if (msgs.length > 0) setMessages(msgs);
       })
       .catch(() => {});
-  }, [workspaceId, sessionId, loadedSession]);
+  }, [sessionId, loadedSession]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -80,7 +78,6 @@ export default function ChatPanel({
 
       try {
         await streamAgentChat({
-          workspaceId,
           sessionId,
           message,
           signal: controller.signal,
@@ -110,7 +107,7 @@ export default function ChatPanel({
         abortRef.current = null;
       }
     },
-    [workspaceId, sessionId, streaming, onSessionId],
+    [sessionId, streaming, onSessionId],
   );
 
   return (
@@ -139,7 +136,7 @@ export default function ChatPanel({
 }
 
 const suggestedPrompts = [
-  "Catch me up on this workspace",
+  "Catch me up on my stash",
   "What changed recently?",
   "Find the planning docs",
 ];
@@ -153,7 +150,7 @@ function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
             Chat with your agent
           </div>
           <p className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-dim">
-            Ask about files, sessions, pages, tables, and connected sources in this workspace.
+            Ask about files, sessions, pages, tables, and connected sources in your stash.
           </p>
         </div>
 
@@ -176,7 +173,7 @@ function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
           </div>
           <p className="mt-1.5 text-[13px] leading-5 text-dim">
             Install the CLI when you want Codex, Claude Code, or another coding agent to push
-            sessions into Skill and search this workspace directly.
+            sessions into Skill and search your stash directly.
           </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <SetupStep n={1} title="Install the Skill CLI">

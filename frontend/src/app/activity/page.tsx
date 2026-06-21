@@ -234,7 +234,6 @@ export default function ActivityPage() {
               <FeedCard
                 key={`${event.kind}-${event.target_id}-${i}`}
                 event={event}
-                showWorkspace
               />
             ))
           )}
@@ -296,7 +295,7 @@ function VitalCard({
   );
 }
 
-function FeedCard({ event, showWorkspace }: { event: ActivityEvent; showWorkspace: boolean }) {
+function FeedCard({ event }: { event: ActivityEvent }) {
   const name = event.actor.display_name;
   const avClass = avatarClassFor(name);
   const initials = name.slice(0, 2).toUpperCase();
@@ -329,14 +328,6 @@ function FeedCard({ event, showWorkspace }: { event: ActivityEvent; showWorkspac
           {event.target_label || event.target_id}
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[11.5px] text-muted">
-          {showWorkspace && event.workspace_name && event.workspace_id && (
-            <Link
-              href={`/workspaces/${event.workspace_id}`}
-              className="font-mono hover:text-foreground"
-            >
-              {event.workspace_name}
-            </Link>
-          )}
           <span className="flex-1" />
           {href && (
             <Link
@@ -356,7 +347,6 @@ function verbFor(kind: string): string {
   if (kind === "session.uploaded") return "pushed a session";
   if (kind === "page.updated") return "edited a page";
   if (kind === "file.uploaded") return "uploaded a file";
-  if (kind === "member.joined") return "joined the workspace";
   if (kind === "skill.published") return "published a Skill";
   return kind;
 }
@@ -369,7 +359,6 @@ function tagFor(kind: string): { kind: "agent" | "human"; label: string } | null
 }
 
 function hrefFor(event: ActivityEvent): string | null {
-  if (!event.workspace_id) return null;
   if (event.kind === "session.uploaded")
     return `/sessions/${encodeURIComponent(event.target_id)}`;
   if (event.kind === "page.updated")

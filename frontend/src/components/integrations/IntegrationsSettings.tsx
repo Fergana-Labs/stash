@@ -1,9 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import { listMyWorkspaces } from "@/lib/api";
-
 import SourceConnectorList from "./SourceConnectorList";
 
 type Props = {
@@ -11,19 +7,6 @@ type Props = {
 };
 
 export default function IntegrationsSettings({ embedded = false }: Props) {
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    listMyWorkspaces()
-      .then(({ workspaces }) => {
-        const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
-        setWorkspaceId(primary?.id ?? null);
-      })
-      .catch(() => setWorkspaceId(null))
-      .finally(() => setLoading(false));
-  }, []);
-
   const body = (
     <>
       <div>
@@ -33,13 +16,7 @@ export default function IntegrationsSettings({ embedded = false }: Props) {
         </p>
       </div>
 
-      {loading ? (
-        <div className="text-xs text-muted">Loading...</div>
-      ) : workspaceId ? (
-        <SourceConnectorList workspaceId={workspaceId} returnTo="/settings" />
-      ) : (
-        <div className="text-xs text-muted">No workspace is available for sources.</div>
-      )}
+      <SourceConnectorList returnTo="/settings" />
     </>
   );
 

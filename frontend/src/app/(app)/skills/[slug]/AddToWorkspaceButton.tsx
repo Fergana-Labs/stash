@@ -1,42 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import {
-  forkSkill,
-  ApiError,
-  listMyWorkspaces,
-} from "../../../../lib/api";
-import type { Workspace } from "../../../../lib/types";
-import { useEscapeKey } from "../../../../hooks/useEscapeKey";
-import CustomSelect from "../../../../components/CustomSelect";
+import { forkSkill, ApiError } from "@/lib/api";
 
-type Props = { slug: string; sourceWorkspaceId: string };
+type Props = { slug: string };
 
-export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props) {
+export default function AddToWorkspaceButton({ slug }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [attached, setAttached] = useState<
-    { workspaceId: string; folderId: string; name: string } | null
+    { folderId: string; name: string } | null
   >(null);
   const [error, setError] = useState<string | null>(null);
-
-  const eligibleWorkspaces = useMemo(
-    () => workspaces.filter((workspace) => workspace.id !== sourceWorkspaceId),
-    [sourceWorkspaceId, workspaces]
-  );
-
-  useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("action") !== "add") return;
-    void loadWorkspaces();
+    void addSkill();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -45,39 +28,18 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
     router.push(`/login?next=${encodeURIComponent(next)}`);
   }
 
-  async function loadWorkspaces() {
+  async function addSkill() {
     setBusy(true);
     setError(null);
     try {
-      const data = await listMyWorkspaces();
-      const nextWorkspaces = data.workspaces;
-      const eligible = nextWorkspaces.filter((workspace) => workspace.id !== sourceWorkspaceId);
-      setWorkspaces(nextWorkspaces);
-      setSelectedWorkspaceId(eligible[0]?.id ?? "");
-      setOpen(true);
-      if (eligible.length === 1) {
-        await attachToWorkspace(eligible[0].id);
-      }
+      const result = await forkSkill(slug);
+      setAttached({ folderId: result.folder_id, name: result.name });
+      router.refresh();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         redirectToLogin();
         return;
       }
-      const message = e instanceof ApiError ? e.message : "Could not load workspaces";
-      setError(message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function attachToWorkspace(workspaceId: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await forkSkill(slug, workspaceId);
-      setAttached({ workspaceId, folderId: result.folder_id, name: result.name });
-      router.refresh();
-    } catch (e) {
       const message = e instanceof ApiError ? e.message : "Could not add skill";
       setError(message);
     } finally {
@@ -85,72 +47,28 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
     }
   }
 
-  function onClick() {
-    void loadWorkspaces();
-  }
-
   return (
     <div className="relative flex flex-col items-end gap-2">
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        className="cursor-pointer rounded-lg border border-brand bg-brand px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-      >
-        {busy ? "Adding..." : "Add to my files"}
-      </button>
+      {attached ? (
+        <button
+          type="button"
+          onClick={() => router.push(`/skills/${attached.folderId}`)}
+          className="cursor-pointer rounded-lg border border-border-subtle px-4 py-2 text-[14px] font-medium text-foreground transition hover:border-brand hover:text-brand"
+        >
+          Open {attached.name}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void addSkill()}
+          disabled={busy}
+          className="cursor-pointer rounded-lg border border-brand bg-brand px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? "Adding..." : "Add to my files"}
+        </button>
+      )}
 
-      {open ? (
-        <div className="absolute right-0 top-12 z-20 w-[300px] rounded-lg border border-border-subtle bg-surface p-3 text-left shadow-lg">
-          {attached ? (
-            <div className="space-y-2">
-              <p className="text-[13px] font-medium text-foreground">
-                Added {attached.name} to your skills
-              </p>
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(`/workspaces/${attached.workspaceId}/skills/${attached.folderId}`)
-                }
-                className="w-full cursor-pointer rounded-md border border-border-subtle px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
-              >
-                Open skill
-              </button>
-            </div>
-          ) : eligibleWorkspaces.length > 0 ? (
-            <div className="space-y-3">
-              <div>
-                <span className="text-[11px] uppercase tracking-wider text-muted">
-                  Workspace
-                </span>
-                <CustomSelect
-                  value={selectedWorkspaceId}
-                  options={eligibleWorkspaces.map((workspace) => ({
-                    value: workspace.id,
-                    label: workspace.name,
-                  }))}
-                  onChange={setSelectedWorkspaceId}
-                  ariaLabel="Workspace"
-                  className="mt-1 w-full rounded-md border border-border-subtle bg-raised px-2 py-2 text-[13px] text-foreground"
-                  menuClassName="text-[13px]"
-                  align="right"
-                />
-              </div>
-              <button
-                type="button"
-                disabled={busy || !selectedWorkspaceId}
-                onClick={() => void attachToWorkspace(selectedWorkspaceId)}
-                className="w-full cursor-pointer rounded-md bg-brand px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
-              >
-                Add Skill
-              </button>
-            </div>
-          ) : (
-            <p className="text-[13px] text-muted">No other workspaces available.</p>
-          )}
-          {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}
-        </div>
-      ) : error ? (
+      {error ? (
         <p className="max-w-[260px] text-right text-[12px] text-red-500">{error}</p>
       ) : null}
     </div>

@@ -12,20 +12,17 @@ import {
   type ChangeEvent,
 } from "react";
 
-import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import DescriptionEditor, {
   isBlankDescription,
-} from "../../../../components/DescriptionEditor";
-import {
-  useActiveWorkspaceId,
-  useShareAction,
-} from "../../../../components/ShellChromeContext";
-import { PublicSkillSkeleton } from "../../../../components/SkeletonStates";
-import { GitHubIcon } from "../../../../components/integrations/BrandIcons";
-import ResourceShareButton from "../../../../components/share/ResourceShareButton";
-import SkillShareButton from "../../../../components/skill/SkillShareButton";
-import { SettingsIcon, SkillIcon } from "../../../../components/SkillIcons";
-import { useAuth } from "../../../../hooks/useAuth";
+} from "@/components/DescriptionEditor";
+import { useShareAction } from "@/components/ShellChromeContext";
+import { PublicSkillSkeleton } from "@/components/SkeletonStates";
+import { GitHubIcon } from "@/components/integrations/BrandIcons";
+import ResourceShareButton from "@/components/share/ResourceShareButton";
+import SkillShareButton from "@/components/skill/SkillShareButton";
+import { SettingsIcon, SkillIcon } from "@/components/SkillIcons";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
   getPublicSkill,
@@ -35,8 +32,8 @@ import {
   type PublicSkillContents,
   type PublicSkillDetail,
   type SkillPublishInfo,
-} from "../../../../lib/api";
-import { SKILL_MD, stripFrontmatter } from "../../../../lib/localSkill";
+} from "@/lib/api";
+import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
 export default function SkillPageClient({ slug }: { slug: string }) {
@@ -73,7 +70,6 @@ export default function SkillPageClient({ slug }: { slug: string }) {
     ],
     `skill/${data?.skill.id ?? "loading"}`,
   );
-  useActiveWorkspaceId(data?.skill.workspace_id ?? null);
 
   // Memo so the registered ReactNode is stable across renders — otherwise the
   // shell-chrome context would loop (AppShell re-renders → SkillPageClient
@@ -98,12 +94,11 @@ export default function SkillPageClient({ slug }: { slug: string }) {
             objectType="folder"
             objectId={skill.folder_id}
             resourceName={skill.title}
-            resourceUrlPath={`/workspaces/${skill.workspace_id}/skills/${skill.folder_id}`}
+            resourceUrlPath={`/skills/folder/${skill.folder_id}`}
             currentUser={user}
           />
         )}
         <SkillShareButton
-          workspaceId={skill.workspace_id}
           folderId={skill.folder_id}
           publish={publish}
           onPublishChange={() => void load()}
@@ -214,7 +209,7 @@ function SkillPageBody({
   data: PublicSkillDetail;
   onRefresh: () => Promise<void>;
 }) {
-  const { skill, workspace_name, contents, can_write } = data;
+  const { skill, contents, can_write } = data;
 
   const cover = skill.cover_image_url
     ? { backgroundImage: `url(${skill.cover_image_url})` }
@@ -242,7 +237,6 @@ function SkillPageBody({
       <BannerImage
         cover={cover}
         canWrite={can_write}
-        workspaceId={skill.workspace_id}
         skillId={skill.id}
         hasCustomCover={!!skill.cover_image_url}
         onChanged={onRefresh}
@@ -255,7 +249,6 @@ function SkillPageBody({
             <SkillIconUpload
               iconUrl={skill.icon_url}
               canWrite={can_write}
-              workspaceId={skill.workspace_id}
               skillId={skill.id}
               onChanged={onRefresh}
             />
@@ -273,12 +266,6 @@ function SkillPageBody({
                   <>
                     <span className="text-muted/60">·</span>
                     <span>updated {relativeTime(skill.updated_at)}</span>
-                  </>
-                )}
-                {workspace_name && (
-                  <>
-                    <span className="text-muted/60">·</span>
-                    <span className="truncate">in {workspace_name}</span>
                   </>
                 )}
                 {skill.source_github_url && (
@@ -311,17 +298,13 @@ function SkillPageBody({
             ) : (
               // Forking only makes sense when the viewer doesn't already have
               // write access to this skill in its own workspace.
-              <AddToWorkspaceButton
-                slug={skill.slug}
-                sourceWorkspaceId={skill.workspace_id}
-              />
+              <AddToWorkspaceButton slug={skill.slug} />
             )}
           </div>
         </div>
 
         <SkillDescriptionEditor
           skillId={skill.id}
-          workspaceId={skill.workspace_id}
           description={skill.description}
           canEdit={can_write}
           onSaved={() => {
@@ -393,20 +376,17 @@ function ContentRowLink({ row }: { row: ContentRow }) {
 }
 
 // Clickable banner. Writers see a faint "Change banner" hint on hover and
-// can upload a new image via the hidden file input. Uploads go through
-// the workspace's file upload path; the resulting URL is saved on the
-// skill record.
+// can upload a new image via the hidden file input. The resulting URL is
+// saved on the skill record.
 function BannerImage({
   cover,
   canWrite,
-  workspaceId,
   skillId,
   hasCustomCover,
   onChanged,
 }: {
   cover: { backgroundImage: string };
   canWrite: boolean;
-  workspaceId: string;
   skillId: string;
   hasCustomCover: boolean;
   onChanged: () => Promise<void>;
@@ -420,7 +400,7 @@ function BannerImage({
     if (!file) return;
     setUploading(true);
     try {
-      const uploaded = await uploadFile(workspaceId, file);
+      const uploaded = await uploadFile(file);
       await updateSkill(skillId, { cover_image_url: uploaded.url });
       await onChanged();
     } finally {
@@ -463,13 +443,11 @@ function BannerImage({
 function SkillIconUpload({
   iconUrl,
   canWrite,
-  workspaceId,
   skillId,
   onChanged,
 }: {
   iconUrl: string | null;
   canWrite: boolean;
-  workspaceId: string;
   skillId: string;
   onChanged: () => Promise<void>;
 }) {
@@ -482,7 +460,7 @@ function SkillIconUpload({
     if (!file) return;
     setUploading(true);
     try {
-      const uploaded = await uploadFile(workspaceId, file);
+      const uploaded = await uploadFile(file);
       await updateSkill(skillId, { icon_url: uploaded.url });
       await onChanged();
     } finally {
@@ -531,13 +509,11 @@ function SkillIconUpload({
 
 function SkillDescriptionEditor({
   skillId,
-  workspaceId,
   description,
   canEdit,
   onSaved,
 }: {
   skillId: string;
-  workspaceId: string;
   description: string;
   canEdit: boolean;
   onSaved: () => void;
@@ -551,7 +527,6 @@ function SkillDescriptionEditor({
         canEdit={canEdit}
         placeholder="Describe this skill…"
         ariaLabel="Skill description"
-        workspaceId={workspaceId}
         onSave={async (html) => {
           await updateSkill(skillId, { description: html });
           onSaved();

@@ -11,12 +11,12 @@ import {
   createTable,
   deleteTable,
   getFolderContents,
-  getWorkspaceTree,
+  getTree,
   listFiles,
   listSharedWithMe,
   listTables,
 } from "../../../lib/api";
-import { refreshWorkspaceSidebar } from "../../../lib/skillNavigationCache";
+import { refreshSidebar } from "../../../lib/skillNavigationCache";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock("../../../lib/api", () => ({
   deleteFolder: vi.fn(),
   deleteTable: vi.fn(),
   getFolderContents: vi.fn(),
-  getWorkspaceTree: vi.fn(),
+  getTree: vi.fn(),
   listFiles: vi.fn(),
   listSharedWithMe: vi.fn(),
   listTables: vi.fn(),
@@ -47,7 +47,7 @@ vi.mock("../../../lib/api", () => ({
 }));
 
 vi.mock("../../../lib/skillNavigationCache", () => ({
-  refreshWorkspaceSidebar: vi.fn(),
+  refreshSidebar: vi.fn(),
 }));
 
 vi.mock("../../../lib/filePins", () => ({
@@ -68,7 +68,7 @@ const createdAt = "2026-06-03T12:00:00Z";
 function table(id: string, name: string, rowCount = 0) {
   return {
     id,
-    workspace_id: "ws-1",
+    owner_user_id: "user-1",
     folder_id: null,
     name,
     description: "",
@@ -85,11 +85,11 @@ function table(id: string, name: string, rowCount = 0) {
 beforeEach(() => {
   localStorage.clear();
   router.push.mockReset();
-  vi.mocked(getWorkspaceTree).mockResolvedValue({ folders: [], pages: [] });
+  vi.mocked(getTree).mockResolvedValue({ folders: [], pages: [] });
   vi.mocked(listFiles).mockResolvedValue([]);
   vi.mocked(listSharedWithMe).mockResolvedValue([]);
   vi.mocked(listTables).mockResolvedValue({ tables: [] });
-  vi.mocked(refreshWorkspaceSidebar).mockResolvedValue({
+  vi.mocked(refreshSidebar).mockResolvedValue({
     sessions: [],
     files: { folders: [], pages: [], files: [] },
     skills: [],
@@ -126,25 +126,24 @@ describe("WorkspaceFileBrowser folder links", () => {
 
     render(
       <WorkspaceFileBrowser
-        workspaceId="ws-1"
         folderId="folder-1"
-        folderHrefBase="/workspaces/ws-1/skills"
+        folderHrefBase="/skills"
       />
     );
 
     fireEvent.click(await screen.findByText("Nested"));
 
-    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/skills/folder-2");
+    expect(router.push).toHaveBeenCalledWith("/skills/folder-2");
   });
 
   it("defaults folder navigation to the Files folder route", async () => {
     vi.mocked(getFolderContents).mockResolvedValue(folderContents());
 
-    render(<WorkspaceFileBrowser workspaceId="ws-1" folderId="folder-1" />);
+    render(<WorkspaceFileBrowser folderId="folder-1" />);
 
     fireEvent.click(await screen.findByText("Nested"));
 
-    expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/folders/folder-2");
+    expect(router.push).toHaveBeenCalledWith("/folders/folder-2");
   });
 });
 
@@ -152,23 +151,23 @@ describe("WorkspaceFileBrowser table creation", () => {
   it("creates a blank table from the + New menu", async () => {
     vi.mocked(createTable).mockResolvedValue(table("table-1", "Untitled table"));
 
-    render(<WorkspaceFileBrowser workspaceId="ws-1" folderId={null} />);
+    render(<WorkspaceFileBrowser folderId={null} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /\+ New/ }));
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
 
     await waitFor(() =>
-      expect(createTable).toHaveBeenCalledWith("ws-1", "Untitled table")
+      expect(createTable).toHaveBeenCalledWith("Untitled table")
     );
-    expect(refreshWorkspaceSidebar).toHaveBeenCalledWith("ws-1");
+    expect(refreshSidebar).toHaveBeenCalled();
     expect(router.push).toHaveBeenCalledWith("/tables/table-1");
   });
 
-  it("shows standalone workspace tables at the root without duplicating CSV-backed tables", async () => {
+  it("shows standalone tables at the root without duplicating CSV-backed tables", async () => {
     vi.mocked(listFiles).mockResolvedValue([
       {
         id: "file-1",
-        workspace_id: "ws-1",
+        owner_user_id: "user-1",
         folder_id: null,
         name: "contacts.csv",
         content_type: "text/csv",
@@ -187,7 +186,7 @@ describe("WorkspaceFileBrowser table creation", () => {
       ],
     });
 
-    render(<WorkspaceFileBrowser workspaceId="ws-1" folderId={null} />);
+    render(<WorkspaceFileBrowser folderId={null} />);
 
     fireEvent.click(await screen.findByText("Budget"));
 
@@ -204,7 +203,7 @@ describe("WorkspaceFileBrowser table creation", () => {
     });
     vi.mocked(deleteTable).mockResolvedValue(undefined);
 
-    render(<WorkspaceFileBrowser workspaceId="ws-1" folderId={null} />);
+    render(<WorkspaceFileBrowser folderId={null} />);
 
     await screen.findByText("Budget");
     fireEvent.click(screen.getByLabelText("Delete"));
@@ -213,7 +212,8 @@ describe("WorkspaceFileBrowser table creation", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
-      expect(deleteTable).toHaveBeenCalledWith("ws-1", "table-standalone")
+      expect(deleteTable).toHaveBeenCalledWith("table-standalone")
     );
   });
 });
+

@@ -4,35 +4,32 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useConfirm } from "../../../../components/ConfirmDialog";
-import {
-  useActiveWorkspaceId,
-  useShareAction,
-} from "../../../../components/ShellChromeContext";
-import { recordRecent } from "../../../../lib/pins";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useShareAction } from "@/components/ShellChromeContext";
+import { recordRecent } from "@/lib/pins";
 import { PageBody } from "../../skills/[slug]/SkillItemBodies";
 import {
   downloadBlob,
   downloadRenderedPdf,
   htmlToPdfBlocks,
   markdownToPdfBlocks,
-} from "../../../../components/DownloadMenu";
-import { DocumentPageSkeleton } from "../../../../components/SkeletonStates";
+} from "@/components/DownloadMenu";
+import { DocumentPageSkeleton } from "@/components/SkeletonStates";
 import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
-} from "../../../../components/workspace/HtmlPageView";
-import ExportDeckButton from "../../../../components/export/ExportDeckButton";
-import ResourceShareButton from "../../../../components/share/ResourceShareButton";
-import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
+} from "@/components/workspace/HtmlPageView";
+import ExportDeckButton from "@/components/export/ExportDeckButton";
+import ResourceShareButton from "@/components/share/ResourceShareButton";
+import FileViewerHeader from "@/components/workspace/FileViewerHeader";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,
-} from "../../../../components/workspace/MarkdownEditor";
-import CommentsSidebar from "../../../../components/workspace/CommentsSidebar";
-import CommentComposerPopover from "../../../../components/workspace/CommentComposerPopover";
-import { useAuth } from "../../../../hooks/useAuth";
+} from "@/components/workspace/MarkdownEditor";
+import CommentsSidebar from "@/components/workspace/CommentsSidebar";
+import CommentComposerPopover from "@/components/workspace/CommentComposerPopover";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
   createCommentThread,
@@ -50,11 +47,11 @@ import {
   updatePage,
   type FolderBreadcrumb,
   type PublicSkillPage,
-} from "../../../../lib/api";
-import { findInSkillContents } from "../../../../lib/localSkill";
-import type { CommentThread, Page } from "../../../../lib/types";
-import { subscribePageEvents } from "../../../../lib/pageEvents";
-import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
+} from "@/lib/api";
+import { findInSkillContents } from "@/lib/localSkill";
+import type { CommentThread, Page } from "@/lib/types";
+import { subscribePageEvents } from "@/lib/pageEvents";
+import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -104,15 +101,14 @@ export default function SkillPageView() {
   const pageId = params.pageId as string;
   const { user, loading } = useAuth();
   // When ?skill=<slug> is present, the page is viewed through a skill —
-  // the viewer might not be a workspace member, so we fall back to the
+  // the viewer might not own the page, so we fall back to the
   // public-skill payload for read-only rendering.
   const skillSlug = searchParams.get("skill");
 
   const [page, setPage] = useState<Page | null>(null);
-  // Empty until the page loads — every consumer below renders or fires
-  // only after that.
-  const workspaceId = page?.workspace_id ?? "";
-  useActiveWorkspaceId(workspaceId || null);
+  // The scope is the current user. Empty until auth resolves — every
+  // consumer below renders or fires only after that.
+  const scopeId = user?.id ?? "";
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [skillFallback, setSkillFallback] = useState<
     { skillTitle: string; page: PublicSkillPage } | null
@@ -168,7 +164,7 @@ export default function SkillPageView() {
   useEffect(() => {
     setCommentAnchorTops({});
     setExternalEdit(null);
-  }, [workspaceId, pageId]);
+  }, [pageId]);
 
   // Live updates: when an agent or another user edits this page on the backend,
   // refresh a passive view in place (HTML / read-only), or — when the user is
@@ -180,8 +176,8 @@ export default function SkillPageView() {
   const loadRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
-    if (!user || skillSlug || !workspaceId) return;
-    return subscribePageEvents(workspaceId, (evt) => {
+    if (!user || skillSlug) return;
+    return subscribePageEvents((evt) => {
       if (evt.page_id !== pageId) return;
       const { isHtml, htmlEditMode } = liveViewRef.current;
       if (isHtml && !htmlEditMode) {
@@ -191,17 +187,17 @@ export default function SkillPageView() {
         setExternalEdit({ agentName: evt.agent_name });
       }
     });
-  }, [workspaceId, pageId, user, skillSlug]);
+  }, [scopeId, pageId, user, skillSlug]);
 
   useBreadcrumbs(
     [
       ...folderChain.map((c) => ({
         label: c.name,
-        href: `/workspaces/${workspaceId}/folders/${c.id}`,
+        href: `/folders/${c.id}`,
       })),
       { label: page ? page.name.replace(/\.md$/, "") : "Page" },
     ],
-    `${workspaceId}/page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
+    `page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
 
   const shareAction = useMemo(() => {
@@ -219,18 +215,14 @@ export default function SkillPageView() {
   }, [page, skillSlug, user]);
   useShareAction(shareAction);
 
-  const refreshThreads = useCallback(
-    async (ws: string = workspaceId) => {
-      if (!ws) return;
-      try {
-        const res = await listCommentThreads(ws, pageId);
-        setThreads(res.threads);
-      } catch {
-        // Comments are non-critical — never block page rendering.
-      }
-    },
-    [workspaceId, pageId]
-  );
+  const refreshThreads = useCallback(async () => {
+    try {
+      const res = await listCommentThreads(pageId);
+      setThreads(res.threads);
+    } catch {
+      // Comments are non-critical — never block page rendering.
+    }
+  }, [pageId]);
 
   const loadSkillFallback = useCallback(async () => {
     if (!skillSlug) return false;
@@ -260,7 +252,7 @@ export default function SkillPageView() {
     try {
       p = await getPage(pageId);
     } catch (e) {
-      // Non-members of the workspace fall back to the skill payload when
+      // Viewers who don't own the page fall back to the skill payload when
       // a ?skill=<slug> hint is present. The skill's readability check is
       // the only authorization in that path.
       if (
@@ -273,7 +265,7 @@ export default function SkillPageView() {
       setError(e instanceof Error ? e.message : "Failed to load page");
       return;
     }
-    // getPage is the authorization gate (member OR share OR skill). The
+    // getPage is the authorization gate (owner OR share OR skill). The
     // rest is enrichment — a shared viewer may not have access to every related
     // resource (folder, containing skills), and that must never blank the
     // page they were legitimately shared.
@@ -281,15 +273,15 @@ export default function SkillPageView() {
     setSkillFallback(null);
     setSkillAccessDenied(false);
     setError("");
-    recordRecent(p.workspace_id, pageId, "page");
+    recordRecent(pageId, "page");
     if (p.folder_id) {
-      getFolderContents(p.workspace_id, p.folder_id)
+      getFolderContents(p.folder_id)
         .then((contents) => setFolderChain(contents.breadcrumbs))
         .catch(() => setFolderChain([]));
     } else {
       setFolderChain([]);
     }
-    refreshThreads(p.workspace_id).catch(() => {});
+    refreshThreads().catch(() => {});
   }, [pageId, refreshThreads, skillSlug, loadSkillFallback]);
 
   const reconcileAfterSave = useCallback(
@@ -298,11 +290,11 @@ export default function SkillPageView() {
         contentType === "html"
           ? extractCommentIdsFromHtml(savedContent)
           : extractCommentIdsFromMarkdown(savedContent);
-      reconcileCommentAnchors(workspaceId, pageId, ids)
+      reconcileCommentAnchors(pageId, ids)
         .then(() => refreshThreads())
         .catch(() => {});
     },
-    [workspaceId, pageId, refreshThreads]
+    [pageId, refreshThreads]
   );
 
   const handleSave = useCallback(
@@ -310,7 +302,7 @@ export default function SkillPageView() {
       const seq = saveSeq.current + 1;
       saveSeq.current = seq;
       try {
-        const updated = await updatePage(workspaceId, pageId, {
+        const updated = await updatePage(pageId, {
           content,
           collab_projection: true,
         });
@@ -320,13 +312,13 @@ export default function SkillPageView() {
         setError(e instanceof Error ? e.message : "Save failed");
       }
     },
-    [workspaceId, pageId, reconcileAfterSave]
+    [pageId, reconcileAfterSave]
   );
 
   const handleHtmlMutated = useCallback(
     async (nextHtml: string) => {
       try {
-        const updated = await updatePage(workspaceId, pageId, {
+        const updated = await updatePage(pageId, {
           content_html: nextHtml,
         });
         setPage(updated);
@@ -335,7 +327,7 @@ export default function SkillPageView() {
         setError(e instanceof Error ? e.message : "Save failed");
       }
     },
-    [workspaceId, pageId, reconcileAfterSave]
+    [pageId, reconcileAfterSave]
   );
 
   const handleAddCommentMarkdown = useCallback(
@@ -346,7 +338,7 @@ export default function SkillPageView() {
       body: string;
     }) => {
       try {
-        const created = await createCommentThread(workspaceId, pageId, args);
+        const created = await createCommentThread(pageId, args);
         setActiveThreadId(created.id);
         setThreads((cur) => [...cur, created]);
         return created.id;
@@ -355,14 +347,14 @@ export default function SkillPageView() {
         return null;
       }
     },
-    [workspaceId, pageId]
+    [pageId]
   );
 
   const submitHtmlComment = useCallback(
     async (body: string) => {
       if (!htmlComposer) return;
       try {
-        const created = await createCommentThread(workspaceId, pageId, {
+        const created = await createCommentThread(pageId, {
           quoted_text: htmlComposer.selection.quoted_text,
           prefix: htmlComposer.selection.prefix,
           suffix: htmlComposer.selection.suffix,
@@ -379,39 +371,29 @@ export default function SkillPageView() {
         setHtmlComposer(null);
       }
     },
-    [htmlComposer, workspaceId, pageId]
+    [htmlComposer, pageId]
   );
 
   const handleReply = useCallback(
     async (threadId: string, body: string) => {
-      const updated = await replyToCommentThread(
-        workspaceId,
-        pageId,
-        threadId,
-        body
-      );
+      const updated = await replyToCommentThread(pageId, threadId, body);
       setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
     },
-    [workspaceId, pageId]
+    [pageId]
   );
 
   const handleSetResolved = useCallback(
     async (threadId: string, resolved: boolean) => {
-      const updated = await setCommentResolved(
-        workspaceId,
-        pageId,
-        threadId,
-        resolved
-      );
+      const updated = await setCommentResolved(pageId, threadId, resolved);
       setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
     },
-    [workspaceId, pageId]
+    [pageId]
   );
 
   const handleDeleteThread = useCallback(
     async (threadId: string) => {
       try {
-        await deleteCommentThread(workspaceId, pageId, threadId);
+        await deleteCommentThread(pageId, threadId);
         setThreads((cur) => cur.filter((t) => t.id !== threadId));
         if (activeThreadId === threadId) setActiveThreadId(null);
         // Tell the active editor to strip the inline anchor wrapper.
@@ -420,13 +402,13 @@ export default function SkillPageView() {
         setError(e instanceof Error ? e.message : "Failed to delete comment");
       }
     },
-    [workspaceId, pageId, activeThreadId]
+    [pageId, activeThreadId]
   );
 
   const handleDeleteMessage = useCallback(
     async (threadId: string, messageId: string) => {
       try {
-        const res = await deleteCommentMessage(workspaceId, pageId, messageId);
+        const res = await deleteCommentMessage(pageId, messageId);
         if (res.thread_deleted) {
           setThreads((cur) => cur.filter((t) => t.id !== threadId));
           if (activeThreadId === threadId) setActiveThreadId(null);
@@ -439,13 +421,13 @@ export default function SkillPageView() {
         setError(e instanceof Error ? e.message : "Failed to delete comment");
       }
     },
-    [workspaceId, pageId, activeThreadId]
+    [pageId, activeThreadId]
   );
 
   useEffect(() => {
     // Anonymous viewers can load this page when ?skill=<slug> is set —
     // the skill payload is the read source. Authenticated viewers always
-    // try the workspace endpoint first.
+    // try the canonical page endpoint first.
     if (user) load();
     else if (!loading && skillSlug) void loadSkillFallback();
   }, [user, loading, load, loadSkillFallback, skillSlug]);
@@ -551,8 +533,8 @@ export default function SkillPageView() {
   async function handleNewPage() {
     if (!page) return;
     try {
-      const created = await createPage(workspaceId, "Untitled", page.folder_id);
-      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      const created = await createPage("Untitled", page.folder_id);
+      refreshSidebar().catch(() => {});
       router.push(`/p/${created.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create page");
@@ -567,7 +549,7 @@ export default function SkillPageView() {
     metaItems.push(
       <Link
         key="provenance"
-        href={`/workspaces/${workspaceId}/sessions?session=${encodeURIComponent(
+        href={`/sessions?session=${encodeURIComponent(
           page.last_edit_session_id,
         )}`}
         className="underline decoration-dotted underline-offset-2 hover:text-[var(--text)]"
@@ -589,7 +571,7 @@ export default function SkillPageView() {
                 // detection (and the listing UI's icons) keep working.
                 const extension = page.content_type === "html" ? ".html" : ".md";
                 const newName = next.toLowerCase().endsWith(extension) ? next : `${next}${extension}`;
-                const updated = await updatePage(workspaceId, pageId, { name: newName });
+                const updated = await updatePage(pageId, { name: newName });
                 setPage(updated);
                 return updated.name.replace(/\.(md|html)$/i, "");
               }
@@ -683,8 +665,8 @@ export default function SkillPageView() {
                     });
                     if (!ok) return;
                     try {
-                      await trashItem(workspaceId, "page", pageId);
-                      router.push(`/workspaces/${workspaceId}`);
+                      await trashItem("page", pageId);
+                      router.push("/");
                     } catch (e) {
                       setError(e instanceof Error ? e.message : "Delete failed");
                     }
@@ -786,7 +768,6 @@ export default function SkillPageView() {
                 </div>
               ) : (
                 <MarkdownEditor
-                  workspaceId={workspaceId}
                   file={page}
                   onSave={handleSave}
                   collaborationUser={{
@@ -907,8 +888,8 @@ function HtmlGlyph() {
   );
 }
 
-// Read-only render for viewers who can't reach the workspace endpoint —
-// usually because they aren't a workspace member. The content comes from
+// Read-only render for viewers who can't reach the canonical page endpoint —
+// usually because they don't own the page. The content comes from
 // the public-skill payload, gated by the skill's readability rules.
 function SkillFallbackPageView({
   skillSlug,

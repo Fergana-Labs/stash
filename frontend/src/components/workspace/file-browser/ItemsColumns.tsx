@@ -8,7 +8,6 @@ import { KindIcon, tintFor, typeFor, type GridItem } from "./kind";
 import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
 
 interface Props {
-  workspaceId: string;
   rootItems: GridItem[];
   onNavigate: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
@@ -72,7 +71,6 @@ function sortItems(items: GridItem[], sort: Sort): GridItem[] {
 // clicking a folder in column N opens its contents in column N+1, clicking
 // a non-folder selects it for the preview.
 export default function ItemsColumns({
-  workspaceId,
   rootItems,
   onNavigate,
   onReparent,
@@ -113,7 +111,7 @@ export default function ItemsColumns({
       const missing = path.filter((id) => !cache.has(id));
       if (missing.length === 0) return;
       const fetched = await Promise.all(
-        missing.map(async (id) => [id, await getFolderContents(workspaceId, id)] as const)
+        missing.map(async (id) => [id, await getFolderContents(id)] as const)
       );
       if (cancelled) return;
       setCache((cur) => {
@@ -126,7 +124,7 @@ export default function ItemsColumns({
     return () => {
       cancelled = true;
     };
-  }, [path, cache, workspaceId]);
+  }, [path, cache]);
 
   // Keep the rightmost column visible as the user drills.
   useEffect(() => {

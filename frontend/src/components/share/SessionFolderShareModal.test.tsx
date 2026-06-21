@@ -20,7 +20,7 @@ vi.mock("../../lib/api", () => ({
 
 const folder: SessionFolder = {
   id: "folder-1",
-  workspace_id: "workspace-1",
+  owner_user_id: "user-1",
   slug: "shared-folder",
   name: "Shared Folder",
   owner_display_name: "Henry",
@@ -64,7 +64,6 @@ describe("SessionFolderShareModal", () => {
     render(
       <SessionFolderShareModal
         folder={folder}
-        workspaceId="workspace-1"
         onClose={vi.fn()}
         onChanged={vi.fn()}
       />

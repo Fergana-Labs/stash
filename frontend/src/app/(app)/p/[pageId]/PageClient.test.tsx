@@ -2,7 +2,7 @@ import { cleanup, render as renderBase, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillPageView from "./PageClient";
-import { ConfirmDialogProvider } from "../../../../components/ConfirmDialog";
+import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
 function render(ui: ReactNode) {
   return renderBase(ui, { wrapper: ConfirmDialogProvider });
@@ -42,7 +42,7 @@ const route = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ workspaceId: "ws-1", pageId: "page-1" }),
+  useParams: () => ({ pageId: "page-1" }),
   useRouter: () => ({ push: route.push }),
   useSearchParams: () => new URLSearchParams(route.search),
 }));
@@ -134,7 +134,7 @@ const emptyContents = {
 function htmlPage(html_layout: "responsive" | "fixed-aspect" | "full-width") {
   return {
     id: "page-1",
-    workspace_id: "ws-1",
+    owner_user_id: "user-1",
     folder_id: null,
     name: "Web page",
     content_markdown: "",
@@ -217,7 +217,6 @@ describe("SkillPageView access fallback", () => {
   it("renders the read-only body from the skill contents when the page is in the skill", async () => {
     api.getPublicSkill.mockResolvedValue({
       skill: { id: "skill-1", title: "Launch Skill" },
-      workspace_name: "Demo",
       folder_name: "Launch Skill",
       contents: {
         ...emptyContents,
@@ -250,7 +249,6 @@ describe("SkillPageView access fallback", () => {
   it("denies access when the page is not part of the skill contents", async () => {
     api.getPublicSkill.mockResolvedValue({
       skill: { id: "skill-1", title: "Launch Skill" },
-      workspace_name: "Demo",
       folder_name: "Launch Skill",
       contents: emptyContents,
       can_write: false,

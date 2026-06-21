@@ -10,15 +10,11 @@ import {
 } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, Workspace } from "../lib/types";
+import { User } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { useShellChromeValue } from "./ShellChromeContext";
-import {
-  getCachedWorkspaces,
-  readCachedWorkspaces,
-} from "../lib/skillNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { recordRecent } from "../lib/pins";
 
@@ -36,14 +32,7 @@ const SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_KEYBOARD_STEP = 16;
 
 export interface SearchScope {
-  kind:
-    | "workspace"
-    | "page"
-    | "folder"
-    | "session"
-    | "skill"
-    | "sessions"
-    | "skills";
+  kind: "page" | "folder" | "session" | "skill" | "sessions" | "skills" | "all";
   label: string;
   detail: string;
   params: Record<string, string>;
@@ -122,7 +111,6 @@ function lastCrumbLabel(crumbs: Crumb[] | null): string | null {
 
 function inferSearchScope(
   pathname: string,
-  activeWorkspace: Workspace | undefined,
   breadcrumbs: Crumb[] | null,
 ): SearchScope | null {
   const skillMatch = pathname.match(/^\/skills\/([^/?#]+)/);
@@ -136,72 +124,63 @@ function inferSearchScope(
     };
   }
 
-  // Canonical item routes carry no workspace in the path; the detail client
-  // publishes it via useActiveWorkspaceId once the resource loads.
   const sessionMatch = pathname.match(/^\/sessions\/([^/?#]+)/);
-  if (sessionMatch && activeWorkspace) {
+  if (sessionMatch) {
     const sessionId = decodeURIComponent(sessionMatch[1]);
     return {
       kind: "session",
       label: "this session",
       detail: `Search only in #${sessionId}`,
-      params: { workspace: activeWorkspace.id, session: sessionId },
+      params: { session: sessionId },
     };
   }
 
   const pageMatch = pathname.match(/^\/p\/([^/?#]+)/);
-  if (pageMatch && activeWorkspace) {
+  if (pageMatch) {
     return {
       kind: "page",
       label: lastCrumbLabel(breadcrumbs) ?? "this page",
       detail: "Search only in this page",
-      params: { workspace: activeWorkspace.id, page: pageMatch[1] },
+      params: { page: pageMatch[1] },
     };
   }
 
-  const folderMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/folders\/([^/?#]+)/,
-  );
+  const folderMatch = pathname.match(/^\/folders\/([^/?#]+)/);
   if (folderMatch) {
     return {
       kind: "folder",
       label: lastCrumbLabel(breadcrumbs) ?? "this folder",
       detail: "Search only in this folder",
-      params: { workspace: folderMatch[1], folder: folderMatch[2] },
+      params: { folder: folderMatch[1] },
     };
   }
 
-  const sessionsMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/sessions(?:\/)?$/,
-  );
+  const sessionsMatch = pathname.match(/^\/sessions(?:\/)?$/);
   if (sessionsMatch) {
     return {
       kind: "sessions",
       label: "sessions",
-      detail: "Search sessions in this workspace",
-      params: { workspace: sessionsMatch[1], content: "sessions" },
+      detail: "Search your sessions",
+      params: { content: "sessions" },
     };
   }
 
-  const skillsMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/skills(?:\/)?$/,
-  );
+  const skillsMatch = pathname.match(/^\/skills(?:\/)?$/);
   if (skillsMatch) {
     return {
       kind: "skills",
       label: "Skills",
-      detail: "Search Skills in this workspace",
-      params: { workspace: skillsMatch[1], content: "skills" },
+      detail: "Search your Skills",
+      params: { content: "skills" },
     };
   }
 
-  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)(?:\/)?$/);
-  if (workspaceMatch) {
+  if (pathname === "/" || pathname === "/files") {
     return {
-      kind: "workspace",
-      label: activeWorkspace?.name ?? "this workspace",
-      detail: "Search this workspace",
-      params: { workspace: workspaceMatch[1] },
+      kind: "all",
+      label: "Stash",
+      detail: "Search everything",
+      params: {},
     };
   }
 
@@ -210,18 +189,12 @@ function inferSearchScope(
 
 function TopSearchButton({
   scope,
-  workspace,
   onClick,
 }: {
   scope: SearchScope | null;
-  workspace?: Workspace;
   onClick: () => void;
 }) {
-  const label = scope
-    ? `Search ${scope.label}`
-    : workspace
-      ? `Search ${workspace.name}`
-      : "Search";
+  const label = scope ? `Search ${scope.label}` : "Search";
 
   return (
     <button
@@ -255,44 +228,24 @@ export default function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
-  const { shareAction, activeWorkspaceId: preferredWorkspaceId } =
-    useShellChromeValue();
+  const { shareAction } = useShellChromeValue();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
-    preferredWorkspaceId,
-  );
-  const [workspaces, setWorkspaces] = useState<Workspace[]>(
-    () => readCachedWorkspaces(user.id)?.all ?? [],
-  );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const searchBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
     setSidebarWidth(readSidebarWidth());
-    getCachedWorkspaces(user.id)
-      .then((r) => setWorkspaces(r.all))
-      .catch(() => {});
-  }, [user.id]);
+  }, []);
 
+  // Record "recently viewed" whenever a folder opens, so the Files Recent
+  // strip reflects this user's activity (not global mtime). Pages and files
+  // record from their own clients once the loaded resource is known.
   useEffect(() => {
-    if (preferredWorkspaceId) setActiveWorkspaceId(preferredWorkspaceId);
-  }, [preferredWorkspaceId]);
-
-  useEffect(() => {
-    const m = pathname.match(/^\/workspaces\/([^/]+)/);
-    if (m?.[1]) setActiveWorkspaceId(m[1]);
-  }, [pathname]);
-
-  // Record per-user "recently viewed" whenever a folder opens, so the Files
-  // Recent strip reflects this user's activity (not global mtime). Pages and
-  // files record from their own clients — their canonical URLs don't carry
-  // the workspace, so only the loaded resource knows it.
-  useEffect(() => {
-    const m = pathname.match(/^\/workspaces\/([^/]+)\/folders\/([^/?#]+)/);
+    const m = pathname.match(/^\/folders\/([^/?#]+)/);
     if (!m) return;
-    recordRecent(m[1], decodeURIComponent(m[2]), "folder");
+    recordRecent(decodeURIComponent(m[1]), "folder");
   }, [pathname]);
 
   useEffect(() => {
@@ -315,15 +268,13 @@ export default function AppShell({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
-  const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
+  const searchScope = inferSearchScope(pathname, breadcrumbs);
 
   // Browser tab title: the most specific thing we know — the current item or
-  // section from breadcrumbs, falling back to the workspace name on its home —
+  // section from breadcrumbs, falling back to the user's name on home —
   // suffixed with the brand. Item viewers (pages, sessions, files) set the last
   // crumb to their own name, so this covers them too.
-  const documentTitle =
-    lastCrumbLabel(breadcrumbs) ?? activeWorkspace?.name ?? null;
+  const documentTitle = lastCrumbLabel(breadcrumbs) ?? user.display_name;
   useEffect(() => {
     document.title = documentTitle ? `${documentTitle} - Stash` : "Stash";
   }, [documentTitle]);
@@ -409,10 +360,7 @@ export default function AppShell({
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
           </button>
-          <Breadcrumb
-            activeWorkspace={activeWorkspace}
-            pageCrumbs={breadcrumbs}
-          />
+          <Breadcrumb pageCrumbs={breadcrumbs} />
         </div>
 
         <div className="flex min-w-0 flex-1 justify-center">
@@ -421,7 +369,6 @@ export default function AppShell({
           <div ref={searchBarRef} className="w-full max-w-4xl">
             <TopSearchButton
               scope={searchScope}
-              workspace={activeWorkspace}
               onClick={() => setCmdkOpen(true)}
             />
           </div>
@@ -448,11 +395,7 @@ export default function AppShell({
       >
         {!sidebarCollapsed && (
           <div className="relative min-h-0">
-            <AppSidebar
-              user={user}
-              onLogout={onLogout}
-              activeWorkspaceId={activeWorkspaceId}
-            />
+            <AppSidebar user={user} onLogout={onLogout} />
             <SidebarResizeHandle
               width={sidebarWidth}
               onPointerDown={startSidebarResize}
@@ -469,8 +412,6 @@ export default function AppShell({
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
         anchorRef={searchBarRef}
-        workspaceId={activeWorkspaceId}
-        workspaceName={activeWorkspace?.name}
         searchScope={searchScope}
       />
     </div>
@@ -555,16 +496,11 @@ function UserMenu({
 }
 
 function Breadcrumb({
-  activeWorkspace,
   pageCrumbs,
 }: {
-  activeWorkspace: Workspace | undefined;
   pageCrumbs: { label: string; href?: string; onClick?: () => void }[] | null;
 }) {
-  const home = {
-    label: "Home",
-    href: activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/",
-  };
+  const home = { label: "Home", href: "/" };
 
   let items: { label: string; href?: string }[] = [home];
   if (pageCrumbs && pageCrumbs.length > 0) {

@@ -9,7 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillSettingsPageClient from "./SkillSettingsPageClient";
-import { ConfirmDialogProvider } from "../../../../../components/ConfirmDialog";
+import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
 function render(ui: ReactNode) {
   return renderBase(ui, { wrapper: ConfirmDialogProvider });
@@ -19,7 +19,7 @@ import {
   unpublishSkill,
   updateSkill,
   type PublicSkillDetail,
-} from "../../../../../lib/api";
+} from "@/lib/api";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -89,7 +89,7 @@ function skillDetail(
   return {
     skill: {
       id: "skill-1",
-      workspace_id: "workspace-1",
+      owner_user_id: "user-1",
       folder_id: "folder-1",
       slug: "shared-skill",
       title: "Shared Skill",
@@ -100,12 +100,12 @@ function skillDetail(
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
+      source_github_url: null,
       view_count: 0,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
       ...skill,
     },
-    workspace_name: "Demo Workspace",
     folder_name: "Shared Skill",
     contents: { subfolders: [], pages: [], files: [], tables: [] },
     can_write: true,
@@ -166,7 +166,7 @@ describe("SkillSettingsPageClient", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
-  it("stops sharing via unpublish and returns to the workspace skills page", async () => {
+  it("stops sharing via unpublish and returns to the skills page", async () => {
     vi.mocked(unpublishSkill).mockResolvedValue(undefined);
 
     render(<SkillSettingsPageClient slug="shared-skill" />);
@@ -178,6 +178,6 @@ describe("SkillSettingsPageClient", () => {
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "Stop sharing" }));
 
     await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
-    expect(router.push).toHaveBeenCalledWith("/workspaces/workspace-1/skills");
+    expect(router.push).toHaveBeenCalledWith("/skills");
   });
 });

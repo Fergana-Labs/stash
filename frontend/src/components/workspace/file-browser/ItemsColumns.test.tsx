@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ItemsColumns from "./ItemsColumns";
 import type { GridItem } from "./kind";
@@ -40,7 +40,6 @@ const ROOT_ITEMS: GridItem[] = [
 function renderColumns() {
   render(
     <ItemsColumns
-      workspaceId="ws-1"
       rootItems={ROOT_ITEMS}
       onNavigate={vi.fn()}
       onReparent={vi.fn()}

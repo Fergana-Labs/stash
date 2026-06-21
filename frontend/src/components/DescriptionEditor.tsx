@@ -25,8 +25,6 @@ type DescriptionEditorProps = {
   placeholder: string;
   ariaLabel: string;
   onSave: (html: string) => Promise<void> | void;
-  /** Workspace ID for inline image uploads from the toolbar. */
-  workspaceId?: string | null;
 };
 
 export function isBlankDescription(value: string): boolean {
@@ -39,7 +37,6 @@ export default function DescriptionEditor({
   placeholder,
   ariaLabel,
   onSave,
-  workspaceId,
 }: DescriptionEditorProps) {
   const canEditRef = useRef(canEdit);
   const lastSaved = useRef(value);
@@ -147,7 +144,7 @@ export default function DescriptionEditor({
       },
     },
     onUpdate: ({ editor: ed }) => {
-      // Read-only viewers (public-skill anonymous readers, workspace
+      // Read-only viewers (public-skill anonymous readers, shared
       // viewers without write access) still mount the editor so they
       // can see the rendered description, but must never hit the
       // authenticated save endpoint. TipTap's mount-time normalization
@@ -199,11 +196,7 @@ export default function DescriptionEditor({
     >
       <EditorContent editor={editor} />
       {canEdit && (
-        <EditorToolbar
-          editor={editor}
-          workspaceId={workspaceId ?? null}
-          visibility="when-focused"
-        />
+        <EditorToolbar editor={editor} visibility="when-focused" />
       )}
     </div>
   );

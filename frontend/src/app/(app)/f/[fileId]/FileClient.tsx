@@ -2,15 +2,12 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useConfirm } from "../../../../components/ConfirmDialog";
-import {
-  useActiveWorkspaceId,
-  useShareAction,
-} from "../../../../components/ShellChromeContext";
-import { recordRecent } from "../../../../lib/pins";
-import { FileViewerSkeleton } from "../../../../components/SkeletonStates";
-import { useAuth } from "../../../../hooks/useAuth";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useShareAction } from "@/components/ShellChromeContext";
+import { recordRecent } from "@/lib/pins";
+import { FileViewerSkeleton } from "@/components/SkeletonStates";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
   getFile,
@@ -21,17 +18,17 @@ import {
   trashItem,
   updateFile,
   type FolderBreadcrumb,
-} from "../../../../lib/api";
-import { findInSkillContents } from "../../../../lib/localSkill";
-import type { FileInfo } from "../../../../lib/types";
+} from "@/lib/api";
+import { findInSkillContents } from "@/lib/localSkill";
+import type { FileInfo } from "@/lib/types";
 import FileContentRenderer, {
   isImage,
   isMarkdown,
   isPdf,
   isText,
-} from "../../../../components/workspace/FileContentRenderer";
-import FileViewerHeader from "../../../../components/workspace/FileViewerHeader";
-import ResourceShareButton from "../../../../components/share/ResourceShareButton";
+} from "@/components/workspace/FileContentRenderer";
+import FileViewerHeader from "@/components/workspace/FileViewerHeader";
+import ResourceShareButton from "@/components/share/ResourceShareButton";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
@@ -60,13 +57,13 @@ function FileViewerPageInner() {
   const searchParams = useSearchParams();
   const confirm = useConfirm();
   const fileId = params.fileId as string;
-  // ?skill=<slug> is a back-link hint AND a permission fallback. We try
-  // the workspace endpoint first so workspace members get the full editor
-  // chrome (rename / move / trash / CSV ingest). Non-members fall back to
-  // the public-skill payload, read-only.
+  // ?skill=<slug> is a back-link hint AND a permission fallback. We try the
+  // owner's file endpoint first so the owner gets the full editor chrome
+  // (rename / move / trash / CSV ingest). Others fall back to the
+  // public-skill payload, read-only.
   const skillSlug = searchParams.get("skill");
   const { user, loading, logout: _logout } = useAuth();
-  // logout isn't used here; kept for parity with other workspace pages.
+  // logout isn't used here; kept for parity with other app pages.
   void _logout;
 
   const [file, setFile] = useState<FileInfo | null>(null);
@@ -74,13 +71,9 @@ function FileViewerPageInner() {
   const [error, setError] = useState("");
   const [skillTitle, setSkillTitle] = useState<string | null>(null);
   // readOnly flips on only when we fall back to the skill payload — i.e.
-  // the viewer can't reach the workspace endpoint. Workspace members who
-  // arrive via ?skill= still get full edit affordances.
+  // the viewer can't reach the owner's file endpoint. The owner who arrives
+  // via ?skill= still gets full edit affordances.
   const [readOnly, setReadOnly] = useState(false);
-  // Empty until the file loads — every consumer below renders or fires
-  // only after that.
-  const workspaceId = file?.workspace_id ?? "";
-  useActiveWorkspaceId(workspaceId || null);
 
   useBreadcrumbs(
     readOnly
@@ -92,11 +85,11 @@ function FileViewerPageInner() {
       : [
           ...folderChain.map((c) => ({
             label: c.name,
-            href: `/workspaces/${workspaceId}/folders/${c.id}`,
+            href: `/folders/${c.id}`,
           })),
           { label: file ? file.name : "File" },
         ],
-    `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${skillSlug ?? ""}`
+    `file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${skillSlug ?? ""}`
   );
 
   const loadSkillFallback = useCallback(async () => {
@@ -111,7 +104,7 @@ function FileViewerPageInner() {
       }
       const synth: FileInfo = {
         id: fileId,
-        workspace_id: skill.skill.workspace_id,
+        owner_user_id: skill.skill.owner_user_id,
         folder_id: null,
         name: item.name,
         content_type: item.content_type ?? "",
@@ -135,15 +128,12 @@ function FileViewerPageInner() {
   const load = useCallback(async () => {
     try {
       const f = await getFile(fileId);
-      // The canonical endpoint 404s workspace-less rows, so ws is always set
-      // here; the guard narrows the nullable type.
-      const ws = f.workspace_id ?? "";
       setFile(f);
       setReadOnly(false);
-      recordRecent(ws, fileId, "file");
+      recordRecent(fileId, "file");
       if (f.folder_id) {
         try {
-          const contents = await getFolderContents(ws, f.folder_id);
+          const contents = await getFolderContents(f.folder_id);
           setFolderChain(contents.breadcrumbs);
         } catch {
           setFolderChain([]);
@@ -159,7 +149,7 @@ function FileViewerPageInner() {
           router.replace(`/tables/${f.linked_table_id}`);
         } else {
           try {
-            const table = await ingestCsvFile(ws, fileId);
+            const table = await ingestCsvFile(fileId);
             router.replace(`/tables/${table.id}`);
           } catch (e) {
             setError(e instanceof Error ? e.message : "CSV ingest failed");
@@ -168,13 +158,13 @@ function FileViewerPageInner() {
         return;
       }
       // XLSX: same shape, but one table per sheet. Redirect to the first
-      // sheet's table; the others appear in the workspace sidebar.
+      // sheet's table; the others appear in the sidebar.
       if (isXlsx(f.content_type, f.name)) {
         if (f.linked_table_id) {
           router.replace(`/tables/${f.linked_table_id}`);
         } else {
           try {
-            const { tables } = await ingestXlsxFile(ws, fileId);
+            const { tables } = await ingestXlsxFile(fileId);
             if (tables.length === 0) {
               setError("Workbook had no readable sheets");
             } else {
@@ -250,7 +240,7 @@ function FileViewerPageInner() {
           onRenameTitle={
             file
               ? async (next) => {
-                  const updated = await updateFile(workspaceId, file.id, { name: next });
+                  const updated = await updateFile(file.id, { name: next });
                   setFile(updated);
                   return updated.name;
                 }
@@ -278,8 +268,8 @@ function FileViewerPageInner() {
                             });
                             if (!ok) return;
                             try {
-                              await trashItem(workspaceId, "file", fileId);
-                              router.push(`/workspaces/${workspaceId}`);
+                              await trashItem("file", fileId);
+                              router.push("/");
                             } catch (e) {
                               setError(e instanceof Error ? e.message : "Delete failed");
                             }

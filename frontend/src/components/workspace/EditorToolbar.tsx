@@ -3,18 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Editor } from "@tiptap/react";
-import { uploadFile, workspaceFileDownloadUrl } from "../../lib/api";
+import { uploadFile, fileDownloadUrl } from "../../lib/api";
 
 interface EditorToolbarProps {
   editor: Editor | null;
-  workspaceId?: string | null;
+  /** Shows the image/file upload button. Uploads go to the current
+   *  user's files. Off by default — inline description editors don't
+   *  want it. */
+  enableUploads?: boolean;
   /** When set, the bubble menu shows a "Comment" button that asks the
    *  parent to open a comment composer anchored to the current
    *  selection. The parent owns the composer + the server call. */
   onStartComment?: () => void;
   /** "always" (default) shows the pill whenever the editor is editable.
    *  "when-focused" hides it unless the editor has focus — right for
-   *  inline editors like workspace + skill descriptions. */
+   *  inline editors like skill descriptions. */
   visibility?: "always" | "when-focused";
 }
 
@@ -22,7 +25,7 @@ interface EditorToolbarProps {
 // portal to document.body so it floats above any flex/scroll ancestor.
 export default function EditorToolbar({
   editor,
-  workspaceId,
+  enableUploads,
   onStartComment,
   visibility = "always",
 }: EditorToolbarProps) {
@@ -99,11 +102,11 @@ export default function EditorToolbar({
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !editor || !workspaceId) return;
+    if (!file || !editor) return;
     setUploading(true);
     try {
-      const result = await uploadFile(workspaceId, file);
-      const href = workspaceFileDownloadUrl(workspaceId, result.id);
+      const result = await uploadFile(file);
+      const href = fileDownloadUrl(result.id);
       if (result.content_type.startsWith("image/")) {
         editor.chain().focus().setImage({ src: href, alt: result.name }).run();
       } else {
@@ -268,7 +271,7 @@ export default function EditorToolbar({
       >
         <LinkIcon />
       </Btn>
-      {workspaceId && (
+      {enableUploads && (
         <Btn
           title="Upload image or file"
           disabled={uploading}
@@ -300,7 +303,7 @@ export default function EditorToolbar({
         </>
       )}
 
-      {workspaceId && (
+      {enableUploads && (
         <input
           ref={fileInputRef}
           type="file"

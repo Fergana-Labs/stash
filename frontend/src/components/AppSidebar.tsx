@@ -10,18 +10,12 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import {
-  getCachedWorkspaceSidebar,
-  getCachedWorkspaces,
-  readCachedSidebars,
-  readCachedWorkspaces,
-  subscribeToSidebarRefresh,
-} from "../lib/skillNavigationCache";
-import {
-  listWorkspaceSources,
-  type WorkspaceSidebar,
-  type WorkspaceSource,
+  getSidebar,
+  listSources,
+  type Sidebar,
+  type Source,
 } from "../lib/api";
-import type { User, Workspace } from "../lib/types";
+import type { User } from "../lib/types";
 import AddSourceModal from "./integrations/AddSourceModal";
 import { connectorIcon, labelForProvider, providerForSourceType } from "./integrations/connectors";
 import {
@@ -39,14 +33,8 @@ interface AppSidebarProps {
   onLogout?: () => void;
   cmdkOpen?: boolean;
   onCmdkOpen?: () => void;
-  activeWorkspaceId?: string | null;
 }
 
-interface WorkspaceNode extends Workspace {
-  shared?: boolean;
-}
-
-const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
 const EXTERNAL_SOURCES_COLLAPSED_KEY = "stash_external_sources_collapsed";
 
 // A colored dot per source type, so the grouped Sources list reads as a set of
@@ -100,21 +88,6 @@ function NavRow({
   );
 }
 
-function DisabledNavRow({
-  icon,
-  label,
-}: {
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="page-row flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1 text-[13px] text-muted/50">
-      <span className="flex h-4 w-4 items-center justify-center">{icon}</span>
-      <span className="truncate">{label}</span>
-    </div>
-  );
-}
-
 function SourceDot({ color }: { color: string }) {
   return (
     <span
@@ -133,33 +106,13 @@ interface SourceRow {
   active: boolean;
 }
 
-export default function AppSidebar({
-  user,
-  activeWorkspaceId,
-}: AppSidebarProps) {
+export default function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const userId = user?.id;
   const [addSourceOpen, setAddSourceOpen] = useState(false);
-  const cachedWorkspaces = readCachedWorkspaces(userId);
-  const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
-  // Persisted "last-viewed workspace" so navigation to non-workspace routes
-  // (/skills/{slug}, /discover, /activity) doesn't lose the workspace
-  // context. Updated below whenever the route reveals an explicit workspace.
-  const [lastWorkspaceId, setLastWorkspaceId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(LAST_WORKSPACE_KEY);
-  });
-  const currentWorkspaceId =
-    activeWorkspaceId ?? routeWorkspaceId ?? lastWorkspaceId;
-  const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
-  const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
-  // Spine resolves the active skill's slug for the footer Settings link.
-  const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
-    readCachedSidebars()
-  );
-  // Connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) for the active
-  // workspace, keyed by workspace id. User-scoped — only the viewer's own.
-  const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
+  const [sidebar, setSidebar] = useState<Sidebar | null>(null);
+  // The viewer's connected external sources (GitHub/Drive/Gmail/Notion/Slack/...).
+  const [sources, setSources] = useState<Source[]>([]);
   // Collapses only the connected external sources; the native Sessions,
   // Files, and Skills rows stay visible.
   const [externalCollapsed, setExternalCollapsed] = useState<boolean>(() => {
@@ -173,115 +126,67 @@ export default function AppSidebar({
     localStorage.setItem(EXTERNAL_SOURCES_COLLAPSED_KEY, next ? "1" : "0");
   }
 
-  // The sidebar always renders a single workspace context. Priority:
-  // (1) the workspace in the current URL, (2) the first owned workspace,
-  // (3) the first shared workspace.
-  const activeWorkspace: WorkspaceNode | null =
-    (currentWorkspaceId &&
-      (mine.find((w) => w.id === currentWorkspaceId) ??
-        (shared.find((w) => w.id === currentWorkspaceId)
-          ? { ...shared.find((w) => w.id === currentWorkspaceId)!, shared: true }
-          : null))) ||
-    mine[0] ||
-    (shared[0] ? { ...shared[0], shared: true } : null);
-  const activeWorkspaceKey = activeWorkspace?.id ?? "";
-
-  useEffect(() => {
-    if (!routeWorkspaceId) return;
-    if (routeWorkspaceId === lastWorkspaceId) return;
-    setLastWorkspaceId(routeWorkspaceId);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(LAST_WORKSPACE_KEY, routeWorkspaceId);
-    }
-  }, [routeWorkspaceId, lastWorkspaceId]);
-
+  // Load the viewer's sidebar (for the active-skill slug in Settings).
   useEffect(() => {
     if (!userId) return;
-    getCachedWorkspaces(userId)
-      .then((r) => {
-        setMine(r.mine);
-        setShared(r.shared);
-      })
+    getSidebar()
+      .then(setSidebar)
       .catch(() => {});
   }, [userId]);
 
-  // Load the active workspace's spine (for the active-skill slug).
+  // Load the viewer's connected sources for the Sources list.
   useEffect(() => {
-    if (!activeWorkspaceKey) return;
-    if (spines[activeWorkspaceKey]) return;
-    getCachedWorkspaceSidebar(activeWorkspaceKey)
-      .then((sp) => setSpines((all) => ({ ...all, [activeWorkspaceKey]: sp })))
+    if (!userId) return;
+    listSources()
+      .then(setSources)
       .catch(() => {});
-  }, [activeWorkspaceKey, spines]);
-
-  useEffect(() => {
-    return subscribeToSidebarRefresh((workspaceId, sidebar) => {
-      setSpines((all) => ({ ...all, [workspaceId]: sidebar }));
-    });
-  }, []);
-
-  // Load the active workspace's connected sources for the Sources list.
-  useEffect(() => {
-    if (!activeWorkspaceKey) return;
-    listWorkspaceSources(activeWorkspaceKey)
-      .then((sources) => setSourceMap((all) => ({ ...all, [activeWorkspaceKey]: sources })))
-      .catch(() => {});
-  }, [activeWorkspaceKey]);
+  }, [userId]);
 
   // The Sources list: the native sources always visible, then the user's
   // connected external sources behind a collapsible "External" header.
   // Connected sources are managed on the integrations settings page.
   const sourceRows = useMemo<{ native: SourceRow[]; connected: SourceRow[] }>(() => {
-    if (!activeWorkspaceKey) return { native: [], connected: [] };
-    const ws = activeWorkspaceKey;
-    // Canonical item paths (/p, /f, /sessions) carry no workspace; they
-    // count as active because the sidebar only renders them for the
-    // workspace the open item resolved to.
     const filesActive =
-      !!pathname.match(new RegExp(`^/workspaces/${ws}/(files|folders)(?:/|$)`)) ||
+      !!pathname.match(/^\/(files|folders)(?:\/|$)/) ||
       !!pathname.match(/^\/(p|f)\//);
-    const sessionsActive =
-      pathname.startsWith(`/workspaces/${ws}/sessions`) ||
-      pathname.startsWith("/sessions/");
-    const skillsActive =
-      pathname.startsWith(`/workspaces/${ws}/skills`) ||
-      pathname.startsWith("/skills/");
+    const sessionsActive = pathname.startsWith("/sessions");
+    const skillsActive = pathname.startsWith("/skills");
     const native: SourceRow[] = [
       {
         key: "sessions",
-        href: `/workspaces/${ws}/sessions`,
+        href: "/sessions",
         label: "Agent Sessions",
         icon: <span className="text-muted"><SessionsIcon /></span>,
         active: sessionsActive,
       },
       {
         key: "files",
-        href: `/workspaces/${ws}/files`,
+        href: "/files",
         label: "Files",
         icon: <span className="text-muted"><FileIcon /></span>,
         active: filesActive,
       },
       {
         key: "skills",
-        href: `/workspaces/${ws}/skills`,
+        href: "/skills",
         label: "Skills",
         icon: <span aria-hidden>❏</span>,
         active: skillsActive,
       },
     ];
     // One row per INTEGRATION (provider), not per source: collapse the
-    // workspace's connected sources to their distinct providers. The dot color
-    // comes from a representative source type of that provider.
+    // connected sources to their distinct providers. The dot color comes from
+    // a representative source type of that provider.
     const seen = new Set<string>();
     const connected: SourceRow[] = [];
-    for (const s of sourceMap[ws] ?? []) {
+    for (const s of sources) {
       const provider = providerForSourceType[s.type] ?? s.type;
       if (seen.has(provider)) continue;
       seen.add(provider);
       const logo = connectorIcon(provider);
       connected.push({
         key: provider,
-        href: `/workspaces/${ws}/integrations/${provider}`,
+        href: `/integrations/${provider}`,
         label: labelForProvider(provider),
         icon: logo ? (
           <span className="flex h-4 w-4 items-center justify-center [&_img]:h-4 [&_img]:w-4 [&_svg]:h-4 [&_svg]:w-4">
@@ -290,21 +195,18 @@ export default function AppSidebar({
         ) : (
           <SourceDot color={SOURCE_DOT[s.type] ?? "rgba(0,0,0,0.4)"} />
         ),
-        active: pathname.startsWith(`/workspaces/${ws}/integrations/${provider}`),
+        active: pathname.startsWith(`/integrations/${provider}`),
       });
     }
     return { native, connected };
-  }, [activeWorkspaceKey, sourceMap, pathname]);
+  }, [sources, pathname]);
 
   const activeSkillSlug = pathname.match(/^\/skills\/([^/?#]+)/)?.[1] ?? null;
-  const activeSkill =
-    activeWorkspace && activeSkillSlug
-      ? spines[activeWorkspace.id]?.skills?.find(
-          (skill) => skill.published?.slug === activeSkillSlug,
-        )
-      : null;
-  // Workspace settings now live on the unified /settings page; only published
-  // Skills keep their own settings route.
+  const activeSkill = activeSkillSlug
+    ? sidebar?.skills?.find((skill) => skill.published?.slug === activeSkillSlug)
+    : null;
+  // User settings live on the unified /settings page; only published Skills
+  // keep their own settings route.
   const settingsHref = activeSkill?.published
     ? `/skills/${activeSkill.published.slug}/settings`
     : "/settings";
@@ -323,32 +225,25 @@ export default function AppSidebar({
 
       <nav className="px-2 pt-2 text-[13px]">
         <NavRow
-          href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}
+          href="/"
           icon={<SkillIcon />}
           label="Home"
-          active={
-            activeWorkspace
-              ? pathname === `/workspaces/${activeWorkspace.id}`
-              : pathname === "/"
-          }
+          active={pathname === "/"}
         />
         {/* "Index" is the revamped activity view — your accumulated
-            knowledge, status, and newsfeed. Global (workspace-resolved within
-            the page), so it sits up top next to Home. */}
+            knowledge, status, and newsfeed. Sits up top next to Home. */}
         <NavRow
           href="/activity"
           icon={<ActivityIcon />}
           label="Index"
           active={pathname.startsWith("/activity")}
         />
-        {activeWorkspace ? (
-          <NavRow
-            href={`/workspaces/${activeWorkspace.id}/agents`}
-            icon={<span aria-hidden>✦</span>}
-            label="Agents"
-            active={pathname.startsWith(`/workspaces/${activeWorkspace.id}/agents`)}
-          />
-        ) : null}
+        <NavRow
+          href="/agents"
+          icon={<span aria-hidden>✦</span>}
+          label="Agents"
+          active={pathname.startsWith("/agents")}
+        />
         <NavRow
           href="/discover"
           icon={<span aria-hidden>◎</span>}
@@ -357,13 +252,36 @@ export default function AppSidebar({
         />
       </nav>
 
-      {activeWorkspace ? (
-        <>
-        <nav className="mt-4 px-2 text-[13px]">
-          <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-            Your Brain
-          </div>
-          {sourceRows.native.map((row) => (
+      <nav className="mt-4 px-2 text-[13px]">
+        <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+          Your Brain
+        </div>
+        {sourceRows.native.map((row) => (
+          <NavRow
+            key={row.key}
+            href={row.href}
+            icon={row.icon}
+            label={row.label}
+            active={row.active}
+          />
+        ))}
+      </nav>
+      <nav className="mt-4 px-2 text-[13px]">
+        <button
+          type="button"
+          onClick={toggleExternalCollapsed}
+          className="flex w-full cursor-pointer items-center gap-1 px-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+        >
+          <span
+            aria-hidden
+            className={`transition-transform ${externalCollapsed ? "-rotate-90" : ""}`}
+          >
+            ▾
+          </span>
+          External Sources
+        </button>
+        {!externalCollapsed &&
+          sourceRows.connected.map((row) => (
             <NavRow
               key={row.key}
               href={row.href}
@@ -372,58 +290,25 @@ export default function AppSidebar({
               active={row.active}
             />
           ))}
-        </nav>
-        <nav className="mt-4 px-2 text-[13px]">
-          <button
-            type="button"
-            onClick={toggleExternalCollapsed}
-            className="flex w-full cursor-pointer items-center gap-1 px-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
-          >
-            <span
-              aria-hidden
-              className={`transition-transform ${externalCollapsed ? "-rotate-90" : ""}`}
-            >
-              ▾
-            </span>
-            External Sources
-          </button>
-          {!externalCollapsed &&
-            sourceRows.connected.map((row) => (
-              <NavRow
-                key={row.key}
-                href={row.href}
-                icon={row.icon}
-                label={row.label}
-                active={row.active}
-              />
-            ))}
-          <button
-            type="button"
-            onClick={() => setAddSourceOpen(true)}
-            className="page-row group/nav flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
-          >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]" aria-hidden>
-              ＋
-            </span>
-            <span className="min-w-0 flex-1 truncate">Add a new source</span>
-          </button>
-        </nav>
-        </>
-      ) : (
-        <div className="mt-4 px-3 py-1.5 text-[12px] italic text-muted">
-          No workspaces yet.
-        </div>
-      )}
+        <button
+          type="button"
+          onClick={() => setAddSourceOpen(true)}
+          className="page-row group/nav flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
+        >
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]" aria-hidden>
+            ＋
+          </span>
+          <span className="min-w-0 flex-1 truncate">Add a new source</span>
+        </button>
+      </nav>
 
       <div className="mt-6 border-t border-border px-2 py-2">
-        {activeWorkspace ? (
-          <NavRow
-            href={`/workspaces/${activeWorkspace.id}/trash`}
-            icon={<TrashIcon />}
-            label="Trash"
-            active={pathname === `/workspaces/${activeWorkspace.id}/trash`}
-          />
-        ) : null}
+        <NavRow
+          href="/trash"
+          icon={<TrashIcon />}
+          label="Trash"
+          active={pathname === "/trash"}
+        />
         <a
           href="https://joinstash.ai/docs"
           target="_blank"
@@ -433,21 +318,16 @@ export default function AppSidebar({
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]"><HelpIcon /></span>
           <span className="min-w-0 flex-1 truncate">Docs</span>
         </a>
-        {activeWorkspace ? (
-          <NavRow
-            href={settingsHref}
-            icon={<SettingsIcon />}
-            label="Settings"
-            active={settingsActive}
-          />
-        ) : (
-          <DisabledNavRow icon={<SettingsIcon />} label="Settings" />
-        )}
+        <NavRow
+          href={settingsHref}
+          icon={<SettingsIcon />}
+          label="Settings"
+          active={settingsActive}
+        />
       </div>
     </aside>
-    {addSourceOpen && activeWorkspace && (
+    {addSourceOpen && (
       <AddSourceModal
-        workspaceId={activeWorkspace.id}
         returnTo={pathname}
         onClose={() => setAddSourceOpen(false)}
       />

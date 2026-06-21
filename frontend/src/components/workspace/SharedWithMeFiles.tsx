@@ -31,18 +31,17 @@ const LABEL: Record<string, string> = {
 };
 
 // Drag payload for shared items. Distinct from the main browser's FB_DRAG_MIME
-// because shared items carry their home workspace — moves run against it, and
-// items can only move within it.
+// because shared items carry their owner — moves run against it, and items can
+// only move within the same owner's scope.
 const SHARED_DRAG_MIME = "application/x-skill-shared-item";
 
 interface SharedDragPayload {
   object_type: SharedWithMeItem["object_type"];
   object_id: string;
-  workspace_id: string;
+  owner_user_id: string;
 }
 
-// Table moves require workspace membership on the backend, so shared tables
-// stay non-draggable.
+// Shared tables stay non-draggable.
 function isDraggable(item: SharedWithMeItem): boolean {
   return item.object_type !== "table" && item.permission === "write";
 }
@@ -52,18 +51,17 @@ function isDraggable(item: SharedWithMeItem): boolean {
 const GRID_COLS = "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)";
 
 function hrefFor(item: SharedWithMeItem): string {
-  const ws = item.workspace_id;
   if (item.object_type === "page") return `/p/${item.object_id}`;
   if (item.object_type === "file") return `/f/${item.object_id}`;
   if (item.object_type === "table") return `/tables/${item.object_id}`;
-  return `/workspaces/${ws}/folders/${item.object_id}`;
+  return `/folders/${item.object_id}`;
 }
 
 function startSharedDrag(e: DragEvent<HTMLElement>, item: SharedWithMeItem) {
   const payload: SharedDragPayload = {
     object_type: item.object_type,
     object_id: item.object_id,
-    workspace_id: item.workspace_id,
+    owner_user_id: item.owner_user_id,
   };
   e.dataTransfer.setData(SHARED_DRAG_MIME, JSON.stringify(payload));
   e.dataTransfer.effectAllowed = "move";
@@ -93,8 +91,8 @@ export default function SharedWithMeFiles() {
     load();
   }, [load]);
 
-  // Recently-viewed shared items: /me/recents spans all workspaces, so its
-  // intersection with the share list is exactly "shared things I opened".
+  // Recently-viewed shared items: /me/recents spans everything I've opened, so
+  // its intersection with the share list is exactly "shared things I opened".
   const recentItems = useMemo(() => {
     const byId = new Map(items.map((item) => [item.object_id, item]));
     return recents
@@ -103,23 +101,22 @@ export default function SharedWithMeFiles() {
       .slice(0, 8);
   }, [items, recents]);
 
-  // Move a dragged shared item into a shared folder. Both live in their home
-  // workspace — the backend allows this through the write share.
+  // Move a dragged shared item into a shared folder. Both belong to the same
+  // owner — the backend allows this through the write share.
   async function moveInto(payload: SharedDragPayload, folder: SharedWithMeItem) {
     if (payload.object_id === folder.object_id) return;
-    if (payload.workspace_id !== folder.workspace_id) {
-      setError("Items can only move within their home workspace.");
+    if (payload.owner_user_id !== folder.owner_user_id) {
+      setError("Items can only move within their owner's scope.");
       return;
     }
     setError("");
-    const ws = payload.workspace_id;
     try {
       if (payload.object_type === "folder") {
-        await updateFolder(ws, payload.object_id, { parent_folder_id: folder.object_id });
+        await updateFolder(payload.object_id, { parent_folder_id: folder.object_id });
       } else if (payload.object_type === "page") {
-        await updatePage(ws, payload.object_id, { folder_id: folder.object_id });
+        await updatePage(payload.object_id, { folder_id: folder.object_id });
       } else {
-        await updateFile(ws, payload.object_id, { folder_id: folder.object_id });
+        await updateFile(payload.object_id, { folder_id: folder.object_id });
       }
       load();
     } catch (e) {
@@ -253,7 +250,7 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
 }
 
 // Compact quick-access card, mirroring the My-files Recent strip (minus the
-// pin button — pins are workspace-scoped and shared items live elsewhere).
+// pin button — pins live with your own files, not shared ones).
 function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandlers: DropHandlers }) {
   const [over, setOver] = useState(false);
   const kind = ITEM_KIND[item.object_type];

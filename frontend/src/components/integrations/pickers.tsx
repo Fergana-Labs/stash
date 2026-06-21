@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { addWorkspaceSource } from "@/lib/api";
+import { addSource } from "@/lib/api";
 import {
   type IntegrationAccount,
   listAsanaProjects,
@@ -37,17 +37,15 @@ export function secondaryButton(): string {
 }
 
 // Renders the right "add a specific project/page/repo" UI for a connector and
-// calls addWorkspaceSource, then onAdded(). Connected-only — callers gate on it.
+// calls addSource, then onAdded(). Connected-only — callers gate on it.
 export function AddSourceControls({
   connector,
-  workspaceId,
   connected,
   accounts = [],
   existingRefs = [],
   onAdded,
 }: {
   connector: Connector;
-  workspaceId: string;
   connected: boolean;
   accounts?: IntegrationAccount[];
   existingRefs?: string[];
@@ -61,7 +59,7 @@ export function AddSourceControls({
     setBusy(true);
     setError("");
     try {
-      await addWorkspaceSource(workspaceId, {
+      await addSource({
         source_type: connector.sourceType,
         ...body,
       });

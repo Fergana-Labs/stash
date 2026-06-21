@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
-import { BasicPageSkeleton } from "../../../../components/SkeletonStates";
-import { getPublicSessionFolder, type PublicSessionFolder } from "../../../../lib/api";
+import { BasicPageSkeleton } from "@/components/SkeletonStates";
+import { getPublicSessionFolder, type PublicSessionFolder } from "@/lib/api";
 
 // Read-only viewer for a session folder reached by slug. Renders for anyone the
 // access rules allow (a public folder needs no login); the layout exempts

@@ -7,14 +7,14 @@ import {
   publishSkillFolder,
   unpublishSkill,
   updateSkill,
+  type PublishedSkill,
   type SkillPublishInfo,
-  type WorkspaceSkill,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
 
 type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
-function publishInfoFromRecord(record: WorkspaceSkill): SkillPublishInfo {
+function publishInfoFromRecord(record: PublishedSkill): SkillPublishInfo {
   return {
     id: record.id,
     slug: record.slug,
@@ -30,12 +30,10 @@ function publishInfoFromRecord(record: WorkspaceSkill): SkillPublishInfo {
 // Discover listing, and unpublishing. Person-to-person sharing is the
 // folder's generic ResourceShareButton, rendered next to this one.
 export default function SkillShareButton({
-  workspaceId,
   folderId,
   publish: publishProp,
   onPublishChange,
 }: {
-  workspaceId: string;
   folderId: string;
   publish: SkillPublishInfo | null;
   onPublishChange?: (publish: SkillPublishInfo | null) => void;
@@ -64,13 +62,13 @@ export default function SkillShareButton({
 
   const ensurePublished = useCallback(async (): Promise<SkillPublishInfo> => {
     if (publish) return publish;
-    const record = await publishSkillFolder(workspaceId, folderId);
+    const record = await publishSkillFolder(folderId);
     const info = publishInfoFromRecord(record);
     setPublish(info);
     onPublishChange?.(info);
     resetSkillNavigationCache();
     return info;
-  }, [publish, workspaceId, folderId, onPublishChange]);
+  }, [publish, folderId, onPublishChange]);
 
   useEffect(() => {
     if (!open) return;

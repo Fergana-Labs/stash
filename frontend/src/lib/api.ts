@@ -5,14 +5,13 @@ import {
   Page,
   TrashKind,
   TrashListing,
-  WorkspaceTree,
+  Tree,
   RegisterResponse,
   User,
   UserSearchResult,
   Table,
   TableRow,
-  TableWithWorkspace,
-  Workspace,
+  TableWithOwner,
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
@@ -123,12 +122,10 @@ export async function fetchAuthed(path: string): Promise<Response> {
   return fetch(`${API_BASE}${path}`, { headers });
 }
 
-// Scope = workspace-scoped when workspaceId is set, personal otherwise.
-// Used everywhere a resource has both /api/v1/workspaces/{ws}/... and /api/v1/... variants.
-function scope(workspaceId: string | null): string {
-  if (workspaceId) return `/api/v1/workspaces/${workspaceId}`;
-  return "/api/v1";
-}
+// The user is the scope. Every scoped collection and every object the user
+// owns lives under this base; shared/by-id reads use the canonical
+// /api/v1/{pages,files,tables}/{id} routes directly.
+const ME = "/api/v1/me";
 
 export async function apiFetch<T>(
   path: string,
@@ -274,27 +271,9 @@ export async function openBillingPortal(): Promise<{ url: string }> {
   return apiFetch("/api/v1/billing/portal", { method: "POST" });
 }
 
-// --- Workspaces ---
+// --- Sources (connected integrations) ---
 
-export async function createWorkspace(name: string, description?: string): Promise<Workspace> {
-  return apiFetch("/api/v1/workspaces", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      description: description || "",
-    }),
-  });
-}
-
-export async function listMyWorkspaces(): Promise<{ workspaces: Workspace[] }> {
-  return apiFetch("/api/v1/workspaces/mine");
-}
-
-export async function getWorkspace(workspaceId: string): Promise<Workspace> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}`);
-}
-
-export interface WorkspaceSource {
+export interface Source {
   source: string; // native handle ("files"/"sessions") or connected-source id
   type: string; // 'native_files' | 'native_sessions' | 'github_repo' | ...
   capability: string; // 'navigable' | 'searchable' | 'queryable'
@@ -309,7 +288,7 @@ export interface WorkspaceSource {
   settings?: Record<string, unknown> | null;
 }
 
-export interface SourceStatus extends WorkspaceSource {
+export interface SourceStatus extends Source {
   item_count: number | null; // null for queryable sources (no document table)
 }
 
@@ -322,79 +301,59 @@ export interface SourceEntry {
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
 
-export async function listWorkspaceSources(
-  workspaceId: string,
-): Promise<WorkspaceSource[]> {
-  const data = await apiFetch<{ sources: WorkspaceSource[] }>(
-    `/api/v1/workspaces/${workspaceId}/sources`,
-  );
+export async function listSources(): Promise<Source[]> {
+  const data = await apiFetch<{ sources: Source[] }>(`${ME}/sources`);
   // The sidebar's Sources section shows only connected sources; the native
   // file system and session transcripts already have their own sections.
   return data.sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
 }
 
-export async function addWorkspaceSource(
-  workspaceId: string,
-  body: {
-    source_type: string;
-    external_ref?: string;
-    display_name?: string;
-    settings?: Record<string, unknown>;
-  },
-): Promise<{ id: string }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources`, {
+export async function addSource(body: {
+  source_type: string;
+  external_ref?: string;
+  display_name?: string;
+  settings?: Record<string, unknown>;
+}): Promise<{ id: string }> {
+  return apiFetch(`${ME}/sources`, {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export async function syncWorkspaceSource(
-  workspaceId: string,
-  sourceId: string,
-): Promise<{ task_id: string }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}/sync`, {
+export async function syncSource(sourceId: string): Promise<{ task_id: string }> {
+  return apiFetch(`${ME}/sources/${sourceId}/sync`, {
     method: "POST",
   });
 }
 
-export async function deleteWorkspaceSource(
-  workspaceId: string,
-  sourceId: string,
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}`, {
+export async function deleteSource(sourceId: string): Promise<void> {
+  await apiFetch(`${ME}/sources/${sourceId}`, {
     method: "DELETE",
   });
 }
 
 // --- per-integration page: status + content browsing ---
 
-export async function getSourceStatus(
-  workspaceId: string,
-  sourceId: string,
-): Promise<SourceStatus> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}/status`);
+export async function getSourceStatus(sourceId: string): Promise<SourceStatus> {
+  return apiFetch(`${ME}/sources/${sourceId}/status`);
 }
 
 export async function getSourceEntries(
-  workspaceId: string,
   source: string,
   path = "",
 ): Promise<SourceEntry[]> {
   const q = path ? `?path=${encodeURIComponent(path)}` : "";
   const data = await apiFetch<{ entries: SourceEntry[] }>(
-    `/api/v1/workspaces/${workspaceId}/sources/${source}/entries${q}`,
+    `${ME}/sources/${source}/entries${q}`,
   );
   return data.entries;
 }
 
 export async function readSourceDoc(
-  workspaceId: string,
   source: string,
   ref: string,
 ): Promise<{ name?: string; content?: string; url?: string | null }> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`,
-  );
+  return apiFetch(`${ME}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`);
 }
 
 export interface SourceSearchHit {
@@ -406,82 +365,36 @@ export interface SourceSearchHit {
 }
 
 export async function searchSource(
-  workspaceId: string,
   query: string,
   source?: string,
 ): Promise<SourceSearchHit[]> {
   const params = new URLSearchParams({ q: query });
   if (source) params.set("source", source);
   const data = await apiFetch<{ results: SourceSearchHit[] }>(
-    `/api/v1/workspaces/${workspaceId}/sources/search?${params.toString()}`,
+    `${ME}/sources/search?${params.toString()}`,
   );
   return data.results;
 }
 
 export async function querySource(
-  workspaceId: string,
   source: string,
   sql: string,
 ): Promise<{ columns?: string[]; rows?: unknown[][]; error?: string }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${source}/query`, {
+  return apiFetch(`${ME}/sources/${source}/query`, {
     method: "POST",
     body: JSON.stringify({ sql }),
   });
 }
 
 export async function fetchSourceHistory(
-  workspaceId: string,
   source: string,
   since: string,
   until?: string,
 ): Promise<{ fetched: number; since: string; until: string | null }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${source}/history`, {
+  return apiFetch(`${ME}/sources/${source}/history`, {
     method: "POST",
     body: JSON.stringify({ since, until }),
   });
-}
-
-export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
-  return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
-}
-
-export async function createInviteToken(
-  workspaceId: string,
-  maxUses = 5,
-  ttlDays = 7
-): Promise<{ id: string; token: string; workspace_id: string; expires_at: string }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-tokens`, {
-    method: "POST",
-    body: JSON.stringify({ max_uses: maxUses, ttl_days: ttlDays }),
-  });
-}
-
-export async function rotateWorkspaceInvite(workspaceId: string): Promise<Workspace> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-code/rotate`, { method: "POST" });
-}
-
-export async function leaveWorkspace(workspaceId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/leave`, { method: "POST" });
-}
-
-export async function updateWorkspace(
-  workspaceId: string,
-  data: {
-    name?: string;
-    description?: string;
-    cover_image_url?: string | null;
-    icon_url?: string | null;
-    color_gradient?: string | null;
-  }
-): Promise<Workspace> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function deleteWorkspace(workspaceId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" });
 }
 
 // --- Discover (public catalog, no auth required) ---
@@ -497,8 +410,7 @@ export interface PublicSkillCard {
   view_count: number;
   owner_name: string;
   owner_display_name: string;
-  workspace_id: string;
-  workspace_name: string;
+  owner_user_id: string;
   item_count: number;
   created_at: string;
   updated_at: string;
@@ -512,20 +424,19 @@ export function githubOwner(sourceGithubUrl: string): string {
 
 // --- Files: folders (nested) and pages ---
 
-export async function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/tree`);
+export async function getTree(): Promise<Tree> {
+  return apiFetch(`${ME}/tree`);
 }
 
-export async function listFolders(workspaceId: string): Promise<{ folders: Folder[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders`);
+export async function listFolders(): Promise<{ folders: Folder[] }> {
+  return apiFetch(`${ME}/folders`);
 }
 
 export async function createFolder(
-  workspaceId: string,
   name: string,
   parentFolderId?: string | null
 ): Promise<Folder> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders`, {
+  return apiFetch(`${ME}/folders`, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -535,25 +446,20 @@ export async function createFolder(
 }
 
 export async function updateFolder(
-  workspaceId: string,
   folderId: string,
   data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }
 ): Promise<Folder> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders/${folderId}`, {
+  return apiFetch(`${ME}/folders/${folderId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteFolder(
-  workspaceId: string,
-  folderId: string
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/folders/${folderId}`, { method: "DELETE" });
+export async function deleteFolder(folderId: string): Promise<void> {
+  await apiFetch(`${ME}/folders/${folderId}`, { method: "DELETE" });
 }
 
 export async function createPage(
-  workspaceId: string,
   name: string,
   folderId?: string | null,
   content?: string,
@@ -563,7 +469,7 @@ export async function createPage(
     html_layout?: "responsive" | "fixed-aspect" | "full-width";
   }
 ): Promise<Page> {
-  const page = await apiFetch<Page>(`/api/v1/workspaces/${workspaceId}/pages/new`, {
+  const page = await apiFetch<Page>(`${ME}/pages/new`, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -574,7 +480,7 @@ export async function createPage(
       html_layout: options?.html_layout ?? "responsive",
     }),
   });
-  trackEvent("web.page_created", { workspace_id: workspaceId });
+  trackEvent("web.page_created");
   return page;
 }
 
@@ -583,7 +489,6 @@ export async function getPage(pageId: string): Promise<Page> {
 }
 
 export async function updatePage(
-  workspaceId: string,
   pageId: string,
   data: {
     name?: string;
@@ -596,10 +501,10 @@ export async function updatePage(
     move_to_root?: boolean;
   }
 ): Promise<Page> {
-  const result = await apiFetch<Page>(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}`,
-    { method: "PATCH", body: JSON.stringify(data) },
-  );
+  const result = await apiFetch<Page>(`${ME}/pages/${pageId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
   // Only count actual content/title changes as "edits." Folder moves,
   // collab_projection passes, and pure layout flips are uninteresting.
   const isContentEdit =
@@ -609,8 +514,8 @@ export async function updatePage(
   if (isContentEdit) {
     trackEvent(
       "web.page_edited",
-      { workspace_id: workspaceId, page_id: pageId },
-      { dedupeKey: `${workspaceId}:${pageId}`, dedupeMs: 5 * 60 * 1000 },
+      { page_id: pageId },
+      { dedupeKey: pageId, dedupeMs: 5 * 60 * 1000 },
     );
   }
   return result;
@@ -619,102 +524,92 @@ export async function updatePage(
 // --- Page comments ---
 
 export async function listCommentThreads(
-  workspaceId: string,
   pageId: string,
 ): Promise<{ threads: CommentThread[] }> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads`,
-  );
+  return apiFetch(`${ME}/pages/${pageId}/comments/threads`);
 }
 
 export async function createCommentThread(
-  workspaceId: string,
   pageId: string,
   data: { quoted_text: string; prefix: string; suffix: string; body: string },
 ): Promise<CommentThread> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads`,
-    { method: "POST", body: JSON.stringify(data) },
-  );
+  return apiFetch(`${ME}/pages/${pageId}/comments/threads`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function replyToCommentThread(
-  workspaceId: string,
   pageId: string,
   threadId: string,
   body: string,
 ): Promise<CommentThread> {
   return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}/messages`,
+    `${ME}/pages/${pageId}/comments/threads/${threadId}/messages`,
     { method: "POST", body: JSON.stringify({ body }) },
   );
 }
 
 export async function setCommentResolved(
-  workspaceId: string,
   pageId: string,
   threadId: string,
   resolved: boolean,
 ): Promise<CommentThread> {
   return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}`,
+    `${ME}/pages/${pageId}/comments/threads/${threadId}`,
     { method: "PATCH", body: JSON.stringify({ resolved }) },
   );
 }
 
 export async function deleteCommentThread(
-  workspaceId: string,
   pageId: string,
   threadId: string,
 ): Promise<void> {
   await apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}`,
+    `${ME}/pages/${pageId}/comments/threads/${threadId}`,
     { method: "DELETE" },
   );
 }
 
 export async function deleteCommentMessage(
-  workspaceId: string,
   pageId: string,
   messageId: string,
 ): Promise<{ thread: CommentThread | null; thread_deleted: boolean }> {
   return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/messages/${messageId}`,
+    `${ME}/pages/${pageId}/comments/messages/${messageId}`,
     { method: "DELETE" },
   );
 }
 
 export async function reconcileCommentAnchors(
-  workspaceId: string,
   pageId: string,
   presentIds: string[],
 ): Promise<void> {
   await apiFetch(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/reconcile`,
+    `${ME}/pages/${pageId}/comments/reconcile`,
     { method: "POST", body: JSON.stringify({ present_ids: presentIds }) },
   );
 }
 
-// --- Aggregate (cross-workspace) ---
+// --- Aggregate ---
 
-// Cross-workspace flat page list for page pickers and search surfaces.
+// Flat page list for page pickers and search surfaces.
 export async function listAllPages(): Promise<{ pages: UserPageEntry[] }> {
-  return apiFetch("/api/v1/me/pages");
+  return apiFetch(`${ME}/pages`);
 }
 
 export interface UserPageEntry {
   id: string;
   name: string;
   content_type: "markdown" | "html";
-  workspace_id: string;
+  owner_user_id: string;
   folder_id: string | null;
   folder_path: string[];
-  workspace_name: string;
   updated_at: string;
 }
 
-export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
-  return apiFetch("/api/v1/me/tables");
+export async function listAllTables(): Promise<{ tables: TableWithOwner[] }> {
+  return apiFetch(`${ME}/tables`);
 }
 
 // --- Dashboard Visualizations ---
@@ -728,53 +623,45 @@ export interface MeOverview {
 // Counts for the "Your brain" vitals, spanning the user's own content plus
 // everything shared with them.
 export async function getMeOverview(): Promise<MeOverview> {
-  return apiFetch(`/api/v1/me/overview`);
+  return apiFetch(`${ME}/overview`);
 }
 
 export async function getActivityTimeline(
   days = 30,
   bucket = "day",
-  workspaceId?: string | null,
 ): Promise<ActivityTimeline> {
-  const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}${ws}`);
+  return apiFetch(`${ME}/activity-timeline?days=${days}&bucket=${bucket}`);
 }
 
 export async function getKnowledgeDensity(
-  maxClusters = 20, workspaceId?: string | null
+  maxClusters = 20,
 ): Promise<KnowledgeDensity> {
-  const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  return apiFetch(`/api/v1/me/knowledge-density?max_clusters=${maxClusters}${ws}`);
+  return apiFetch(`${ME}/knowledge-density?max_clusters=${maxClusters}`);
 }
 
 export async function getEmbeddingProjection(
   maxPoints = 500,
   source?: string,
-  workspaceId?: string | null,
 ): Promise<EmbeddingProjection> {
   const src = source ? `&source=${source}` : "";
-  const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
-  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${src}${ws}`);
+  return apiFetch(`${ME}/embedding-projection?max_points=${maxPoints}${src}`);
 }
 
 // --- Tables ---
 
 export async function createTable(
-  workspaceId: string | null,
   name: string,
   description?: string,
   columns?: { name: string; type: string; options?: string[]; width?: number }[]
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables`, {
+  return apiFetch(`${ME}/tables`, {
     method: "POST",
     body: JSON.stringify({ name, description: description || "", columns: columns || [] }),
   });
 }
 
-export async function listTables(
-  workspaceId: string | null
-): Promise<{ tables: Table[] }> {
-  return apiFetch(`${scope(workspaceId)}/tables`);
+export async function listTables(): Promise<{ tables: Table[] }> {
+  return apiFetch(`${ME}/tables`);
 }
 
 export async function getTable(tableId: string): Promise<Table> {
@@ -782,59 +669,51 @@ export async function getTable(tableId: string): Promise<Table> {
 }
 
 export async function updateTable(
-  workspaceId: string | null,
   tableId: string,
   data: { name?: string; description?: string; folder_id?: string | null; move_to_root?: boolean }
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}`, {
+  return apiFetch(`${ME}/tables/${tableId}`, {
     method: "PATCH", body: JSON.stringify(data),
   });
 }
 
-export async function deleteTable(
-  workspaceId: string | null,
-  tableId: string
-): Promise<void> {
-  await apiFetch(`${scope(workspaceId)}/tables/${tableId}`, { method: "DELETE" });
+export async function deleteTable(tableId: string): Promise<void> {
+  await apiFetch(`${ME}/tables/${tableId}`, { method: "DELETE" });
 }
 
 // --- Table Columns ---
 
 export async function addTableColumn(
-  workspaceId: string | null,
   tableId: string,
   column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[]; width?: number }
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns`, {
+  return apiFetch(`${ME}/tables/${tableId}/columns`, {
     method: "POST", body: JSON.stringify(column),
   });
 }
 
 export async function updateTableColumn(
-  workspaceId: string | null,
   tableId: string,
   columnId: string,
   updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[]; width?: number }
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/${columnId}`, {
+  return apiFetch(`${ME}/tables/${tableId}/columns/${columnId}`, {
     method: "PATCH", body: JSON.stringify(updates),
   });
 }
 
 export async function deleteTableColumn(
-  workspaceId: string | null,
   tableId: string,
   columnId: string
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/${columnId}`, { method: "DELETE" });
+  return apiFetch(`${ME}/tables/${tableId}/columns/${columnId}`, { method: "DELETE" });
 }
 
 export async function reorderTableColumns(
-  workspaceId: string | null,
   tableId: string,
   columnIds: string[]
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/reorder`, {
+  return apiFetch(`${ME}/tables/${tableId}/columns/reorder`, {
     method: "PUT", body: JSON.stringify({ column_ids: columnIds }),
   });
 }
@@ -842,7 +721,6 @@ export async function reorderTableColumns(
 // --- Table Rows ---
 
 export async function listTableRows(
-  workspaceId: string | null,
   tableId: string,
   params?: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] }
 ): Promise<{ rows: TableRow[]; total_count: number; has_more: boolean }> {
@@ -853,54 +731,49 @@ export async function listTableRows(
   if (params?.offset) query.set("offset", String(params.offset));
   if (params?.filters) query.set("filters", JSON.stringify(params.filters));
   const qs = query.toString();
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows${qs ? "?" + qs : ""}`);
+  return apiFetch(`${ME}/tables/${tableId}/rows${qs ? "?" + qs : ""}`);
 }
 
 export async function createTableRow(
-  workspaceId: string | null,
   tableId: string,
   data: Record<string, unknown>
 ): Promise<TableRow> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows`, {
+  return apiFetch(`${ME}/tables/${tableId}/rows`, {
     method: "POST", body: JSON.stringify({ data }),
   });
 }
 
 export async function createTableRowsBatch(
-  workspaceId: string | null,
   tableId: string,
   rows: { data: Record<string, unknown> }[]
 ): Promise<{ rows: TableRow[] }> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/batch`, {
+  return apiFetch(`${ME}/tables/${tableId}/rows/batch`, {
     method: "POST", body: JSON.stringify({ rows }),
   });
 }
 
 export async function updateTableRow(
-  workspaceId: string | null,
   tableId: string,
   rowId: string,
   data: Record<string, unknown>
 ): Promise<TableRow> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/${rowId}`, {
+  return apiFetch(`${ME}/tables/${tableId}/rows/${rowId}`, {
     method: "PATCH", body: JSON.stringify({ data }),
   });
 }
 
 export async function deleteTableRow(
-  workspaceId: string | null,
   tableId: string,
   rowId: string
 ): Promise<void> {
-  await apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/${rowId}`, { method: "DELETE" });
+  await apiFetch(`${ME}/tables/${tableId}/rows/${rowId}`, { method: "DELETE" });
 }
 
 export async function deleteTableRowsBatch(
-  workspaceId: string | null,
   tableId: string,
   rowIds: string[]
 ): Promise<{ deleted: number }> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/delete`, {
+  return apiFetch(`${ME}/tables/${tableId}/rows/delete`, {
     method: "POST", body: JSON.stringify({ row_ids: rowIds }),
   });
 }
@@ -908,7 +781,6 @@ export async function deleteTableRowsBatch(
 // --- Table Search, Summary, Duplicate ---
 
 export async function searchTableRows(
-  workspaceId: string | null,
   tableId: string,
   query: string,
   params?: { limit?: number; offset?: number }
@@ -916,61 +788,57 @@ export async function searchTableRows(
   const qs = new URLSearchParams({ q: query });
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.offset) qs.set("offset", String(params.offset));
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/search?${qs}`);
+  return apiFetch(`${ME}/tables/${tableId}/rows/search?${qs}`);
 }
 
 export async function summarizeTableRows(
-  workspaceId: string | null,
   tableId: string,
   filters?: object[]
 ): Promise<{ total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> }> {
   const qs = new URLSearchParams();
   if (filters && filters.length > 0) qs.set("filters", JSON.stringify(filters));
   const qsStr = qs.toString();
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/summary${qsStr ? "?" + qsStr : ""}`);
+  return apiFetch(`${ME}/tables/${tableId}/rows/summary${qsStr ? "?" + qsStr : ""}`);
 }
 
 export async function duplicateTableRow(
-  workspaceId: string | null,
   tableId: string,
   rowId: string
 ): Promise<TableRow> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/${rowId}/duplicate`, { method: "POST" });
+  return apiFetch(`${ME}/tables/${tableId}/rows/${rowId}/duplicate`, { method: "POST" });
 }
 
 // --- Table Views ---
 
 export async function saveTableView(
-  workspaceId: string | null,
   tableId: string,
   layout: { id?: string; name: string; filters?: object[]; sort_by?: string; sort_order?: string; visible_columns?: string[] }
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/views`, {
+  return apiFetch(`${ME}/tables/${tableId}/views`, {
     method: "POST", body: JSON.stringify(layout),
   });
 }
 
 export async function deleteTableView(
-  workspaceId: string | null,
   tableId: string,
   viewId: string
 ): Promise<Table> {
-  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/views/${viewId}`, { method: "DELETE" });
+  return apiFetch(`${ME}/tables/${tableId}/views/${viewId}`, { method: "DELETE" });
 }
 
 // --- Files ---
 
-export function workspaceFileDownloadUrl(workspaceId: string, fileId: string): string {
-  return `/api/v1/workspaces/${workspaceId}/files/${fileId}/download`;
+export function fileDownloadUrl(fileId: string): string {
+  return `${ME}/files/${fileId}/download`;
 }
 
-// Raw response shape from POST /workspaces/<id>/files. Polymorphic: the
-// server routes .md/.html to the pages table (editable, commentable) and
-// everything else to the files table (S3 blob). Discriminated by `kind`.
+// Raw response shape from POST /me/files. Polymorphic: the server routes
+// .md/.html to the pages table (editable, commentable) and everything else
+// to the files table (S3 blob). Discriminated by `kind`.
 type UploadApiResponse = {
   kind: "file" | "page";
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   folder_id: string | null;
   name: string;
   content_type: string;
@@ -986,7 +854,6 @@ type UploadApiResponse = {
 };
 
 async function uploadAny(
-  workspaceId: string,
   file: File,
   folderId?: string | null
 ): Promise<UploadApiResponse> {
@@ -994,21 +861,17 @@ async function uploadAny(
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folder_id", folderId);
-  const resp = await fetch(
-    `${API_BASE}/api/v1/workspaces/${workspaceId}/files`,
-    {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    }
-  );
+  const resp = await fetch(`${API_BASE}${ME}/files`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
   if (!resp.ok) {
     const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
     throw new Error(detail);
   }
   const result = (await resp.json()) as UploadApiResponse;
   trackEvent("web.file_uploaded", {
-    workspace_id: workspaceId,
     mime_type: file.type || "unknown",
     size_bucket: bucketSize(file.size),
     upload_kind: result.kind,
@@ -1020,11 +883,10 @@ async function uploadAny(
 // already know the file is a blob and want a FileInfo back — asserts the
 // server didn't route it to the pages table.
 export async function uploadFile(
-  workspaceId: string,
   file: File,
   folderId?: string | null
 ): Promise<FileInfo> {
-  const result = await uploadAny(workspaceId, file, folderId);
+  const result = await uploadAny(file, folderId);
   if (result.kind === "page") {
     throw new Error(
       `uploadFile got a page back from the server (${file.name}); ` +
@@ -1033,7 +895,7 @@ export async function uploadFile(
   }
   return {
     id: result.id,
-    workspace_id: result.workspace_id,
+    owner_user_id: result.owner_user_id,
     folder_id: result.folder_id,
     name: result.name,
     content_type: result.content_type,
@@ -1064,15 +926,14 @@ export type UploadResult =
   | { kind: "page"; page: Page };
 
 export async function uploadFileOrPage(
-  workspaceId: string,
   file: File,
   folderId?: string | null
 ): Promise<UploadResult> {
-  const result = await uploadAny(workspaceId, file, folderId);
+  const result = await uploadAny(file, folderId);
   if (result.kind === "page") {
     const page: Page = {
       id: result.id,
-      workspace_id: result.workspace_id,
+      owner_user_id: result.owner_user_id,
       folder_id: result.folder_id,
       name: result.name,
       content_type: result.content_type === "html" ? "html" : "markdown",
@@ -1088,7 +949,7 @@ export async function uploadFileOrPage(
   }
   const f: FileInfo = {
     id: result.id,
-    workspace_id: result.workspace_id,
+    owner_user_id: result.owner_user_id,
     folder_id: result.folder_id,
     name: result.name,
     content_type: result.content_type,
@@ -1102,8 +963,8 @@ export async function uploadFileOrPage(
   return { kind: "file", file: f };
 }
 
-export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
-  const data = await apiFetch<{ files: FileInfo[] }>(`/api/v1/workspaces/${workspaceId}/files`);
+export async function listFiles(): Promise<FileInfo[]> {
+  const data = await apiFetch<{ files: FileInfo[] }>(`${ME}/files`);
   return data.files;
 }
 
@@ -1111,27 +972,25 @@ export async function getFile(fileId: string): Promise<FileInfo> {
   return apiFetch(`/api/v1/files/${fileId}`);
 }
 
-export async function ingestCsvFile(workspaceId: string, fileId: string): Promise<Table> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}/ingest-csv`, {
+export async function ingestCsvFile(fileId: string): Promise<Table> {
+  return apiFetch(`${ME}/files/${fileId}/ingest-csv`, {
     method: "POST",
   });
 }
 
 export async function ingestXlsxFile(
-  workspaceId: string,
   fileId: string,
 ): Promise<{ tables: Table[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}/ingest-xlsx`, {
+  return apiFetch(`${ME}/files/${fileId}/ingest-xlsx`, {
     method: "POST",
   });
 }
 
 export async function updateFile(
-  workspaceId: string,
   fileId: string,
   data: { folder_id?: string | null; move_to_root?: boolean; name?: string }
 ): Promise<FileInfo> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+  return apiFetch(`${ME}/files/${fileId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1147,8 +1006,7 @@ export interface SessionSummary {
   id: string | null;
   title: string;
   linear_tickets: LinearTicketLabel[];
-  workspace_id: string | null;
-  workspace_name: string | null;
+  owner_user_id: string | null;
   user_name: string;
   agent_name: string | null;
   event_count: number;
@@ -1159,8 +1017,7 @@ export interface SessionSummary {
 }
 
 export type GeneralPermission = "none" | "read" | "comment" | "write";
-// Stored visibility is two-state (the "workspace" tier was dropped after the
-// 1:1 workspace↔user migration). "shared" is a derived display state.
+// Stored visibility is two-state. "shared" is a derived display state.
 export type SessionFolderVisibility = "private" | "public";
 export type DisplayVisibility = "private" | "shared" | "public";
 
@@ -1176,7 +1033,7 @@ export function displayVisibility(
 
 export interface SessionFolder {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   slug: string;
   name: string;
   owner_display_name: string | null;
@@ -1190,25 +1047,19 @@ export interface SessionFolder {
   share_count: number;
 }
 
-export async function listSessionFolders(workspaceId: string): Promise<SessionFolder[]> {
-  const data = await apiFetch<{ folders: SessionFolder[] }>(
-    `/api/v1/workspaces/${workspaceId}/session-folders`,
-  );
+export async function listSessionFolders(): Promise<SessionFolder[]> {
+  const data = await apiFetch<{ folders: SessionFolder[] }>(`${ME}/session-folders`);
   return data.folders;
 }
 
-export async function createSessionFolder(
-  workspaceId: string,
-  name: string,
-): Promise<SessionFolder> {
-  return apiFetch<SessionFolder>(`/api/v1/workspaces/${workspaceId}/session-folders`, {
+export async function createSessionFolder(name: string): Promise<SessionFolder> {
+  return apiFetch<SessionFolder>(`${ME}/session-folders`, {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
 export async function updateSessionFolder(
-  workspaceId: string,
   folderId: string,
   data: {
     name?: string;
@@ -1218,24 +1069,23 @@ export async function updateSessionFolder(
   },
 ): Promise<SessionFolder> {
   return apiFetch<SessionFolder>(
-    `/api/v1/workspaces/${workspaceId}/session-folders/${folderId}`,
+    `${ME}/session-folders/${folderId}`,
     { method: "PATCH", body: JSON.stringify(data) },
   );
 }
 
-export async function deleteSessionFolder(workspaceId: string, folderId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/session-folders/${folderId}`, {
+export async function deleteSessionFolder(folderId: string): Promise<void> {
+  await apiFetch(`${ME}/session-folders/${folderId}`, {
     method: "DELETE",
   });
 }
 
 // Move one or more sessions into a folder (or out, with folderId null).
 export async function assignSessionFolder(
-  workspaceId: string,
   sessionRowIds: string[],
   folderId: string | null,
 ): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/session-folders/assign`, {
+  await apiFetch(`${ME}/session-folders/assign`, {
     method: "POST",
     body: JSON.stringify({ session_row_ids: sessionRowIds, folder_id: folderId }),
   });
@@ -1275,12 +1125,11 @@ export interface LinearTicketLabel {
   enriched_at: string | null;
 }
 
-export async function listMySessions(workspaceId?: string, limit = 50): Promise<SessionSummary[]> {
+export async function listMySessions(limit = 50): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
-  if (workspaceId) qs.set("workspace_id", workspaceId);
   qs.set("limit", String(limit));
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
-    `/api/v1/me/sessions?${qs.toString()}`
+    `${ME}/sessions?${qs.toString()}`
   );
   return data.sessions;
 }
@@ -1295,7 +1144,7 @@ export interface SessionArtifact {
 
 export interface SessionDetail {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   session_id: string;
   title: string;
   agent_name: string;
@@ -1313,12 +1162,11 @@ export async function getSessionDetail(sessionId: string): Promise<SessionDetail
 }
 
 export async function renameSession(
-  workspaceId: string,
   sessionId: string,
   title: string
 ): Promise<{ title: string }> {
   return apiFetch(
-    `/api/v1/sessions/${encodeURIComponent(sessionId)}/title`,
+    `${ME}/sessions/${encodeURIComponent(sessionId)}/title`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1327,11 +1175,8 @@ export async function renameSession(
   );
 }
 
-export async function deleteSession(
-  workspaceId: string,
-  sessionRowId: string
-): Promise<void> {
-  await apiFetch(`/api/v1/sessions/${sessionRowId}`, {
+export async function deleteSession(sessionRowId: string): Promise<void> {
+  await apiFetch(`${ME}/sessions/${sessionRowId}`, {
     method: "DELETE",
   });
 }
@@ -1339,21 +1184,20 @@ export async function deleteSession(
 // Freeze a session transcript into a markdown page inside a folder — how
 // sessions travel into skills (sessions can't live in folders directly).
 export async function materializeSession(
-  workspaceId: string,
   sessionId: string,
   folderId: string
 ): Promise<Page> {
   return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}/materialize`,
+    `${ME}/sessions/${encodeURIComponent(sessionId)}/materialize`,
     { method: "POST", body: JSON.stringify({ folder_id: folderId }) },
   );
 }
 
-// --- Pins + recents (per user, per workspace) ---
+// --- Pins + recents (per user) ---
 
 export type PinKind = "skills" | "sessions" | "files";
 
-export interface WorkspacePins {
+export interface Pins {
   skills: string[];
   sessions: string[];
   files: string[];
@@ -1364,37 +1208,27 @@ export interface RecentEntry {
   kind: string;
 }
 
-export async function getWorkspacePins(workspaceId: string): Promise<WorkspacePins> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/pins`);
+export async function getPins(): Promise<Pins> {
+  return apiFetch(`${ME}/pins`);
 }
 
-export async function setWorkspacePins(
-  workspaceId: string,
-  kind: PinKind,
-  ids: string[]
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/pins/${kind}`, {
+export async function setPins(kind: PinKind, ids: string[]): Promise<void> {
+  await apiFetch(`${ME}/pins/${kind}`, {
     method: "PUT",
     body: JSON.stringify({ ids }),
   });
 }
 
-export async function getWorkspaceRecents(workspaceId: string): Promise<RecentEntry[]> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/recents`);
-}
-
-// Recently-viewed objects across all workspaces (incl. shared items in
-// workspaces the user isn't a member of), most recent first.
+// Recently-viewed objects (incl. shared items), most recent first.
 export async function getMyRecents(): Promise<RecentEntry[]> {
-  return apiFetch(`/api/v1/me/recents`);
+  return apiFetch(`${ME}/recents`);
 }
 
-export async function recordWorkspaceRecent(
-  workspaceId: string,
+export async function recordRecent(
   objectId: string,
   kind: string
 ): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/recents`, {
+  await apiFetch(`${ME}/recents`, {
     method: "POST",
     body: JSON.stringify({ object_id: objectId, kind }),
   });
@@ -1426,17 +1260,15 @@ export interface Skill {
   published: SkillPublishInfo | null;
 }
 
-export async function listSkills(workspaceId: string): Promise<Skill[]> {
-  const data = await apiFetch<{ skills: Skill[] }>(
-    `/api/v1/workspaces/${workspaceId}/skills`
-  );
+export async function listSkills(): Promise<Skill[]> {
+  const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills`);
   return data.skills;
 }
 
 // The full publish record, as returned by publish/update.
-export interface WorkspaceSkill {
+export interface PublishedSkill {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   folder_id: string;
   slug: string;
   title: string;
@@ -1455,7 +1287,6 @@ export interface WorkspaceSkill {
 
 // Mint (or fetch) the publish record for a skill folder.
 export async function publishSkillFolder(
-  workspaceId: string,
   folderId: string,
   body: {
     title?: string;
@@ -1464,15 +1295,12 @@ export async function publishSkillFolder(
     cover_image_url?: string | null;
     icon_url?: string | null;
   } = {}
-): Promise<WorkspaceSkill> {
-  const skill = await apiFetch<WorkspaceSkill>(
-    `/api/v1/workspaces/${workspaceId}/skills`,
-    {
-      method: "POST",
-      body: JSON.stringify({ folder_id: folderId, ...body }),
-    },
-  );
-  trackEvent("web.skill_published", { workspace_id: workspaceId });
+): Promise<PublishedSkill> {
+  const skill = await apiFetch<PublishedSkill>(`${ME}/skills`, {
+    method: "POST",
+    body: JSON.stringify({ folder_id: folderId, ...body }),
+  });
+  trackEvent("web.skill_published");
   return skill;
 }
 
@@ -1482,15 +1310,14 @@ export interface SharedSkill {
   folder_id: string;
   name: string;
   description: string;
-  workspace_id: string;
-  workspace_name: string;
+  owner_user_id: string;
   shared_by: string | null;
   permission: "read" | "write";
   slug: string | null;
 }
 
 export async function listSkillsSharedWithMe(): Promise<SharedSkill[]> {
-  const data = await apiFetch<{ skills: SharedSkill[] }>("/api/v1/me/shared-skills");
+  const data = await apiFetch<{ skills: SharedSkill[] }>(`${ME}/shared-skills`);
   return data.skills;
 }
 
@@ -1541,8 +1368,7 @@ export interface PublicSkillContents {
 }
 
 export interface PublicSkillDetail {
-  skill: WorkspaceSkill;
-  workspace_name: string;
+  skill: PublishedSkill;
   folder_name: string;
   contents: PublicSkillContents;
   can_write: boolean;
@@ -1562,7 +1388,7 @@ export async function updateSkill(
     cover_image_url?: string | null;
     icon_url?: string | null;
   }
-): Promise<WorkspaceSkill> {
+): Promise<PublishedSkill> {
   return apiFetch(`/api/v1/skills/${skillId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -1573,107 +1399,98 @@ export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
   return apiFetch(`/api/v1/skills/${slug}`);
 }
 
-// Fork: deep folder copy into the caller's workspace, landing as a private
-// skill folder.
+// Fork: deep folder copy into the caller's own space, landing as a private
+// skill folder. The fork target is always the current user.
 export async function forkSkill(
-  slug: string,
-  workspaceId: string
+  slug: string
 ): Promise<{ folder_id: string; name: string }> {
+  const me = await getMe();
   return apiFetch(`/api/v1/skills/${slug}/add-to-workspace`, {
     method: "POST",
-    body: JSON.stringify({ workspace_id: workspaceId }),
+    body: JSON.stringify({ owner_user_id: me.id }),
   });
 }
 
-// --- Workspace-wide page index ---
+// --- Page index ---
 
-export interface WorkspacePageEntry {
+export interface PageEntry {
   id: string;
   name: string;
   content_type: "markdown" | "html";
-  workspace_id: string;
+  owner_user_id: string;
   folder_id: string | null;
-  // Chain of folder names from the workspace root down to the page's folder.
-  // Empty for pages at the workspace root.
+  // Chain of folder names from the root down to the page's folder.
+  // Empty for pages at the root.
   folder_path: string[];
   updated_at: string;
 }
 
-export async function listWorkspacePages(
-  workspaceId: string
-): Promise<WorkspacePageEntry[]> {
-  const data = await apiFetch<{ pages: WorkspacePageEntry[] }>(
-    `/api/v1/workspaces/${workspaceId}/pages`
-  );
+export async function listPages(): Promise<PageEntry[]> {
+  const data = await apiFetch<{ pages: PageEntry[] }>(`${ME}/pages`);
   return data.pages;
 }
 
 // --- Page semantic search ---
 
 export async function semanticSearchPages(
-  workspaceId: string,
   query: string,
   limit = 20
 ): Promise<Page[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   const data = await apiFetch<{ pages: Page[] }>(
-    `/api/v1/workspaces/${workspaceId}/pages/semantic-search?${params}`
+    `${ME}/pages/semantic-search?${params}`
   );
   return data.pages;
 }
 
-export async function searchWorkspacePages(
-  workspaceId: string,
+export async function searchPages(
   query: string,
   limit = 20
 ): Promise<Page[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   const data = await apiFetch<{ pages: Page[] }>(
-    `/api/v1/workspaces/${workspaceId}/pages/search?${params}`
+    `${ME}/pages/search?${params}`
   );
   return data.pages;
 }
 
-// --- Table Embeddings (workspace-only) ---
+// --- Table Embeddings ---
 
 export async function setTableEmbeddingConfig(
-  workspaceId: string,
   tableId: string,
   config: { enabled: boolean; columns: string[] }
 ): Promise<Table> {
-  return apiFetch<Table>(`/api/v1/workspaces/${workspaceId}/tables/${tableId}/embedding`, {
+  return apiFetch<Table>(`${ME}/tables/${tableId}/embedding`, {
     method: "PUT",
     body: JSON.stringify(config),
   });
 }
 
 export async function backfillTableEmbeddings(
-  workspaceId: string,
   tableId: string
 ): Promise<{ embedded: number; total: number }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}/embedding/backfill`, {
+  return apiFetch(`${ME}/tables/${tableId}/embedding/backfill`, {
     method: "POST",
   });
 }
 
 export async function semanticSearchTableRows(
-  workspaceId: string,
   tableId: string,
   query: string,
   limit = 20
 ): Promise<TableRow[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   const data = await apiFetch<{ rows: TableRow[] }>(
-    `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/semantic-search?${params}`
+    `${ME}/tables/${tableId}/rows/semantic-search?${params}`
   );
   return data.rows;
 }
 
 // --- Agent Names ---
 
-export async function listAgentNames(workspaceId: string): Promise<string[]> {
+export async function listAgentNames(): Promise<string[]> {
   const data = await apiFetch<{ agent_names: string[] }>(
-    `/api/v1/workspaces/${workspaceId}/sessions/agent-names`
+    `${ME}/sessions/agent-names`
   );
   return data.agent_names;
 }
@@ -1686,8 +1503,6 @@ export interface ActivityEvent {
   actor: { name: string; display_name: string };
   target_id: string;
   target_label: string;
-  workspace_id?: string;
-  workspace_name?: string;
 }
 
 export interface ActivityFeed {
@@ -1700,14 +1515,14 @@ export async function listActivity(
 ): Promise<ActivityFeed> {
   const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
   if (opts.before) qs.set("before", opts.before);
-  return apiFetch(`/api/v1/me/activity?${qs}`);
+  return apiFetch(`${ME}/activity?${qs}`);
 }
 
 // --- Session transcripts ---
 
 export interface SessionTranscript {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   session_id: string;
   agent_name: string;
   size_bytes: number;
@@ -1717,13 +1532,8 @@ export interface SessionTranscript {
   download_url: string | null;
 }
 
-export async function getWorkspaceTranscript(
-  workspaceId: string,
-  sessionId: string
-): Promise<SessionTranscript> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(sessionId)}`
-  );
+export async function getTranscript(sessionId: string): Promise<SessionTranscript> {
+  return apiFetch(`${ME}/transcripts/${encodeURIComponent(sessionId)}`);
 }
 
 export interface SessionEvent {
@@ -1735,19 +1545,16 @@ export interface SessionEvent {
   created_at: string | null;
 }
 
-export async function getSessionEvents(
-  workspaceId: string,
-  sessionId: string
-): Promise<SessionEvent[]> {
+export async function getSessionEvents(sessionId: string): Promise<SessionEvent[]> {
   const res = await apiFetch<{ events: SessionEvent[] }>(
-    `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(sessionId)}/events`
+    `${ME}/transcripts/${encodeURIComponent(sessionId)}/events`
   );
   return res.events;
 }
 
-export interface WorkspaceHistoryEvent {
+export interface HistoryEvent {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   created_by: string;
   created_by_name: string | null;
   agent_name: string;
@@ -1761,14 +1568,13 @@ export interface WorkspaceHistoryEvent {
   rank?: number | null;
 }
 
-export async function searchWorkspaceEvents(
-  workspaceId: string,
+export async function searchEvents(
   query: string,
   limit = 100
-): Promise<WorkspaceHistoryEvent[]> {
+): Promise<HistoryEvent[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const res = await apiFetch<{ events: WorkspaceHistoryEvent[] }>(
-    `/api/v1/workspaces/${workspaceId}/sessions/events/search?${params}`
+  const res = await apiFetch<{ events: HistoryEvent[] }>(
+    `${ME}/sessions/events/search?${params}`
   );
   return res.events;
 }
@@ -1781,7 +1587,6 @@ export interface UploadedTranscript {
 }
 
 export async function uploadTranscript(
-  workspaceId: string,
   file: File,
   sessionId: string,
   agentName: string,
@@ -1794,7 +1599,7 @@ export async function uploadTranscript(
   formData.append("agent_name", agentName);
   if (cwd) formData.append("cwd", cwd);
 
-  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/transcripts`, {
+  const resp = await fetch(`${API_BASE}${ME}/transcripts`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
@@ -1806,9 +1611,9 @@ export async function uploadTranscript(
   return resp.json();
 }
 
-// --- Workspace overview, sessions, files, and skills ---
+// --- Overview, sessions, files, and skills ---
 
-export interface WorkspaceSidebarSession {
+export interface SidebarSession {
   id: string | null;
   session_id: string;
   title: string;
@@ -1822,20 +1627,20 @@ export interface WorkspaceSidebarSession {
 
 // Unified Files tree. Folders, pages, and files
 // each carry their parent so the frontend can build the hierarchy.
-export interface WorkspaceFolder {
+export interface TreeFolder {
   id: string;
   name: string;
   parent_folder_id: string | null;
   page_count: number;
   file_count: number;
 }
-export interface WorkspacePage {
+export interface TreePage {
   id: string;
   name: string;
   content_type: "markdown" | "html";
   folder_id: string | null;
 }
-export interface WorkspaceFile {
+export interface TreeFile {
   id: string;
   name: string;
   folder_id: string | null;
@@ -1846,54 +1651,53 @@ export interface WorkspaceFile {
   created_at: string;
   linked_table_id?: string | null;
 }
-export interface WorkspaceFiles {
-  folders: WorkspaceFolder[];
-  pages: WorkspacePage[];
-  files: WorkspaceFile[];
+export interface FilesTree {
+  folders: TreeFolder[];
+  pages: TreePage[];
+  files: TreeFile[];
 }
 
 // Sidebar payload carries the unified skill-folder list (same shape as
-// GET /{ws}/skills items).
-export type WorkspaceSidebarSkill = Skill;
+// GET /me/skills items).
+export type SidebarSkill = Skill;
 
-export interface WorkspaceOverview {
-  sessions: WorkspaceSidebarSession[];
-  files: WorkspaceFiles;
-  skills?: WorkspaceSidebarSkill[];
+export interface Overview {
+  sessions: SidebarSession[];
+  files: FilesTree;
+  skills?: SidebarSkill[];
 }
 
-export async function getWorkspaceOverview(workspaceId: string): Promise<WorkspaceOverview> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/overview`);
+export async function getOverview(): Promise<Overview> {
+  return apiFetch(`${ME}/overview`);
 }
 
-export interface WorkspaceSidebar {
-  sessions: WorkspaceSidebarSession[];
-  files: WorkspaceFiles;
-  skills?: WorkspaceSidebarSkill[];
+export interface Sidebar {
+  sessions: SidebarSession[];
+  files: FilesTree;
+  skills?: SidebarSkill[];
 }
 
-// In-memory store for the last ETag seen per workspace, so navigating between
-// workspaces hits the cached payload instead of refetching.
-const _sidebarEtags: Record<string, string> = {};
-const _sidebarCache: Record<string, WorkspaceSidebar> = {};
+// Cache the last ETag so revisiting the sidebar hits the cached payload
+// instead of refetching.
+let _sidebarEtag: string | null = null;
+let _sidebarCache: Sidebar | null = null;
 
-export async function getWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
+export async function getSidebar(): Promise<Sidebar> {
   const token = await getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const cached = _sidebarEtags[workspaceId];
-  if (cached) headers["If-None-Match"] = cached;
+  if (_sidebarEtag) headers["If-None-Match"] = _sidebarEtag;
 
-  const res = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/sidebar`, {
+  const res = await fetch(`${API_BASE}${ME}/sidebar`, {
     method: "GET",
     headers,
   });
-  if (res.status === 304 && _sidebarCache[workspaceId]) return _sidebarCache[workspaceId];
+  if (res.status === 304 && _sidebarCache) return _sidebarCache;
   if (!res.ok) throw new ApiError(res.status, `sidebar fetch failed: ${res.status}`);
   const etag = res.headers.get("etag");
-  if (etag) _sidebarEtags[workspaceId] = etag;
-  const body = (await res.json()) as WorkspaceSidebar;
-  _sidebarCache[workspaceId] = body;
+  if (etag) _sidebarEtag = etag;
+  const body = (await res.json()) as Sidebar;
+  _sidebarCache = body;
   return body;
 }
 
@@ -1914,17 +1718,12 @@ export interface FolderContents {
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
   pages: { id: string; name: string; content_type: "markdown" | "html"; created_at: string }[];
-  files: Omit<WorkspaceFile, "folder_id">[];
+  files: Omit<TreeFile, "folder_id">[];
   tables: { id: string; name: string; row_count: number; created_at: string }[];
 }
 
-export async function getFolderContents(
-  workspaceId: string,
-  folderId: string
-): Promise<FolderContents> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/folders/${folderId}/contents`
-  );
+export async function getFolderContents(folderId: string): Promise<FolderContents> {
+  return apiFetch(`${ME}/folders/${folderId}/contents`);
 }
 
 // --- Shared with me ---
@@ -1935,8 +1734,7 @@ export interface SharedWithMeItem {
   object_type: SharedObjectType;
   object_id: string;
   name: string;
-  workspace_id: string;
-  workspace_name: string;
+  owner_user_id: string;
   shared_by: string | null;
   permission: "read" | "write";
 }
@@ -2030,39 +1828,18 @@ const TRASH_KIND_PATH: Record<TrashKind, string> = {
   session: "sessions",
 };
 
-export async function trashItem(
-  workspaceId: string,
-  kind: TrashKind,
-  id: string,
-): Promise<void> {
-  await apiFetch(
-    `/api/v1/workspaces/${workspaceId}/${TRASH_KIND_PATH[kind]}/${id}`,
-    { method: "DELETE" },
-  );
+export async function trashItem(kind: TrashKind, id: string): Promise<void> {
+  await apiFetch(`${ME}/${TRASH_KIND_PATH[kind]}/${id}`, { method: "DELETE" });
 }
 
-export async function restoreItem(
-  workspaceId: string,
-  kind: TrashKind,
-  id: string,
-): Promise<void> {
-  await apiFetch(
-    `/api/v1/workspaces/${workspaceId}/${TRASH_KIND_PATH[kind]}/${id}/restore`,
-    { method: "POST" },
-  );
+export async function restoreItem(kind: TrashKind, id: string): Promise<void> {
+  await apiFetch(`${ME}/${TRASH_KIND_PATH[kind]}/${id}/restore`, { method: "POST" });
 }
 
-export async function purgeItem(
-  workspaceId: string,
-  kind: TrashKind,
-  id: string,
-): Promise<void> {
-  await apiFetch(
-    `/api/v1/workspaces/${workspaceId}/${TRASH_KIND_PATH[kind]}/${id}/purge`,
-    { method: "DELETE" },
-  );
+export async function purgeItem(kind: TrashKind, id: string): Promise<void> {
+  await apiFetch(`${ME}/${TRASH_KIND_PATH[kind]}/${id}/purge`, { method: "DELETE" });
 }
 
-export async function getTrash(workspaceId: string): Promise<TrashListing> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/trash`);
+export async function getTrash(): Promise<TrashListing> {
+  return apiFetch(`${ME}/trash`);
 }

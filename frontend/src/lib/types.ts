@@ -15,30 +15,13 @@ export interface RegisterResponse {
   api_key: string;
 }
 
-// --- Workspaces ---
-
-export interface Workspace {
-  id: string;
-  name: string;
-  description: string;
-  creator_id: string;
-  invite_code: string;
-  created_at: string;
-  updated_at: string;
-  member_count: number | null;
-  cover_image_url?: string | null;
-  icon_url?: string | null;
-  color_gradient?: string | null;
-  is_primary?: boolean;
-}
-
 // --- Files: folders (nested) and pages ---
 
 export type PageContentType = "markdown" | "html";
 
 export interface Folder {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   parent_folder_id: string | null;
   name: string;
   created_by: string;
@@ -50,7 +33,7 @@ export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width";
 
 export interface Page {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   folder_id: string | null;
   name: string;
   content_type: PageContentType;
@@ -70,7 +53,7 @@ export interface Page {
 // Lightweight tree node — pages live as `pages: PageSummary[]` in each folder.
 export interface PageSummary {
   id: string;
-  workspace_id: string;
+  owner_user_id: string;
   folder_id: string | null;
   name: string;
   content_type: PageContentType;
@@ -83,7 +66,7 @@ export interface FolderTreeNode extends Folder {
   pages: PageSummary[];
 }
 
-export interface WorkspaceTree {
+export interface Tree {
   folders: FolderTreeNode[];
   pages: PageSummary[];
 }
@@ -122,7 +105,7 @@ export interface TableView {
 
 export interface Table {
   id: string;
-  workspace_id: string | null;
+  owner_user_id: string | null;
   folder_id: string | null;
   name: string;
   description: string;
@@ -146,15 +129,15 @@ export interface TableRow {
   updated_at: string;
 }
 
-export interface TableWithWorkspace extends Table {
-  workspace_name: string | null;
+export interface TableWithOwner extends Table {
+  owner_display_name: string | null;
 }
 
 // --- Files ---
 
 export interface FileInfo {
   id: string;
-  workspace_id: string | null;
+  owner_user_id: string | null;
   folder_id?: string | null;
   name: string;
   content_type: string;

@@ -11,10 +11,9 @@ export type PageUpdateEvent = {
   agent_name: string | null;
 };
 
-// Subscribe to a workspace's page-update stream. Returns an unsubscribe fn.
+// Subscribe to the current user's page-update stream. Returns an unsubscribe fn.
 // Reconnects on drop with a short backoff until unsubscribed.
 export function subscribePageEvents(
-  workspaceId: string,
   onEvent: (event: PageUpdateEvent) => void,
 ): () => void {
   const controller = new AbortController();
@@ -25,7 +24,7 @@ export function subscribePageEvents(
       try {
         // Resolved per attempt so each reconnect gets a fresh Auth0 token.
         const token = await getAuthToken();
-        const res = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/pages/events`, {
+        const res = await fetch(`${API_BASE}/api/v1/me/pages/events`, {
           headers: { Authorization: `Bearer ${token ?? ""}` },
           signal: controller.signal,
         });

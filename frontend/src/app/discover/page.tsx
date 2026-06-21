@@ -154,10 +154,7 @@ function DiscoverGrid({
                 {skill.source_github_url && (
                   <GitHubSourceGlyph href={skill.source_github_url} />
                 )}
-                <ForkSkillCardButton
-                  slug={skill.slug}
-                  sourceWorkspaceId={skill.workspace_id}
-                />
+                <ForkSkillCardButton slug={skill.slug} />
               </span>
             }
           />

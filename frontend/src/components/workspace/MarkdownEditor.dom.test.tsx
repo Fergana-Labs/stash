@@ -10,7 +10,7 @@ afterEach(() => {
 
 const page: Page = {
   id: "page-1",
-  workspace_id: "workspace-1",
+  owner_user_id: "user-1",
   folder_id: null,
   name: "Skill ICP - Rachel",
   content_type: "markdown",
@@ -27,7 +27,6 @@ describe("MarkdownEditor DOM", () => {
   it("disables browser spellcheck on the editable surface", async () => {
     render(
       <MarkdownEditor
-        workspaceId={null}
         file={page}
         onSave={vi.fn()}
         collaborationUser={{ id: "user-1", name: "Test User" }}

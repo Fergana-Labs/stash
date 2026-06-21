@@ -63,11 +63,11 @@ describe("MarkdownEditor markdown round-trip", () => {
     expect(extractCommentIdsFromMarkdown("plain **bold** *italic* text")).toEqual([]);
   });
 
-  it("preserves workspace file download image URLs", () => {
+  it("preserves file download image URLs", () => {
     const md =
-      "![diagram](/api/v1/workspaces/ws-1/files/file-1/download)\n";
+      "![diagram](/api/v1/me/files/file-1/download)\n";
     const doc = markdownToInitialJSON(md);
     const out = serializeMarkdown(doc, md);
-    expect(out).toBe("![diagram](/api/v1/workspaces/ws-1/files/file-1/download)");
+    expect(out).toBe("![diagram](/api/v1/me/files/file-1/download)");
   });
 });

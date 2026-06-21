@@ -21,7 +21,6 @@ import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 import PaywallModal from "../PaywallModal";
 
 type Props = {
-  workspaceId: string | null;
   returnTo: string;
   includeObsidian?: boolean;
   onSourceCountChange?: (count: number) => void;
@@ -31,7 +30,6 @@ type Props = {
 // Connect-only surface. Connecting an account is done here; adding specific
 // projects/repos/pages happens on each integration's dedicated page.
 export default function SourceConnectorList({
-  workspaceId,
   returnTo,
   includeObsidian = true,
   onObsidianUploaded,
@@ -152,7 +150,6 @@ export default function SourceConnectorList({
                   enabled={enabled}
                   authKind={status?.auth_kind ?? "oauth"}
                   disabledReason={status?.disabled_reason ?? null}
-                  workspaceId={workspaceId}
                   provider={connector.provider}
                   busy={busy === connector.provider}
                   expanded={expanded === connector.provider}
@@ -179,9 +176,7 @@ export default function SourceConnectorList({
         );
       })}
 
-      {includeObsidian && workspaceId && (
-        <ObsidianSourceCard workspaceId={workspaceId} onUploaded={onObsidianUploaded} />
-      )}
+      {includeObsidian && <ObsidianSourceCard onUploaded={onObsidianUploaded} />}
 
       {error && (
         <div className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
@@ -207,7 +202,6 @@ function ConnectorAction({
   enabled,
   authKind,
   disabledReason,
-  workspaceId,
   provider,
   busy,
   expanded,
@@ -219,7 +213,6 @@ function ConnectorAction({
   enabled: boolean;
   authKind: IntegrationStatus["auth_kind"];
   disabledReason: string | null;
-  workspaceId: string | null;
   provider: string;
   busy: boolean;
   expanded: boolean;
@@ -256,14 +249,9 @@ function ConnectorAction({
   // connected provider with no sources yet has no in-product path to its page.
   return (
     <>
-      {workspaceId && (
-        <Link
-          href={`/workspaces/${workspaceId}/integrations/${provider}`}
-          className={secondaryButton()}
-        >
-          Open
-        </Link>
-      )}
+      <Link href={`/integrations/${provider}`} className={secondaryButton()}>
+        Open
+      </Link>
       <button type="button" onClick={onDisconnect} disabled={busy} className={secondaryButton()}>
         {busy ? "Disconnecting..." : "Disconnect"}
       </button>
@@ -271,13 +259,7 @@ function ConnectorAction({
   );
 }
 
-function ObsidianSourceCard({
-  workspaceId,
-  onUploaded,
-}: {
-  workspaceId: string;
-  onUploaded?: () => void;
-}) {
+function ObsidianSourceCard({ onUploaded }: { onUploaded?: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
@@ -295,7 +277,7 @@ function ObsidianSourceCard({
       </div>
       {open && (
         <div className="mt-3">
-          <ObsidianVaultDropZone workspaceId={workspaceId} onUploaded={onUploaded ?? (() => {})} />
+          <ObsidianVaultDropZone onUploaded={onUploaded ?? (() => {})} />
         </div>
       )}
     </div>

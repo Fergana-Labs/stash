@@ -310,54 +310,6 @@ export function VisualizationSkeleton({ className }: SkeletonProps) {
   );
 }
 
-export function WorkspaceFormSkeleton() {
-  return (
-    <div className="mx-auto max-w-2xl px-8 py-12">
-      <SkeletonLine className="h-3 w-28" />
-      <SkeletonLine className="mt-3 h-9 w-72 max-w-full" />
-      <SkeletonLine className="mt-4 h-4 w-full" />
-      <SkeletonLine className="mt-2 h-4 w-4/5" />
-      <div className="mt-8 space-y-4">
-        <SkeletonBlock className="h-16 w-full rounded-lg" />
-        <SkeletonBlock className="h-28 w-full rounded-lg" />
-        <div className="flex justify-between">
-          <SkeletonBlock className="h-8 w-16" />
-          <SkeletonBlock className="h-9 w-36" />
-        </div>
-      </div>
-      <SkeletonCard className="mt-12 rounded-2xl p-5">
-        <SkeletonLine className="h-3 w-48" />
-        <div className="mt-4 space-y-3">
-          <SkeletonLine className="w-full" />
-          <SkeletonLine className="w-5/6" />
-          <SkeletonLine className="w-2/3" />
-        </div>
-      </SkeletonCard>
-    </div>
-  );
-}
-
-export function WorkspaceSettingsSkeleton() {
-  return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-2xl px-8 py-10">
-        <SkeletonLine className="h-8 w-36" />
-        <SkeletonLine className="mt-3 h-3 w-40" />
-        {[0, 1, 2].map((i) => (
-          <SkeletonCard key={i} className="mt-6 p-4">
-            <SkeletonLine className="h-5 w-28" />
-            <div className="mt-4 space-y-2">
-              {[0, 1, 2].map((row) => (
-                <SkeletonBlock key={row} className="h-12 w-full rounded-lg" />
-              ))}
-            </div>
-          </SkeletonCard>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function SessionsListSkeleton() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -650,25 +602,6 @@ export function PublicSkillSkeleton() {
         </div>
         <VisualizationSkeleton className="mt-8" />
       </div>
-    </div>
-  );
-}
-
-export function JoinWorkspaceSkeleton() {
-  return (
-    <div className="flex min-h-screen flex-col bg-base text-foreground">
-      <div className="border-b border-border bg-surface px-4 py-2">
-        <div className="flex justify-end">
-          <SkeletonBlock className="h-7 w-24" />
-        </div>
-      </div>
-      <main className="flex flex-1 items-center justify-center px-4">
-        <SkeletonCard className="w-full max-w-sm p-6 text-center">
-          <SkeletonLine className="mx-auto h-5 w-48" />
-          <SkeletonLine className="mx-auto mt-3 w-64 max-w-full" />
-          <SkeletonBlock className="mx-auto mt-5 h-9 w-36" />
-        </SkeletonCard>
-      </main>
     </div>
   );
 }

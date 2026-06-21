@@ -1,4 +1,4 @@
-// Generates the welcome HTML that gets dropped into workspace.description
+// Generates the welcome HTML that gets dropped into the user's description
 // on first onboarding completion. The DescriptionEditor (Tiptap) accepts
 // standard HTML, so we author plain strings.
 //
@@ -6,11 +6,10 @@
 
 export type WelcomeInputs = {
   displayName: string;
-  inviteLink: string | null;
 };
 
 export function generateWelcomeHtml(inputs: WelcomeInputs): string {
-  const { displayName, inviteLink } = inputs;
+  const { displayName } = inputs;
 
   const parts: string[] = [];
 
@@ -22,11 +21,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(
     `<ul>
       <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola, Twitter / X. Your agent reads across everything you connect.</li>
-      <li><strong>Invite a teammate</strong>${
-        inviteLink
-          ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
-          : ` from settings.`
-      }</li>
+      <li><strong>Share a folder or page</strong> — give a link or invite specific people, so teammates and their agents work from the same docs.</li>
       <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>bash -c "$(curl -fsSL https://joinstash.ai/install)"</code></li>
     </ul>`,
   );
@@ -67,8 +62,4 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function escapeAttr(s: string): string {
-  return escapeHtml(s);
 }

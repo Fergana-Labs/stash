@@ -26,7 +26,7 @@ import {
   getAuthToken,
   getCollabUrl,
   uploadFile,
-  workspaceFileDownloadUrl,
+  fileDownloadUrl,
 } from "../../lib/api";
 import { openInNewTab, shouldOpenInNewTab } from "../../lib/linkNavigation";
 
@@ -53,7 +53,6 @@ type CollaborationState = {
 };
 
 interface MarkdownEditorProps {
-  workspaceId: string | null;
   file: Page;
   onSave: (content: string) => void | Promise<void>;
   collaborationUser: CollaborationUser;
@@ -78,7 +77,6 @@ interface MarkdownEditorProps {
 }
 
 export default function MarkdownEditor({
-  workspaceId,
   file,
   onSave,
   collaborationUser,
@@ -119,7 +117,7 @@ export default function MarkdownEditor({
   );
 
   useEffect(() => {
-    if (!workspaceId || typeof window === "undefined") {
+    if (typeof window === "undefined") {
       setCollaboration(null);
       return;
     }
@@ -130,7 +128,7 @@ export default function MarkdownEditor({
     const document = new Y.Doc();
     const provider = new HocuspocusProvider({
       url: getCollabUrl(),
-      name: `workspace:${workspaceId}:page:${file.id}`,
+      name: `workspace:${file.owner_user_id}:page:${file.id}`,
       document,
       sessionAwareness: true,
       // Async factory, re-run on every (re)connect — Auth0 access tokens
@@ -158,7 +156,7 @@ export default function MarkdownEditor({
       provider.destroy();
       document.destroy();
     };
-  }, [file.id, workspaceId]);
+  }, [file.id, file.owner_user_id]);
 
   const collaborationUserColor = useMemo(
     () => colorFromId(collaborationUser.id),
@@ -358,14 +356,14 @@ export default function MarkdownEditor({
 
   const insertUploadedFiles = useCallback(
     async (files: FileList | File[]) => {
-      if (!workspaceId || !editor) return;
+      if (!editor) return;
       for (const fileToUpload of Array.from(files)) {
-        const result = await uploadFile(workspaceId, fileToUpload);
+        const result = await uploadFile(fileToUpload);
         // Build each insertion from the current editor state. Uploads can
         // overlap with remote Yjs updates, so old transactions may no longer
         // match the document by the time the upload finishes.
         if (editor.isDestroyed) return;
-        const href = workspaceFileDownloadUrl(workspaceId, result.id);
+        const href = fileDownloadUrl(result.id);
         if (result.content_type.startsWith("image/")) {
           editor.commands.setImage({ src: href, alt: result.name });
         } else {
@@ -377,7 +375,7 @@ export default function MarkdownEditor({
         }
       }
     },
-    [editor, workspaceId]
+    [editor]
   );
 
   useEffect(() => {
@@ -530,7 +528,6 @@ export default function MarkdownEditor({
     <div className="flex h-full flex-col">
       <EditorToolbar
         editor={editor}
-        workspaceId={workspaceId}
         onStartComment={!readOnly && onAddComment ? openComposer : undefined}
       />
       {collabError && (
@@ -587,11 +584,11 @@ type JSONNode = {
 };
 
 function isSupportedImageUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url) || isWorkspaceFileDownloadPath(url);
+  return /^https?:\/\//i.test(url) || isFileDownloadPath(url);
 }
 
-function isWorkspaceFileDownloadPath(url: string): boolean {
-  return /^\/api\/v1\/workspaces\/[^/]+\/files\/[^/]+\/download(?:[?#].*)?$/i.test(url);
+function isFileDownloadPath(url: string): boolean {
+  return /^\/api\/v1\/me\/files\/[^/]+\/download(?:[?#].*)?$/i.test(url);
 }
 
 const COMMENT_SPAN_RE = /<span\s+data-comment-id="([^"]+)">([\s\S]*?)<\/span>/g;

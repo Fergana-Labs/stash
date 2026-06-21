@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-// Minimum shape required by the card — both workspace skill folders and the
+// Minimum shape required by the card — both your skill folders and the
 // Discover catalog's PublicSkillCard project into this.
 export interface SkillCardData {
   title: string;

@@ -53,8 +53,8 @@ interface FileViewerHeaderProps {
  * banner, a big rounded icon, the file title (editable or read-only),
  * and a meta row with type tags, save status, and a Download menu.
  *
- * The page viewer (`/workspaces/[ws]/p/[id]`), the file viewer
- * (`/workspaces/[ws]/f/[id]`), and the table viewer (`/tables/[id]`) all
+ * The page viewer (`/p/[id]`), the file viewer
+ * (`/f/[id]`), and the table viewer (`/tables/[id]`) all
  * use this so the entry visual for "you are looking at a thing" is the
  * same shape across kinds.
  */

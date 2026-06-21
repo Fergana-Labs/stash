@@ -19,12 +19,12 @@ describe("subscribePageEvents", () => {
   it("authenticates each connection with the resolved auth token", async () => {
     vi.mocked(fetch).mockResolvedValue({ status: 401, ok: false } as Response);
 
-    const unsubscribe = subscribePageEvents("ws-1", () => {});
+    const unsubscribe = subscribePageEvents(() => {});
     await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
     unsubscribe();
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/workspaces/ws-1/pages/events",
+      "/api/v1/me/pages/events",
       expect.objectContaining({
         headers: { Authorization: "Bearer auth0-access-token" },
       }),
@@ -35,7 +35,7 @@ describe("subscribePageEvents", () => {
     vi.useFakeTimers();
     vi.mocked(fetch).mockResolvedValue({ status: 401, ok: false } as Response);
 
-    const unsubscribe = subscribePageEvents("ws-1", () => {});
+    const unsubscribe = subscribePageEvents(() => {});
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(fetch).toHaveBeenCalledTimes(1);

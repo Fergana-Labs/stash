@@ -13,7 +13,7 @@ export type SkillPreviewContents = {
 export type SkillPreviewData = {
   skill: {
     id: string;
-    workspace_id: string;
+    owner_user_id: string;
     slug: string;
     title: string;
     description: string;
@@ -23,7 +23,6 @@ export type SkillPreviewData = {
     icon_url?: string | null;
     updated_at?: string;
   };
-  workspace_name: string;
   folder_name?: string;
   contents: SkillPreviewContents;
   can_write?: boolean;
@@ -44,7 +43,6 @@ export type PreviewCard = {
   kind: "skill" | SkillItemType;
   title: string;
   description: string;
-  workspaceName: string;
   skillTitle: string;
   authorName: string;
   updatedAt: string | null;
@@ -95,7 +93,7 @@ export function skillMetadataDescription(data: SkillPreviewData): string {
     (data.contents.tables?.length ?? 0);
   const plural = total === 1 ? "" : "s";
   const countDetail = counts.length ? `: ${counts.join(", ")}` : "";
-  return `A Skill with ${total} file${plural}${countDetail} from ${data.workspace_name}.`;
+  return `A Skill with ${total} file${plural}${countDetail} from ${skillAuthorName(data)}.`;
 }
 
 export function itemMetadataTitle(
@@ -131,7 +129,7 @@ export function skillOgImagePath(
 export function buildSkillPreviewCard(data: SkillPreviewData): PreviewCard {
   const description = skillMetadataDescription(data);
   const stats = [
-    data.workspace_name,
+    skillAuthorName(data),
     ...contentsTypeCounts(data.contents).slice(0, 3),
   ].filter(Boolean);
   const lines = contentsPreviewLines(data.contents);
@@ -140,7 +138,6 @@ export function buildSkillPreviewCard(data: SkillPreviewData): PreviewCard {
     kind: "skill",
     title: data.skill.title,
     description,
-    workspaceName: data.workspace_name,
     skillTitle: data.skill.title,
     authorName: skillAuthorName(data),
     updatedAt: data.skill.updated_at ?? null,
@@ -164,7 +161,6 @@ export function buildItemPreviewCard(
     kind: item.type,
     title: label,
     description: itemMetadataDescription(data, item),
-    workspaceName: data.workspace_name,
     skillTitle: data.skill.title,
     authorName: skillAuthorName(data),
     updatedAt: itemUpdatedAt(item) ?? data.skill.updated_at ?? null,
@@ -173,7 +169,7 @@ export function buildItemPreviewCard(
     contentBadge: itemContentBadge(item),
     bodyTitle: body.title,
     bodyText: body.text,
-    stats: [data.workspace_name, data.skill.title, formatItemType(item.type)],
+    stats: [skillAuthorName(data), data.skill.title, formatItemType(item.type)],
     lines: itemPreviewLines(item, label),
   };
 }

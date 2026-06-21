@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import type { ActivityEvent } from "../lib/api";
-import { FileIcon, PageIcon, PersonIcon, SessionsIcon } from "./SkillIcons";
+import { FileIcon, PageIcon, SessionsIcon } from "./SkillIcons";
 
 const VERB: Record<string, string> = {
   "session.uploaded": "pushed a transcript",
   "page.updated": "edited a page",
   "file.uploaded": "uploaded a file",
-  "member.joined": "joined the workspace",
 };
 
 const PALETTE = [
@@ -27,7 +26,6 @@ function colorFor(name: string) {
 }
 
 function targetHref(event: ActivityEvent): string | null {
-  if (!event.workspace_id) return null;
   if (event.kind === "session.uploaded") {
     return `/sessions/${encodeURIComponent(event.target_id)}`;
   }
@@ -54,17 +52,10 @@ function EventIcon({ kind }: { kind: string }) {
   if (kind === "session.uploaded") return <SessionsIcon />;
   if (kind === "page.updated") return <PageIcon />;
   if (kind === "file.uploaded") return <FileIcon />;
-  if (kind === "member.joined") return <PersonIcon />;
   return null;
 }
 
-export default function ActivityFeed({
-  events,
-  showWorkspace,
-}: {
-  events: ActivityEvent[];
-  showWorkspace?: boolean;
-}) {
+export default function ActivityFeed({ events }: { events: ActivityEvent[] }) {
   return (
     <div className="mt-6 flex flex-col">
       {events.map((event, index) => {
@@ -74,7 +65,7 @@ export default function ActivityFeed({
 
         return (
           <div
-            key={`${event.kind}-${event.workspace_id ?? "workspace"}-${event.target_id}-${index}`}
+            key={`${event.kind}-${event.target_id}-${index}`}
             className="flex items-start gap-3 border-b border-border py-3 last:border-b-0"
           >
             <span
@@ -106,18 +97,6 @@ export default function ActivityFeed({
               )}
               {event.target_label && !href && (
                 <> <span className="text-foreground">{event.target_label}</span></>
-              )}
-              {showWorkspace && event.workspace_name && event.workspace_id && (
-                <>
-                  {" "}
-                  <span className="text-muted">in</span>{" "}
-                  <Link
-                    href={`/workspaces/${event.workspace_id}`}
-                    className="font-medium text-foreground hover:text-[var(--color-brand-700)]"
-                  >
-                    {event.workspace_name}
-                  </Link>
-                </>
               )}
               <div className="mt-0.5 text-[11px] text-muted">{relative(event.ts)}</div>
             </div>
