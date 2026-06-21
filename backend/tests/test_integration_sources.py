@@ -274,7 +274,7 @@ async def test_gong_rejects_missing_credentials():
 
 
 @pytest.mark.asyncio
-async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
+async def test_gong_indexer_requires_account_allowlist(monkeypatch):
     """An unconfigured allowlist must purge previously indexed (unscoped)
     calls and fail the sync — not report a healthy no-op that leaves them
     searchable."""
@@ -294,7 +294,7 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
         fake_purge_disallowed_copied_documents,
     )
 
-    with pytest.raises(RuntimeError, match="no allowed workspaces"):
+    with pytest.raises(RuntimeError, match="no allowed gong accounts"):
         await gong_indexer.index_gong(
             {
                 "id": "00000000-0000-0000-0000-000000000001",
@@ -308,9 +308,9 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
+async def test_gong_indexer_filters_to_allowed_accounts(monkeypatch):
     stored_paths: list[str] = []
-    stored_workspace_ids: list[str] = []
+    stored_account_ids: list[str] = []
     soft_deleted: list[str] = []
 
     async def fake_get_valid_token(user_id, provider):
@@ -327,7 +327,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
 
     async def fake_upsert_content_document(**kwargs):
         stored_paths.append(kwargs["path"])
-        stored_workspace_ids.append(kwargs["extra"]["gong_workspace_id"])
+        stored_account_ids.append(kwargs["extra"]["gong_account_id"])
 
     async def fake_remove_missing_documents(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
@@ -364,7 +364,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     )
 
     assert stored_paths == ["allowed-call"]
-    assert stored_workspace_ids == ["W_ALLOWED"]
+    assert stored_account_ids == ["W_ALLOWED"]
     assert soft_deleted == ["allowed-call"]
 
 

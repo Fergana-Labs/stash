@@ -21,12 +21,12 @@ async def publish(
         if owner_user_id is None:
             raise HTTPException(
                 status_code=400,
-                detail="No primary workspace; pass owner_user_id explicitly",
+                detail="No primary scope; pass owner_user_id explicitly",
             )
     else:
         owner_user_id = req.owner_user_id
         if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
-            raise HTTPException(status_code=403, detail="Not a workspace member")
+            raise HTTPException(status_code=403, detail="Not a scope member")
 
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not publish")
@@ -34,12 +34,12 @@ async def publish(
     # Gate before any side effects: publish_folder would reject non-owners
     # anyway, but only after the folder and page were already created.
     if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only workspace owners can publish Skills")
+        raise HTTPException(status_code=403, detail="Only scope owners can publish Skills")
 
     if req.folder_id is not None:
         folder = await files_tree_service.get_folder(req.folder_id)
         if not folder or folder["owner_user_id"] != owner_user_id:
-            raise HTTPException(status_code=404, detail="Folder not found in this workspace")
+            raise HTTPException(status_code=404, detail="Folder not found in this scope")
         target_folder = folder
     else:
         # Each publish mints its own skill folder (folder_id is unique per

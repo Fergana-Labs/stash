@@ -1,6 +1,6 @@
-"""Files service: folders (nested) + pages, scoped to a workspace.
+"""Files service: folders (nested) + pages, scoped to a user.
 
-The hierarchy is Workspace -> Folder* -> Page; folders nest via
+The hierarchy is Scope -> Folder* -> Page; folders nest via
 parent_folder_id.
 """
 
@@ -113,7 +113,7 @@ def _sanitize_html(html: str) -> str:
 
 # All "live" reads filter trash. Every SELECT on pages that wants the
 # active set uses this.
-_WORKSPACE_PAGE_FILTER = "deleted_at IS NULL"
+_PAGE_FILTER = "deleted_at IS NULL"
 
 
 async def _filter_readable(
@@ -124,12 +124,12 @@ async def _filter_readable(
 ) -> list[dict]:
     readable = []
     for row in rows:
-        row_workspace_id = owner_user_id or row.get("owner_user_id")
+        row_owner_id = owner_user_id or row.get("owner_user_id")
         if await permission_service.check_access(
             object_type,
             row["id"],
             user_id,
-            owner_user_id=row_workspace_id,
+            owner_user_id=row_owner_id,
         ):
             readable.append(row)
     return readable
@@ -142,7 +142,7 @@ class DuplicatePageName(Exception):
         self.owner_user_id = owner_user_id
         self.folder_id = folder_id
         self.name = name
-        where = f"folder {folder_id}" if folder_id else "the root of the workspace"
+        where = f"folder {folder_id}" if folder_id else "the root of the scope"
         super().__init__(f"Page '{name}' already exists in {where}.")
 
 
@@ -153,7 +153,7 @@ class DuplicateFolderName(Exception):
         self.owner_user_id = owner_user_id
         self.parent_folder_id = parent_folder_id
         self.name = name
-        where = f"folder {parent_folder_id}" if parent_folder_id else "the root of the workspace"
+        where = f"folder {parent_folder_id}" if parent_folder_id else "the root of the scope"
         super().__init__(f"Folder '{name}' already exists in {where}.")
 
 
@@ -208,7 +208,7 @@ async def create_folder(
             "SELECT owner_user_id FROM folders WHERE id = $1", parent_folder_id
         )
         if not parent or parent["owner_user_id"] != owner_user_id:
-            raise ValueError("parent_folder_id does not belong to workspace")
+            raise ValueError("parent_folder_id does not belong to scope")
     try:
         row = await pool.fetchrow(
             "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
@@ -371,7 +371,7 @@ async def create_page(
     if folder_id is not None:
         folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
         if not folder or folder["owner_user_id"] != owner_user_id:
-            raise ValueError("folder_id does not belong to workspace")
+            raise ValueError("folder_id does not belong to scope")
     content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
@@ -411,10 +411,10 @@ async def create_page(
 
 
 async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
-    """Access semantics match get_page; the workspace comes from the row."""
+    """Access semantics match get_page; the scope comes from the row."""
     pool = get_pool()
     owner_user_id = await pool.fetchval(
-        f"SELECT owner_user_id FROM pages WHERE id = $1 AND {_WORKSPACE_PAGE_FILTER}",
+        f"SELECT owner_user_id FROM pages WHERE id = $1 AND {_PAGE_FILTER}",
         page_id,
     )
     if owner_user_id is None:
@@ -433,7 +433,7 @@ async def get_page(
         "content_type, html_layout, content_hash, metadata, "
         "last_edit_session_id, last_edit_agent_name, "
         "created_by, updated_by, created_at, updated_at "
-        f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+        f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_PAGE_FILTER}",
         page_id,
         owner_user_id,
     )
@@ -452,7 +452,7 @@ async def get_sync_manifest(owner_user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, name, content_hash, metadata, updated_at, folder_id "
-        f"FROM pages WHERE owner_user_id = $1 AND {_WORKSPACE_PAGE_FILTER} ORDER BY name",
+        f"FROM pages WHERE owner_user_id = $1 AND {_PAGE_FILTER} ORDER BY name",
         owner_user_id,
     )
     return [dict(r) for r in rows]
@@ -500,7 +500,7 @@ async def update_page(
     if folder_id is not None and not move_to_root:
         target = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
         if not target or target["owner_user_id"] != owner_user_id:
-            raise ValueError("folder_id does not belong to workspace")
+            raise ValueError("folder_id does not belong to scope")
 
     for attempt in range(MAX_UPDATE_RETRIES):
         expected_hash: str | None = None
@@ -508,7 +508,7 @@ async def update_page(
         if content_changed:
             current = await pool.fetchrow(
                 "SELECT content_hash, content_type, content_markdown, content_html "
-                f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+                f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_PAGE_FILTER}",
                 page_id,
                 owner_user_id,
             )
@@ -574,7 +574,7 @@ async def update_page(
 
         args.append(page_id)
         args.append(owner_user_id)
-        where = f"id = ${idx} AND owner_user_id = ${idx + 1} AND {_WORKSPACE_PAGE_FILTER}"
+        where = f"id = ${idx} AND owner_user_id = ${idx + 1} AND {_PAGE_FILTER}"
         if expected_hash is not None and guard_content_hash:
             args.append(expected_hash)
             where += f" AND content_hash = ${idx + 2}"
@@ -617,7 +617,7 @@ async def update_page(
             "SELECT id, owner_user_id, folder_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, "
             "created_by, updated_by, created_at, updated_at "
-            f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+            f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_PAGE_FILTER}",
             page_id,
             owner_user_id,
         )
@@ -640,7 +640,7 @@ async def update_page(
     fresh = await pool.fetchrow(
         "SELECT id, owner_user_id, folder_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash "
-        f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+        f"FROM pages WHERE id = $1 AND owner_user_id = $2 AND {_PAGE_FILTER}",
         page_id,
         owner_user_id,
     )
@@ -920,7 +920,7 @@ async def _copy_folder_contents(
 ) -> None:
     pool = get_pool()
     page_rows = await pool.fetch(
-        f"SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+        f"SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 AND {_PAGE_FILTER}",
         owner_user_id,
         src_folder_id,
     )
@@ -988,8 +988,8 @@ async def copy_folder(
 # --- Listings ---
 
 
-async def list_workspace_pages(owner_user_id: UUID, user_id: UUID | None = None) -> list[dict]:
-    """Flat list of every page in a workspace with its folder path. Pages
+async def list_scope_pages(owner_user_id: UUID, user_id: UUID | None = None) -> list[dict]:
+    """Flat list of every page in a scope with its folder path. Pages
     inside skill folders are excluded (they belong to the Skills surface)."""
     pool = get_pool()
     args: list = [owner_user_id]
@@ -1018,26 +1018,26 @@ async def list_workspace_pages(owner_user_id: UUID, user_id: UUID | None = None)
 
 
 async def list_user_pages(user_id: UUID) -> list[dict]:
-    """Flat list of every page across every workspace the user can access."""
+    """Flat list of every page across every scope the user can access."""
     pool = get_pool()
     readable_page = permission_service.readable_content_condition("page", "p", 1)
-    accessible_workspaces = permission_service.accessible_scope_ids_sql(1)
+    accessible_scopes = permission_service.accessible_scope_ids_sql(1)
     rows = await pool.fetch(
-        "WITH RECURSIVE accessible_workspaces AS ("
-        f"  {accessible_workspaces}"
+        "WITH RECURSIVE accessible_scopes AS ("
+        f"  {accessible_scopes}"
         "), chain AS ("
         "  SELECT id, parent_folder_id, name, ARRAY[name]::text[] AS path, owner_user_id "
         "  FROM folders WHERE parent_folder_id IS NULL "
-        "  AND owner_user_id IN (SELECT id FROM accessible_workspaces)"
+        "  AND owner_user_id IN (SELECT id FROM accessible_scopes)"
         "  UNION ALL"
         "  SELECT f.id, f.parent_folder_id, f.name, c.path || f.name, f.owner_user_id "
         "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id"
         ") "
         "SELECT p.id, p.name, p.content_type, p.owner_user_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, "
-        "owner.display_name AS workspace_name, p.updated_at "
+        "owner.display_name AS owner_name, p.updated_at "
         "FROM pages p "
-        "JOIN accessible_workspaces aw ON aw.id = p.owner_user_id "
+        "JOIN accessible_scopes aw ON aw.id = p.owner_user_id "
         "JOIN users owner ON owner.id = p.owner_user_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
         "WHERE p.deleted_at IS NULL "
@@ -1046,19 +1046,19 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         user_id,
     )
     pages = [dict(r) for r in rows]
-    hidden_by_ws: dict[UUID, set[UUID]] = {}
+    hidden_by_scope: dict[UUID, set[UUID]] = {}
     for page in pages:
-        ws = page["owner_user_id"]
-        if ws not in hidden_by_ws:
-            hidden_by_ws[ws] = await skill_service.skill_subtree_folder_ids(ws)
+        scope = page["owner_user_id"]
+        if scope not in hidden_by_scope:
+            hidden_by_scope[scope] = await skill_service.skill_subtree_folder_ids(scope)
     return [
         p
         for p in pages
-        if p["folder_id"] is None or p["folder_id"] not in hidden_by_ws[p["owner_user_id"]]
+        if p["folder_id"] is None or p["folder_id"] not in hidden_by_scope[p["owner_user_id"]]
     ]
 
 
-async def list_workspace_tree(owner_user_id: UUID, user_id: UUID | None = None) -> dict:
+async def list_scope_tree(owner_user_id: UUID, user_id: UUID | None = None) -> dict:
     """Nested folder tree with pages attached at each level. Skill subtrees are
     excluded — Files and Skills are MECE; skill folders live in the Skills UI."""
     folders = await list_folders(owner_user_id, user_id)
@@ -1125,7 +1125,7 @@ async def search_pages_fts(
         f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
         f"FROM pages "
         f"WHERE owner_user_id = $1 "
-        f"AND {_WORKSPACE_PAGE_FILTER} "
+        f"AND {_PAGE_FILTER} "
         f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
         f"ORDER BY rank DESC LIMIT $3",
         owner_user_id,
@@ -1173,7 +1173,7 @@ async def search_pages_vector(
         "content_type, html_layout, metadata, "
         "created_by, updated_by, created_at, updated_at, "
         "1 - (embedding <=> $2) AS similarity "
-        f"FROM pages WHERE owner_user_id = $1 AND {_WORKSPACE_PAGE_FILTER} "
+        f"FROM pages WHERE owner_user_id = $1 AND {_PAGE_FILTER} "
         "AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
         owner_user_id,
@@ -1223,7 +1223,7 @@ async def clear_folder_contents(root_folder_id: UUID) -> None:
     folders, skills.folder_id cascades on folder delete, so dropping the root
     would unpublish the skill. Pages/files folder FKs are ON DELETE SET NULL,
     so their rows must be deleted explicitly or they'd orphan into the
-    workspace root."""
+    scope root."""
     from . import storage_service
 
     pool = get_pool()

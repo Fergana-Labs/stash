@@ -1,7 +1,7 @@
 """Sharing: grant a principal (user or skill) access to an object.
 
 Primary path is sharing a folder/file/session with a person by email. Only the
-object's owner (its workspace member) may share it. Folder/session-folder shares
+object's owner may share it. Folder/session-folder shares
 cascade to contents — that's handled at read time by permission_service, not here.
 
 Sharing with an email that isn't a Stash user yet records a pending invite
@@ -24,7 +24,7 @@ _PERMISSIONS = {"read", "comment", "write"}
 
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
-    """The caller must be an owner of the object's workspace."""
+    """The caller must be an owner of the object's scope."""
     owner_user_id = await permission_service.resolve_owner_user_id(object_type, object_id)
     if owner_user_id is None or not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Not found")
@@ -72,7 +72,7 @@ async def share_with_user_by_email(
         normalized_email,
     )
     # Both branches below return an identical body. A different response for a
-    # known vs unknown email would let any workspace owner probe which
+    # known vs unknown email would let any owner probe which
     # addresses have Stash accounts (a user-enumeration oracle). Owners see
     # invite-vs-share state via the shares listing instead.
     if not user:
@@ -315,13 +315,13 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
 
 
 async def list_shared_with_user(user_id: UUID) -> list[dict]:
-    """Every object shared *with* this user (across workspaces) — the data behind
+    """Every object shared *with* this user (across owners) — the data behind
     the 'Shared with me' surface. Resolves each share to the object's name, its
-    owning workspace, and who shared it."""
+    owner, and who shared it."""
     rows = await get_pool().fetch(
         """
         SELECT s.object_type, s.object_id, s.permission, s.owner_user_id,
-               COALESCE(ow.display_name, ow.name) AS workspace_name,
+               COALESCE(ow.display_name, ow.name) AS owner_name,
                COALESCE(u.display_name, u.name) AS shared_by,
                COALESCE(
                  (SELECT name FROM folders         WHERE id = s.object_id AND s.object_type = 'folder'),
@@ -340,7 +340,7 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
         LEFT JOIN users u ON u.id = s.created_by
         WHERE s.principal_type = 'user' AND s.principal_id = $1
           AND (s.expires_at IS NULL OR s.expires_at > now())
-        ORDER BY workspace_name, s.object_type, name
+        ORDER BY owner_name, s.object_type, name
         """,
         user_id,
     )
@@ -351,7 +351,7 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
             "object_id": str(r["object_id"]),
             "name": r["name"],
             "owner_user_id": str(r["owner_user_id"]),
-            "workspace_name": r["workspace_name"],
+            "owner_name": r["owner_name"],
             "shared_by": r["shared_by"],
             "permission": r["permission"],
         }
@@ -368,7 +368,7 @@ async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) ->
         raise HTTPException(status_code=404, detail="Not found")
     rows = await get_pool().fetch(
         "SELECT s.id, s.owner_user_id, "
-        "       COALESCE(ow.display_name, ow.name) AS workspace_name, s.session_id, s.agent_name, "
+        "       COALESCE(ow.display_name, ow.name) AS owner_name, s.session_id, s.agent_name, "
         "       st.title, s.started_at, sf.name AS session_folder_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
@@ -395,7 +395,7 @@ async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) ->
             "title": r["title"] or r["session_id"],
             "linear_tickets": [],
             "owner_user_id": str(r["owner_user_id"]),
-            "workspace_name": r["workspace_name"],
+            "owner_name": r["owner_name"],
             "user_name": r["user_name"] or (r["agent_name"] or "agent"),
             "agent_name": r["agent_name"],
             "event_count": int(r["event_count"] or 0),

@@ -18,7 +18,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_search_pages_finds_workspace_pages(client: AsyncClient) -> None:
+async def test_search_pages_finds_user_pages(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
 

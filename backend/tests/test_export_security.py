@@ -19,7 +19,7 @@ async def _make_user(pool):
     return row["id"]
 
 
-async def _make_workspace(pool, creator_id):
+async def _make_scope(pool, creator_id):
     return creator_id
 
 
@@ -38,8 +38,8 @@ async def _make_file(pool, owner_user_id, uploaded_by):
 async def test_image_fetcher_only_reads_authorized_stash_file(pool, monkeypatch):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    file_id = await _make_file(pool, ws, owner)
+    scope = await _make_scope(pool, owner)
+    file_id = await _make_file(pool, scope, owner)
     calls = []
 
     async def fake_download_file(storage_key):
@@ -49,18 +49,18 @@ async def test_image_fetcher_only_reads_authorized_stash_file(pool, monkeypatch)
     monkeypatch.setattr(storage_service, "download_file", fake_download_file)
     src = f"/api/v1/me/files/{file_id}/download"
 
-    assert await ImageFetcher(owner_user_id=ws, user_id=owner).fetch(src) == b"image-bytes"
-    assert await ImageFetcher(owner_user_id=ws, user_id=stranger).fetch(src) is None
+    assert await ImageFetcher(owner_user_id=scope, user_id=owner).fetch(src) == b"image-bytes"
+    assert await ImageFetcher(owner_user_id=scope, user_id=stranger).fetch(src) is None
     assert len(calls) == 1
 
 
 @pytest.mark.asyncio
-async def test_image_fetcher_rejects_cross_workspace_stash_file(pool, monkeypatch):
+async def test_image_fetcher_rejects_cross_scope_stash_file(pool, monkeypatch):
     first_owner = await _make_user(pool)
     second_owner = await _make_user(pool)
-    first_ws = await _make_workspace(pool, first_owner)
-    second_ws = await _make_workspace(pool, second_owner)
-    file_id = await _make_file(pool, second_ws, second_owner)
+    first_scope = await _make_scope(pool, first_owner)
+    second_scope = await _make_scope(pool, second_owner)
+    file_id = await _make_file(pool, second_scope, second_owner)
     calls = []
 
     async def fake_download_file(storage_key):
@@ -70,7 +70,7 @@ async def test_image_fetcher_rejects_cross_workspace_stash_file(pool, monkeypatc
     monkeypatch.setattr(storage_service, "download_file", fake_download_file)
     src = f"/api/v1/me/files/{file_id}/download"
 
-    assert await ImageFetcher(owner_user_id=first_ws, user_id=first_owner).fetch(src) is None
+    assert await ImageFetcher(owner_user_id=first_scope, user_id=first_owner).fetch(src) is None
     assert calls == []
 
 

@@ -1,7 +1,7 @@
 """Per-user content scope.
 
 Each user IS their own scope. Everything a user owns is keyed by
-`owner_user_id` = their user id; there is no separate scope/workspace entity.
+`owner_user_id` = their user id; there is no separate scope entity.
 A user can read their own content, plus anything shared with them (the `shares`
 table) and anything published (skills). Writing is owner-only.
 """

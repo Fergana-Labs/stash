@@ -1,9 +1,9 @@
-"""Janitor for the landing-page demo workspace.
+"""Janitor for the landing-page demo scope.
 
 Anonymous visitors can create pages and sessions via the demo router
 without ever publishing a Stash (they might bail after step 4). Those
 orphans would otherwise accumulate forever in the singleton Demo
-workspace. This task deletes anything older than the retention window
+scope. This task deletes anything older than the retention window
 that isn't referenced by a Stash.
 
 Pages/sessions/folders that *are* referenced by a Stash are kept
@@ -11,7 +11,7 @@ indefinitely so the public links keep working — published artifacts
 are not garbage.
 
 The canonical `Stash knowledge base/` folder (seeded by
-demo_service.seed_demo_workspace) is also kept indefinitely because
+demo_service.seed_demo) is also kept indefinitely because
 new Skills need to attach it.
 """
 
@@ -43,7 +43,7 @@ async def _purge_demo_orphans() -> dict:
     pool = get_pool()
     owner_user_id = await _demo_owner_user_id()
     if owner_user_id is None:
-        return {"pages": 0, "sessions": 0, "skipped": "no demo workspace"}
+        return {"pages": 0, "sessions": 0, "skipped": "no demo scope"}
 
     # A page is orphaned when it sits outside every published skill folder
     # subtree (published demo skills are folder-shaped) and outside the KB.

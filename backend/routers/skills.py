@@ -26,7 +26,7 @@ from ..services import (
     user_scope_service,
 )
 
-ws_router = APIRouter(prefix="/api/v1/me", tags=["skills"])
+me_router = APIRouter(prefix="/api/v1/me", tags=["skills"])
 public_router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 
 _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
@@ -34,10 +34,10 @@ _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+        raise HTTPException(status_code=403, detail="Not a scope member")
 
 
-@ws_router.post("/skills", response_model=SkillResponse, status_code=201)
+@me_router.post("/skills", response_model=SkillResponse, status_code=201)
 async def publish_skill(
     req: SkillPublishRequest,
     current_user: dict = Depends(get_current_user),
@@ -62,17 +62,17 @@ async def publish_skill(
     return SkillResponse(**skill)
 
 
-@ws_router.get("/skills")
+@me_router.get("/skills")
 async def list_skills(
     current_user: dict = Depends(get_current_user),
 ):
-    """Every skill folder in the workspace, with publish info when shared."""
+    """Every skill folder in the scope, with publish info when shared."""
     owner_user_id = current_user["id"]
     skills = await skill_service.list_skills(owner_user_id, current_user["id"])
     return {"skills": skills}
 
 
-@ws_router.get("/skills/{name}")
+@me_router.get("/skills/{name}")
 async def get_local_skill(
     name: str,
     current_user: dict = Depends(get_current_user),
@@ -96,13 +96,13 @@ async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: U
     return folder
 
 
-@ws_router.get("/skills/{folder_id}/contents")
+@me_router.get("/skills/{folder_id}/contents")
 async def get_skill_contents(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """The skill folder's full subtree, inlined — same shape as the public
-    skill payload, but for workspace members on unpublished skills. This is
+    skill payload, but for scope members on unpublished skills. This is
     what `stash skills sync` pulls."""
     owner_user_id = current_user["id"]
     folder = await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
@@ -110,7 +110,7 @@ async def get_skill_contents(
     return {"folder_id": str(folder_id), "folder_name": folder["name"], "contents": contents}
 
 
-@ws_router.put("/skills/{folder_id}/contents")
+@me_router.put("/skills/{folder_id}/contents")
 async def replace_skill_contents(
     folder_id: UUID,
     files: list[UploadFile],
@@ -142,9 +142,6 @@ async def replace_skill_contents(
     return {"folder_id": str(folder_id), "items": written}
 
 
-me_router = APIRouter(prefix="/api/v1/me", tags=["skills"])
-
-
 @me_router.get("/shared-skills")
 async def list_shared_skills_with_me(current_user: dict = Depends(get_current_user)):
     """Skill folders shared with me person-to-person (folder shares whose
@@ -158,7 +155,7 @@ class SnapshotSourceRequest(BaseModel):
     path: str
 
 
-@ws_router.post(
+@me_router.post(
     "/skills/{skill_id}/snapshot-source",
     response_model=PageResponse,
     status_code=201,
@@ -209,7 +206,7 @@ class MaterializeSessionRequest(BaseModel):
     folder_id: UUID
 
 
-@ws_router.post(
+@me_router.post(
     "/sessions/{session_id}/materialize",
     response_model=PageResponse,
     status_code=201,
@@ -275,13 +272,13 @@ async def get_public_skill(
         raise HTTPException(status_code=404, detail="Skill not found")
     contents = await shared_skill_service.folder_contents(skill, viewer_id=viewer_id)
 
-    workspace_name = skill.pop("_workspace_name", "")
+    owner_name = skill.pop("_owner_name", "")
     folder_name = skill.pop("_folder_name", "")
     if format == "text":
         return PlainTextResponse(
             shared_skill_service.skill_to_text(
                 skill,
-                workspace_name,
+                owner_name,
                 contents,
                 settings.PUBLIC_URL.rstrip(),
             ),
@@ -293,7 +290,7 @@ async def get_public_skill(
     )
     return SkillPublicResponse(
         skill=SkillResponse(**skill),
-        workspace_name=workspace_name,
+        owner_name=owner_name,
         folder_name=folder_name,
         contents=contents,
         can_write=can_write,
@@ -321,7 +318,7 @@ async def get_public_skill_item(
     if not item:
         raise HTTPException(status_code=404, detail="Skill item not found")
 
-    workspace_name = skill.pop("_workspace_name", "")
+    owner_name = skill.pop("_owner_name", "")
     skill.pop("_folder_name", "")
     if format == "text":
         return PlainTextResponse(
@@ -336,7 +333,7 @@ async def get_public_skill_item(
     )
     return {
         "skill": SkillResponse(**skill),
-        "workspace_name": workspace_name,
+        "owner_name": owner_name,
         "object_type": object_type,
         "item": item,
         "can_write": can_write,
@@ -349,9 +346,9 @@ async def fork_skill(
     req: ForkSkillRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Fork: deep-copy the skill's folder into the caller's workspace."""
+    """Fork: deep-copy the skill's folder into the caller's scope."""
     await _require_member(req.owner_user_id, current_user["id"])
-    # Forking writes new pages/files/sessions into the workspace — same bar as
+    # Forking writes new pages/files/sessions into the scope — same bar as
     # creating a Skill.
     if not await user_scope_service.can_write(req.owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not create Skills")

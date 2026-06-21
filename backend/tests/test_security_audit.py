@@ -34,7 +34,7 @@ async def _register(client: AsyncClient, prefix: str = "audit") -> tuple[str, UU
 
 
 def _scope_for_user(user_id: UUID) -> UUID:
-    """The scope id is just the user's id; there is no separate workspace row."""
+    """The scope id is just the user's id; there is no separate scope row."""
     return user_id
 
 
@@ -356,7 +356,7 @@ async def test_pending_share_invite_revocation_is_audited_without_email_or_conte
 @pytest.mark.asyncio
 async def test_source_access_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, user_id = await _register(client)
-    ws = _scope_for_user(user_id)
+    scope = _scope_for_user(user_id)
 
     added = await client.post(
         "/api/v1/me/sources",
@@ -374,7 +374,7 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=source_id,
-        owner_user_id=ws,
+        owner_user_id=scope,
         path=ref,
         name="secret-launch-plan.md",
         content="secret launch plan",
@@ -421,7 +421,7 @@ async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes
     from backend.integrations.jira import indexer
 
     api_key, user_id = await _register(client, "audit_lazy_read")
-    ws = _scope_for_user(user_id)
+    scope = _scope_for_user(user_id)
     headers = _auth(api_key)
     ref = "PROJ-9"
     external_ref = "cloud-1:PROJ-9"
@@ -452,7 +452,7 @@ async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes
     await source_service.upsert_index_row(
         table="jira_documents",
         source_id=source_id,
-        owner_user_id=ws,
+        owner_user_id=scope,
         path=ref,
         name="PROJ-9: confidential launch bug",
         kind="issue",
@@ -692,12 +692,12 @@ async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
     from backend.integrations.slack import indexer as slack_indexer
 
     api_key, owner_id = await _register(client, "audit_history")
-    ws = _scope_for_user(owner_id)
+    scope = _scope_for_user(owner_id)
     headers = _auth(api_key)
     sensitive_since = "2026-01-01T00:00:00Z"
     sensitive_until = "2026-02-01T00:00:00Z"
     source = await source_service.create_source(
-        owner_user_id=ws,
+        owner_user_id=scope,
         source_type="slack",
         external_ref="T_SECRET",
         display_name="Webflow confidential Slack",
@@ -764,7 +764,7 @@ async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
 @pytest.mark.asyncio
 async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
     api_key, user_id = await _register(client, "audit_snapshot")
-    ws = _scope_for_user(user_id)
+    scope = _scope_for_user(user_id)
     headers = _auth(api_key)
 
     added = await client.post(
@@ -782,7 +782,7 @@ async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: As
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=source_id,
-        owner_user_id=ws,
+        owner_user_id=scope,
         path=ref,
         name="private-webflow-pricing.md",
         content="Webflow confidential pricing notes",
@@ -838,7 +838,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     that front door too, not just the REST endpoints, or a prompt-injected
     agent could exfiltrate source content without leaving a trace."""
     api_key, user_id = await _register(client, "audit_agent")
-    ws = _scope_for_user(user_id)
+    scope = _scope_for_user(user_id)
 
     added = await client.post(
         "/api/v1/me/sources",
@@ -854,15 +854,15 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     await source_service.upsert_content_document(
         table="github_documents",
         source_id=source_id,
-        owner_user_id=ws,
+        owner_user_id=scope,
         path="docs/launch.md",
         name="launch.md",
         content="secret launch plan",
     )
 
-    results = await source_service.search_all(ws, user_id, "secret launch", source=str(source_id))
+    results = await source_service.search_all(scope, user_id, "secret launch", source=str(source_id))
     source_ok, doc = await source_service.source_document(
-        ws, user_id, str(source_id), "docs/launch.md"
+        scope, user_id, str(source_id), "docs/launch.md"
     )
     assert results
     assert source_ok and doc is not None
@@ -879,16 +879,16 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_integration_disconnect_audits_workspace_source_purge(
+async def test_integration_disconnect_audits_source_purge(
     client: AsyncClient,
     monkeypatch,
 ):
     from backend.integrations import router as integrations_router
 
     api_key, owner_id = await _register(client, "audit_disconnect")
-    ws = _scope_for_user(owner_id)
+    scope = _scope_for_user(owner_id)
     source = await source_service.create_source(
-        owner_user_id=ws,
+        owner_user_id=scope,
         source_type="slack",
         external_ref="T123",
         display_name="Webflow Slack",
@@ -919,7 +919,7 @@ async def test_integration_disconnect_audits_workspace_source_purge(
     assert deleted["source_type"] == "slack"
     assert deleted["metadata"] == {"reason": "integration_disconnect"}
     # The credential revocation itself must be visible through the only read
-    # surface (per-workspace), not written as an unreadable NULL-workspace row.
+    # surface (per-scope), not written as an unreadable NULL-scope row.
     disconnected_event = next(
         event for event in events if event["action"] == "integration.disconnected"
     )
@@ -934,7 +934,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
     monkeypatch,
 ):
     api_key, owner_id = await _register(client, "audit_content")
-    ws = _scope_for_user(owner_id)
+    scope = _scope_for_user(owner_id)
     headers = _auth(api_key)
 
     page = await client.post(
@@ -949,7 +949,7 @@ async def test_content_lifecycle_audit_records_delete_restore_and_purge(
         "INSERT INTO files "
         "(owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, 'text/plain', 12, $3, $4) RETURNING id",
-        ws,
+        scope,
         "Webflow board notes.txt",
         "customer/webflow/file-secret-key",
         owner_id,

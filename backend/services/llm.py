@@ -27,7 +27,7 @@ class ModelTier(enum.Enum):
     """Two-tier model selection for non-agent Claude calls.
 
     QUALITY = Sonnet (settings.ANTHROPIC_MODEL). Use for reasoning, the
-    ask-the-workspace loop, anything user-facing where accuracy matters.
+    ask-the-stash loop, anything user-facing where accuracy matters.
 
     FAST = Haiku (settings.ANTHROPIC_FAST_MODEL). Use for short
     classification / synthesis / structured-output tasks where speed

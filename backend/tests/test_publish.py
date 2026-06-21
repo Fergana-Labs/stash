@@ -1,8 +1,8 @@
 """Tests for the /api/v1/publish single-call publish endpoint.
 
 The interesting behaviour is the owner_user_id fallback: a brand-new user can
-publish without first looking up their workspace, because register_user marks
-the auto-provisioned signup workspace primary.
+publish without first looking up their scope, because register_user marks
+the auto-provisioned signup scope primary.
 """
 
 import pytest
@@ -31,7 +31,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_publish_falls_back_to_primary_workspace(client: AsyncClient):
+async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
     """A new user can call /publish without supplying owner_user_id."""
     key = await _register(client)
 
@@ -52,8 +52,8 @@ async def test_publish_falls_back_to_primary_workspace(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_publish_with_explicit_workspace(client: AsyncClient):
-    """Explicit owner_user_id works the same as before for members."""
+async def test_publish_with_explicit_scope(client: AsyncClient):
+    """Explicit owner_user_id works the same as before for the owner."""
     key = await _register(client)
 
     mine = await client.get("/api/v1/users/me", headers=_auth(key))
@@ -74,18 +74,18 @@ async def test_publish_with_explicit_workspace(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_publish_rejects_non_member_workspace(client: AsyncClient):
-    """If the user passes a owner_user_id they don't belong to, return 403."""
+async def test_publish_rejects_non_owner_scope(client: AsyncClient):
+    """If the user passes a owner_user_id they don't own, return 403."""
     key_a = await _register(client)
     key_b = await _register(client)
 
     mine_b = await client.get("/api/v1/users/me", headers=_auth(key_b))
-    foreign_workspace = mine_b.json()["id"]
+    foreign_owner = mine_b.json()["id"]
 
     resp = await client.post(
         "/api/v1/publish",
         json={
-            "owner_user_id": foreign_workspace,
+            "owner_user_id": foreign_owner,
             "title": "Foreign publish",
             "content_type": "markdown",
             "content": "# nope",
@@ -98,7 +98,7 @@ async def test_publish_rejects_non_member_workspace(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
     """Publishing is owner-only. A user with a share row into another user's
-    workspace is still not the owner, so the gate must fire before the skill
+    scope is still not the owner, so the gate must fire before the skill
     folder and page side effects are created."""
     owner_key = await _register(client)
     sharee_key, sharee_id = await _register_user(client)

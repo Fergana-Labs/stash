@@ -1,4 +1,4 @@
-"""The canonical page/file/session endpoints resolve the workspace
+"""The canonical page/file/session endpoints resolve the scope
 server-side so item links carry only the item ID and can never go stale.
 Same contract as the canonical table endpoint: membership-gated, and every
 failure is a 404 so an unscoped probe can't confirm an item exists."""
@@ -25,11 +25,9 @@ async def _register(client: AsyncClient) -> str:
     return resp.json()["api_key"]
 
 
-async def _new_workspace(client: AsyncClient, api_key: str) -> str:
-    resp = await client.post(
-        "/api/v1/workspaces", json={"name": "Canonical items"}, headers=_auth(api_key)
-    )
-    assert resp.status_code == 201
+async def _scope_id(client: AsyncClient, api_key: str) -> str:
+    resp = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    assert resp.status_code == 200
     return resp.json()["id"]
 
 
@@ -72,7 +70,7 @@ async def _create_session(client: AsyncClient, api_key: str, owner_user_id: str)
 @pytest.mark.asyncio
 async def test_member_resolves_page_by_id_alone(client: AsyncClient):
     api_key = await _register(client)
-    owner_user_id = await _new_workspace(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     page_id = await _create_page(client, api_key, owner_user_id)
 
     resp = await client.get(f"/api/v1/pages/{page_id}", headers=_auth(api_key))
@@ -85,7 +83,7 @@ async def test_member_resolves_page_by_id_alone(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_non_member_page_lookup_is_404_not_403(client: AsyncClient):
     owner_key = await _register(client)
-    owner_user_id = await _new_workspace(client, owner_key)
+    owner_user_id = await _scope_id(client, owner_key)
     page_id = await _create_page(client, owner_key, owner_user_id)
     outsider_key = await _register(client)
 
@@ -97,7 +95,7 @@ async def test_non_member_page_lookup_is_404_not_403(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_non_member_file_lookup_is_404_not_403(client: AsyncClient, pool):
     owner_key = await _register(client)
-    owner_user_id = await _new_workspace(client, owner_key)
+    owner_user_id = await _scope_id(client, owner_key)
     file_id = await _insert_file_row(pool, owner_user_id)
     outsider_key = await _register(client)
 
@@ -109,7 +107,7 @@ async def test_non_member_file_lookup_is_404_not_403(client: AsyncClient, pool):
 @pytest.mark.asyncio
 async def test_member_resolves_session_by_external_id_alone(client: AsyncClient):
     api_key = await _register(client)
-    owner_user_id = await _new_workspace(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     session_id = await _create_session(client, api_key, owner_user_id)
 
     resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(api_key))
@@ -123,17 +121,17 @@ async def test_member_resolves_session_by_external_id_alone(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_session_id_in_two_workspaces_resolves_to_readable_one(client: AsyncClient):
-    """session_id is unique per workspace, not globally. When the same id
-    exists in a workspace the caller can't read, the lookup must skip it
+async def test_session_id_in_two_scopes_resolves_to_readable_one(client: AsyncClient):
+    """session_id is unique per scope, not globally. When the same id
+    exists in a scope the caller can't read, the lookup must skip it
     rather than 404 or leak it."""
     owner_a = await _register(client)
-    ws_a = await _new_workspace(client, owner_a)
+    scope_a = await _scope_id(client, owner_a)
     owner_b = await _register(client)
-    ws_b = await _new_workspace(client, owner_b)
+    scope_b = await _scope_id(client, owner_b)
 
     session_id = f"sess-{uuid.uuid4()}"
-    for key, ws in ((owner_a, ws_a), (owner_b, ws_b)):
+    for key, scope in ((owner_a, scope_a), (owner_b, scope_b)):
         resp = await client.post(
             "/api/v1/me/sessions",
             json={"session_id": session_id, "agent_name": "claude"},
@@ -144,13 +142,13 @@ async def test_session_id_in_two_workspaces_resolves_to_readable_one(client: Asy
     resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(owner_a))
 
     assert resp.status_code == 200
-    assert resp.json()["owner_user_id"] == ws_a
+    assert resp.json()["owner_user_id"] == scope_a
 
 
 @pytest.mark.asyncio
 async def test_non_member_session_lookup_is_404(client: AsyncClient):
     owner_key = await _register(client)
-    owner_user_id = await _new_workspace(client, owner_key)
+    owner_user_id = await _scope_id(client, owner_key)
     session_id = await _create_session(client, owner_key, owner_user_id)
     outsider_key = await _register(client)
 

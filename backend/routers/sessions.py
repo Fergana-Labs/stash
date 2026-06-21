@@ -3,7 +3,7 @@
 A "session" in Stash is a sequence of `history_events` rows tied by
 session_id. The CLI's `stash share` materializes a session into a page
 from a local .jsonl file. This router provides the same materialize step
-server-side, sourced from the events the workspace already has, so the
+server-side, sourced from the events the scope already has, so the
 session viewer can ship a Share button without involving the CLI.
 """
 
@@ -93,7 +93,7 @@ async def list_my_sessions(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent sessions across the user's accessible workspaces, grouped by
+    """Recent sessions across the user's accessible scopes, grouped by
     session_id. Each row carries the agent name, event count, first & last
     timestamps, and a preview of the first prompt."""
     pool = get_pool()
@@ -143,7 +143,7 @@ async def list_my_sessions(
           s.session_folder_id,
           sf.name AS session_folder_name,
           he.owner_user_id,
-          owner.display_name AS workspace_name,
+          owner.display_name AS owner_name,
           {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
@@ -173,10 +173,10 @@ async def list_my_sessions(
     for session in sessions:
         if not session["user_name"]:
             raise RuntimeError(f"Session {session['session_id']} has no author display_name")
-    sessions_by_workspace: dict[UUID, list[dict]] = {}
+    sessions_by_scope: dict[UUID, list[dict]] = {}
     for session in sessions:
-        sessions_by_workspace.setdefault(session["owner_user_id"], []).append(session)
-    for session_group in sessions_by_workspace.values():
+        sessions_by_scope.setdefault(session["owner_user_id"], []).append(session)
+    for session_group in sessions_by_scope.values():
         titles = await session_title_service.titles_for_sessions(
             session_group[0]["owner_user_id"],
             session_group,
@@ -191,7 +191,7 @@ async def list_my_sessions(
 
 
 @router.post("/me/sessions", status_code=201)
-async def upsert_workspace_session(
+async def upsert_session(
     req: SessionUpsertRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -200,7 +200,7 @@ async def upsert_workspace_session(
         raise HTTPException(status_code=403, detail="Viewers can read but not create sessions")
 
     # A session always lands in a folder: the one it was pushed to, or the
-    # workspace's Default folder (resolved by upsert_session when unset).
+    # scope's Default folder (resolved by upsert_session when unset).
     folder_id = req.session_folder_id
     if folder_id is not None and not await session_folder_service.can_add_session_to_folder(
         owner_user_id=owner_user_id,
@@ -228,7 +228,7 @@ async def _session_detail_payload(
 ) -> dict | None:
     """Full session detail if the user may read it, else None.
 
-    No workspace-membership pre-gate: a session may be shared with a
+    No scope-membership pre-gate: a session may be shared with a
     non-member. can_read_session enforces check_access (owner OR share OR
     open skill).
     """
@@ -254,8 +254,8 @@ async def get_session_canonical(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """session_id is unique per workspace, not globally; when the same
-    session exists in several workspaces, return the newest one the caller
+    """session_id is unique per scope, not globally; when the same
+    session exists in several scopes, return the newest one the caller
     can read. Any failure is a 404: an unscoped lookup must not confirm
     that an unreadable session exists."""
     for row in await session_service.list_sessions_for_session_id(session_id):
@@ -266,7 +266,7 @@ async def get_session_canonical(
 
 
 @router.get("/me/sessions/{session_id}")
-async def get_workspace_session(
+async def get_my_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -282,7 +282,7 @@ class SessionTitleRequest(BaseModel):
 
 
 @router.patch("/me/sessions/{session_id}/title")
-async def rename_workspace_session(
+async def rename_my_session(
     session_id: str,
     body: SessionTitleRequest,
     current_user: dict = Depends(get_current_user),
@@ -342,7 +342,7 @@ async def _check_session_write(
 
 
 @router.delete("/me/sessions/{session_row_id}", status_code=204)
-async def delete_workspace_session(
+async def delete_my_session(
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -355,7 +355,7 @@ async def delete_workspace_session(
 
 
 @router.post("/me/sessions/{session_row_id}/restore", status_code=204)
-async def restore_workspace_session(
+async def restore_my_session(
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -369,7 +369,7 @@ async def restore_workspace_session(
 
 
 @router.delete("/me/sessions/{session_row_id}/purge", status_code=204)
-async def purge_workspace_session(
+async def purge_my_session(
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -475,14 +475,14 @@ async def materialize_session(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    """Idempotent: turn a session_id into a page in the workspace's
+    """Idempotent: turn a session_id into a page in the scope's
     Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather
     than spawning duplicates."""
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
     if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
-        raise HTTPException(status_code=404, detail="No events for that session in this workspace")
+        raise HTTPException(status_code=404, detail="No events for that session in this scope")
 
     pool = get_pool()
     events = await pool.fetch(
@@ -493,7 +493,7 @@ async def materialize_session(
         owner_user_id,
     )
     if not events:
-        raise HTTPException(status_code=404, detail="No events for that session in this workspace")
+        raise HTTPException(status_code=404, detail="No events for that session in this scope")
 
     folder = await _find_or_create_sessions_folder(owner_user_id, current_user["id"])
 

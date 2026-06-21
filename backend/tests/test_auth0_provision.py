@@ -1,7 +1,7 @@
 """Tests for Auth0 user provisioning.
 
 The `created` flag is the contract the frontend relies on to route first-time
-Auth0 sign-ins into onboarding (instead of dropping them on their workspace
+Auth0 sign-ins into onboarding (instead of dropping them on their scope
 like a returning user). If this flag stops distinguishing new from returning
 users, new Google-OAuth users silently skip onboarding.
 """

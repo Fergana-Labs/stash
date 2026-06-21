@@ -1,7 +1,7 @@
 """Connected-source registry endpoints.
 
-A source is added per workspace and per user. It belongs to the member who
-connects it (`owner_user_id = current_user`) inside that workspace, and only they
+A source is added per scope and per user. It belongs to the member who
+connects it (`owner_user_id = current_user`) inside that scope, and only they
 can list, read, or remove it there. The agent reaches a source's indexed content
 through the source tools; these endpoints just manage the registry. Indexing
 (sync tasks) is wired per source type in later phases.
@@ -30,12 +30,12 @@ router = APIRouter(prefix="/api/v1/me/sources", tags=["sources"])
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
     if await user_scope_service.get_member_role(owner_user_id, user_id) is None:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(status_code=404, detail="Scope not found")
 
 
 async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(status_code=404, detail="Scope not found")
 
 
 class AddSourceRequest(BaseModel):
@@ -170,7 +170,7 @@ async def sources_tree(
     depth: int = 3,
     current_user: dict = Depends(get_current_user),
 ):
-    """The whole workspace as one filesystem: every source the user can see,
+    """The whole scope as one filesystem: every source the user can see,
     each with a nested entry tree trimmed to `depth` levels."""
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])

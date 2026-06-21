@@ -27,7 +27,7 @@ async def upsert_session(
     The CLI calls this lazily — first event for a session writes the row.
 
     Every session is born into a folder: the one it was pushed to (the repo's
-    pinned folder, streamed on every event), or the workspace's Default. We
+    pinned folder, streamed on every event), or the owner's Default. We
     resolve the Default only when the row doesn't exist yet. The folder is set
     once at insert and never touched on update, so a manual move — including a
     move to root (session_folder_id = NULL) — sticks even as the agent keeps
@@ -73,10 +73,10 @@ async def get_session(owner_user_id: UUID, session_id: str) -> dict | None:
 
 
 async def list_sessions_for_session_id(session_id: str) -> list[dict]:
-    """All workspace rows for an external session id, newest first.
+    """All scope rows for an external session id, newest first.
 
-    session_id is only unique per workspace — the same session can exist in
-    several workspaces (re-import, repo reconnected elsewhere). Callers pick
+    session_id is only unique per scope — the same session can exist in
+    several scopes (re-import, repo reconnected elsewhere). Callers pick
     the first row the user is allowed to read.
     """
     pool = get_pool()

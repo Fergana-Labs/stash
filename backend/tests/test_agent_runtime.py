@@ -3,7 +3,7 @@
 We don't spawn the SDK subprocess in tests (Claude Code CLI is a heavy,
 external dependency). Instead we verify:
 
-- Each in-process tool reads workspace context correctly and shapes the
+- Each in-process tool reads scope context correctly and shapes the
   expected MCP response.
 - The tool catalog matches prompts.STASH_TOOL_SET so a misnamed tool
   fails fast at runtime.
@@ -22,21 +22,21 @@ from backend.services import agent_runtime, prompts, shared_skill_service
 
 def test_tool_catalog_matches_prompts_set():
     """`prompts.STASH_TOOL_SET` is the source of truth for what tools the
-    ask-the-workspace agent can use; agent_runtime must implement every name."""
+    ask-the-stash agent can use; agent_runtime must implement every name."""
     missing = [name for name in prompts.STASH_TOOL_SET if name not in agent_runtime._TOOLS_BY_NAME]
     assert missing == [], f"agent_runtime missing tool impls: {missing}"
 
 
 @pytest.mark.asyncio
-async def test_current_workspace_raises_outside_context():
-    """Tools refuse to run unless `_workspace_ctx` is set — guards against
-    a tool firing across the wrong workspace if context binding regresses."""
+async def test_current_scope_raises_outside_context():
+    """Tools refuse to run unless `_scope_ctx` is set — guards against
+    a tool firing against the wrong scope if context binding regresses."""
     with pytest.raises(RuntimeError):
-        agent_runtime._current_workspace()
+        agent_runtime._current_scope()
 
 
 @pytest_asyncio.fixture
-async def workspace(_db_pool):
+async def scope(_db_pool):
     """The user IS the scope: the returned id is the user's id (owner_user_id)."""
     user_id = uuid4()
     await _db_pool.execute(
@@ -48,28 +48,28 @@ async def workspace(_db_pool):
 
 
 @pytest.mark.asyncio
-async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
-    """Verifies the workspace-context plumbing end-to-end on one tool: the
-    response should contain only this workspace's files."""
-    user_id = workspace  # the scope id is the user id
+async def test_list_files_tool_scopes_by_owner(scope: UUID, _db_pool):
+    """Verifies the scope-context plumbing end-to-end on one tool: the
+    response should contain only this scope's files."""
+    user_id = scope  # the scope id is the user id
     await _db_pool.execute(
         "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5, $6)",
-        workspace,
+        scope,
         "scoped.txt",
         "text/plain",
         7,
-        f"key_{workspace.hex[:6]}",
+        f"key_{scope.hex[:6]}",
         user_id,
     )
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         result = await agent_runtime._list_files.handler({})
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     payload = json.loads(result["content"][0]["text"])
     names = [r["name"] for r in payload]
@@ -77,13 +77,13 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_skill_tools_create_publish_update_and_unpublish(workspace: UUID, _db_pool):
+async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_pool):
     """The agent's skill lifecycle: create makes a SKILL.md folder, publish
     mints the share record (and a public URL), update edits the record, and
     unpublish removes only the record — the folder stays a skill."""
-    user_id = workspace  # the scope id is the user id
+    user_id = scope  # the scope id is the user id
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         created = json.loads(
@@ -119,7 +119,7 @@ async def test_skill_tools_create_publish_update_and_unpublish(workspace: UUID, 
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     assert created["name"] == "Launch bundle"
     [skill] = [s for s in listed if s["folder_id"] == created["folder_id"]]
@@ -156,12 +156,12 @@ def test_page_tools_are_writable_surfaces_only():
 
 
 @pytest.mark.asyncio
-async def test_create_and_update_page_round_trip(workspace: UUID, _db_pool):
+async def test_create_and_update_page_round_trip(scope: UUID, _db_pool):
     """create_page persists markdown + html; update_page edits an existing page
-    by id. Both must bind to the active workspace context."""
-    user_id = workspace  # the scope id is the user id
+    by id. Both must bind to the active scope context."""
+    user_id = scope  # the scope id is the user id
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         md = await agent_runtime._create_page.handler(
@@ -177,16 +177,16 @@ async def test_create_and_update_page_round_trip(workspace: UUID, _db_pool):
         read_back = await agent_runtime._read_page.handler({"page_id": md_page["id"]})
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     html_page = json.loads(html["content"][0]["text"])
     assert md_page["name"] == "Notes" and "id" in md_page
     assert html_page["name"] == "Dashboard"
-    # Persisted to this workspace, scoped by context.
+    # Persisted to this scope, bound by context.
     stored = await _db_pool.fetchrow(
         "SELECT owner_user_id, content_html FROM pages WHERE id = $1", UUID(html_page["id"])
     )
-    assert stored["owner_user_id"] == workspace
+    assert stored["owner_user_id"] == scope
     assert "<h1>Live</h1>" in (stored["content_html"] or "")
     # update_page edited the markdown body in place.
     assert "Hello again" in json.loads(read_back["content"][0]["text"])["content"]
@@ -216,16 +216,16 @@ def test_destructive_tools_withheld_from_untrusted_surfaces():
 
 
 @pytest.mark.asyncio
-async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: UUID, _db_pool):
+async def test_edit_provenance_stamped_for_agent_and_null_for_human(scope: UUID, _db_pool):
     """Agent writes stamp the page + log who/which session; a plain service
     (human/REST) write logs an edit row but leaves the agent/session NULL."""
     from backend.services import files_tree_service
 
-    user_id = workspace  # the scope id is the user id
+    user_id = scope  # the scope id is the user id
 
     # Human/REST path: no agent context → NULL stamp, but still logged.
     human = await files_tree_service.create_page(
-        owner_user_id=workspace, name="Human", created_by=user_id, content="hi"
+        owner_user_id=scope, name="Human", created_by=user_id, content="hi"
     )
     h_cols = await _db_pool.fetchrow(
         "SELECT last_edit_session_id, last_edit_agent_name FROM pages WHERE id = $1", human["id"]
@@ -239,7 +239,7 @@ async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: U
     # Agent path: session + agent name bound in context → stamped + logged.
     session_token = agent_runtime._session_ctx.set("chat-123")
     agent_token = agent_runtime._agent_name_ctx.set("Stash Agent")
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         created = json.loads(
@@ -252,7 +252,7 @@ async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: U
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
         agent_runtime._agent_name_ctx.reset(agent_token)
         agent_runtime._session_ctx.reset(session_token)
 
@@ -272,25 +272,25 @@ async def test_edit_provenance_stamped_for_agent_and_null_for_human(workspace: U
 
 
 @pytest.mark.asyncio
-async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
+async def test_edit_page_surgical_edits(scope: UUID, _db_pool):
     """edit_page does a unique str-replace / append on the active body, and fails
     loud (writing nothing) when the anchor isn't unique."""
     from backend.services import files_tree_service
 
-    user_id = workspace  # the scope id is the user id
+    user_id = scope  # the scope id is the user id
 
     md = await files_tree_service.create_page(
-        owner_user_id=workspace, name="Doc", created_by=user_id, content="alpha beta gamma"
+        owner_user_id=scope, name="Doc", created_by=user_id, content="alpha beta gamma"
     )
     html = await files_tree_service.create_page(
-        owner_user_id=workspace,
+        owner_user_id=scope,
         name="Page",
         created_by=user_id,
         content_type="html",
         content_html="<p>one</p>",
     )
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         # Unique replace on markdown.
@@ -315,7 +315,7 @@ async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     md_body = await _db_pool.fetchval("SELECT content_markdown FROM pages WHERE id = $1", md["id"])
     html_body = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", html["id"])
@@ -325,30 +325,30 @@ async def test_edit_page_surgical_edits(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_edit_page_multi_match_writes_nothing(workspace: UUID, _db_pool):
+async def test_edit_page_multi_match_writes_nothing(scope: UUID, _db_pool):
     """A >1 match must not partially write — the body is untouched."""
     from backend.services import files_tree_service
 
-    user_id = workspace  # the scope id is the user id
+    user_id = scope  # the scope id is the user id
     page = await files_tree_service.create_page(
-        owner_user_id=workspace, name="Dup", created_by=user_id, content="x x x"
+        owner_user_id=scope, name="Dup", created_by=user_id, content="x x x"
     )
 
     with pytest.raises(files_tree_service.EditMatchError):
         await files_tree_service.edit_page(
-            page["id"], workspace, user_id, old_string="x", new_string="y"
+            page["id"], scope, user_id, old_string="x", new_string="y"
         )
     body = await _db_pool.fetchval("SELECT content_markdown FROM pages WHERE id = $1", page["id"])
     assert body == "x x x"
 
 
 @pytest.mark.asyncio
-async def test_tree_mutation_tools_round_trip(workspace: UUID, _db_pool):
+async def test_tree_mutation_tools_round_trip(scope: UUID, _db_pool):
     """create_folder + the page move/rename/delete tools let the agent organize
-    the workspace, all bound to the active workspace context."""
-    user_id = workspace  # the scope id is the user id
+    the scope, all bound to the active scope context."""
+    user_id = scope  # the scope id is the user id
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         folder = json.loads(
@@ -370,7 +370,7 @@ async def test_tree_mutation_tools_round_trip(workspace: UUID, _db_pool):
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     assert deleted == {"deleted": True, "page_id": page["id"]}
     stored = await _db_pool.fetchrow(
@@ -382,12 +382,12 @@ async def test_tree_mutation_tools_round_trip(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_table_mutation_tools_round_trip(workspace: UUID, _db_pool):
+async def test_table_mutation_tools_round_trip(scope: UUID, _db_pool):
     """create_table + row/column tools wrap table_service, guarded so an agent
-    can only touch tables in its own workspace."""
-    user_id = workspace  # the scope id is the user id
+    can only touch tables in its own scope."""
+    user_id = scope  # the scope id is the user id
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         table = json.loads(
@@ -422,7 +422,7 @@ async def test_table_mutation_tools_round_trip(workspace: UUID, _db_pool):
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     assert "Acme" in json.dumps(stored_data)
     assert "Won" in json.dumps(stored_data)
@@ -434,26 +434,26 @@ async def test_table_mutation_tools_round_trip(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
-    """A table id from another workspace must be invisible to the agent's
-    write tools — the workspace guard returns 'table not found'."""
-    user_id = workspace  # the scope id is the user id
-    other_ws = uuid4()  # a different user's scope
+async def test_table_tools_reject_cross_scope(scope: UUID, _db_pool):
+    """A table id from another scope must be invisible to the agent's
+    write tools — the scope guard returns 'table not found'."""
+    user_id = scope  # the scope id is the user id
+    other_scope = uuid4()  # a different user's scope
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
-        other_ws,
-        f"u_{other_ws.hex[:6]}",
+        other_scope,
+        f"u_{other_scope.hex[:6]}",
     )
     other_table = uuid4()
     await _db_pool.execute(
         "INSERT INTO tables (id, owner_user_id, name, description, columns, created_by, updated_by) "
         "VALUES ($1, $2, 'Secret', '', '[]'::jsonb, $3, $3)",
         other_table,
-        other_ws,
+        other_scope,
         user_id,
     )
 
-    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         result = json.loads(
@@ -463,28 +463,28 @@ async def test_table_tools_reject_cross_workspace(workspace: UUID, _db_pool):
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
     assert result == {"error": "table not found"}
 
 
 @pytest.mark.asyncio
-async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: UUID, _db_pool):
-    """Forking deep-copies the skill folder into the target workspace as a
+async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID, _db_pool):
+    """Forking deep-copies the skill folder into the target scope as a
     private (unpublished) skill: contents are point-in-time copies, not live
     references, and no skills row is minted for the fork."""
-    owner_id = workspace  # the scope id is the user id
-    target_workspace = uuid4()  # the fork target is another user's scope
+    owner_id = scope  # the scope id is the user id
+    target_scope = uuid4()  # the fork target is another user's scope
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
-        target_workspace,
-        f"u_{target_workspace.hex[:6]}",
+        target_scope,
+        f"u_{target_scope.hex[:6]}",
     )
     folder_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO folders (id, owner_user_id, name, created_by) VALUES ($1, $2, $3, $4)",
         folder_id,
-        workspace,
+        scope,
         "Fork source",
         owner_id,
     )
@@ -493,35 +493,35 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(workspace: U
         "INSERT INTO pages (id, owner_user_id, folder_id, name, content_markdown, created_by) "
         "VALUES ($1, $2, $3, $4, $5, $6)",
         page_id,
-        workspace,
+        scope,
         folder_id,
         "Public source page",
         "External Stash source",
         owner_id,
     )
     source = await shared_skill_service.publish_folder(
-        workspace,
+        scope,
         owner_id,
         folder_id,
         title="Fork source Stash",
     )
 
     attached = await shared_skill_service.fork_skill(
-        target_workspace, source["slug"], added_by=owner_id
+        target_scope, source["slug"], added_by=owner_id
     )
 
     assert attached is not None
     assert attached["name"] == "Fork source"
     fork_folder_id = UUID(attached["folder_id"])
     assert fork_folder_id != folder_id
-    fork_folder_ws = await _db_pool.fetchval(
+    fork_folder_owner = await _db_pool.fetchval(
         "SELECT owner_user_id FROM folders WHERE id = $1", fork_folder_id
     )
-    assert fork_folder_ws == target_workspace
+    assert fork_folder_owner == target_scope
 
     # The fork has no publish record of its own — it's a private skill folder.
     record = await _db_pool.fetchval(
-        "SELECT 1 FROM skills WHERE owner_user_id = $1", target_workspace
+        "SELECT 1 FROM skills WHERE owner_user_id = $1", target_scope
     )
     assert record is None
 

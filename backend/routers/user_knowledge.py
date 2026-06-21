@@ -1,4 +1,4 @@
-"""Workspace knowledge router: overview, sessions, files, and shared skills."""
+"""User knowledge router: overview, sessions, files, and shared skills."""
 
 import asyncio
 import json
@@ -24,23 +24,23 @@ from ..services import (
     user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/me", tags=["workspaces"])
+router = APIRouter(prefix="/api/v1/me", tags=["me"])
 
 SIDEBAR_ETAG_VERSION = "sidebar-skill-folders-v4"
 
 
 # ---------------------------------------------------------------------------
-# Overview + Sidebar — the per-workspace view shapes
+# Overview + Sidebar — the per-scope view shapes
 #
-# `/overview` is what the workspace home page loads: sessions + files + skills. `/sidebar`
+# `/overview` is what the scope home page loads: sessions + files + skills. `/sidebar`
 # is a smaller payload for the nav tree, served with an ETag so it can be
 # cached cheaply across navigation.
 # ---------------------------------------------------------------------------
 
 
 async def _list_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Sessions in this workspace, sourced from history_events rows."""
-    sessions = await memory_service.list_workspace_sessions(owner_user_id, user_id)
+    """Sessions in this scope, sourced from history_events rows."""
+    sessions = await memory_service.list_scope_sessions(owner_user_id, user_id)
     titles = await session_title_service.titles_for_sessions(owner_user_id, sessions)
     return [
         {
@@ -62,7 +62,7 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
     """One unified file tree: folders, pages, and uploaded files.
 
     The viewer's read permission is pushed into each SELECT via
-    `readable_content_condition`, so a populated workspace costs three queries —
+    `readable_content_condition`, so a populated scope costs three queries —
     not three queries plus one `check_access` round-trip per folder/page/file.
     """
     pool = get_pool()
@@ -144,7 +144,7 @@ async def _list_sidebar_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]
 
 
 # ---------------------------------------------------------------------------
-# Ask-the-workspace agent (Phase 3)
+# Ask-the-scope agent (Phase 3)
 # ---------------------------------------------------------------------------
 
 
@@ -155,11 +155,11 @@ class AskMessage(BaseModel):
 
 class AskRequest(BaseModel):
     messages: list[AskMessage]
-    scope: str = "workspace"
+    scope: str = "all"
 
 
 @router.post("/ask")
-async def ask_workspace(
+async def ask_scope(
     req: AskRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -167,7 +167,7 @@ async def ask_workspace(
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail="Ask-the-workspace is not configured (ANTHROPIC_API_KEY unset).",
+            detail="Ask-the-scope is not configured (ANTHROPIC_API_KEY unset).",
         )
     # Single-turn only. Multi-turn ask should ship as session resumption
     # (ClaudeAgentOptions.resume), not as conversation replay through this
@@ -218,12 +218,12 @@ async def memory_demo(
     current_user: dict = Depends(get_current_user),
 ):
     """Generate a personalized before/after demo for the Memory onboarding
-    step. If the workspace has session(s), summon Claude (FAST tier) with
+    step. If the scope has session(s), summon Claude (FAST tier) with
     the most recent session's title + a short snippet of its first events;
     otherwise return a canned fallback."""
     owner_user_id = current_user["id"]
 
-    sessions = await memory_service.list_workspace_sessions(owner_user_id, current_user["id"])
+    sessions = await memory_service.list_scope_sessions(owner_user_id, current_user["id"])
     if not sessions:
         return _FALLBACK_DEMO
 
@@ -292,10 +292,10 @@ async def memory_demo(
 
 
 @router.get("/overview")
-async def get_workspace_overview(
+async def get_scope_overview(
     current_user: dict = Depends(get_current_user),
 ):
-    """{sessions, files, skills} for the workspace home page.
+    """{sessions, files, skills} for the scope home page.
 
     `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
@@ -312,13 +312,13 @@ async def get_workspace_overview(
 
 
 @router.get("/sidebar")
-async def get_workspace_sidebar(
+async def get_scope_sidebar(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     """Lighter payload for the nav sidebar: sessions + files + skills. Carries an
-    ETag derived from the workspace's mutation timestamps so navigation
-    between workspaces hits 304 instead of re-fetching."""
+    ETag derived from the scope's mutation timestamps so navigation
+    between scopes hits 304 instead of re-fetching."""
     owner_user_id = current_user["id"]
     await _check_overview_access(owner_user_id, current_user["id"])
 
@@ -343,12 +343,12 @@ async def get_workspace_sidebar(
 
 async def _check_overview_access(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(status_code=404, detail="Scope not found")
 
 
 async def _sidebar_etag(owner_user_id: UUID, user_id: UUID) -> str:
     """One short string that changes any time the sidebar's content
-    changes. Concatenates last-modified timestamps across the workspace's
+    changes. Concatenates last-modified timestamps across the scope's
     mutating tables."""
     pool = get_pool()
     row = await pool.fetchrow(

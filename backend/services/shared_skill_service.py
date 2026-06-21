@@ -159,9 +159,9 @@ async def publish_folder(
         "SELECT id, name, owner_user_id FROM folders WHERE id = $1", folder_id
     )
     if not folder or folder["owner_user_id"] != owner_user_id:
-        raise ValueError("Folder not found in this workspace")
+        raise ValueError("Folder not found in this scope")
     if not await user_scope_service.is_owner(owner_user_id, owner_id):
-        raise ValueError("Only workspace owners can publish Skills")
+        raise ValueError("Only scope owners can publish Skills")
     if not await permission_service.check_access(
         "folder", folder_id, owner_id, owner_user_id=owner_user_id, require="write"
     ):
@@ -263,12 +263,12 @@ async def get_public_skill(slug: str, viewer_id: UUID | None = None) -> dict | N
     await pool.execute("UPDATE skills SET view_count = view_count + 1 WHERE id = $1", skill["id"])
 
     names = await pool.fetchrow(
-        "SELECT COALESCE(u.display_name, u.name) AS workspace_name, f.name AS folder_name "
+        "SELECT COALESCE(u.display_name, u.name) AS owner_name, f.name AS folder_name "
         "FROM users u, folders f WHERE u.id = $1 AND f.id = $2",
         skill["owner_user_id"],
         skill["folder_id"],
     )
-    skill["_workspace_name"] = names["workspace_name"] if names else ""
+    skill["_owner_name"] = names["owner_name"] if names else ""
     skill["_folder_name"] = names["folder_name"] if names else ""
     return skill
 
@@ -317,7 +317,7 @@ async def list_public_skills(
         order = "v.updated_at DESC, v.id DESC"
 
     rows = await pool.fetch(
-        f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS workspace_name "
+        f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS scope_name "
         f"{_SKILL_FROM} "
         f"JOIN users scope_user ON scope_user.id = v.owner_user_id "
         f"WHERE {' AND '.join(where)} ORDER BY {order} LIMIT {int(limit)}",
@@ -337,10 +337,9 @@ async def list_public_skills(
                 "cover_image_url": skill["cover_image_url"],
                 "source_github_url": skill["source_github_url"],
                 "view_count": skill["view_count"],
-                "owner_name": skill.get("owner_name"),
+                "owner_name": skill.get("scope_name"),
                 "owner_display_name": skill.get("owner_display_name"),
                 "owner_user_id": str(skill["owner_user_id"]),
-                "workspace_name": skill.get("workspace_name"),
                 "item_count": int(await _live_item_count(skill["folder_id"]) or 0),
                 "created_at": skill["created_at"].isoformat(),
                 "updated_at": skill["updated_at"].isoformat(),
@@ -356,7 +355,7 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         """
         SELECT f.id AS folder_id, f.name AS folder_name, sh.permission,
-               COALESCE(ow.display_name, ow.name) AS workspace_name, ow.id AS owner_user_id,
+               COALESCE(ow.display_name, ow.name) AS owner_name, ow.id AS owner_user_id,
                COALESCE(u.display_name, u.name) AS shared_by,
                p.content_markdown AS skill_md,
                v.slug
@@ -368,7 +367,7 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
         LEFT JOIN skills v ON v.folder_id = f.id
         WHERE sh.principal_type = 'user' AND sh.principal_id = $1
           AND (sh.expires_at IS NULL OR sh.expires_at > now())
-        ORDER BY workspace_name, f.name
+        ORDER BY owner_name, f.name
         """,
         user_id,
     )
@@ -381,7 +380,7 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
                 "name": meta.get("name") or r["folder_name"],
                 "description": meta.get("description", ""),
                 "owner_user_id": str(r["owner_user_id"]),
-                "workspace_name": r["workspace_name"],
+                "owner_name": r["owner_name"],
                 "shared_by": r["shared_by"],
                 "permission": r["permission"],
                 "slug": r["slug"],
@@ -510,7 +509,7 @@ def find_in_contents(contents: dict, object_type: str, object_id: str) -> dict |
     return next((o for o in contents[plural] if o["id"] == str(object_id)), None)
 
 
-# --- Fork (deep folder copy into another workspace) ---
+# --- Fork (deep folder copy into another scope) ---
 
 
 async def _fork_page(
@@ -718,7 +717,7 @@ async def _fork_folder(
 
 
 async def fork_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | None:
-    """Deep-copy the skill's folder into the forker's workspace. The copy lands
+    """Deep-copy the skill's folder into the forker's scope. The copy lands
     as a private (unpublished) skill — SKILL.md travels with the folder."""
     pool = get_pool()
     row = await pool.fetchrow(f"{_SKILL_SELECT} WHERE v.slug = $1", slug)
@@ -859,15 +858,15 @@ def _preview(text: str, limit: int = 260) -> str:
     return f"{compact[: limit - 1].rstrip()}..."
 
 
-def skill_to_text(skill: dict, workspace_name: str, contents: dict, base_url: str) -> str:
+def skill_to_text(skill: dict, owner_name: str, contents: dict, base_url: str) -> str:
     """Render a public skill as a small agent-readable homepage: the SKILL.md
     body first, then deep links to everything else in the folder."""
     base_url = base_url.rstrip("/")
     parts = [f"# {skill['title']}"]
     if skill.get("description"):
         parts.append(str(skill["description"]))
-    if workspace_name:
-        parts.append(f"Workspace: {workspace_name}")
+    if owner_name:
+        parts.append(f"Owner: {owner_name}")
 
     pages = contents["pages"]
     files = contents["files"]

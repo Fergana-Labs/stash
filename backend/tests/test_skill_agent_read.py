@@ -101,12 +101,12 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_public_skill_item_text_strips_html_page_content(client: AsyncClient):
     api_key, register_body = await _register(client)
-    workspace = _scope(register_body)
+    scope = _scope(register_body)
 
     published = await client.post(
         "/api/v1/publish",
         json={
-            "owner_user_id": workspace["id"],
+            "owner_user_id": scope["id"],
             "title": "HTML strategy memo",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",

@@ -6,7 +6,7 @@ visibility flags on the resulting Stash and the auto-attached KB
 folder.
 
 Conftest disables the boot-time seed (so other tests get clean
-workspaces). These tests opt in by calling `seed_demo_workspace`
+scopes). These tests opt in by calling `seed_demo`
 themselves before each scenario.
 """
 
@@ -19,12 +19,12 @@ from backend.services import demo_service
 
 @pytest_asyncio.fixture(autouse=True)
 async def _seed_demo(_db_pool):
-    """Every demo test needs the Demo workspace + KB folder pre-seeded.
+    """Every demo test needs the Demo scope + KB folder pre-seeded.
 
     Conftest cleanup runs *after* the test so the seed survives the test
     body; the next test gets a fresh seed.
     """
-    await demo_service.seed_demo_workspace()
+    await demo_service.seed_demo()
     yield
 
 
@@ -193,8 +193,8 @@ async def test_kb_folder_is_reused_across_demos(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
-    """Forbid bundling a page from some other workspace into a demo Stash."""
+async def test_rejects_items_outside_demo_scope(client: AsyncClient, pool):
+    """Forbid bundling a page from some other scope into a demo Stash."""
     # Create a non-demo user + page directly via SQL.
     from uuid import uuid4
 
@@ -217,7 +217,7 @@ async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
     resp = await client.post(
         "/api/v1/demo/skills",
         json={
-            "title": "Cross-workspace attempt",
+            "title": "Cross-scope attempt",
             "items": [{"object_type": "page", "object_id": str(outside_page_id)}],
         },
     )

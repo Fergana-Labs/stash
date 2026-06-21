@@ -1,6 +1,6 @@
 """Multi-turn agent chat for the Agents view.
 
-A chat is just a workspace Session: each turn is persisted as a history event
+A chat is just a Session: each turn is persisted as a history event
 (see ask_service.stream_chat), so chats are stored, reloadable, and show up in
 Sessions alongside CLI transcripts. The frontend holds a session_id per tab and
 streams replies from here.

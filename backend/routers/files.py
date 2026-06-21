@@ -1,4 +1,4 @@
-"""Files router: workspace file upload/serve/delete.
+"""Files router: file upload/serve/delete.
 
 Text extraction runs out-of-band: uploads insert the file row with
 `extraction_status='pending'` and dispatch `extract_file_text.delay(file_id)`
@@ -41,7 +41,7 @@ from ..services.xlsx_ingest import ingest_xlsx_bytes
 
 logger = logging.getLogger(__name__)
 
-ws_router = APIRouter(prefix="/api/v1/me/files", tags=["files"])
+me_router = APIRouter(prefix="/api/v1/me/files", tags=["files"])
 canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -59,7 +59,7 @@ _FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     """Read gate: any member."""
     if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+        raise HTTPException(status_code=403, detail="Not a scope member")
 
 
 async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
@@ -125,7 +125,7 @@ async def _file_to_response(row: dict) -> FileResponse:
 
 
 async def _fetch_file_row(file_id: UUID, owner_user_id: UUID) -> dict | None:
-    """Fetch a single workspace file joined to its uploader, or None."""
+    """Fetch a single scope file joined to its uploader, or None."""
     row = await get_pool().fetchrow(
         f"SELECT {_FILE_COLS} {_FILE_FROM} "
         "WHERE f.id = $1 AND f.owner_user_id = $2 AND f.deleted_at IS NULL",
@@ -147,17 +147,17 @@ async def _download_storage_file_or_502(storage_key: str, operation: str) -> byt
         raise HTTPException(status_code=502, detail="File storage download failed") from exc
 
 
-# ===== Workspace file endpoints =====
+# ===== Scope file endpoints =====
 
 
-@ws_router.post("", response_model=UploadResponse, status_code=201)
-async def upload_ws_file(
+@me_router.post("", response_model=UploadResponse, status_code=201)
+async def upload_my_file(
     file: UploadFile,
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # Workspace writers can upload anywhere; non-members can upload into a
+    # Scope writers can upload anywhere; non-members can upload into a
     # specific folder shared with them with write permission.
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         can_write_folder = folder_id is not None and await permission_service.check_access(
@@ -196,7 +196,7 @@ async def upload_ws_file(
             if not owns:
                 raise HTTPException(
                     status_code=400,
-                    detail="folder_id does not belong to workspace",
+                    detail="folder_id does not belong to scope",
                 )
 
         text = content.decode("utf-8", errors="replace")
@@ -260,7 +260,7 @@ async def upload_ws_file(
             owner_user_id,
         )
         if not owns:
-            raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
+            raise HTTPException(status_code=400, detail="folder_id does not belong to scope")
     row = await pool.fetchrow(
         "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
@@ -294,8 +294,8 @@ async def upload_ws_file(
     )
 
 
-@ws_router.get("", response_model=FileListResponse)
-async def list_ws_files(
+@me_router.get("", response_model=FileListResponse)
+async def list_my_files(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
@@ -333,8 +333,8 @@ async def get_file_by_id(
     return await _file_to_response(dict(row))
 
 
-@ws_router.get("/{file_id}", response_model=FileResponse)
-async def get_ws_file(
+@me_router.get("/{file_id}", response_model=FileResponse)
+async def get_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -347,12 +347,12 @@ async def get_ws_file(
     return await _file_to_response(row)
 
 
-@ws_router.get("/{file_id}/download")
-async def download_ws_file(
+@me_router.get("/{file_id}/download")
+async def download_my_file(
     file_id: UUID,
     current_user: dict | None = Depends(get_current_user_optional),
 ):
-    """Permanent workspace URL for file links embedded in wiki pages."""
+    """Permanent scope URL for file links embedded in wiki pages."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     owner_user_id = current_user["id"]
@@ -387,8 +387,8 @@ async def download_ws_file(
     )
 
 
-@ws_router.get("/{file_id}/text")
-async def get_ws_file_text(
+@me_router.get("/{file_id}/text")
+async def get_my_file_text(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -413,8 +413,8 @@ async def get_ws_file_text(
     }
 
 
-@ws_router.patch("/{file_id}", response_model=FileResponse)
-async def update_ws_file(
+@me_router.patch("/{file_id}", response_model=FileResponse)
+async def update_my_file(
     file_id: UUID,
     req: FileUpdateRequest,
     current_user: dict = Depends(get_current_user),
@@ -450,8 +450,8 @@ async def update_ws_file(
         params.append(None)
         updates.append(f"folder_id = ${len(params)}")
     elif req.folder_id is not None:
-        # Target folder must belong to the same workspace; otherwise files
-        # could escape their workspace by getting reparented across the
+        # Target folder must belong to the same scope; otherwise files
+        # could escape their scope by getting reparented across the
         # boundary.
         owner = await pool.fetchrow(
             "SELECT owner_user_id FROM folders WHERE id = $1",
@@ -477,16 +477,16 @@ async def update_ws_file(
     params.append(file_id)
     file_id_pos = len(params)
     params.append(owner_user_id)
-    ws_pos = len(params)
+    owner_pos = len(params)
     await pool.execute(
-        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND owner_user_id = ${ws_pos}",
+        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND owner_user_id = ${owner_pos}",
         *params,
     )
     return await _file_to_response(await _fetch_file_row(file_id, owner_user_id))
 
 
-@ws_router.delete("/{file_id}", status_code=204)
-async def delete_ws_file(
+@me_router.delete("/{file_id}", status_code=204)
+async def delete_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -501,8 +501,8 @@ async def delete_ws_file(
         raise HTTPException(status_code=404, detail="File not found")
 
 
-@ws_router.post("/{file_id}/copy", response_model=FileResponse, status_code=201)
-async def copy_ws_file(
+@me_router.post("/{file_id}/copy", response_model=FileResponse, status_code=201)
+async def copy_my_file(
     file_id: UUID,
     req: CopyRequest,
     current_user: dict = Depends(get_current_user),
@@ -533,8 +533,8 @@ async def copy_ws_file(
     return await _file_to_response(await _fetch_file_row(copied["id"], owner_user_id))
 
 
-@ws_router.post("/{file_id}/restore", status_code=204)
-async def restore_ws_file(
+@me_router.post("/{file_id}/restore", status_code=204)
+async def restore_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -546,8 +546,8 @@ async def restore_ws_file(
         raise HTTPException(status_code=404, detail="File not in trash")
 
 
-@ws_router.delete("/{file_id}/purge", status_code=204)
-async def purge_ws_file(
+@me_router.delete("/{file_id}/purge", status_code=204)
+async def purge_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -580,7 +580,7 @@ async def purge_ws_file(
 # ===== CSV → Table ingest =====
 
 
-@ws_router.post("/{file_id}/ingest-csv", response_model=TableResponse)
+@me_router.post("/{file_id}/ingest-csv", response_model=TableResponse)
 async def ingest_csv_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -670,7 +670,7 @@ _XLSX_CONTENT_TYPES = {
 }
 
 
-@ws_router.post("/{file_id}/ingest-xlsx", response_model=TableListResponse)
+@me_router.post("/{file_id}/ingest-xlsx", response_model=TableListResponse)
 async def ingest_xlsx_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),

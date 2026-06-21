@@ -1,4 +1,4 @@
-"""Workspace security audit log endpoints."""
+"""Security audit log endpoints."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ async def list_security_events(
     owner_user_id = current_user["id"]
     role = await user_scope_service.get_member_role(owner_user_id, current_user["id"])
     if role is None:
-        # Match the sibling workspace routers: never confirm a workspace's
+        # Match the sibling scope routers: never confirm a scope's
         # existence to non-members.
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(status_code=404, detail="Scope not found")
     metadata = {
         "action_filter_hash": security_audit_service.hash_value(action),
         "limit": limit,
@@ -38,7 +38,7 @@ async def list_security_events(
             metadata={**metadata, "role": role},
         )
         raise HTTPException(
-            status_code=403, detail="Only workspace admins can read security events"
+            status_code=403, detail="Only scope admins can read security events"
         )
 
     await security_audit_service.record_event(
@@ -48,7 +48,7 @@ async def list_security_events(
         target_type="security_audit_log",
         metadata=metadata,
     )
-    events = await security_audit_service.list_workspace_events(
+    events = await security_audit_service.list_events(
         owner_user_id=owner_user_id,
         action=action,
         limit=limit,

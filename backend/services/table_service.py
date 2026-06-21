@@ -54,7 +54,7 @@ async def create_table(
     if folder_id is not None:
         folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
         if not folder or folder["owner_user_id"] != owner_user_id:
-            raise ValueError("folder_id does not belong to workspace")
+            raise ValueError("folder_id does not belong to owner")
     # Assign server-generated IDs and order to columns
     for i, col in enumerate(columns):
         if not col.get("id"):
@@ -181,7 +181,7 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         "SELECT t.id, t.owner_user_id, t.name, t.description, t.columns, t.views, "
         "t.created_by, t.updated_by, t.created_at, t.updated_at, "
-        "owner.display_name AS workspace_name, "
+        "owner.display_name AS owner_name, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t "
         "LEFT JOIN users owner ON owner.id = t.owner_user_id "

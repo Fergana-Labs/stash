@@ -1,7 +1,7 @@
 """Slack agent (talk-to-Stash bot) — turn a Slack mention/DM into an agent run.
 
 This is the seam where the Slack surface meets the existing agent: it resolves
-the Slack user to a Stash account, runs the workspace agent in that user's
+the Slack user to a Stash account, runs the scope agent in that user's
 single continuous Slack session, and posts the reply back. Everything agent-
 side (tool_loop, tools, memory, scoping) is reused unchanged.
 
@@ -77,11 +77,11 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
 
     owner_user_id = await user_scope_service.scope_id_for_user(user["id"])
     # The scope is the user, so its name is the user's display name.
-    workspace_name = user["display_name"] or user["name"]
+    owner_name = user["display_name"] or user["name"]
     # One continuous session per user → memory accumulates across DMs/channels/time.
     session_id = f"slack-agent-{user['id']}"
     answer = await ask_service.run_chat(
-        owner_user_id, workspace_name, user["id"], session_id, text
+        owner_user_id, owner_name, user["id"], session_id, text
     )
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts

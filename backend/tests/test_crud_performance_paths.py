@@ -19,13 +19,12 @@ async def _register(client: AsyncClient) -> str:
     return resp.json()["api_key"]
 
 
-async def _workspace(client: AsyncClient, api_key: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "CRUD performance"},
+async def _scope(client: AsyncClient, api_key: str) -> dict:
+    resp = await client.get(
+        "/api/v1/users/me",
         headers=_auth(api_key),
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 200
     return resp.json()
 
 

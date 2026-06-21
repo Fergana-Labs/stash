@@ -43,10 +43,9 @@ from .routers import (
     tasks,
     transcripts,
     trash,
+    user_knowledge,
     users,
     webhooks,
-    workspace_knowledge,
-    workspaces,
 )
 from .services import demo_service
 from .services.row_validation import RowValidationError
@@ -68,9 +67,9 @@ async def lifespan(app: FastAPI):
     # `beat` services — see backend/celery_app.py.
     await init_db()
     try:
-        await demo_service.seed_demo_workspace()
+        await demo_service.seed_demo()
     except Exception:
-        logger.exception("seed_demo_workspace failed at startup")
+        logger.exception("seed_demo failed at startup")
     try:
         yield
     finally:
@@ -108,18 +107,16 @@ app.add_middleware(
 )
 app.include_router(users.router)
 app.include_router(collab.router)
-app.include_router(workspace_knowledge.router)
-app.include_router(workspaces.router)
+app.include_router(user_knowledge.router)
 app.include_router(discover.router)
-app.include_router(skills.ws_router)
 app.include_router(skills.me_router)
 app.include_router(skills.public_router)
 app.include_router(files_tree.router)
 app.include_router(files_tree.canonical_router)
-app.include_router(memory.ws_router)
-app.include_router(tables.ws_router)
+app.include_router(memory.me_router)
+app.include_router(tables.me_router)
 app.include_router(tables.router)
-app.include_router(files.ws_router)
+app.include_router(files.me_router)
 app.include_router(files.canonical_router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)
@@ -138,7 +135,7 @@ app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(agent_chat.router)
-app.include_router(session_folders.ws_router)
+app.include_router(session_folders.me_router)
 app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)

@@ -1,7 +1,7 @@
-"""Session event router: workspace agent event storage.
+"""Session event router: agent event storage scoped to a user.
 
-Events belong directly to workspaces. No intermediate "store" abstraction.
-Hierarchy: Workspace → Agent → Session → Events
+Events belong directly to a scope. No intermediate "store" abstraction.
+Hierarchy: Scope → Agent → Session → Events
 """
 
 from datetime import datetime
@@ -20,7 +20,7 @@ from ..models import (
 from ..services import memory_service, user_scope_service
 from ..tasks.session_titles import generate_session_title
 
-ws_router = APIRouter(prefix="/api/v1/me/sessions", tags=["sessions"])
+me_router = APIRouter(prefix="/api/v1/me/sessions", tags=["sessions"])
 
 _TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_message", "session_end"}
 
@@ -30,7 +30,7 @@ _TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_messag
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+        raise HTTPException(status_code=403, detail="Not a scope member")
 
 
 async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
@@ -38,11 +38,11 @@ async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Viewers can read but not write sessions")
 
 
-# ===== Workspace event endpoints =====
+# ===== Scope event endpoints =====
 
 
-@ws_router.post("/events", response_model=HistoryEventResponse, status_code=201)
-async def push_ws_event(
+@me_router.post("/events", response_model=HistoryEventResponse, status_code=201)
+async def push_event(
     req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -67,8 +67,8 @@ async def push_ws_event(
     return HistoryEventResponse(**event)
 
 
-@ws_router.post("/events/batch", response_model=list[HistoryEventResponse], status_code=201)
-async def push_ws_events_batch(
+@me_router.post("/events/batch", response_model=list[HistoryEventResponse], status_code=201)
+async def push_events_batch(
     req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -89,8 +89,8 @@ async def push_ws_events_batch(
     return [HistoryEventResponse(**e) for e in events]
 
 
-@ws_router.get("/events", response_model=HistoryEventListResponse)
-async def query_ws_events(
+@me_router.get("/events", response_model=HistoryEventListResponse)
+async def query_events(
     agent_name: str | None = Query(None),
     session_id: str | None = Query(None),
     event_type: str | None = Query(None),
@@ -102,7 +102,7 @@ async def query_ws_events(
 ):
     owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
-    events, has_more = await memory_service.query_workspace_events(
+    events, has_more = await memory_service.query_scope_events(
         owner_user_id,
         current_user["id"],
         agent_name=agent_name,
@@ -119,15 +119,15 @@ async def query_ws_events(
     )
 
 
-@ws_router.get("/events/search", response_model=HistoryEventListResponse)
-async def search_ws_events(
+@me_router.get("/events/search", response_model=HistoryEventListResponse)
+async def search_events(
     q: str = Query(..., min_length=1),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
-    events = await memory_service.search_workspace_events(
+    events = await memory_service.search_scope_events(
         owner_user_id,
         current_user["id"],
         q,
@@ -139,38 +139,38 @@ async def search_ws_events(
     )
 
 
-@ws_router.get("/events/{event_id}", response_model=HistoryEventResponse)
-async def get_ws_event(
+@me_router.get("/events/{event_id}", response_model=HistoryEventResponse)
+async def get_event(
     event_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
-    event = await memory_service.get_workspace_event(event_id, owner_user_id, current_user["id"])
+    event = await memory_service.get_scope_event(event_id, owner_user_id, current_user["id"])
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return HistoryEventResponse(**event)
 
 
-@ws_router.delete("/agents/{agent_name}", status_code=204)
-async def delete_ws_agent(
+@me_router.delete("/agents/{agent_name}", status_code=204)
+async def delete_agent(
     agent_name: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Delete all events for an agent in this workspace."""
+    """Delete all events for an agent in this scope."""
     owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     role = await user_scope_service.get_member_role(owner_user_id, current_user["id"])
     if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Workspace admin required")
-    await memory_service.delete_workspace_agent_events(agent_name, owner_user_id)
+        raise HTTPException(status_code=403, detail="Scope admin required")
+    await memory_service.delete_scope_agent_events(agent_name, owner_user_id)
 
 
-@ws_router.get("/agent-names")
-async def list_ws_agent_names(
+@me_router.get("/agent-names")
+async def list_agent_names(
     current_user: dict = Depends(get_current_user),
 ):
-    """List distinct agent names in this workspace."""
+    """List distinct agent names in this scope."""
     owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
     from ..database import get_pool

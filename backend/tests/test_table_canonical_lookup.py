@@ -1,4 +1,4 @@
-"""The canonical table endpoint resolves the workspace server-side so
+"""The canonical table endpoint resolves the scope server-side so
 table links carry only the table ID and can never go stale."""
 
 import uuid
@@ -22,13 +22,11 @@ async def _register(client: AsyncClient) -> str:
     return resp.json()["api_key"]
 
 
-async def _table_in_new_workspace(client: AsyncClient, api_key: str) -> tuple[str, str]:
+async def _table_in_new_scope(client: AsyncClient, api_key: str) -> tuple[str, str]:
     headers = _auth(api_key)
-    ws_resp = await client.post(
-        "/api/v1/workspaces", json={"name": "Canonical lookup"}, headers=headers
-    )
-    assert ws_resp.status_code == 201
-    owner_user_id = ws_resp.json()["id"]
+    me_resp = await client.get("/api/v1/users/me", headers=headers)
+    assert me_resp.status_code == 200
+    owner_user_id = me_resp.json()["id"]
 
     table_resp = await client.post(
         "/api/v1/me/tables",
@@ -45,7 +43,7 @@ async def _table_in_new_workspace(client: AsyncClient, api_key: str) -> tuple[st
 @pytest.mark.asyncio
 async def test_member_resolves_table_by_id_alone(client: AsyncClient):
     api_key = await _register(client)
-    owner_user_id, table_id = await _table_in_new_workspace(client, api_key)
+    owner_user_id, table_id = await _table_in_new_scope(client, api_key)
 
     resp = await client.get(f"/api/v1/tables/{table_id}", headers=_auth(api_key))
 
@@ -59,7 +57,7 @@ async def test_member_resolves_table_by_id_alone(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_column_width_updates_table_metadata(client: AsyncClient):
     api_key = await _register(client)
-    owner_user_id, table_id = await _table_in_new_workspace(client, api_key)
+    owner_user_id, table_id = await _table_in_new_scope(client, api_key)
 
     resp = await client.patch(
         f"/api/v1/me/tables/{table_id}/columns/col_name",
@@ -75,7 +73,7 @@ async def test_column_width_updates_table_metadata(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_non_member_gets_404_not_403(client: AsyncClient):
     owner_key = await _register(client)
-    _, table_id = await _table_in_new_workspace(client, owner_key)
+    _, table_id = await _table_in_new_scope(client, owner_key)
     outsider_key = await _register(client)
 
     resp = await client.get(f"/api/v1/tables/{table_id}", headers=_auth(outsider_key))

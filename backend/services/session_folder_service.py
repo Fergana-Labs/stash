@@ -1,11 +1,11 @@
 """Session folders: the shareable unit for sessions.
 
-A folder groups related sessions (one per project/repo, plus a per-workspace
+A folder groups related sessions (one per project/repo, plus a per-scope
 Default that catches chat-UI and un-targeted CLI sessions). Folders share the
-same access model as skills — a (workspace_permission, public_permission)
-pair computed into private/workspace/public — and access cascades to the
-sessions inside (see permission_service). Public folders are reachable by slug
-without login, rendered by the same session viewer.
+same access model as skills — owner + shares + a public_permission computed
+into private/public — and access cascades to the sessions inside (see
+permission_service). Public folders are reachable by slug without login,
+rendered by the same session viewer.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ _FOLDER_COLS = (
     "sf.id, sf.owner_user_id, sf.slug, sf.name, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "CASE WHEN sf.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
-    "sf.workspace_permission, sf.public_permission, "
+    "sf.public_permission, "
     "sf.discoverable, sf.cover_image_url, sf.view_count, sf.is_default, "
     "sf.created_at, sf.updated_at, "
     "(SELECT COUNT(*) FROM sessions s "
@@ -43,22 +43,11 @@ def _slugify(name: str) -> str:
     return f"{base}-{secrets.token_urlsafe(4)[:6].lower()}"
 
 
-# Visibility is a two-state axis now (the old "workspace" tier collapsed into
-# private after the 1:1 workspace↔user migration). "Shared" is derived in the UI
-# from the invite (share_count) list, not stored here.
-def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
-    return "public" if public_permission != "none" else "private"
-
-
 def _is_public(public_permission: str, discoverable: bool) -> bool:
     return public_permission != "none" or discoverable
 
 
-def _validate_permissions(
-    workspace_permission: str, public_permission: str, discoverable: bool
-) -> None:
-    if workspace_permission not in _GENERAL_PERMISSION_VALUES:
-        raise ValueError("Unsupported workspace folder permission")
+def _validate_permissions(public_permission: str, discoverable: bool) -> None:
     if public_permission not in _GENERAL_PERMISSION_VALUES:
         raise ValueError("Unsupported public folder permission")
     if public_permission == "write":
@@ -76,7 +65,6 @@ def _row(r) -> dict:
         "owner_name": r["owner_name"],
         "owner_display_name": r["owner_display_name"],
         "access": r["access"],
-        "workspace_permission": r["workspace_permission"],
         "public_permission": r["public_permission"],
         "discoverable": r["discoverable"],
         "cover_image_url": r["cover_image_url"],
@@ -93,24 +81,22 @@ async def create_folder(
     owner_user_id: UUID,
     name: str,
     *,
-    workspace_permission: str = "read",
     public_permission: str = "none",
     discoverable: bool = False,
     is_default: bool = False,
 ) -> dict:
-    _validate_permissions(workspace_permission, public_permission, discoverable)
+    _validate_permissions(public_permission, discoverable)
     r = await get_pool().fetchrow(
         f"WITH inserted AS ("
         "  INSERT INTO session_folders "
-        "    (owner_user_id, name, slug, workspace_permission, "
+        "    (owner_user_id, name, slug, "
         "     public_permission, discoverable, is_default) "
-        "  VALUES ($1, $2, $3, $4, $5, $6, $7) "
+        "  VALUES ($1, $2, $3, $4, $5, $6) "
         "  RETURNING *"
         f") {_FOLDER_SELECT.replace('session_folders sf', 'inserted sf')}",
         owner_user_id,
         name,
         _slugify(name),
-        workspace_permission,
         public_permission,
         discoverable,
         is_default,
@@ -119,10 +105,10 @@ async def create_folder(
 
 
 async def ensure_default_folder(owner_user_id: UUID) -> dict:
-    """Get-or-create the workspace's single Default folder. Sessions that aren't
+    """Get-or-create the scope's single Default folder. Sessions that aren't
     pushed to a specific folder land here (chat-UI + un-targeted CLI sessions).
 
-    The folder is owned by the workspace owner — not whoever happened to push the
+    The folder is owned by the scope owner — not whoever happened to push the
     first session — so its access never leaks to a member who later leaves.
     """
     pool = get_pool()
@@ -135,7 +121,6 @@ async def ensure_default_folder(owner_user_id: UUID) -> dict:
     return await create_folder(
         owner_user_id,
         DEFAULT_FOLDER_NAME,
-        workspace_permission="read",
         is_default=True,
     )
 
@@ -146,7 +131,6 @@ async def list_folders(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "WHERE sf.owner_user_id = $1 "
         "AND (sf.owner_user_id = $2 "
         "  OR sf.public_permission != 'none' "
-        "  OR (sf.workspace_permission != 'none' AND sf.owner_user_id = $2) "
         "  OR EXISTS ("
         "    SELECT 1 FROM shares sh "
         "    WHERE sh.object_type = 'session_folder' AND sh.object_id = sf.id "
@@ -166,7 +150,7 @@ async def get_folder(folder_id: UUID) -> dict | None:
 
 async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
     """Folder management (rename/delete/visibility) is for the folder owner and
-    workspace owners/editors — never public-link or explicit-share writers."""
+    scope owners/editors — never public-link or explicit-share writers."""
     row = await get_pool().fetchrow(
         "SELECT owner_user_id FROM session_folders WHERE id = $1",
         folder_id,
@@ -183,28 +167,24 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT owner_user_id, workspace_permission, public_permission, discoverable "
+        "SELECT owner_user_id, public_permission, discoverable "
         "FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or not await user_can_manage(folder_id, user_id):
         return None
 
-    next_workspace_permission = (
-        updates.get("workspace_permission") or folder["workspace_permission"]
-    )
     next_public_permission = updates.get("public_permission") or folder["public_permission"]
     next_discoverable = (
         updates["discoverable"] if "discoverable" in updates else folder["discoverable"]
     )
     _validate_permissions(
-        next_workspace_permission,
         next_public_permission,
         bool(next_discoverable),
     )
     # Owner gate fires only when a folder is being made (or kept) publicly
-    # visible by an edit to its publicity; workspace-visible folders stay
-    # manageable by editors.
+    # visible by an edit to its publicity; non-public folders stay manageable
+    # by editors.
     publicity_changed = (
         next_public_permission != folder["public_permission"]
         or bool(next_discoverable) != folder["discoverable"]
@@ -214,7 +194,7 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
         and _is_public(next_public_permission, bool(next_discoverable))
         and not await user_scope_service.is_owner(folder["owner_user_id"], user_id)
     ):
-        raise PermissionError("Only workspace owners can make a session folder public")
+        raise PermissionError("Only scope owners can make a session folder public")
     if updates.get("public_permission") == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
 
@@ -222,7 +202,6 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
     clearable = {"cover_image_url"}
     for col in (
         "name",
-        "workspace_permission",
         "public_permission",
         "discoverable",
         "cover_image_url",
@@ -263,9 +242,9 @@ async def can_add_session_to_folder(
     folder_id: UUID,
 ) -> bool:
     """Owner-only for public folders (adding a session there publishes it);
-    workspace-visible folders accept sessions from any workspace writer."""
+    non-public folders accept sessions from any scope writer."""
     folder = await get_pool().fetchrow(
-        "SELECT id, owner_user_id, workspace_permission, public_permission, discoverable, is_default "
+        "SELECT id, owner_user_id, public_permission, discoverable, is_default "
         "FROM session_folders WHERE id = $1",
         folder_id,
     )
@@ -274,8 +253,6 @@ async def can_add_session_to_folder(
     is_public = _is_public(folder["public_permission"], bool(folder["discoverable"]))
     if is_public and not folder["is_default"]:
         return await user_scope_service.is_owner(owner_user_id, user_id)
-    if folder["workspace_permission"] != "none":
-        return await user_scope_service.can_write(owner_user_id, user_id)
     return await user_can_manage(folder_id, user_id)
 
 
@@ -326,9 +303,9 @@ async def assign_sessions(
 
 async def get_public_folder(slug: str, viewer_id: UUID | None = None) -> dict | None:
     """Resolve a folder by slug for the given viewer (None = anonymous). The
-    folder is the privacy boundary: public folders render anonymously, workspace
-    folders for members, private folders for the owner or explicitly-shared
-    users. Bumps view_count on a successful read."""
+    folder is the privacy boundary: public folders render anonymously, private
+    folders for the owner or explicitly-shared users. Bumps view_count on a
+    successful read."""
     from . import permission_service
 
     pool = get_pool()

@@ -1,13 +1,13 @@
 """Sources: the unified source layer.
 
 A *source* is anything the agent can read. Two are native and always present
-per workspace — the **file system** and **session transcripts** (workspace-scoped,
+per scope — the **file system** and **session transcripts** (scope-wide,
 visible to all members). The rest are **connected sources** (GitHub / Drive /
-Gmail / Notion / Slack / Granola) — rows in `workspace_sources`, USER-SCOPED so
+Gmail / Notion / Slack / Granola) — rows in `user_sources`, USER-SCOPED so
 only the owner sees them.
 
 This module owns:
-- the `workspace_sources` registry (CRUD + sync bookkeeping),
+- the `user_sources` registry (CRUD + sync bookkeeping),
 - the per-integration document store. Each source type has its own table
   (migration 0084): some COPY content (FTS + embeddings live in the table —
   github/slack/granola/gong/notion), while drive/gmail/jira/asana store an INDEX
@@ -19,7 +19,7 @@ This module also owns the unified VFS surface (`source_entries`, `source_documen
 `search_all`) over BOTH native and connected sources — the single codepath the
 agent tools and the REST endpoints both call. Native reads delegate to
 files_tree_service / memory_service (imported lazily to avoid an import cycle).
-Connected-source handles are scoped to both owner and workspace.
+Connected-source handles are scoped to both owner and scope.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
 
-# Native source handles. Connected sources use their workspace_sources.id (str).
+# Native source handles. Connected sources use their user_sources.id (str).
 NATIVE_FILES = "files"
 NATIVE_SESSIONS = "sessions"
 
@@ -234,7 +234,7 @@ def _source_search_hint(source: dict) -> str | None:
     )
 
 
-# --- workspace_sources registry --------------------------------------------
+# --- user_sources registry --------------------------------------------
 
 
 async def create_source(
@@ -258,7 +258,7 @@ async def create_source(
     sync_enabled = source_type in DEFAULT_SYNC_INTERVAL_S
     row = await get_pool().fetchrow(
         """
-        INSERT INTO workspace_sources (
+        INSERT INTO user_sources (
             owner_user_id, source_type, external_ref,
             display_name, capability, sync_interval_s, sync_enabled, settings
         )
@@ -316,7 +316,7 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
             result = await get_pool().execute(
                 "DELETE FROM gong_documents "
                 "WHERE source_id = $1 "
-                "AND (gong_workspace_id IS NULL OR gong_workspace_id <> ALL($2::text[]))",
+                "AND (gong_account_id IS NULL OR gong_account_id <> ALL($2::text[]))",
                 source_id,
                 allowed_workspace_ids,
             )
@@ -326,10 +326,10 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
 
 
 async def list_connected_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """The user's own connected sources in this workspace. User-scoped: a
+    """The user's own connected sources in this scope. User-scoped: a
     member never sees another member's connected sources."""
     rows = await get_pool().fetch(
-        "SELECT * FROM workspace_sources "
+        "SELECT * FROM user_sources "
         "WHERE owner_user_id = $1 AND owner_user_id = $2 "
         "ORDER BY source_type, display_name",
         owner_user_id,
@@ -342,7 +342,7 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
     """Fetch a connected source only if `user_id` owns it — the single
     enforcement point for user-scoping on every read."""
     row = await get_pool().fetchrow(
-        "SELECT * FROM workspace_sources WHERE id = $1 AND owner_user_id = $2",
+        "SELECT * FROM user_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
         user_id,
     )
@@ -354,9 +354,9 @@ async def get_owned_source_in_workspace(
     user_id: UUID,
     owner_user_id: UUID,
 ) -> dict | None:
-    """Fetch a connected source only within the workspace route boundary."""
+    """Fetch a connected source only within the scope route boundary."""
     row = await get_pool().fetchrow(
-        "SELECT * FROM workspace_sources "
+        "SELECT * FROM user_sources "
         "WHERE id = $1 AND owner_user_id = $2 AND owner_user_id = $3",
         source_id,
         user_id,
@@ -368,7 +368,7 @@ async def get_owned_source_in_workspace(
 async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     """Remove a connected source the user owns. Its documents cascade."""
     result = await get_pool().execute(
-        "DELETE FROM workspace_sources WHERE id = $1 AND owner_user_id = $2",
+        "DELETE FROM user_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
         user_id,
     )
@@ -383,7 +383,7 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict
         raise ValueError(f"unknown provider source mapping: {provider}")
 
     rows = await get_pool().fetch(
-        "DELETE FROM workspace_sources "
+        "DELETE FROM user_sources "
         "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
         "RETURNING *",
         user_id,
@@ -394,7 +394,7 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict
 
 async def delete_sources_for_workspace_member(conn, owner_user_id: UUID, user_id: UUID) -> int:
     result = await conn.execute(
-        "DELETE FROM workspace_sources WHERE owner_user_id = $1 AND owner_user_id = $2",
+        "DELETE FROM user_sources WHERE owner_user_id = $1 AND owner_user_id = $2",
         owner_user_id,
         user_id,
     )
@@ -406,7 +406,7 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
     sync runs server-side on behalf of the owner via their stored token."""
     row = await get_pool().fetchrow(
         "SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM workspace_sources WHERE id = $1",
+        "FROM user_sources WHERE id = $1",
         source_id,
     )
     if not row:
@@ -425,7 +425,7 @@ async def due_sources(limit: int = 50) -> list[dict]:
     """Pull sources whose scheduled sync is due (for the Beat reconciler)."""
     rows = await get_pool().fetch(
         "SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM workspace_sources "
+        "FROM user_sources "
         "WHERE sync_enabled AND next_sync_at <= now() "
         "ORDER BY next_sync_at LIMIT $1",
         limit,
@@ -445,7 +445,7 @@ async def due_sources(limit: int = 50) -> list[dict]:
 
 async def mark_sync_started(source_id: UUID) -> None:
     await get_pool().execute(
-        "UPDATE workspace_sources SET sync_status = 'syncing', sync_error = NULL, "
+        "UPDATE user_sources SET sync_status = 'syncing', sync_error = NULL, "
         "next_sync_at = now() + (sync_interval_s || ' seconds')::interval, updated_at = now() "
         "WHERE id = $1",
         source_id,
@@ -454,7 +454,7 @@ async def mark_sync_started(source_id: UUID) -> None:
 
 async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
     await get_pool().execute(
-        "UPDATE workspace_sources SET sync_status = 'idle', sync_cursor = COALESCE($2, sync_cursor), "
+        "UPDATE user_sources SET sync_status = 'idle', sync_cursor = COALESCE($2, sync_cursor), "
         "last_synced_at = now(), updated_at = now() WHERE id = $1",
         source_id,
         cursor,
@@ -463,7 +463,7 @@ async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
 
 async def mark_sync_failed(source_id: UUID, error: str) -> None:
     await get_pool().execute(
-        "UPDATE workspace_sources SET sync_status = 'failed', sync_error = $2, updated_at = now() "
+        "UPDATE user_sources SET sync_status = 'failed', sync_error = $2, updated_at = now() "
         "WHERE id = $1",
         source_id,
         error[:500],
@@ -723,7 +723,7 @@ async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> li
         rows = await get_pool().fetch(
             f"SELECT path, name, kind FROM {table} "
             f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND gong_workspace_id = ANY($4::text[]) "
+            f"AND gong_account_id = ANY($4::text[]) "
             f"ORDER BY path LIMIT $3",
             UUID(source["id"]),
             f"{prefix}%",
@@ -829,7 +829,7 @@ async def read_document(source: dict, path: str) -> dict | None:
             row = await get_pool().fetchrow(
                 f"SELECT path, name, kind, content, external_ref FROM {table} "
                 f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
-                f"AND gong_workspace_id = ANY($3::text[])",
+                f"AND gong_account_id = ANY($3::text[])",
                 UUID(source["id"]),
                 path,
                 allowed_workspace_ids,
@@ -1045,7 +1045,7 @@ async def search_documents(
             )
         if table == "gong_documents":
             return (
-                "AND d.gong_workspace_id = ANY(ARRAY("
+                "AND d.gong_account_id = ANY(ARRAY("
                 "SELECT jsonb_array_elements_text("
                 "COALESCE(s.settings->'allowed_workspace_ids', '[]'::jsonb)"
                 ")))"
@@ -1057,7 +1057,7 @@ async def search_documents(
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
                        websearch_to_tsquery('english', $3)) AS rank
         FROM {t} d
-        JOIN workspace_sources s ON s.id = d.source_id
+        JOIN user_sources s ON s.id = d.source_id
         WHERE d.owner_user_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
           AND ($4::uuid IS NULL OR d.source_id = $4)
           AND to_tsvector('english', coalesce(d.content, ''))
@@ -1067,7 +1067,7 @@ async def search_documents(
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
-        f"FROM ({union}) u JOIN workspace_sources ws ON ws.id = u.source_id "
+        f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
         f"ORDER BY u.rank DESC LIMIT $5",
         owner_user_id,
         user_id,
@@ -1091,8 +1091,8 @@ async def search_documents(
 
 
 async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every source visible to this user: the two native sources (workspace-
-    scoped) plus the user's own connected sources."""
+    """Every source visible to this user: the two native sources (scope-
+    wide) plus the user's own connected sources."""
     sources = [
         {
             "source": NATIVE_FILES,
@@ -1154,7 +1154,7 @@ async def source_item_count(source: dict) -> int | None:
         row = await get_pool().fetchrow(
             f"SELECT count(*) AS n FROM {table} "
             f"WHERE source_id = $1 AND deleted_at IS NULL "
-            f"AND gong_workspace_id = ANY($2::text[])",
+            f"AND gong_account_id = ANY($2::text[])",
             UUID(source["id"]),
             allowed_workspace_ids,
         )
@@ -1171,7 +1171,7 @@ async def source_item_count(source: dict) -> int | None:
 
 
 async def _resolve_connected(source: str, owner_user_id: UUID, user_id: UUID) -> dict | None:
-    """Resolve a connected-source handle inside the current workspace boundary."""
+    """Resolve a connected-source handle inside the current scope boundary."""
     try:
         source_id = UUID(source)
     except ValueError:
@@ -1224,14 +1224,14 @@ async def source_entries(
     scopes connected sources to a path. Returns None for an unknown source."""
     connected = None
     if source == NATIVE_FILES:
-        from .files_tree_service import list_workspace_pages
+        from .files_tree_service import list_scope_pages
 
-        pages = await list_workspace_pages(owner_user_id, user_id)
+        pages = await list_scope_pages(owner_user_id, user_id)
         entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
     elif source == NATIVE_SESSIONS:
-        from .memory_service import list_workspace_sessions
+        from .memory_service import list_scope_sessions
 
-        sessions = await list_workspace_sessions(owner_user_id, user_id)
+        sessions = await list_scope_sessions(owner_user_id, user_id)
         entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
@@ -1275,7 +1275,7 @@ async def source_entries(
     return entries
 
 
-# --- sources tree: the whole workspace as one filesystem ---------------------
+# --- sources tree: the whole scope as one filesystem -------------------------
 
 # Per-source row budget when building the tree. ORDER BY path means a source
 # bigger than this shows a path-ordered slice; the per-directory caps below
@@ -1348,13 +1348,13 @@ async def sources_tree(
     owner_user_id: UUID, user_id: UUID, depth: int = 3, per_dir: int = 50
 ) -> list[dict]:
     """Every source the user can see, each with a nested entry tree — one call
-    renders the whole workspace as a filesystem (`stash ls`)."""
-    from .files_tree_service import list_workspace_pages
-    from .memory_service import list_workspace_sessions
+    renders the whole scope as a filesystem (`stash ls`)."""
+    from .files_tree_service import list_scope_pages
+    from .memory_service import list_scope_sessions
 
     depth = max(1, min(depth, 10))
-    pages = await list_workspace_pages(owner_user_id, user_id)
-    sessions = await list_workspace_sessions(owner_user_id, user_id)
+    pages = await list_scope_pages(owner_user_id, user_id)
+    sessions = await list_scope_sessions(owner_user_id, user_id)
     out = [
         {
             "source": NATIVE_FILES,
@@ -1668,9 +1668,9 @@ async def search_all(
     results: list[dict] = []
 
     if source in (None, NATIVE_SESSIONS):
-        from .memory_service import search_workspace_events
+        from .memory_service import search_scope_events
 
-        events = await search_workspace_events(owner_user_id, user_id, query, limit=limit)
+        events = await search_scope_events(owner_user_id, user_id, query, limit=limit)
         results += [
             {
                 "source": NATIVE_SESSIONS,

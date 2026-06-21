@@ -24,10 +24,8 @@ def _auth(k: str) -> dict:
     return {"Authorization": f"Bearer {k}"}
 
 
-async def _ws(client: AsyncClient, key: str) -> str:
-    r = await client.post(
-        "/api/v1/workspaces", json={"name": unique_name("ws")}, headers=_auth(key)
-    )
+async def _scope(client: AsyncClient, key: str) -> str:
+    r = await client.get("/api/v1/users/me", headers=_auth(key))
     return r.json()["id"]
 
 

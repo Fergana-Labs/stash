@@ -1,7 +1,7 @@
 """Batch move / soft-delete / restore over many tree items.
 
 Best-effort: each item is processed independently and we return per-item
-results, so one failure (no write access, wrong workspace) never blocks the
+results, so one failure (no write access, wrong scope) never blocks the
 rest. Composes the existing per-item service functions — no new persistence.
 
 move covers pages, files, folders, and tables; delete/restore cover the
@@ -27,11 +27,11 @@ _TRASHABLE = {"page", "file"}
 
 
 async def _authorize(object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID) -> None:
-    """Raise ValueError unless the object lives in this workspace and the user
-    may write it. Resolving the real workspace closes the cross-workspace hole
-    where membership in the request's workspace would otherwise pass."""
-    obj_ws = await permission_service.resolve_owner_user_id(object_type, object_id)
-    if obj_ws != owner_user_id:
+    """Raise ValueError unless the object lives in this scope and the user
+    may write it. Resolving the real scope closes the cross-scope hole
+    where membership in the request's scope would otherwise pass."""
+    obj_owner = await permission_service.resolve_owner_user_id(object_type, object_id)
+    if obj_owner != owner_user_id:
         raise ValueError("not found")
     if not await permission_service.check_access(
         object_type, object_id, user_id, owner_user_id=owner_user_id, require="write"

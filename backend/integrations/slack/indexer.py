@@ -208,7 +208,7 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         if not deleted_ts:
             return 0
         result = await get_pool().execute(
-            "DELETE FROM slack_messages d USING workspace_sources s "
+            "DELETE FROM slack_messages d USING user_sources s "
             "WHERE d.source_id = s.id "
             "AND s.source_type = 'slack' "
             "AND s.external_ref = $1 "
@@ -236,7 +236,7 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         return 0
 
     rows = await get_pool().fetch(
-        "SELECT id, owner_user_id, settings FROM workspace_sources ws "
+        "SELECT id, owner_user_id, settings FROM user_sources ws "
         "WHERE ws.source_type = 'slack' AND ws.external_ref = $1 "
         "AND ws.sync_enabled",
         team_id,

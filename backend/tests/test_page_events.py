@@ -13,7 +13,7 @@ from backend.services import files_tree_service, page_events
 
 
 @pytest_asyncio.fixture
-async def workspace(_db_pool):
+async def scope(_db_pool):
     user_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
@@ -25,10 +25,10 @@ async def workspace(_db_pool):
 
 
 def test_pubsub_delivers_then_stops_after_unsubscribe():
-    ws = uuid4()
+    scope_id = uuid4()
     page = uuid4()
-    queue = page_events.subscribe(ws)
-    page_events.publish_page_update(ws, page, "hash1", "Agent")
+    queue = page_events.subscribe(scope_id)
+    page_events.publish_page_update(scope_id, page, "hash1", "Agent")
     event = queue.get_nowait()
     assert event == {
         "type": "page.updated",
@@ -36,32 +36,32 @@ def test_pubsub_delivers_then_stops_after_unsubscribe():
         "content_hash": "hash1",
         "agent_name": "Agent",
     }
-    page_events.unsubscribe(ws, queue)
-    page_events.publish_page_update(ws, page, "hash2", None)  # no subscribers; no error
+    page_events.unsubscribe(scope_id, queue)
+    page_events.publish_page_update(scope_id, page, "hash2", None)  # no subscribers; no error
     assert queue.empty()
 
 
 @pytest.mark.asyncio
-async def test_update_page_notifies_and_invalidates_collab(workspace, _db_pool):
-    ws_id, user_id = workspace
+async def test_update_page_notifies_and_invalidates_collab(scope, _db_pool):
+    scope_id, user_id = scope
     page = await files_tree_service.create_page(
-        owner_user_id=ws_id, name="Live", created_by=user_id, content="v1"
+        owner_user_id=scope_id, name="Live", created_by=user_id, content="v1"
     )
     # Simulate a persisted collab doc (as if the page had been opened in the editor).
     await _db_pool.execute(
         "INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state) VALUES ($1, $2, $3)",
         page["id"],
-        ws_id,
+        scope_id,
         b"\x00",
     )
-    queue = page_events.subscribe(ws_id)
+    queue = page_events.subscribe(scope_id)
     try:
         await files_tree_service.update_page(
-            page["id"], ws_id, user_id, content="v2", edit_agent_name="Stash Agent"
+            page["id"], scope_id, user_id, content="v2", edit_agent_name="Stash Agent"
         )
         event = await asyncio.wait_for(queue.get(), timeout=1)
     finally:
-        page_events.unsubscribe(ws_id, queue)
+        page_events.unsubscribe(scope_id, queue)
 
     assert event["page_id"] == str(page["id"])
     assert event["agent_name"] == "Stash Agent"
@@ -73,26 +73,26 @@ async def test_update_page_notifies_and_invalidates_collab(workspace, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_collab_projection_save_does_not_notify(workspace, _db_pool):
+async def test_collab_projection_save_does_not_notify(scope, _db_pool):
     """The editor's own Yjs->DB projection (notify=False) must not broadcast or
     wipe collab state — that would fight the live editor."""
-    ws_id, user_id = workspace
+    scope_id, user_id = scope
     page = await files_tree_service.create_page(
-        owner_user_id=ws_id, name="Editing", created_by=user_id, content="a"
+        owner_user_id=scope_id, name="Editing", created_by=user_id, content="a"
     )
     await _db_pool.execute(
         "INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state) VALUES ($1, $2, $3)",
         page["id"],
-        ws_id,
+        scope_id,
         b"\x00",
     )
-    queue = page_events.subscribe(ws_id)
+    queue = page_events.subscribe(scope_id)
     try:
-        await files_tree_service.update_page(page["id"], ws_id, user_id, content="b", notify=False)
+        await files_tree_service.update_page(page["id"], scope_id, user_id, content="b", notify=False)
         await asyncio.sleep(0.05)
         empty = queue.empty()
     finally:
-        page_events.unsubscribe(ws_id, queue)
+        page_events.unsubscribe(scope_id, queue)
 
     assert empty  # no broadcast
     kept = await _db_pool.fetchval(

@@ -1,9 +1,9 @@
-"""Per-user pins and recently-viewed items, scoped to a workspace.
+"""Per-user pins and recently-viewed items, scoped to an owner.
 
 Pins are an explicit per-kind set the user curates (skills / sessions /
 files); recents are stamped automatically as the user opens things. Both are
-private to the user. Pins require workspace membership; recents can also be
-stamped by non-members for objects shared with them.
+private to the user. Pins require access to the owner scope; recents can also
+be stamped by non-members for objects shared with them.
 """
 
 import json

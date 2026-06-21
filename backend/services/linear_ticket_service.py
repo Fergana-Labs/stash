@@ -207,7 +207,7 @@ def enqueue_session_enrichment(owner_user_id: UUID, session_row_id: UUID) -> Non
     enrich_session_linear_tickets.delay(str(owner_user_id), str(session_row_id))
 
 
-async def _workspace_linear_token(owner_user_id: UUID) -> str | None:
+async def _owner_linear_token(owner_user_id: UUID) -> str | None:
     """A Linear OAuth token for this scope's owner, or None if the owner has not
     connected Linear. The owner is the user, so their token can read the tickets
     every session in their scope cites."""
@@ -237,7 +237,7 @@ async def enrich_session_labels(session_row_id: UUID) -> int:
     if not rows:
         return 0
 
-    token = await _workspace_linear_token(rows[0]["owner_user_id"])
+    token = await _owner_linear_token(rows[0]["owner_user_id"])
     if token is None:
         return 0
 
@@ -307,7 +307,7 @@ async def enrich_stale_sessions(limit: int) -> int:
 
 
 async def enrich_ticket(ticket_identifier: str) -> int:
-    """Re-enrich every session that cites this ticket, one workspace at a time.
+    """Re-enrich every session that cites this ticket, one scope at a time.
     Driven by the Linear webhook so a ticket's status/assignee refreshes the
     moment it changes upstream, instead of waiting for the periodic reconcile."""
     pool = get_pool()
@@ -318,7 +318,7 @@ async def enrich_ticket(ticket_identifier: str) -> int:
 
     updated = 0
     for row in rows:
-        token = await _workspace_linear_token(row["owner_user_id"])
+        token = await _owner_linear_token(row["owner_user_id"])
         if token is None:
             continue
         issue = await linear_api_service.fetch_issue(ticket_identifier, token)

@@ -42,11 +42,11 @@ async def _register(client):
     return key
 
 
-async def _share(pool, ws, object_type, object_id, user_id, owner_id, permission="read"):
+async def _share(pool, scope, object_type, object_id, user_id, owner_id, permission="read"):
     await pool.execute(
         "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by) VALUES ($1, $2, $3, 'user', $4, $5, $6)",
-        UUID(ws),
+        UUID(scope),
         object_type,
         object_id,
         UUID(user_id),
@@ -55,13 +55,12 @@ async def _share(pool, ws, object_type, object_id, user_id, owner_id, permission
     )
 
 
-async def _workspace(client, key):
-    r = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "ws-" + unique_name()},
+async def _scope(client, key):
+    r = await client.get(
+        "/api/v1/users/me",
         headers={"Authorization": f"Bearer {key}"},
     )
-    assert r.status_code == 201
+    assert r.status_code == 200
     return r.json()["id"]
 
 
@@ -127,7 +126,7 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     created = await client.post(
@@ -147,7 +146,7 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 
     my_sessions = await client.get(
         "/api/v1/me/sessions",
-        params={"owner_user_id": ws},
+        params={"owner_user_id": scope},
         headers=headers,
     )
     assert my_sessions.status_code == 200
@@ -165,9 +164,9 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 async def test_event_created_session_lands_in_default_folder(client: AsyncClient):
     """An un-targeted push hook (e.g. Codex, which has no session-start hook so
     the first event creates the row) must land in the Default folder, never at
-    the workspace root with no folder."""
+    the scope root with no folder."""
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     pushed = await client.post(
@@ -183,7 +182,7 @@ async def test_event_created_session_lands_in_default_folder(client: AsyncClient
     assert pushed.status_code == 201
 
     listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     assert listed.status_code == 200
     session = next(
@@ -198,7 +197,7 @@ async def test_transcript_upload_targets_explicit_session_folder(client: AsyncCl
     """A pinned repo passes session_folder_id with the transcript upload, so a
     session whose row is first created by the upload lands in that folder."""
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     folder = await client.post(
@@ -220,7 +219,7 @@ async def test_transcript_upload_targets_explicit_session_folder(client: AsyncCl
     assert upload.status_code == 201
 
     listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     session = next(
         s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session"
@@ -235,7 +234,7 @@ async def test_event_stream_pin_targets_folder(client: AsyncClient):
     session-start hook (Codex) creates the row from its first event, which must
     land in the pinned folder, not Default."""
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     folder = await client.post(
@@ -257,7 +256,7 @@ async def test_event_stream_pin_targets_folder(client: AsyncClient):
     assert pushed.status_code == 201
 
     listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-pinned")
     assert session["session_folder_id"] == folder_id
@@ -268,7 +267,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
     """The folder is set once at row creation. A later streamed pin must not undo
     an explicit move-to-root, or the agent would fight a user's manual move."""
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     folder = await client.post(
@@ -291,7 +290,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
 
     await push()
     listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     row_id = next(
         s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session"
@@ -306,7 +305,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
 
     await push()  # another turn keeps streaming the pin
     after = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": ws}, headers=headers
+        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     session = next(s for s in after.json()["sessions"] if s["session_id"] == "moved-session")
     assert session["session_folder_id"] is None
@@ -356,7 +355,7 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClient):
+async def test_sidebar_sessions_include_human_author(client: AsyncClient):
     key = await _register(client)
     headers = {"Authorization": f"Bearer {key}"}
     me = await client.get("/api/v1/users/me", headers=headers)
@@ -420,7 +419,7 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
 @pytest.mark.asyncio
 async def test_session_linear_ticket_labels_are_extracted(client: AsyncClient):
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     linear_prompt = """You are working on a Linear ticket `FER-19`
@@ -483,7 +482,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     assert detail.json()["linear_tickets"][0]["ticket_identifier"] == "FER-19"
 
     mine = await client.get(
-        f"/api/v1/me/sessions?owner_user_id={ws}",
+        f"/api/v1/me/sessions?owner_user_id={scope}",
         headers=headers,
     )
     assert mine.status_code == 200
@@ -491,12 +490,12 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
 
 
 @pytest.mark.asyncio
-async def test_workspace_sidebar_etag_changes_after_generated_title(
+async def test_sidebar_etag_changes_after_generated_title(
     client: AsyncClient,
     pool,
 ):
     key = await _register(client)
-    ws = await _workspace(client, key)
+    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     pushed = await client.post(
@@ -527,7 +526,7 @@ async def test_workspace_sidebar_etag_changes_after_generated_title(
         INSERT INTO session_titles (owner_user_id, session_id, title, source_hash)
         VALUES ($1, $2, $3, $4)
         """,
-        UUID(ws),
+        UUID(scope),
         "sess-generated-title",
         "Release Checklist Readability",
         "test-source-hash",
@@ -632,8 +631,8 @@ async def test_session_purge_keeps_artifact_storage_keys_still_referenced(
     monkeypatch,
 ):
     key, user_id = await _register_user(client)
-    ws = await _workspace(client, key)
-    owner_user_id = UUID(ws)
+    scope = await _scope(client, key)
+    owner_user_id = UUID(scope)
     user_uuid = UUID(user_id)
     headers = {"Authorization": f"Bearer {key}"}
 
@@ -790,7 +789,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
 ):
     owner_key, owner_id = await _register_user(client)
     viewer_key, viewer_id = await _register_user(client)
-    ws = await _workspace(client, owner_key)
+    scope = await _scope(client, owner_key)
     owner_headers = {"Authorization": f"Bearer {owner_key}"}
     viewer_headers = {"Authorization": f"Bearer {viewer_key}"}
 
@@ -801,7 +800,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     )
     assert created.status_code == 201
     session_row_id = created.json()["id"]
-    await _share(pool, ws, "session", UUID(session_row_id), viewer_id, owner_id)
+    await _share(pool, scope, "session", UUID(session_row_id), viewer_id, owner_id)
 
     pushed = await client.post(
         "/api/v1/me/sessions/events",
@@ -843,4 +842,4 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
         )
         == 0
     )
-    assert await pool.fetchval("SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", ws) == 0
+    assert await pool.fetchval("SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", scope) == 0

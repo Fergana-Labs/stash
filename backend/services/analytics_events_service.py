@@ -29,7 +29,7 @@ ALLOWED_EVENT_NAMES = {
     "onboarding.skipped",
     "onboarding.completed",
     # Web actions
-    "web.workspace_created",
+    "web.scope_created",
     "web.page_created",
     "web.page_edited",
     "web.file_uploaded",

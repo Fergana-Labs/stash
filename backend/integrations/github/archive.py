@@ -89,10 +89,10 @@ def resolve_archive_url(
     if host == "bitbucket.org" or host.endswith(".bitbucket.org"):
         owner_repo = _parse_owner_repo(parsed.path)
         if owner_repo is None:
-            raise UnsupportedHostError("bitbucket.org URL must include /workspace/repo")
-        ws, repo = owner_repo
+            raise UnsupportedHostError("bitbucket.org URL must include /owner/repo")
+        owner, repo = owner_repo
         ref_seg = quote(ref) if ref else "HEAD"
-        archive_url = f"https://bitbucket.org/{ws}/{repo}/get/{ref_seg}.zip"
+        archive_url = f"https://bitbucket.org/{owner}/{repo}/get/{ref_seg}.zip"
         headers = {}
         if pat:
             # Bitbucket app password — sent as basic auth username:app_password.

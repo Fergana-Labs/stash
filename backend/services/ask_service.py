@@ -1,4 +1,4 @@
-"""Ask-the-workspace tool-use loop.
+"""Ask-the-stash tool-use loop.
 
 Streams text + tool-use events as SSE. Backed by tool_loop.py (direct
 Anthropic API + native tool-use), not the Agent SDK — running the CLI
@@ -28,13 +28,13 @@ def _sse(event: dict) -> str:
 
 async def stream_ask(
     owner_user_id: UUID,
-    workspace_name: str,
+    owner_name: str,
     prompt: str,
     user_id: UUID,
 ) -> AsyncIterator[str]:
     """Single-turn ask: one user prompt in, one streamed response out."""
     sources = await source_service.list_sources(owner_user_id, user_id)
-    system = prompts.render_ask_system(workspace_name, sources)
+    system = prompts.render_ask_system(owner_name, sources)
     async for event in tool_loop.stream_tool_loop(
         tier=llm.ModelTier.QUALITY,
         system=system,
@@ -71,7 +71,7 @@ async def _load_history(
 
 async def stream_chat(
     owner_user_id: UUID,
-    workspace_name: str,
+    owner_name: str,
     user_id: UUID,
     session_id: str,
     message: str,
@@ -97,7 +97,7 @@ async def stream_chat(
     yield _sse({"type": "session", "session_id": session_id})
 
     sources = await source_service.list_sources(owner_user_id, user_id)
-    system = prompts.render_ask_system(workspace_name, sources)
+    system = prompts.render_ask_system(owner_name, sources)
 
     answer: list[str] = []
     async for event in tool_loop.stream_tool_loop(
@@ -134,7 +134,7 @@ SLACK_HISTORY_REPLAY_LIMIT = 30
 
 async def run_chat(
     owner_user_id: UUID,
-    workspace_name: str,
+    owner_name: str,
     user_id: UUID,
     session_id: str,
     message: str,
@@ -153,7 +153,7 @@ async def run_chat(
     history.append({"role": "user", "content": message})
 
     sources = await source_service.list_sources(owner_user_id, user_id)
-    system = prompts.render_ask_system(workspace_name, sources)
+    system = prompts.render_ask_system(owner_name, sources)
 
     answer: list[str] = []
     async for event in tool_loop.stream_tool_loop(

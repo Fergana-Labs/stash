@@ -1,5 +1,5 @@
 """The skill-contents endpoints back `stash skills sync`: GET inlines a
-workspace skill's full subtree (published or not), PUT replaces the folder's
+skill's full subtree (published or not), PUT replaces the folder's
 contents with an uploaded file set. These lock in the replace semantics —
 exact filenames kept, nesting from relative paths, no orphaned rows — and the
 auth boundary (members only, write access to push)."""
@@ -25,8 +25,8 @@ def _auth(api_key: str) -> dict:
 
 async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
     """Returns (owner_user_id, folder_id) for a fresh unpublished skill."""
-    ws = await client.post("/api/v1/workspaces", json={"name": "Sync ws"}, headers=_auth(api_key))
-    owner_user_id = ws.json()["id"]
+    me = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    owner_user_id = me.json()["id"]
     folder = await client.post(
         "/api/v1/me/folders",
         json={"name": "my-skill"},
@@ -92,7 +92,7 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     assert by_name["guide.md"]["folder_path"] == ["references"]
 
     # Replace again with a smaller set: the old nested page must be gone and
-    # nothing may orphan into the workspace root (folder FKs are SET NULL).
+    # nothing may orphan into the scope root (folder FKs are SET NULL).
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
         files=[("files", ("SKILL.md", b"v3", "text/markdown"))],

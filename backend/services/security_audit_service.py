@@ -112,7 +112,7 @@ async def record_user_event(
     )
 
 
-async def list_workspace_events(
+async def list_events(
     *,
     owner_user_id: UUID,
     action: str | None = None,

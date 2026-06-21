@@ -1,4 +1,4 @@
-"""Table router: workspace structured data tables."""
+"""Table router: per-scope structured data tables."""
 
 import csv
 import io
@@ -26,7 +26,7 @@ from ..models import (
 )
 from ..services import permission_service, table_service, user_scope_service
 
-ws_router = APIRouter(prefix="/api/v1/me/tables", tags=["tables"])
+me_router = APIRouter(prefix="/api/v1/me/tables", tags=["tables"])
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 
 
@@ -40,7 +40,7 @@ async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     write. Read-only endpoints opt into `_check_read` instead."""
     if not await user_scope_service.can_write(owner_user_id, user_id):
         if not await user_scope_service.is_member(owner_user_id, user_id):
-            raise HTTPException(status_code=403, detail="Not a workspace member")
+            raise HTTPException(status_code=403, detail="Not a scope member")
         raise HTTPException(
             status_code=403,
             detail="Viewers can read but not modify tables",
@@ -48,9 +48,9 @@ async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
 
 
 async def _check_read(owner_user_id: UUID, user_id: UUID) -> None:
-    """Read gate: any workspace member (viewer/editor/owner)."""
+    """Read gate: any scope member (viewer/editor/owner)."""
     if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+        raise HTTPException(status_code=403, detail="Not a scope member")
 
 
 async def _check_ws_table(
@@ -59,7 +59,7 @@ async def _check_ws_table(
     *,
     with_row_count: bool = False,
 ) -> dict:
-    """Verify table exists and belongs to the given workspace."""
+    """Verify table exists and belongs to the given scope."""
     if with_row_count:
         table = await table_service.get_table(table_id)
     else:
@@ -119,10 +119,10 @@ async def get_table_by_id(
     return TableResponse(**table)
 
 
-# ===== Workspace table endpoints =====
+# ===== Scope table endpoints =====
 
 
-@ws_router.post("", response_model=TableResponse, status_code=201)
+@me_router.post("", response_model=TableResponse, status_code=201)
 async def create_ws_table(
     req: TableCreateRequest,
     current_user: dict = Depends(get_current_user),
@@ -144,7 +144,7 @@ async def create_ws_table(
     return TableResponse(**table)
 
 
-@ws_router.get("", response_model=TableListResponse)
+@me_router.get("", response_model=TableListResponse)
 async def list_ws_tables(
     current_user: dict = Depends(get_current_user),
 ):
@@ -154,7 +154,7 @@ async def list_ws_tables(
     return TableListResponse(tables=[TableResponse(**t) for t in tables])
 
 
-@ws_router.get("/{table_id}", response_model=TableResponse)
+@me_router.get("/{table_id}", response_model=TableResponse)
 async def get_ws_table(
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -166,7 +166,7 @@ async def get_ws_table(
     return TableResponse(**table)
 
 
-@ws_router.patch("/{table_id}", response_model=TableResponse)
+@me_router.patch("/{table_id}", response_model=TableResponse)
 async def update_ws_table(
     table_id: UUID,
     req: TableUpdateRequest,
@@ -189,7 +189,7 @@ async def update_ws_table(
     return TableResponse(**table)
 
 
-@ws_router.delete("/{table_id}", status_code=204)
+@me_router.delete("/{table_id}", status_code=204)
 async def delete_ws_table(
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -204,10 +204,10 @@ async def delete_ws_table(
         raise HTTPException(status_code=404, detail="Table not found")
 
 
-# --- Workspace column endpoints ---
+# --- Scope column endpoints ---
 
 
-@ws_router.post("/{table_id}/columns", response_model=TableResponse, status_code=201)
+@me_router.post("/{table_id}/columns", response_model=TableResponse, status_code=201)
 async def add_ws_column(
     table_id: UUID,
     req: ColumnAddRequest,
@@ -223,7 +223,7 @@ async def add_ws_column(
     return TableResponse(**table)
 
 
-@ws_router.patch("/{table_id}/columns/{column_id}", response_model=TableResponse)
+@me_router.patch("/{table_id}/columns/{column_id}", response_model=TableResponse)
 async def update_ws_column(
     table_id: UUID,
     column_id: str,
@@ -245,7 +245,7 @@ async def update_ws_column(
     return TableResponse(**table)
 
 
-@ws_router.delete("/{table_id}/columns/{column_id}", response_model=TableResponse)
+@me_router.delete("/{table_id}/columns/{column_id}", response_model=TableResponse)
 async def delete_ws_column(
     table_id: UUID,
     column_id: str,
@@ -261,7 +261,7 @@ async def delete_ws_column(
     return TableResponse(**table)
 
 
-@ws_router.put("/{table_id}/columns/reorder", response_model=TableResponse)
+@me_router.put("/{table_id}/columns/reorder", response_model=TableResponse)
 async def reorder_ws_columns(
     table_id: UUID,
     req: ColumnReorderRequest,
@@ -277,10 +277,10 @@ async def reorder_ws_columns(
     return TableResponse(**table)
 
 
-# --- Workspace row endpoints ---
+# --- Scope row endpoints ---
 
 
-@ws_router.get("/{table_id}/rows", response_model=RowListResponse)
+@me_router.get("/{table_id}/rows", response_model=RowListResponse)
 async def list_ws_rows(
     table_id: UUID,
     sort_by: str | None = Query(None),
@@ -310,7 +310,7 @@ async def list_ws_rows(
     )
 
 
-@ws_router.post("/{table_id}/rows", response_model=RowResponse, status_code=201)
+@me_router.post("/{table_id}/rows", response_model=RowResponse, status_code=201)
 async def create_ws_row(
     table_id: UUID,
     req: RowCreateRequest,
@@ -324,7 +324,7 @@ async def create_ws_row(
     return RowResponse(**row)
 
 
-@ws_router.post("/{table_id}/rows/batch", status_code=201)
+@me_router.post("/{table_id}/rows/batch", status_code=201)
 async def create_ws_rows_batch(
     table_id: UUID,
     req: RowBatchCreateRequest,
@@ -339,7 +339,7 @@ async def create_ws_rows_batch(
     return {"rows": [RowResponse(**r) for r in rows]}
 
 
-@ws_router.get("/{table_id}/rows/semantic-search")
+@me_router.get("/{table_id}/rows/semantic-search")
 async def semantic_search_ws_rows(
     table_id: UUID,
     q: str,
@@ -362,7 +362,7 @@ async def semantic_search_ws_rows(
     return {"rows": rows}
 
 
-@ws_router.patch("/{table_id}/rows/{row_id}", response_model=RowResponse)
+@me_router.patch("/{table_id}/rows/{row_id}", response_model=RowResponse)
 async def update_ws_row(
     table_id: UUID,
     row_id: UUID,
@@ -379,7 +379,7 @@ async def update_ws_row(
     return RowResponse(**row)
 
 
-@ws_router.delete("/{table_id}/rows/{row_id}", status_code=204)
+@me_router.delete("/{table_id}/rows/{row_id}", status_code=204)
 async def delete_ws_row(
     table_id: UUID,
     row_id: UUID,
@@ -394,7 +394,7 @@ async def delete_ws_row(
         raise HTTPException(status_code=404, detail="Row not found")
 
 
-@ws_router.post("/{table_id}/rows/delete", status_code=200)
+@me_router.post("/{table_id}/rows/delete", status_code=200)
 async def delete_ws_rows_batch(
     table_id: UUID,
     body: dict,
@@ -409,7 +409,7 @@ async def delete_ws_rows_batch(
     return {"deleted": count}
 
 
-@ws_router.post("/{table_id}/rows/update", status_code=200)
+@me_router.post("/{table_id}/rows/update", status_code=200)
 async def update_ws_rows_batch(
     table_id: UUID,
     req: RowBatchUpdateRequest,
@@ -424,7 +424,7 @@ async def update_ws_rows_batch(
     return {"rows": [RowResponse(**r) for r in rows]}
 
 
-@ws_router.get("/{table_id}/rows/count")
+@me_router.get("/{table_id}/rows/count")
 async def count_ws_rows(
     table_id: UUID,
     filters: str | None = Query(None),
@@ -439,7 +439,7 @@ async def count_ws_rows(
     return {"count": count}
 
 
-@ws_router.put("/{table_id}/embedding")
+@me_router.put("/{table_id}/embedding")
 async def set_ws_embedding_config(
     table_id: UUID,
     config: dict,
@@ -459,7 +459,7 @@ async def set_ws_embedding_config(
     return result
 
 
-@ws_router.post("/{table_id}/embedding/backfill")
+@me_router.post("/{table_id}/embedding/backfill")
 async def backfill_ws_embeddings(
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -472,7 +472,7 @@ async def backfill_ws_embeddings(
     return await table_service.backfill_embeddings(table_id)
 
 
-@ws_router.get("/{table_id}/export/csv")
+@me_router.get("/{table_id}/export/csv")
 async def export_ws_csv(
     table_id: UUID,
     filters: str | None = Query(None),
@@ -515,10 +515,10 @@ async def export_ws_csv(
     )
 
 
-# --- Workspace search, summary, duplicate ---
+# --- Scope search, summary, duplicate ---
 
 
-@ws_router.get("/{table_id}/rows/search")
+@me_router.get("/{table_id}/rows/search")
 async def search_ws_rows(
     table_id: UUID,
     q: str = Query(..., min_length=1),
@@ -538,7 +538,7 @@ async def search_ws_rows(
     )
 
 
-@ws_router.get("/{table_id}/rows/summary")
+@me_router.get("/{table_id}/rows/summary")
 async def summarize_ws_rows(
     table_id: UUID,
     filters: str | None = Query(None),
@@ -552,7 +552,7 @@ async def summarize_ws_rows(
     return await table_service.summarize_rows(table_id, filters=parsed_filters)
 
 
-@ws_router.post("/{table_id}/rows/{row_id}/duplicate", response_model=RowResponse, status_code=201)
+@me_router.post("/{table_id}/rows/{row_id}/duplicate", response_model=RowResponse, status_code=201)
 async def duplicate_ws_row(
     table_id: UUID,
     row_id: UUID,
@@ -568,10 +568,10 @@ async def duplicate_ws_row(
     return RowResponse(**row)
 
 
-# --- Workspace views ---
+# --- Scope views ---
 
 
-@ws_router.post("/{table_id}/views", status_code=201)
+@me_router.post("/{table_id}/views", status_code=201)
 async def save_ws_view(
     table_id: UUID,
     body: dict,
@@ -587,7 +587,7 @@ async def save_ws_view(
     return table
 
 
-@ws_router.delete("/{table_id}/views/{view_id}")
+@me_router.delete("/{table_id}/views/{view_id}")
 async def delete_ws_view(
     table_id: UUID,
     view_id: str,

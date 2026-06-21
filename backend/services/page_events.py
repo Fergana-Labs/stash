@@ -2,7 +2,7 @@
 
 When the backend writes a page (an agent edit, a REST save, a copy), open
 viewers should see it without a manual refresh. Subscribers (SSE connections)
-register a queue per workspace; writers publish a small event. This is
+register a queue per scope owner; writers publish a small event. This is
 process-local — fine because the web app runs as a single uvicorn process; if
 that ever scales horizontally, swap publish/listen for Postgres LISTEN/NOTIFY.
 """
@@ -54,4 +54,4 @@ def publish_page_update(
         try:
             queue.put_nowait(event)
         except asyncio.QueueFull:
-            logger.debug("page_events queue full for workspace %s; dropping event", owner_user_id)
+            logger.debug("page_events queue full for owner %s; dropping event", owner_user_id)

@@ -1,9 +1,9 @@
-"""Tests for the default slides skill seeded into every workspace.
+"""Tests for the default slides skill seeded into every scope.
 
 The conftest disables the auto-seed (so empty-state assertions across
 the rest of the suite stay clean). These tests opt back in by calling
 `seed_slides_skill` directly with the disable knob cleared, then verify
-the skill is discoverable via the workspace skills API.
+the skill is discoverable via the scope skills API.
 """
 
 import os
@@ -53,7 +53,7 @@ async def _seed(owner_user_id: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_seeded_workspace_has_slides_skill(client: AsyncClient, enable_seed):
+async def test_seeded_scope_has_slides_skill(client: AsyncClient, enable_seed):
     api_key, owner_user_id = await _register_user(client)
     await _seed(owner_user_id)
 

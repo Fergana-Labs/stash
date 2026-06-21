@@ -23,7 +23,7 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _workspace_id(client: AsyncClient, api_key: str) -> uuid.UUID:
+async def _scope_id(client: AsyncClient, api_key: str) -> uuid.UUID:
     resp = await client.get("/api/v1/users/me", headers=_auth(api_key))
     assert resp.status_code == 200
     return uuid.UUID(resp.json()["id"])
@@ -52,7 +52,7 @@ async def _make_file(
 @pytest.mark.asyncio
 async def test_file_download_storage_errors_are_redacted(client: AsyncClient, pool, monkeypatch):
     api_key, owner = await _register(client)
-    owner_user_id = await _workspace_id(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     file_id = await _make_file(
         pool,
         owner_user_id=owner_user_id,
@@ -94,7 +94,7 @@ async def test_file_download_storage_errors_are_redacted(client: AsyncClient, po
 @pytest.mark.asyncio
 async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool, monkeypatch):
     api_key, owner = await _register(client)
-    owner_user_id = await _workspace_id(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     file_id = await _make_file(
         pool,
         owner_user_id=owner_user_id,
@@ -136,7 +136,7 @@ async def test_file_ingest_storage_errors_are_redacted(client: AsyncClient, pool
 @pytest.mark.asyncio
 async def test_xlsx_parse_errors_are_redacted(client: AsyncClient, pool, monkeypatch):
     api_key, owner = await _register(client)
-    owner_user_id = await _workspace_id(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     file_id = await _make_file(
         pool,
         owner_user_id=owner_user_id,
@@ -182,7 +182,7 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
     """SVG executes embedded script when rendered inline, so user uploads must
     never come back inline on the API origin; passive image types stay inline."""
     api_key, owner = await _register(client)
-    owner_user_id = await _workspace_id(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     svg_id = await _make_file(
         pool,
         owner_user_id=owner_user_id,
@@ -245,7 +245,7 @@ async def test_file_purge_keeps_storage_keys_still_referenced(
     so purging the origin file must not delete an S3 object a surviving fork
     still serves downloads from. Unreferenced keys are still deleted."""
     api_key, owner = await _register(client)
-    owner_user_id = await _workspace_id(client, api_key)
+    owner_user_id = await _scope_id(client, api_key)
     owner_id = uuid.UUID(owner["id"])
 
     async def insert_file(name: str, storage_key: str) -> uuid.UUID:

@@ -23,7 +23,7 @@ def _auth(api_key: str) -> dict:
 
 def _scope(user: dict) -> dict:
     """The scope is the user: its id is the owner_user_id, its name is the
-    owner's display name (what Discover surfaces as `workspace_name`)."""
+    owner's display name (what Discover surfaces as `owner_name`)."""
     return {"id": user["id"], "name": user["display_name"]}
 
 
@@ -50,9 +50,9 @@ async def _create_skill_folder(
 @pytest.mark.asyncio
 async def test_discover_lists_discoverable_public_product_stashes(client: AsyncClient):
     api_key, user = await _register(client)
-    workspace = _scope(user)
-    unlisted_folder = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted")
-    public_folder = await _create_skill_folder(client, api_key, workspace["id"], "Public notes")
+    scope = _scope(user)
+    unlisted_folder = await _create_skill_folder(client, api_key, scope["id"], "Unlisted")
+    public_folder = await _create_skill_folder(client, api_key, scope["id"], "Public notes")
 
     public_unlisted = await client.post(
         "/api/v1/me/skills",
@@ -77,18 +77,18 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert published_skill["owner_name"] == user["name"]
     assert published_skill["owner_display_name"] == user["display_name"]
 
-    workspace_skills = await client.get(
+    owned_skills = await client.get(
         "/api/v1/me/skills",
         headers=_auth(api_key),
     )
-    assert workspace_skills.status_code == 200
-    workspace_skill = next(
+    assert owned_skills.status_code == 200
+    owned_skill = next(
         skill
-        for skill in workspace_skills.json()["skills"]
+        for skill in owned_skills.json()["skills"]
         if skill["published"] and skill["published"]["slug"] == slug
     )
-    assert workspace_skill["folder_id"] == public_folder
-    assert workspace_skill["published"]["discoverable"] is True
+    assert owned_skill["folder_id"] == public_folder
+    assert owned_skill["published"]["discoverable"] is True
 
     catalog = await client.get("/api/v1/discover/skills")
     assert catalog.status_code == 200
@@ -98,7 +98,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert skills[0]["discoverable"] is True
     # Live count of the folder subtree: the content page + the auto-minted SKILL.md.
     assert skills[0]["item_count"] == 2
-    assert skills[0]["workspace_name"] == workspace["name"]
+    assert skills[0]["owner_name"] == scope["name"]
     # GitHub attribution is import-only; organic publishes carry null.
     assert skills[0]["source_github_url"] is None
 
@@ -118,8 +118,8 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
     publicly readable at its slug (anonymously) yet never surfaces in
     Discover."""
     api_key, user = await _register(client)
-    workspace = _scope(user)
-    folder_id = await _create_skill_folder(client, api_key, workspace["id"], "Unlisted only")
+    scope = _scope(user)
+    folder_id = await _create_skill_folder(client, api_key, scope["id"], "Unlisted only")
 
     published = await client.post(
         "/api/v1/me/skills",
@@ -142,10 +142,10 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
 @pytest.mark.asyncio
 async def test_discover_search_filters_product_stashes(client: AsyncClient):
     api_key, user = await _register(client)
-    workspace = _scope(user)
+    scope = _scope(user)
 
     for title, folder_name in (("Alpha launch notes", "Alpha"), ("Beta roadmap", "Beta")):
-        folder_id = await _create_skill_folder(client, api_key, workspace["id"], folder_name)
+        folder_id = await _create_skill_folder(client, api_key, scope["id"], folder_name)
         resp = await client.post(
             "/api/v1/me/skills",
             json={"folder_id": folder_id, "title": title, "discoverable": True},

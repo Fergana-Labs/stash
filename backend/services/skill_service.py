@@ -75,7 +75,7 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
 
 
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """List every skill folder in the workspace: folder + SKILL.md frontmatter,
+    """List every skill folder in the scope: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared."""
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)

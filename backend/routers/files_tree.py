@@ -1,4 +1,4 @@
-"""Files router: workspace-scoped folders (nested) and pages."""
+"""Files router: scope-owned folders (nested) and pages."""
 
 import asyncio
 import json
@@ -25,9 +25,9 @@ from ..models import (
     PageCreateRequest,
     PageResponse,
     PageUpdateRequest,
-    WorkspacePageEntry,
-    WorkspacePageListResponse,
-    WorkspaceTreeResponse,
+    ScopePageEntry,
+    ScopePageListResponse,
+    ScopeTreeResponse,
 )
 from ..services import (
     comment_service,
@@ -48,22 +48,22 @@ router = APIRouter(prefix="/api/v1/me", tags=["files"])
 canonical_router = APIRouter(prefix="/api/v1", tags=["files"])
 
 
-async def _check_ws_access(owner_user_id: UUID, user_id: UUID) -> None:
+async def _check_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
     """Read gate: any member (viewer/editor/owner) is allowed."""
     if not await user_scope_service.is_member(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+        raise HTTPException(status_code=403, detail="Not a scope member")
 
 
-async def _check_ws_write(owner_user_id: UUID, user_id: UUID) -> None:
+async def _check_scope_write(owner_user_id: UUID, user_id: UUID) -> None:
     """Write gate: owner or editor only. Viewer is blocked."""
     if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(
             status_code=403,
-            detail="Viewers can read but not edit this workspace",
+            detail="Viewers can read but not edit this scope",
         )
 
 
-async def _check_ws_owns_folder(owner_user_id: UUID, folder_id: UUID) -> dict:
+async def _check_scope_owns_folder(owner_user_id: UUID, folder_id: UUID) -> dict:
     folder = await files_tree_service.get_folder(folder_id)
     if not folder or folder["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -93,14 +93,14 @@ async def _check_content_access(
 # --- Pages: flat listing ---
 
 
-@router.get("/pages", response_model=WorkspacePageListResponse)
-async def list_workspace_pages(
+@router.get("/pages", response_model=ScopePageListResponse)
+async def list_scope_pages(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_access(owner_user_id, current_user["id"])
-    rows = await files_tree_service.list_workspace_pages(owner_user_id, current_user["id"])
-    return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
+    await _check_scope_access(owner_user_id, current_user["id"])
+    rows = await files_tree_service.list_scope_pages(owner_user_id, current_user["id"])
+    return ScopePageListResponse(pages=[ScopePageEntry(**r) for r in rows])
 
 
 # Heartbeat keeps the SSE connection (and intermediaries) alive between edits.
@@ -112,11 +112,11 @@ async def page_events_stream(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """SSE stream of page-update events for the workspace. Open viewers subscribe
+    """SSE stream of page-update events for the scope. Open viewers subscribe
     and refetch the affected page so an agent (or another user) editing it shows
     up live."""
     owner_user_id = current_user["id"]
-    await _check_ws_access(owner_user_id, current_user["id"])
+    await _check_scope_access(owner_user_id, current_user["id"])
 
     async def event_stream():
         queue = page_events.subscribe(owner_user_id)
@@ -143,14 +143,14 @@ async def page_events_stream(
 # --- Tree (nested folders + pages) ---
 
 
-@router.get("/tree", response_model=WorkspaceTreeResponse)
-async def get_workspace_tree(
+@router.get("/tree", response_model=ScopeTreeResponse)
+async def get_scope_tree(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_access(owner_user_id, current_user["id"])
-    tree = await files_tree_service.list_workspace_tree(owner_user_id, current_user["id"])
-    return WorkspaceTreeResponse(**tree)
+    await _check_scope_access(owner_user_id, current_user["id"])
+    tree = await files_tree_service.list_scope_tree(owner_user_id, current_user["id"])
+    return ScopeTreeResponse(**tree)
 
 
 # --- Folders ---
@@ -161,7 +161,7 @@ async def list_folders(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_access(owner_user_id, current_user["id"])
+    await _check_scope_access(owner_user_id, current_user["id"])
     folders = await files_tree_service.list_folders(owner_user_id, current_user["id"])
     return FolderListResponse(folders=[FolderResponse(**f) for f in folders])
 
@@ -173,9 +173,9 @@ async def create_folder(
 ):
     owner_user_id = current_user["id"]
     if req.parent_folder_id is None:
-        await _check_ws_write(owner_user_id, current_user["id"])
+        await _check_scope_write(owner_user_id, current_user["id"])
     else:
-        await _check_ws_owns_folder(owner_user_id, req.parent_folder_id)
+        await _check_scope_owns_folder(owner_user_id, req.parent_folder_id)
         await _check_content_access(
             "folder",
             req.parent_folder_id,
@@ -201,7 +201,7 @@ async def get_folder(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    folder = await _check_ws_owns_folder(owner_user_id, folder_id)
+    folder = await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
     return FolderResponse(**folder)
 
@@ -212,10 +212,10 @@ async def get_folder_contents(
     current_user: dict = Depends(get_current_user),
 ):
     """Immediate children of a folder — subfolders, pages, files — plus
-    the breadcrumb chain from workspace root down to this folder. Powers
+    the breadcrumb chain from scope root down to this folder. Powers
     the unified Files tree (sidebar lazy-expand + folder detail page)."""
     owner_user_id = current_user["id"]
-    folder = await _check_ws_owns_folder(owner_user_id, folder_id)
+    folder = await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
     pool = get_pool()
 
@@ -364,7 +364,7 @@ async def update_folder(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_owns_folder(owner_user_id, folder_id)
+    await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access(
         "folder",
         folder_id,
@@ -373,7 +373,7 @@ async def update_folder(
         require="write",
     )
     if req.parent_folder_id is not None and not req.move_to_root:
-        await _check_ws_owns_folder(owner_user_id, req.parent_folder_id)
+        await _check_scope_owns_folder(owner_user_id, req.parent_folder_id)
         await _check_content_access(
             "folder",
             req.parent_folder_id,
@@ -404,7 +404,7 @@ async def delete_folder(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_owns_folder(owner_user_id, folder_id)
+    await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access(
         "folder",
         folder_id,
@@ -424,15 +424,15 @@ async def copy_folder(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_owns_folder(owner_user_id, folder_id)
+    await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
     if req.target_folder_id is not None:
-        await _check_ws_owns_folder(owner_user_id, req.target_folder_id)
+        await _check_scope_owns_folder(owner_user_id, req.target_folder_id)
         await _check_content_access(
             "folder", req.target_folder_id, owner_user_id, current_user["id"], require="write"
         )
     else:
-        await _check_ws_write(owner_user_id, current_user["id"])
+        await _check_scope_write(owner_user_id, current_user["id"])
     try:
         folder = await files_tree_service.copy_folder(
             folder_id, owner_user_id, current_user["id"], target_parent_id=req.target_folder_id
@@ -454,9 +454,9 @@ async def create_page(
 ):
     owner_user_id = current_user["id"]
     if req.folder_id is None:
-        await _check_ws_write(owner_user_id, current_user["id"])
+        await _check_scope_write(owner_user_id, current_user["id"])
     else:
-        await _check_ws_owns_folder(owner_user_id, req.folder_id)
+        await _check_scope_owns_folder(owner_user_id, req.folder_id)
         await _check_content_access(
             "folder",
             req.folder_id,
@@ -486,12 +486,12 @@ async def copy_page(
     owner_user_id = current_user["id"]
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
     if req.target_folder_id is not None:
-        await _check_ws_owns_folder(owner_user_id, req.target_folder_id)
+        await _check_scope_owns_folder(owner_user_id, req.target_folder_id)
         await _check_content_access(
             "folder", req.target_folder_id, owner_user_id, current_user["id"], require="write"
         )
     else:
-        await _check_ws_write(owner_user_id, current_user["id"])
+        await _check_scope_write(owner_user_id, current_user["id"])
     page = await files_tree_service.copy_page(
         page_id, owner_user_id, current_user["id"], target_folder_id=req.target_folder_id
     )
@@ -507,7 +507,7 @@ async def semantic_search_pages(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_access(owner_user_id, current_user["id"])
+    await _check_scope_access(owner_user_id, current_user["id"])
     from ..services import embeddings as embedding_service
 
     if not embedding_service.is_configured():
@@ -531,7 +531,7 @@ async def search_pages(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    await _check_ws_access(owner_user_id, current_user["id"])
+    await _check_scope_access(owner_user_id, current_user["id"])
     pages = await files_tree_service.search_pages_fts(owner_user_id, q, limit, current_user["id"])
     return {"pages": pages}
 
@@ -555,7 +555,7 @@ async def get_page(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # No workspace-membership pre-gate: a page may be shared with someone who
+    # No scope-membership pre-gate: a page may be shared with someone who
     # isn't a member (the primary collaboration path). get_page enforces
     # check_access (owner OR share OR open skill) and returns None otherwise.
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
@@ -574,7 +574,7 @@ async def download_page(
     Returns the page's markdown source (or HTML, for html-typed pages) so
     callers can export, diff, or feed it to other tools the same way they
     would a binary file. Permission is the existing page-read check —
-    members of the workspace plus anyone the page is shared with.
+    members of the scope plus anyone the page is shared with.
     """
     owner_user_id = current_user["id"]
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
@@ -610,7 +610,7 @@ async def update_page(
         require="write",
     )
     if req.folder_id is not None and not req.move_to_root:
-        await _check_ws_owns_folder(owner_user_id, req.folder_id)
+        await _check_scope_owns_folder(owner_user_id, req.folder_id)
         await _check_content_access(
             "folder",
             req.folder_id,
@@ -694,7 +694,7 @@ async def purge_page(
 # --- Page comments ---
 
 
-async def _check_page_in_workspace(owner_user_id: UUID, page_id: UUID) -> None:
+async def _check_page_in_scope(owner_user_id: UUID, page_id: UUID) -> None:
     pool = get_pool()
     found = await pool.fetchval(
         "SELECT 1 FROM pages WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
@@ -715,7 +715,7 @@ async def list_comment_threads(
 ):
     owner_user_id = current_user["id"]
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     threads = await comment_service.list_threads(page_id)
     return CommentThreadListResponse(threads=[CommentThread(**t) for t in threads])
 
@@ -731,12 +731,12 @@ async def create_comment_thread(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # Commenting needs at least the 'comment' share level (workspace members
+    # Commenting needs at least the 'comment' share level (scope members
     # always qualify); a plain read-only share can view but not comment.
     await _check_content_access(
         "page", page_id, owner_user_id, current_user["id"], require="comment"
     )
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     thread = await comment_service.create_thread(
         page_id,
         quoted_text=req.quoted_text,
@@ -763,7 +763,7 @@ async def reply_to_thread(
     await _check_content_access(
         "page", page_id, owner_user_id, current_user["id"], require="comment"
     )
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
@@ -782,7 +782,7 @@ async def update_thread_resolved(
 ):
     owner_user_id = current_user["id"]
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     thread = await comment_service.set_resolved(
         thread_id, resolved=req.resolved, user_id=current_user["id"]
     )
@@ -803,7 +803,7 @@ async def delete_comment_thread(
     """Delete an entire thread. Only the thread creator is allowed."""
     owner_user_id = current_user["id"]
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     result = await comment_service.delete_thread(thread_id, user_id=current_user["id"])
     if result == "not_found":
         raise HTTPException(status_code=404, detail="Thread not found")
@@ -826,7 +826,7 @@ async def delete_comment_message(
     """
     owner_user_id = current_user["id"]
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     status, thread = await comment_service.delete_message(message_id, user_id=current_user["id"])
     if status == "not_found":
         raise HTTPException(status_code=404, detail="Message not found")
@@ -854,7 +854,7 @@ async def reconcile_comment_anchors(
     Resolved threads are left alone.
     """
     owner_user_id = current_user["id"]
-    await _check_ws_write(owner_user_id, current_user["id"])
+    await _check_scope_write(owner_user_id, current_user["id"])
     await _check_content_access("page", page_id, owner_user_id, current_user["id"], require="write")
-    await _check_page_in_workspace(owner_user_id, page_id)
+    await _check_page_in_scope(owner_user_id, page_id)
     await comment_service.reconcile_orphans(page_id, req.present_ids)

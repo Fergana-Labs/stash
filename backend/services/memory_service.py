@@ -1,6 +1,6 @@
 """Session event service: structured agent event storage with FTS, vector search, and batch insert.
 
-Events belong directly to a workspace (or are personal with owner_user_id=NULL).
+Events belong directly to a scope (or are personal with owner_user_id=NULL).
 Grouped by agent_name → session_id for display.
 """
 
@@ -285,7 +285,7 @@ async def read_session_events(
     session_id: str,
     user_id: UUID | None = None,
 ) -> list[dict]:
-    """Ordered events for a session within a workspace. The canonical
+    """Ordered events for a session within a scope. The canonical
     source for session-thread rendering — replaces reading the R2 transcript
     blob."""
     if user_id is not None and not await can_read_session(owner_user_id, session_id, user_id):
@@ -302,8 +302,8 @@ async def read_session_events(
     return [dict(r) for r in rows]
 
 
-async def list_workspace_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """One row per session_id in this workspace. Powers the spine sessions
+async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+    """One row per session_id in this scope. Powers the spine sessions
     list — replaces a SELECT against session_transcripts."""
     pool = get_pool()
     rows = await pool.fetch(
@@ -352,7 +352,7 @@ async def list_workspace_sessions(owner_user_id: UUID, user_id: UUID) -> list[di
     return sessions
 
 
-async def get_workspace_event(event_id: UUID, owner_user_id: UUID, user_id: UUID) -> dict | None:
+async def get_scope_event(event_id: UUID, owner_user_id: UUID, user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT * FROM history_events he WHERE he.id = $1 AND he.owner_user_id = $2 "
@@ -437,7 +437,7 @@ async def _query_events(
     return events, has_more
 
 
-async def query_workspace_events(
+async def query_scope_events(
     owner_user_id: UUID,
     user_id: UUID,
     agent_name: str | None = None,
@@ -448,7 +448,7 @@ async def query_workspace_events(
     limit: int = 50,
     order: str = "desc",
 ) -> tuple[list[dict], bool]:
-    """Query events in a workspace. Returns (events, has_more)."""
+    """Query events in a scope. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
         f"owner_user_id = $1 AND {readable_session_event_condition('history_events', 2)}",
@@ -472,7 +472,7 @@ async def query_personal_events(
     limit: int = 50,
     order: str = "desc",
 ) -> tuple[list[dict], bool]:
-    """Query personal (non-workspace) events for a user. Returns (events, has_more)."""
+    """Query personal (non-scope) events for a user. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
         "owner_user_id IS NULL AND created_by = $1",
@@ -486,13 +486,13 @@ async def query_personal_events(
     return await _query_events(where, args, next_idx, limit, order=order)
 
 
-async def search_workspace_events(
+async def search_scope_events(
     owner_user_id: UUID,
     user_id: UUID,
     query: str,
     limit: int = 50,
 ) -> list[dict]:
-    """Full-text search on workspace events."""
+    """Full-text search on scope events."""
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
@@ -512,7 +512,7 @@ async def search_workspace_events(
     return [dict(r) for r in rows]
 
 
-async def recent_workspace_events(
+async def recent_scope_events(
     owner_user_id: UUID,
     user_id: UUID,
     days: int = 7,
@@ -560,13 +560,13 @@ async def search_personal_events(
     return [dict(r) for r in rows]
 
 
-async def search_workspace_events_vector(
+async def search_scope_events_vector(
     owner_user_id: UUID,
     user_id: UUID,
     query_embedding: np.ndarray,
     limit: int = 20,
 ) -> list[dict]:
-    """Semantic vector search on workspace events."""
+    """Semantic vector search on scope events."""
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
@@ -620,7 +620,7 @@ async def query_all_user_events(
     limit: int = 50,
     order: str = "desc",
 ) -> tuple[list[dict], bool]:
-    """Events across ALL accessible workspaces + personal, with filters."""
+    """Events across ALL accessible scopes + personal, with filters."""
     pool = get_pool()
     limit = min(limit, 200)
     direction = "ASC" if order == "asc" else "DESC"
@@ -656,7 +656,7 @@ async def query_all_user_events(
     rows = await pool.fetch(
         f"SELECT he.id, he.owner_user_id, he.created_by, he.agent_name, he.event_type, "
         f"he.session_id, he.tool_name, he.content, he.metadata, he.created_at, "
-        f"owner.display_name AS workspace_name, "
+        f"owner.display_name AS owner_name, "
         f"u.display_name AS created_by_name "
         f"FROM history_events he "
         f"LEFT JOIN users owner ON owner.id = he.owner_user_id "
@@ -673,8 +673,8 @@ async def query_all_user_events(
     return events, has_more
 
 
-async def delete_workspace_agent_events(agent_name: str, owner_user_id: UUID) -> int:
-    """Delete all workspace events for a given agent. Returns count deleted."""
+async def delete_scope_agent_events(agent_name: str, owner_user_id: UUID) -> int:
+    """Delete all scope events for a given agent. Returns count deleted."""
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM history_events WHERE agent_name = $1 AND owner_user_id = $2",
@@ -695,8 +695,8 @@ async def delete_personal_agent_events(agent_name: str, user_id: UUID) -> int:
     return int(result.split()[-1]) if result else 0
 
 
-async def get_workspace_event_count(owner_user_id: UUID) -> int:
-    """Count events in a workspace."""
+async def get_scope_event_count(owner_user_id: UUID) -> int:
+    """Count events in a scope."""
     pool = get_pool()
     return (
         await pool.fetchval(

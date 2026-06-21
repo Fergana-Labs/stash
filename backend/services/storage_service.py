@@ -35,7 +35,7 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def _storage_key(owner_user_id: str | None, filename: str) -> str:
-    """Generate a unique storage key: {workspace_or_personal}/{uuid}/{filename}."""
+    """Generate a unique storage key: {owner_or_personal}/{uuid}/{filename}."""
     prefix = str(owner_user_id) if owner_user_id else "personal"
     return f"{prefix}/{uuid4().hex[:12]}/{filename}"
 

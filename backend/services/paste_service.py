@@ -1,6 +1,6 @@
 """Anonymous public pastes backing the joinstash.ai/pages pastebin.
 
-No accounts, no workspaces: the slug is the public read handle and the
+No accounts, no scopes: the slug is the public read handle and the
 plaintext ``edit_token`` is the only write credential. The token is
 returned exactly once (from create) and never selected back out, so a
 leaked read response can't grant write access.

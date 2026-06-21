@@ -18,9 +18,7 @@ def _auth(api_key: str) -> dict:
 
 
 async def _setup_page(client: AsyncClient, headers: dict) -> tuple[str, str]:
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Comments"}, headers=headers)
-    ).json()
+    me = (await client.get("/api/v1/users/me", headers=headers)).json()
     page = (
         await client.post(
             "/api/v1/me/pages/new",
@@ -28,14 +26,14 @@ async def _setup_page(client: AsyncClient, headers: dict) -> tuple[str, str]:
             headers=headers,
         )
     ).json()
-    return ws["id"], page["id"]
+    return me["id"], page["id"]
 
 
 @pytest.mark.asyncio
 async def test_create_thread_with_first_message(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     resp = await client.post(
         f"/api/v1/me/pages/{page_id}/comments/threads",
@@ -60,7 +58,7 @@ async def test_create_thread_with_first_message(client: AsyncClient) -> None:
 async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     created = (
         await client.post(
@@ -100,7 +98,7 @@ async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
 async def test_delete_thread_removes_it_for_creator(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     created = (
         await client.post(
@@ -129,7 +127,7 @@ async def test_delete_thread_removes_it_for_creator(client: AsyncClient) -> None
 async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
     created = (
         await client.post(
             f"/api/v1/me/pages/{page_id}/comments/threads",
@@ -161,7 +159,7 @@ async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> 
 async def test_delete_one_message_keeps_thread_alive(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
     created = (
         await client.post(
             f"/api/v1/me/pages/{page_id}/comments/threads",
@@ -194,7 +192,7 @@ async def test_delete_one_message_keeps_thread_alive(client: AsyncClient) -> Non
 async def test_reconcile_flags_missing_threads_as_orphaned(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     alive = (
         await client.post(

@@ -4,9 +4,9 @@ Anonymous, IP rate-limited endpoints that let a visitor's coding agent
 read the canonical Stash skill + KB and publish a personalized HTML
 slide deck as a public-unlisted Stash. The visitor never signs in.
 
-Each handler is a thin shim that pins the singleton Demo workspace
+Each handler is a thin shim that pins the singleton Demo scope
 and delegates straight into the same service functions used by the
-authenticated workspace routers — no parallel implementation.
+authenticated scope routers — no parallel implementation.
 """
 
 import secrets
@@ -119,7 +119,7 @@ async def about(request: Request) -> str:
 @router.post("/pages", status_code=201)
 @limiter.limit(_POST_LIMIT)
 async def create_page(request: Request, req: DemoPageCreate = Body(...)) -> dict[str, Any]:
-    owner_user_id, owner_id = await demo_service.get_demo_workspace()
+    owner_user_id, owner_id = await demo_service.get_demo_scope()
     name = _unique_page_name(req.title)
     try:
         page = await files_tree_service.create_page(
@@ -144,8 +144,8 @@ async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -
     from ..database import get_pool
     from ..services import session_service
 
-    owner_user_id, owner_id = await demo_service.get_demo_workspace()
-    # Random session_id keeps demos isolated within the shared workspace.
+    owner_user_id, owner_id = await demo_service.get_demo_scope()
+    # Random session_id keeps demos isolated within the shared scope.
     session_id = f"demo-{secrets.token_urlsafe(10)}"
 
     # Upsert the session row first so cwd lands. push_events_batch will
@@ -215,7 +215,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
     """Wrap demo-created pages/sessions into a skill folder and publish it."""
     from ..database import get_pool
 
-    owner_user_id, owner_id = await demo_service.get_demo_workspace()
+    owner_user_id, owner_id = await demo_service.get_demo_scope()
     pool = get_pool()
 
     folder = await files_tree_service.create_folder(
@@ -232,7 +232,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
             )
             if moved != "UPDATE 1":
                 raise HTTPException(
-                    status_code=400, detail="Skill items must be in the demo workspace"
+                    status_code=400, detail="Skill items must be in the demo scope"
                 )
         else:
             session_external_id = await pool.fetchval(
@@ -243,7 +243,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
             )
             if not session_external_id:
                 raise HTTPException(
-                    status_code=400, detail="Skill items must be in the demo workspace"
+                    status_code=400, detail="Skill items must be in the demo scope"
                 )
             await shared_skill_service.materialize_session_page(
                 owner_user_id, session_external_id, folder["id"], owner_id
@@ -292,7 +292,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
 def _unique_page_name(title: str) -> str:
     """Append a short random suffix so concurrent demos don't collide.
 
-    Page names are unique per (workspace, folder) — without the suffix
+    Page names are unique per (scope, folder) — without the suffix
     two visitors named "Sam" would race on the same name.
     """
     suffix = secrets.token_urlsafe(4)[:6].lower()

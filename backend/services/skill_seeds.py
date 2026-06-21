@@ -1,6 +1,6 @@
-"""Default skill markdown seeded into every workspace.
+"""Default skill markdown seeded into every scope.
 
-Each workspace gets a `Skills/slides/SKILL.md` page so the ask-the-workspace
+Each scope gets a `Skills/slides/SKILL.md` page so the ask-the-stash
 agent can discover it via `list_skills` / `read_skill` when the user asks
 for a deck. Seeding is idempotent — if the folder already has a SKILL.md
 we leave it alone (users may have edited it).
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SLIDES_SKILL_FOLDER = "slides"
 SKILL_MD_NAME = "SKILL.md"
 
-# Env knob so the test suite can create blank workspaces. Production
+# Env knob so the test suite can create blank scopes. Production
 # leaves this unset; tests that need the seeded skill flip it off and
 # call `seed_slides_skill` directly.
 DISABLE_ENV_VAR = "STASH_DISABLE_DEFAULT_SKILL_SEEDS"
@@ -133,7 +133,7 @@ Don't ship interactive controls — they won't survive the export.
 
 
 async def seed_slides_skill(owner_user_id: UUID, creator_id: UUID) -> bool:
-    """Create `Skills/slides/SKILL.md` in the workspace if it doesn't exist.
+    """Create `Skills/slides/SKILL.md` in the scope if it doesn't exist.
 
     Returns True if the SKILL.md was created in this call, False if a
     SKILL.md was already present in any folder named `slides` (we treat
@@ -181,5 +181,5 @@ async def seed_slides_skill(owner_user_id: UUID, creator_id: UUID) -> bool:
         content=SLIDES_SKILL_MARKDOWN,
         content_type="markdown",
     )
-    logger.info("seeded slides skill for workspace %s", owner_user_id)
+    logger.info("seeded slides skill for scope %s", owner_user_id)
     return True

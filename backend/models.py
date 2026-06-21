@@ -134,7 +134,7 @@ class SkillResponse(BaseModel):
 
 class SkillPublicResponse(BaseModel):
     skill: SkillResponse
-    workspace_name: str
+    owner_name: str
     folder_name: str
     contents: dict
     can_write: bool = False
@@ -234,7 +234,7 @@ class PageResponse(BaseModel):
 
 
 class PageSummary(BaseModel):
-    """Lightweight page entry used in workspace tree responses."""
+    """Lightweight page entry used in scope tree responses."""
 
     id: UUID
     name: str
@@ -245,7 +245,7 @@ class PageSummary(BaseModel):
     updated_at: datetime
 
 
-class WorkspaceTreeFolder(BaseModel):
+class ScopeTreeFolder(BaseModel):
     id: UUID
     owner_user_id: UUID
     parent_folder_id: UUID | None
@@ -253,12 +253,12 @@ class WorkspaceTreeFolder(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
-    folders: list["WorkspaceTreeFolder"] = []
+    folders: list["ScopeTreeFolder"] = []
     pages: list[PageSummary] = []
 
 
-class WorkspaceTreeResponse(BaseModel):
-    folders: list[WorkspaceTreeFolder]
+class ScopeTreeResponse(BaseModel):
+    folders: list[ScopeTreeFolder]
     pages: list[PageSummary]
 
 
@@ -311,10 +311,10 @@ class CommentThreadListResponse(BaseModel):
     threads: list[CommentThread]
 
 
-class WorkspacePageEntry(BaseModel):
-    """Flat reference to a page for workspace-wide search and pickers.
+class ScopePageEntry(BaseModel):
+    """Flat reference to a page for scope-wide search and pickers.
 
-    folder_path is the chain of folder names from the workspace root down to
+    folder_path is the chain of folder names from the scope root down to
     the immediate parent — empty for root pages, ['Architecture', 'API'] for
     a page nested two folders deep. Used to render and resolve
     Folder path is included so callers can display disambiguated page names.
@@ -329,14 +329,14 @@ class WorkspacePageEntry(BaseModel):
     updated_at: datetime
 
 
-class WorkspacePageListResponse(BaseModel):
-    pages: list[WorkspacePageEntry]
+class ScopePageListResponse(BaseModel):
+    pages: list[ScopePageEntry]
 
 
-class UserPageEntry(WorkspacePageEntry):
-    """Cross-workspace flat page list used by /me/pages."""
+class UserPageEntry(ScopePageEntry):
+    """Cross-scope flat page list used by /me/pages."""
 
-    workspace_name: str
+    owner_name: str
 
 
 class UserPageListResponse(BaseModel):
@@ -500,7 +500,7 @@ class HistoryEventResponse(BaseModel):
     metadata: dict
     attachments: list[dict] | None = None
     created_at: datetime
-    workspace_name: str | None = None
+    owner_name: str | None = None
     rank: float | None = None
 
 
@@ -521,8 +521,8 @@ class HistoryQueryResponse(BaseModel):
 
 class PublishRequest(BaseModel):
     """Single-call publish: create a Page from supplied content, wrap it in a
-    Stash, and return the Stash URL. Folder is optional; defaults to a
-    workspace's "AI Drafts" folder that's auto-created on first use."""
+    Stash, and return the Stash URL. Folder is optional; defaults to the
+    scope's "AI Drafts" folder that's auto-created on first use."""
 
     owner_user_id: UUID | None = None
     title: str = Field(..., min_length=1, max_length=255)
@@ -571,7 +571,7 @@ class FileUpdateRequest(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    """Result of POST /workspaces/{id}/files.
+    """Result of POST /me/files.
 
     Polymorphic: markdown and HTML uploads become pages (editable in-app);
     everything else becomes a binary file in S3. Callers branch on `kind`;

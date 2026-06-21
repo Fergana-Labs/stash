@@ -16,7 +16,7 @@ from backend.services import agent_runtime, files_tree_service, table_service
 
 
 @pytest_asyncio.fixture
-async def workspace(_db_pool):
+async def scope(_db_pool):
     user_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
@@ -28,13 +28,13 @@ async def workspace(_db_pool):
 
 
 @pytest.mark.asyncio
-async def test_copy_page_uses_copy_of_name_and_increments(workspace, _db_pool):
-    ws_id, user_id = workspace
+async def test_copy_page_uses_copy_of_name_and_increments(scope, _db_pool):
+    scope_id, user_id = scope
     src = await files_tree_service.create_page(
-        owner_user_id=ws_id, name="Spec", created_by=user_id, content="body"
+        owner_user_id=scope_id, name="Spec", created_by=user_id, content="body"
     )
-    first = await files_tree_service.copy_page(src["id"], ws_id, user_id)
-    second = await files_tree_service.copy_page(src["id"], ws_id, user_id)
+    first = await files_tree_service.copy_page(src["id"], scope_id, user_id)
+    second = await files_tree_service.copy_page(src["id"], scope_id, user_id)
     assert first["name"] == "Copy of Spec"
     assert second["name"] == "Copy of Spec (2)"  # collision → numbered
     assert first["content_markdown"] == "body"
@@ -42,22 +42,22 @@ async def test_copy_page_uses_copy_of_name_and_increments(workspace, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_copy_folder_is_deep(workspace, _db_pool):
-    ws_id, user_id = workspace
-    root = await files_tree_service.create_folder(ws_id, "Project", user_id)
-    sub = await files_tree_service.create_folder(ws_id, "Sub", user_id, parent_folder_id=root["id"])
+async def test_copy_folder_is_deep(scope, _db_pool):
+    scope_id, user_id = scope
+    root = await files_tree_service.create_folder(scope_id, "Project", user_id)
+    sub = await files_tree_service.create_folder(scope_id, "Sub", user_id, parent_folder_id=root["id"])
     await files_tree_service.create_page(
-        owner_user_id=ws_id, name="Top page", created_by=user_id, folder_id=root["id"], content="t"
+        owner_user_id=scope_id, name="Top page", created_by=user_id, folder_id=root["id"], content="t"
     )
     await files_tree_service.create_page(
-        owner_user_id=ws_id, name="Nested page", created_by=user_id, folder_id=sub["id"], content="n"
+        owner_user_id=scope_id, name="Nested page", created_by=user_id, folder_id=sub["id"], content="n"
     )
     table = await table_service.create_table(
-        ws_id, "Data", "", [{"name": "Col", "type": "text"}], user_id, folder_id=root["id"]
+        scope_id, "Data", "", [{"name": "Col", "type": "text"}], user_id, folder_id=root["id"]
     )
     await table_service.create_row(table["id"], {"Col": "v"}, user_id)
 
-    copy = await files_tree_service.copy_folder(root["id"], ws_id, user_id)
+    copy = await files_tree_service.copy_folder(root["id"], scope_id, user_id)
     assert copy["name"] == "Copy of Project"
 
     # New top folder has the page + table + the subfolder; subfolder has its page.
@@ -82,12 +82,12 @@ async def test_copy_folder_is_deep(workspace, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_agent_copy_page_tool(workspace, _db_pool):
-    ws_id, user_id = workspace
+async def test_agent_copy_page_tool(scope, _db_pool):
+    scope_id, user_id = scope
     src = await files_tree_service.create_page(
-        owner_user_id=ws_id, name="Doc", created_by=user_id, content="x"
+        owner_user_id=scope_id, name="Doc", created_by=user_id, content="x"
     )
-    workspace_token = agent_runtime._workspace_ctx.set(ws_id)
+    scope_token = agent_runtime._scope_ctx.set(scope_id)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         out = json.loads(
@@ -97,5 +97,5 @@ async def test_agent_copy_page_tool(workspace, _db_pool):
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
-        agent_runtime._workspace_ctx.reset(workspace_token)
+        agent_runtime._scope_ctx.reset(scope_token)
     assert out["name"] == "Copy of Doc"

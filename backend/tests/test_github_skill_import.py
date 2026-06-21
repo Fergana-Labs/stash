@@ -93,7 +93,7 @@ async def test_import_publishes_discoverable_skills(client: AsyncClient, pool, m
     assert baking["source_github_url"] == "https://github.com/acme/skills/tree/main/baking"
 
     # SKILL.md keeps its exact filename (skill detection depends on it) and
-    # nested reference docs land in a child folder, not the workspace root.
+    # nested reference docs land in a child folder, not the scope root.
     skill_folder = await pool.fetchval(
         "SELECT folder_id FROM skills WHERE id = $1::uuid", cooking["id"]
     )
@@ -135,7 +135,7 @@ async def test_reimport_updates_in_place(client: AsyncClient, pool, monkeypatch)
     assert second["description"] == "New blurb."
 
     # Old contents are gone, replaced by the new tree — and nothing orphaned
-    # into the workspace root (pages/files folder FKs are SET NULL on folder
+    # into the scope root (pages/files folder FKs are SET NULL on folder
     # delete, which a naive folder-only delete would trigger).
     folder_id = await pool.fetchval(
         "SELECT folder_id FROM skills WHERE id = $1::uuid", second["id"]

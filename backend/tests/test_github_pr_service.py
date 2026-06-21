@@ -16,13 +16,12 @@ async def _register(client):
     return response.json()["api_key"]
 
 
-async def _workspace(client, key):
-    response = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "ws-" + unique_name()},
+async def _scope(client, key):
+    response = await client.get(
+        "/api/v1/users/me",
         headers={"Authorization": f"Bearer {key}"},
     )
-    assert response.status_code == 201
+    assert response.status_code == 200
     return response.json()["id"]
 
 
@@ -71,7 +70,7 @@ async def test_discover_session_labels_records_pr_and_upserts_ticket(
     monkeypatch,
 ):
     key = await _register(client)
-    owner_user_id = await _workspace(client, key)
+    owner_user_id = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
     monkeypatch.setattr(github_pr_service, "enqueue_session_discovery", lambda _session_id: None)

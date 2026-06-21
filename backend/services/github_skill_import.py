@@ -1,7 +1,7 @@
 """Import public GitHub repos containing SKILL.md folders as curated Skills.
 
 Every directory whose immediate children include a SKILL.md (the repo root
-counts) becomes one published, discoverable skill in the curator workspace,
+counts) becomes one published, discoverable skill in the curator scope,
 attributed via skills.source_github_url. Re-imports are idempotent: skills
 are matched by source_github_url and their folder contents replaced in
 place, so the slug and view count survive upstream updates.
@@ -128,7 +128,7 @@ async def fetch_repo_skills(repo_url: str) -> list[dict]:
         return skills
 
 
-# ===== Import into the curator workspace =====
+# ===== Import into the curator scope =====
 
 
 async def ensure_curator() -> tuple[UUID, UUID]:
@@ -221,7 +221,7 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
 
 
 async def import_repo(repo_url: str) -> dict:
-    """Import every SKILL.md folder in a repo into the curator workspace.
+    """Import every SKILL.md folder in a repo into the curator scope.
 
     Returns a summary: how many skills the repo had and how many were newly
     created vs updated in place. Idempotent — re-running tracks upstream."""

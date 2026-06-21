@@ -100,7 +100,7 @@ async def _insert_representative_source_document(
     if table == "slack_messages":
         extra = {"channel_id": "C123", "channel_name": "eng", "ts": "1720000000.000100"}
     elif table == "gong_documents":
-        extra = {"gong_workspace_id": "GONG_WS"}
+        extra = {"gong_account_id": "GONG_WS"}
 
     await source_service.upsert_content_document(
         table=table,
@@ -119,7 +119,7 @@ async def _insert_slack_source_without_channels(owner_id: UUID) -> dict:
 
     row = await get_pool().fetchrow(
         """
-        INSERT INTO workspace_sources (
+        INSERT INTO user_sources (
             owner_user_id, source_type, external_ref,
             display_name, capability, sync_interval_s, sync_enabled, settings
         )
@@ -440,7 +440,7 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_connected_source_handles_are_workspace_scoped(
+async def test_connected_source_handles_are_owner_scoped(
     client: AsyncClient,
     monkeypatch,
 ):
@@ -463,12 +463,12 @@ async def test_connected_source_handles_are_workspace_scoped(
         path="eng/1",
         name="#eng",
         kind="message",
-        content="workspace A roadmap",
+        content="owner A roadmap",
         external_ref="C1:1",
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
 
-    same_workspace = await client.get(
+    same_owner = await client.get(
         f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": "eng/1"},
         headers=_auth(owner_key),
@@ -479,35 +479,35 @@ async def test_connected_source_handles_are_workspace_scoped(
         sent_tasks.append({"args": args, "kwargs": kwargs})
 
     monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
-    cross_workspace_doc = await client.get(
+    cross_owner_doc = await client.get(
         f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": "eng/1"},
         headers=_auth(other_key),
     )
-    cross_workspace_entries = await client.get(
+    cross_owner_entries = await client.get(
         f"/api/v1/me/sources/{source_id}/entries",
         headers=_auth(other_key),
     )
-    cross_workspace_status = await client.get(
+    cross_owner_status = await client.get(
         f"/api/v1/me/sources/{source_id}/status",
         headers=_auth(other_key),
     )
-    cross_workspace_sync = await client.post(
+    cross_owner_sync = await client.post(
         f"/api/v1/me/sources/{source_id}/sync",
         headers=_auth(other_key),
     )
-    cross_workspace_delete = await client.delete(
+    cross_owner_delete = await client.delete(
         f"/api/v1/me/sources/{source_id}",
         headers=_auth(other_key),
     )
 
-    assert same_workspace.status_code == 200
-    assert same_workspace.json()["content"] == "workspace A roadmap"
-    assert cross_workspace_doc.status_code == 404
-    assert cross_workspace_entries.status_code == 404
-    assert cross_workspace_status.status_code == 404
-    assert cross_workspace_sync.status_code == 404
-    assert cross_workspace_delete.status_code == 404
+    assert same_owner.status_code == 200
+    assert same_owner.json()["content"] == "owner A roadmap"
+    assert cross_owner_doc.status_code == 404
+    assert cross_owner_entries.status_code == 404
+    assert cross_owner_status.status_code == 404
+    assert cross_owner_sync.status_code == 404
+    assert cross_owner_delete.status_code == 404
     assert sent_tasks == []
     assert await source_service.get_owned_source(UUID(source_id), owner_id) is not None
 
@@ -940,7 +940,7 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
         content="auth spec: rotate tokens hourly",
     )
 
-    wtoken = agent_runtime._workspace_ctx.set(ws)
+    scope_token = agent_runtime._scope_ctx.set(ws)
     utoken = agent_runtime._user_ctx.set(owner_id)
     try:
         sources = _tool_json(await agent_runtime._list_sources.handler({}))
@@ -970,7 +970,7 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
         assert any(h["ref"] == "specs/auth.md" for h in scoped)
     finally:
         agent_runtime._user_ctx.reset(utoken)
-        agent_runtime._workspace_ctx.reset(wtoken)
+        agent_runtime._scope_ctx.reset(scope_token)
 
 
 # --- github indexer + sync pipeline -----------------------------------------
@@ -1216,7 +1216,7 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient):
+async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     unconfigured = await source_service.create_source(
@@ -1234,7 +1234,7 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
         kind="call",
         content="secret revenue plan",
         external_ref="call-1",
-        extra={"gong_workspace_id": "W1"},
+        extra={"gong_account_id": "W1"},
     )
 
     assert await source_service.list_documents(unconfigured) == []
@@ -1263,7 +1263,7 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
         kind="call",
         content="allowed revenue plan",
         external_ref="call-1",
-        extra={"gong_workspace_id": "W1"},
+        extra={"gong_account_id": "W1"},
     )
     await source_service.upsert_content_document(
         table="gong_documents",
@@ -1274,7 +1274,7 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
         kind="call",
         content="blocked revenue plan",
         external_ref="call-2",
-        extra={"gong_workspace_id": "W2"},
+        extra={"gong_account_id": "W2"},
     )
 
     docs = await source_service.list_documents(configured)
@@ -1378,7 +1378,7 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
         kind="call",
         content="old confidential sales call",
         external_ref="old-call",
-        extra={"gong_workspace_id": "W_OLD"},
+        extra={"gong_account_id": "W_OLD"},
     )
     await source_service.upsert_content_document(
         table="gong_documents",
@@ -1389,7 +1389,7 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
         kind="call",
         content="kept confidential sales call",
         external_ref="keep-call",
-        extra={"gong_workspace_id": "W_KEEP"},
+        extra={"gong_account_id": "W_KEEP"},
     )
 
     updated = await source_service.create_source(
@@ -1404,7 +1404,7 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
     assert (
         await pool.fetchval(
             "SELECT COUNT(*) FROM gong_documents "
-            "WHERE source_id = $1 AND gong_workspace_id = 'W_OLD'",
+            "WHERE source_id = $1 AND gong_account_id = 'W_OLD'",
             source_id,
         )
         == 0
@@ -1412,7 +1412,7 @@ async def test_gong_allowlist_update_purges_disallowed_copied_calls(
     assert (
         await pool.fetchval(
             "SELECT COUNT(*) FROM gong_documents "
-            "WHERE source_id = $1 AND gong_workspace_id = 'W_KEEP'",
+            "WHERE source_id = $1 AND gong_account_id = 'W_KEEP'",
             source_id,
         )
         == 1
@@ -1569,7 +1569,7 @@ async def test_slack_event_ingest_requires_enabled_source(
         settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
     )
     await pool.execute(
-        "UPDATE workspace_sources SET sync_enabled = false WHERE id = $1",
+        "UPDATE user_sources SET sync_enabled = false WHERE id = $1",
         UUID(disabled_source["id"]),
     )
 
@@ -2155,7 +2155,7 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
     )
 
     # The other member, asking with their own context, cannot read it.
-    wtoken = agent_runtime._workspace_ctx.set(ws)
+    scope_token = agent_runtime._scope_ctx.set(ws)
     utoken = agent_runtime._user_ctx.set(other_id)
     try:
         result = _tool_json(
@@ -2164,7 +2164,7 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
         assert result == {"error": "source not found"}
     finally:
         agent_runtime._user_ctx.reset(utoken)
-        agent_runtime._workspace_ctx.reset(wtoken)
+        agent_runtime._scope_ctx.reset(scope_token)
 
 
 def test_source_document_url_builds_provider_deep_links():
@@ -2327,7 +2327,7 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
 
 
 @pytest.mark.asyncio
-async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncClient, pool):
+async def test_snapshot_source_into_skill_requires_same_owner(client: AsyncClient, pool):
     # Sources are user-scoped: a different user can't snapshot the owner's source.
     api_key, owner_id = await _register(client)
     other_key, other_id = await _register(client, "other_snap")
@@ -2346,7 +2346,7 @@ async def test_snapshot_source_into_skill_requires_same_workspace(client: AsyncC
         path="eng/1",
         name="#eng",
         kind="message",
-        content="workspace A roadmap",
+        content="owner A roadmap",
         external_ref="C1:1",
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )

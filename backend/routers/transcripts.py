@@ -207,7 +207,7 @@ async def get_transcript_events(
     """Chat-thread turns for a session, in render order. Sourced directly
     from history_events — no JSONL serialization round-trip.
 
-    No workspace-membership gate: read_session_events enforces
+    No membership gate: read_session_events enforces
     can_read_session, so a non-member the session is shared with can read it."""
     owner_user_id = current_user["id"]
     events = await memory_service.read_session_events(owner_user_id, session_id, current_user["id"])

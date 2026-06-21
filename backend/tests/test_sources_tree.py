@@ -96,7 +96,7 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
 
     async def fake_documents(source, prefix="", limit=200):
         # The registry row itself must pass through — list_documents applies
-        # the per-source security filters (Slack channel / Gong workspace
+        # the per-source security filters (Slack channel / Gong account
         # allowlists) from it.
         assert source is github
         return [{"path": "docs/api.md", "name": "api.md", "kind": "file"}]
@@ -106,8 +106,8 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
     async def fake_audit(**kwargs):
         audits.append(kwargs)
 
-    monkeypatch.setattr(files_tree_service, "list_workspace_pages", fake_pages)
-    monkeypatch.setattr(memory_service, "list_workspace_sessions", fake_sessions)
+    monkeypatch.setattr(files_tree_service, "list_scope_pages", fake_pages)
+    monkeypatch.setattr(memory_service, "list_scope_sessions", fake_sessions)
     monkeypatch.setattr(source_service, "list_connected_sources", fake_connected)
     monkeypatch.setattr(source_service, "list_documents", fake_documents)
     monkeypatch.setattr(source_service, "_audit_source_read", fake_audit)

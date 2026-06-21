@@ -55,7 +55,7 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _make_workspace(pool, creator_id):
+async def _make_scope(pool, creator_id):
     return creator_id
 
 
@@ -149,11 +149,11 @@ async def _make_history_event(
 # --- New model: private by default; owner + shares + publish record ---
 
 
-async def _share(pool, ws_id, object_type, object_id, user_id, permission="read", by=None):
+async def _share(pool, scope_id, object_type, object_id, user_id, permission="read", by=None):
     await pool.execute(
         "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by) VALUES ($1,$2,$3,'user',$4,$5,$6)",
-        ws_id,
+        scope_id,
         object_type,
         object_id,
         user_id,
@@ -165,8 +165,8 @@ async def _share(pool, ws_id, object_type, object_id, user_id, permission="read"
 @pytest.mark.asyncio
 async def test_owner_has_read_and_write(pool):
     owner = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
     assert await permission_service.check_access("page", page, owner)
     assert await permission_service.check_access("page", page, owner, require="write")
 
@@ -175,9 +175,9 @@ async def test_owner_has_read_and_write(pool):
 async def test_read_share_can_read_not_write(pool):
     owner = await _make_user(pool)
     viewer = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _share(pool, ws, "page", page, viewer, "read", by=owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
+    await _share(pool, scope, "page", page, viewer, "read", by=owner)
 
     assert await permission_service.check_access("page", page, viewer)
     assert not await permission_service.check_access("page", page, viewer, require="write")
@@ -187,8 +187,8 @@ async def test_read_share_can_read_not_write(pool):
 async def test_stranger_denied_by_default(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
     assert not await permission_service.check_access("page", page, stranger)
     assert not await permission_service.check_access("page", page, None)
 
@@ -197,9 +197,9 @@ async def test_stranger_denied_by_default(pool):
 async def test_user_share_grants_read_not_write(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _share(pool, ws, "page", page, friend, "read", by=owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
+    await _share(pool, scope, "page", page, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
     assert not await permission_service.check_access("page", page, friend, require="write")
 
@@ -208,9 +208,9 @@ async def test_user_share_grants_read_not_write(pool):
 async def test_user_write_share_grants_write(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _share(pool, ws, "page", page, friend, "write", by=owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
+    await _share(pool, scope, "page", page, friend, "write", by=owner)
     assert await permission_service.check_access("page", page, friend, require="write")
 
 
@@ -221,10 +221,10 @@ async def test_comment_tier_sits_between_read_and_write(pool):
     owner = await _make_user(pool)
     reader = await _make_user(pool)
     commenter = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _share(pool, ws, "page", page, reader, "read", by=owner)
-    await _share(pool, ws, "page", page, commenter, "comment", by=owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
+    await _share(pool, scope, "page", page, reader, "read", by=owner)
+    await _share(pool, scope, "page", page, commenter, "comment", by=owner)
 
     # read share: can read, cannot comment, cannot write.
     assert await permission_service.check_access("page", page, reader)
@@ -239,13 +239,13 @@ async def test_comment_tier_sits_between_read_and_write(pool):
 async def test_expired_share_grants_nothing(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
     await pool.execute(
         "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by, expires_at) "
         "VALUES ($1,'page',$2,'user',$3,'write',$4, now() - interval '1 hour')",
-        ws,
+        scope,
         page,
         friend,
         owner,
@@ -260,13 +260,13 @@ async def test_expired_share_grants_nothing(pool):
 async def test_future_expiry_still_grants(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
     await pool.execute(
         "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by, expires_at) "
         "VALUES ($1,'page',$2,'user',$3,'read',$4, now() + interval '1 day')",
-        ws,
+        scope,
         page,
         friend,
         owner,
@@ -278,12 +278,12 @@ async def test_future_expiry_still_grants(pool):
 async def test_folder_share_cascades_to_children(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    folder = await _make_folder(pool, ws, owner)
-    page = await _make_page(pool, ws, owner, folder_id=folder)
-    file_id = await _make_file(pool, ws, owner, folder_id=folder)
-    table = await _make_table(pool, ws, owner, folder_id=folder)
-    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner)
+    page = await _make_page(pool, scope, owner, folder_id=folder)
+    file_id = await _make_file(pool, scope, owner, folder_id=folder)
+    table = await _make_table(pool, scope, owner, folder_id=folder)
+    await _share(pool, scope, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
     assert await permission_service.check_access("file", file_id, friend)
     assert await permission_service.check_access("table", table, friend)
@@ -293,18 +293,18 @@ async def test_folder_share_cascades_to_children(pool):
 async def test_table_folder_share_cascades_and_write_inherits(pool):
     """A table inside a shared folder inherits the folder's grant — read from a
     read share, write from a write share — just like pages and files. A table
-    at the workspace root is unaffected by the folder share."""
+    at the scope root is unaffected by the folder share."""
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    folder = await _make_folder(pool, ws, owner)
-    table = await _make_table(pool, ws, owner, folder_id=folder)
-    root_table = await _make_table(pool, ws, owner, name="root-table")
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner)
+    table = await _make_table(pool, scope, owner, folder_id=folder)
+    root_table = await _make_table(pool, scope, owner, name="root-table")
 
     # Before any share the non-member can't see either table.
     assert not await permission_service.check_access("table", table, friend)
 
-    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    await _share(pool, scope, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("table", table, friend)
     # Read share is not a write grant, and the root table is outside the folder.
     assert not await permission_service.check_access("table", table, friend, require="write")
@@ -324,8 +324,8 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
 async def test_table_share_by_email_grants_direct_read(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    table = await _make_table(pool, ws, owner, name="prospects")
+    scope = await _make_scope(pool, owner)
+    table = await _make_table(pool, scope, owner, name="prospects")
     await pool.execute(
         "UPDATE users SET email = 'friend@example.com' WHERE id = $1",
         friend,
@@ -354,10 +354,10 @@ async def test_published_skill_grants_read_only(pool):
     stranger and anonymous alike — but is never a write grant."""
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    folder = await _make_folder(pool, ws, owner, name="public-skill")
-    page = await _make_page(pool, ws, owner, folder_id=folder)
-    await shared_skill_service.publish_folder(ws, owner, folder, title="Public Skill")
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner, name="public-skill")
+    page = await _make_page(pool, scope, owner, folder_id=folder)
+    await shared_skill_service.publish_folder(scope, owner, folder, title="Public Skill")
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -367,9 +367,9 @@ async def test_published_skill_grants_read_only(pool):
 async def test_public_session_folder_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
+    scope = await _make_scope(pool, owner)
     folder = await session_folder_service.create_folder(
-        ws,
+        scope,
         "Public Sessions",
         public_permission="read",
     )
@@ -393,11 +393,11 @@ async def test_skill_folder_share_grants_friend_read_of_nested_contents(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
     stranger = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    folder = await _make_folder(pool, ws, owner, name="private-skill")
-    await _make_page(pool, ws, owner, folder_id=folder, name="SKILL.md")
-    page = await _make_page(pool, ws, owner, folder_id=folder)
-    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner, name="private-skill")
+    await _make_page(pool, scope, owner, folder_id=folder, name="SKILL.md")
+    page = await _make_page(pool, scope, owner, folder_id=folder)
+    await _share(pool, scope, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
     assert not await permission_service.check_access("page", page, friend, require="write")
     assert not await permission_service.check_access("page", page, stranger)
@@ -407,9 +407,9 @@ async def test_skill_folder_share_grants_friend_read_of_nested_contents(pool):
 async def test_share_then_unshare_revokes(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _share(pool, ws, "page", page, friend, "read", by=owner)
+    scope = await _make_scope(pool, owner)
+    page = await _make_page(pool, scope, owner)
+    await _share(pool, scope, "page", page, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
     await pool.execute(
         "DELETE FROM shares WHERE object_type='page' AND object_id=$1 AND principal_id=$2",
@@ -423,31 +423,31 @@ async def test_share_then_unshare_revokes(pool):
 async def test_session_folder_share_cascades_to_sessions(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
+    scope = await _make_scope(pool, owner)
     folder = await pool.fetchval(
         "INSERT INTO session_folders (owner_user_id, name, slug) "
         "VALUES ($1, 'launch', 'launch-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
         "RETURNING id",
-        ws,
+        scope,
     )
-    session_row = await _make_session(pool, ws, owner, session_id="s-folder-1")
+    session_row = await _make_session(pool, scope, owner, session_id="s-folder-1")
     await pool.execute(
         "UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, folder
     )
     # Not shared yet → friend denied.
     assert not await permission_service.check_access("session", session_row, friend)
     # Share the folder → cascades to the session.
-    await _share(pool, ws, "session_folder", folder, friend, "read", by=owner)
+    await _share(pool, scope, "session_folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("session", session_row, friend)
 
 
 @pytest.mark.asyncio
 async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, pool):
     """The primary collaboration path, end-to-end through the REST API: a page
-    is private to its owner until shared by email; the grantee (not a workspace
-    member) then reads it, and a stranger still cannot.
+    is private to its owner until shared by email; the grantee (not the owner)
+    then reads it, and a stranger still cannot.
 
-    Regression for the single-item read endpoints gating on workspace
+    Regression for the single-item read endpoints gating on scope
     membership and so ignoring shares."""
     owner_key, _ = await _register(client)
     page_id = (
@@ -494,8 +494,8 @@ async def test_unshared_file_read_returns_not_found_over_http(client: AsyncClien
     403: an unscoped single-object lookup must not confirm a file the caller
     can't read exists. A genuinely missing id is also 404, indistinguishable."""
     owner_key, owner = await _register(client)
-    ws = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
-    file_id = await _make_file(pool, uuid.UUID(ws), uuid.UUID(owner["id"]))
+    scope = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
+    file_id = await _make_file(pool, uuid.UUID(scope), uuid.UUID(owner["id"]))
     stranger_key, _ = await _register(client)
 
     denied = await client.get(f"/api/v1/files/{file_id}", headers=_auth(stranger_key))
@@ -607,11 +607,11 @@ async def test_write_share_grantee_cannot_reshare_page_over_http(
     client: AsyncClient,
     pool,
 ):
-    """Only the owner (workspace creator) may share an object. A user who was
+    """Only the owner may share an object. A user who was
     granted write access via a share cannot re-share it onward."""
     owner_key, owner = await _register(client)
     writer_key, writer = await _register(client)
-    ws = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
+    scope = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
     page_id = (
         await client.post(
             "/api/v1/me/pages/new",
@@ -621,7 +621,7 @@ async def test_write_share_grantee_cannot_reshare_page_over_http(
     ).json()["id"]
     await _share(
         pool,
-        uuid.UUID(ws),
+        uuid.UUID(scope),
         "page",
         uuid.UUID(page_id),
         uuid.UUID(writer["id"]),
@@ -653,7 +653,7 @@ async def test_non_owner_cannot_publish_skill_folder(
     the owner's folder — it isn't in their scope, so the publish request fails."""
     owner_key, owner = await _register(client)
     writer_key, writer = await _register(client)
-    ws = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
+    scope = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
     folder_id = (
         await client.post(
             "/api/v1/me/folders",
@@ -663,7 +663,7 @@ async def test_non_owner_cannot_publish_skill_folder(
     ).json()["id"]
     await _share(
         pool,
-        uuid.UUID(ws),
+        uuid.UUID(scope),
         "folder",
         uuid.UUID(folder_id),
         uuid.UUID(writer["id"]),
@@ -681,7 +681,7 @@ async def test_non_owner_cannot_publish_skill_folder(
     )
 
     assert create.status_code == 400
-    assert create.json()["detail"] == "Folder not found in this workspace"
+    assert create.json()["detail"] == "Folder not found in this scope"
 
 
 @pytest.mark.asyncio
@@ -830,20 +830,20 @@ async def test_session_folder_write_access_cannot_manage_folder(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncClient):
+async def test_session_folder_assign_rejects_cross_scope_ids(client: AsyncClient):
     first_key, _ = await _register(client)
     second_key, _ = await _register(client)
     second_folder_id = (
         await client.post(
             "/api/v1/me/session-folders",
-            json={"name": "Other Workspace"},
+            json={"name": "Other Scope"},
             headers=_auth(second_key),
         )
     ).json()["id"]
     direct_upsert = await client.post(
         "/api/v1/me/sessions",
         json={
-            "session_id": "cross-workspace-direct",
+            "session_id": "cross-scope-direct",
             "agent_name": "codex",
             "session_folder_id": second_folder_id,
         },
@@ -851,7 +851,7 @@ async def test_session_folder_assign_rejects_cross_workspace_ids(client: AsyncCl
     )
     session = await client.post(
         "/api/v1/me/sessions",
-        json={"session_id": "cross-workspace-1", "agent_name": "codex"},
+        json={"session_id": "cross-scope-1", "agent_name": "codex"},
         headers=_auth(first_key),
     )
     assert session.status_code == 201
@@ -954,7 +954,7 @@ async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncCli
 @pytest.mark.asyncio
 async def test_share_response_does_not_reveal_account_existence(client: AsyncClient):
     """The share response must be identical for known and unknown emails —
-    a per-branch difference would let any workspace owner probe which
+    a per-branch difference would let any owner probe which
     addresses have Stash accounts (a user-enumeration oracle)."""
     owner_key, _ = await _register(client)
     page_id = (
@@ -1130,9 +1130,9 @@ async def test_shared_with_me_lists_incoming_not_outgoing(pool):
 
     owner = await _make_user(pool)
     friend = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
-    folder = await _make_folder(pool, ws, owner, name="Shared Folder")
-    await _share(pool, ws, "folder", folder, friend, "write", by=owner)
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner, name="Shared Folder")
+    await _share(pool, scope, "folder", folder, friend, "write", by=owner)
 
     items = await share_service.list_shared_with_user(friend)
     match = [i for i in items if i["object_id"] == str(folder)]
@@ -1140,7 +1140,7 @@ async def test_shared_with_me_lists_incoming_not_outgoing(pool):
     assert match[0]["object_type"] == "folder"
     assert match[0]["name"] == "Shared Folder"
     assert match[0]["permission"] == "write"
-    assert match[0]["owner_user_id"] == str(ws)
+    assert match[0]["owner_user_id"] == str(scope)
     # The owner is on the giving end — nothing is shared *with* them.
     assert await share_service.list_shared_with_user(owner) == []
 
@@ -1154,16 +1154,16 @@ async def test_shared_session_folder_sessions_gated_on_share(pool):
     owner = await _make_user(pool)
     friend = await _make_user(pool)
     stranger = await _make_user(pool)
-    ws = await _make_workspace(pool, owner)
+    scope = await _make_scope(pool, owner)
     sf = await pool.fetchval(
         "INSERT INTO session_folders (owner_user_id, name, slug) "
         "VALUES ($1, 'SF', 'sf-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
         "RETURNING id",
-        ws,
+        scope,
     )
-    session_row = await _make_session(pool, ws, owner, session_id="shared-sess-1")
+    session_row = await _make_session(pool, scope, owner, session_id="shared-sess-1")
     await pool.execute("UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, sf)
-    await _share(pool, ws, "session_folder", sf, friend, "read", by=owner)
+    await _share(pool, scope, "session_folder", sf, friend, "read", by=owner)
 
     rows = await share_service.list_shared_session_folder_sessions(sf, friend)
     assert [r["id"] for r in rows] == [str(session_row)]
@@ -1177,18 +1177,18 @@ async def test_shared_session_folder_sessions_gated_on_share(pool):
 async def test_overview_counts_span_shared_not_unshared(pool):
     """The "Your brain" vitals (analytics_service.get_overview_counts) span the
     user's own content plus content shared with them — but a share only surfaces
-    the specific shared rows, never the whole sharing workspace, and an unrelated
+    the specific shared rows, never the whole sharing scope, and an unrelated
     user sees nothing. Guards the widened member∪shared prefilter against leaks."""
     from backend.services import analytics_service
 
     owner = await _make_user(pool)
     friend = await _make_user(pool)  # gets one folder shared
     stranger = await _make_user(pool)  # gets nothing
-    ws = await _make_workspace(pool, owner)  # friend/stranger are NOT members
-    folder = await _make_folder(pool, ws, owner)
-    await _make_page(pool, ws, owner, folder_id=folder, name="shared-page")
-    await _make_page(pool, ws, owner, name="private-root-page")
-    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    scope = await _make_scope(pool, owner)  # friend/stranger are NOT members
+    folder = await _make_folder(pool, scope, owner)
+    await _make_page(pool, scope, owner, folder_id=folder, name="shared-page")
+    await _make_page(pool, scope, owner, name="private-root-page")
+    await _share(pool, scope, "folder", folder, friend, "read", by=owner)
 
     owner_counts = await analytics_service.get_overview_counts(owner)
     friend_counts = await analytics_service.get_overview_counts(friend)
