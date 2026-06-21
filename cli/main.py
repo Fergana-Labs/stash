@@ -3701,23 +3701,20 @@ def signin(
     # Direct key injection — no browser handshake. The streaming hooks read
     # ~/.stash/config.json, not env vars, so this is how a browser-less box
     # (typically a self-hosted CI runner) gets a key into that file. The key
-    # defines which self-hosted server it belongs to, so the endpoint must be
-    # given explicitly — there is no sensible default to fall back to.
+    # defines which self-hosted server it belongs to, so --api is required:
+    # such a box has never run an interactive sign-in, so nothing else could
+    # have established the endpoint.
     if api_key:
-        base_url = api or stored_base_url()
-        if not base_url:
-            console.print(
-                "[red]Pass --api <url> with --api-key — the self-hosted server that "
-                "minted the key.[/red]"
-            )
+        if not api:
+            console.print("[red]Pass --api <url> with --api-key — the server that minted the key.[/red]")
             raise typer.Exit(1)
         try:
-            with StashClient(base_url=base_url, api_key=api_key) as c:
+            with StashClient(base_url=api, api_key=api_key) as c:
                 user = c.whoami()
         except StashError as e:
-            console.print(f"[red]Could not authenticate against {base_url}: {e.detail}[/red]")
+            console.print(f"[red]Could not authenticate against {api}: {e.detail}[/red]")
             raise typer.Exit(1)
-        save_config(base_url=base_url, api_key=api_key, username=user["name"])
+        save_config(base_url=api, api_key=api_key, username=user["name"])
         console.print(f"[green]Authenticated as {user['name']}[/green]")
         return
 
