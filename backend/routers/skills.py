@@ -171,10 +171,9 @@ async def snapshot_source(
     skill = await shared_skill_service.get_skill(skill_id)
     if not skill or skill["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Skill not found")
-    source = await source_service.get_owned_source_in_workspace(
+    source = await source_service.get_owned_source(
         req.source_id,
         current_user["id"],
-        owner_user_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source document not found")
@@ -340,7 +339,7 @@ async def get_public_skill_item(
     }
 
 
-@public_router.post("/{slug}/add-to-workspace", status_code=201)
+@public_router.post("/{slug}/add-to-stash", status_code=201)
 async def fork_skill(
     slug: str,
     req: ForkSkillRequest,

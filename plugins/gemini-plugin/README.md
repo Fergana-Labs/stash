@@ -1,6 +1,6 @@
 # Stash Plugin for Gemini CLI
 
-Streams Gemini CLI sessions to an Stash workspace.
+Streams Gemini CLI sessions to your Stash.
 
 ## Prerequisites
 
@@ -45,8 +45,8 @@ Everything is a plain `stash` CLI subcommand — no Gemini-specific slash comman
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Interactive setup (auth + workspace + store) |
-| `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
+| `stash connect` | Interactive setup (auth + store) |
+| `stash settings` | Interactive settings page (streaming, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
 ## Known gaps
@@ -59,7 +59,7 @@ Gemini CLI has shell access. For reads mid-conversation, let the agent
 shell out to the `stash` CLI — all commands support `--json`:
 
 ```
-stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash vfs "cat '/me/sessions/_index.jsonl'"
 stash search "<query>"
 stash whoami --json
 ```

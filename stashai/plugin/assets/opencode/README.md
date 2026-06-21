@@ -1,6 +1,6 @@
 # Stash Plugin for opencode
 
-Streams opencode sessions to an Stash workspace.
+Streams opencode sessions to your Stash.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ Everything is a plain `stash` CLI subcommand — no opencode-specific slash comm
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Interactive setup (auth + workspace + store) |
+| `stash connect` | Interactive setup (auth + store) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
@@ -63,10 +63,10 @@ Everything is a plain `stash` CLI subcommand — no opencode-specific slash comm
 opencode agents have shell access. Point the agent at the `stash` CLI for reads mid-conversation. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
-stash vfs "find /workspaces -maxdepth 3 -type f"
-stash vfs "rg \"database migration\" /workspaces"
-stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash vfs "find /me -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /me"
+stash vfs "cat '/me/README.md' | sed -n '1,80p'"
+stash vfs "cat '/me/sessions/_index.jsonl'"
 stash search "<query>"
 stash whoami --json
 ```

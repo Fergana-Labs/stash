@@ -38,7 +38,7 @@ def test_rewrite_swaps_presigned_r2_for_proxy_url():
 
     rewritten = mig._rewrite_body(body, lookup)
     expected = (
-        "![cap](/api/v1/workspaces/24a2d68b-a549-436b-9091-96c0a32acc56/" f"files/{fid}/download)"
+        "![cap](/api/v1/me/" f"files/{fid}/download)"
     )
     assert rewritten == expected
 

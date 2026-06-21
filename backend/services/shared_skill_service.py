@@ -101,9 +101,9 @@ def agent_install_pitch(stash_url: str) -> str:
         '"$HOME/.local/bin/stash" connect\n'
         f'"$HOME/.local/bin/stash" read {stash_url}\n'
         "```\n\n"
-        "After setup, use `stash vfs` to browse workspace context like a "
+        "After setup, use `stash vfs` to browse your Stash like a "
         "filesystem without mounting anything into the OS, for example "
-        '`stash vfs "find /workspaces -maxdepth 3 -type f"`.\n\n'
+        '`stash vfs "find /me -maxdepth 3 -type f"`.\n\n'
         "If Stash is already installed, run:\n\n"
         "```bash\n"
         "stash signin --no-browser\n"
@@ -764,7 +764,7 @@ async def snapshot_source_into_skill(
     """Copy a point-in-time snapshot of one connected-source document into the
     skill's folder as a native page, so the skill stays self-contained.
 
-    The caller validates source ownership (get_owned_source_in_workspace).
+    The caller validates source ownership (get_owned_source).
     Returns None if the document is gone or its provider fetch failed — an
     error doc must never be persisted as an empty snapshot page."""
     skill = await get_skill(skill_id)

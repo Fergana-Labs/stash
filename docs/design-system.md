@@ -1,7 +1,7 @@
 # Design System — Stash
 
 ## Product Context
-- **What this is:** Real-time workspace platform where AI agents and humans collaborate as peers — sessions, files (folders + pages + binaries), tables, and shareable Skills
+- **What this is:** Personal platform where your AI agents and you collaborate as peers — sessions, files (folders + pages + binaries), tables, and shareable Skills, all scoped to your Stash
 - **Who it's for:** Developers building with AI agents, technical teams running multi-agent workflows
 - **Space/industry:** AI collaboration tools, developer platforms (peers: Cursor, Linear, CrewAI, Notion)
 - **Project type:** Web app (Next.js 16 + Tailwind 4 frontend, Python/FastAPI backend)
@@ -56,7 +56,7 @@
 - **Scale:** 2xs(2) xs(4) sm(8) md(16) lg(24) xl(32) 2xl(48) 3xl(64)
 
 ## Layout
-- **Approach:** Grid-disciplined — sidebar + content for workspace views, strict alignment
+- **Approach:** Grid-disciplined — sidebar + content for your Stash views, strict alignment
 - **Grid:** Sidebar (220px fixed) + flexible content area. Max content width 680px for pages and other readable content, full-width for data-dense views (tables, session timelines)
 - **Max content width:** 1120px for page container
 - **Border radius:** sm:4px (inputs, tags), md:8px (buttons, cards), lg:12px (containers, mockups), full:9999px (badges, avatars, pills)
@@ -65,7 +65,7 @@
 - **Approach:** Minimal-functional — only transitions that aid comprehension
 - **Easing:** enter(ease-out) exit(ease-in) move(ease-in-out)
 - **Duration:** micro(50-100ms) hover(150ms) slide(200ms) fade(150ms)
-- **No decorative animation.** This is a workspace, not a marketing site.
+- **No decorative animation.** This is a working tool, not a marketing site.
 
 ## Agent/Human Visual System
 - Agents are always marked with **violet** (#8B5CF6) — avatars, type tags, collaboration cursors, memory store source dots

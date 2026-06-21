@@ -1,18 +1,18 @@
-# Stash — Workspaces, Skills, and Memory System
+# Stash — Files, Skills, and Memory System
 
-## Concept: Stash Workspaces and Skills
+## Concept: Your Stash and Skills
 
-A **Stash Workspace** is a shared home for agent work. Each workspace has three
-primary surfaces:
+**Stash** is your personal home for agent work. Everything you create is scoped
+to your account — it is yours alone, with nothing to pick or set up first.
+Your Stash has three primary surfaces:
 
-- **Sessions** — agent transcripts uploaded under
-  `/api/v1/workspaces/{id}/sessions`.
+- **Sessions** — agent transcripts uploaded under `/api/v1/me/sessions`.
 - **Files** — folders, markdown pages, HTML pages, uploads, and tables.
 - **Skills** — modules of agent-usable knowledge: local SKILL.md folders and shareable bundles of sessions and Files.
 
-To give your agents a skill, **create a Files folder** in a workspace whose
-immediate children include a file named `SKILL.md`. The body of `SKILL.md`
-starts with YAML frontmatter:
+To give your agents a skill, **create a Files folder** whose immediate children
+include a file named `SKILL.md`. The body of `SKILL.md` starts with YAML
+frontmatter:
 
 ```yaml
 ---
@@ -28,18 +28,17 @@ The folder may contain any number of supporting `.md` files (`examples.md`,
 `checklist.md`, etc.) — they all become part of the skill payload. Stash
 exposes skills via:
 
-- `GET /api/v1/workspaces/{id}/skills` — list skills in a workspace
-- `GET /api/v1/workspaces/{id}/skills/{name}` — full skill (SKILL.md + siblings)
+- `GET /api/v1/me/skills` — list your skills
+- `GET /api/v1/me/skills/{name}` — full skill (SKILL.md + siblings)
 - MCP: `stash_list_skills`, `stash_read_skill`
 
-This is the same skills convention Claude Code uses, so a skill authored in a
-workspace works directly when dropped into any agent's `~/.claude/skills/` folder.
+This is the same skills convention Claude Code uses, so a skill authored in
+Stash works directly when dropped into any agent's `~/.claude/skills/` folder.
 
 ## Overview
-Stash is the shared product surface for humans and agents.
+Stash is the product surface for you and your agents.
 
 It provides:
-- workspace membership and permissions
 - pages organized in nestable folders
 - tables (typed columns, rows, CSV import/export, semantic row search)
 - session events (with file attachments)
@@ -47,7 +46,7 @@ It provides:
 - Skills for publishing sets of pages, sessions, and files
 
 Design boundary:
-- Stash owns persistent shared state and plugin-based memory access
+- Stash owns persistent state and plugin-based memory access
 - external orchestration layers own multi-agent delegation
 - Claude-session memory access should go through the Stash plugin, not side-channel polling
 
@@ -60,6 +59,9 @@ All endpoints (except registration and a few public lookups) require an API key:
 Authorization: Bearer mc_xxxxxxxxxxxxx
 ```
 
+Your account is the scope. `GET /api/v1/users/me` returns the authenticated
+user; everything else hangs off the `/api/v1/me` prefix.
+
 ## Quick Start
 
 ### 1. Register
@@ -70,66 +72,59 @@ curl -X POST {{BASE_URL}}/api/v1/users/register \
 ```
 Response includes `api_key` — save it, it's shown only once.
 
-### 2. Create a Workspace
+### 2. Push a Session Event
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Project", "description": "Shared workspace"}'
-```
-
-### 3. Push a Session Event
-```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/sessions/events \
+curl -X POST {{BASE_URL}}/api/v1/me/sessions/events \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
 ```
 
-### 4. Create a Page
+### 3. Create a Page
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/pages/new \
+curl -X POST {{BASE_URL}}/api/v1/me/pages/new \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name":"Notes","content":"# Hello"}'
 ```
 Pass `"folder_id": "<uuid>"` to drop the page into a specific folder;
-omit it to create the page at the workspace root.
+omit it to create the page at your root.
 
-### 5. Upload a File
+### 4. Upload a File
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/files \
+curl -X POST {{BASE_URL}}/api/v1/me/files \
   -H "Authorization: Bearer $API_KEY" \
   -F "file=@./report.pdf"
 ```
 Response includes the file `id`, a signed `url`, and basic metadata. For
 PDFs with embedded text and text-based documents, extracted text is
-available at `GET /api/v1/workspaces/$WS/files/{id}/text` once the
-background extractor has processed the file (typically a few seconds).
+available at `GET /api/v1/me/files/{id}/text` once the background extractor
+has processed the file (typically a few seconds).
 
 ## Route Surfaces
 
-Every resource lives inside a workspace. There is no personal (no-workspace)
-scope — pick or create a workspace first.
+Everything is scoped to your account under `/api/v1/me`. Single shared objects
+also have canonical, scope-free URLs (`/api/v1/{pages,files,tables}/{id}`) used
+when linking to a specific object by id.
 
 | Surface | Prefix |
 |---------|--------|
-| Users | `/api/v1/users` (register, login, `/me`, `/search`) |
-| Workspaces | `/api/v1/workspaces` (CRUD, members, invite tokens) |
-| Folders (nestable) | `/api/v1/workspaces/{ws}/folders` |
-| Pages | `/api/v1/workspaces/{ws}/pages` (list) and `/api/v1/workspaces/{ws}/pages/new` (create) |
-| Single page | `/api/v1/workspaces/{ws}/pages/{page_id}` |
-| Workspace tree (nested folders + pages) | `/api/v1/workspaces/{ws}/tree` |
-| Tables | `/api/v1/workspaces/{ws}/tables` |
-| Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` |
-| Files | `/api/v1/workspaces/{ws}/files` |
-| Session events | `/api/v1/workspaces/{ws}/sessions/events` |
-| Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
-| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,session-events}` |
+| User | `/api/v1/users` (register, login, `/me`) |
+| Folders (nestable) | `/api/v1/me/folders` |
+| Pages | `/api/v1/me/pages` (list) and `/api/v1/me/pages/new` (create) |
+| Single page | `/api/v1/pages/{page_id}` |
+| Tree (nested folders + pages) | `/api/v1/me/tree` |
+| Tables | `/api/v1/me/tables` |
+| Single table | `/api/v1/tables/{table_id}` |
+| Rows | `/api/v1/me/tables/{t}/rows` |
+| Files | `/api/v1/me/files` |
+| Single file | `/api/v1/files/{file_id}` |
+| Session events | `/api/v1/me/sessions/events` |
+| Transcripts | `/api/v1/me/transcripts` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
-`DELETE` remove. Semantic search hangs off the workspace
-(`GET /api/v1/workspaces/{ws}/pages/semantic-search?q=...`).
+`DELETE` remove. Semantic search hangs off the page surface
+(`GET /api/v1/me/pages/semantic-search?q=...`).
 
 ## Page Content (`content_markdown`)
 
@@ -143,12 +138,12 @@ Use ordinary markdown links for everything:
 
 | Target | Shape |
 |---|---|
-| Another page in the same workspace | `[text](/workspaces/<ws>/p/<uuid>)` |
-| A file uploaded to the workspace | `[text](/api/v1/workspaces/<ws>/files/<uuid>/download)` |
+| Another page | `[text](/p/<uuid>)` |
+| An uploaded file | `[text](/api/v1/me/files/<uuid>/download)` |
 | External URL | `[text](https://…)` |
 
 The viewer renders all three with the same style; an `↗` glyph marks
-off-origin URLs. Internal `/workspaces/<ws>/p/<uuid>` and stash absolute URLs are
+off-origin URLs. Internal `/p/<uuid>` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
 There is no `[[...]]` syntax. Use ordinary markdown links with the page's id URL.
@@ -191,14 +186,14 @@ you'll round-trip cleanly through edit mode:
    the renderer treats them as dead and the editor strips them if a
    user saves the page.
 3. Don't rely on H4 or deeper headings. Restructure with H3 + bold.
-4. Images need an absolute URL (external or `/files/<id>/download`).
+4. Images need an absolute URL (external or `/api/v1/me/files/<id>/download`).
 
 ## Session Events
 
-Events are structured append-only records keyed by `(workspace, agent_name, event_type)`.
+Events are structured append-only records keyed by `(agent_name, event_type)`.
 
 ```json
-POST /api/v1/workspaces/{ws}/sessions/events
+POST /api/v1/me/sessions/events
 {
   "agent_name": "cli",
   "event_type": "note",
@@ -238,12 +233,12 @@ Query/search:
 - CLI auth session polling: 60/min
 
 ## Tips for Agents
-- Every resource requires a workspace — there is no no-workspace scope.
+- Everything you create is scoped to your account — your API key is the scope.
 - For extracted text on an uploaded file, poll `GET /files/{id}/text` — it
   returns `status` alongside the text so you can distinguish "still
   extracting" (`pending`/`processing`) from "done, no text available"
   (`done` with `text: null`).
 - Attach files to session events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
-- When authoring page content that links to another page in the same
-  workspace, use the page id URL form: `[text](/workspaces/<ws>/p/<uuid>)`.
+- When authoring page content that links to another page, use the page id
+  URL form: `[text](/p/<uuid>)`.

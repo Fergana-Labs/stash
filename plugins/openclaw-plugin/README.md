@@ -1,6 +1,6 @@
 # Stash Extension for Openclaw
 
-Streams every Openclaw session to a Stash workspace so you can read
+Streams every Openclaw session to your Stash so you can read
 history from the `stash` CLI or the Assert review app.
 
 This extension hooks into Openclaw's **plugin-hook** system
@@ -84,7 +84,7 @@ so point it at the `stash` CLI for reads mid-conversation — all commands
 support `--json`:
 
 ```
-stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash vfs "cat '/me/sessions/_index.jsonl'"
 stash search "<query>"
 stash whoami --json
 ```

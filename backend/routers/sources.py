@@ -226,10 +226,9 @@ async def source_status(
     sync_status, last_synced_at, sync_error, and how many items are indexed."""
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
-    source = await source_service.get_owned_source_in_workspace(
+    source = await source_service.get_owned_source(
         source_id,
         current_user["id"],
-        owner_user_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -353,10 +352,9 @@ async def sync_source_now(
     """Trigger an immediate re-index of an owned source."""
     owner_user_id = current_user["id"]
     await _require_write(owner_user_id, current_user["id"])
-    source = await source_service.get_owned_source_in_workspace(
+    source = await source_service.get_owned_source(
         source_id,
         current_user["id"],
-        owner_user_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -398,10 +396,9 @@ async def remove_source(
 ):
     owner_user_id = current_user["id"]
     await _require_write(owner_user_id, current_user["id"])
-    source = await source_service.get_owned_source_in_workspace(
+    source = await source_service.get_owned_source(
         source_id,
         current_user["id"],
-        owner_user_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")

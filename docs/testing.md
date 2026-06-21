@@ -27,12 +27,11 @@ TEST_DATABASE_URL=postgresql://stash:stash@localhost:5432/stash_test \
 | File | Covers |
 |------|--------|
 | `test_auth.py` | Registration, login, API key auth, password validation |
-| `test_permissions.py` | Visibility modes, member/owner access, write-access gating |
+| `test_permissions.py` | Private-by-default access, owner read/write, share grants, publish records |
 | `test_webhooks.py` | SSRF URL validation, secret hashing, delivery logic |
 | `test_sleep_agent.py` | Curation tool lifecycle, advisory locks, watermark advancement |
 | `test_migrations.py` | Alembic upgrade/history smoke tests |
-| `test_workspaces.py` | Workspace CRUD, invite codes, membership, role enforcement |
-| `test_chat.py` | Chat creation, messaging, message retrieval, personal rooms |
+| `test_collab.py` | Sharing, copy, and collaboration on user-scoped objects |
 | `test_websocket.py` | ConnectionManager delivery, dead-socket cleanup, pg_notify, oversized fallback |
 
 ### Conventions

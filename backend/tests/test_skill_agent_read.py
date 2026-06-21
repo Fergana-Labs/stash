@@ -92,7 +92,7 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     assert ('bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser') in text
     assert "This prints a browser consent URL for the user" in text
     assert "Do not complete setup without user approval." in text
-    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in text
+    assert 'stash vfs "find /me -maxdepth 3 -type f"' in text
     assert "stash connect" in text
     assert '"$HOME/.local/bin/stash" connect' in text
     assert f"stash read http://localhost:3457/skills/{slug}" in text
@@ -127,7 +127,7 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
     assert (
         'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
     ) in resp.text
-    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in resp.text
+    assert 'stash vfs "find /me -maxdepth 3 -type f"' in resp.text
     assert f"stash read http://localhost:3457/skills/{body['skill_slug']}" in resp.text
 
     json_resp = await client.get(
@@ -149,7 +149,7 @@ async def test_llms_txt_documents_agent_skill_reads(client: AsyncClient):
         'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
     ) in resp.text
     assert "stash signin --no-browser" in resp.text
-    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in resp.text
+    assert 'stash vfs "find /me -maxdepth 3 -type f"' in resp.text
     assert "stash read https://app.joinstash.ai/skills/example" in resp.text
 
 
@@ -157,7 +157,7 @@ async def test_llms_txt_documents_agent_skill_reads(client: AsyncClient):
 async def test_skill_skill_manifest_includes_agent_install_pitch(client: AsyncClient):
     resp = await client.get("/skill/stash/SKILL.md")
     assert resp.status_code == 200
-    assert "Stash — Workspaces, Skills, and Memory System" in resp.text
+    assert "Stash — Files, Skills, and Memory System" in resp.text
     assert "## Connect This Repo To Stash" in resp.text
     assert "Ask the user:" in resp.text
     assert (

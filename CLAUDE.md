@@ -38,7 +38,7 @@ Never commit screenshots, recordings, or other assets that exist only to support
 <!-- stash-context -->
 ## Stash
 
-This repo uses [Stash](https://joinstash.ai) for shared agent Sessions and Files.
+This repo uses [Stash](https://joinstash.ai) for your agent Sessions and Files.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
 ### What a Skill is
@@ -56,11 +56,11 @@ Run `stash prompts agent-guidance` to reprint this guidance mid-session.
 
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
-- `stash vfs "ls /workspaces"` — browse workspaces as a filesystem: files, sessions, tables, skills, sources
-- `stash vfs "cat '/workspaces/<ws>/files/<page>.md'"` — read any page, file, transcript, or source doc
+- `stash vfs "ls /me"` — browse your Stash as a filesystem: files, sessions, tables, skills, sources
+- `stash vfs "cat '/me/files/<page>.md'"` — read any page, file, transcript, or source doc
 - `stash sessions agents` — who's been active
 
-Browsing and reading workspace content (files, pages, sessions, tables, skills, connected sources) is
+Browsing and reading your Stash content (files, pages, sessions, tables, skills, connected sources) is
 done through the VFS — `stash vfs "<bash>"` (ls/cat/find/grep/tree) — not dedicated read subcommands.
 
 ### LLM configuration (server-side)

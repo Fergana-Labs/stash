@@ -349,22 +349,6 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
     return _source_row(row) if row else None
 
 
-async def get_owned_source_in_workspace(
-    source_id: UUID,
-    user_id: UUID,
-    owner_user_id: UUID,
-) -> dict | None:
-    """Fetch a connected source only within the scope route boundary."""
-    row = await get_pool().fetchrow(
-        "SELECT * FROM user_sources "
-        "WHERE id = $1 AND owner_user_id = $2 AND owner_user_id = $3",
-        source_id,
-        user_id,
-        owner_user_id,
-    )
-    return _source_row(row) if row else None
-
-
 async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     """Remove a connected source the user owns. Its documents cascade."""
     result = await get_pool().execute(
@@ -391,14 +375,6 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict
     )
     return [_source_row(row) for row in rows]
 
-
-async def delete_sources_for_workspace_member(conn, owner_user_id: UUID, user_id: UUID) -> int:
-    result = await conn.execute(
-        "DELETE FROM user_sources WHERE owner_user_id = $1 AND owner_user_id = $2",
-        owner_user_id,
-        user_id,
-    )
-    return int(result.rsplit(" ", 1)[-1])
 
 
 async def get_source_for_sync(source_id: UUID) -> dict | None:
@@ -1176,7 +1152,7 @@ async def _resolve_connected(source: str, owner_user_id: UUID, user_id: UUID) ->
         source_id = UUID(source)
     except ValueError:
         return None
-    return await get_owned_source_in_workspace(source_id, user_id, owner_user_id)
+    return await get_owned_source(source_id, user_id)
 
 
 async def _audit_source_read(

@@ -13,7 +13,7 @@ Before a managed customer connects integrations, record these items in the deal
 or launch review:
 
 - Production environment name and deployment commit.
-- Customer workspaces in scope.
+- Customer accounts in scope.
 - Integrations being connected and their approved scopes or allowlists.
 - Named Stash owner for the customer launch.
 - Named incident lead and escalation backup.
@@ -53,8 +53,7 @@ Evidence to collect:
   sessions, copied integration documents, source disconnect, and offboarding.
 - Backup retention window is documented for production database and object
   storage.
-- Account or workspace deletion requests have a named owner and completion
-  checklist.
+- Account deletion requests have a named owner and completion checklist.
 
 Operating procedure:
 
@@ -78,10 +77,10 @@ Evidence to collect:
 Operating procedure:
 
 - Restore into an isolated non-production environment.
-- Validate database migrations, workspace listing, file signed URLs, and a sample
+- Validate database migrations, account listing, file signed URLs, and a sample
   transcript read.
 - Delete the restore environment after validation.
-- Do not run restore tests in the customer's production workspace.
+- Do not run restore tests against the customer's production account.
 
 ## Incident Response
 
@@ -122,8 +121,8 @@ For a customer incident:
 - Granola, Google, GitHub, Notion, Asana, Snowflake: disconnect the provider and
   verify local credentials and source rows are gone.
 
-Record provider, owner user, workspace, disconnect time, local deletion checks,
-and any provider-side revocation errors.
+Record provider, owner user, disconnect time, local deletion checks, and any
+provider-side revocation errors.
 
 ## Observability And Logs
 

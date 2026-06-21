@@ -38,7 +38,7 @@ CONTEXT = (
     "When sharing artifacts, pick the right tool:\n"
     " - Single file your teammate should look at → `stash upload "
     "<path> --json` and hand them the returned `app_url`. NO Skill needed.\n"
-    " - Upload a folder/project into the workspace → `stash upload <path> "
+    " - Upload a folder/project into your Stash → `stash upload <path> "
     "--json` returns the folder `app_url`. NO Skill created by default.\n"
     " - You're publishing a curated bundle people should see together → "
     '`stash upload <path> --skill "<title>" --json` (or `stash skills '
@@ -55,16 +55,16 @@ CONTEXT = (
     "session transcripts, and every connected integration (GitHub, Slack, "
     "Gong, Gmail, Drive, Notion, …). When asked what you have access to, run "
     "it and show the tree; drill in with `stash ls <source>/<path>`.\n\n"
-    "Browse Stash through the virtual filesystem first when you need workspace "
-    'context: `stash vfs ls /`, `stash vfs "find /workspaces -maxdepth 3 '
-    '-type f"`, `stash vfs "rg \\"query\\" /workspaces"`, or '
-    "`stash vfs \"cat '/workspaces/<workspace>/README.md' | sed -n "
+    "Browse Stash through the virtual filesystem first when you need "
+    'context: `stash vfs ls /me`, `stash vfs "find /me -maxdepth 3 '
+    '-type f"`, `stash vfs "rg \\"query\\" /me"`, or '
+    "`stash vfs \"cat '/me/files/README.md' | sed -n "
     "'1,80p'\"`.\n\n"
     "Common direct reads: "
     '`stash search "<query>"`, '
-    "`stash vfs \"cat '/workspaces/<id>/sessions/_index.jsonl'\"`, "
+    "`stash vfs \"cat '/me/sessions/_index.jsonl'\"`, "
     "`stash sessions agents`, "
-    "`stash vfs \"find /workspaces -name '*.md'\"`."
+    "`stash vfs \"find /me -name '*.md'\"`."
 )
 
 SESSION_CONTEXT = (
