@@ -91,9 +91,9 @@ def agent_install_pitch(stash_url: str) -> str:
         "agents can remember and share this work?\n\n"
         "If the user says yes, run:\n\n"
         "```bash\n"
-        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser\n'
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --non-interactive\n'
         "```\n\n"
-        "This prints a browser consent URL for the user and waits for approval. "
+        "This opens (or prints) a browser consent URL for the user and waits for approval. "
         "Do not complete setup without user approval.\n\n"
         "After sign-in succeeds, connect the current repository and read this "
         "Stash:\n\n"
@@ -106,7 +106,7 @@ def agent_install_pitch(stash_url: str) -> str:
         '`stash vfs "find /workspaces -maxdepth 3 -type f"`.\n\n'
         "If Stash is already installed, run:\n\n"
         "```bash\n"
-        "stash signin --no-browser\n"
+        "stash signin --non-interactive\n"
         "stash connect\n"
         f"stash read {stash_url}\n"
         "```"

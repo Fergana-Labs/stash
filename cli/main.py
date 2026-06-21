@@ -152,7 +152,6 @@ def _browser_auth_flow(
     api: str,
     page: str | None = None,
     timeout: int = 120,
-    no_browser: bool = False,
 ) -> tuple[str, str]:
     """Browser-based CLI sign-in. Returns (api_key, username).
 
@@ -184,7 +183,7 @@ def _browser_auth_flow(
     url = f"{page}{sep}session={session_id}"
 
     ssh = any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
-    opened = False if (no_browser or ssh) else webbrowser.open(url)
+    opened = False if ssh else webbrowser.open(url)
 
     if opened:
         console.print(f"  [green]✓[/green] Opened [bold]{page}[/bold] in your browser.")
@@ -3675,25 +3674,27 @@ def signin(
     api: str = typer.Option(
         None, "--api", help="Stash API base URL. Override for self-hosted deployments."
     ),
-    no_browser: bool = typer.Option(
+    non_interactive: bool = typer.Option(
         False,
-        "--no-browser",
-        help="Don't open a browser; just print the URL. Use on SSH or headless machines.",
+        "--non-interactive",
+        help="Skip the setup wizard; just authenticate. For installers and agents. "
+        "Implied when stdin isn't a terminal.",
     ),
     timeout: int = typer.Option(120, "--timeout", help="Seconds to wait for sign-in."),
 ):
     """Sign in to Stash through the browser.
 
     Run interactively for guided first-run setup (endpoint, streaming agents,
-    repo). With --no-browser — or whenever stdin isn't a terminal — it just
-    authenticates, which is the path installers and agents use. For a fully
-    unattended machine (no browser), use `stash auth` to inject a pre-minted
-    key instead.
+    repo). With --non-interactive — or whenever stdin isn't a terminal — it
+    skips the wizard and just authenticates, which is the path installers and
+    agents use. The browser opens automatically when one is available, and
+    otherwise a URL is printed to visit. For a fully unattended machine, use
+    `stash auth` to inject a pre-minted key instead.
     """
     # Scripted / headless: bare browser auth, no wizard prompts.
-    if no_browser or not sys.stdin.isatty():
+    if non_interactive or not sys.stdin.isatty():
         base_url = api or stored_base_url() or PRODUCTION_BASE_URL
-        api_key, username = _browser_auth_flow(base_url, timeout=timeout, no_browser=no_browser)
+        api_key, username = _browser_auth_flow(base_url, timeout=timeout)
         save_config(base_url=base_url, api_key=api_key, username=username)
         console.print(f"[green]✓ Signed in as {username}[/green]")
         return
