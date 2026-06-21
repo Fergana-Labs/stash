@@ -6,7 +6,7 @@ Write extremely easy to consume code. Optimize for readability: skimmable, no cl
 We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
  - Add backwards compatibility support of any kind. This includes migrations, compatibility shims, aliases, legacy format support, and fallback code paths.
  - Attempt to preserve backwards compatibility when making an edit.
- - Use fallbacks to save the UX when a primary path doesn't work (we'd rather fail fast, and this helps us to maintain as few codepaths as possible)
+ - Use fallbacks of ANY kind, ANYWHERE, under ANY circumstance. There are no exceptions. This includes UX-saving fallbacks when a primary path fails, default values papered over a missing input (`x or DEFAULT`, `x or stored_value()`), `try/except` that swallows an error and continues, and "if the real source is empty, use this other source" chains. When a required input is absent or a path fails, FAIL LOUD (raise/exit with a clear message) — never silently substitute. A single source of truth with one codepath, always.
  - Support old formats. If a format changes, change it everywhere in one shot.
 
 Here are some common code patterns that we need you to avoid:
