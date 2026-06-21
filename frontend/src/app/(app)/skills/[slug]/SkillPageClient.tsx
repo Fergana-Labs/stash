@@ -34,7 +34,7 @@ import {
   type SkillPublishInfo,
 } from "@/lib/api";
 import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
-import AddToWorkspaceButton from "./AddToWorkspaceButton";
+import AddToStashButton from "./AddToStashButton";
 
 export default function SkillPageClient({ slug }: { slug: string }) {
   const { user } = useAuth();
@@ -233,7 +233,7 @@ function SkillPageBody({
   return (
     <div className="scroll-thin min-h-screen bg-background">
       {/* Cover banner — click to upload (when can_write). Mirrors the
-          workspace home identity strip but with edit affordance. */}
+          home identity strip but with edit affordance. */}
       <BannerImage
         cover={cover}
         canWrite={can_write}
@@ -297,8 +297,8 @@ function SkillPageBody({
               </Link>
             ) : (
               // Forking only makes sense when the viewer doesn't already have
-              // write access to this skill in its own workspace.
-              <AddToWorkspaceButton slug={skill.slug} />
+              // write access to this skill in its own scope.
+              <AddToStashButton slug={skill.slug} />
             )}
           </div>
         </div>

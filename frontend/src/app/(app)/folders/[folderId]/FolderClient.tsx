@@ -7,7 +7,7 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
-import WorkspaceFileBrowser from "@/components/workspace/file-browser/WorkspaceFileBrowser";
+import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
@@ -175,11 +175,11 @@ export default function FolderDetailPage() {
     );
   }
 
-  return <WorkspaceFileBrowser folderId={folderId} />;
+  return <FileBrowser folderId={folderId} />;
 }
 
 // Read-only listing of the subfolder's contents, sourced from the public
-// skill payload (for viewers who can't reach the workspace endpoint).
+// skill payload (for viewers who can't reach the owner's endpoint).
 function SkillFallbackFolderView({
   skillSlug,
   skillTitle,

@@ -51,7 +51,7 @@ vi.mock("@/components/skill/SkillShareButton", () => ({
 }));
 
 vi.mock(
-  "@/components/workspace/file-browser/WorkspaceFileBrowser",
+  "@/components/content/file-browser/FileBrowser",
   () => ({
     default: ({ folderHrefBase }: { folderHrefBase?: string }) => (
       <div data-testid="file-browser" data-href-base={folderHrefBase} />

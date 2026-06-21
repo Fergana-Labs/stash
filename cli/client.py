@@ -145,7 +145,7 @@ class StashClient:
         self._delete(f"/api/v1/skills/{skill_id}")
 
     def fork_skill(self, slug: str) -> dict:
-        return self._post(f"/api/v1/skills/{slug}/add-to-workspace")
+        return self._post(f"/api/v1/skills/{slug}/add-to-stash")
 
     def get_public_skill(self, slug: str) -> dict:
         return self._get(f"/api/v1/skills/{slug}")

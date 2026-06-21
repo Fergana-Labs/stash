@@ -1,5 +1,5 @@
-import { WorkspaceHomeSkeleton } from "@/components/SkeletonStates";
+import { ScopeHomeSkeleton } from "@/components/SkeletonStates";
 
 export default function Loading() {
-  return <WorkspaceHomeSkeleton />;
+  return <ScopeHomeSkeleton />;
 }

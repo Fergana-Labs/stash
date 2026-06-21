@@ -3,7 +3,7 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import HtmlPageView from "@/components/workspace/HtmlPageView";
+import HtmlPageView from "@/components/content/HtmlPageView";
 import type { PublicSkillPage } from "@/lib/api";
 
 // Read-only page renderer for the ?skill= fallback views — viewers who can't

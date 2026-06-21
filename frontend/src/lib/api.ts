@@ -1038,7 +1038,6 @@ export interface SessionFolder {
   name: string;
   owner_display_name: string | null;
   access: SessionFolderVisibility;
-  workspace_permission: GeneralPermission;
   public_permission: GeneralPermission;
   discoverable: boolean;
   is_default: boolean;
@@ -1063,7 +1062,6 @@ export async function updateSessionFolder(
   folderId: string,
   data: {
     name?: string;
-    workspace_permission?: GeneralPermission;
     public_permission?: GeneralPermission;
     discoverable?: boolean;
   },
@@ -1405,7 +1403,7 @@ export async function forkSkill(
   slug: string
 ): Promise<{ folder_id: string; name: string }> {
   const me = await getMe();
-  return apiFetch(`/api/v1/skills/${slug}/add-to-workspace`, {
+  return apiFetch(`/api/v1/skills/${slug}/add-to-stash`, {
     method: "POST",
     body: JSON.stringify({ owner_user_id: me.id }),
   });

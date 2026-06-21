@@ -5,7 +5,7 @@ import { getFolderContents, type FolderContents } from "../../../lib/api";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { KindIcon, tintFor, typeFor, type GridItem } from "./kind";
-import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
+import { FB_DRAG_MIME, type FBDragPayload } from "./FileBrowser";
 
 interface Props {
   rootItems: GridItem[];

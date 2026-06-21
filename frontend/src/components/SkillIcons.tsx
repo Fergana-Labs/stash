@@ -71,7 +71,7 @@ export function SkillIcon(props: IconProps) {
   return <LowResOctopusIcon {...props} />;
 }
 
-export function WorkspaceIcon(props: IconProps) {
+export function StashIcon(props: IconProps) {
   return <LowResOctopusIcon {...props} />;
 }
 

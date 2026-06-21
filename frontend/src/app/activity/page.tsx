@@ -127,7 +127,7 @@ export default function ActivityPage() {
 
   // The brain's vitals + visualizations. All span the user's own content plus
   // everything shared with them (the /me/* aggregates, called without a
-  // workspace, include readable shared rows).
+  // scope, include readable shared rows).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;

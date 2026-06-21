@@ -3,7 +3,7 @@
 import { useState, type DragEvent } from "react";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { PinIcon } from "../../SkillIcons";
-import type { FBDragPayload } from "./WorkspaceFileBrowser";
+import type { FBDragPayload } from "./FileBrowser";
 import { handleFolderDrop, isFbDrag, startItemDrag } from "./ItemsList";
 import { KindIcon, tintFor, typeFor, type GridItem } from "./kind";
 

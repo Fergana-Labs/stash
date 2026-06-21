@@ -98,7 +98,7 @@ vi.mock("../../../../components/SkeletonStates", () => ({
   DocumentPageSkeleton: () => <div>Loading page</div>,
 }));
 
-vi.mock("../../../../components/workspace/HtmlPageView", () => ({
+vi.mock("../../../../components/content/HtmlPageView", () => ({
   default: () => <div>HTML page view</div>,
   extractCommentIdsFromHtml: vi.fn(() => []),
 }));
@@ -107,20 +107,20 @@ vi.mock("../../../../components/export/ExportDeckButton", () => ({
   default: () => <button>Export</button>,
 }));
 
-vi.mock("../../../../components/workspace/FileViewerHeader", () => ({
+vi.mock("../../../../components/content/FileViewerHeader", () => ({
   default: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
 
-vi.mock("../../../../components/workspace/MarkdownEditor", () => ({
+vi.mock("../../../../components/content/MarkdownEditor", () => ({
   default: () => <div>Markdown editor</div>,
   extractCommentIdsFromMarkdown: vi.fn(() => []),
 }));
 
-vi.mock("../../../../components/workspace/CommentsSidebar", () => ({
+vi.mock("../../../../components/content/CommentsSidebar", () => ({
   default: () => <aside>Comments</aside>,
 }));
 
-vi.mock("../../../../components/workspace/CommentComposerPopover", () => ({
+vi.mock("../../../../components/content/CommentComposerPopover", () => ({
   default: () => <div>Comment composer</div>,
 }));
 

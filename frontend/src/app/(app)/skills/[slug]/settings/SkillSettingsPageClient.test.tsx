@@ -61,7 +61,7 @@ vi.mock("../../../../../components/BreadcrumbContext", () => ({
 }));
 
 vi.mock("../../../../../components/ShellChromeContext", () => ({
-  useActiveWorkspaceId: vi.fn(),
+  useActivescopeId: vi.fn(),
 }));
 
 vi.mock("../../../../../hooks/useAuth", () => ({

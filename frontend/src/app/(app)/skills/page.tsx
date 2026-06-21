@@ -14,7 +14,7 @@ import SkillCard, {
   PublishBadge,
 } from "@/components/skill/SkillCard";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
-import { SelectBox } from "@/components/workspace/file-browser/ItemsList";
+import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
   forkSkill,
   ApiError,

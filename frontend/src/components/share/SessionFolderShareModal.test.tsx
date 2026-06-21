@@ -25,7 +25,6 @@ const folder: SessionFolder = {
   name: "Shared Folder",
   owner_display_name: "Henry",
   access: "private",
-  workspace_permission: "read",
   public_permission: "none",
   discoverable: false,
   is_default: false,

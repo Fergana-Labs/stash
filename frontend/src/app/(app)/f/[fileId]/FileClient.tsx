@@ -26,8 +26,8 @@ import FileContentRenderer, {
   isMarkdown,
   isPdf,
   isText,
-} from "@/components/workspace/FileContentRenderer";
-import FileViewerHeader from "@/components/workspace/FileViewerHeader";
+} from "@/components/content/FileContentRenderer";
+import FileViewerHeader from "@/components/content/FileViewerHeader";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 
 function isCsv(ct: string) {

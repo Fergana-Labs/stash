@@ -25,7 +25,7 @@ import {
   type SessionEvent,
   type Skill,
 } from "@/lib/api";
-import EditableTitle from "@/components/workspace/EditableTitle";
+import EditableTitle from "@/components/content/EditableTitle";
 
 interface MessageTurn {
   kind: "message";

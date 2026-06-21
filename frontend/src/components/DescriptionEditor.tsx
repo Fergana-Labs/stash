@@ -15,7 +15,7 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { shouldFocusEditorFrame } from "../lib/editorClick";
-import EditorToolbar from "./workspace/EditorToolbar";
+import EditorToolbar from "./content/EditorToolbar";
 
 const AUTOSAVE_MS = 1500;
 

@@ -19,16 +19,16 @@ import { DocumentPageSkeleton } from "@/components/SkeletonStates";
 import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
-} from "@/components/workspace/HtmlPageView";
+} from "@/components/content/HtmlPageView";
 import ExportDeckButton from "@/components/export/ExportDeckButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
-import FileViewerHeader from "@/components/workspace/FileViewerHeader";
+import FileViewerHeader from "@/components/content/FileViewerHeader";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,
-} from "@/components/workspace/MarkdownEditor";
-import CommentsSidebar from "@/components/workspace/CommentsSidebar";
-import CommentComposerPopover from "@/components/workspace/CommentComposerPopover";
+} from "@/components/content/MarkdownEditor";
+import CommentsSidebar from "@/components/content/CommentsSidebar";
+import CommentComposerPopover from "@/components/content/CommentComposerPopover";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,

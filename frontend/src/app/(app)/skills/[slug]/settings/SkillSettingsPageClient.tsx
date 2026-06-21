@@ -214,7 +214,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     if (!skill) return;
     const ok = await confirm({
       title: `Stop sharing "${skill.title}"?`,
-      body: "The share link stops working; the skill folder and its files stay in your workspace.",
+      body: "The share link stops working; the skill folder and its files stay in your Stash.",
       confirmLabel: "Stop sharing",
     });
     if (!ok) return;

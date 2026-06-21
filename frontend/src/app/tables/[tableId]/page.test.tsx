@@ -78,7 +78,7 @@ vi.mock("../../../components/AppShell", () => ({
   ),
 }));
 
-vi.mock("../../../components/workspace/FileViewerHeader", () => ({
+vi.mock("../../../components/content/FileViewerHeader", () => ({
   default: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
 

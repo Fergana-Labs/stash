@@ -32,7 +32,7 @@ import type {
 import { refreshSidebar } from "../../../lib/skillNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
 import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
-import { useWorkspaceRecents } from "../../../lib/pins";
+import { useRecents } from "../../../lib/pins";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid from "./FolderItemGrid";
@@ -69,7 +69,7 @@ type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
-export default function WorkspaceFileBrowser({ folderId, folderHrefBase }: Props) {
+export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
 
@@ -83,7 +83,7 @@ export default function WorkspaceFileBrowser({ folderId, folderHrefBase }: Props
   const [scope, setScope] = useState<Scope>("mine");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins();
-  const recents = useWorkspaceRecents();
+  const recents = useRecents();
 
   // Selection is scoped to the current listing, so reset it when the folder
   // changes.

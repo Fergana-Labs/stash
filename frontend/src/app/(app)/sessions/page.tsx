@@ -8,7 +8,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
-import { SelectBox } from "@/components/workspace/file-browser/ItemsList";
+import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import { useAuth } from "@/hooks/useAuth";
 import {
   assignSessionFolder,

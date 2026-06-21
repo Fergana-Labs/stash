@@ -172,7 +172,7 @@ class Stash:
         return resp.text
 
     def fork_skill(self, slug: str) -> dict:
-        return self._post(f"/api/v1/skills/{slug}/add-to-workspace")
+        return self._post(f"/api/v1/skills/{slug}/add-to-stash")
 
     # =========================================================================
     # Aggregate

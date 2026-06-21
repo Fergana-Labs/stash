@@ -87,7 +87,7 @@ export function AppShellSkeleton({
       >
         {sidebar && <SidebarSkeleton />}
         <main className="min-w-0 overflow-y-auto bg-base">
-          {children ?? <WorkspaceHomeSkeleton />}
+          {children ?? <HomeSkeleton />}
         </main>
       </div>
     </div>
@@ -97,7 +97,7 @@ export function AppShellSkeleton({
 export function AppRouteSkeleton() {
   return (
     <AppShellSkeleton>
-      <WorkspaceHomeSkeleton />
+      <HomeSkeleton />
     </AppShellSkeleton>
   );
 }
@@ -272,7 +272,7 @@ export function ActivityFeedSkeleton() {
   );
 }
 
-export function WorkspaceHomeSkeleton() {
+export function ScopeHomeSkeleton() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <SkeletonBlock className="h-[72px] w-full rounded-none bg-brand-100" />

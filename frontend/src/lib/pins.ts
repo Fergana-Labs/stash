@@ -86,7 +86,7 @@ let recentsCache: RecentEntry[] | null = null;
 
 // Recently-viewed object ids for the user, most-recent first. Refreshes when a
 // view is recorded (see recordRecent).
-export function useWorkspaceRecents(): RecentEntry[] {
+export function useRecents(): RecentEntry[] {
   const [recents, setRecents] = useState<RecentEntry[]>(
     () => recentsCache ?? [],
   );

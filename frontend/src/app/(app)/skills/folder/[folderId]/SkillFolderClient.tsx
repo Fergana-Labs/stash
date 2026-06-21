@@ -8,7 +8,7 @@ import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import SkillShareButton from "@/components/skill/SkillShareButton";
-import WorkspaceFileBrowser from "@/components/workspace/file-browser/WorkspaceFileBrowser";
+import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getFolderContents,
@@ -172,7 +172,7 @@ export default function SkillFolderClient() {
   if (!contents) return <FileBrowserSkeleton />;
 
   return (
-    <WorkspaceFileBrowser
+    <FileBrowser
       folderId={folderId}
       folderHrefBase={`/skills`}
     />

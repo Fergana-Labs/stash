@@ -6,8 +6,8 @@ import DescriptionEditor, {
   isBlankDescription,
 } from "@/components/DescriptionEditor";
 import { generateWelcomeHtml } from "@/lib/onboarding/welcomeContent";
-import { WorkspaceHomeSkeleton } from "@/components/SkeletonStates";
-import { WorkspaceIcon } from "@/components/SkillIcons";
+import { ScopeHomeSkeleton } from "@/components/SkeletonStates";
+import { StashIcon } from "@/components/SkillIcons";
 import { useAuth } from "@/hooks/useAuth";
 import { createPage, updateMe } from "@/lib/api";
 import type { User } from "@/lib/types";
@@ -62,9 +62,9 @@ export default function HomePage() {
     }
   }
 
-  if (loading) return <WorkspaceHomeSkeleton />;
+  if (loading) return <ScopeHomeSkeleton />;
   if (!user) return null;
-  if (!profile) return <WorkspaceHomeSkeleton />;
+  if (!profile) return <ScopeHomeSkeleton />;
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -75,7 +75,7 @@ export default function HomePage() {
         <div className="flex items-start justify-between gap-3 pt-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[28px] text-[var(--color-brand-700)] shadow-sm">
-              <WorkspaceIcon />
+              <StashIcon />
             </span>
             <div className="min-w-0">
               <h2 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">

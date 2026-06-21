@@ -6,7 +6,7 @@ import {
   FB_DRAG_MIME,
   FB_DRAG_MULTI_MIME,
   type FBDragPayload,
-} from "./WorkspaceFileBrowser";
+} from "./FileBrowser";
 import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { PinIcon } from "../../SkillIcons";
 import { KindIcon, tintFor, typeFor, type GridItem, type ItemKind } from "./kind";

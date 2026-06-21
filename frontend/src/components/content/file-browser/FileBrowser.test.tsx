@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorkspaceFileBrowser from "./WorkspaceFileBrowser";
+import FileBrowser from "./FileBrowser";
 import { ConfirmDialogProvider } from "../../ConfirmDialog";
 
 function render(ui: ReactNode) {
@@ -60,7 +60,7 @@ vi.mock("../../../lib/filePins", () => ({
 }));
 
 vi.mock("../../../lib/pins", () => ({
-  useWorkspaceRecents: () => [],
+  useRecents: () => [],
 }));
 
 const createdAt = "2026-06-03T12:00:00Z";
@@ -102,7 +102,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("WorkspaceFileBrowser folder links", () => {
+describe("FileBrowser folder links", () => {
   function folderContents() {
     return {
       folder: {
@@ -125,7 +125,7 @@ describe("WorkspaceFileBrowser folder links", () => {
     vi.mocked(getFolderContents).mockResolvedValue(folderContents());
 
     render(
-      <WorkspaceFileBrowser
+      <FileBrowser
         folderId="folder-1"
         folderHrefBase="/skills"
       />
@@ -139,7 +139,7 @@ describe("WorkspaceFileBrowser folder links", () => {
   it("defaults folder navigation to the Files folder route", async () => {
     vi.mocked(getFolderContents).mockResolvedValue(folderContents());
 
-    render(<WorkspaceFileBrowser folderId="folder-1" />);
+    render(<FileBrowser folderId="folder-1" />);
 
     fireEvent.click(await screen.findByText("Nested"));
 
@@ -147,11 +147,11 @@ describe("WorkspaceFileBrowser folder links", () => {
   });
 });
 
-describe("WorkspaceFileBrowser table creation", () => {
+describe("FileBrowser table creation", () => {
   it("creates a blank table from the + New menu", async () => {
     vi.mocked(createTable).mockResolvedValue(table("table-1", "Untitled table"));
 
-    render(<WorkspaceFileBrowser folderId={null} />);
+    render(<FileBrowser folderId={null} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /\+ New/ }));
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
@@ -186,7 +186,7 @@ describe("WorkspaceFileBrowser table creation", () => {
       ],
     });
 
-    render(<WorkspaceFileBrowser folderId={null} />);
+    render(<FileBrowser folderId={null} />);
 
     fireEvent.click(await screen.findByText("Budget"));
 
@@ -203,7 +203,7 @@ describe("WorkspaceFileBrowser table creation", () => {
     });
     vi.mocked(deleteTable).mockResolvedValue(undefined);
 
-    render(<WorkspaceFileBrowser folderId={null} />);
+    render(<FileBrowser folderId={null} />);
 
     await screen.findByText("Budget");
     fireEvent.click(screen.getByLabelText("Delete"));

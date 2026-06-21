@@ -7,7 +7,7 @@ import { forkSkill, ApiError } from "@/lib/api";
 
 type Props = { slug: string };
 
-export default function AddToWorkspaceButton({ slug }: Props) {
+export default function AddToStashButton({ slug }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [attached, setAttached] = useState<

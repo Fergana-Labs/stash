@@ -23,11 +23,10 @@ const VISIBILITIES: { key: SessionFolderVisibility; label: string; hint: string 
 ];
 
 function permissionsFor(v: SessionFolderVisibility): {
-  workspace_permission: GeneralPermission;
   public_permission: GeneralPermission;
 } {
-  if (v === "public") return { workspace_permission: "read", public_permission: "read" };
-  return { workspace_permission: "read", public_permission: "none" };
+  if (v === "public") return { public_permission: "read" };
+  return { public_permission: "none" };
 }
 
 export default function SessionFolderShareModal({

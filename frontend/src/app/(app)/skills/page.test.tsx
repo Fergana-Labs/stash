@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorkspaceSkillsPage from "./page";
+import SkillsPage from "./page";
 import {
   createFolder,
   createPage,
@@ -110,7 +110,7 @@ function sharedSkill(overrides: Partial<SharedSkill> = {}): SharedSkill {
   };
 }
 
-describe("WorkspaceSkillsPage", () => {
+describe("SkillsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     router.push.mockReset();
@@ -140,7 +140,7 @@ describe("WorkspaceSkillsPage", () => {
   });
 
   it("renders skill folders as cards linking to the skill browse route", async () => {
-    render(<WorkspaceSkillsPage />);
+    render(<SkillsPage />);
 
     // The name appears in quick-access and the card grid; every instance
     // must link to the skill browse route.
@@ -174,7 +174,7 @@ describe("WorkspaceSkillsPage", () => {
       }),
     ]);
 
-    render(<WorkspaceSkillsPage />);
+    render(<SkillsPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: /Shared with you/ }));
 
@@ -200,7 +200,7 @@ describe("WorkspaceSkillsPage", () => {
     });
     vi.mocked(createPage).mockResolvedValue({ id: "page-9" } as unknown as Page);
 
-    render(<WorkspaceSkillsPage />);
+    render(<SkillsPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
 

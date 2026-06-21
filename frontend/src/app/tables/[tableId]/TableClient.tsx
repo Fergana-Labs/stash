@@ -39,7 +39,7 @@ import {
 } from "../../../lib/api";
 import { findInSkillContents } from "../../../lib/localSkill";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
-import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
+import FileViewerHeader from "../../../components/content/FileViewerHeader";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {

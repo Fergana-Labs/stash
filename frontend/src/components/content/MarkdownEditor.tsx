@@ -128,7 +128,7 @@ export default function MarkdownEditor({
     const document = new Y.Doc();
     const provider = new HocuspocusProvider({
       url: getCollabUrl(),
-      name: `workspace:${file.owner_user_id}:page:${file.id}`,
+      name: `scope:${file.owner_user_id}:page:${file.id}`,
       document,
       sessionAwareness: true,
       // Async factory, re-run on every (re)connect — Auth0 access tokens

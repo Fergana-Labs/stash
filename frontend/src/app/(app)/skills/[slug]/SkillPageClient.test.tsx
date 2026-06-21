@@ -75,7 +75,7 @@ vi.mock("../../../../hooks/useAuth", () => ({
   useAuth: () => ({ user: authState.user, loading: false, logout: vi.fn() }),
 }));
 
-vi.mock("./AddToWorkspaceButton", () => ({
+vi.mock("./AddToStashButton", () => ({
   default: () => <button type="button">Add to my files</button>,
 }));
 

@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
 
-import HtmlPageView from "@/components/workspace/HtmlPageView";
+import HtmlPageView from "@/components/content/HtmlPageView";
 
 type EmbedPage = {
   id: string;
