@@ -27,11 +27,11 @@ type CollabAuth = {
 };
 
 type PageDocument = {
-  workspaceId: string;
+  ownerUserId: string;
   pageId: string;
 };
 
-// Rooms come in two flavors: workspace pages (authenticated users) and
+// Rooms come in two flavors: scope pages (authenticated users) and
 // anonymous pastes from joinstash.ai/pages, where the paste's edit token
 // is the only credential.
 type CollabDocument =
@@ -179,12 +179,12 @@ const server = new Server<CollabContext>({
     }
     await pool.query(
       `
-      INSERT INTO page_collab_documents (page_id, workspace_id, yjs_state)
+      INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state)
       VALUES ($1, $2, $3)
       ON CONFLICT (page_id)
       DO UPDATE SET yjs_state = EXCLUDED.yjs_state, updated_at = now()
       `,
-      [doc.page.pageId, doc.page.workspaceId, state],
+      [doc.page.pageId, doc.page.ownerUserId, state],
     );
   },
 });
@@ -217,8 +217,8 @@ function parseDocument(documentName: string): CollabDocument {
   if (parts.length === 2 && parts[0] === "paste" && parts[1]) {
     return { kind: "paste", slug: parts[1] };
   }
-  if (parts.length === 4 && parts[0] === "workspace" && parts[2] === "page") {
-    return { kind: "page", page: { workspaceId: parts[1], pageId: parts[3] } };
+  if (parts.length === 4 && parts[0] === "scope" && parts[2] === "page") {
+    return { kind: "page", page: { ownerUserId: parts[1], pageId: parts[3] } };
   }
   throw new Error("Unsupported collaboration document");
 }
@@ -284,11 +284,11 @@ async function bootstrapPageDocument(page: PageDocument): Promise<Y.Doc> {
     SELECT content_markdown
     FROM pages
     WHERE id = $1
-      AND workspace_id = $2
+      AND owner_user_id = $2
       AND content_type = 'markdown'
       AND deleted_at IS NULL
     `,
-    [page.pageId, page.workspaceId],
+    [page.pageId, page.ownerUserId],
   );
   const markdownSource = result.rows[0]?.content_markdown;
   if (markdownSource === undefined) {
