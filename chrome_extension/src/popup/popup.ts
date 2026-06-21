@@ -1,4 +1,4 @@
-// Popup: one-time connect + workspace choice + sync status. Syncing itself
+// Popup: one-time connect + folder choice + sync status. Syncing itself
 // is fully automatic and never needs this UI.
 
 const app = document.getElementById('app')!;
@@ -54,19 +54,6 @@ async function render(): Promise<void> {
       ])
     );
   } else {
-    const workspaceSelect = el('select', {
-      onchange: async () => {
-        const picked = status.workspaces.find((w: any) => w.id === workspaceSelect.value);
-        await send({ type: 'SET_WORKSPACE', id: picked.id, name: picked.name });
-        await render();
-      },
-    });
-    for (const w of status.workspaces) {
-      workspaceSelect.append(
-        el('option', { value: w.id, textContent: w.name, selected: w.id === status.workspaceId })
-      );
-    }
-
     const folderSelect = el('select', {
       onchange: async () => {
         const picked = status.folders.find((f: any) => f.id === folderSelect.value);
@@ -81,7 +68,6 @@ async function render(): Promise<void> {
 
     app.append(
       el('p', {}, ['Connected as ', el('strong', { textContent: status.username || '?' })]),
-      el('div', { className: 'row' }, [el('label', { textContent: 'Save chats to workspace' }), workspaceSelect]),
       el('div', { className: 'row' }, [el('label', { textContent: 'Session folder' }), folderSelect])
     );
 

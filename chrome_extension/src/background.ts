@@ -26,19 +26,15 @@ async function handle(message: any): Promise<any> {
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':
-      await chrome.storage.local.remove(['apiKey', 'username', 'workspaceId', 'workspaceName', 'workspaces', 'folderId', 'folderName', 'folders', 'lastSync', 'lastError']);
+      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastError']);
       return { ok: true };
     case 'GET_STATUS':
       return getStatus();
-    case 'SET_WORKSPACE':
-      await chrome.storage.local.set({ workspaceId: message.id, workspaceName: message.name, folderId: null, folderName: null, folders: [] });
-      await refreshFolders();
-      return { ok: true };
     case 'SET_FOLDER':
       await chrome.storage.local.set({ folderId: message.id, folderName: message.name });
       return { ok: true };
     case 'SET_API_BASE':
-      // Changing backends invalidates the key, workspaces, and dedup state.
+      // Changing backends invalidates the key, folders, and dedup state.
       await chrome.storage.local.clear();
       await chrome.storage.session.clear();
       await chrome.storage.local.set({ apiBase: message.apiBase });
@@ -53,8 +49,8 @@ async function handle(message: any): Promise<any> {
 // ---------------------------------------------------------------------------
 
 async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
-  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'workspaceId', 'folderId']);
-  if (!cfg.apiKey || !cfg.workspaceId) {
+  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'folderId']);
+  if (!cfg.apiKey) {
     await setBadge('!', 'Not connected to Stash — click to sign in');
     return { ok: false, error: 'not_connected' };
   }
@@ -73,10 +69,10 @@ async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
 
   // Upsert the session into the chosen folder before uploading events.
   // The transcript endpoint's own upsert doesn't assign a folder; this one
-  // does (the backend falls back to the workspace's Default folder when
-  // folderId is unset). A folder is only set once server-side, so manual
-  // re-homing in the app sticks across later syncs.
-  const upsert = await fetch(`${apiBase}/api/v1/workspaces/${cfg.workspaceId}/sessions`, {
+  // does (the backend falls back to the user's Default folder when folderId
+  // is unset). A folder is only set once server-side, so manual re-homing in
+  // the app sticks across later syncs.
+  const upsert = await fetch(`${apiBase}/api/v1/me/sessions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -98,7 +94,7 @@ async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
   form.append('agent_name', snapshot.platform);
   form.append('replace', 'true');
 
-  const res = await fetch(`${apiBase}/api/v1/workspaces/${cfg.workspaceId}/transcripts`, {
+  const res = await fetch(`${apiBase}/api/v1/me/transcripts`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
     body: form,
@@ -199,42 +195,15 @@ async function checkPendingConnect(): Promise<boolean> {
   await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, lastError: null });
   await chrome.storage.local.remove(['pendingConnect']);
   await setBadge('', 'Stash Chat Sync');
-  await refreshWorkspaces();
+  await refreshFolders();
   return true;
 }
 
-async function refreshWorkspaces(): Promise<void> {
-  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'workspaceId']);
+async function refreshFolders(): Promise<void> {
+  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'folderId']);
   if (!cfg.apiKey) return;
   const apiBase = cfg.apiBase || DEFAULT_API_BASE;
-  const res = await fetch(`${apiBase}/api/v1/workspaces/mine`, {
-    headers: { Authorization: `Bearer ${cfg.apiKey}` },
-  });
-  if (!res.ok) return;
-  const data = await res.json();
-  const workspaces = (data.workspaces || []).map((w: any) => ({
-    id: w.id,
-    name: w.name,
-    isPrimary: Boolean(w.is_primary),
-  }));
-  const updates: Record<string, any> = { workspaces };
-  const current = workspaces.find((w: any) => w.id === cfg.workspaceId);
-  if (!current && workspaces.length > 0) {
-    const pick = workspaces.find((w: any) => w.isPrimary) || workspaces[0];
-    updates.workspaceId = pick.id;
-    updates.workspaceName = pick.name;
-    updates.folderId = null;
-    updates.folderName = null;
-  }
-  await chrome.storage.local.set(updates);
-  await refreshFolders();
-}
-
-async function refreshFolders(): Promise<void> {
-  const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'workspaceId', 'folderId']);
-  if (!cfg.apiKey || !cfg.workspaceId) return;
-  const apiBase = cfg.apiBase || DEFAULT_API_BASE;
-  const res = await fetch(`${apiBase}/api/v1/workspaces/${cfg.workspaceId}/session-folders`, {
+  const res = await fetch(`${apiBase}/api/v1/me/session-folders`, {
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
   });
   if (!res.ok) return;
@@ -260,14 +229,11 @@ async function refreshFolders(): Promise<void> {
 
 async function getStatus(): Promise<any> {
   await checkPendingConnect();
-  await refreshWorkspaces();
+  await refreshFolders();
   const cfg = await chrome.storage.local.get([
     'apiBase',
     'apiKey',
     'username',
-    'workspaceId',
-    'workspaceName',
-    'workspaces',
     'folderId',
     'folderName',
     'folders',
@@ -279,8 +245,6 @@ async function getStatus(): Promise<any> {
     connected: Boolean(cfg.apiKey),
     apiBase: cfg.apiBase || DEFAULT_API_BASE,
     username: cfg.username || null,
-    workspaceId: cfg.workspaceId || null,
-    workspaces: cfg.workspaces || [],
     folderId: cfg.folderId || null,
     folders: cfg.folders || [],
     lastSync: cfg.lastSync || null,
