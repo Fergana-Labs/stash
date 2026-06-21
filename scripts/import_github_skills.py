@@ -1,7 +1,7 @@
 """Import public GitHub skill repos into the Discover catalog.
 
 Each repo is scanned for folders containing a SKILL.md; every match becomes
-a published + discoverable skill in the "Stash Curated" workspace, attributed
+a published + discoverable skill owned by the "Stash Curated" user, attributed
 back to GitHub via source_github_url. Re-running updates existing imports in
 place (matched by source_github_url), so the catalog tracks upstream.
 
@@ -71,7 +71,7 @@ async def main() -> None:
 
     await database.init_db()
     _reenable_logging()
-    workspace_id, owner_id = await github_skill_import.ensure_curator()
+    owner_user_id, owner_id = await github_skill_import.ensure_curator()
     created = updated = failed = 0
     for repo_url in repo_urls:
         try:
@@ -94,7 +94,7 @@ async def main() -> None:
                 continue
             try:
                 result = await github_skill_import.import_skill(
-                    workspace_id,
+                    owner_user_id,
                     owner_id,
                     source_url=skill["source_url"],
                     fallback_title=skill["fallback_title"],

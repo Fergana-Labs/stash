@@ -1,7 +1,7 @@
 """Lightweight Stash HTTP client for plugin hooks. Extracted from cli/client.py.
 
 Sessions and events stream to the calling user's scope (`/api/v1/me/...`). No
-workspace abstraction.
+scope abstraction.
 
 Failed event pushes (network blip, backend cold start, slow GC) get appended to
 `<data_dir>/event_queue.jsonl`. The next successful push drains a batch of the

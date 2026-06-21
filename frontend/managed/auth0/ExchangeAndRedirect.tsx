@@ -56,7 +56,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
       }
       if (cancelled) return;
       // First-time sign-in goes through onboarding, same as the password
-      // register flow. The exchange already created their workspace.
+      // register flow. The exchange already provisioned their account.
       if (created) {
         router.push("/onboarding");
         return;
