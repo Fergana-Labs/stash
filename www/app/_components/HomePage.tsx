@@ -328,7 +328,7 @@ const COMPARISONS: Comparison[] = [
     tool: "AI memory tools",
     theyDo:
       "Per-agent memory in a black box. Doesn't help the human or agent next to you.",
-    stashAdds: "A shared workspace humans can read and edit, in real time.",
+    stashAdds: "A shared space humans can read and edit, in real time.",
   },
 ];
 
@@ -343,7 +343,7 @@ export function Comparisons() {
             <br />
             <span className="font-medium text-dim">
               Each does part of the job. None gives humans and agents the same
-              workspace.
+              space.
             </span>
           </h2>
         </div>
@@ -531,7 +531,7 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
 // tells the story of the message under test.
 export function HowItWorks({
   title = "Connect. Remember. Create.",
-  subtitle = "One workspace, two kinds of writer.",
+  subtitle = "One space, two kinds of writer.",
   steps = DEFAULT_HOW_STEPS,
 }: {
   title?: string;
@@ -635,7 +635,7 @@ const FEATURES: Feature[] = [
     label: "VFS",
     body: (
       <>
-        The whole workspace mounts as a virtual filesystem an agent can{" "}
+        Your whole Stash mounts as a virtual filesystem an agent can{" "}
         <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-ink">ls</code>,{" "}
         <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-ink">find</code>, and{" "}
         <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-ink">rg</code>{" "}
@@ -650,7 +650,7 @@ const FEATURES: Feature[] = [
       <>
         Agent transcripts get pushed automatically — every prompt, tool call,
         and artifact — and live alongside the files, tables, and data your
-        team writes. One workspace, two layers, both first-class.
+        team writes. One space, two layers, both first-class.
       </>
     ),
   },
@@ -669,7 +669,7 @@ const FEATURES: Feature[] = [
     body: (
       <>
         Semantic and keyword search across pages, sessions, and tables. Agents
-        query the workspace by meaning, not just filename — and follow links
+        query your Stash by meaning, not just filename — and follow links
         between transcripts and the files that came out of them.
       </>
     ),
@@ -710,7 +710,7 @@ export function Features() {
       <div className="mx-auto max-w-[920px] px-7">
         <EyebrowDot>Features</EyebrowDot>
         <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-          A workspace shaped like the tools
+          A space shaped like the tools
           <br />
           <span className="font-medium text-dim">agents already use.</span>
         </h2>
@@ -744,7 +744,7 @@ function CliAndPlugin() {
             </h2>
             <p className="mt-5 max-w-[500px] text-[16px] leading-[1.6] text-foreground">
               Pages are real Markdown, HTML, CSV, PDF — formats your agent
-              already reads and writes. The whole workspace mounts as a
+              already reads and writes. Your whole Stash mounts as a
               virtual file system (VFS) an agent can <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">ls</code>,{" "}
               <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">find</code>, and{" "}
               <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">rg</code>{" "}
@@ -800,15 +800,15 @@ function CliAndPlugin() {
               <div className="whitespace-pre">
                 <span className="mr-2.5 select-none text-brand">›</span>
                 <span className="text-white">stash vfs</span>
-                <span className="text-on-inverted-dim"> &quot;tree /workspaces -L 2&quot;</span>
+                <span className="text-on-inverted-dim"> &quot;tree /me -L 2&quot;</span>
               </div>
               <div className="whitespace-pre text-on-inverted-dim">
-                » fergana/ ├ files/ ├ sessions/ ├ stashes/ ├ tables/
+                » me/ ├ files/ ├ sessions/ ├ stashes/ ├ tables/
               </div>
               <div className="whitespace-pre">
                 <span className="mr-2.5 select-none text-brand">›</span>
                 <span className="text-white">stash vfs</span>
-                <span className="text-on-inverted-dim"> &quot;rg &apos;rate-limit&apos; /workspaces/fergana&quot;</span>
+                <span className="text-on-inverted-dim"> &quot;rg &apos;rate-limit&apos; /me&quot;</span>
               </div>
               <div className="whitespace-pre">
                 <span className="text-[#22C55E]">✓ 8 hits</span>

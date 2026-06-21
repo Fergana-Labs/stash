@@ -49,7 +49,7 @@ interface Props {
   collab?: CollabConfig;
 }
 
-// The product app's MarkdownEditor (Tiptap) without the workspace-only
+// The product app's MarkdownEditor (Tiptap) without the heavier
 // machinery: no Yjs/Hocuspocus collaboration (content loads once from
 // parsed markdown), no comment anchors, no file uploads. Same 1500ms
 // debounced autosave and markdown round-trip.

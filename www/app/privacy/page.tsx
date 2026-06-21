@@ -38,7 +38,7 @@ export default function PrivacyPage() {
         provided by your login provider (such as Auth0 or GitHub).
       </p>
       <p>
-        <strong className="text-ink">Workspace content.</strong> To provide the
+        <strong className="text-ink">Your content.</strong> To provide the
         Service, we store the content you and your agents send to Stash:
         prompts, tool calls, assistant messages, pages, tables, files, and
         Skills. Embeddings derived from this content
@@ -67,7 +67,7 @@ export default function PrivacyPage() {
       <ul className="ml-5 list-disc space-y-2">
         <li>Provide, maintain, and secure the Service.</li>
         <li>
-          Sync your workspace content across the agents and humans you invite.
+          Sync your content across the agents and people you share it with.
         </li>
         <li>Respond to support requests you send us.</li>
         <li>
@@ -76,7 +76,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           Understand how the Service is used so we can improve it. We do not
-          sell your data or use your workspace content to train models.
+          sell your data or use your content to train models.
         </li>
       </ul>
 
@@ -84,8 +84,8 @@ export default function PrivacyPage() {
       <p>We share information only with:</p>
       <ul className="ml-5 list-disc space-y-2">
         <li>
-          <strong className="text-ink">Other members of your workspace.</strong>{" "}
-          Content in a workspace is visible to everyone you invite to it.
+          <strong className="text-ink">People you&apos;ve shared with.</strong>{" "}
+          Content you share is visible to the people you share it with.
         </li>
         <li>
           <strong className="text-ink">Service providers</strong> that host,
@@ -108,7 +108,7 @@ export default function PrivacyPage() {
 
       <H2>Retention</H2>
       <p>
-        We keep your workspace content for as long as your account is active,
+        We keep your content for as long as your account is active,
         and for a short period afterward so you can recover it if you change
         your mind. You can delete specific content at any time from the app, or
         ask us to delete your entire account by emailing us. Backups are purged
@@ -138,7 +138,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong className="text-ink">Preference cookies</strong> that remember
-          choices such as your workspace or display settings.
+          choices such as your display settings.
         </li>
         <li>
           <strong className="text-ink">Analytics cookies</strong> that help us
@@ -218,7 +218,7 @@ export default function PrivacyPage() {
         section above, which map to the following CCPA categories: identifiers
         (name, email, account ID, IP address), commercial information (billing
         metadata), internet or network activity (usage logs), and electronic
-        information you provide (workspace content). We collect this
+        information you provide (your content). We collect this
         information from you directly and from your browser or device, and we
         share it only with the categories of recipients listed in the
         &ldquo;How we share information&rdquo; section.

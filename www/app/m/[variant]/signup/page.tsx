@@ -42,7 +42,7 @@ export default async function SignupPage({
           Sign up for Stash.
         </h1>
         <p className="mx-auto mt-4 max-w-[460px] text-center text-[16px] leading-[1.6] text-dim">
-          Tell us a bit about you and we&apos;ll get your workspace set up.
+          Tell us a bit about you and we&apos;ll get your account set up.
         </p>
         <SignupForm variant={variant} appUrl={APP_URL} />
       </div>

@@ -26,7 +26,7 @@ const FEATURES = [
   ],
   [
     "Fork and stay in sync",
-    "Anyone can fork a Skill into their own workspace, and it stays live with the source as it changes — improvements flow downstream.",
+    "Anyone can fork a Skill into their own Stash, and it stays live with the source as it changes — improvements flow downstream.",
   ],
   [
     "Run it anywhere",
@@ -56,7 +56,7 @@ export default function SkillsPage() {
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
             A Skill bundles the pages, files, prompts, and sessions behind a
             workflow into one folder your agents can run. Share it with a link,
-            fork it into your own workspace, and keep it in sync — so a process
+            fork it into your own Stash, and keep it in sync — so a process
             you figure out once becomes something your whole team repeats.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
@@ -109,7 +109,7 @@ export default function SkillsPage() {
           <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-foreground">
             Discover is where published Skills live. Browse sessions, pages,
             tables, and files from public Skills, open one to read it without
-            signing in, and fork the ones you want into your own workspace.
+            signing in, and fork the ones you want into your own Stash.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
             <Point title="Publish in one step">
@@ -120,7 +120,7 @@ export default function SkillsPage() {
               See how other teams package their workflows, and read the real
               sessions and docs behind them — no signup to look.
             </Point>
-            <Point title="Fork into your workspace">
+            <Point title="Fork into your Stash">
               Pull a Skill into your own Stash and run it with your agents. It
               stays live with the source as the author improves it.
             </Point>

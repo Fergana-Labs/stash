@@ -88,7 +88,7 @@ export const VARIANTS: Record<string, VariantCopy> = {
       "GitHub, Drive, Gmail, Notion, Slack, Gong and more — one place your agents can query everything.",
     how: {
       title: "Connect. Index. Query.",
-      subtitle: "Every source, one workspace.",
+      subtitle: "Every source, one Stash.",
       steps: [
         {
           n: "01",

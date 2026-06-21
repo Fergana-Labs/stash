@@ -10,8 +10,7 @@ export default function CLIPage() {
       </Subtitle>
 
       <Callout type="tip">
-        Most commands accept <Code>--json</Code> for machine-readable output
-        and <Code>--ws ID</Code> to target a specific workspace.
+        Most commands accept <Code>--json</Code> for machine-readable output.
       </Callout>
 
       <H2>Install</H2>
@@ -20,7 +19,7 @@ export default function CLIPage() {
       <H2>First-time setup</H2>
       <P>
         Run the interactive setup wizard. It configures the API endpoint, authenticates you
-        through the browser, and creates a workspace — all in one shot. No manual config
+        through the browser, and sets up your Stash — all in one shot. No manual config
         editing required.
       </P>
       <CodeBlock>{`stash connect`}</CodeBlock>
@@ -32,22 +31,21 @@ export default function CLIPage() {
       <H2>Virtual filesystem</H2>
       <P>
         Use <Code>stash vfs</Code> when an agent needs to browse Stash through one
-        filesystem-shaped interface without mounting anything into the OS. Each
-        workspace exposes <Code>files</Code>, <Code>sessions</Code>, <Code>skills</Code>,{" "}
+        filesystem-shaped interface without mounting anything into the OS. Your Stash
+        exposes <Code>files</Code>, <Code>sessions</Code>, <Code>skills</Code>,{" "}
         <Code>tables</Code>, and <Code>sources</Code> — the last surfacing every connected
         integration (Gmail, GitHub, Slack, Jira, …) as read-only documents you can{" "}
         <Code>ls</Code>, <Code>cat</Code>, and <Code>grep</Code>.
       </P>
       <CodeBlock>{`stash vfs ls /
-stash vfs "find /workspaces -maxdepth 3 -type f"
-stash vfs "rg 'database migration' /workspaces"
-stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock>
+stash vfs "find /me -maxdepth 3 -type f"
+stash vfs "rg 'database migration' /me"
+stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       <CommandRef
         command="stash vfs"
-        args={'[--ws ID] [--cwd PATH] "command"'}
+        args={'[--cwd PATH] "command"'}
         description="Run bash-shaped read and write commands against the virtual Stash tree."
         params={[
-          { name: "--ws", type: "string", desc: "Expose one workspace by ID. By default all accessible workspaces are exposed." },
           { name: "--cwd", type: "string", desc: "Virtual working directory. Defaults to /." },
           { name: "command", type: "string", desc: "Bash-shaped command such as ls, find, rg, cat, sed, tee, or redirection." },
         ]}
@@ -110,37 +108,31 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash files pages"
-        args="[--ws ID] [--all]"
-        description="List pages in the current workspace."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "--all", type: "flag", desc: "Include pages from all workspaces." },
-        ]}
+        args=""
+        description="List pages in your Stash."
+        params={[]}
       />
 
       <CommandRef
         command="stash files tree"
-        args="[--ws ID]"
-        description="Show the folder and page tree for a workspace."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
+        args=""
+        description="Show the folder and page tree for your Stash."
+        params={[]}
       />
 
       <CommandRef
         command="stash files create-folder"
-        args="<name> [--ws ID] [--parent FOLDER_ID]"
+        args="<name> [--parent FOLDER_ID]"
         description="Create a folder in the files."
         params={[
           { name: "<name>", type: "string", desc: "Folder name.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--parent", type: "string", desc: "Parent folder ID." },
         ]}
       />
 
       <CommandRef
         command="stash files add-page"
-        args="<name> [--ws ID] [--folder FOLDER_ID] [--content '...']"
+        args="<name> [--folder FOLDER_ID] [--content '...']"
         description="Add a new page to the files."
         params={[
           { name: "<name>", type: "string", desc: "Page title.", required: true },
@@ -151,21 +143,19 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash files read-page"
-        args="<page_id> [--ws ID]"
+        args="<page_id>"
         description="Read a page."
         params={[
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash files edit-page"
-        args="<page_id> [--ws ID] --content '...'"
+        args="<page_id> --content '...'"
         description="Update a page. Reads from stdin if --content is not given."
         params={[
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--content", type: "string", desc: "New page content. Reads from stdin if omitted." },
         ]}
       />
@@ -175,10 +165,9 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
       <CommandRef
         command="stash sessions push"
         args="<content> [--agent cli] [--type message] [--session ID] [--attach FILE]"
-        description="Push a new event to the workspace session stream."
+        description="Push a new event to your session stream."
         params={[
           { name: "<content>", type: "string", desc: "Event content to push.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--agent", type: "string", desc: 'Agent identifier. Defaults to "cli".' },
           { name: "--type", type: "string", desc: 'Event type. Defaults to "message".' },
           { name: "--session", type: "string", desc: "Session ID to group events under." },
@@ -190,14 +179,12 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash sessions query"
-        args="[--agent X] [--type Y] [-n 50] [--all]"
+        args="[--agent X] [--type Y] [-n 50]"
         description="Query recent session events with optional filters."
         params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--agent", type: "string", desc: "Filter by agent identifier." },
           { name: "--type", type: "string", desc: "Filter by event type." },
           { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 50." },
-          { name: "--all", type: "flag", desc: "Query across all workspaces." },
         ]}
       />
 
@@ -209,39 +196,33 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash sessions folders"
-        args="[--ws ID]"
+        args=""
         description="List session folders — shareable groupings of sessions."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
+        params={[]}
       />
 
       <CommandRef
         command="stash sessions new-folder"
-        args="<name> [--ws ID]"
+        args="<name>"
         description="Create a session folder."
         params={[
           { name: "<name>", type: "string", desc: "Folder name.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash sessions agents"
-        args="[--ws ID]"
-        description="List distinct agent names that have logged events in this workspace."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
+        args=""
+        description="List distinct agent names that have logged events in your Stash."
+        params={[]}
       />
 
       <CommandRef
         command="stash sessions transcript"
-        args="<session_id> [--ws ID] [--save PATH]"
+        args="<session_id> [--save PATH]"
         description="Fetch a full session transcript and print or save it. Transcripts are stored gzipped on the server and decompressed automatically."
         params={[
           { name: "<session_id>", type: "string", desc: "ID of the session.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--save", type: "path", desc: "Save the transcript to a file instead of printing." },
         ]}
       />
@@ -256,11 +237,9 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash sources ls"
-        args="[--ws ID]"
+        args=""
         description="List every source you can read here: the native files and sessions sources plus your connected sources. Each row prints a source handle to use with the other commands."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
+        params={[]}
       />
 
       <CommandRef
@@ -271,61 +250,55 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
           { name: "<source_type>", type: "string", desc: "github_repo | google_drive | gmail | notion | slack | granola.", required: true },
           { name: "--ref", type: "string", desc: "External reference, e.g. a repo 'owner/name' or Gmail address." },
           { name: "--name", type: "string", desc: "Display name for the source." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash sources browse"
-        args="<source> [path] [--ws ID]"
+        args="<source> [path]"
         description="List a source's entries like a file system."
         params={[
           { name: "<source>", type: "string", desc: "A source handle from stash sources ls.", required: true },
           { name: "path", type: "string", desc: "Path prefix (connected sources only)." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash sources read"
-        args="<source> <ref> [--ws ID]"
+        args="<source> <ref>"
         description="Read one document from a source."
         params={[
           { name: "<source>", type: "string", desc: "A source handle from stash sources ls.", required: true },
           { name: "<ref>", type: "string", desc: "Page id (files), session id (sessions), or document path (connected sources).", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash sources sync"
-        args="<source_id> [--ws ID]"
+        args="<source_id>"
         description="Trigger an immediate re-index of a connected source you own."
         params={[
           { name: "<source_id>", type: "string", desc: "ID of the connected source.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash sources rm"
-        args="<source_id> [--ws ID]"
+        args="<source_id>"
         description="Disconnect a source you own. Its indexed documents are removed."
         params={[
           { name: "<source_id>", type: "string", desc: "ID of the connected source.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash search"
-        args="<query> [--source HANDLE] [--ws ID] [-n 20]"
+        args="<query> [--source HANDLE] [-n 20]"
         description="Search across everything you can see — files, sessions, and connected sources. Pass --source to scope to one; omit it to search everything."
         params={[
           { name: "<query>", type: "string", desc: "Search query.", required: true },
           { name: "--source", type: "string", desc: "Scope to one source handle (from stash sources ls). Omit to search everything." },
           { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 20." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -333,22 +306,17 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash tables list"
-        args="[--ws ID] [--all] [--personal]"
-        description="List tables in the current workspace."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "--all", type: "flag", desc: "Include tables from all workspaces." },
-          { name: "--personal", type: "flag", desc: "Show only personal tables." },
-        ]}
+        args=""
+        description="List tables in your Stash."
+        params={[]}
       />
 
       <CommandRef
         command="stash tables create"
-        args="<name> [--ws ID] [--columns JSON]"
+        args="<name> [--columns JSON]"
         description="Create a new table with optional column definitions."
         params={[
           { name: "<name>", type: "string", desc: "Name for the table.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--columns", type: "JSON", desc: 'Column definitions as a JSON array of {name, type, options?}.' },
         ]}
       />
@@ -359,7 +327,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         description="Update a table's name or description."
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--name", type: "string", desc: "New table name." },
           { name: "--description", type: "string", desc: "New table description." },
         ]}
@@ -371,7 +338,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         description="Show a table's column schema."
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -383,7 +349,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
           { name: "--sort", type: "string", desc: "Column name to sort by." },
           { name: "--filter", type: "string", desc: "Column name to filter on." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -394,7 +359,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
           { name: "<data_json>", type: "JSON", desc: "Row data as a JSON object.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -417,7 +381,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
           { name: "<row_id>", type: "string", desc: "ID of the row to update.", required: true },
           { name: "<data_json>", type: "JSON", desc: "Updated row data as a JSON object.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -428,7 +391,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
           { name: "<row_id>", type: "string", desc: "ID of the row to delete.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -441,7 +403,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
           { name: "<name>", type: "string", desc: "Column name.", required: true },
           { name: "--type", type: "string", desc: 'Column type. Defaults to "text".' },
           { name: "--options", type: "string", desc: "Comma-separated options for select/multiselect columns." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -452,7 +413,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
           { name: "<column_id>", type: "string", desc: "Column ID (col_xxx) or column name.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -462,7 +422,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         description="Count rows in a table, optionally with filters."
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -472,7 +431,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         description="Export all rows from a table as CSV."
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -483,7 +441,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
         params={[
           { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
           { name: "-y, --yes", type: "flag", desc: "Skip confirmation prompt." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -491,22 +448,19 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash upload"
-        args="<path> [--skill TITLE] [--ws ID]"
-        description="Upload a single file (Markdown/HTML become pages, everything else a binary file) or a folder into a workspace. Pass --skill to also bundle it into a shareable Skill."
+        args="<path> [--skill TITLE]"
+        description="Upload a single file (Markdown/HTML become pages, everything else a binary file) or a folder into your Stash. Pass --skill to also bundle it into a shareable Skill."
         params={[
           { name: "<path>", type: "path", desc: "File or directory to upload.", required: true },
           { name: "--skill", type: "string", desc: "Also publish the upload as a Skill with this title." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash files list"
-        args="[--ws ID]"
-        description="List files in a workspace or your personal files."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID. Omit to list personal files." },
-        ]}
+        args=""
+        description="List your files."
+        params={[]}
       />
 
       <CommandRef
@@ -527,45 +481,41 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash rm"
-        args="<type:id>... [--permanent] [--ws ID]"
+        args="<type:id>... [--permanent]"
         description="Move pages, files, or sessions to trash. Pass --permanent to skip the trash window and delete immediately."
         params={[
           { name: "<type:id>", type: "string", desc: "Items to delete, e.g. page:<id> session:<id>.", required: true },
           { name: "--permanent", type: "flag", desc: "Delete immediately instead of trashing." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash restore"
-        args="<type:id>... [--ws ID]"
+        args="<type:id>..."
         description="Restore pages, files, or sessions from trash."
         params={[
           { name: "<type:id>", type: "string", desc: "Items to restore, e.g. page:<id> file:<id>.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash mv"
-        args="<type:id>... (--to-folder ID | --to-root) [--ws ID]"
-        description="Move pages, files, folders, tables, or sessions into a folder, or to the workspace root."
+        args="<type:id>... (--to-folder ID | --to-root)"
+        description="Move pages, files, folders, tables, or sessions into a folder, or to the root."
         params={[
           { name: "<type:id>", type: "string", desc: "Items to move.", required: true },
           { name: "--to-folder", type: "string", desc: "Target folder id." },
-          { name: "--to-root", type: "flag", desc: "Move to the workspace root." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
+          { name: "--to-root", type: "flag", desc: "Move to the root." },
         ]}
       />
 
       <CommandRef
         command="stash cp"
-        args="<type:id>... [--to-folder ID] [--ws ID]"
+        args="<type:id>... [--to-folder ID]"
         description="Duplicate pages, files, or folders as 'Copy of <name>'."
         params={[
           { name: "<type:id>", type: "string", desc: "Items to copy.", required: true },
           { name: "--to-folder", type: "string", desc: "Target folder id for the copies." },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -579,11 +529,9 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash skills list"
-        args="[--ws ID]"
-        description="List Skills in the workspace."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
+        args=""
+        description="List Skills in your Stash."
+        params={[]}
       />
 
       <CommandRef
@@ -594,7 +542,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
           { name: "<name>", type: "string", desc: "Skill name (becomes the folder name).", required: true },
           { name: "--public", type: "flag", desc: "Publish immediately and mint a shareable link." },
           { name: "--discover", type: "flag", desc: "List the public Skill in the Discover catalog (requires --public)." },
-          { name: "--workspace", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -610,23 +557,21 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
 
       <CommandRef
         command="stash skills snapshot-source"
-        args="<skill_id> --source ID --path PATH [--ws ID]"
+        args="<skill_id> --source ID --path PATH"
         description="Copy a point-in-time snapshot of one connected-source document into the Skill as a page, so the skill stays self-contained."
         params={[
           { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
           { name: "--source", type: "string", desc: "Connected-source id (from stash sources ls).", required: true },
           { name: "--path", type: "string", desc: "Document path within the source.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
         command="stash skills fork"
-        args="<slug> [--workspace ID]"
-        description="Fork a public Skill: deep-copy its folder into your workspace."
+        args="<slug>"
+        description="Fork a public Skill: deep-copy its folder into your Stash."
         params={[
           { name: "<slug>", type: "string", desc: "Public Skill slug.", required: true },
-          { name: "--workspace", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -677,38 +622,6 @@ stash vfs --cwd "/workspaces/<workspace>/sources" "rg 'incident' ."`}</CodeBlock
           { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
           { name: "<principal_id>", type: "string", desc: "The user id to revoke (from stash shares ls).", required: true },
           { name: "--principal-type", type: "string", desc: 'Principal kind. Defaults to "user".' },
-        ]}
-      />
-
-      <H2>Invites</H2>
-
-      <CommandRef
-        command="stash invite"
-        args="[--ws ID] [--uses N] [--days N]"
-        description="Create a magic-link invite — a single-use, TTL-bounded token for zero-friction workspace onboarding."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID to create the invite for." },
-          { name: "--uses", type: "number", desc: "Maximum times the link can be redeemed. Defaults to 1." },
-          { name: "--days", type: "number", desc: "Days until the link expires. Defaults to 7." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash invite list"
-        args="[--ws ID]"
-        description="List active invite tokens for a workspace."
-        params={[
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash invite revoke"
-        args="<token_id> [--ws ID]"
-        description="Revoke an invite token so it can no longer be redeemed."
-        params={[
-          { name: "<token_id>", type: "string", desc: "ID of the invite token to revoke.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 

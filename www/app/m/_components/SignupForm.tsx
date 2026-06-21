@@ -74,7 +74,7 @@ export default function SignupForm({
           href={appUrl}
           className="mt-6 inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
         >
-          Create your workspace now →
+          Create your account now →
         </a>
       </div>
     );

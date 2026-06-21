@@ -19,7 +19,7 @@ export default function SecurityPage() {
   return (
     <LegalShell title="Security" updated="June 8, 2026">
       <p>
-        Stash stores agent transcripts, workspace files, pages, copied
+        Stash stores agent transcripts, your files, pages, copied
         integration data, and integration credentials. Please report any issue
         that could expose, modify, or delete customer data without authorization.
       </p>

@@ -248,7 +248,7 @@ export default function PageComposer({ appUrl }: { appUrl: string }) {
               Private pages need an account
             </h3>
             <p className="mt-2 text-[14px] leading-relaxed text-dim">
-              Private pages live in your Stash workspace, with access controls and agent
+              Private pages live in your Stash, with access controls and agent
               permissions. Pages published here are always reachable by link.
             </p>
             <div className="mt-5 flex items-center gap-3">

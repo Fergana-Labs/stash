@@ -66,10 +66,10 @@ export default function TermsPage() {
       <p>
         You retain ownership of the content you and your agents submit to the
         Service (prompts, tool calls, pages, files, sessions, and anything
-        else you create in a workspace). You grant Fergana Labs a limited,
+        else you create in your Stash). You grant Fergana Labs a limited,
         worldwide, non-exclusive license to host, store, process, display, and
         transmit your content solely to operate and improve the Service for you
-        and the members of your workspace.
+        and the people you&apos;ve shared with.
       </p>
       <p>
         You are responsible for your content and for ensuring you have the

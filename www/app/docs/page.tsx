@@ -19,7 +19,7 @@ export default function DocsOverview() {
       <P>
         Stash auto-uploads coding agent transcripts to a shared store, indexes them,
         and makes those transcripts accessible to every other coding agent using the repo.
-        Durable knowledge lives in the workspace files, and Skills let you
+        Durable knowledge lives in your files, and Skills let you
         publish or share useful combinations of sessions, pages, and files.
       </P>
 
@@ -161,8 +161,8 @@ export default function DocsOverview() {
                   <div>• Files navigation: browser back/forward, URL sync</div>
                   <div>• ID-based page links with autocomplete</div>
                   <div>• Fixed embedding space click/drag, loading blink</div>
-                  <div>• Workspace dropdown separated from workspace-home link</div>
-                  <div>• Invite code UX: copied feedback, owner-only rotate</div>
+                  <div>• Share dropdown separated from home link</div>
+                  <div>• Share link UX: copied feedback, owner-only rotate</div>
                 </div>
               </div>
             </div>
@@ -209,8 +209,8 @@ export default function DocsOverview() {
                   <div className="text-zinc-600">• Files navigation: browser back/forward, URL sync</div>
                   <div className="text-zinc-600">• ID-based page links with autocomplete</div>
                   <div className="text-zinc-600">• Fixed embedding space click/drag, loading blink</div>
-                  <div className="text-zinc-600">• Workspace dropdown separated from workspace-home link</div>
-                  <div className="text-zinc-600">• Invite code UX: copied feedback, owner-only rotate</div>
+                  <div className="text-zinc-600">• Share dropdown separated from home link</div>
+                  <div className="text-zinc-600">• Share link UX: copied feedback, owner-only rotate</div>
                   <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From stash:</div>
                   <div className="text-zinc-600">• Cleaned up old Render servers in production</div>
                   <div className="text-zinc-600">• Wrote installation docs for new users</div>
@@ -238,7 +238,7 @@ export default function DocsOverview() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4">
         {[
           { href: "/docs/quickstart", label: "Quickstart", desc: "Connect your coding agent and start in 5 minutes." },
-          { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and sessions are." },
+          { href: "/docs/concepts", label: "Concepts", desc: "What your Stash, agent names, and sessions are." },
           { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
           { href: "/docs/self-hosting", label: "Self-Hosting", desc: "Run Stash on your own infra with Postgres + pgvector." },
         ].map((l) => (
