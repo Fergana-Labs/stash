@@ -3700,17 +3700,25 @@ def signin(
     """
     # Direct key injection — no browser handshake. The streaming hooks read
     # ~/.stash/config.json, not env vars, so this is how a browser-less box
-    # (typically a self-hosted CI runner) gets a key into that file.
+    # (typically a self-hosted CI runner) gets a key into that file. The key
+    # defines which self-hosted server it belongs to, so the endpoint must be
+    # given explicitly — there is no sensible default to fall back to.
     if api_key:
-        base_url = api or stored_base_url() or PRODUCTION_BASE_URL
-        save_config(base_url=base_url, api_key=api_key)
-        with StashClient(base_url=base_url, api_key=api_key) as c:
-            try:
+        base_url = api or stored_base_url()
+        if not base_url:
+            console.print(
+                "[red]Pass --api <url> with --api-key — the self-hosted server that "
+                "minted the key.[/red]"
+            )
+            raise typer.Exit(1)
+        try:
+            with StashClient(base_url=base_url, api_key=api_key) as c:
                 user = c.whoami()
-                save_config(username=user["name"])
-                console.print(f"[green]Authenticated as {user['name']}[/green]")
-            except StashError:
-                console.print("[yellow]Saved but could not verify.[/yellow]")
+        except StashError as e:
+            console.print(f"[red]Could not authenticate against {base_url}: {e.detail}[/red]")
+            raise typer.Exit(1)
+        save_config(base_url=base_url, api_key=api_key, username=user["name"])
+        console.print(f"[green]Authenticated as {user['name']}[/green]")
         return
 
     # Scripted / headless: bare browser auth, no wizard prompts.
