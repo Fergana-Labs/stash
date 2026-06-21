@@ -3674,6 +3674,13 @@ def signin(
     api: str = typer.Option(
         None, "--api", help="Stash API base URL. Override for self-hosted deployments."
     ),
+    api_key: str = typer.Option(
+        None,
+        "--api-key",
+        help="Store this pre-minted key directly instead of signing in through a "
+        "browser. For unattended, browser-less machines (typically self-hosted CI). "
+        "Get the key from your self-hosted instance's API-key page.",
+    ),
     non_interactive: bool = typer.Option(
         False,
         "--non-interactive",
@@ -3688,9 +3695,24 @@ def signin(
     repo). With --non-interactive — or whenever stdin isn't a terminal — it
     skips the wizard and just authenticates, which is the path installers and
     agents use. The browser opens automatically when one is available, and
-    otherwise a URL is printed to visit. For a fully unattended machine, use
-    `stash auth` to inject a pre-minted key instead.
+    otherwise a URL is printed to visit. For a fully unattended, browser-less
+    machine, pass --api-key to store a pre-minted key directly (no handshake).
     """
+    # Direct key injection — no browser handshake. The streaming hooks read
+    # ~/.stash/config.json, not env vars, so this is how a browser-less box
+    # (typically a self-hosted CI runner) gets a key into that file.
+    if api_key:
+        base_url = api or stored_base_url() or PRODUCTION_BASE_URL
+        save_config(base_url=base_url, api_key=api_key)
+        with StashClient(base_url=base_url, api_key=api_key) as c:
+            try:
+                user = c.whoami()
+                save_config(username=user["name"])
+                console.print(f"[green]Authenticated as {user['name']}[/green]")
+            except StashError:
+                console.print("[yellow]Saved but could not verify.[/yellow]")
+        return
+
     # Scripted / headless: bare browser auth, no wizard prompts.
     if non_interactive or not sys.stdin.isatty():
         base_url = api or stored_base_url() or PRODUCTION_BASE_URL
@@ -3843,26 +3865,6 @@ def signin(
 
     _show_setup_complete_splash()
 
-
-@app.command()
-def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
-    """Store a pre-existing API key — non-interactive auth for unattended machines.
-
-    Niche tool, not part of normal setup — use `signin` for that. It exists only
-    because `signin` needs a browser and env vars reach the CLI but not the
-    streaming hooks (they read ~/.stash/config.json). `auth` writes the key into
-    that file so a browser-less box — typically a self-hosted CI runner or
-    server — can stream. Get the key from your self-hosted instance's API-key
-    page (managed Stash mints keys only through browser sign-in).
-    """
-    save_config(base_url=base_url, api_key=api_key)
-    with StashClient(base_url=base_url, api_key=api_key) as c:
-        try:
-            user = c.whoami()
-            save_config(username=user["name"])
-            console.print(f"[green]Authenticated as {user['name']}[/green]")
-        except StashError:
-            console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
 @app.command("connect")
