@@ -375,10 +375,34 @@ function SearchPageInner() {
           </p>
         </header>
 
-        <div className="mt-6 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="mt-6 flex flex-col gap-5">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSearch();
+            }}
+            className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 focus-within:border-brand"
+          >
+            <input
+              type="text"
+              placeholder="Search for a decision, transcript, table, Skill, or page..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={searching || !query.trim() || fetching}
+              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+            >
+              {searching ? "Searching..." : "Search"}
+            </button>
+          </form>
+
           <aside className="rounded-lg border border-border bg-surface p-4">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Workspace</span>
                 <CustomSelect
                   value={selectedWorkspaceId}
@@ -403,7 +427,7 @@ function SearchPageInner() {
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Skill</span>
                 <CustomSelect
                   value={selectedProductSkillId}
@@ -425,7 +449,7 @@ function SearchPageInner() {
               </div>
 
               {selectedSessionId ? (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
                   <span className="text-[12px] font-medium text-foreground">Session</span>
                   <div className="truncate rounded-md border border-border bg-base px-2 py-2 font-mono text-[12px] text-foreground">
                     #{selectedSessionId}
@@ -433,7 +457,7 @@ function SearchPageInner() {
                 </div>
               ) : null}
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Folder</span>
                 <CustomSelect
                   value={selectedFolderId}
@@ -458,7 +482,7 @@ function SearchPageInner() {
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Page</span>
                 <CustomSelect
                   value={selectedPageId}
@@ -487,54 +511,24 @@ function SearchPageInner() {
                 />
               </div>
 
-              <div>
+              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Content</span>
-                <div className="mt-2 grid grid-cols-2 gap-1 rounded-md border border-border bg-base p-1">
-                  {CONTENT_SCOPES.map((scope) => (
-                    <button
-                      key={scope.id}
-                      type="button"
-                      onClick={() => setContentScope(scope.id)}
-                      className={
-                        "cursor-pointer rounded px-2 py-1 text-[12px] " +
-                        (contentScope === scope.id
-                          ? "bg-[var(--color-brand-600)] text-white"
-                          : "text-muted hover:bg-raised hover:text-foreground")
-                      }
-                    >
-                      {scope.label}
-                    </button>
-                  ))}
-                </div>
+                <CustomSelect
+                  value={contentScope}
+                  options={CONTENT_SCOPES.map((scope) => ({
+                    value: scope.id,
+                    label: scope.label,
+                  }))}
+                  onChange={(next) => setContentScope(next as ContentScope)}
+                  ariaLabel="Content"
+                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
+                  menuClassName="text-[13px]"
+                />
               </div>
             </div>
           </aside>
 
           <main className="min-w-0">
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSearch();
-              }}
-              className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 focus-within:border-brand"
-            >
-              <input
-                type="text"
-                placeholder="Search for a decision, transcript, table, Skill, or page..."
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
-                autoFocus
-              />
-              <button
-                type="submit"
-                disabled={searching || !query.trim() || fetching}
-                className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-              >
-                {searching ? "Searching..." : "Search"}
-              </button>
-            </form>
-
             {error && (
               <div className="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] text-red-700">
                 {error}
