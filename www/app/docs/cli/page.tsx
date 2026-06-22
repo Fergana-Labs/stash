@@ -55,18 +55,12 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <CommandRef
         command="stash signin"
-        args=""
-        description="Authenticate this machine through the browser. On first run it also picks the endpoint (managed or self-host) and offers to install streaming hooks for your coding agents. On SSH/headless it prints a URL to open instead of launching a browser."
-        params={[]}
-      />
-
-      <CommandRef
-        command="stash auth"
-        args="<base_url> --api-key <key>"
-        description="Niche tool — not part of normal setup; use signin. Stores a pre-existing API key into ~/.stash/config.json for an unattended, browser-less machine (typically a self-hosted CI runner or server), so its streaming hooks can authenticate. Get the key from your self-hosted instance's API-key page."
+        args="[--api <base_url>] [--api-key <key>] [--non-interactive]"
+        description="Authenticate this machine. With no flags it runs the browser flow: on first run it also picks the endpoint (managed or self-host) and offers to install streaming hooks for your coding agents. On SSH/headless it prints a URL to open instead of launching a browser. Pass --api-key to store a pre-minted key directly (no browser) on an unattended, browser-less machine — typically a self-hosted CI runner; get the key from your self-hosted instance's API-key page."
         params={[
-          { name: "<base_url>", type: "string", desc: "Base URL of the Stash server.", required: true },
-          { name: "--api-key", type: "string", desc: "A pre-existing API key from your self-hosted instance.", required: true },
+          { name: "--api", type: "string", desc: "Base URL of the Stash server. Override for self-hosted deployments.", required: false },
+          { name: "--api-key", type: "string", desc: "A pre-minted key to store directly, skipping the browser. For unattended, browser-less machines.", required: false },
+          { name: "--non-interactive", type: "flag", desc: "Skip the setup wizard; just authenticate. Implied when stdin isn't a terminal.", required: false },
         ]}
       />
 
@@ -75,8 +69,8 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         authenticates <em>CLI commands</em> for CI and scripts — but it does{" "}
         <strong>not</strong> reach the streaming hooks, which read{" "}
         <Code>~/.stash/config.json</Code>. To make an unattended machine stream, use{" "}
-        <Code>stash auth</Code>. Change the endpoint or streaming agents later from{" "}
-        <Code>stash settings</Code>.
+        <Code>stash signin --api-key</Code>. Change the endpoint or streaming agents
+        later from <Code>stash settings</Code>.
       </Callout>
 
       <CommandRef
