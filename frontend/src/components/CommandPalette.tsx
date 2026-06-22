@@ -264,9 +264,9 @@ export default function CommandPalette({
                   <div className="truncate font-medium">{r.label}</div>
                   {r.detail && <div className="truncate text-[11px] text-muted">{r.detail}</div>}
                 </div>
-                <span className="rounded bg-surface px-1 py-0 text-[9px] uppercase tracking-wide text-muted ring-1 ring-border">
+                {r.kind !== "search" && <span className="rounded bg-surface px-1 py-0 text-[9px] uppercase tracking-wide text-muted ring-1 ring-border">
                   {r.kind}
-                </span>
+                </span>}
               </Link>
             ))}
           </div>
