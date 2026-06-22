@@ -422,6 +422,8 @@ function SearchPageInner() {
                     setSelectedSessionId("");
                   }}
                   ariaLabel="Workspace"
+                  searchable
+                  searchPlaceholder="Search workspaces…"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
                 />
@@ -443,6 +445,8 @@ function SearchPageInner() {
                     setSelectedProductSkillSlug("");
                   }}
                   ariaLabel="Skill"
+                  searchable
+                  searchPlaceholder="Search Skills…"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
                 />
@@ -477,6 +481,8 @@ function SearchPageInner() {
                   }}
                   disabled={!selectedWorkspaceId || Boolean(selectedProductSkillId || selectedPageId)}
                   ariaLabel="Folder"
+                  searchable
+                  searchPlaceholder="Search folders…"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
                 />
@@ -506,6 +512,8 @@ function SearchPageInner() {
                   }}
                   disabled={!selectedWorkspaceId || Boolean(selectedProductSkillId || selectedFolderId)}
                   ariaLabel="Page"
+                  searchable
+                  searchPlaceholder="Search pages…"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
                 />
