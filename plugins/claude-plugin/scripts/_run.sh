@@ -13,12 +13,16 @@ SCRIPT="$1"
 shift
 TARGET="$(dirname "$0")/$SCRIPT.py"
 
-# On session start, upgrade the stashai package in the background. The hook
-# scripts themselves only update through Claude Code's marketplace refresh
-# (keyed off the plugin version bump) — the cache is a plain copy, not a git
-# checkout, so there is nothing to pull here.
+# On session start, install the exact stashai version these scripts were built
+# against (shipped alongside them in `stashai-version`). The hook scripts only
+# update through Claude Code's marketplace refresh (keyed off the plugin version
+# bump), so tracking `@latest` would let the library jump ahead of the cached
+# scripts and break their imports. Pinning keeps library and scripts in lockstep.
 if [ "$SCRIPT" = "on_session_start" ]; then
-  command -v uv >/dev/null 2>&1 && uv tool install --quiet stashai@latest >/dev/null 2>&1 &
+  PINNED_STASHAI="$(cat "$(dirname "$0")/stashai-version" 2>/dev/null || true)"
+  if command -v uv >/dev/null 2>&1 && [ -n "$PINNED_STASHAI" ]; then
+    uv tool install --quiet "stashai==$PINNED_STASHAI" >/dev/null 2>&1 &
+  fi
 fi
 
 PY=""
