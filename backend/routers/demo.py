@@ -231,9 +231,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
                 owner_user_id,
             )
             if moved != "UPDATE 1":
-                raise HTTPException(
-                    status_code=400, detail="Skill items must be in the demo scope"
-                )
+                raise HTTPException(status_code=400, detail="Skill items must be in the demo scope")
         else:
             session_external_id = await pool.fetchval(
                 "SELECT session_id FROM sessions WHERE id = $1::uuid AND owner_user_id = $2 "
@@ -242,9 +240,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
                 owner_user_id,
             )
             if not session_external_id:
-                raise HTTPException(
-                    status_code=400, detail="Skill items must be in the demo scope"
-                )
+                raise HTTPException(status_code=400, detail="Skill items must be in the demo scope")
             await shared_skill_service.materialize_session_page(
                 owner_user_id, session_external_id, folder["id"], owner_id
             )

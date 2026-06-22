@@ -88,7 +88,9 @@ async def test_collab_projection_save_does_not_notify(scope, _db_pool):
     )
     queue = page_events.subscribe(scope_id)
     try:
-        await files_tree_service.update_page(page["id"], scope_id, user_id, content="b", notify=False)
+        await files_tree_service.update_page(
+            page["id"], scope_id, user_id, content="b", notify=False
+        )
         await asyncio.sleep(0.05)
         empty = queue.empty()
     finally:

@@ -66,10 +66,13 @@ async def upload_transcript(
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
-    if session_folder_id is not None and not await session_folder_service.can_add_session_to_folder(
-        owner_user_id=owner_user_id,
-        user_id=current_user["id"],
-        folder_id=session_folder_id,
+    if (
+        session_folder_id is not None
+        and not await session_folder_service.can_add_session_to_folder(
+            owner_user_id=owner_user_id,
+            user_id=current_user["id"],
+            folder_id=session_folder_id,
+        )
     ):
         raise HTTPException(status_code=404, detail="Session folder not found")
 
@@ -167,7 +170,9 @@ def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
     return out
 
 
-async def _resolve_readable_events(session_id: str, user_id: UUID) -> tuple[UUID, list[dict]] | None:
+async def _resolve_readable_events(
+    session_id: str, user_id: UUID
+) -> tuple[UUID, list[dict]] | None:
     """session_id is unique per scope, not globally. Return (owner, events) for
     the newest scope holding this session that the caller can read — mirrors the
     canonical /sessions/{id} route so shared transcripts resolve to their real

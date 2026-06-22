@@ -78,6 +78,4 @@ def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
     monkeypatch.setattr(client, "_request", fake_request)
     entries = client.list_source_entries("src-9", path="specs/")
     assert entries == [{"path": "a.md"}]
-    assert requests == [
-        ("GET", "/api/v1/me/sources/src-9/entries", {"path": "specs/"})
-    ]
+    assert requests == [("GET", "/api/v1/me/sources/src-9/entries", {"path": "specs/"})]

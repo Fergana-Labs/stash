@@ -376,7 +376,6 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict
     return [_source_row(row) for row in rows]
 
 
-
 async def get_source_for_sync(source_id: UUID) -> dict | None:
     """Everything a sync task needs to crawl one source. Not owner-gated —
     sync runs server-side on behalf of the owner via their stored token."""

@@ -42,9 +42,9 @@ def _alembic(target: str) -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"alembic upgrade {target} failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"alembic upgrade {target} failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
 
 
 async def _create_db() -> None:
@@ -159,9 +159,7 @@ async def _run():
         try:
             # The multi-tenancy tables are gone.
             for dead in ("workspaces", "workspace_members"):
-                exists = await conn.fetchval(
-                    "SELECT to_regclass($1)", f"public.{dead}"
-                )
+                exists = await conn.fetchval("SELECT to_regclass($1)", f"public.{dead}")
                 assert exists is None, f"{dead} should be dropped"
 
             # All content (including the re-homed page) now belongs to the creator.

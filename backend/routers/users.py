@@ -39,7 +39,6 @@ def _require_manual_api_key_creation_enabled() -> None:
         )
 
 
-
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
 @limiter.limit("5/minute")
 async def register(request: Request, req: UserRegisterRequest):

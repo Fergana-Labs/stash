@@ -1553,9 +1553,7 @@ def _hash_remote_contents(contents: dict) -> str:
     return h.hexdigest()
 
 
-def _sync_skills(
-    c, root: Path, state: dict, push_new: bool, fetch_bytes
-) -> tuple[dict, dict]:
+def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tuple[dict, dict]:
     """Three-way sync between root and your skills.
 
     state maps skill folder name -> {folder_id, local_hash, remote_hash}
@@ -2251,9 +2249,7 @@ def hist_import(
         conversations = conversations[:limit]
 
     if not yes:
-        ok = questionary.confirm(
-            f"Import {len(conversations)} conversations?", default=True
-        ).ask()
+        ok = questionary.confirm(f"Import {len(conversations)} conversations?", default=True).ask()
         if not ok:
             raise typer.Exit(0)
 
@@ -2346,9 +2342,7 @@ def sources_add(
     """Connect a source. Slack/Granola resolve their ref from your token."""
     with _client() as c:
         try:
-            data = c.add_source(
-                source_type, external_ref=ref or None, display_name=name or None
-            )
+            data = c.add_source(source_type, external_ref=ref or None, display_name=name or None)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2383,8 +2377,6 @@ def sources_rm(source_id: str = typer.Argument(...)):
         except StashError as e:
             _err(e)
     console.print("[green]Source removed.[/green]")
-
-
 
 
 def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
@@ -2544,7 +2536,9 @@ def rm_cmd(
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in trash:
-                console.print(f"[red]Cannot rm '{object_type}'. Supported: page | file | session[/red]")
+                console.print(
+                    f"[red]Cannot rm '{object_type}'. Supported: page | file | session[/red]"
+                )
                 raise typer.Exit(1)
             delete, purge = trash[object_type]
             try:
@@ -2574,7 +2568,9 @@ def restore_cmd(
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in restore:
-                console.print(f"[red]Cannot restore '{object_type}'. Supported: page | file | session[/red]")
+                console.print(
+                    f"[red]Cannot restore '{object_type}'. Supported: page | file | session[/red]"
+                )
                 raise typer.Exit(1)
             try:
                 restore[object_type](c, object_id)
@@ -3110,9 +3106,7 @@ def tables_export(
                 if "table" not in dir():
                     table = c.get_table(table_id)
                 params["filters"] = _resolve_filter_names(table, filters)
-            resp = c._request(
-                "GET", f"/api/v1/me/tables/{table_id}/export/csv", params=params
-            )
+            resp = c._request("GET", f"/api/v1/me/tables/{table_id}/export/csv", params=params)
             csv_content = resp.text
         except StashError as e:
             _err(e)
@@ -3427,7 +3421,9 @@ def signin(
     # have established the endpoint.
     if api_key:
         if not api:
-            console.print("[red]Pass --api <url> with --api-key — the server that minted the key.[/red]")
+            console.print(
+                "[red]Pass --api <url> with --api-key — the server that minted the key.[/red]"
+            )
             raise typer.Exit(1)
         try:
             with StashClient(base_url=api, api_key=api_key) as c:
@@ -3590,7 +3586,6 @@ def signin(
     _onboarding_import_history(detected)
 
     _show_setup_complete_splash()
-
 
 
 @app.command("connect")

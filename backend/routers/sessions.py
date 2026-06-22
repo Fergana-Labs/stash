@@ -259,7 +259,9 @@ async def get_session_canonical(
     can read. Any failure is a 404: an unscoped lookup must not confirm
     that an unreadable session exists."""
     for row in await session_service.list_sessions_for_session_id(session_id):
-        payload = await _session_detail_payload(row["owner_user_id"], session_id, current_user["id"])
+        payload = await _session_detail_payload(
+            row["owner_user_id"], session_id, current_user["id"]
+        )
         if payload:
             return payload
     raise HTTPException(status_code=404, detail="Session not found")
@@ -349,7 +351,9 @@ async def delete_my_session(
     owner_user_id = current_user["id"]
     """Soft delete: stamps deleted_at + deleted_by."""
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
-    deleted = await session_service.delete_session(session_row_id, owner_user_id, current_user["id"])
+    deleted = await session_service.delete_session(
+        session_row_id, owner_user_id, current_user["id"]
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
 

@@ -48,9 +48,7 @@ async def test_security_events_are_isolated_per_user(
     owner_key, owner_id = await _register(client, "audit_owner")
 
     # Generate an auditable event in the owner's scope (the read itself is logged).
-    owner_resp = await client.get(
-        "/api/v1/me/security-events", headers=_auth(owner_key)
-    )
+    owner_resp = await client.get("/api/v1/me/security-events", headers=_auth(owner_key))
 
     stranger_key, _ = await _register(client, "audit_stranger")
     stranger_resp = await client.get(
@@ -860,7 +858,9 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
         content="secret launch plan",
     )
 
-    results = await source_service.search_all(scope, user_id, "secret launch", source=str(source_id))
+    results = await source_service.search_all(
+        scope, user_id, "secret launch", source=str(source_id)
+    )
     source_ok, doc = await source_service.source_document(
         scope, user_id, str(source_id), "docs/launch.md"
     )
@@ -1043,12 +1043,8 @@ async def test_batch_delete_and_restore_are_audited(client: AsyncClient):
     page_id = page.json()["id"]
     items = {"items": [{"object_type": "page", "object_id": page_id}]}
 
-    deleted = await client.post(
-        "/api/v1/me/batch/delete", json=items, headers=headers
-    )
-    restored = await client.post(
-        "/api/v1/me/batch/restore", json=items, headers=headers
-    )
+    deleted = await client.post("/api/v1/me/batch/delete", json=items, headers=headers)
+    restored = await client.post("/api/v1/me/batch/restore", json=items, headers=headers)
     assert deleted.status_code == 200 and not deleted.json()["errors"]
     assert restored.status_code == 200 and not restored.json()["errors"]
 

@@ -44,7 +44,9 @@ async def test_batch_move_partial_success(scope, _db_pool):
     the bad one comes back as an error — the batch isn't all-or-nothing."""
     scope_id, user_id = scope
     folder = await files_tree_service.create_folder(scope_id, "Dest", user_id)
-    page = await files_tree_service.create_page(owner_user_id=scope_id, name="P", created_by=user_id)
+    page = await files_tree_service.create_page(
+        owner_user_id=scope_id, name="P", created_by=user_id
+    )
     file_id = await _make_file(_db_pool, scope_id, user_id)
     stranger_page = uuid4()  # never inserted → not found
 
@@ -73,7 +75,9 @@ async def test_batch_move_partial_success(scope, _db_pool):
 @pytest.mark.asyncio
 async def test_batch_delete_and_restore_pages_and_files(scope, _db_pool):
     scope_id, user_id = scope
-    page = await files_tree_service.create_page(owner_user_id=scope_id, name="P2", created_by=user_id)
+    page = await files_tree_service.create_page(
+        owner_user_id=scope_id, name="P2", created_by=user_id
+    )
     file_id = await _make_file(_db_pool, scope_id, user_id)
     items = [
         {"object_type": "page", "object_id": str(page["id"])},

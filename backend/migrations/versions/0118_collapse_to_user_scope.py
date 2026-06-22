@@ -77,8 +77,7 @@ _CONTENT_TABLES = (
 def upgrade() -> None:
     # 1. Defensive: every member-bearing user must have exactly one primary.
     #    If a user somehow has memberships but no primary, promote their oldest.
-    op.execute(
-        """
+    op.execute("""
         UPDATE workspace_members wm
         SET is_primary = TRUE
         WHERE wm.is_primary = FALSE
@@ -89,20 +88,17 @@ def upgrade() -> None:
           AND wm.joined_at = (
             SELECT MIN(j.joined_at) FROM workspace_members j WHERE j.user_id = wm.user_id
           )
-        """
-    )
+        """)
 
     # 2. Map each workspace to the scope it collapses into: its creator's
     #    primary workspace. (For a primary workspace, that's itself.)
-    op.execute(
-        """
+    op.execute("""
         CREATE TEMP TABLE ws_target ON COMMIT DROP AS
         SELECT w.id AS old_ws, primary_m.workspace_id AS new_ws
         FROM workspaces w
         JOIN workspace_members primary_m
           ON primary_m.user_id = w.creator_id AND primary_m.is_primary
-        """
-    )
+        """)
 
     # 3. Preserve access for non-creator members (sharing model A). Each such
     #    membership becomes shares on the workspace's root-level objects; the
@@ -110,8 +106,7 @@ def upgrade() -> None:
     #    + root (folderless) pages/files/tables + session folders + skills cover
     #    everything the member could previously see.
     #    owner/editor -> write, viewer -> read.
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by)
         SELECT t.new_ws, src.object_type, src.object_id, 'user', wm.user_id,
@@ -142,50 +137,41 @@ def upgrade() -> None:
             WHERE s.object_type = src.object_type AND s.object_id = src.object_id
               AND s.principal_type = 'user' AND s.principal_id = wm.user_id
           )
-        """
-    )
+        """)
 
     # 4. Flatten the (user_id, workspace_id) compound keys BEFORE re-homing, so
     #    collapsing every row to one scope can't collide on the PK. Keep the
     #    most recent row per logical key.
-    op.execute(
-        """
+    op.execute("""
         DELETE FROM user_pins a
         USING user_pins b
         WHERE a.user_id = b.user_id AND a.kind = b.kind
           AND (a.updated_at, a.workspace_id) < (b.updated_at, b.workspace_id)
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         DELETE FROM user_recents a
         USING user_recents b
         WHERE a.user_id = b.user_id AND a.object_id = b.object_id AND a.kind = b.kind
           AND (a.viewed_at, a.workspace_id) < (b.viewed_at, b.workspace_id)
-        """
-    )
+        """)
 
     # 5. Re-home content from every workspace onto its target scope.
     for table in _CONTENT_TABLES:
-        op.execute(
-            f"""
+        op.execute(f"""
             UPDATE {table} c
             SET workspace_id = t.new_ws
             FROM ws_target t
             WHERE c.workspace_id = t.old_ws AND c.workspace_id <> t.new_ws
-            """
-        )
+            """)
 
     # 6. Delete now-empty non-primary workspaces. Content has been re-homed; the
     #    only rows left pointing at them are workspace_members (about to be
     #    dropped). FK cascades clean up member rows.
-    op.execute(
-        """
+    op.execute("""
         DELETE FROM workspaces w
         USING ws_target t
         WHERE w.id = t.old_ws AND t.old_ws <> t.new_ws
-        """
-    )
+        """)
 
     # 7. Drop the multi-tenancy machinery.
     op.execute("DROP TABLE IF EXISTS workspace_invite_tokens")

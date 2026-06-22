@@ -242,9 +242,7 @@ class StashVfsModel:
             )
             self._add_file(
                 f"{session_path}/transcript.jsonl",
-                loader=lambda sid=session_id: _text_bytes(
-                    self.client.export_transcript_jsonl(sid)
-                ),
+                loader=lambda sid=session_id: _text_bytes(self.client.export_transcript_jsonl(sid)),
             )
             self._add_file(
                 f"{session_path}/transcript.md",
@@ -300,8 +298,8 @@ class StashVfsModel:
             source_root = self._add_dir_child(
                 sources_path, _source_slug(source.get("display_name") or handle)
             )
-            self._expanders[source_root] = (
-                lambda root=source_root, h=handle: self._expand_source(root, h)
+            self._expanders[source_root] = lambda root=source_root, h=handle: self._expand_source(
+                root, h
             )
 
     def _expand_source(self, source_root: str, handle: str) -> None:
@@ -311,9 +309,7 @@ class StashVfsModel:
             return
         self._add_source_entries(source_root, handle, entries)
 
-    def _add_source_entries(
-        self, source_root: str, handle: str, entries: list[dict]
-    ) -> None:
+    def _add_source_entries(self, source_root: str, handle: str, entries: list[dict]) -> None:
         for entry in entries:
             ref = str(entry.get("path") or "")
             segments = [_safe_name(seg) for seg in ref.split("/") if seg]

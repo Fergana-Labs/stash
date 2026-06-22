@@ -540,9 +540,7 @@ class StashClient:
 
     # --- Tables ---
 
-    def create_table(
-        self, name: str, description: str = "", columns: list | None = None
-    ) -> dict:
+    def create_table(self, name: str, description: str = "", columns: list | None = None) -> dict:
         body: dict = {"name": name, "description": description, "columns": columns or []}
         return self._post("/api/v1/me/tables", json=body)
 

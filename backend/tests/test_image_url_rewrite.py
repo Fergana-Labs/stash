@@ -37,9 +37,7 @@ def test_rewrite_swaps_presigned_r2_for_proxy_url():
         return fid
 
     rewritten = mig._rewrite_body(body, lookup)
-    expected = (
-        "![cap](/api/v1/me/" f"files/{fid}/download)"
-    )
+    expected = "![cap](/api/v1/me/" f"files/{fid}/download)"
     assert rewritten == expected
 
 
@@ -73,8 +71,6 @@ def test_rewrite_leaves_url_alone_when_file_not_found():
 
 def test_rewrite_ignores_non_r2_urls():
     mig = _load_migration()
-    body = (
-        "![ok](/api/v1/me/scope/files/abc/download) and ![cdn](https://cdn.example.com/x.png)"
-    )
+    body = "![ok](/api/v1/me/scope/files/abc/download) and ![cdn](https://cdn.example.com/x.png)"
     rewritten = mig._rewrite_body(body, lookup_file_id=lambda _k: "should-not-be-called")
     assert rewritten == body

@@ -354,7 +354,9 @@ def stash_add_column(
 ) -> str:
     """Add a column to a table. col_type: text, number, boolean, date, select, url."""
     opts = json.loads(options) if isinstance(options, str) else options
-    return _json(_client().add_table_column(table_id, name, col_type=col_type, options=opts or None))
+    return _json(
+        _client().add_table_column(table_id, name, col_type=col_type, options=opts or None)
+    )
 
 
 @mcp.tool()

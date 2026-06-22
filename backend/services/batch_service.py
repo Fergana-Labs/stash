@@ -83,7 +83,9 @@ async def _move_one(
     raise ValueError(f"can't move a {object_type}")
 
 
-async def _delete_one(object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID) -> bool:
+async def _delete_one(
+    object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID
+) -> bool:
     if object_type == "page":
         return await files_tree_service.delete_page(object_id, owner_user_id, user_id)
     if object_type == "file":

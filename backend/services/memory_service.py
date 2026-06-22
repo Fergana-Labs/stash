@@ -140,7 +140,9 @@ async def push_event(
             session_folder_id=session_folder_id,
         )
         if linear_ticket_service.has_ticket_hint([content]):
-            await linear_ticket_service.sync_session_labels(owner_user_id, session["id"], session_id)
+            await linear_ticket_service.sync_session_labels(
+                owner_user_id, session["id"], session_id
+            )
         if github_pr_service.has_pull_request_hint([content]):
             github_pr_service.enqueue_session_discovery(session["id"])
     return event

@@ -16,9 +16,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user, get_current_user_optional
 from ..services import session_folder_service, user_scope_service
 
-me_router = APIRouter(
-    prefix="/api/v1/me/session-folders", tags=["session-folders"]
-)
+me_router = APIRouter(prefix="/api/v1/me/session-folders", tags=["session-folders"])
 public_router = APIRouter(prefix="/api/v1/session-folders", tags=["session-folders"])
 
 GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
@@ -68,9 +66,7 @@ class AssignRequest(BaseModel):
 
 
 @me_router.post("")
-async def create_folder(
-    body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
-):
+async def create_folder(body: CreateFolderRequest, current_user: dict = Depends(get_current_user)):
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
@@ -116,18 +112,14 @@ async def update_folder(
 
 
 @me_router.delete("/{folder_id}", status_code=204)
-async def delete_folder(
-    folder_id: UUID, current_user: dict = Depends(get_current_user)
-):
+async def delete_folder(folder_id: UUID, current_user: dict = Depends(get_current_user)):
     deleted = await session_folder_service.delete_folder(folder_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found or can't be deleted")
 
 
 @me_router.post("/assign")
-async def assign_sessions(
-    body: AssignRequest, current_user: dict = Depends(get_current_user)
-):
+async def assign_sessions(body: AssignRequest, current_user: dict = Depends(get_current_user)):
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])

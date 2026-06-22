@@ -37,9 +37,7 @@ async def list_security_events(
             target_type="security_audit_log",
             metadata={**metadata, "role": role},
         )
-        raise HTTPException(
-            status_code=403, detail="Only scope admins can read security events"
-        )
+        raise HTTPException(status_code=403, detail="Only scope admins can read security events")
 
     await security_audit_service.record_event(
         action="security_audit.read",

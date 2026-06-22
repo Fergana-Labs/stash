@@ -4,7 +4,6 @@ Best-effort — the response reports per-item success and errors, so a partial
 failure (one item the caller can't write) still applies the rest.
 """
 
-
 from fastapi import APIRouter, Depends
 
 from ..auth import get_current_user

@@ -80,9 +80,7 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     owner_name = user["display_name"] or user["name"]
     # One continuous session per user → memory accumulates across DMs/channels/time.
     session_id = f"slack-agent-{user['id']}"
-    answer = await ask_service.run_chat(
-        owner_user_id, owner_name, user["id"], session_id, text
-    )
+    answer = await ask_service.run_chat(owner_user_id, owner_name, user["id"], session_id, text)
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts
     )

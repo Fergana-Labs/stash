@@ -49,9 +49,7 @@ async def _page(client, api_key, scope, name, folder_id=None, content="content")
     body = {"name": name, "content": content}
     if folder_id:
         body["folder_id"] = folder_id
-    resp = await client.post(
-        "/api/v1/me/pages/new", json=body, headers=_auth(api_key)
-    )
+    resp = await client.post("/api/v1/me/pages/new", json=body, headers=_auth(api_key))
     assert resp.status_code == 201
     return resp.json()["id"]
 
@@ -117,9 +115,7 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     assert nested in [f["id"] for f in body["subfolders"]]
 
     # Deleting SKILL.md ends skill-ness: the folder rejoins the Files tree.
-    deleted = await client.delete(
-        f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key)
-    )
+    deleted = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
     assert deleted.status_code == 204
     tree_after = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     assert skill_folder in _all_tree_folder_ids(tree_after)
@@ -268,9 +264,7 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
 
     # Publishing turned the bare folder into a skill by minting SKILL.md.
     contents = (
-        await client.get(
-            f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key)
-        )
+        await client.get(f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key))
     ).json()
     assert contents["folder"]["is_skill"] is True
     assert "SKILL.md" in [p["name"] for p in contents["pages"]]
@@ -353,8 +347,6 @@ async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client:
 
     # The folder share grants subtree read of the skill's contents. The
     # recipient reaches the owner's page through the canonical object route.
-    page_read = await client.get(
-        f"/api/v1/pages/{nested_page}", headers=_auth(recipient_key)
-    )
+    page_read = await client.get(f"/api/v1/pages/{nested_page}", headers=_auth(recipient_key))
     assert page_read.status_code == 200
     assert page_read.json()["content_markdown"] == "private context"

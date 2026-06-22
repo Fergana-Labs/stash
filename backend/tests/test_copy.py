@@ -45,12 +45,22 @@ async def test_copy_page_uses_copy_of_name_and_increments(scope, _db_pool):
 async def test_copy_folder_is_deep(scope, _db_pool):
     scope_id, user_id = scope
     root = await files_tree_service.create_folder(scope_id, "Project", user_id)
-    sub = await files_tree_service.create_folder(scope_id, "Sub", user_id, parent_folder_id=root["id"])
-    await files_tree_service.create_page(
-        owner_user_id=scope_id, name="Top page", created_by=user_id, folder_id=root["id"], content="t"
+    sub = await files_tree_service.create_folder(
+        scope_id, "Sub", user_id, parent_folder_id=root["id"]
     )
     await files_tree_service.create_page(
-        owner_user_id=scope_id, name="Nested page", created_by=user_id, folder_id=sub["id"], content="n"
+        owner_user_id=scope_id,
+        name="Top page",
+        created_by=user_id,
+        folder_id=root["id"],
+        content="t",
+    )
+    await files_tree_service.create_page(
+        owner_user_id=scope_id,
+        name="Nested page",
+        created_by=user_id,
+        folder_id=sub["id"],
+        content="n",
     )
     table = await table_service.create_table(
         scope_id, "Data", "", [{"name": "Col", "type": "text"}], user_id, folder_id=root["id"]

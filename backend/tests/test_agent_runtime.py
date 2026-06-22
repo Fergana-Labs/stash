@@ -520,9 +520,7 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
     assert fork_folder_owner == target_scope
 
     # The fork has no publish record of its own — it's a private skill folder.
-    record = await _db_pool.fetchval(
-        "SELECT 1 FROM skills WHERE owner_user_id = $1", target_scope
-    )
+    record = await _db_pool.fetchval("SELECT 1 FROM skills WHERE owner_user_id = $1", target_scope)
     assert record is None
 
     # The page travelled as a copy (SKILL.md too, minted at publish time).

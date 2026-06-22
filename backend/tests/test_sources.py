@@ -161,9 +161,7 @@ async def test_add_list_remove_source(client: AsyncClient):
     assert source_service.NATIVE_SESSIONS in handles
     assert source_id in handles
 
-    removed = await client.delete(
-        f"/api/v1/me/sources/{source_id}", headers=_auth(api_key)
-    )
+    removed = await client.delete(f"/api/v1/me/sources/{source_id}", headers=_auth(api_key))
     assert removed.status_code == 200
     after = await client.get("/api/v1/me/sources", headers=_auth(api_key))
     assert source_id not in {s["source"] for s in after.json()["sources"]}
@@ -730,9 +728,7 @@ async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient)
     assert src["id"] not in {s["id"] for s in await source_service.due_sources()}
 
     # Manual sync-now is refused too — the queued task would silently no-op.
-    resp = await client.post(
-        f"/api/v1/me/sources/{src['id']}/sync", headers=_auth(api_key)
-    )
+    resp = await client.post(f"/api/v1/me/sources/{src['id']}/sync", headers=_auth(api_key))
     assert resp.status_code == 400
 
 
@@ -2115,9 +2111,7 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
     connected = next(s for s in listing.json()["sources"] if s["source"] == src["id"])
     assert "sync_status" in connected and "last_synced_at" in connected
 
-    status = await client.get(
-        f"/api/v1/me/sources/{src['id']}/status", headers=_auth(api_key)
-    )
+    status = await client.get(f"/api/v1/me/sources/{src['id']}/status", headers=_auth(api_key))
     assert status.status_code == 200
     assert status.json()["item_count"] == 1
 
@@ -2128,9 +2122,7 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
         external_ref="acct",
         display_name="Snowflake",
     )
-    sf_status = await client.get(
-        f"/api/v1/me/sources/{sf['id']}/status", headers=_auth(api_key)
-    )
+    sf_status = await client.get(f"/api/v1/me/sources/{sf['id']}/status", headers=_auth(api_key))
     assert sf_status.json()["item_count"] is None
 
 
@@ -2413,9 +2405,7 @@ async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
     )
 
     # Browse a connected source like a file system.
-    entries = await client.get(
-        f"/api/v1/me/sources/{src['id']}/entries", headers=_auth(api_key)
-    )
+    entries = await client.get(f"/api/v1/me/sources/{src['id']}/entries", headers=_auth(api_key))
     assert entries.status_code == 200
     assert any(e["path"] == "specs/auth.md" for e in entries.json()["entries"])
 

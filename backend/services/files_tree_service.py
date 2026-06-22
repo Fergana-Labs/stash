@@ -804,7 +804,9 @@ async def create_page_unique(
     n = 2
     while True:
         try:
-            return await create_page(owner_user_id, name, created_by, folder_id=folder_id, **content)
+            return await create_page(
+                owner_user_id, name, created_by, folder_id=folder_id, **content
+            )
         except DuplicatePageName:
             name = f"{base_name} ({n})"
             n += 1
@@ -949,7 +951,9 @@ async def _copy_folder_contents(
         src_folder_id,
     )
     for f in file_rows:
-        await copy_file(f["id"], owner_user_id, copied_by, target_folder_id=dst_folder_id, name=None)
+        await copy_file(
+            f["id"], owner_user_id, copied_by, target_folder_id=dst_folder_id, name=None
+        )
 
     sub_rows = await pool.fetch(
         "SELECT id, name FROM folders WHERE owner_user_id = $1 AND parent_folder_id = $2",

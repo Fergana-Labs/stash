@@ -185,9 +185,7 @@ async def test_event_created_session_lands_in_default_folder(client: AsyncClient
         "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     assert listed.status_code == 200
-    session = next(
-        s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted"
-    )
+    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted")
     assert session["session_folder_id"] is not None
     assert session["session_folder_name"] == "Default"
 
@@ -221,9 +219,7 @@ async def test_transcript_upload_targets_explicit_session_folder(client: AsyncCl
     listed = await client.get(
         "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
-    session = next(
-        s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session"
-    )
+    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session")
     assert session["session_folder_id"] == folder_id
     assert session["session_folder_name"] == "Pinned"
 
@@ -237,9 +233,7 @@ async def test_event_stream_pin_targets_folder(client: AsyncClient):
     scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
-    folder = await client.post(
-        "/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers
-    )
+    folder = await client.post("/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers)
     folder_id = folder.json()["id"]
 
     pushed = await client.post(
@@ -270,9 +264,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
     scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
 
-    folder = await client.post(
-        "/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers
-    )
+    folder = await client.post("/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers)
     folder_id = folder.json()["id"]
 
     async def push():
@@ -292,9 +284,7 @@ async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: Async
     listed = await client.get(
         "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
-    row_id = next(
-        s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session"
-    )
+    row_id = next(s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session")
 
     moved = await client.post(
         "/api/v1/me/session-folders/assign",

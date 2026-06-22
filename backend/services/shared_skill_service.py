@@ -553,7 +553,12 @@ async def _fork_page(
 
 
 async def _fork_table(
-    conn, source_table_id: UUID, *, owner_user_id: UUID, user_id: UUID, folder_id: UUID | None = None
+    conn,
+    source_table_id: UUID,
+    *,
+    owner_user_id: UUID,
+    user_id: UUID,
+    folder_id: UUID | None = None,
 ) -> UUID:
     table = await conn.fetchrow(
         "SELECT name, description, columns, views, embedding_config FROM tables WHERE id = $1",
