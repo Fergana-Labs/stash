@@ -8,7 +8,7 @@ forever, so every page authored before that fix has dead images today.
 
 This migration finds every presigned R2 URL in page bodies, looks up the
 matching ``files.id`` by ``storage_key``, and rewrites the URL to the
-stable proxy form ``/api/v1/workspaces/{wid}/files/{fid}/download``.
+stable proxy form ``/api/v1/me/files/{fid}/download``.
 
 Revision ID: 0075
 Revises: 0074
@@ -49,8 +49,7 @@ def _rewrite_body(body: str, lookup_file_id) -> str:
         file_id = lookup_file_id(storage_key)
         if not file_id:
             return match.group(0)
-        workspace_id = storage_key.split("/", 1)[0]
-        return f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download"
+        return f"/api/v1/me/files/{file_id}/download"
 
     return _R2_URL_RE.sub(replace, body)
 

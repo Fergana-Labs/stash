@@ -40,7 +40,6 @@ async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
 async def index_slack(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
     if not allowed_channel_ids:
@@ -98,7 +97,6 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     """On-demand: pull messages in [since, until] across allowed channels.
     Caches them (upsert) so they're searchable afterward, and returns refs."""
     source_id = UUID(source["id"])
-    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     if not allowed_channel_ids:

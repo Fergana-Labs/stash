@@ -143,27 +143,20 @@ def clear_config() -> None:
 
 
 # --- Streaming toggle ---
+#
+# Streaming is global to the user's scope: a single boolean the plugin reads as
+# `not stopped_streaming` (stashai/plugin/scope.py). There is no per-repo scope.
 
 
-def _stopped_set() -> set[str]:
+def streaming_stopped() -> bool:
     if USER_CONFIG_FILE.exists():
-        val = _read_json(USER_CONFIG_FILE).get("stopped_streaming")
-        if isinstance(val, list):
-            return set(val)
-    return set()
+        return bool(_read_json(USER_CONFIG_FILE).get("stopped_streaming"))
+    return False
 
 
-def is_streaming(scope: str) -> bool:
-    return scope not in _stopped_set()
+def start_streaming() -> None:
+    _write_to(USER_CONFIG_FILE, {"stopped_streaming": False})
 
 
-def set_streaming(scope: str) -> None:
-    ids = _stopped_set()
-    ids.discard(scope)
-    _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
-
-
-def clear_streaming(scope: str) -> None:
-    ids = _stopped_set()
-    ids.add(scope)
-    _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
+def stop_streaming() -> None:
+    _write_to(USER_CONFIG_FILE, {"stopped_streaming": True})

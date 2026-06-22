@@ -94,6 +94,17 @@ def upgrade() -> None:
         "UNIQUE (owner_user_id, source_type, external_ref)"
     )
 
+    # Dropping workspace_id from session_folders auto-dropped the owner lookup
+    # index (workspace_id, owner_user_id) and the one-default-per-scope partial
+    # unique (workspace_id) WHERE is_default. Re-create both keyed on the owner
+    # so hot owner_user_id reads stay indexed and ensure_default_folder keeps its
+    # DB-enforced single-default invariant.
+    op.execute("CREATE INDEX session_folders_owner_idx ON session_folders (owner_user_id)")
+    op.execute(
+        "CREATE UNIQUE INDEX session_folders_one_default "
+        "ON session_folders (owner_user_id) WHERE is_default"
+    )
+
     op.execute("DROP TABLE workspaces")
 
 

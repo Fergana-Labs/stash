@@ -193,7 +193,6 @@ async def index_jira(source: dict) -> str | None:
     The body is fetched lazily on read and search is federated to JQL."""
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     cloud_id, project_key = source_service.parse_jira_project_ref(source["external_ref"])
 
     token = await get_valid_token(owner_user_id, "jira")

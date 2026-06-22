@@ -97,7 +97,6 @@ async def _shared_drives(client: httpx.AsyncClient) -> list[dict]:
 async def index_google_drive(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     root = source["external_ref"] or "root"
 
     token = await get_valid_token(owner_user_id, "google")

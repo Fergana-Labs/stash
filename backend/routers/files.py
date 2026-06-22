@@ -352,21 +352,19 @@ async def download_my_file(
     file_id: UUID,
     current_user: dict | None = Depends(get_current_user_optional),
 ):
-    """Permanent scope URL for file links embedded in wiki pages."""
+    """Permanent URL for file links embedded in wiki pages. Resolves the file's
+    real owner so recipients of a shared page can load its embedded images."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    owner_user_id = current_user["id"]
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT name, content_type, storage_key FROM files "
-        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+        "SELECT owner_user_id, name, content_type, storage_key FROM files "
+        "WHERE id = $1 AND deleted_at IS NULL",
         file_id,
-        owner_user_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    viewer_id = current_user["id"] if current_user else None
-    if not await _can_access_file(file_id, owner_user_id, viewer_id):
+    if not await _can_access_file(file_id, row["owner_user_id"], current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
     content_type = row["content_type"] or "application/octet-stream"

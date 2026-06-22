@@ -1,7 +1,7 @@
 {
   "name": "stash",
   "version": "0.1.189",
-  "description": "Connect Claude Code to Stash \u2014 stream activity to your workspace and collaborate with teammates' agents.",
+  "description": "Connect Claude Code to Stash \u2014 stream activity to your Stash and collaborate with your other agents.",
   "author": {
     "name": "Fergana Labs"
   },
@@ -26,15 +26,9 @@
       "type": "string",
       "sensitive": false
     },
-    "workspace_id": {
-      "title": "Workspace ID",
-      "description": "Default workspace UUID (optional, set via `stash connect`)",
-      "type": "string",
-      "sensitive": false
-    },
     "auto_curate": {
       "title": "Auto-curate Wiki",
-      "description": "Spawn a headless `claude -p` at session end to curate workspace history into wiki pages (true/false, default true). Toggle stored in ~/.stash/config.json.",
+      "description": "Spawn a headless `claude -p` at session end to curate your session history into wiki pages (true/false, default true). Toggle stored in ~/.stash/config.json.",
       "type": "string",
       "default": "true",
       "sensitive": false

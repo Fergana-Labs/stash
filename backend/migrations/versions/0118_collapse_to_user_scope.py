@@ -135,8 +135,6 @@ def upgrade() -> None:
             UNION ALL
             SELECT 'session_folder', sf.id FROM session_folders sf
               WHERE sf.workspace_id = wm.workspace_id
-            UNION ALL
-            SELECT 'skill', sk.id FROM skills sk WHERE sk.workspace_id = wm.workspace_id
         ) src ON TRUE
         WHERE wm.user_id <> w.creator_id
           AND NOT EXISTS (

@@ -114,8 +114,7 @@ async def get_table_by_id(
     table = await table_service.get_table(table_id)
     if not table or not table.get("owner_user_id"):
         raise HTTPException(status_code=404, detail="Table not found")
-    if not await user_scope_service.is_member(table["owner_user_id"], current_user["id"]):
-        raise HTTPException(status_code=404, detail="Table not found")
+    await _check_table_access(table["owner_user_id"], table_id, current_user["id"])
     return TableResponse(**table)
 
 

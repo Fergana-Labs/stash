@@ -40,7 +40,6 @@ async def index_linear(source: dict) -> str | None:
     """Build the navigable index only — one row per issue (identifier + title)."""
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
 
     token = await get_valid_token(owner_user_id, "linear")
 

@@ -52,7 +52,6 @@ async def index_asana(source: dict) -> str | None:
     """Build the navigable index only — one row per task (gid + name), no body."""
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     project_gid = source["external_ref"]
 
     token = await get_valid_token(owner_user_id, "asana")

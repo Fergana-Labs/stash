@@ -555,9 +555,10 @@ async def get_page(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # No scope-membership pre-gate: a page may be shared with someone who
-    # isn't a member (the primary collaboration path). get_page enforces
-    # check_access (owner OR share OR open skill) and returns None otherwise.
+    # Owner-scoped: get_page filters on owner_user_id == caller, so this only
+    # ever returns the caller's own pages. Cross-user reads of shared/public
+    # pages go through the canonical /api/v1/pages/{id} route (get_page_by_id),
+    # which resolves the real owner before enforcing check_access.
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")

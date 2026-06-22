@@ -28,13 +28,13 @@ from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
     Manifest,
-    clear_streaming,
     load_config,
     load_enabled_agents,
     load_manifest,
     save_config,
     save_enabled_agents,
-    set_streaming,
+    start_streaming,
+    stop_streaming,
     stored_base_url,
     write_manifest,
 )
@@ -3263,11 +3263,6 @@ def _derive_display_name() -> str:
     return os.environ.get("USER") or os.environ.get("USERNAME") or "teammate"
 
 
-# Streaming is user-scoped now. The on/off toggle keys off the repo's pinned
-# session folder, or this constant for the user's default destination.
-_DEFAULT_STREAMING_SCOPE = "me"
-
-
 def _require_auth() -> dict:
     """Return loaded config if authenticated, otherwise print error and exit."""
     cfg = load_config()
@@ -3294,7 +3289,7 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
-    set_streaming(_DEFAULT_STREAMING_SCOPE)
+    start_streaming()
 
     _append_claude_md(repo_root)
 
@@ -3604,46 +3599,20 @@ def connect_cmd():
     _auto_connect_repo(repo_root, cfg)
 
 
-def _streaming_scope(manifest: dict) -> str:
-    """The on/off key for streaming: the session folder the repo pins, else the
-    user's default destination. Mirrors the plugin's _streaming_scope."""
-    return manifest.get("session_folder_id") or _DEFAULT_STREAMING_SCOPE
-
-
-def _scope_label(manifest: dict) -> str:
-    if manifest.get("session_folder_id"):
-        return "this repo's session folder"
-    return "your default folder"
-
-
 @app.command("start")
 def start_cmd():
-    """Resume streaming transcripts (undoes `stash stop`)."""
+    """Resume streaming transcripts globally (undoes `stash stop`)."""
     _require_auth()
-
-    manifest = load_manifest()
-    if not manifest:
-        console.print("[yellow]No .stash file found in this repo.[/yellow]")
-        raise typer.Exit(1)
-
-    scope = _streaming_scope(manifest)
-    set_streaming(scope)
-    console.print(f"  [green]✓[/green] Streaming enabled for {_scope_label(manifest)}.")
+    start_streaming()
+    console.print("  [green]✓[/green] Streaming enabled.")
 
 
 @app.command("stop")
 def stop_cmd():
-    """Stop streaming transcripts for this repo."""
+    """Stop streaming transcripts globally."""
     _require_auth()
-
-    manifest = load_manifest()
-    if not manifest:
-        console.print("[yellow]No .stash file found in this repo.[/yellow]")
-        raise typer.Exit(1)
-
-    scope = _streaming_scope(manifest)
-    clear_streaming(scope)
-    console.print(f"  [green]✓[/green] Streaming stopped for {_scope_label(manifest)}.")
+    stop_streaming()
+    console.print("  [green]✓[/green] Streaming stopped.")
 
 
 # ===========================================================================
@@ -4130,8 +4099,8 @@ def disconnect_cmd():
         console.print("[yellow]No .stash file found — this repo isn't connected.[/yellow]")
         return
 
-    manifest = load_manifest()
-    clear_streaming(_streaming_scope(manifest or {}))
+    # Streaming is global to the user's scope, so disconnecting one repo leaves it
+    # untouched — run `stash stop` to halt streaming everywhere.
     manifest_path.unlink()
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 

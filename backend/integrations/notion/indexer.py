@@ -142,7 +142,6 @@ def _notion_client(token: str) -> httpx.AsyncClient:
 async def index_notion(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     resource_id = normalize_resource_id(source["external_ref"])
 
     token = await get_valid_token(owner_user_id, "notion")

@@ -138,7 +138,6 @@ def _render_meeting(meeting: dict, transcript) -> str:
 async def index_granola(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
 
     access_token = await get_valid_access_token(owner_user_id)
     present: list[str] = []

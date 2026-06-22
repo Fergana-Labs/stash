@@ -77,7 +77,6 @@ async def index_github_repo(source: dict) -> str | None:
 
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     external_ref = source["external_ref"]
 
     try:

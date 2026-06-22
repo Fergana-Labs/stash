@@ -247,22 +247,41 @@ async def _upsert_sessions_for_events(
 
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
-    # Sessions cannot live in skills anymore — visibility is just "the session
-    # exists and isn't trashed". The 19 call sites still bind a user argument
-    # at ${user_arg}, so the SQL must keep one (no-op) reference to it or
-    # asyncpg rejects the spare parameter.
+    """SQL predicate: may user ${user_arg} read the session this history_events
+    row belongs to? Mirrors `permission_service.check_access` for 'session'
+    reads — the owner sees their own sessions, everyone else needs a live share
+    on the session (or its session folder) or a public/shared session folder.
+    Events with no session_id are bookkeeping rows visible to their owner."""
     return f"""
         (
-          ${user_arg}::uuid IS NOT DISTINCT FROM ${user_arg}::uuid
-          AND (
-            {event_alias}.session_id IS NULL
-            OR EXISTS (
-              SELECT 1
-              FROM sessions readable_session
-              WHERE readable_session.owner_user_id = {event_alias}.owner_user_id
-                AND readable_session.session_id = {event_alias}.session_id
-                AND readable_session.deleted_at IS NULL
-            )
+          {event_alias}.session_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM sessions readable_session
+            WHERE readable_session.owner_user_id = {event_alias}.owner_user_id
+              AND readable_session.session_id = {event_alias}.session_id
+              AND readable_session.deleted_at IS NULL
+              AND (
+                readable_session.owner_user_id = ${user_arg}::uuid
+                OR EXISTS (
+                  SELECT 1 FROM shares session_share
+                  WHERE session_share.principal_type = 'user'
+                    AND session_share.principal_id = ${user_arg}::uuid
+                    AND (session_share.expires_at IS NULL OR session_share.expires_at > now())
+                    AND (
+                      (session_share.object_type = 'session'
+                       AND session_share.object_id = readable_session.id)
+                      OR (session_share.object_type = 'session_folder'
+                          AND readable_session.session_folder_id IS NOT NULL
+                          AND session_share.object_id = readable_session.session_folder_id)
+                    )
+                )
+                OR EXISTS (
+                  SELECT 1 FROM session_folders readable_folder
+                  WHERE readable_folder.id = readable_session.session_folder_id
+                    AND readable_folder.public_permission <> 'none'
+                )
+              )
           )
         )
     """

@@ -1174,6 +1174,42 @@ async def test_shared_session_folder_sessions_gated_on_share(pool):
 
 
 @pytest.mark.asyncio
+async def test_session_list_does_not_leak_unshared_sessions(pool):
+    """Regression: sharing a single object with someone must NOT expose all of
+    your sessions. `readable_session_event_condition` gates each session on a
+    real share — not merely on the viewer appearing in the accessible-scope
+    prefilter, which a single page share already widens to include the owner."""
+    from backend.services import memory_service
+
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    scope = await _make_scope(pool, owner)
+
+    session_row = await _make_session(pool, scope, owner, session_id="secret-sess")
+    await _make_history_event(
+        pool, scope, owner, session_id="secret-sess", content="secret transcript"
+    )
+
+    # Nothing shared yet: friend sees none of the owner's sessions.
+    assert await memory_service.list_scope_sessions(scope, friend) == []
+
+    # Sharing an UNRELATED page widens friend's accessible-scope prefilter to
+    # include the owner — but must still not surface the owner's sessions.
+    page = await _make_page(pool, scope, owner)
+    await _share(pool, scope, "page", page, friend, "read", by=owner)
+    assert await memory_service.list_scope_sessions(scope, friend) == []
+
+    # The owner always sees their own session; sharing the session itself is
+    # what surfaces it to the friend.
+    owner_rows = await memory_service.list_scope_sessions(scope, owner)
+    assert [r["session_id"] for r in owner_rows] == ["secret-sess"]
+
+    await _share(pool, scope, "session", session_row, friend, "read", by=owner)
+    friend_rows = await memory_service.list_scope_sessions(scope, friend)
+    assert [r["session_id"] for r in friend_rows] == ["secret-sess"]
+
+
+@pytest.mark.asyncio
 async def test_overview_counts_span_shared_not_unshared(pool):
     """The "Your brain" vitals (analytics_service.get_overview_counts) span the
     user's own content plus content shared with them — but a share only surfaces

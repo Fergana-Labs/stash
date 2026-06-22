@@ -91,7 +91,6 @@ async def _fetch_transcripts(
 async def index_gong(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
-    owner_user_id = UUID(source["owner_user_id"])
     allowed_account_ids = set(source_service.gong_allowed_workspace_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
     if not allowed_account_ids:
@@ -138,7 +137,6 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     afterward, and returns the call ids found. No soft-delete: this adds to the
     cache, it doesn't define the live set."""
     source_id = UUID(source["id"])
-    owner_user_id = UUID(source["owner_user_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_account_ids = set(source_service.gong_allowed_workspace_ids(source))
     if not allowed_account_ids:
