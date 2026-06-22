@@ -18,17 +18,10 @@ Here are some common code patterns that we need you to avoid:
 If you are about to ask the user to do something for you, think about whether you can do it yourself.
 
 - **Never ask the user to check logs.** Check them yourself — via running the server with captured output, MCPs for hosted servers, or ngrok inspector (`localhost:4040`).
-- **Never ask permission to kill/restart local processes.** If you need to restart uvicorn, ngrok, or any dev server to make progress, just do it. But scope kills to this worktree: several worktrees run the same stack on this machine, so kill by specific PID or port (`kill <pid>`, `pkill -f "next dev -p 3457"`) — never by bare command pattern (`pkill -f "next dev"`, `pkill -f uvicorn`), which takes down other worktrees' servers.
 - **Never speculate about env vars, API keys, or config.** If you need to know whether something is set, check it yourself (e.g. `env | grep`, read `.env`, etc.). Just do it. Do not guess or assume. Do not ask the user. Check it yourself.
 - **Never ask the user to test UI**. Use `agent-browser` as the default tool for manual E2E/QA browser checks: click through the changed workflow, inspect the page state, capture screenshots when useful, and check logs yourself. Use existing Playwright tests for scripted regression coverage when the repo already has them or when adding a durable test is part of the task.
+- **Never ask permission to kill/restart local processes.** If you need to restart uvicorn, ngrok, or any dev server to make progress, just do it. But scope kills to this worktree: several worktrees run the same stack on this machine, so kill by specific PID or port (`kill <pid>`, `pkill -f "next dev -p 3457"`) — never by bare command pattern (`pkill -f "next dev"`, `pkill -f uvicorn`), which takes down other worktrees' servers.
 
-### Past Conversation Context
-
-Previous Claude coding sessions are stored as `.jsonl` files in your `~/.claude` directory. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
-
-When you create or update a PR, share the GitHub link with the user at the end of your session.
-When you make local changes for a task, commit them, push the branch, and open a ready-for-review PR before finishing unless the user explicitly says not to. Do not open draft PRs unless the user explicitly asks for a draft.
-When making local changes for a task that already has a PR, commit and push those changes to the PR branch before finishing so the remote branch stays up to date.
 
 ### PR hygiene
 
