@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import SessionUpload from "@/components/SessionUpload";
@@ -42,6 +42,10 @@ type ViewKey = "list" | "day" | "user" | "agent" | "ticket" | "folder";
 type SortKey = "recent" | "oldest" | "events" | "name";
 
 const VIEW_STORAGE_KEY = "stash_sessions_view";
+
+// One folder page. Drilled-in folders fetch this many at a time and load more
+// on scroll, so folders with thousands of sessions stay fully reachable.
+const SESSIONS_PAGE_SIZE = 100;
 
 const VIEWS: { key: ViewKey; label: string }[] = [
   { key: "list", label: "List" },
@@ -1118,20 +1122,62 @@ function FolderDrill({
   onDropSessions: (rowIds: string[], folderId: string) => void;
 }) {
   const [folderSessions, setFolderSessions] = useState<SessionSummary[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
   // Always fetch the folder's own sessions from the backend. The global recent
   // window the landing page loads can miss a folder's older sessions entirely,
   // so a folder-scoped query is the only thing that reliably fills the drill.
+  // Shared folders load in full from their own endpoint; own folders page
+  // through /me/sessions, so they need infinite scroll past the first page.
   useEffect(() => {
     setFolderSessions(null);
+    setHasMore(false);
     const request = folder.shared
       ? listSharedSessionFolderSessions(folder.id)
-      : listMySessions(200, folder.id);
+      : listMySessions(SESSIONS_PAGE_SIZE, folder.id, 0);
     request
-      .then(setFolderSessions)
+      .then((rows) => {
+        setFolderSessions(rows);
+        setHasMore(!folder.shared && rows.length === SESSIONS_PAGE_SIZE);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load sessions"));
   }, [folder, refreshKey]);
+
+  const loadMore = useCallback(async () => {
+    if (folder.shared || loadingMore || !hasMore || folderSessions === null) return;
+    setLoadingMore(true);
+    try {
+      const rows = await listMySessions(
+        SESSIONS_PAGE_SIZE,
+        folder.id,
+        folderSessions.length
+      );
+      setFolderSessions((prev) => [...(prev ?? []), ...rows]);
+      setHasMore(rows.length === SESSIONS_PAGE_SIZE);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load more sessions");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [folder, loadingMore, hasMore, folderSessions]);
+
+  // Auto-load the next page when the sentinel scrolls into view; the button it
+  // wraps is the manual fallback if the observer can't fire.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   const ownFolder = folder.folder;
   // Shared folders are read-only: render the same chronological browser, but
@@ -1210,16 +1256,30 @@ function FolderDrill({
       {folderSessions === null ? (
         <p className="text-[12.5px] text-muted">Loading…</p>
       ) : (
-        <SessionsView
-          view={view}
-          sessions={drillSessions}
-          folders={folders}
-          isPinned={isPinned}
-          onTogglePin={onTogglePin}
-          selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
-          onToggleSelect={folder.shared ? noop : onToggleSelect}
-          drag={folder.shared ? NO_DRAG : drag}
-        />
+        <>
+          <SessionsView
+            view={view}
+            sessions={drillSessions}
+            folders={folders}
+            isPinned={isPinned}
+            onTogglePin={onTogglePin}
+            selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
+            onToggleSelect={folder.shared ? noop : onToggleSelect}
+            drag={folder.shared ? NO_DRAG : drag}
+          />
+          {hasMore && (
+            <div ref={sentinelRef} className="flex justify-center py-4">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

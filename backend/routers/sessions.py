@@ -92,6 +92,7 @@ async def list_my_sessions(
     owner_user_id: UUID | None = Query(None),
     session_folder_id: UUID | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
 ):
     """Recent sessions across the user's accessible scopes, grouped by
@@ -99,7 +100,8 @@ async def list_my_sessions(
     timestamps, and a preview of the first prompt.
 
     Pass `session_folder_id` to scope to one folder — without it the list is a
-    global recent window, so a folder's older sessions would never appear."""
+    global recent window, so a folder's older sessions would never appear.
+    `offset` pages through the (last_event_at DESC) order for infinite scroll."""
     pool = get_pool()
     args: list = [current_user["id"]]
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
@@ -172,7 +174,7 @@ async def list_my_sessions(
         GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
           sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
-        LIMIT {int(limit)}
+        LIMIT {int(limit)} OFFSET {int(offset)}
         """,
         *args,
     )

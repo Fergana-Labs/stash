@@ -1125,10 +1125,12 @@ export interface LinearTicketLabel {
 
 export async function listMySessions(
   limit = 50,
-  sessionFolderId?: string
+  sessionFolderId?: string,
+  offset = 0
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
+  if (offset) qs.set("offset", String(offset));
   if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
