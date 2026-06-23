@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import AppShell from "../../components/AppShell";
 import CustomSelect from "../../components/CustomSelect";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
@@ -44,7 +44,7 @@ interface SearchResult {
   title: string;
   href: string;
   sourceName: string;
-  detail: string;
+  detail: ReactNode;
   updatedAt: string;
   relevance: number;
 }
@@ -212,9 +212,14 @@ function SearchPageInner() {
     return sidebars[selectedWorkspaceId]?.files.pages ?? [];
   }, [selectedWorkspaceId, sidebars]);
 
-  const handleSearch = useCallback(async () => {
-    const q = query.trim();
-    if (!q) return;
+  const handleSearch = useCallback(async (rawQuery?: string) => {
+    const q = (rawQuery ?? query).trim();
+    if (!q) {
+      setResults([]);
+      setSearchedQuery("");
+      setSearching(false);
+      return;
+    }
 
     setSearching(true);
     setError("");
@@ -340,11 +345,19 @@ function SearchPageInner() {
     sidebars,
   ]);
 
+  // The header search input writes the query into the URL; mirror it into
+  // local state and re-run the search in real time as it (or any filter)
+  // changes.
+  const urlQuery = searchParams.get("q") ?? "";
+
   useEffect(() => {
-    if (!searchParams.get("q")) return;
+    setQuery(urlQuery);
+  }, [urlQuery]);
+
+  useEffect(() => {
     if (fetching) return;
-    handleSearch();
-  }, [fetching, handleSearch, searchParams]);
+    handleSearch(urlQuery);
+  }, [fetching, handleSearch, urlQuery]);
 
   if (loading) {
     return <BasicPageSkeleton />;
@@ -361,180 +374,64 @@ function SearchPageInner() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="mx-auto w-full max-w-[1180px] px-6 py-8">
-        <header className="border-b border-border-subtle pb-6">
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-            Search
-          </p>
-          <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-            Search pages, sessions, tables, and Skills.
-          </h1>
-          <p className="mt-2 max-w-[700px] text-[14.5px] leading-relaxed text-muted">
-            Search one workspace, one Skill, a folder inside a workspace, or
-            internal knowledge only. Skill results are published bundles created from
-            workspace pages, tables, and sessions.
-          </p>
-        </header>
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedSessionId ? (
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-[12px] text-foreground">
+                #{selectedSessionId}
+              </span>
+            ) : null}
 
-        <div className="mt-6 flex flex-col gap-5">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              handleSearch();
-            }}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 focus-within:border-brand"
-          >
-            <input
-              type="text"
-              placeholder="Search for a decision, transcript, table, Skill, or page..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
-              autoFocus
+            <CustomSelect
+              value={selectedFolderId}
+              options={[
+                { value: "", label: "All folders" },
+                ...folderOptions.map((folder) => ({ value: folder.id, label: folder.name })),
+              ]}
+              onChange={(next) => {
+                setSelectedFolderId(next);
+                if (next) setSelectedPageId("");
+              }}
+              disabled={!selectedWorkspaceId || Boolean(selectedPageId)}
+              ariaLabel="Folder"
+              searchable
+              searchPlaceholder="Filter folders…"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              menuClassName="text-[12.5px]"
             />
-            <button
-              type="submit"
-              disabled={searching || !query.trim() || fetching}
-              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-            >
-              {searching ? "Searching..." : "Search"}
-            </button>
-          </form>
 
-          <aside className="rounded-lg border border-border bg-surface p-4">
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Workspace</span>
-                <CustomSelect
-                  value={selectedWorkspaceId}
-                  options={[
-                    { value: "", label: "All workspaces" },
-                    ...workspaces.map((workspace) => ({
-                      value: workspace.id,
-                      label: workspace.name,
-                    })),
-                  ]}
-                  onChange={(next) => {
-                    setSelectedWorkspaceId(next);
-                    setSelectedFolderId("");
-                    setSelectedPageId("");
-                    setSelectedProductSkillId("");
-                    setSelectedProductSkillSlug("");
-                    setSelectedSessionId("");
-                  }}
-                  ariaLabel="Workspace"
-                  searchable
-                  searchPlaceholder="Search workspaces…"
-                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                  menuClassName="text-[13px]"
-                />
-              </div>
+            <CustomSelect
+              value={selectedPageId}
+              options={[
+                { value: "", label: "Any page" },
+                ...pageOptions.map((page) => ({ value: page.id, label: page.name })),
+              ]}
+              onChange={(next) => {
+                setSelectedPageId(next);
+                if (next) setSelectedFolderId("");
+              }}
+              disabled={!selectedWorkspaceId || Boolean(selectedFolderId)}
+              ariaLabel="Page"
+              searchable
+              searchPlaceholder="Filter pages…"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              menuClassName="text-[12.5px]"
+            />
 
-              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Skill</span>
-                <CustomSelect
-                  value={selectedProductSkillId}
-                  options={[
-                    { value: "", label: "All Skills" },
-                    ...publishedSkills.map((skill) => ({
-                      value: skill.published!.id,
-                      label: skill.name,
-                    })),
-                  ]}
-                  onChange={(next) => {
-                    setSelectedProductSkillId(next);
-                    setSelectedProductSkillSlug("");
-                  }}
-                  ariaLabel="Skill"
-                  searchable
-                  searchPlaceholder="Search Skills…"
-                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                  menuClassName="text-[13px]"
-                />
-              </div>
-
-              {selectedSessionId ? (
-                <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
-                  <span className="text-[12px] font-medium text-foreground">Session</span>
-                  <div className="truncate rounded-md border border-border bg-base px-2 py-2 font-mono text-[12px] text-foreground">
-                    #{selectedSessionId}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Folder</span>
-                <CustomSelect
-                  value={selectedFolderId}
-                  options={[
-                    {
-                      value: "",
-                      label: selectedProductSkillId ? "Skill selected" : "Entire workspace",
-                    },
-                    ...folderOptions.map((folder) => ({
-                      value: folder.id,
-                      label: folder.name,
-                    })),
-                  ]}
-                  onChange={(next) => {
-                    setSelectedFolderId(next);
-                    if (next) setSelectedPageId("");
-                  }}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductSkillId || selectedPageId)}
-                  ariaLabel="Folder"
-                  searchable
-                  searchPlaceholder="Search folders…"
-                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                  menuClassName="text-[13px]"
-                />
-              </div>
-
-              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Page</span>
-                <CustomSelect
-                  value={selectedPageId}
-                  options={[
-                    {
-                      value: "",
-                      label: selectedProductSkillId
-                        ? "Skill selected"
-                        : selectedFolderId
-                          ? "Folder selected"
-                          : "Any page",
-                    },
-                    ...pageOptions.map((page) => ({
-                      value: page.id,
-                      label: page.name,
-                    })),
-                  ]}
-                  onChange={(next) => {
-                    setSelectedPageId(next);
-                    if (next) setSelectedFolderId("");
-                  }}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductSkillId || selectedFolderId)}
-                  ariaLabel="Page"
-                  searchable
-                  searchPlaceholder="Search pages…"
-                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                  menuClassName="text-[13px]"
-                />
-              </div>
-
-              <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Content</span>
-                <CustomSelect
-                  value={contentScope}
-                  options={CONTENT_SCOPES.map((scope) => ({
-                    value: scope.id,
-                    label: scope.label,
-                  }))}
-                  onChange={(next) => setContentScope(next as ContentScope)}
-                  ariaLabel="Content"
-                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                  menuClassName="text-[13px]"
-                />
-              </div>
-            </div>
-          </aside>
+            <CustomSelect
+              value={contentScope}
+              options={CONTENT_SCOPES.map((scope) => ({
+                value: scope.id,
+                label: scope.id === "all" ? "All types" : scope.label,
+              }))}
+              onChange={(next) => setContentScope(next as ContentScope)}
+              ariaLabel="Content"
+              searchable
+              searchPlaceholder="Filter types…"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              menuClassName="text-[12.5px]"
+            />
+          </div>
 
           <main className="min-w-0">
             {error && (
@@ -631,7 +528,7 @@ function searchSingleSession(
       title: sessionId,
       href: `/sessions/${encodeURIComponent(sessionId)}`,
       sourceName: workspace.name,
-      detail: sessionEventSnippet(bestMatch, query),
+      detail: contextSnippet(bestMatch.content, query) ?? sessionEventSnippet(bestMatch, query),
       updatedAt: latest.created_at ?? new Date().toISOString(),
       relevance: scoreSessionEvent(query, sessionId, bestMatch),
     },
@@ -655,7 +552,9 @@ function searchSkills(skills: SearchableSkill[], query: string): SearchResult[] 
       title: skill.name,
       href: `/workspaces/${skill.workspace_id}/skills/${skill.folder_id}`,
       sourceName: skill.workspace_name,
-      detail: `Skill / ${skill.description || `${skill.file_count} files`}`,
+      detail:
+        contextSnippet(skill.description, query) ??
+        `Skill / ${skill.description || `${skill.file_count} files`}`,
       updatedAt: skill.updated_at,
       relevance,
     }));
@@ -677,7 +576,9 @@ function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): Sear
       title: detail.skill.title,
       href: `/skills/${detail.skill.slug}`,
       sourceName: detail.workspace_name,
-      detail: `Skill / ${detail.skill.description || `${detail.contents.pages.length} pages`}`,
+      detail:
+        contextSnippet(detail.skill.description, query) ??
+        `Skill / ${detail.skill.description || `${detail.contents.pages.length} pages`}`,
       updatedAt: detail.skill.updated_at,
       relevance,
     },
@@ -709,7 +610,7 @@ function searchSessionsFromEvents(
         title: event.session_id,
         href: `/sessions/${encodeURIComponent(event.session_id)}`,
         sourceName: workspace.name,
-        detail: sessionSearchSnippet(event, query),
+        detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
         updatedAt: event.created_at,
         relevance,
       });
@@ -771,9 +672,15 @@ function searchPages(
         href: `/p/${page.id}`,
         sourceName: workspace.name,
         detail:
-          page.content_type === "html"
+          contextSnippet(
+            page.content_type === "html"
+              ? stripHtml(page.content_html ?? "")
+              : page.content_markdown ?? "",
+            query
+          ) ??
+          (page.content_type === "html"
             ? stripHtml(page.content_html ?? "").slice(0, 220) || "HTML page"
-            : page.content_markdown?.slice(0, 220) || "Markdown page",
+            : page.content_markdown?.slice(0, 220) || "Markdown page"),
         updatedAt: page.updated_at,
         relevance: scorePage(query, page),
       }))
@@ -798,7 +705,13 @@ function searchTables(tables: TableWithWorkspace[], query: string): SearchResult
       title: table.name,
       href: tableSearchHref(table),
       sourceName: table.workspace_name ?? "Personal",
-      detail: tableSearchDetail(table),
+      detail:
+        contextSnippet(
+          [table.description, table.columns.map((column) => column.name).join(" ")]
+            .filter(Boolean)
+            .join(" "),
+          query
+        ) ?? tableSearchDetail(table),
       updatedAt: table.updated_at,
       relevance,
     }));
@@ -860,7 +773,13 @@ function searchPublicSkillItems(
         title: page.name,
         href: `/p/${page.id}?skill=${slug}`,
         sourceName: detail.skill.title,
-        detail: pageSnippet(page.content_markdown, page.content_html),
+        detail:
+          contextSnippet(
+            page.content_markdown?.trim()
+              ? page.content_markdown
+              : stripHtml(page.content_html ?? ""),
+            query
+          ) ?? pageSnippet(page.content_markdown, page.content_html),
         updatedAt: page.updated_at || detail.skill.updated_at,
         relevance: scoreValues(query, [
           { value: page.name, weight: 8 },
@@ -883,7 +802,17 @@ function searchPublicSkillItems(
         title: table.name,
         href: `/tables/${table.id}?skill=${slug}`,
         sourceName: detail.skill.title,
-        detail: publicTableSnippet(table.description, table.columns, table.rows, query),
+        detail:
+          contextSnippet(
+            [
+              table.description,
+              table.columns.map((column) => column.name ?? "").join(" "),
+              table.rows.map(tableRowText).join(" "),
+            ]
+              .filter(Boolean)
+              .join(" "),
+            query
+          ) ?? publicTableSnippet(table.description, table.columns, table.rows, query),
         updatedAt: detail.skill.updated_at,
         relevance: scoreValues(query, [
           { value: table.name, weight: 8 },
@@ -1037,6 +966,55 @@ function normalizeSearchText(value: string): string {
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Wraps every occurrence of the query in a <mark>, case-insensitively.
+function highlightAll(text: string, query: string): ReactNode {
+  const lower = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  while (true) {
+    const index = lower.indexOf(needle, cursor);
+    if (index === -1) {
+      nodes.push(text.slice(cursor));
+      break;
+    }
+    if (index > cursor) nodes.push(text.slice(cursor, index));
+    nodes.push(
+      <mark key={key++} className="rounded-[3px] bg-[#fde68a] px-0.5 text-foreground">
+        {text.slice(index, index + query.length)}
+      </mark>
+    );
+    cursor = index + query.length;
+  }
+  return nodes;
+}
+
+// Context window around the FIRST occurrence of the query, with every match in
+// that window highlighted. Returns null when the query is not present so
+// callers can fall back to their default detail string.
+function contextSnippet(
+  source: string | null | undefined,
+  query: string
+): ReactNode | null {
+  const text = (source ?? "").replace(/\s+/g, " ").trim();
+  const trimmed = query.trim();
+  if (!text || !trimmed) return null;
+
+  const index = text.toLowerCase().indexOf(trimmed.toLowerCase());
+  if (index === -1) return null;
+
+  const start = Math.max(0, index - 80);
+  const end = Math.min(text.length, index + trimmed.length + 140);
+  return (
+    <>
+      {start > 0 ? "\u2026" : ""}
+      {highlightAll(text.slice(start, end), trimmed)}
+      {end < text.length ? "\u2026" : ""}
+    </>
+  );
 }
 
 function relativeTime(iso: string): string {

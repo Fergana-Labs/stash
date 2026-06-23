@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
@@ -248,6 +248,73 @@ function TopSearchButton({
   );
 }
 
+// On the /search route the top bar is a live text input that drives the
+// results in real time (it writes the query into the URL, which the search
+// page reads). The command palette stays reachable via the ⌘K affordance and
+// the global ⌘K shortcut.
+function InlineSearchInput({
+  onOpenPalette,
+}: {
+  onOpenPalette: () => void;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [value, setValue] = useState(searchParams.get("q") ?? "");
+
+  // Keep the field in sync when `q` changes from elsewhere (e.g. running a
+  // scoped search from the command palette).
+  useEffect(() => {
+    setValue(searchParams.get("q") ?? "");
+  }, [searchParams]);
+
+  // Debounced write of the query into the URL; the search page reads `q` and
+  // re-runs its search as this changes.
+  useEffect(() => {
+    const current = searchParams.get("q") ?? "";
+    if (value === current) return;
+    const handle = window.setTimeout(() => {
+      const params = new URLSearchParams(Array.from(searchParams.entries()));
+      if (value) params.set("q", value);
+      else params.delete("q");
+      router.replace(`/search?${params.toString()}`, { scroll: false });
+    }, 180);
+    return () => window.clearTimeout(handle);
+  }, [value, router, searchParams]);
+
+  return (
+    <div className="flex h-10 w-full items-center gap-2.5 rounded-full border border-border bg-surface px-4 text-[14px] shadow-sm transition-colors focus-within:border-[var(--color-brand-300)]">
+      <svg
+        className="h-4 w-4 shrink-0 text-muted"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="Search pages, sessions, tables, and Skills…"
+        aria-label="Search"
+        autoFocus
+        className="min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted outline-none"
+      />
+      <button
+        type="button"
+        onClick={onOpenPalette}
+        aria-label="Open command palette"
+        title="Command palette (⌘K)"
+        className="shrink-0 cursor-pointer rounded bg-base px-1.5 py-0.5 font-mono text-[11px] text-muted ring-1 ring-border transition-colors hover:text-foreground"
+      >
+        ⌘K
+      </button>
+    </div>
+  );
+}
+
 export default function AppShell({
   user,
   onLogout,
@@ -317,6 +384,7 @@ export default function AppShell({
 
   const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
+  const isSearchPage = pathname === "/search";
 
   // Browser tab title: the most specific thing we know — the current item or
   // section from breadcrumbs, falling back to the workspace name on its home —
@@ -419,11 +487,15 @@ export default function AppShell({
           {/* The popup measures this element on open so it lines up exactly
               with the bar, regardless of sidebar/breadcrumb width. */}
           <div ref={searchBarRef} className="w-full max-w-4xl">
-            <TopSearchButton
-              scope={searchScope}
-              workspace={activeWorkspace}
-              onClick={() => setCmdkOpen(true)}
-            />
+            {isSearchPage ? (
+              <InlineSearchInput onOpenPalette={() => setCmdkOpen(true)} />
+            ) : (
+              <TopSearchButton
+                scope={searchScope}
+                workspace={activeWorkspace}
+                onClick={() => setCmdkOpen(true)}
+              />
+            )}
           </div>
         </div>
 
