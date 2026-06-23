@@ -111,9 +111,7 @@ async def test_each_account_counts(client, pool, billing_on):
 async def test_internal_email_gets_pro_without_subscription(client, pool, billing_on):
     """Team accounts on an internal domain bypass the pay gate with no Stripe row."""
     api_key, user_id = await _register(client)
-    await pool.execute(
-        "UPDATE users SET email = 'dev@joinstash.ai' WHERE id = $1", user_id
-    )
+    await pool.execute("UPDATE users SET email = 'dev@joinstash.ai' WHERE id = $1", user_id)
     await _connect_account(pool, user_id, "github")
 
     # A free user would be gated here; the internal account is not.

@@ -46,7 +46,6 @@ def test_upload_transcript_retries_transient_transport_error(monkeypatch, tmp_pa
     c, calls = _make_client(monkeypatch, [httpx.ReadError("blip"), _FakeResponse()])
 
     result = c.upload_transcript(
-        workspace_id="ws",
         session_id="s1",
         transcript_path=transcript,
         agent_name="claude",
@@ -63,7 +62,6 @@ def test_upload_transcript_raises_after_persistent_transport_error(monkeypatch, 
 
     with pytest.raises(httpx.ReadError):
         c.upload_transcript(
-            workspace_id="ws",
             session_id="s1",
             transcript_path=transcript,
             agent_name="claude",

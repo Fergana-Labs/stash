@@ -1,6 +1,6 @@
 // Markdown ↔ ProseMirror JSON round-trip, copied from the product app's
-// MarkdownEditor (frontend/src/components/workspace/MarkdownEditor.tsx)
-// minus the comment-anchor marks and workspace-file image URLs, which
+// MarkdownEditor (frontend/src/components/content/MarkdownEditor.tsx)
+// minus the comment-anchor marks and user-file image URLs, which
 // don't exist on the public pastebin.
 
 export type JSONNode = {

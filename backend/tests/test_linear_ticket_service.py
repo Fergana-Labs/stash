@@ -49,7 +49,7 @@ async def test_fetch_issue_parses_linear_graphql_response(monkeypatch):
 @pytest.mark.asyncio
 async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch):
     session_row_id = UUID("00000000-0000-0000-0000-000000000019")
-    WORKSPACE_ID = UUID("00000000-0000-0000-0000-0000000000aa")
+    OWNER_USER_ID = UUID("00000000-0000-0000-0000-0000000000aa")
     updated_at = datetime(2026, 5, 19, 21, 45, 50, tzinfo=UTC)
 
     class Pool:
@@ -57,7 +57,7 @@ async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch
             self.executed = []
 
         async def fetch(self, *args):
-            return [{"ticket_identifier": "FER-19", "workspace_id": WORKSPACE_ID}]
+            return [{"ticket_identifier": "FER-19", "owner_user_id": OWNER_USER_ID}]
 
         async def execute(self, *args):
             self.executed.append(args)
@@ -80,12 +80,12 @@ async def test_enrich_session_labels_updates_canonical_linear_fields(monkeypatch
             updated_at=updated_at,
         )
 
-    async def workspace_token(workspace_id):
-        assert workspace_id == WORKSPACE_ID
+    async def owner_token(owner_user_id):
+        assert owner_user_id == OWNER_USER_ID
         return "test-token"
 
     monkeypatch.setattr(linear_ticket_service, "get_pool", lambda: pool)
-    monkeypatch.setattr(linear_ticket_service, "_workspace_linear_token", workspace_token)
+    monkeypatch.setattr(linear_ticket_service, "_owner_linear_token", owner_token)
     monkeypatch.setattr(linear_ticket_service.linear_api_service, "fetch_issue", fetch_issue)
 
     updated = await linear_ticket_service.enrich_session_labels(session_row_id)

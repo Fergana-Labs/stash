@@ -100,7 +100,7 @@ async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
     await source_service.upsert_index_row(
         table="gmail_index",
         source_id=UUID(source["id"]),
-        workspace_id=UUID(source["workspace_id"]),
+        owner_user_id=UUID(source["owner_user_id"]),
         path=message_id,
         name=_message_name(message),
         kind="message",

@@ -1,4 +1,4 @@
-"""Aggregate router: cross-workspace indexes for the authenticated user."""
+"""Aggregate router: cross-scope indexes for the authenticated user."""
 
 from datetime import datetime
 from uuid import UUID
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
 @router.get("/pages", response_model=UserPageListResponse)
 async def list_all_pages(current_user: dict = Depends(get_current_user)):
-    """Every page across every workspace the user is a member of."""
+    """Every page across every scope the user is a member of."""
     rows = await files_tree_service.list_user_pages(current_user["id"])
     return UserPageListResponse(pages=[UserPageEntry(**r) for r in rows])
 
@@ -36,7 +36,7 @@ async def list_all_session_events(
     order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
 ):
-    """Session events across all accessible workspaces, with filters."""
+    """Session events across all accessible scopes, with filters."""
     events, has_more = await memory_service.query_all_user_events(
         current_user["id"],
         agent_name=agent_name,
@@ -51,14 +51,14 @@ async def list_all_session_events(
 
 @router.get("/recents")
 async def list_my_recents(current_user: dict = Depends(get_current_user)):
-    """Recently-viewed objects across all workspaces, most recent first.
+    """Recently-viewed objects across all scopes, most recent first.
 
-    Includes objects in workspaces the user isn't a member of (shared items),
+    Includes objects in scopes the user isn't a member of (shared items),
     which the Shared-with-me Recent strip resolves against the share list.
     """
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT object_id, kind, workspace_id FROM user_recents "
+        "SELECT object_id, kind, owner_user_id FROM user_recents "
         "WHERE user_id = $1 ORDER BY viewed_at DESC LIMIT 30",
         current_user["id"],
     )
@@ -66,7 +66,7 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
         {
             "object_id": r["object_id"],
             "kind": r["kind"],
-            "workspace_id": r["workspace_id"],
+            "owner_user_id": r["owner_user_id"],
         }
         for r in rows
     ]
@@ -76,30 +76,29 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
 async def list_activity(
     limit: int = Query(50, ge=1, le=200),
     before: datetime | None = Query(None),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent product activity across accessible workspaces, cursor-paginated by ts."""
+    """Recent product activity across accessible scopes, cursor-paginated by ts."""
     pool = get_pool()
     events = await pool.fetch(
         """
-        WITH member_workspaces AS (
-          SELECT w.id, w.name
-          FROM workspaces w
-          JOIN workspace_members wm ON wm.workspace_id = w.id
-          WHERE wm.user_id = $1
-          AND ($3::uuid IS NULL OR w.id = $3)
+        WITH member_scopes AS (
+          SELECT u.id, u.name
+          FROM users u
+          WHERE u.id = $1
+          AND ($3::uuid IS NULL OR u.id = $3)
         ),
-        -- Member workspaces plus any workspace that has shared content with the
+        -- The user's own scope plus any scope that has shared content with the
         -- user. Page/file rows still pass readable_content_condition, so a share
-        -- only surfaces the specific shared rows — never the whole workspace.
-        accessible_workspaces AS (
-          SELECT w.id, w.name
-          FROM workspaces w
-          WHERE w.id IN """
-        + permission_service.accessible_workspace_ids_sql(1)
+        -- only surfaces the specific shared rows — never the whole scope.
+        accessible_scopes AS (
+          SELECT u.id, u.name
+          FROM users u
+          WHERE u.id IN """
+        + permission_service.accessible_scope_ids_sql(1)
         + """
-          AND ($3::uuid IS NULL OR w.id = $3)
+          AND ($3::uuid IS NULL OR u.id = $3)
         )
         SELECT * FROM (
         (
@@ -114,10 +113,10 @@ async def list_activity(
                    ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
                    FILTER (WHERE he.agent_name IS NOT NULL)
                  )[1] || ': ' || he.session_id AS target_label,
-                 aw.id AS workspace_id,
-                 aw.name AS workspace_name
+                 aw.id AS owner_user_id,
+                 aw.name AS owner_name
           FROM history_events he
-          JOIN member_workspaces aw ON aw.id = he.workspace_id
+          JOIN member_scopes aw ON aw.id = he.owner_user_id
           WHERE he.session_id IS NOT NULL
             AND """
         + memory_service.readable_session_event_condition("he", 1)
@@ -131,10 +130,10 @@ async def list_activity(
                  COALESCE(p.updated_by, p.created_by) AS actor_id,
                  p.id::text AS target_id,
                  p.name AS target_label,
-                 aw.id AS workspace_id,
-                 aw.name AS workspace_name
+                 aw.id AS owner_user_id,
+                 aw.name AS owner_name
           FROM pages p
-          JOIN accessible_workspaces aw ON aw.id = p.workspace_id
+          JOIN accessible_scopes aw ON aw.id = p.owner_user_id
           WHERE p.deleted_at IS NULL
             AND """
         + permission_service.readable_content_condition("page", "p", 1)
@@ -147,26 +146,14 @@ async def list_activity(
                  f.uploaded_by AS actor_id,
                  f.id::text AS target_id,
                  f.name AS target_label,
-                 aw.id AS workspace_id,
-                 aw.name AS workspace_name
+                 aw.id AS owner_user_id,
+                 aw.name AS owner_name
           FROM files f
-          JOIN accessible_workspaces aw ON aw.id = f.workspace_id
+          JOIN accessible_scopes aw ON aw.id = f.owner_user_id
           WHERE f.deleted_at IS NULL
             AND """
         + permission_service.readable_content_condition("file", "f", 1)
         + """
-        )
-        UNION ALL
-        (
-          SELECT 'member.joined' AS kind,
-                 wm.joined_at AS ts,
-                 wm.user_id AS actor_id,
-                 wm.user_id::text AS target_id,
-                 '' AS target_label,
-                 aw.id AS workspace_id,
-                 aw.name AS workspace_name
-          FROM workspace_members wm
-          JOIN member_workspaces aw ON aw.id = wm.workspace_id
         )
         ) ev
         WHERE ($4::timestamptz IS NULL OR ev.ts < $4)
@@ -174,7 +161,7 @@ async def list_activity(
         """,
         current_user["id"],
         limit + 1,
-        workspace_id,
+        owner_user_id,
         before,
     )
     has_more = len(events) > limit
@@ -197,8 +184,8 @@ async def list_activity(
                 "actor": users[r["actor_id"]],
                 "target_id": r["target_id"],
                 "target_label": r["target_label"],
-                "workspace_id": r["workspace_id"],
-                "workspace_name": r["workspace_name"],
+                "owner_user_id": r["owner_user_id"],
+                "owner_name": r["owner_name"],
             }
             for r in events
         ],
@@ -208,7 +195,7 @@ async def list_activity(
 
 @router.get("/tables")
 async def list_all_tables(current_user: dict = Depends(get_current_user)):
-    """All tables from workspaces + personal."""
+    """All tables from shared scopes + personal."""
     tables = await table_service.list_all_user_tables(current_user["id"])
     return {"tables": tables}
 
@@ -220,48 +207,48 @@ async def overview_counts(current_user: dict = Depends(get_current_user)):
     return await analytics_service.get_overview_counts(current_user["id"])
 
 
-async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
-    """Raise 403 if the user isn't a member of the workspace."""
+async def _verify_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
+    """Raise 403 if the user isn't a member of the scope."""
     from fastapi import HTTPException
 
-    from ..services import permission_service
+    from ..services import user_scope_service
 
-    role = await permission_service.get_workspace_role(workspace_id, user_id)
+    role = await user_scope_service.get_member_role(owner_user_id, user_id)
     if role is None:
-        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+        raise HTTPException(status_code=403, detail="Not a member of this scope")
 
 
 @router.get("/activity-timeline")
 async def activity_timeline(
     days: int = Query(30, ge=1, le=365),
     bucket: str = Query("day"),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Human + coding-agent session commits bucketed by time for the dashboard timeline."""
-    if workspace_id is not None:
-        await _verify_workspace_access(workspace_id, current_user["id"])
+    if owner_user_id is not None:
+        await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_activity_timeline(
         current_user["id"],
         days=days,
         bucket=bucket,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )
 
 
 @router.get("/knowledge-density")
 async def knowledge_density(
     max_clusters: int = Query(20, ge=1, le=50),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Topic clusters for the knowledge density heatmap."""
-    if workspace_id is not None:
-        await _verify_workspace_access(workspace_id, current_user["id"])
+    if owner_user_id is not None:
+        await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_knowledge_density(
         current_user["id"],
         max_clusters=max_clusters,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )
 
 
@@ -269,15 +256,15 @@ async def knowledge_density(
 async def embedding_projection(
     max_points: int = Query(500, ge=1, le=2000),
     source: str | None = Query(None),
-    workspace_id: UUID | None = Query(None),
+    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """2D UMAP projection of embeddings for the space explorer."""
-    if workspace_id is not None:
-        await _verify_workspace_access(workspace_id, current_user["id"])
+    if owner_user_id is not None:
+        await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_embedding_projection(
         current_user["id"],
         max_points=max_points,
         source=source,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     )

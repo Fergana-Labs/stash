@@ -10,21 +10,20 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
-import { useConfirm } from "../../../../../components/ConfirmDialog";
-import { useActiveWorkspaceId } from "../../../../../components/ShellChromeContext";
-import { useAuth } from "../../../../../hooks/useAuth";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useAuth } from "@/hooks/useAuth";
 import {
   getPublicSkill,
   unpublishSkill,
   updateSkill,
   uploadFile,
   type PublicSkillDetail,
-} from "../../../../../lib/api";
-import { resetSkillNavigationCache } from "../../../../../lib/skillNavigationCache";
+} from "@/lib/api";
+import { resetSkillNavigationCache } from "@/lib/skillNavigationCache";
 
 // Settings for the publish record of a skill. The skill's contents live in
-// its folder (edited through the workspace); this page only manages how the
+// its folder (edited from your own files); this page only manages how the
 // published version presents and whether it stays shared.
 export default function SkillSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
@@ -47,7 +46,6 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     ],
     `skill-settings/${slug}/${skill?.id ?? "loading"}`
   );
-  useActiveWorkspaceId(skill?.workspace_id ?? null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -169,7 +167,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     setSaving("branding");
     setError("");
     try {
-      const uploaded = await uploadFile(skill.workspace_id, file);
+      const uploaded = await uploadFile(file);
       const updated = await updateSkill(skill.id, { [field]: uploaded.url });
       setData((current) => (current ? { ...current, skill: updated } : current));
       resetSkillNavigationCache();
@@ -216,7 +214,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     if (!skill) return;
     const ok = await confirm({
       title: `Stop sharing "${skill.title}"?`,
-      body: "The share link stops working; the skill folder and its files stay in your workspace.",
+      body: "The share link stops working; the skill folder and its files stay in your Stash.",
       confirmLabel: "Stop sharing",
     });
     if (!ok) return;
@@ -226,7 +224,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     try {
       await unpublishSkill(skill.id);
       resetSkillNavigationCache();
-      router.push(`/workspaces/${skill.workspace_id}/skills`);
+      router.push(`/skills`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not stop sharing");
       setSaving("");

@@ -1,4 +1,4 @@
-"""Recents: shared objects can be stamped by non-members and read back via /me/recents."""
+"""Recents: a shared object can be stamped and read back via the caller's own /me/recents."""
 
 import pytest
 from httpx import AsyncClient
@@ -20,34 +20,20 @@ async def _register(client: AsyncClient, prefix: str) -> tuple[str, str]:
     return resp.json()["api_key"], name
 
 
-async def _workspace(client: AsyncClient, api_key: str, name: str) -> dict:
-    resp = await client.post("/api/v1/workspaces", json={"name": name}, headers=_auth(api_key))
-    assert resp.status_code == 201
-    return resp.json()
-
-
 @pytest.mark.asyncio
 async def test_shared_page_recent_is_recordable_and_listed(client: AsyncClient):
     owner_key, _ = await _register(client, "recents_owner")
     viewer_key, viewer_name = await _register(client, "recents_viewer")
-    workspace = await _workspace(client, owner_key, "Recents Source")
 
     page_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Shared Doc"},
         headers=_auth(owner_key),
     )
     assert page_resp.status_code == 201
     page_id = page_resp.json()["id"]
 
-    # Before the share, the viewer (a non-member) can't stamp a recent there.
-    denied = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/recents",
-        json={"object_id": page_id, "kind": "page"},
-        headers=_auth(viewer_key),
-    )
-    assert denied.status_code == 403
-
+    # Share the owner's page with the viewer so they can open it cross-user.
     share = await client.post(
         "/api/v1/share",
         json={
@@ -60,8 +46,13 @@ async def test_shared_page_recent_is_recordable_and_listed(client: AsyncClient):
     )
     assert share.status_code == 200
 
+    # The viewer can read the shared page via the canonical object route.
+    seen = await client.get(f"/api/v1/pages/{page_id}", headers=_auth(viewer_key))
+    assert seen.status_code == 200
+
+    # Stamping a recent records it in the viewer's OWN /me scope.
     recorded = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/recents",
+        "/api/v1/me/recents",
         json={"object_id": page_id, "kind": "page"},
         headers=_auth(viewer_key),
     )
@@ -72,4 +63,3 @@ async def test_shared_page_recent_is_recordable_and_listed(client: AsyncClient):
     recents = resp.json()
     assert [r["object_id"] for r in recents] == [page_id]
     assert recents[0]["kind"] == "page"
-    assert recents[0]["workspace_id"] == workspace["id"]

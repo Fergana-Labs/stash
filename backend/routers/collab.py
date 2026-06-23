@@ -28,7 +28,7 @@ class CollabAuthorizeResponse(BaseModel):
 
 def _parse_page_document_name(document_name: str) -> tuple[UUID, UUID]:
     parts = document_name.split(":")
-    if len(parts) != 4 or parts[0] != "workspace" or parts[2] != "page":
+    if len(parts) != 4 or parts[0] != "scope" or parts[2] != "page":
         raise HTTPException(status_code=400, detail="Unsupported collaboration document")
     try:
         return UUID(parts[1]), UUID(parts[3])
@@ -41,19 +41,19 @@ async def authorize_collab_document(
     req: CollabAuthorizeRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    workspace_id, page_id = _parse_page_document_name(req.document_name)
-    # Shares grant access without workspace membership, so gate on read access
-    # (which honors shares) rather than membership; can_write decides editability.
+    owner_user_id, page_id = _parse_page_document_name(req.document_name)
+    # Shares grant access without owning the scope, so gate on read access
+    # (which honors shares) rather than ownership; can_write decides editability.
     if not await permission_service.check_access(
         "page",
         page_id,
         current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         require="read",
     ):
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
+    page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     if page["content_type"] != "markdown":
@@ -63,7 +63,7 @@ async def authorize_collab_document(
         "page",
         page_id,
         current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         require="write",
     )
     return CollabAuthorizeResponse(

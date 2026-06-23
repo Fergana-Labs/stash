@@ -39,7 +39,7 @@ import {
 } from "../../../lib/api";
 import { findInSkillContents } from "../../../lib/localSkill";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
-import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
+import FileViewerHeader from "../../../components/content/FileViewerHeader";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {
@@ -269,9 +269,7 @@ function TableEditorPageInner() {
   const [skillTitle, setSkillTitle] = useState<string | null>(null);
   const { user, loading, logout } = useAuth();
 
-  // Core state. The workspace comes from the loaded table itself (the
-  // canonical table endpoint resolves it server-side), not from the URL.
-  const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(null);
+  // Core state.
   const [table, setTable] = useState<Table | null>(null);
   const [rows, setRows] = useState<TableRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -348,7 +346,6 @@ function TableEditorPageInner() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
 
-  const wsId = resolvedWorkspaceId;
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = rows.length < totalCount;
@@ -398,11 +395,11 @@ function TableEditorPageInner() {
     undoInFlightRef.current = true;
     try {
       if (action.kind === "row-update") {
-        const restored = await updateTableRow(wsId, tableId, action.row.id, action.row.data);
+        const restored = await updateTableRow(tableId, action.row.id, action.row.data);
         setRows((prev) => prev.map((row) => (row.id === restored.id ? restored : row)));
         setDetailRow((prev) => (prev?.id === restored.id ? restored : prev));
       } else {
-        await deleteTableRow(wsId, tableId, action.row.id);
+        await deleteTableRow(tableId, action.row.id);
         setRows((prev) => prev.filter((row) => row.id !== action.row.id));
         setTotalCount((count) => Math.max(0, count - 1));
         setSelectedRows((prev) => {
@@ -417,7 +414,7 @@ function TableEditorPageInner() {
     } finally {
       undoInFlightRef.current = false;
     }
-  }, [readOnly, tableId, wsId]);
+  }, [readOnly, tableId]);
 
   useEffect(() => {
     if (readOnly) return;
@@ -458,7 +455,7 @@ function TableEditorPageInner() {
         }
         const synth: Table = {
           id: tableId,
-          workspace_id: skill.skill.workspace_id,
+          owner_user_id: skill.skill.owner_user_id,
           name: item.name || "Table",
           description: item.description ?? "",
           columns: (item.columns ?? []).map((c) => ({ ...c })),
@@ -466,7 +463,6 @@ function TableEditorPageInner() {
           created_at: "",
           updated_at: "",
         } as unknown as Table;
-        setResolvedWorkspaceId(skill.skill.workspace_id);
         setTable(synth);
         const synthRows: TableRow[] = (item.rows ?? []).map((r, i) => ({
           id: `skill-${i}`,
@@ -483,7 +479,6 @@ function TableEditorPageInner() {
         return;
       }
       const loaded = await getTable(tableId);
-      setResolvedWorkspaceId(loaded.workspace_id);
       setTable(loaded);
     } catch { setError("Table not found"); }
   }, [tableId, skillSlug]);
@@ -505,24 +500,24 @@ function TableEditorPageInner() {
     const startedAtMutationVersion = rowMutationVersionRef.current;
     try {
       if (searchQuery) {
-        const res = await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
+        const res = await searchTableRows(tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
         if (startedAtMutationVersion !== rowMutationVersionRef.current) return;
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       } else {
-        const res = await listTableRows(wsId, tableId, buildRowParams(0));
+        const res = await listTableRows(tableId, buildRowParams(0));
         if (startedAtMutationVersion !== rowMutationVersionRef.current) return;
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
-  }, [tableId, wsId, buildRowParams, searchQuery, readOnly]);
+  }, [tableId, buildRowParams, searchQuery, readOnly]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
       const res = searchQuery
-        ? await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset })
-        : await listTableRows(wsId, tableId, buildRowParams(offset));
+        ? await searchTableRows(tableId, searchQuery, { limit: PAGE_SIZE, offset })
+        : await listTableRows(tableId, buildRowParams(offset));
       const newRows = res?.rows ?? [];
       setRows((prev) => {
         const existingIds = new Set(prev.map((row) => row.id));
@@ -531,18 +526,18 @@ function TableEditorPageInner() {
       setOffset((prev) => prev + newRows.length);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
     setLoadingMore(false);
-  }, [tableId, wsId, offset, loadingMore, hasMore, buildRowParams, searchQuery]);
+  }, [tableId, offset, loadingMore, hasMore, buildRowParams, searchQuery]);
 
   const loadSummary = useCallback(async () => {
     if (!showSummary || readOnly) return;
     try {
-      const s = await summarizeTableRows(wsId, tableId, filters.length > 0 ? filters : undefined);
+      const s = await summarizeTableRows(tableId, filters.length > 0 ? filters : undefined);
       setSummary(s);
     } catch { /* ignore */ }
-  }, [tableId, wsId, filters, showSummary, readOnly]);
+  }, [tableId, filters, showSummary, readOnly]);
 
-  // Skill mode is anonymous-readable, so load eagerly. Workspace mode
-  // waits for auth before hitting workspace-scoped endpoints.
+  // Skill mode is anonymous-readable, so load eagerly. Otherwise wait for
+  // auth before hitting the user-scoped endpoints.
   useEffect(() => { if (readOnly || user) loadTable(); }, [readOnly, user, loadTable]);
   useEffect(() => { if ((readOnly || user) && table) loadRows(); }, [readOnly, user, table, loadRows]);
   useEffect(() => { if (user && table) loadSummary(); }, [user, table, loadSummary]);
@@ -614,8 +609,8 @@ function TableEditorPageInner() {
     });
     if (!ok) return;
     try {
-      await deleteTable(resolvedWorkspaceId, tableId);
-      router.push(wsId ? `/workspaces/${wsId}` : "/");
+      await deleteTable(tableId);
+      router.push("/");
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 
@@ -624,28 +619,28 @@ function TableEditorPageInner() {
     try {
       const col: { name: string; type: string; options?: string[] } = { name: newColName.trim(), type: newColType };
       if ((newColType === "select" || newColType === "multiselect") && newColOptions.trim()) col.options = newColOptions.split(",").map((o) => o.trim()).filter(Boolean);
-      setTable(await addTableColumn(wsId, tableId, col));
+      setTable(await addTableColumn(tableId, col));
       setShowAddCol(false); setNewColName(""); setNewColType("text"); setNewColOptions("");
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to add column"); }
   };
   const handleDeleteColumn = async (colId: string) => {
     const ok = await confirm({ title: "Delete this column?", confirmLabel: "Delete" });
     if (!ok) return;
-    try { setTable(await deleteTableColumn(wsId, tableId, colId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await deleteTableColumn(tableId, colId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleRenameColumn = async (colId: string) => {
     const col = sortedColumns.find((c) => c.id === colId);
     if (!col) return;
     const name = prompt("Column name:", col.name);
     if (!name || name === col.name) return;
-    try { setTable(await updateTableColumn(wsId, tableId, colId, { name })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await updateTableColumn(tableId, colId, { name })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleChangeColumnType = async (colId: string, type: string) => {
     // Existing cell values stay in JSONB as-is; the new type only governs
     // future writes (which the server validator coerces / rejects). The
     // grid renderer treats unparseable values as plain strings, so a bad
     // pick won't break the table — it'll just stop accepting new values.
-    try { setTable(await updateTableColumn(wsId, tableId, colId, { type })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await updateTableColumn(tableId, colId, { type })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const commitColumnWidth = useCallback(async (colId: string, width: number) => {
     const nextWidth = clampColumnWidth(width);
@@ -654,12 +649,12 @@ function TableEditorPageInner() {
       columns: prev.columns.map((col) => col.id === colId ? { ...col, width: nextWidth } : col),
     } : prev);
     try {
-      setTable(await updateTableColumn(wsId, tableId, colId, { width: nextWidth }));
+      setTable(await updateTableColumn(tableId, colId, { width: nextWidth }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resize column");
       void loadTable();
     }
-  }, [loadTable, tableId, wsId]);
+  }, [loadTable, tableId]);
   const startColumnResize = (
     event: ReactPointerEvent<HTMLButtonElement>,
     col: TableColumn,
@@ -713,12 +708,12 @@ function TableEditorPageInner() {
     const toIdx = ids.indexOf(targetColId);
     if (fromIdx === -1 || toIdx === -1) { setDragCol(null); return; }
     ids.splice(fromIdx, 1); ids.splice(toIdx, 0, dragCol); setDragCol(null);
-    try { setTable(await reorderTableColumns(wsId, tableId, ids)); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await reorderTableColumns(tableId, ids)); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
   const handleAddRow = async () => {
     try {
-      const row = await createTableRow(wsId, tableId, {});
+      const row = await createTableRow(tableId, {});
       setRows((prev) => [...prev, row]);
       setTotalCount((c) => c + 1);
       rememberUndo({ kind: "row-create", row: cloneTableRow(row) });
@@ -726,12 +721,12 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
   };
   const handleDeleteRow = async (rowId: string) => {
-    try { await deleteTableRow(wsId, tableId, rowId); setRows((prev) => prev.filter((r) => r.id !== rowId)); setTotalCount((c) => c - 1); setSelectedRows((prev) => { const n = new Set(prev); n.delete(rowId); return n; }); }
+    try { await deleteTableRow(tableId, rowId); setRows((prev) => prev.filter((r) => r.id !== rowId)); setTotalCount((c) => c - 1); setSelectedRows((prev) => { const n = new Set(prev); n.delete(rowId); return n; }); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleDuplicateRow = async (rowId: string) => {
     try {
-      const row = await duplicateTableRow(wsId, tableId, rowId);
+      const row = await duplicateTableRow(tableId, rowId);
       setRows((prev) => [...prev, row]);
       setTotalCount((c) => c + 1);
       rememberUndo({ kind: "row-create", row: cloneTableRow(row) });
@@ -745,7 +740,7 @@ function TableEditorPageInner() {
       confirmLabel: "Delete",
     });
     if (!ok) return;
-    try { await deleteTableRowsBatch(wsId, tableId, Array.from(selectedRows)); setRows((prev) => prev.filter((r) => !selectedRows.has(r.id))); setTotalCount((c) => c - selectedRows.size); setSelectedRows(new Set()); }
+    try { await deleteTableRowsBatch(tableId, Array.from(selectedRows)); setRows((prev) => prev.filter((r) => !selectedRows.has(r.id))); setTotalCount((c) => c - selectedRows.size); setSelectedRows(new Set()); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
@@ -770,7 +765,7 @@ function TableEditorPageInner() {
     }
     if (isDraftRowId(rowId)) {
       try {
-        const created = await createTableRow(wsId, tableId, { [colId]: typedValue });
+        const created = await createTableRow(tableId, { [colId]: typedValue });
         setRows((prev) => [...prev, created]);
         setTotalCount((c) => c + 1);
         rememberUndo({ kind: "row-create", row: cloneTableRow(created) });
@@ -793,7 +788,7 @@ function TableEditorPageInner() {
     }
     setEditingCell(null);
     try {
-      const updated = await updateTableRow(wsId, tableId, rowId, patch);
+      const updated = await updateTableRow(tableId, rowId, patch);
       setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r)));
       setDetailRow((prev) => (prev?.id === rowId ? updated : prev));
       if (previousRow) rememberUndo({ kind: "row-update", row: cloneTableRow(previousRow) });
@@ -810,7 +805,7 @@ function TableEditorPageInner() {
         inFlightCellValuesRef.current.delete(cellKey);
       }
     }
-  }, [cellValue, editingCell, markRowsMutated, rememberUndo, rows, table, tableId, wsId]);
+  }, [cellValue, editingCell, markRowsMutated, rememberUndo, rows, table, tableId]);
   const cancelEdit = () => {
     setLinkEditor(null);
     setEditingCell(null);
@@ -923,7 +918,7 @@ function TableEditorPageInner() {
     });
     const previousRow = rows.find((row) => row.id === detailRow.id) ?? detailRow;
     try {
-      const updated = await updateTableRow(wsId, tableId, detailRow.id, data);
+      const updated = await updateTableRow(tableId, detailRow.id, data);
       setRows((prev) => prev.map((r) => (r.id === detailRow.id ? updated : r)));
       rememberUndo({ kind: "row-update", row: cloneTableRow(previousRow) });
       setDetailRow(null);
@@ -937,7 +932,7 @@ function TableEditorPageInner() {
     if (!name) return;
     try {
       const layout = { name, filters: filters.length > 0 ? filters : undefined, sort_by: sortBy || undefined, sort_order: sortBy ? sortOrder : undefined, visible_columns: hiddenCols.size > 0 ? visibleColumns.map((c) => c.id) : undefined };
-      const updated = await saveTableView(wsId, tableId, layout);
+      const updated = await saveTableView(tableId, layout);
       setTable(updated);
       const saved = updated.views?.find((v: TableView) => v.name === name);
       if (saved) setActiveViewId(saved.id);
@@ -951,7 +946,7 @@ function TableEditorPageInner() {
     if (layout.filters && layout.filters.length > 0) setShowFilterBar(true); else setShowFilterBar(false);
   };
   const handleDeleteLayout = async (viewId: string) => {
-    try { const updated = await deleteTableView(wsId, tableId, viewId); setTable(updated); if (activeViewId === viewId) { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); } }
+    try { const updated = await deleteTableView(tableId, viewId); setTable(updated); if (activeViewId === viewId) { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); } }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
@@ -971,7 +966,7 @@ function TableEditorPageInner() {
       if (!name || existingNames.has(name)) continue;
       const samples = dataRows.slice(0, 50).map((r) => r[ci] ?? "");
       const colType = inferColumnType(samples);
-      currentTable = await addTableColumn(wsId, tableId, { name, type: colType });
+      currentTable = await addTableColumn(tableId, { name, type: colType });
       existingNames.add(name);
     }
     setTable(currentTable);
@@ -994,7 +989,6 @@ function TableEditorPageInner() {
 
     for (let i = 0; i < payload.length; i += 5000) {
       await createTableRowsBatch(
-        wsId,
         tableId,
         payload.slice(i, i + 5000).map((d) => ({ data: d })),
       );
@@ -1085,14 +1079,14 @@ function TableEditorPageInner() {
     const overflow = block.slice(overlapCount);
     try {
       const updated = await Promise.all(
-        overlapRows.map((row, i) => updateTableRow(wsId, tableId, row.id, rowData(block[i]))),
+        overlapRows.map((row, i) => updateTableRow(tableId, row.id, rowData(block[i]))),
       );
       overlapRows.forEach((row) => rememberUndo({ kind: "row-update", row: cloneTableRow(row) }));
       const updatedById = new Map(updated.map((r) => [r.id, r]));
       setRows((prev) => prev.map((r) => updatedById.get(r.id) ?? r));
 
       if (overflow.length > 0) {
-        const res = await createTableRowsBatch(wsId, tableId, overflow.map((cells) => ({ data: rowData(cells) })));
+        const res = await createTableRowsBatch(tableId, overflow.map((cells) => ({ data: rowData(cells) })));
         setRows((prev) => [...prev, ...res.rows]);
         setTotalCount((c) => c + res.rows.length);
         res.rows.forEach((row) => rememberUndo({ kind: "row-create", row: cloneTableRow(row) }));
@@ -1114,8 +1108,8 @@ function TableEditorPageInner() {
   };
 
   const handleCsvExport = async () => {
-    if (!table || !wsId) return;
-    const base = `/api/v1/workspaces/${wsId}/tables`;
+    if (!table) return;
+    const base = `/api/v1/me/tables`;
     const p = new URLSearchParams();
     if (sortBy) { p.set("sort_by", sortBy); p.set("sort_order", sortOrder); }
     if (filters.length > 0) p.set("filters", JSON.stringify(filters));
@@ -1162,7 +1156,7 @@ function TableEditorPageInner() {
   };
 
   // Skill-scoped readers can be anonymous when the skill is public; only
-  // redirect to /login in workspace mode.
+  // redirect to /login when not in skill mode.
   useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
   if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
@@ -1303,7 +1297,7 @@ function TableEditorPageInner() {
           onRenameTitle={
             table && !readOnly
               ? async (next) => {
-                  const updated = await updateTable(resolvedWorkspaceId, tableId, { name: next });
+                  const updated = await updateTable(tableId, { name: next });
                   setTable(updated);
                   return updated.name;
                 }
@@ -1323,7 +1317,7 @@ function TableEditorPageInner() {
             tableUpdatedAt ? `Updated ${tableUpdatedAt}` : "",
           ].filter(Boolean)}
           downloadOptions={
-            table && !readOnly && wsId
+            table && !readOnly
               ? [{ label: "CSV (.csv)", onSelect: () => void handleCsvExport() }]
               : undefined
           }
@@ -1352,7 +1346,7 @@ function TableEditorPageInner() {
               menuClassName="text-xs"
             />
             {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>}
-            {!readOnly && wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
+            {!readOnly && <button onClick={() => setShowEmbeddings((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
             <button onClick={() => setShowColVisibility((p) => !p)} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
             <button onClick={() => setWrapCells((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
             {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
@@ -1376,7 +1370,7 @@ function TableEditorPageInner() {
         )}
 
         {/* Embedding config popup */}
-        {showEmbeddings && wsId && (
+        {showEmbeddings && (
           <div className="px-4 py-3 border-b border-border bg-raised/50 flex-shrink-0">
             <div className="flex items-center gap-3 mb-2">
               <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
@@ -1391,7 +1385,7 @@ function TableEditorPageInner() {
               <button
                 onClick={async () => {
                   try {
-                    await setTableEmbeddingConfig(wsId, tableId, {
+                    await setTableEmbeddingConfig(tableId, {
                       enabled: embeddingEnabled,
                       columns: Array.from(embeddingCols),
                     });
@@ -1406,7 +1400,7 @@ function TableEditorPageInner() {
               <button
                 onClick={async () => {
                   try {
-                    const res = await backfillTableEmbeddings(wsId, tableId);
+                    const res = await backfillTableEmbeddings(tableId);
                     setBackfillStatus(`Embedding ${res.embedded} of ${res.total} rows...`);
                     setTimeout(() => setBackfillStatus(""), 5000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
@@ -1727,8 +1721,8 @@ function TableEditorPageInner() {
       </div>
   );
 
-  // Skill-mode viewers are reading through the skill, not the workspace, so
-  // keep workspace chrome hidden even when they are signed in.
+  // Skill-mode viewers are reading through the skill, so keep the app
+  // shell hidden even when they are signed in.
   if (readOnly || !user) {
     return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
   }

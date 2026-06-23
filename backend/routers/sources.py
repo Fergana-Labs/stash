@@ -1,7 +1,7 @@
 """Connected-source registry endpoints.
 
-A source is added per workspace and per user. It belongs to the member who
-connects it (`owner_user_id = current_user`) inside that workspace, and only they
+A source is added per scope and per user. It belongs to the member who
+connects it (`owner_user_id = current_user`) inside that scope, and only they
 can list, read, or remove it there. The agent reaches a source's indexed content
 through the source tools; these endpoints just manage the registry. Indexing
 (sync tasks) is wired per source type in later phases.
@@ -19,27 +19,23 @@ from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
 from ..services import (
-    permission_service,
     security_audit_service,
     source_service,
     task_service,
-    workspace_service,
+    user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
+router = APIRouter(prefix="/api/v1/me/sources", tags=["sources"])
 
 
-async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
-    if await permission_service.get_workspace_role(workspace_id, user_id) is None:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
+    if await user_scope_service.get_member_role(owner_user_id, user_id) is None:
+        raise HTTPException(status_code=404, detail="Scope not found")
 
 
-async def _require_write(workspace_id: UUID, user_id: UUID) -> None:
-    role = await permission_service.get_workspace_role(workspace_id, user_id)
-    if role is None:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    if role not in workspace_service.ROLES_CAN_WRITE:
-        raise HTTPException(status_code=403, detail="Viewers can read but not manage sources")
+async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
+        raise HTTPException(status_code=404, detail="Scope not found")
 
 
 class AddSourceRequest(BaseModel):
@@ -142,16 +138,16 @@ async def _resolve_linear_source(user_id) -> tuple[str, str]:
 
 
 @router.get("")
-async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
+async def list_sources(current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
     connected sources."""
-    await _require_member(workspace_id, current_user["id"])
-    return {"sources": await source_service.list_sources(workspace_id, current_user["id"])}
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
+    return {"sources": await source_service.list_sources(owner_user_id, current_user["id"])}
 
 
 @router.get("/search")
 async def search_sources(
-    workspace_id: UUID,
     q: str,
     source: str | None = None,
     limit: int = 20,
@@ -159,9 +155,10 @@ async def search_sources(
 ):
     """Unified search. Omit `source` to search everything the user can see
     (files + sessions + their connected sources), or pass a handle to scope."""
-    await _require_member(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
     results = await source_service.search_all(
-        workspace_id, current_user["id"], q, source=source, limit=limit
+        owner_user_id, current_user["id"], q, source=source, limit=limit
     )
     if results is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -170,30 +167,30 @@ async def search_sources(
 
 @router.get("/tree")
 async def sources_tree(
-    workspace_id: UUID,
     depth: int = 3,
     current_user: dict = Depends(get_current_user),
 ):
-    """The whole workspace as one filesystem: every source the user can see,
+    """The whole scope as one filesystem: every source the user can see,
     each with a nested entry tree trimmed to `depth` levels."""
-    await _require_member(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
     return {
-        "sources": await source_service.sources_tree(workspace_id, current_user["id"], depth=depth)
+        "sources": await source_service.sources_tree(owner_user_id, current_user["id"], depth=depth)
     }
 
 
 @router.get("/{source}/entries")
 async def list_source_entries(
-    workspace_id: UUID,
     source: str,
     path: str = "",
     current_user: dict = Depends(get_current_user),
 ):
     """List a source's entries like a file system. `source` is 'files',
     'sessions', or a connected-source id; `path` scopes connected sources."""
-    await _require_member(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
     entries = await source_service.source_entries(
-        workspace_id, current_user["id"], source, prefix=path
+        owner_user_id, current_user["id"], source, prefix=path
     )
     if entries is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -202,16 +199,16 @@ async def list_source_entries(
 
 @router.get("/{source}/doc")
 async def read_source_doc(
-    workspace_id: UUID,
     source: str,
     ref: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Read one document. `ref` is a page id (files), a session id (sessions),
     or a document path (connected sources)."""
-    await _require_member(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
     source_ok, doc = await source_service.source_document(
-        workspace_id, current_user["id"], source, ref
+        owner_user_id, current_user["id"], source, ref
     )
     if not source_ok:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -222,17 +219,16 @@ async def read_source_doc(
 
 @router.get("/{source_id}/status")
 async def source_status(
-    workspace_id: UUID,
     source_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Sync/index status for one connected source (for the integration page):
     sync_status, last_synced_at, sync_error, and how many items are indexed."""
-    await _require_member(workspace_id, current_user["id"])
-    source = await source_service.get_owned_source_in_workspace(
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
+    source = await source_service.get_owned_source(
         source_id,
         current_user["id"],
-        workspace_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -246,15 +242,15 @@ class QuerySourceRequest(BaseModel):
 
 @router.post("/{source}/query")
 async def query_source(
-    workspace_id: UUID,
     source: str,
     body: QuerySourceRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Run a read-only SQL query against a queryable source (Snowflake)."""
-    await _require_member(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
     result = await source_service.query_source(
-        workspace_id, current_user["id"], source, body.sql, limit=body.limit
+        owner_user_id, current_user["id"], source, body.sql, limit=body.limit
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -269,16 +265,16 @@ class FetchHistoryRequest(BaseModel):
 
 @router.post("/{source}/history")
 async def fetch_source_history(
-    workspace_id: UUID,
     source: str,
     body: FetchHistoryRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Pull older data for a time range from a copied source that supports it
     (Slack/Gong), caching it so it becomes searchable."""
-    await _require_write(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_write(owner_user_id, current_user["id"])
     result = await source_service.fetch_history(
-        workspace_id, current_user["id"], source, body.since, until=body.until, limit=body.limit
+        owner_user_id, current_user["id"], source, body.since, until=body.until, limit=body.limit
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -287,11 +283,11 @@ async def fetch_source_history(
 
 @router.post("")
 async def add_source(
-    workspace_id: UUID,
     body: AddSourceRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_write(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _require_write(owner_user_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
     try:
@@ -327,8 +323,7 @@ async def add_source(
         raise HTTPException(status_code=400, detail="external_ref is required")
     try:
         created = await source_service.create_source(
-            workspace_id=workspace_id,
-            owner_user_id=current_user["id"],
+            owner_user_id=owner_user_id,
             source_type=body.source_type,
             external_ref=external_ref,
             display_name=display_name or external_ref,
@@ -339,7 +334,7 @@ async def add_source(
     await security_audit_service.record_event(
         action="source.created",
         actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type="source",
         target_id=created["id"],
         provider=source_service.SOURCE_TYPE_PROVIDER.get(created["source_type"]),
@@ -351,16 +346,15 @@ async def add_source(
 
 @router.post("/{source_id}/sync")
 async def sync_source_now(
-    workspace_id: UUID,
     source_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     """Trigger an immediate re-index of an owned source."""
-    await _require_write(workspace_id, current_user["id"])
-    source = await source_service.get_owned_source_in_workspace(
+    owner_user_id = current_user["id"]
+    await _require_write(owner_user_id, current_user["id"])
+    source = await source_service.get_owned_source(
         source_id,
         current_user["id"],
-        workspace_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -372,7 +366,7 @@ async def sync_source_now(
     await task_service.register_task(
         task_id=task_id,
         user_id=current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         task_type="source_sync",
         object_type="source",
         object_id=source_id,
@@ -385,7 +379,7 @@ async def sync_source_now(
     await security_audit_service.record_event(
         action="source.sync_requested",
         actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type="source",
         target_id=str(source_id),
         provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),
@@ -397,15 +391,14 @@ async def sync_source_now(
 
 @router.delete("/{source_id}")
 async def remove_source(
-    workspace_id: UUID,
     source_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_write(workspace_id, current_user["id"])
-    source = await source_service.get_owned_source_in_workspace(
+    owner_user_id = current_user["id"]
+    await _require_write(owner_user_id, current_user["id"])
+    source = await source_service.get_owned_source(
         source_id,
         current_user["id"],
-        workspace_id,
     )
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -415,7 +408,7 @@ async def remove_source(
     await security_audit_service.record_event(
         action="source.deleted",
         actor_user_id=current_user["id"],
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         target_type="source",
         target_id=str(source_id),
         provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),

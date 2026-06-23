@@ -85,6 +85,15 @@ jobs:
               )
           )
 
+          # The Claude plugin ships its scripts through the marketplace,
+          # separately from the PyPI stashai library, so its cached scripts can
+          # lag the library and break their imports. Pin them to the stashai
+          # version published in this same bump so `_run.sh` installs that exact
+          # version instead of `@latest`. (codex/cursor/opencode run from inside
+          # the installed package, so they stay in lockstep without a pin.)
+          for pin in pathlib.Path("plugins").glob("*/scripts/stashai-version"):
+              pin.write_text(package_new + "\n")
+
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               print(f"package_version={package_new}", file=output)
               print(f"plugin_version={plugin_new}", file=output)
@@ -98,7 +107,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml plugins/claude-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json docker-compose.prod.yml
+          git add pyproject.toml plugins/claude-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json docker-compose.prod.yml plugins/*/scripts/stashai-version
           git diff --cached --quiet && echo "No change" && exit 0
           git commit -m "chore: bump stash release to ${{ steps.bump.outputs.package_version }} and plugin to ${{ steps.bump.outputs.plugin_version }}"
           git push

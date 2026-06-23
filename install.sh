@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # joinstash.ai/install — install the stashai CLI and run the interactive
-# `stash login` setup wizard (managed-vs-self-host, browser auth,
+# `stash signin` setup wizard (managed-vs-self-host, browser auth,
 # upload-vs-read, agent hooks, repo connection).
 #
 # Recommended invocation (keeps stdin attached to your terminal so the
@@ -70,13 +70,13 @@ Re-run with this form (it keeps stdin attached to your shell):
 
 Or just run it now:
 
-  stash login
+  stash signin
 
 MSG
   exit 0
 fi
 
-# Stdin is a real terminal; launch the questionnaire. `stash login`
+# Stdin is a real terminal; launch the questionnaire. `stash signin`
 # asks scope, managed-vs-self-host, browser sign-in, workspace, and the
 # Claude Code plugin install (when detected).
-exec "$STASH_BIN" login
+exec "$STASH_BIN" signin

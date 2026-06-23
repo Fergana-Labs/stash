@@ -132,8 +132,8 @@ def _verify_linear_signature(body: bytes, signature: str) -> bool:
 
 @router.post("/linear/events")
 async def linear_events(request: Request):
-    """Linear delivers one app-level webhook for every workspace that installs
-    the OAuth app. On an Issue change we re-enrich the ticket's labels so a
+    """Linear delivers one app-level webhook for every org that installs the
+    OAuth app. On an Issue change we re-enrich the ticket's labels so a
     status/assignee edit shows up without waiting for the periodic reconcile."""
     body = await request.body()
     if not _verify_linear_signature(body, request.headers.get("Linear-Signature", "")):

@@ -6,7 +6,6 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import Header from "../../components/Header";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
-import WorkspaceSection from "../../components/settings/WorkspaceSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -49,12 +48,11 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
             <p className="text-sm text-muted mt-1">
-              Your profile, branding, connected sources, sessions, and password.
+              Your profile, connected sources, sessions, and password.
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
           <SubscriptionSection />
-          <WorkspaceSection />
           <IntegrationsSettings embedded />
           <ActiveSessions />
           {!AUTH0_ENABLED && <ChangePassword />}

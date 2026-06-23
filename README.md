@@ -25,7 +25,7 @@
 </p>
 
 
-<!-- GIF #1 — Visualizations of the workspace knowledge base -->
+<!-- GIF #1 — Visualizations of the knowledge base -->
 <p align="center">
   <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, file tree, agent activity" width="900" />
 </p>
@@ -37,21 +37,21 @@
 
 ## How it works
 
-- **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — to a shared workspace.
-- **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. Humans and agents both write here; both sides see edits in real time.
-- **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose the workspace to any agent. Semantic and keyword search across pages, sessions, and tables.
-- **Skills are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork a public Skill into your own workspace.
+- **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — into your Stash.
+- **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
+- **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose your Stash to any agent. Semantic and keyword search across pages, sessions, and tables.
+- **Skills are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, or fork a public Skill into your own Stash.
 
-## Why shared beats individual
+## Why persistent beats per-session
 
-When five engineers run Claude on the same repo, they generate valuable session transcripts. However, their coding agent can only access transcripts generated on the machine where the agent is currently running. As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. 
+When you run Claude on a repo, you generate valuable session transcripts. However, your coding agent can only access transcripts generated on the machine where the agent is currently running. As a result, work is duplicated and velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time.
 
-With Stash, every agent on the repo has context about every session created from that repo. Here are some use cases:
+With Stash, every agent run has context about every session you've created. Here are some use cases:
 
-- **Code Faster / Don't Duplicate Work**: "Has anyone else tried fixing the memory leak in our API gateway? What was attempted?"
-- **Look Organized During Standup**: "What did I get done this week? What other work did I do that isn't tracked in Git?"
-- **Don't Be Blocked on Collaborators**: "Why did Sam increase the timeout to 30s? The git history is unhelpful."
-- **Align With Your Team Faster**: "Please add a feedback endpoint to our API" -> Claude: "FYI, Sam decided not to add a feedback endpoint since we want to encourage churned users to hop on a call directly"
+- **Code Faster / Don't Duplicate Work**: "Have I tried fixing the memory leak in our API gateway before? What was attempted?"
+- **Stay Organized**: "What did I get done this week? What other work did I do that isn't tracked in Git?"
+- **Recover Lost Context**: "Why did I increase the timeout to 30s? The git history is unhelpful."
+- **Pick Up Where You Left Off**: "Please add a feedback endpoint to our API" -> Claude: "FYI, you decided earlier not to add a feedback endpoint since we want to encourage churned users to hop on a call directly"
 
 > "raw data from a given number of sources is collected, then compiled by an LLM into a .md knowledge base, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance it… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
 >
@@ -64,7 +64,7 @@ Built for —
 | Use case | What teams put in it |
 |---|---|
 | **Engineering live docs** | coding-agent plans, ADRs, and design notes that stay current |
-| **Company brain** | the shared context every agent and teammate reads from |
+| **Second brain** | the persistent context every one of your agents reads from |
 | **Research knowledge base** | long-running PKBs with sources, transcripts, and tables |
 | **Ops playbooks** | release runbooks and on-call procedures |
 | **Brand voice** | editorial guidelines and copy standards agents write to |
@@ -77,10 +77,9 @@ pip install stashai / uv tool install stashai
 stash signin
 ```
 
-`stash signin` walks you through sign-in, picks a workspace, connects
-your current repo when you want uploads, and wires up coding-agent plugins.
-Use `stash connect` later when you are already authenticated and only need to
-bind another repo to a workspace.
+`stash signin` walks you through sign-in, connects your current repo when
+you want uploads, and wires up coding-agent plugins. Use `stash connect`
+later when you are already authenticated and only need to bind another repo.
 
 <details>
 <summary>Prefer a one-liner?</summary>
@@ -109,9 +108,9 @@ Agents can browse Stash with an app-level virtual filesystem shell:
 
 ```bash
 stash vfs ls /
-stash vfs "tree /workspaces -L 2"
-stash vfs "find /workspaces -maxdepth 3 -type f | head -n 20"
-stash vfs "rg \"database migration\" /workspaces"
+stash vfs "tree /me -L 2"
+stash vfs "find /me -maxdepth 3 -type f | head -n 20"
+stash vfs "rg \"database migration\" /me"
 ```
 
 ## Integrations
@@ -191,14 +190,14 @@ claude
 
 Stash is built for engineering teams working in private repos.
 
-- **LLM calls are optional and scoped.** When an Anthropic API key is configured, the server uses it for ask-the-workspace answers and auto-generated session titles. No key means those features are unavailable — the rest of Stash works without any LLM.
-- **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is controlled by Skills.
-- **Transcripts are opt-in.** If you don't want to share your agent transcripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
+- **LLM calls are optional and scoped.** When an Anthropic API key is configured, the server uses it for ask-the-stash answers and auto-generated session titles. No key means those features are unavailable — the rest of Stash works without any LLM.
+- **Private by default.** Your Stash is yours alone. Public visibility is controlled by Skills.
+- **Transcripts are opt-in.** If you don't want to upload your agent transcripts, you can give your agent *read* access to your Stash without uploading any of your own session data.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-When an Anthropic API key is provided, the server calls Claude for ask-the-workspace (quality tier) and session title generation. Both are optional — without the key, Stash works but those features are disabled. There is no background page-writing agent.
+When an Anthropic API key is provided, the server calls Claude for ask-the-stash (quality tier) and session title generation. Both are optional — without the key, Stash works but those features are disabled. There is no background page-writing agent.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

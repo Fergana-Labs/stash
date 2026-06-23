@@ -25,7 +25,7 @@ describe("ChatPanel", () => {
   });
 
   it("shows setup guidance inside the empty chat state", () => {
-    render(<ChatPanel workspaceId="ws-1" sessionId={null} onSessionId={vi.fn()} />);
+    render(<ChatPanel sessionId={null} onSessionId={vi.fn()} />);
 
     expect(screen.getByText("Chat with your agent")).toBeInTheDocument();
     expect(screen.getByText("Connect your local agent")).toBeInTheDocument();
@@ -34,7 +34,7 @@ describe("ChatPanel", () => {
 
   it("hides setup guidance after the first message starts a chat", async () => {
     const onSessionId = vi.fn();
-    render(<ChatPanel workspaceId="ws-1" sessionId={null} onSessionId={onSessionId} />);
+    render(<ChatPanel sessionId={null} onSessionId={onSessionId} />);
 
     fireEvent.change(screen.getByPlaceholderText("Ask your agent anything..."), {
       target: { value: "What changed recently?" },
@@ -45,7 +45,6 @@ describe("ChatPanel", () => {
       expect(streamAgentChat).toHaveBeenCalledWith(
         expect.objectContaining({
           message: "What changed recently?",
-          workspaceId: "ws-1",
         }),
       );
     });

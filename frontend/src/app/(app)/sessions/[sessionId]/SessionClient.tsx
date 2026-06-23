@@ -5,17 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useConfirm } from "../../../../components/ConfirmDialog";
-import {
-  useActiveWorkspaceId,
-  useShareAction,
-} from "../../../../components/ShellChromeContext";
-import DownloadMenu from "../../../../components/DownloadMenu";
-import ResourceShareButton from "../../../../components/share/ResourceShareButton";
-import { SessionDetailSkeleton } from "../../../../components/SkeletonStates";
-import { useAuth } from "../../../../hooks/useAuth";
-import { useEscapeKey } from "../../../../hooks/useEscapeKey";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useShareAction } from "@/components/ShellChromeContext";
+import DownloadMenu from "@/components/DownloadMenu";
+import ResourceShareButton from "@/components/share/ResourceShareButton";
+import { SessionDetailSkeleton } from "@/components/SkeletonStates";
+import { useAuth } from "@/hooks/useAuth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   fetchAuthed,
   getSessionDetail,
@@ -27,9 +24,8 @@ import {
   type SessionDetail,
   type SessionEvent,
   type Skill,
-} from "../../../../lib/api";
-import { refreshWorkspaceSidebar } from "../../../../lib/skillNavigationCache";
-import EditableTitle from "../../../../components/workspace/EditableTitle";
+} from "@/lib/api";
+import EditableTitle from "@/components/content/EditableTitle";
 
 interface MessageTurn {
   kind: "message";
@@ -128,10 +124,6 @@ export default function SessionViewerPage() {
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
-  // Empty until the session loads — every consumer below renders or fires
-  // only after that.
-  const workspaceId = sessionDetail?.workspace_id ?? "";
-  useActiveWorkspaceId(workspaceId || null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [error, setError] = useState("");
 
@@ -140,7 +132,7 @@ export default function SessionViewerPage() {
       { label: "Sessions" },
       { label: sessionDetail ? sessionHeading(sessionDetail, sessionId) : `#${sessionId}` },
     ],
-    `${workspaceId}/session/${sessionId}`
+    `session/${sessionId}`
   );
 
   const shareAction = useMemo(() => {
@@ -159,10 +151,8 @@ export default function SessionViewerPage() {
 
   const load = useCallback(async () => {
     try {
-      // The detail fetch resolves the workspace; everything else is scoped
-      // to it and has to wait for that answer.
       const detail = await getSessionDetail(sessionId);
-      const events = await getSessionEvents(detail.workspace_id, sessionId);
+      const events = await getSessionEvents(sessionId);
       setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
       setSessionDetail(detail);
       setTurns(events.map(eventToTurn));
@@ -206,9 +196,8 @@ export default function SessionViewerPage() {
                 <EditableTitle
                   value={sessionHeading(sessionDetail, sessionId)}
                   onSave={async (next) => {
-                    const { title } = await renameSession(workspaceId, sessionId, next);
+                    const { title } = await renameSession(sessionId, next);
                     setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
-                    refreshWorkspaceSidebar(workspaceId).catch(() => {});
                     return title;
                   }}
                 />
@@ -224,9 +213,8 @@ export default function SessionViewerPage() {
               )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">
-              {sessionDetail && workspaceId && (
+              {sessionDetail && (
                 <SaveToSkillButton
-                  workspaceId={workspaceId}
                   sessionId={sessionId}
                   onSaved={(pageId) => router.push(`/p/${pageId}`)}
                 />
@@ -235,7 +223,7 @@ export default function SessionViewerPage() {
                 // Web chats (started in the Agents tab) can be resumed and
                 // continued server-side from where they left off.
                 <Link
-                  href={`/workspaces/${workspaceId}/agents?resume=${encodeURIComponent(sessionId)}`}
+                  href={`/agents?resume=${encodeURIComponent(sessionId)}`}
                   className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
                 >
                   Resume in chat →
@@ -246,7 +234,7 @@ export default function SessionViewerPage() {
                   {
                     label: "Download transcript (.jsonl)",
                     onSelect: async () => {
-                      const path = `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(
+                      const path = `/api/v1/me/transcripts/${encodeURIComponent(
                         sessionId
                       )}/export.jsonl`;
                       const res = await fetchAuthed(path);
@@ -274,8 +262,8 @@ export default function SessionViewerPage() {
                             });
                             if (!ok) return;
                             try {
-                              await trashItem(workspaceId, "session", sessionDetail.id);
-                              router.push(`/workspaces/${workspaceId}/sessions`);
+                              await trashItem("session", sessionDetail.id);
+                              router.push("/sessions");
                             } catch (e) {
                               setError(
                                 e instanceof Error ? e.message : "Delete failed"
@@ -327,11 +315,9 @@ export default function SessionViewerPage() {
 // Compact inline picker: choose a skill folder, freeze the transcript into a
 // markdown page inside it.
 function SaveToSkillButton({
-  workspaceId,
   sessionId,
   onSaved,
 }: {
-  workspaceId: string;
   sessionId: string;
   onSaved: (pageId: string) => void;
 }) {
@@ -354,16 +340,16 @@ function SaveToSkillButton({
 
   useEffect(() => {
     if (!open || skills !== null) return;
-    listSkills(workspaceId)
+    listSkills()
       .then(setSkills)
       .catch(() => setSkills([]));
-  }, [open, skills, workspaceId]);
+  }, [open, skills]);
 
   async function save(skill: Skill) {
     setBusy(true);
     setMessage("");
     try {
-      const page = await materializeSession(workspaceId, sessionId, skill.folder_id);
+      const page = await materializeSession(sessionId, skill.folder_id);
       setOpen(false);
       onSaved(page.id);
     } catch (e) {

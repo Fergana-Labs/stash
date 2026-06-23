@@ -1,6 +1,6 @@
 # Stash Plugin for Cursor
 
-Streams Cursor sessions to an Stash workspace. Mirrors the Claude Code
+Streams Cursor sessions to your Stash. Mirrors the Claude Code
 plugin's event coverage.
 
 ## Prerequisites
@@ -35,7 +35,7 @@ with `${PLUGIN_ROOT}` replaced by the absolute path.
 ```
 # In Cursor, open a new chat and send any message.
 # Then from a shell:
-stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash vfs "cat '/me/sessions/_index.jsonl'"
 ```
 
 You should see a `user_message` event with the prompt you just sent.
@@ -64,7 +64,7 @@ Everything is a plain `stash` CLI subcommand — no Cursor-specific slash comman
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Interactive setup (auth + workspace + store) |
+| `stash connect` | Interactive setup (auth + store) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
@@ -79,10 +79,10 @@ Cursor's agent has shell access, so for reads mid-conversation just let it
 shell out to the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
-stash vfs "find /workspaces -maxdepth 3 -type f"
-stash vfs "rg \"database migration\" /workspaces"
-stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash vfs "cat '/workspaces/<id>/sessions/_index.jsonl'"
+stash vfs "find /me -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /me"
+stash vfs "cat '/me/README.md' | sed -n '1,80p'"
+stash vfs "cat '/me/sessions/_index.jsonl'"
 stash search "<query>"
 stash whoami --json
 ```

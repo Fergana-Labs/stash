@@ -11,14 +11,12 @@ from ..models import (
     ApiKeyCreateResponse,
     ApiKeyInfo,
     LoginRequest,
-    RedeemInviteRequest,
-    RedeemInviteResponse,
     UserProfile,
     UserRegisterRequest,
     UserRegisterResponse,
     UserUpdateRequest,
 )
-from ..services import invite_token_service, user_service
+from ..services import user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -38,14 +36,6 @@ def _require_manual_api_key_creation_enabled() -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Manual API key creation is disabled; use CLI sign-in",
-        )
-
-
-def _require_unauthenticated_invite_redemption_enabled() -> None:
-    if settings.AUTH0_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invite signup is disabled; use Auth0",
         )
 
 
@@ -259,28 +249,6 @@ async def poll_cli_auth_session(request: Request, session_id: str):
     if not pending:
         raise HTTPException(status_code=404, detail="Session not found or expired")
     return {"status": "pending"}
-
-
-@router.post("/cli-auth/redeem-invite", response_model=RedeemInviteResponse)
-@limiter.limit("10/minute")
-async def redeem_invite_unauthenticated(request: Request, req: RedeemInviteRequest):
-    """Redeem a magic-link invite token with no prior auth.
-
-    Creates a brand-new user and joins them to the token's workspace. This is
-    the path used by `stash connect --invite` for people who don't yet have a
-    stash account.
-    """
-    _require_unauthenticated_invite_redemption_enabled()
-    result = await invite_token_service.redeem_as_new_user(
-        raw_token=req.token,
-        display_name=req.display_name,
-    )
-    if not result:
-        raise HTTPException(
-            status_code=404,
-            detail="Invite token is invalid, expired, or exhausted",
-        )
-    return RedeemInviteResponse(**result)
 
 
 @router.post("/cli-auth/sessions/{session_id}/approve")

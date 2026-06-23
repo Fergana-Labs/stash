@@ -23,21 +23,18 @@ const VISIBILITIES: { key: SessionFolderVisibility; label: string; hint: string 
 ];
 
 function permissionsFor(v: SessionFolderVisibility): {
-  workspace_permission: GeneralPermission;
   public_permission: GeneralPermission;
 } {
-  if (v === "public") return { workspace_permission: "read", public_permission: "read" };
-  return { workspace_permission: "read", public_permission: "none" };
+  if (v === "public") return { public_permission: "read" };
+  return { public_permission: "none" };
 }
 
 export default function SessionFolderShareModal({
   folder,
-  workspaceId,
   onClose,
   onChanged,
 }: {
   folder: SessionFolder;
-  workspaceId: string;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -69,7 +66,7 @@ export default function SessionFolderShareModal({
     setBusy(true);
     setError("");
     try {
-      await updateSessionFolder(workspaceId, folder.id, permissionsFor(next));
+      await updateSessionFolder(folder.id, permissionsFor(next));
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update visibility");

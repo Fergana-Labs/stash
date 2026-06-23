@@ -1,7 +1,7 @@
 """Auth credential and config storage for the stash CLI.
 
 Config lives at user scope: ~/.stash/config.json (applies everywhere).
-Per-repo workspace info lives in .stash (a single file at the repo root, committed).
+Per-repo settings live in .stash (a single file at the repo root, committed).
 """
 
 import json
@@ -18,9 +18,8 @@ PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
 
 class Manifest(TypedDict, total=False):
-    workspace_id: str
     # The session folder this repo's agent sessions are pushed into. Omitted →
-    # they land in the workspace's Default folder.
+    # they land in the user's Default folder.
     session_folder_id: str
     base_url: str
 
@@ -144,27 +143,20 @@ def clear_config() -> None:
 
 
 # --- Streaming toggle ---
+#
+# Streaming is global to the user's scope: a single boolean the plugin reads as
+# `not stopped_streaming` (stashai/plugin/scope.py). There is no per-repo scope.
 
 
-def _stopped_set() -> set[str]:
+def streaming_stopped() -> bool:
     if USER_CONFIG_FILE.exists():
-        val = _read_json(USER_CONFIG_FILE).get("stopped_streaming")
-        if isinstance(val, list):
-            return set(val)
-    return set()
+        return bool(_read_json(USER_CONFIG_FILE).get("stopped_streaming"))
+    return False
 
 
-def is_streaming(workspace_id: str) -> bool:
-    return workspace_id not in _stopped_set()
+def start_streaming() -> None:
+    _write_to(USER_CONFIG_FILE, {"stopped_streaming": False})
 
 
-def set_streaming(workspace_id: str) -> None:
-    ids = _stopped_set()
-    ids.discard(workspace_id)
-    _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
-
-
-def clear_streaming(workspace_id: str) -> None:
-    ids = _stopped_set()
-    ids.add(workspace_id)
-    _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
+def stop_streaming() -> None:
+    _write_to(USER_CONFIG_FILE, {"stopped_streaming": True})

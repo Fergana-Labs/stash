@@ -37,7 +37,7 @@ def mocked_table_service():
             "name": kwargs["name"],
             "description": kwargs["description"],
             "columns": kwargs["columns"],
-            "workspace_id": kwargs["workspace_id"],
+            "owner_user_id": kwargs["owner_user_id"],
             "created_by": kwargs["created_by"],
         }
         created_tables.append(rec)
@@ -80,7 +80,7 @@ async def test_single_sheet_named_after_base(mocked_table_service):
     ws.append(["bob", 88])
 
     tables = await ingest_xlsx_bytes(
-        workspace_id=uuid4(),
+        owner_user_id=uuid4(),
         user_id=uuid4(),
         content=_bytes_from(wb),
         base_name="report",
@@ -106,7 +106,7 @@ async def test_multi_sheet_creates_one_table_per_tab(mocked_table_service):
     ws2.append(["cloud", 250])
 
     tables = await ingest_xlsx_bytes(
-        workspace_id=uuid4(),
+        owner_user_id=uuid4(),
         user_id=uuid4(),
         content=_bytes_from(wb),
         base_name="Q4",
@@ -132,7 +132,7 @@ async def test_hidden_sheets_are_skipped(mocked_table_service):
     hidden.append(["should", "not appear"])
 
     tables = await ingest_xlsx_bytes(
-        workspace_id=uuid4(),
+        owner_user_id=uuid4(),
         user_id=uuid4(),
         content=_bytes_from(wb),
         base_name="book",
@@ -153,7 +153,7 @@ async def test_empty_sheet_is_skipped_silently(mocked_table_service):
     ws2.append([1, 2])
 
     tables = await ingest_xlsx_bytes(
-        workspace_id=uuid4(),
+        owner_user_id=uuid4(),
         user_id=uuid4(),
         content=_bytes_from(wb),
         base_name="wb",
@@ -174,7 +174,7 @@ async def test_dates_and_booleans_round_trip(mocked_table_service):
     ws.append([datetime(2026, 5, 22, 10, 30), False])
 
     await ingest_xlsx_bytes(
-        workspace_id=uuid4(),
+        owner_user_id=uuid4(),
         user_id=uuid4(),
         content=_bytes_from(wb),
         base_name="dates",
@@ -196,7 +196,7 @@ async def test_id_collision_disambiguates(mocked_table_service):
     ws.append(["a", "b"])
 
     await ingest_xlsx_bytes(
-        workspace_id=uuid4(),
+        owner_user_id=uuid4(),
         user_id=uuid4(),
         content=_bytes_from(wb),
         base_name="dup",

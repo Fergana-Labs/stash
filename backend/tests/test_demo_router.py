@@ -6,7 +6,7 @@ visibility flags on the resulting Stash and the auto-attached KB
 folder.
 
 Conftest disables the boot-time seed (so other tests get clean
-workspaces). These tests opt in by calling `seed_demo_workspace`
+scopes). These tests opt in by calling `seed_demo`
 themselves before each scenario.
 """
 
@@ -19,12 +19,12 @@ from backend.services import demo_service
 
 @pytest_asyncio.fixture(autouse=True)
 async def _seed_demo(_db_pool):
-    """Every demo test needs the Demo workspace + KB folder pre-seeded.
+    """Every demo test needs the Demo scope + KB folder pre-seeded.
 
     Conftest cleanup runs *after* the test so the seed survives the test
     body; the next test gets a fresh seed.
     """
-    await demo_service.seed_demo_workspace()
+    await demo_service.seed_demo()
     yield
 
 
@@ -193,9 +193,9 @@ async def test_kb_folder_is_reused_across_demos(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
-    """Forbid bundling a page from some other workspace into a demo Stash."""
-    # Create a non-demo workspace + page directly via SQL.
+async def test_rejects_items_outside_demo_scope(client: AsyncClient, pool):
+    """Forbid bundling a page from some other scope into a demo Stash."""
+    # Create a non-demo user + page directly via SQL.
     from uuid import uuid4
 
     user_id = await pool.fetchval(
@@ -203,25 +203,13 @@ async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
         f"outsider-{uuid4().hex[:8]}",
         "Outsider",
     )
-    ws_id = await pool.fetchval(
-        "INSERT INTO workspaces (name, description, creator_id, invite_code) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
-        "Outsider WS",
-        "",
-        user_id,
-        uuid4().hex[:8],
-    )
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) " "VALUES ($1, $2, 'owner')",
-        ws_id,
-        user_id,
-    )
+    # The scope is the user: the outsider's owner_user_id is their own user id.
     outside_page_id = await pool.fetchval(
-        "INSERT INTO pages (workspace_id, name, content_markdown, content_html, "
+        "INSERT INTO pages (owner_user_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, created_by, updated_by) "
         "VALUES ($1, $2, '', '', 'markdown', 'responsive', 'hash', '{}'::jsonb, $3, $3) "
         "RETURNING id",
-        ws_id,
+        user_id,
         "Outside page",
         user_id,
     )
@@ -229,7 +217,7 @@ async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
     resp = await client.post(
         "/api/v1/demo/skills",
         json={
-            "title": "Cross-workspace attempt",
+            "title": "Cross-scope attempt",
             "items": [{"object_type": "page", "object_id": str(outside_page_id)}],
         },
     )

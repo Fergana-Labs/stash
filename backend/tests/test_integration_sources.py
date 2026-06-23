@@ -274,7 +274,7 @@ async def test_gong_rejects_missing_credentials():
 
 
 @pytest.mark.asyncio
-async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
+async def test_gong_indexer_requires_account_allowlist(monkeypatch):
     """An unconfigured allowlist must purge previously indexed (unscoped)
     calls and fail the sync — not report a healthy no-op that leaves them
     searchable."""
@@ -294,12 +294,11 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
         fake_purge_disallowed_copied_documents,
     )
 
-    with pytest.raises(RuntimeError, match="no allowed workspaces"):
+    with pytest.raises(RuntimeError, match="no allowed gong accounts"):
         await gong_indexer.index_gong(
             {
                 "id": "00000000-0000-0000-0000-000000000001",
-                "workspace_id": "00000000-0000-0000-0000-000000000002",
-                "owner_user_id": "00000000-0000-0000-0000-000000000003",
+                "owner_user_id": "00000000-0000-0000-0000-000000000002",
                 "source_type": "gong_calls",
                 "settings": {},
             }
@@ -309,9 +308,9 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
+async def test_gong_indexer_filters_to_allowed_accounts(monkeypatch):
     stored_paths: list[str] = []
-    stored_workspace_ids: list[str] = []
+    stored_account_ids: list[str] = []
     soft_deleted: list[str] = []
 
     async def fake_get_valid_token(user_id, provider):
@@ -328,7 +327,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
 
     async def fake_upsert_content_document(**kwargs):
         stored_paths.append(kwargs["path"])
-        stored_workspace_ids.append(kwargs["extra"]["gong_workspace_id"])
+        stored_account_ids.append(kwargs["extra"]["gong_account_id"])
 
     async def fake_remove_missing_documents(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
@@ -358,15 +357,14 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     await gong_indexer.index_gong(
         {
             "id": "00000000-0000-0000-0000-000000000001",
-            "workspace_id": "00000000-0000-0000-0000-000000000002",
-            "owner_user_id": "00000000-0000-0000-0000-000000000003",
+            "owner_user_id": "00000000-0000-0000-0000-000000000002",
             "source_type": "gong_calls",
             "settings": {"allowed_workspace_ids": ["W_ALLOWED"]},
         }
     )
 
     assert stored_paths == ["allowed-call"]
-    assert stored_workspace_ids == ["W_ALLOWED"]
+    assert stored_account_ids == ["W_ALLOWED"]
     assert soft_deleted == ["allowed-call"]
 
 
@@ -638,7 +636,7 @@ async def test_search_twitter_raises_on_provider_error(monkeypatch):
 
     monkeypatch.setattr(twitter_indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(twitter_indexer.httpx, "AsyncClient", _FakeClient({}, status_code=429))
-    source = {"id": str(uuid4()), "workspace_id": str(uuid4()), "owner_user_id": str(uuid4())}
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4())}
     with pytest.raises(httpx.HTTPStatusError):
         await twitter_indexer.search_twitter(source, "hello")
 
@@ -682,7 +680,6 @@ async def test_search_twitter_parses_payload_and_caches_rows(monkeypatch):
 
     source = {
         "id": str(uuid4()),
-        "workspace_id": str(uuid4()),
         "owner_user_id": str(uuid4()),
     }
     hits = await twitter_indexer.search_twitter(source, "hello", limit=5)
@@ -870,7 +867,7 @@ async def test_search_twitter_clamps_limit_and_names_dateless_posts(monkeypatch)
     monkeypatch.setattr(twitter_indexer.source_service, "upsert_index_row", fake_upsert)
     monkeypatch.setattr(twitter_indexer.source_service, "prune_index_rows", fake_prune)
 
-    source = {"id": str(uuid4()), "workspace_id": str(uuid4()), "owner_user_id": str(uuid4())}
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4())}
     hits = await twitter_indexer.search_twitter(source, "hello", limit=250)
 
     # X rejects max_results above 100; oversized limits clamp.

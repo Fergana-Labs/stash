@@ -14,14 +14,13 @@ function detail(): SkillPreviewData {
   return {
     skill: {
       id: "skill-1",
-      workspace_id: "workspace-1",
+      owner_user_id: "user-1",
       slug: "launch-plan",
       title: "Launch Plan",
       description: "",
       owner_name: "henry",
       owner_display_name: "Henry",
     },
-    workspace_name: "Product",
     folder_name: "Launch Plan",
     contents: {
       subfolders: [],
@@ -56,7 +55,7 @@ describe("skill preview metadata", () => {
 
     expect(skillMetadataTitle(data)).toBe("Launch Plan - Skill");
     expect(skillMetadataDescription(data)).toBe(
-      "A Skill with 2 files: 1 page, 1 file from Product.",
+      "A Skill with 2 files: 1 page, 1 file from Henry.",
     );
   });
 

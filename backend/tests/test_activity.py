@@ -21,26 +21,24 @@ async def _register(client: AsyncClient, prefix: str) -> str:
     return resp.json()["api_key"]
 
 
-async def _workspace(client: AsyncClient, api_key: str, name: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": name},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
+async def _scope(client: AsyncClient, api_key: str) -> dict:
+    # A user IS their own scope, so the scope id/name come straight off the
+    # authenticated profile.
+    resp = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    assert resp.status_code == 200
     return resp.json()
 
 
 async def _event(
     client: AsyncClient,
     api_key: str,
-    workspace_id: str,
+    owner_user_id: str,
     session_id: str,
     agent_name: str = "tester",
     created_at: str = "2026-01-02T00:00:00Z",
 ) -> None:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": agent_name,
             "event_type": "assistant_message",
@@ -65,11 +63,11 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
     )
     assert register_resp.status_code == 201
     api_key = register_resp.json()["api_key"]
-    workspace = await _workspace(client, api_key, "Timeline Workspace")
+    scope = await _scope(client, api_key)
 
     for content in ("first event", "second event"):
         event_resp = await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+            "/api/v1/me/sessions/events",
             json={
                 "agent_name": "codex",
                 "event_type": "assistant_message",
@@ -81,7 +79,7 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
         assert event_resp.status_code == 201
 
     page_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Not a contributor", "content": "page content"},
         headers=_auth(api_key),
     )
@@ -89,7 +87,7 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 365, "workspace_id": workspace["id"]},
+        params={"days": 365, "owner_user_id": scope["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -121,7 +119,7 @@ async def test_user_wide_knowledge_density_ignores_stale_cache_without_current_a
 
     await pool.execute(
         "INSERT INTO knowledge_density_cache "
-        "(user_id, workspace_id, clusters, source_signature, computed_at) "
+        "(user_id, owner_user_id, clusters, source_signature, computed_at) "
         "VALUES ($1, NULL, $2::jsonb, 0, now())",
         user_id,
         json.dumps(
@@ -159,7 +157,7 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
 
     await pool.execute(
         "INSERT INTO embedding_projections "
-        "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+        "(user_id, source_type, owner_user_id, points, embedding_count, computed_at) "
         "VALUES ($1, '_all', NULL, $2::jsonb, 0, now())",
         user_id,
         json.dumps(
@@ -193,21 +191,21 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
 @pytest.mark.asyncio
 async def test_activity_timeline_includes_blank_day_buckets(client: AsyncClient):
     api_key = await _register(client, "activity_blank_days")
-    workspace = await _workspace(client, api_key, "Blank Day Activity")
+    scope = await _scope(client, api_key)
     event_day = datetime.now(UTC).date() - timedelta(days=1)
     event_at = datetime.combine(event_day, time(hour=12), tzinfo=UTC)
 
     await _event(
         client,
         api_key,
-        workspace["id"],
+        scope["id"],
         "middle-day-session",
         created_at=event_at.isoformat(),
     )
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 3, "bucket": "day", "workspace_id": workspace["id"]},
+        params={"days": 3, "bucket": "day", "owner_user_id": scope["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -235,10 +233,10 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
     )
     assert register_resp.status_code == 201
     api_key = register_resp.json()["api_key"]
-    workspace = await _workspace(client, api_key, "Client Label Workspace")
+    scope = await _scope(client, api_key)
 
     event_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "user",
             "event_type": "assistant_message",
@@ -251,7 +249,7 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
     assert event_resp.status_code == 201
 
     claude_event_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         json={
             "agent_name": "user",
             "event_type": "assistant_message",
@@ -265,7 +263,7 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 365, "workspace_id": workspace["id"]},
+        params={"days": 365, "owner_user_id": scope["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -289,15 +287,15 @@ async def test_activity_timeline_normalizes_claude_code_agent_names(client: Asyn
     )
     assert register_resp.status_code == 201
     api_key = register_resp.json()["api_key"]
-    workspace = await _workspace(client, api_key, "Claude Activity")
+    scope = await _scope(client, api_key)
 
-    await _event(client, api_key, workspace["id"], "claude-parent", "claude")
-    await _event(client, api_key, workspace["id"], "claude-child", "claude-subagent")
-    await _event(client, api_key, workspace["id"], "claude-prefixed", "sam-claude-code")
+    await _event(client, api_key, scope["id"], "claude-parent", "claude")
+    await _event(client, api_key, scope["id"], "claude-child", "claude-subagent")
+    await _event(client, api_key, scope["id"], "claude-prefixed", "sam-claude-code")
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
-        params={"days": 365, "workspace_id": workspace["id"]},
+        params={"days": 365, "owner_user_id": scope["id"]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -314,14 +312,14 @@ async def test_activity_timeline_normalizes_claude_code_agent_names(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncClient):
+async def test_user_activity_is_scoped_to_accessible_scopes(client: AsyncClient):
     owner_key = await _register(client, "activity_owner")
     other_key = await _register(client, "activity_other")
-    owner_workspace = await _workspace(client, owner_key, "Team Activity")
-    other_workspace = await _workspace(client, other_key, "Hidden Activity")
+    owner_scope = await _scope(client, owner_key)
+    other_scope = await _scope(client, other_key)
 
-    await _event(client, owner_key, owner_workspace["id"], "visible-session")
-    await _event(client, other_key, other_workspace["id"], "hidden-session")
+    await _event(client, owner_key, owner_scope["id"], "visible-session")
+    await _event(client, other_key, other_scope["id"], "hidden-session")
 
     resp = await client.get(
         "/api/v1/me/activity",
@@ -343,8 +341,8 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     ]
 
     assert len(visible) == 1
-    assert visible[0]["workspace_id"] == owner_workspace["id"]
-    assert visible[0]["workspace_name"] == "Team Activity"
+    assert visible[0]["owner_user_id"] == owner_scope["id"]
+    assert visible[0]["owner_name"] == owner_scope["name"]
     assert "skill_id" not in visible[0]
     assert "stash_name" not in visible[0]
     assert visible[0]["target_label"] == "tester: visible-session"
@@ -352,36 +350,15 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
-    api_key = await _register(client, "activity_filter")
-    first_workspace = await _workspace(client, api_key, "First Activity")
-    second_workspace = await _workspace(client, api_key, "Second Activity")
-
-    await _event(client, api_key, first_workspace["id"], "first-session")
-    await _event(client, api_key, second_workspace["id"], "second-session")
-
-    resp = await client.get(
-        "/api/v1/me/activity",
-        params={"limit": 200, "workspace_id": first_workspace["id"]},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 200
-
-    events = [event for event in resp.json()["events"] if event["kind"] == "session.uploaded"]
-    assert {event["target_id"] for event in events} == {"first-session"}
-    assert {event["workspace_id"] for event in events} == {first_workspace["id"]}
-
-
-@pytest.mark.asyncio
 async def test_user_activity_paginates_with_before_cursor(client: AsyncClient):
     api_key = await _register(client, "activity_paged")
-    workspace = await _workspace(client, api_key, "Paged Activity")
+    scope = await _scope(client, api_key)
 
     for hour in (1, 2, 3):
         await _event(
             client,
             api_key,
-            workspace["id"],
+            scope["id"],
             f"paged-session-{hour}",
             created_at=f"2026-01-02T0{hour}:00:00Z",
         )

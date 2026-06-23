@@ -4,13 +4,13 @@ import { ApiError } from "../../lib/api";
 import type { Connector } from "./connectors";
 import { AddSourceControls } from "./pickers";
 
-const addWorkspaceSource = vi.fn();
+const addSource = vi.fn();
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
   return {
     ...actual,
-    addWorkspaceSource: (...args: unknown[]) => addWorkspaceSource(...args),
+    addSource: (...args: unknown[]) => addSource(...args),
   };
 });
 
@@ -24,12 +24,7 @@ const driveConnector: Connector = {
 
 function renderControls() {
   return render(
-    <AddSourceControls
-      connector={driveConnector}
-      workspaceId="ws-1"
-      connected
-      onAdded={() => {}}
-    />
+    <AddSourceControls connector={driveConnector} connected onAdded={() => {}} />
   );
 }
 
@@ -42,7 +37,7 @@ afterEach(() => {
 // connect step, not here. A failed add just surfaces the backend error inline.
 describe("AddSourceControls", () => {
   it("surfaces the backend error inline, with no paywall", async () => {
-    addWorkspaceSource.mockRejectedValue(new ApiError(400, "external_ref is required"));
+    addSource.mockRejectedValue(new ApiError(400, "external_ref is required"));
     renderControls();
 
     fireEvent.click(screen.getByText("Add My Drive"));

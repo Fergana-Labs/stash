@@ -16,11 +16,11 @@ def _post_stub_client():
 def test_publish_skill_folder_publishes_publicly() -> None:
     client, calls = _post_stub_client()
 
-    client.publish_skill_folder("WS", "F1", title="Launch notes", discoverable=True)
+    client.publish_skill_folder("F1", title="Launch notes", discoverable=True)
 
     assert calls == [
         (
-            "/api/v1/workspaces/WS/skills",
+            "/api/v1/me/skills",
             {
                 "folder_id": "F1",
                 "description": "",
@@ -34,11 +34,11 @@ def test_publish_skill_folder_publishes_publicly() -> None:
 def test_publish_skill_folder_defaults() -> None:
     client, calls = _post_stub_client()
 
-    client.publish_skill_folder("WS", "F1")
+    client.publish_skill_folder("F1")
 
     assert calls == [
         (
-            "/api/v1/workspaces/WS/skills",
+            "/api/v1/me/skills",
             {
                 "folder_id": "F1",
                 "description": "",

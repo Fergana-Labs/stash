@@ -31,9 +31,9 @@ from ..config import settings
 from .agent_runtime import (
     _TOOLS_BY_NAME,
     _agent_name_ctx,
+    _scope_ctx,
     _session_ctx,
     _user_ctx,
-    _workspace_ctx,
 )
 from .llm import ModelTier, _model_for
 
@@ -83,7 +83,7 @@ async def stream_tool_loop(
     system: str,
     prompt: str | None = None,
     history: list[dict] | None = None,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID | None = None,
     tool_set: tuple[str, ...],
     max_turns: int = 8,
@@ -98,7 +98,7 @@ async def stream_tool_loop(
         yield {
             "type": "text",
             "delta": (
-                "Ask-the-workspace needs ANTHROPIC_API_KEY set on the backend. "
+                "Ask-the-stash needs ANTHROPIC_API_KEY set on the backend. "
                 "Drop a key into backend/.env and restart."
             ),
         }
@@ -112,7 +112,7 @@ async def stream_tool_loop(
         [dict(m) for m in history] if history else [{"role": "user", "content": prompt or ""}]
     )
 
-    workspace_token = _workspace_ctx.set(workspace_id)
+    scope_token = _scope_ctx.set(owner_user_id)
     user_token = _user_ctx.set(user_id)
     session_token = _session_ctx.set(session_id)
     agent_name_token = _agent_name_ctx.set(agent_name)
@@ -249,6 +249,6 @@ async def stream_tool_loop(
         _agent_name_ctx.reset(agent_name_token)
         _session_ctx.reset(session_token)
         _user_ctx.reset(user_token)
-        _workspace_ctx.reset(workspace_token)
+        _scope_ctx.reset(scope_token)
 
     yield {"type": "end"}

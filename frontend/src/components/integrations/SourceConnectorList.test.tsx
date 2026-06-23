@@ -50,7 +50,7 @@ describe("SourceConnectorList disconnect", () => {
 
     render(
       <ConfirmDialogProvider>
-        <SourceConnectorList workspaceId="ws-1" returnTo="/" includeObsidian={false} />
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
       </ConfirmDialogProvider>
     );
 
@@ -69,7 +69,7 @@ describe("SourceConnectorList disconnect", () => {
 
     render(
       <ConfirmDialogProvider>
-        <SourceConnectorList workspaceId="ws-1" returnTo="/" includeObsidian={false} />
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
       </ConfirmDialogProvider>
     );
 

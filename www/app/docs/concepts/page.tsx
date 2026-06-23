@@ -2,16 +2,16 @@ import { Code, P, Title, Subtitle } from "../components";
 
 const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.ReactNode }[] = [
   {
-    name: "Workspace",
-    badge: "Container",
+    name: "Your Stash",
+    badge: "Your space",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share workspace resources: pages, sessions, tables, and files. Invite others with a short code.",
+    desc: "Your personal scope. Everything you own lives here — pages, sessions, tables, and files — and your agent sees exactly what you can see: what you own, what's been shared with you, and what's public.",
   },
   {
     name: "Sessions",
     badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
-    desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
+    desc: "Append-only event log of your agent activity. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
   },
   {
     name: "Files",
@@ -19,7 +19,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     badgeColor: "bg-green-500/10 text-green-600",
     desc: (
       <>
-        Markdown and HTML pages organized in folders, scoped to a workspace. Rich-text editor with
+        Markdown and HTML pages organized in folders. Rich-text editor with
         autosave, semantic search, and file attachments.
       </>
     ),
@@ -44,7 +44,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
       <>
         Anything an agent can read, exposed as a virtual file system. Two native sources —{" "}
         <Code>files</Code> and <Code>sessions</Code> — are always present; connected sources
-        (GitHub, Google Drive, Gmail, Notion, Slack, Granola) are added per member and indexed on a
+        (GitHub, Google Drive, Gmail, Notion, Slack, Granola) are added by you and indexed on a
         schedule. Pick a source like a drive, browse it by path, read a document, or search one
         source — or everything at once.
       </>

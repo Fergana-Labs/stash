@@ -9,22 +9,21 @@ import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import {
-  getWorkspaceSidebar,
+  getSidebar,
   getPublicSkill,
   getSessionEvents,
   listAllTables,
   listSkills,
-  listMyWorkspaces,
-  searchWorkspaceEvents,
-  searchWorkspacePages,
+  searchEvents,
+  searchPages as searchPagesApi,
+  type HistoryEvent,
   type PublicSkillDetail,
   type SessionEvent,
+  type Sidebar,
   type Skill,
-  type WorkspaceHistoryEvent,
-  type WorkspaceSidebar,
-  type WorkspaceFolder,
+  type TreeFolder,
 } from "../../lib/api";
-import type { Page, TableWithWorkspace, Workspace } from "../../lib/types";
+import type { Page, TableWithOwner } from "../../lib/types";
 
 type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
 
@@ -47,11 +46,6 @@ interface SearchResult {
   detail: ReactNode;
   updatedAt: string;
   relevance: number;
-}
-
-interface SearchableSkill extends Skill {
-  workspace_id: string;
-  workspace_name: string;
 }
 
 const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
@@ -85,19 +79,15 @@ function SearchPageInner() {
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
   const initialSessionId = searchParams.get("session") ?? "";
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceSkills, setWorkspaceSkills] = useState<SearchableSkill[]>([]);
-  const [sidebars, setSidebars] = useState<Record<string, WorkspaceSidebar>>({});
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(
-    searchParams.get("workspace") ?? ""
-  );
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [sidebar, setSidebar] = useState<Sidebar | null>(null);
   const [selectedProductSkillId, setSelectedProductSkillId] = useState("");
   const [selectedProductSkillSlug, setSelectedProductSkillSlug] = useState(
     searchParams.get("skill") ?? ""
   );
   const [selectedFolderId, setSelectedFolderId] = useState(searchParams.get("folder") ?? "");
   const [selectedPageId, setSelectedPageId] = useState(searchParams.get("page") ?? "");
-  const [selectedSessionId, setSelectedSessionId] = useState(initialSessionId);
+  const [selectedSessionId] = useState(initialSessionId);
   const [contentScope, setContentScope] = useState<ContentScope>(
     () => initialContentScope(searchParams.get("content"), initialSessionId)
   );
@@ -108,71 +98,33 @@ function SearchPageInner() {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
 
-  const loadWorkspaceData = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setFetching(true);
     setError("");
     try {
-      const data = await listMyWorkspaces();
-      const skillGroups = await Promise.all(
-        data.workspaces.map(async (workspace) => {
-          const workspaceSkills = await listSkills(workspace.id);
-          return workspaceSkills.map((skill) => ({
-            ...skill,
-            workspace_id: workspace.id,
-            workspace_name: workspace.name,
-          }));
-        })
-      );
-      setWorkspaces(data.workspaces);
-      setWorkspaceSkills(skillGroups.flat());
+      const [skillList, sidebarData] = await Promise.all([listSkills(), getSidebar()]);
+      setSkills(skillList);
+      setSidebar(sidebarData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load workspace data");
+      setError(err instanceof Error ? err.message : "Failed to load search data");
     } finally {
       setFetching(false);
     }
   }, []);
 
   useEffect(() => {
-    if (user) loadWorkspaceData();
-  }, [user, loadWorkspaceData]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId || sidebars[selectedWorkspaceId]) return;
-
-    let cancelled = false;
-    getWorkspaceSidebar(selectedWorkspaceId)
-      .then((sidebar) => {
-        if (!cancelled) setSidebars((current) => ({ ...current, [selectedWorkspaceId]: sidebar }));
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load folders");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedWorkspaceId, sidebars]);
+    if (user) loadData();
+  }, [user, loadData]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const searchedWorkspaces = useMemo(() => {
-    return selectedWorkspaceId
-      ? workspaces.filter((workspace) => workspace.id === selectedWorkspaceId)
-      : workspaces;
-  }, [selectedWorkspaceId, workspaces]);
-
-  const searchedSkills = useMemo(() => {
-    const workspaceIds = new Set(searchedWorkspaces.map((workspace) => workspace.id));
-    return workspaceSkills.filter((skill) => workspaceIds.has(skill.workspace_id));
-  }, [searchedWorkspaces, workspaceSkills]);
-
   // Skill-scoped item search reads through the public-skill payload, so the
   // picker only offers published skills (the ones with a slug).
   const publishedSkills = useMemo(
-    () => searchedSkills.filter((skill) => skill.published !== null),
-    [searchedSkills]
+    () => skills.filter((skill) => skill.published !== null),
+    [skills]
   );
 
   const selectedProductSkill = useMemo(
@@ -202,15 +154,10 @@ function SearchPageInner() {
     setSelectedPageId("");
   }, [selectedProductSkillId, selectedProductSkillSlug]);
 
-  const folderOptions = useMemo(() => {
-    if (!selectedWorkspaceId) return [];
-    return sidebars[selectedWorkspaceId]?.files.folders ?? [];
-  }, [selectedWorkspaceId, sidebars]);
+  const folderOptions = useMemo(() => sidebar?.files.folders ?? [], [sidebar]);
+  const pageOptions = useMemo(() => sidebar?.files.pages ?? [], [sidebar]);
 
-  const pageOptions = useMemo(() => {
-    if (!selectedWorkspaceId) return [];
-    return sidebars[selectedWorkspaceId]?.files.pages ?? [];
-  }, [selectedWorkspaceId, sidebars]);
+  const sourceName = user?.display_name ?? "You";
 
   const handleSearch = useCallback(async (rawQuery?: string) => {
     const q = (rawQuery ?? query).trim();
@@ -230,16 +177,10 @@ function SearchPageInner() {
       const includePages = contentScope === "all" || contentScope === "pages";
       const includeTables = contentScope === "all" || contentScope === "tables";
       const includeSkills = contentScope === "all" || contentScope === "skills";
-      const workspace =
-        workspaces.find((item) => item.id === selectedWorkspaceId) ??
-        searchedWorkspaces[0] ??
-        null;
 
-      if (selectedSessionId && selectedWorkspaceId) {
-        const events = await getSessionEvents(selectedWorkspaceId, selectedSessionId);
-        if (workspace) {
-          nextResults.push(...searchSingleSession(workspace, selectedSessionId, events, q));
-        }
+      if (selectedSessionId) {
+        const events = await getSessionEvents(selectedSessionId);
+        nextResults.push(...searchSingleSession(sourceName, selectedSessionId, events, q));
         setResults(sortResults(nextResults));
         return;
       }
@@ -259,63 +200,31 @@ function SearchPageInner() {
       }
 
       if (includeSkills && !selectedFolderId && !selectedPageId) {
-        nextResults.push(...searchSkills(searchedSkills, q));
+        nextResults.push(...searchSkills(skills, q, sourceName));
       }
 
       if (includeSessions && !selectedFolderId && !selectedPageId) {
-        const settledSessionGroups = await Promise.allSettled(
-          searchedWorkspaces.map(async (workspace) => ({
-            workspace,
-            events: await searchWorkspaceEvents(workspace.id, q, 100),
-          }))
-        );
-        const sessionGroups = settledSessionGroups
-          .filter((result) => result.status === "fulfilled")
-          .map((result) => result.value);
-        nextResults.push(...searchSessionsFromEvents(sessionGroups, q));
-        if (sessionGroups.length < searchedWorkspaces.length) {
-          setError("Session search is unavailable for one or more workspaces.");
-        }
+        const events = await searchEvents(q, 100);
+        nextResults.push(...searchSessionsFromEvents(events, q, sourceName));
       }
 
       if (includePages) {
-        const settledPageGroups = await Promise.allSettled(
-          searchedWorkspaces.map(async (workspace) => ({
-            workspace,
-            pages: await searchWorkspacePages(workspace.id, q, 50),
-          }))
-        );
-        const pageGroups = settledPageGroups
-          .filter((result) => result.status === "fulfilled")
-          .map((result) => result.value);
-        const selectedSidebar = selectedWorkspaceId ? sidebars[selectedWorkspaceId] : undefined;
-        const folderIds = selectedSidebar
-          ? descendantFolderIds(selectedSidebar.files.folders, selectedFolderId)
+        const pages = await searchPagesApi(q, 50);
+        const folderIds = sidebar
+          ? descendantFolderIds(sidebar.files.folders, selectedFolderId)
           : new Set<string>();
         nextResults.push(
-          ...searchPages(pageGroups, q, {
+          ...searchPages(pages, q, sourceName, {
             selectedFolderId,
             selectedPageId,
             folderIds,
           })
         );
-        if (pageGroups.length < searchedWorkspaces.length) {
-          setError("Page search is unavailable for one or more workspaces.");
-        }
       }
 
       if (includeTables && !selectedFolderId && !selectedPageId) {
-        const workspaceIds = new Set(searchedWorkspaces.map((item) => item.id));
         const { tables } = await listAllTables();
-        nextResults.push(
-          ...searchTables(
-            tables.filter((table) => {
-              if (!table.workspace_id) return !selectedWorkspaceId;
-              return workspaceIds.has(table.workspace_id);
-            }),
-            q
-          )
-        );
+        nextResults.push(...searchTables(tables, q));
       }
 
       setResults(sortResults(nextResults));
@@ -333,16 +242,14 @@ function SearchPageInner() {
   }, [
     contentScope,
     query,
-    searchedSkills,
-    searchedWorkspaces,
+    skills,
     selectedFolderId,
     selectedPageId,
     selectedProductSkill,
     selectedProductSkillSlug,
     selectedSessionId,
-    selectedWorkspaceId,
-    workspaces,
-    sidebars,
+    sidebar,
+    sourceName,
   ]);
 
   // The header search input writes the query into the URL; mirror it into
@@ -497,7 +404,7 @@ function SearchPageInner() {
 }
 
 function searchSingleSession(
-  workspace: Pick<Workspace, "id" | "name">,
+  sourceName: string,
   sessionId: string,
   events: SessionEvent[],
   query: string
@@ -523,11 +430,12 @@ function searchSingleSession(
 
   return [
     {
-      id: `${workspace.id}:${sessionId}`,
+      id: sessionId,
       kind: "Session",
       title: sessionId,
       href: `/sessions/${encodeURIComponent(sessionId)}`,
-      sourceName: workspace.name,
+
+      sourceName,
       detail: contextSnippet(bestMatch.content, query) ?? sessionEventSnippet(bestMatch, query),
       updatedAt: latest.created_at ?? new Date().toISOString(),
       relevance: scoreSessionEvent(query, sessionId, bestMatch),
@@ -535,13 +443,12 @@ function searchSingleSession(
   ];
 }
 
-function searchSkills(skills: SearchableSkill[], query: string): SearchResult[] {
+function searchSkills(skills: Skill[], query: string, sourceName: string): SearchResult[] {
   return skills
     .map((skill) => {
       const relevance = scoreValues(query, [
         { value: skill.name, weight: 8 },
         { value: skill.description, weight: 3 },
-        { value: skill.workspace_name, weight: 1 },
       ]);
       return { skill, relevance };
     })
@@ -550,9 +457,9 @@ function searchSkills(skills: SearchableSkill[], query: string): SearchResult[] 
       id: skill.folder_id,
       kind: "Skill" as const,
       title: skill.name,
-      href: `/workspaces/${skill.workspace_id}/skills/${skill.folder_id}`,
-      sourceName: skill.workspace_name,
-      detail:
+
+      href: `/skills/folder/${skill.folder_id}`,
+      sourceName,
         contextSnippet(skill.description, query) ??
         `Skill / ${skill.description || `${skill.file_count} files`}`,
       updatedAt: skill.updated_at,
@@ -566,7 +473,6 @@ function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): Sear
   const relevance = scoreValues(query, [
     { value: detail.skill.title, weight: 8 },
     { value: detail.skill.description, weight: 3 },
-    { value: detail.workspace_name, weight: 1 },
   ]);
   if (relevance <= 0) return [];
   return [
@@ -575,7 +481,7 @@ function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): Sear
       kind: "Skill" as const,
       title: detail.skill.title,
       href: `/skills/${detail.skill.slug}`,
-      sourceName: detail.workspace_name,
+      sourceName: detail.skill.owner_display_name ?? detail.skill.owner_name,
       detail:
         contextSnippet(detail.skill.description, query) ??
         `Skill / ${detail.skill.description || `${detail.contents.pages.length} pages`}`,
@@ -586,40 +492,39 @@ function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): Sear
 }
 
 function searchSessionsFromEvents(
-  groups: { workspace: Workspace; events: WorkspaceHistoryEvent[] }[],
-  query: string
+  events: HistoryEvent[],
+  query: string,
+  sourceName: string
 ): SearchResult[] {
   const resultsBySession = new Map<string, SearchResult>();
-  for (const { workspace, events } of groups) {
-    for (const event of events) {
-      if (!event.session_id) continue;
-      const id = `${workspace.id}:${event.session_id}`;
-      const existing = resultsBySession.get(id);
-      const relevance = scoreWorkspaceEvent(query, event);
-      if (
-        existing &&
-        (existing.relevance > relevance ||
-          (existing.relevance === relevance &&
-            new Date(existing.updatedAt) >= new Date(event.created_at)))
-      ) {
-        continue;
-      }
-      resultsBySession.set(id, {
-        id,
-        kind: "Session",
-        title: event.session_id,
-        href: `/sessions/${encodeURIComponent(event.session_id)}`,
-        sourceName: workspace.name,
-        detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
-        updatedAt: event.created_at,
-        relevance,
-      });
+  for (const event of events) {
+    if (!event.session_id) continue;
+    const id = event.session_id;
+    const existing = resultsBySession.get(id);
+    const relevance = scoreHistoryEvent(query, event);
+    if (
+      existing &&
+      (existing.relevance > relevance ||
+        (existing.relevance === relevance &&
+          new Date(existing.updatedAt) >= new Date(event.created_at)))
+    ) {
+      continue;
     }
+    resultsBySession.set(id, {
+      id,
+      kind: "Session",
+      title: event.session_id,
+      href: `/sessions/${encodeURIComponent(event.session_id)}`,
+      sourceName,
+      detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
+      updatedAt: event.created_at,
+      relevance,
+    });
   }
   return [...resultsBySession.values()];
 }
 
-function sessionSearchSnippet(event: WorkspaceHistoryEvent, query: string): string {
+function sessionSearchSnippet(event: HistoryEvent, query: string): string {
   const content = event.content.trim();
   if (!content) return `${event.agent_name || "agent"} / ${event.event_type}`;
 
@@ -650,28 +555,28 @@ function sessionEventSnippet(event: SessionEvent, query: string): string {
 }
 
 function searchPages(
-  groups: { workspace: Workspace; pages: Page[] }[],
+  pages: Page[],
   query: string,
+  sourceName: string,
   scope: {
     selectedFolderId: string;
     selectedPageId: string;
     folderIds: Set<string>;
   }
 ): SearchResult[] {
-  return groups.flatMap(({ workspace, pages }) =>
-    pages
-      .filter((page) => {
-        if (scope.selectedPageId) return page.id === scope.selectedPageId;
-        if (!scope.selectedFolderId) return true;
-        return Boolean(page.folder_id && scope.folderIds.has(page.folder_id));
-      })
-      .map((page) => ({
-        id: page.id,
-        kind: "Page" as const,
-        title: page.name,
-        href: `/p/${page.id}`,
-        sourceName: workspace.name,
-        detail:
+  return pages
+    .filter((page) => {
+      if (scope.selectedPageId) return page.id === scope.selectedPageId;
+      if (!scope.selectedFolderId) return true;
+      return Boolean(page.folder_id && scope.folderIds.has(page.folder_id));
+    })
+    .map((page) => ({
+      id: page.id,
+      kind: "Page" as const,
+      title: page.name,
+      href: `/p/${page.id}`,
+      sourceName,
+      detail:
           contextSnippet(
             page.content_type === "html"
               ? stripHtml(page.content_html ?? "")
@@ -681,20 +586,18 @@ function searchPages(
           (page.content_type === "html"
             ? stripHtml(page.content_html ?? "").slice(0, 220) || "HTML page"
             : page.content_markdown?.slice(0, 220) || "Markdown page"),
-        updatedAt: page.updated_at,
-        relevance: scorePage(query, page),
-      }))
-  );
+      updatedAt: page.updated_at,
+      relevance: scorePage(query, page),
+    }));
 }
 
-function searchTables(tables: TableWithWorkspace[], query: string): SearchResult[] {
+function searchTables(tables: TableWithOwner[], query: string): SearchResult[] {
   return tables
     .map((table) => {
       const relevance = scoreValues(query, [
         { value: table.name, weight: 8 },
         { value: table.description, weight: 3 },
         { value: table.columns.map((column) => column.name).join(" "), weight: 2 },
-        { value: table.workspace_name ?? undefined, weight: 1 },
       ]);
       return { table, relevance };
     })
@@ -703,8 +606,8 @@ function searchTables(tables: TableWithWorkspace[], query: string): SearchResult
       id: table.id,
       kind: "Table" as const,
       title: table.name,
-      href: tableSearchHref(table),
-      sourceName: table.workspace_name ?? "Personal",
+      href: `/tables/${table.id}`,
+      sourceName: table.owner_display_name ?? "Personal",
       detail:
         contextSnippet(
           [table.description, table.columns.map((column) => column.name).join(" ")]
@@ -717,11 +620,7 @@ function searchTables(tables: TableWithWorkspace[], query: string): SearchResult
     }));
 }
 
-function tableSearchHref(table: TableWithWorkspace): string {
-  return `/tables/${table.id}`;
-}
-
-function tableSearchDetail(table: TableWithWorkspace): string {
+function tableSearchDetail(table: TableWithOwner): string {
   if (table.description.trim()) return table.description;
   const parts = [`${table.columns.length} column${table.columns.length === 1 ? "" : "s"}`];
   if (typeof table.row_count === "number") {
@@ -731,12 +630,12 @@ function tableSearchDetail(table: TableWithWorkspace): string {
 }
 
 function descendantFolderIds(
-  folders: WorkspaceFolder[],
+  folders: TreeFolder[],
   selectedFolderId: string
 ): Set<string> {
   if (!selectedFolderId) return new Set();
 
-  const childrenByParent = new Map<string, WorkspaceFolder[]>();
+  const childrenByParent = new Map<string, TreeFolder[]>();
   for (const folder of folders) {
     if (!folder.parent_folder_id) continue;
     const children = childrenByParent.get(folder.parent_folder_id) ?? [];
@@ -896,7 +795,7 @@ function scoreSessionEvent(query: string, sessionId: string, event: SessionEvent
   ]);
 }
 
-function scoreWorkspaceEvent(query: string, event: WorkspaceHistoryEvent): number {
+function scoreHistoryEvent(query: string, event: HistoryEvent): number {
   const rank = typeof event.rank === "number" ? event.rank * 1000 : 0;
   return (
     rank +

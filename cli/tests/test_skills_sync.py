@@ -1,28 +1,28 @@
-"""`stash skills sync` keeps the local skills directory and the workspace's
-cloud skills in step. These lock in the three-way semantics: cloud-only
-skills materialize locally, local edits to synced skills push back, edits on
-both sides conflict loudly instead of clobbering either, and untracked local
-skills only auto-push in project mode."""
+"""`stash skills sync` keeps the local skills directory and the user's cloud
+skills in step. These lock in the three-way semantics: cloud-only skills
+materialize locally, local edits to synced skills push back, edits on both
+sides conflict loudly instead of clobbering either, and untracked local skills
+only auto-push in project mode."""
 
 from cli import main
 
 
 class _FakeSyncClient:
-    """In-memory workspace: folder_id -> {folder_name, files{relpath: bytes}}."""
+    """In-memory skills store: folder_id -> {folder_name, files{relpath: bytes}}."""
 
     def __init__(self):
         self.skills: dict[str, dict] = {}
         self._next = 0
 
     def add_remote_skill(self, name: str, files: dict[str, bytes]) -> str:
-        folder_id = self.create_folder("ws-1", name)["id"]
+        folder_id = self.create_folder(name)["id"]
         self.skills[folder_id]["files"] = dict(files)
         return folder_id
 
-    def list_skills(self, workspace_id):
+    def list_skills(self):
         return [{"folder_id": fid, "name": s["folder_name"]} for fid, s in self.skills.items()]
 
-    def get_skill_contents(self, workspace_id, folder_id):
+    def get_skill_contents(self, folder_id):
         s = self.skills[folder_id]
         pages, files = [], []
         for rel, blob in s["files"].items():
@@ -53,11 +53,11 @@ class _FakeSyncClient:
             "contents": {"subfolders": [], "pages": pages, "files": files, "tables": []},
         }
 
-    def replace_skill_contents(self, workspace_id, folder_id, files):
+    def replace_skill_contents(self, folder_id, files):
         self.skills[folder_id]["files"] = dict(files)
         return {"folder_id": folder_id, "items": len(files)}
 
-    def create_folder(self, workspace_id, name):
+    def create_folder(self, name):
         folder_id = f"folder-{self._next}"
         self._next += 1
         self.skills[folder_id] = {"folder_name": name, "files": {}}
@@ -69,7 +69,7 @@ class _FakeSyncClient:
 
 
 def _sync(c, root, state, push_new=False):
-    return main._sync_skills(c, "ws-1", root, state, push_new, c.fetch_bytes)
+    return main._sync_skills(c, root, state, push_new, c.fetch_bytes)
 
 
 def test_cloud_skill_materializes_locally(tmp_path):

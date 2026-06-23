@@ -28,7 +28,7 @@ const METHODS = [
     name: "Grep",
     tag: "exactness",
     blurb:
-      "Agents search the workspace like a repo, for the literal identifiers, error strings, and names that embeddings gloss over.",
+      "Agents search your Stash like a repo, for the literal identifiers, error strings, and names that embeddings gloss over.",
   },
 ];
 

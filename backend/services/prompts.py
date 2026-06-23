@@ -1,13 +1,13 @@
 """Centralised system prompts + tool schemas used by LLM features.
 
 Editing a prompt here changes behavior for every caller that uses it. The
-tool set is what ask-the-workspace can call to explore a Stash Workspace.
+tool set is what ask-the-scope can call to explore a Stash scope.
 """
 
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Ask-the-workspace (streaming agent loop, Sonnet tier)
+# Ask-the-scope (streaming agent loop, Sonnet tier)
 # ---------------------------------------------------------------------------
 
 
@@ -21,7 +21,7 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
             f"search to look across them: {listed}. "
         )
     return (
-        f"You are an expert assistant for the '{stash_name}' Stash Workspace. Answer "
+        f"You are an expert assistant for the '{stash_name}' Stash scope. Answer "
         "questions by calling tools to ground every claim. "
         f"{source_line}"
         "Skills are special folders of agent-usable knowledge (a folder with a "
@@ -31,7 +31,7 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
         "name, session id, skill title, or table). Be concise. "
         "When the user asks for slides, a slide deck, a presentation, a pitch, "
         "or a deck, call read_skill('slides') before generating any HTML so you "
-        "follow the workspace's canvas, format, and library conventions."
+        "follow the scope's canvas, format, and library conventions."
     )
 
 
@@ -85,7 +85,7 @@ SLACK_DESTRUCTIVE_TOOLS = frozenset(
 )
 SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t not in SLACK_DESTRUCTIVE_TOOLS)
 
-# Read-only subset for ask-the-workspace and other Q&A surfaces. Drops
+# Read-only subset for ask-the-scope and other Q&A surfaces. Drops
 # the write tools so a prompt-injected request can't trigger mutations
 # even if the model decides to play along. Service-layer permission
 # checks would still reject, but this is belt-and-suspenders.

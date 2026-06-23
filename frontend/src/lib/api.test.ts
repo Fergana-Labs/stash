@@ -67,7 +67,7 @@ describe("apiFetch", () => {
   });
 
   it("handles 204 No Content responses", async () => {
-    const { deleteWorkspace } = await import("./api");
+    const { deleteSource } = await import("./api");
     localStorage.setItem("stash_token", "my-token");
 
     const mockResponse = {
@@ -77,7 +77,7 @@ describe("apiFetch", () => {
     };
     vi.mocked(fetch).mockResolvedValue(mockResponse as Response);
 
-    const result = await deleteWorkspace("ws-1");
+    const result = await deleteSource("src-1");
     expect(result).toBeUndefined();
   });
 });

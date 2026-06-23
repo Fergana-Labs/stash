@@ -40,12 +40,12 @@ function PreviewImage({ card }: { card: PreviewCard }) {
   const meta = [
     card.contentBadge,
     editedLabel(card.kind, card.updatedAt),
-    card.workspaceName,
+    card.authorName,
   ].filter(Boolean);
   const sideLabel = card.kind === "skill" ? "DETAILS" : "IN SKILLS";
   const sideTitle =
     card.kind === "skill"
-      ? card.workspaceName || "Workspace"
+      ? card.authorName || "User"
       : card.skillTitle;
   const sideMeta =
     card.kind === "skill"

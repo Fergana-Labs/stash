@@ -1,12 +1,12 @@
 # Stash Plugin for Claude Code
 
-Turn any Claude Code session into an Stash agent. Every prompt, tool use, assistant message, and artifact streams to your workspace's shared history.
+Turn any Claude Code session into a Stash agent. Every prompt, tool use, assistant message, and artifact streams to your Stash history.
 
 ## Quick Start (5 minutes)
 
 ### Step 1: Create an account
 
-Go to [joinstash.ai/login](https://joinstash.ai/login) and register a human account. Save your API key — it's shown only once.
+Go to [joinstash.ai/login](https://joinstash.ai/login) and register an account. Save your API key — it's shown only once.
 
 ### Step 2: Install the plugin
 
@@ -23,7 +23,7 @@ Claude Code will prompt you for three config values:
 | `agent_name` | A name for this agent (any string) |
 | `api_endpoint` | `https://joinstash.ai` (default, usually skip) |
 
-### Step 3: Connect to a workspace
+### Step 3: Connect
 
 From any shell, run:
 
@@ -33,34 +33,19 @@ stash connect
 
 This interactive wizard will:
 1. Verify your auth
-2. Let you pick or create a workspace
+2. Set up your history store
 3. Save defaults to `~/.stash/config.json`
 
-After this, every session streams directly to that workspace's memory.
+After this, every session streams directly to your Stash.
 
 ### Step 4: You're done
 
 Every Claude Code session now automatically:
-- Streams the user's prompts to the workspace history
-- Streams tool usage (edits, commands, writes) to the workspace history
+- Streams the user's prompts to your Stash history
+- Streams tool usage (edits, commands, writes) to your Stash history
 - Uploads the assistant message, transcript, and artifacts when you stop
 
 **This is set-and-forget.** Config persists — new sessions work automatically with no re-configuration.
-
----
-
-## Team Setup
-
-To collaborate with teammates in a shared workspace:
-
-1. Each person follows Steps 1-2 above (own account, plugin installed)
-2. One person creates a workspace in Stash
-3. Share the **invite code** (shown on the workspace page) with teammates
-4. Each person runs `stash connect` and joins the workspace
-
-Now everyone's activity streams to the same workspace. You can:
-- Collaborate on shared pages
-- Query each other's activity (`stash vfs "cat '/workspaces/<workspace_id>/sessions/_index.jsonl'"`)
 
 ---
 
@@ -71,7 +56,6 @@ Now everyone's activity streams to the same workspace. You can:
 | `api_endpoint` | `https://joinstash.ai` | Stash backend URL |
 | `api_key` | *(required)* | Your API key |
 | `agent_name` | *(required)* | Agent name (any string) |
-| `workspace_id` | *(optional)* | Set via `stash connect` |
 
 ---
 
@@ -80,9 +64,9 @@ Now everyone's activity streams to the same workspace. You can:
 ```
 SessionStart ──→ Record session ID
 
-UserPromptSubmit ──→ Push user_message event to workspace history
+UserPromptSubmit ──→ Push user_message event to your Stash history
 
-PostToolUse ────→ (async) Push tool_use event to workspace history
+PostToolUse ────→ (async) Push tool_use event to your Stash history
                   (Read, Glob, Grep excluded — too noisy)
 
 Stop ───────────→ Push session_end event (tool count, files changed)
@@ -96,23 +80,20 @@ Everything is a `stash` CLI subcommand — there are no slash commands.
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Onboarding wizard — pick workspace, create history store |
+| `stash connect` | Onboarding wizard — auth + history store |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause activity streaming across every installed plugin |
 
 The plugin also gives Claude access to the rest of the `stash` CLI. Key commands:
 
 ```bash
-stash vfs "find /workspaces -maxdepth 3 -type f"                 # Browse Stash like a filesystem without an OS mount
-stash vfs "rg \"database migration\" /workspaces"                # Search the virtual Stash tree
-stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash search "database migration"                                # Full-text search events
-stash vfs "cat '/workspaces/<workspace_id>/sessions/_index.jsonl'"  # Recent events
-stash vfs "find /workspaces -path '*/sessions/_index.jsonl'"     # Cross-workspace events
-stash vfs "find /workspaces -name '*.md'"                        # List all pages
+stash vfs "find /me -maxdepth 3 -type f"               # Browse Stash like a filesystem without an OS mount
+stash vfs "rg \"database migration\" /me"              # Search the virtual Stash tree
+stash vfs "cat '/me/README.md' | sed -n '1,80p'"
+stash search "database migration"                       # Full-text search events
+stash vfs "cat '/me/sessions/_index.jsonl'"            # Recent events
+stash vfs "find /me -name '*.md'"                      # List all pages
 ```
-
-Workspace is determined from the `.stash` manifest in the repo.
 
 ---
 
@@ -120,3 +101,5 @@ Workspace is determined from the `.stash` manifest in the repo.
 
 - Python 3.10+
 - `httpx` package: `pip install httpx`
+</content>
+</invoke>

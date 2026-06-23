@@ -6,7 +6,7 @@ about itself" for the demo flow. They're served verbatim from
 demo Stash as a `Stash knowledge base/` folder so the visitor's agent
 can keep editing the deck after the fact.
 
-`SLIDES_SKILL_MARKDOWN` is the same bytes a real workspace seeds at
+`SLIDES_SKILL_MARKDOWN` is the same bytes a real user's scope seeds at
 `Skills/slides/SKILL.md` — sourced from `skill_seeds.py` so we never
 fork the slide format.
 """
@@ -37,7 +37,7 @@ other agent had already tried.
 
 - **Sessions.** A hook on every coding agent (Claude Code, Cursor,
   Codex, Aider, etc.) streams the full transcript — prompts, tool
-  calls, artifacts — into a shared workspace as it happens. Every
+  calls, artifacts — into a shared Stash as it happens. Every
   teammate's agent gets context from every other teammate's agent.
 
 - **Files.** Markdown pages, HTML pages (including slide decks),
@@ -46,8 +46,8 @@ other agent had already tried.
   real time.
 
 - **Skills.** A shareable bundle of files and sessions. Public link,
-  workspace-scoped, or private. Forkable into someone else's
-  workspace. The unit of "I want to share this slice of what we
+  scope-restricted, or private. Forkable into someone else's
+  scope. The unit of "I want to share this slice of what we
   know."
 
 ## Who Stash is for
@@ -100,7 +100,7 @@ other agent had already tried.
 
 ## The pitch in one sentence
 
-> A shared workspace where every coding agent on your repo can read
+> A shared Stash where every coding agent on your repo can read
 > every other agent's transcript, every teammate's notes, and every
 > decision the team has already made — so nothing gets re-figured-out
 > from scratch.
@@ -334,7 +334,7 @@ Returns `{ "app_url": "<https://app.joinstash.ai/skills/...>" }`.
 Print the returned `app_url` to the user as a clickable link, with
 one short sentence: this is their Stash, it's public-but-unlisted
 (only people with the link can see it), and they can sign up and
-fork it into their own workspace to keep iterating.
+fork it into their own scope to keep iterating.
 
 ## Hard rules
 

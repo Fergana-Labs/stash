@@ -43,7 +43,6 @@ class _ToolErrorSession:
 def _source(external_ref: str) -> dict:
     return {
         "id": str(uuid4()),
-        "workspace_id": str(uuid4()),
         "owner_user_id": str(uuid4()),
         "external_ref": external_ref,
     }
@@ -260,7 +259,7 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     source = {
         **_source("calls"),
         "source_type": "gong_calls",
-        "settings": {"allowed_workspace_ids": ["gong-workspace-secret"]},
+        "settings": {"allowed_workspace_ids": ["gong-account-secret"]},
     }
     captured_logs = _capture_info(gong_indexer.logger, monkeypatch)
 
@@ -268,7 +267,7 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
         return {
             "call-webflow-secret": {
                 "id": "call-webflow-secret",
-                "workspaceId": "gong-workspace-secret",
+                "workspaceId": "gong-account-secret",
                 "title": "Webflow acquisition call",
             }
         }
@@ -307,7 +306,7 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
             {},
         )
     ]
-    assert "gong-workspace-secret" not in str(captured_logs)
+    assert "gong-account-secret" not in str(captured_logs)
     assert "call-webflow-secret" not in str(captured_logs)
     assert "Webflow acquisition call" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)

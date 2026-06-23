@@ -37,9 +37,7 @@ def test_rewrite_swaps_presigned_r2_for_proxy_url():
         return fid
 
     rewritten = mig._rewrite_body(body, lookup)
-    expected = (
-        "![cap](/api/v1/workspaces/24a2d68b-a549-436b-9091-96c0a32acc56/" f"files/{fid}/download)"
-    )
+    expected = "![cap](/api/v1/me/" f"files/{fid}/download)"
     assert rewritten == expected
 
 
@@ -47,7 +45,7 @@ def test_rewrite_url_decodes_filename_for_lookup():
     mig = _load_migration()
     body = (
         "![photo](https://abc.r2.cloudflarestorage.com/boozle/"
-        "ws-id/abcdef012345/My%20Vacation%20Photo.png?X-Amz-Signature=x)"
+        "scope-id/abcdef012345/My%20Vacation%20Photo.png?X-Amz-Signature=x)"
     )
 
     captured = {}
@@ -57,14 +55,14 @@ def test_rewrite_url_decodes_filename_for_lookup():
         return "file-id"
 
     mig._rewrite_body(body, lookup)
-    assert captured["key"] == "ws-id/abcdef012345/My Vacation Photo.png"
+    assert captured["key"] == "scope-id/abcdef012345/My Vacation Photo.png"
 
 
 def test_rewrite_leaves_url_alone_when_file_not_found():
     mig = _load_migration()
     body = (
         "![x](https://abc.r2.cloudflarestorage.com/boozle/"
-        "ws-id/aaaaaaaaaaaa/missing.png?X-Amz-Signature=y)"
+        "scope-id/aaaaaaaaaaaa/missing.png?X-Amz-Signature=y)"
     )
 
     rewritten = mig._rewrite_body(body, lookup_file_id=lambda _k: None)
@@ -73,8 +71,6 @@ def test_rewrite_leaves_url_alone_when_file_not_found():
 
 def test_rewrite_ignores_non_r2_urls():
     mig = _load_migration()
-    body = (
-        "![ok](/api/v1/workspaces/ws/files/abc/download) and ![cdn](https://cdn.example.com/x.png)"
-    )
+    body = "![ok](/api/v1/me/scope/files/abc/download) and ![cdn](https://cdn.example.com/x.png)"
     rewritten = mig._rewrite_body(body, lookup_file_id=lambda _k: "should-not-be-called")
     assert rewritten == body

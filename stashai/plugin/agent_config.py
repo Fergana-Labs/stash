@@ -17,7 +17,6 @@ import os
 import sys
 from pathlib import Path
 
-from .scope import find_manifest
 from .stash_client import StashClient
 
 PRODUCTION_BASE_URL = "https://api.joinstash.ai"
@@ -42,7 +41,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _cli_config() -> dict:
-    """User-scoped CLI config only. Repo config lives in the `.stash` manifest."""
+    """User-scoped CLI config (`~/.stash/config.json`)."""
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
         return _read_json(user_path)
@@ -51,17 +50,12 @@ def _cli_config() -> dict:
 
 def get_config(client: str) -> dict:
     cli = _cli_config()
-    manifest = find_manifest(os.getcwd())
-    manifest_base = (manifest or {}).get("base_url")
-    user_base = cli.get("base_url", PRODUCTION_BASE_URL)
-    api_endpoint = manifest_base or user_base
-    api_key = cli.get("api_key", "") if api_endpoint == user_base else ""
     return {
-        "api_endpoint": api_endpoint,
-        "api_key": api_key,
+        "api_endpoint": cli.get("base_url", PRODUCTION_BASE_URL),
+        "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
-        "workspace_id": (manifest or {}).get("workspace_id", ""),
-        "session_folder_id": (manifest or {}).get("session_folder_id", ""),
+        "session_folder_id": cli.get("session_folder_id", ""),
+        "stopped_streaming": bool(cli.get("stopped_streaming")),
         "client": client,
     }
 

@@ -5,6 +5,12 @@ here. Nothing in this file knows about any specific agent's payload shape.
 Every function swallows network exceptions so a flaky backend never kills a
 user's coding session.
 
+Streaming is a global, single-player gate: a session streams iff the plugin is
+configured (api_key + agent_name) and streaming has not been globally stopped.
+There is no `.stash` manifest and no cwd/path-based scope. Sessions upload to
+the user's own scope; the backend assigns the default session folder unless the
+user pinned one.
+
 Naming: `stream_assistant_message` fires at every turn end (assistant finished
 talking). `stream_session_end` fires once when the whole conversation ends.
 Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
@@ -17,7 +23,7 @@ import shutil
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
-from stashai.plugin.scope import cwd_in_scope, find_manifest
+from stashai.plugin.scope import streaming_enabled
 from stashai.plugin.session_upload import spawn_session_upload
 from stashai.plugin.stash_client import StashClient
 from stashai.plugin.state import read_stats, record_tool_use, save_state
@@ -44,7 +50,7 @@ _UPLOAD_WARNING_MESSAGE = (
 )
 _UPLOADS_DISABLED_WARNING_SESSION_KEY = "uploads_disabled_warning_session_id"
 _UPLOADS_DISABLED_WARNING_MESSAGE = (
-    "Stash is connected to this repo, but uploads aren't set up on this machine. "
+    "Stash isn't set up on this machine yet. "
     "Run `stash connect` to finish setup."
 )
 _ENDED_SESSION_ID_KEY = "ended_session_id"
@@ -75,49 +81,18 @@ def _is_agent_enabled(cfg: dict) -> bool:
     return canonical in enabled
 
 
-def _is_stopped(scope_id: str) -> bool:
-    stopped = _read_user_config().get("stopped_streaming")
-    return isinstance(stopped, list) and scope_id in stopped
+def _short_circuit(cfg: dict) -> bool:
+    """Return True when this session should NOT stream.
 
-
-def _streaming_scope(cfg: dict, workspace_id: str) -> str:
-    """The on/off key for streaming: the destination folder when the repo pins
-    one, else the workspace (its Default destination)."""
-    return cfg.get("session_folder_id") or workspace_id
-
-
-def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
-    """Return workspace_id if this session should attempt streaming, else None."""
-    cwd = getattr(event, "cwd", None) if event is not None else None
-
-    if cfg.get("workspace_id"):
-        if not cwd_in_scope(cwd):
-            return None
-        return cfg["workspace_id"]
-
-    manifest = find_manifest(cwd) if cwd else None
-    if not manifest:
-        return None
-    return manifest.get("workspace_id") or None
-
-
-def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None]:
-    """Return (should_skip, workspace_id).
-
-    Streams by default to any workspace with a manifest. Only skips if the
-    user explicitly ran `stash stop`.
+    Streams by default whenever the plugin is configured and streaming hasn't
+    been globally stopped. Only skips when the agent is disabled, the plugin is
+    unconfigured, or the user ran `stash stop`.
     """
     if not _is_agent_enabled(cfg):
-        return True, None
-
-    workspace_id = _resolve_workspace(cfg, event)
-    if not workspace_id:
-        return True, None
-
-    if _is_stopped(_streaming_scope(cfg, workspace_id)):
-        return True, None
-
-    return False, workspace_id
+        return True
+    if not cfg.get("agent_name"):
+        return True
+    return not streaming_enabled()
 
 
 def _event_metadata(event: HookEvent | None, base: dict | None = None) -> dict:
@@ -132,11 +107,10 @@ def _event_metadata(event: HookEvent | None, base: dict | None = None) -> dict:
     return metadata
 
 
-def uploads_enabled(cfg: dict, event: HookEvent | None) -> bool:
+def uploads_enabled(cfg: dict) -> bool:
     if not cfg.get("api_key") or not cfg.get("agent_name"):
         return False
-    skip, _ = _short_circuit(cfg, event)
-    return not skip
+    return not _short_circuit(cfg)
 
 
 def uploads_disabled_warning(
@@ -145,8 +119,8 @@ def uploads_disabled_warning(
     event: HookEvent | None,
     data_dir: Path,
 ) -> str | None:
-    """Return the once-per-session warning for a connected repo missing setup."""
-    if uploads_enabled(cfg, event):
+    """Return the once-per-session warning when the plugin isn't set up here."""
+    if uploads_enabled(cfg):
         return None
     session_id = getattr(event, "session_id", "") if event is not None else ""
     if not session_id:
@@ -154,8 +128,6 @@ def uploads_disabled_warning(
     if state.get(_UPLOADS_DISABLED_WARNING_SESSION_KEY) == session_id:
         return None
     if shutil.which("stash") is None:
-        return None
-    if not _resolve_workspace(cfg, event):
         return None
     if cfg.get("api_key") and cfg.get("agent_name"):
         return None
@@ -171,7 +143,6 @@ _SESSION_STATE_KEYS = (
     "session_row_id",
     "session_url",
     "uploaded_session_id",
-    "uploaded_workspace_id",
     "transcript_path",
     "cwd",
     _ENDED_SESSION_ID_KEY,
@@ -207,8 +178,7 @@ def create_session_record(
     The hook must stay best-effort: backend/network failures should never
     interrupt the user's coding agent.
     """
-    skip, workspace_id = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return None
 
     sid = event.session_id or state.get("session_id", "")
@@ -222,7 +192,6 @@ def create_session_record(
 
     try:
         session = client.create_session(
-            workspace_id=workspace_id,
             session_id=sid,
             agent_name=cfg["agent_name"],
             cwd=event.cwd,
@@ -240,7 +209,6 @@ def create_session_record(
     # api_endpoint.
     state["session_url"] = session["app_url"]
     state["uploaded_session_id"] = sid
-    state["uploaded_workspace_id"] = workspace_id
     state["cwd"] = event.cwd or state.get("cwd", "")
     remember_transcript_path(state, event)
     if data_dir is not None:
@@ -259,8 +227,7 @@ def finalize_session_upload(
     if not event.cwd and state.get("cwd"):
         event.cwd = state["cwd"]
 
-    skip, workspace_id = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return False
 
     sid = event.session_id or state.get("session_id", "")
@@ -287,7 +254,6 @@ def finalize_session_upload(
         transcript_path=transcript_path,
         cwd=cwd,
         files_touched=stats["files_touched"],
-        workspace_id=workspace_id,
         session_id=sid,
         agent_name=cfg["agent_name"],
         base_url=cfg["api_endpoint"],
@@ -305,14 +271,12 @@ def stream_user_message(
     client: StashClient, cfg: dict, state: dict, prompt_text: str,
     event: HookEvent | None = None,
 ) -> None:
-    skip, workspace_id = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return
     if not prompt_text or not prompt_text.strip():
         return
     try:
         client.push_event(
-            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="user_message",
             content=prompt_text,
@@ -331,8 +295,7 @@ def stream_tool_use(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
-    skip, workspace_id = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return
     if not event.tool_name:
         return
@@ -348,7 +311,6 @@ def stream_tool_use(
 
     try:
         client.push_event(
-            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="tool_use",
             content=content,
@@ -370,14 +332,12 @@ def stream_assistant_message(
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
     session is still live."""
-    skip, workspace_id = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return
     if not event.last_assistant_message:
         return
     try:
         client.push_event(
-            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="assistant_message",
             content=event.last_assistant_message,
@@ -397,8 +357,7 @@ def upload_health_warning(
     data_dir: Path,
 ) -> str | None:
     """Return the once-per-session local upload failure warning, if needed."""
-    skip, _ = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return None
 
     session_id = event.session_id or state.get("session_id", "")
@@ -432,8 +391,7 @@ def stream_session_end(
     if not event.cwd and state.get("cwd"):
         event.cwd = state["cwd"]
 
-    skip, workspace_id = _short_circuit(cfg, event)
-    if skip:
+    if _short_circuit(cfg):
         return None
 
     sid = event.session_id or state.get("session_id", "")
@@ -455,7 +413,6 @@ def stream_session_end(
 
     try:
         client.push_event(
-            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="session_end",
             content=" ".join(parts),
@@ -487,7 +444,6 @@ def stream_session_end(
     session_folder_id = cfg.get("session_folder_id") or None
     try:
         client.upload_transcript(
-            workspace_id=workspace_id,
             session_id=sid,
             transcript_path=path,
             agent_name=cfg["agent_name"],
@@ -502,7 +458,6 @@ def stream_session_end(
         for sa_jsonl in subagents_dir.glob("agent-*.jsonl"):
             try:
                 client.upload_transcript(
-                    workspace_id=workspace_id,
                     session_id=sa_jsonl.stem,
                     transcript_path=sa_jsonl,
                     agent_name="claude-subagent",

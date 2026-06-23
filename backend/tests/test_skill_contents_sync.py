@@ -1,5 +1,5 @@
 """The skill-contents endpoints back `stash skills sync`: GET inlines a
-workspace skill's full subtree (published or not), PUT replaces the folder's
+skill's full subtree (published or not), PUT replaces the folder's
 contents with an uploaded file set. These lock in the replace semantics —
 exact filenames kept, nesting from relative paths, no orphaned rows — and the
 auth boundary (members only, write access to push)."""
@@ -24,17 +24,17 @@ def _auth(api_key: str) -> dict:
 
 
 async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
-    """Returns (workspace_id, folder_id) for a fresh unpublished skill."""
-    ws = await client.post("/api/v1/workspaces", json={"name": "Sync ws"}, headers=_auth(api_key))
-    workspace_id = ws.json()["id"]
+    """Returns (owner_user_id, folder_id) for a fresh unpublished skill."""
+    me = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    owner_user_id = me.json()["id"]
     folder = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/folders",
+        "/api/v1/me/folders",
         json={"name": "my-skill"},
         headers=_auth(api_key),
     )
     folder_id = folder.json()["id"]
     page = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/pages/new",
+        "/api/v1/me/pages/new",
         json={
             "name": "SKILL.md",
             "content": "---\nname: my-skill\n---\nv1",
@@ -43,16 +43,16 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
         headers=_auth(api_key),
     )
     assert page.status_code == 201
-    return workspace_id, folder_id
+    return owner_user_id, folder_id
 
 
 @pytest.mark.asyncio
 async def test_get_contents_inlines_unpublished_skill(client: AsyncClient):
     api_key = await _register(client)
-    workspace_id, folder_id = await _make_skill(client, api_key)
+    owner_user_id, folder_id = await _make_skill(client, api_key)
 
     resp = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -62,17 +62,17 @@ async def test_get_contents_inlines_unpublished_skill(client: AsyncClient):
     assert names == {"SKILL.md"}
 
     # Members only — anonymous reads are for published slugs, not folders.
-    anon = await client.get(f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents")
+    anon = await client.get(f"/api/v1/me/skills/{folder_id}/contents")
     assert anon.status_code in (401, 403)
 
 
 @pytest.mark.asyncio
 async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     api_key = await _register(client)
-    workspace_id, folder_id = await _make_skill(client, api_key)
+    owner_user_id, folder_id = await _make_skill(client, api_key)
 
     resp = await client.put(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         files=[
             ("files", ("SKILL.md", b"---\nname: my-skill\n---\nv2", "text/markdown")),
             ("files", ("references/guide.md", b"# guide", "text/markdown")),
@@ -83,7 +83,7 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     assert resp.json()["items"] == 2
 
     got = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         headers=_auth(api_key),
     )
     contents = got.json()["contents"]
@@ -92,48 +92,50 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     assert by_name["guide.md"]["folder_path"] == ["references"]
 
     # Replace again with a smaller set: the old nested page must be gone and
-    # nothing may orphan into the workspace root (folder FKs are SET NULL).
+    # nothing may orphan into the scope root (folder FKs are SET NULL).
     resp = await client.put(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         files=[("files", ("SKILL.md", b"v3", "text/markdown"))],
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
     got = await client.get(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         headers=_auth(api_key),
     )
     assert {p["name"] for p in got.json()["contents"]["pages"]} == {"SKILL.md"}
     orphans = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1 AND folder_id IS NULL",
-        workspace_id,
+        "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1 AND folder_id IS NULL",
+        owner_user_id,
     )
     assert orphans == 0
 
 
 @pytest.mark.asyncio
-async def test_put_contents_requires_skill_md_and_membership(client: AsyncClient):
+async def test_put_contents_requires_skill_md_and_ownership(client: AsyncClient):
     api_key = await _register(client)
-    workspace_id, folder_id = await _make_skill(client, api_key)
+    owner_user_id, folder_id = await _make_skill(client, api_key)
 
     missing = await client.put(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         files=[("files", ("notes.md", b"no skill md", "text/markdown"))],
         headers=_auth(api_key),
     )
     assert missing.status_code == 400
 
     traversal = await client.put(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         files=[("files", ("../escape.md", b"x", "text/markdown"))],
         headers=_auth(api_key),
     )
     assert traversal.status_code == 400
 
+    # An outsider's own /me scope doesn't contain this folder, so the route
+    # can't even confirm it exists — 404, not a permission error.
     outsider_key = await _register(client)
     outsider = await client.put(
-        f"/api/v1/workspaces/{workspace_id}/skills/{folder_id}/contents",
+        f"/api/v1/me/skills/{folder_id}/contents",
         files=[("files", ("SKILL.md", b"hijack", "text/markdown"))],
         headers=_auth(outsider_key),
     )
-    assert outsider.status_code == 403
+    assert outsider.status_code == 404

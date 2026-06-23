@@ -9,14 +9,11 @@ import { track } from "../../lib/analytics";
 import {
   createPage,
   getAgentApiKey,
-  listMyWorkspaces,
   updateMe,
   updatePage,
 } from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
-import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
-import type { Workspace } from "../../lib/types";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
@@ -61,8 +58,6 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const workspaceId = workspace?.id ?? null;
   const [answered, setAnswered] = useState(false);
   const [role, setRole] = useState("");
   const [roleOther, setRoleOther] = useState("");
@@ -79,16 +74,6 @@ function OnboardingInner() {
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
-
-  useEffect(() => {
-    if (!user) return;
-    listMyWorkspaces()
-      .then(({ workspaces }) => {
-        const primary = workspaces.find((w) => w.is_primary) ?? workspaces[0];
-        if (primary) setWorkspace(primary);
-      })
-      .catch(() => {});
-  }, [user]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -109,50 +94,38 @@ function OnboardingInner() {
     [router, searchParams],
   );
 
-  const exitToWorkspace = useCallback(() => {
-    if (workspaceId) router.push(`/workspaces/${workspaceId}`);
-    else router.push("/");
-  }, [router, workspaceId]);
+  const exitToHome = useCallback(() => {
+    router.push("/");
+  }, [router]);
 
-  const finishAndExit = useCallback(async () => {
+  const finishAndExit = useCallback(() => {
     track("onboarding.completed", { total_steps: STEP_NAMES.length });
-    if (workspace && user) {
-      try {
-        await seedWelcomePage({
-          workspace,
-          displayName: user.display_name || user.name,
-        });
-      } catch {
-        // Best-effort — the user can edit the workspace description anytime.
-      }
-    }
-    exitToWorkspace();
-  }, [workspace, user, exitToWorkspace]);
+    exitToHome();
+  }, [exitToHome]);
 
   const skip = useCallback(() => {
     track("onboarding.skipped", { step_idx: stepIdx });
-    exitToWorkspace();
-  }, [exitToWorkspace, stepIdx]);
+    exitToHome();
+  }, [exitToHome, stepIdx]);
 
   // The "I just want to write with my agent" path: skip connecting sources,
   // seed a starter page, and drop the user straight into the collaborative
   // editor. This is the Google-Docs-for-agents wedge, so it bypasses the ask step.
   const finishToCollabDoc = useCallback(async () => {
-    if (!workspaceId) return;
     track("onboarding.collab_path_chosen", {});
     // The starter page embeds its own id in a copy-paste agent prompt, so we
     // create it empty and fill it in after. Self-hosted browsers hold a key
     // to embed; under managed Auth0 the prompt says `stash signin` instead.
     const apiKey = getAgentApiKey();
-    const page = await createPage(workspaceId, "Welcome to your Drive");
+    const page = await createPage("Welcome to your Drive");
     const content = generateCollabIntroMarkdown({
       displayName: user?.display_name || user?.name || "",
       pageId: page.id,
       apiKey,
     });
-    await updatePage(workspaceId, page.id, { content });
+    await updatePage(page.id, { content });
     router.push(`/p/${page.id}`);
-  }, [workspaceId, user, router]);
+  }, [user, router]);
 
   if (loading || !user) {
     return (
@@ -166,11 +139,7 @@ function OnboardingInner() {
   const isTryItOut = stepIdx === 2;
   const isAsk = stepIdx >= 3;
 
-  const continueLabel = isIntro
-    ? "Get started"
-    : isAsk
-      ? "Launch workspace"
-      : "Continue";
+  const continueLabel = isIntro ? "Get started" : isAsk ? "Launch" : "Continue";
   const roleAnswer = role === "Other" ? roleOther.trim() && `Other: ${roleOther.trim()}` : role;
   const referralAnswer =
     referralSource === "Other"
@@ -222,14 +191,11 @@ function OnboardingInner() {
           {isIntro && <IntroStep />}
           {isTryItOut && (
             <TryItOutStep
-              workspaceId={workspaceId}
               onCollabDoc={finishToCollabDoc}
               onContinue={() => goToStep(stepIdx + 1)}
             />
           )}
-          {isAsk && (
-            <AskStep workspaceId={workspaceId} onAnswered={() => setAnswered(true)} />
-          )}
+          {isAsk && <AskStep onAnswered={() => setAnswered(true)} />}
           <StepControls
             onContinue={onContinue}
             onSkip={skip}
@@ -425,11 +391,9 @@ function IntroPoint({ title, children }: { title: string; children: React.ReactN
 }
 
 function TryItOutStep({
-  workspaceId,
   onCollabDoc,
   onContinue,
 }: {
-  workspaceId: string | null;
   onCollabDoc: () => void;
   onContinue: () => void;
 }) {
@@ -468,10 +432,7 @@ function TryItOutStep({
         lead="Connect a data source and your agent can navigate it like a file system."
       >
         <div className="space-y-3">
-          <SourceConnectorList
-            workspaceId={workspaceId}
-            returnTo="/onboarding?step=3"
-          />
+          <SourceConnectorList returnTo="/onboarding?step=3" />
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
@@ -526,13 +487,7 @@ function CommandBlock({ command }: { command: string }) {
   );
 }
 
-function AskStep({
-  workspaceId,
-  onAnswered,
-}: {
-  workspaceId: string | null;
-  onAnswered: () => void;
-}) {
+function AskStep({ onAnswered }: { onAnswered: () => void }) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -543,7 +498,7 @@ function AskStep({
           Ask it something about your knowledge base.
         </p>
       </div>
-      <MemoryAskStep workspaceId={workspaceId} onAnswered={onAnswered} />
+      <MemoryAskStep onAnswered={onAnswered} />
     </div>
   );
 }

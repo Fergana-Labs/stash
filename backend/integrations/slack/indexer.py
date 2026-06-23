@@ -39,7 +39,6 @@ async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
 
 async def index_slack(source: dict) -> str | None:
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
@@ -83,7 +82,7 @@ async def index_slack(source: dict) -> str | None:
                     continue
                 await _upsert_message(
                     source_id=source_id,
-                    workspace_id=workspace_id,
+                    owner_user_id=owner_user_id,
                     channel_id=channel_id,
                     channel_name=channel_name,
                     ts=msg["ts"],
@@ -98,7 +97,6 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     """On-demand: pull messages in [since, until] across allowed channels.
     Caches them (upsert) so they're searchable afterward, and returns refs."""
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     if not allowed_channel_ids:
@@ -145,7 +143,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
                     continue
                 await _upsert_message(
                     source_id=source_id,
-                    workspace_id=workspace_id,
+                    owner_user_id=owner_user_id,
                     channel_id=channel_id,
                     channel_name=channel_name,
                     ts=msg["ts"],
@@ -166,7 +164,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
 async def _upsert_message(
     *,
     source_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     channel_id: str,
     channel_name: str,
     ts: str,
@@ -184,7 +182,7 @@ async def _upsert_message(
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=source_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         path=path,
         name=name,
         kind="message",
@@ -208,7 +206,7 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         if not deleted_ts:
             return 0
         result = await get_pool().execute(
-            "DELETE FROM slack_messages d USING workspace_sources s "
+            "DELETE FROM slack_messages d USING user_sources s "
             "WHERE d.source_id = s.id "
             "AND s.source_type = 'slack' "
             "AND s.external_ref = $1 "
@@ -236,13 +234,9 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         return 0
 
     rows = await get_pool().fetch(
-        "SELECT id, workspace_id, settings FROM workspace_sources ws "
+        "SELECT id, owner_user_id, settings FROM user_sources ws "
         "WHERE ws.source_type = 'slack' AND ws.external_ref = $1 "
-        "AND ws.sync_enabled "
-        "AND EXISTS ("
-        "  SELECT 1 FROM workspace_members wm "
-        "  WHERE wm.workspace_id = ws.workspace_id AND wm.user_id = ws.owner_user_id"
-        ")",
+        "AND ws.sync_enabled",
         team_id,
     )
     ingested = 0
@@ -253,7 +247,7 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
             continue
         await _upsert_message(
             source_id=row["id"],
-            workspace_id=row["workspace_id"],
+            owner_user_id=row["owner_user_id"],
             channel_id=channel_id,
             channel_name=channel_id,
             ts=event["ts"],

@@ -22,19 +22,19 @@ async def _register(client: AsyncClient) -> tuple[str, dict]:
     return body["api_key"], body
 
 
+async def _scope_id(client: AsyncClient, api_key: str) -> str:
+    response = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    assert response.status_code == 200
+    return response.json()["id"]
+
+
 @pytest.mark.asyncio
 async def test_collab_authorizes_markdown_page_writer(client: AsyncClient):
     api_key, _user = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(api_key),
-        )
-    ).json()
+    scope_id = await _scope_id(client, api_key)
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Plan", "content": "# Draft"},
             headers=_auth(api_key),
         )
@@ -42,7 +42,7 @@ async def test_collab_authorizes_markdown_page_writer(client: AsyncClient):
 
     response = await client.post(
         "/api/v1/collab/authorize",
-        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        json={"document_name": f"scope:{scope_id}:page:{page['id']}"},
         headers=_auth(api_key),
     )
 
@@ -51,35 +51,35 @@ async def test_collab_authorizes_markdown_page_writer(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_collab_authorizes_workspace_viewer_as_read_only(
+async def test_collab_authorizes_read_share_as_read_only(
     client: AsyncClient,
     pool,
 ):
     owner_key, _owner = await _register(client)
     viewer_key, viewer = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(owner_key),
-        )
-    ).json()
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
-        uuid.UUID(workspace["id"]),
-        uuid.UUID(viewer["id"]),
-    )
+    owner_scope_id = await _scope_id(client, owner_key)
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Plan", "content": "# Draft"},
             headers=_auth(owner_key),
         )
     ).json()
+    await pool.execute(
+        """
+        INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
+                            principal_id, permission, created_by)
+        VALUES ($1, 'page', $2, 'user', $3, 'read', $4)
+        """,
+        uuid.UUID(owner_scope_id),
+        uuid.UUID(page["id"]),
+        uuid.UUID(viewer["id"]),
+        uuid.UUID(_owner["id"]),
+    )
 
     response = await client.post(
         "/api/v1/collab/authorize",
-        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        json={"document_name": f"scope:{owner_scope_id}:page:{page['id']}"},
         headers=_auth(viewer_key),
     )
 
@@ -96,27 +96,21 @@ async def test_collab_authorizes_non_member_with_page_share(
     membership is not required, the share decides read/write."""
     owner_key, _owner = await _register(client)
     editor_key, editor = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(owner_key),
-        )
-    ).json()
+    owner_scope_id = await _scope_id(client, owner_key)
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Plan", "content": "# Draft"},
             headers=_auth(owner_key),
         )
     ).json()
     await pool.execute(
         """
-        INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
+        INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
                             principal_id, permission, created_by)
         VALUES ($1, 'page', $2, 'user', $3, 'write', $4)
         """,
-        uuid.UUID(workspace["id"]),
+        uuid.UUID(owner_scope_id),
         uuid.UUID(page["id"]),
         uuid.UUID(editor["id"]),
         uuid.UUID(_owner["id"]),
@@ -124,7 +118,7 @@ async def test_collab_authorizes_non_member_with_page_share(
 
     response = await client.post(
         "/api/v1/collab/authorize",
-        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        json={"document_name": f"scope:{owner_scope_id}:page:{page['id']}"},
         headers=_auth(editor_key),
     )
 
@@ -139,16 +133,10 @@ async def test_collab_rejects_user_without_access(
     """A user who is neither a member nor a sharee is rejected outright."""
     owner_key, _owner = await _register(client)
     outsider_key, _outsider = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(owner_key),
-        )
-    ).json()
+    owner_scope_id = await _scope_id(client, owner_key)
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Plan", "content": "# Draft"},
             headers=_auth(owner_key),
         )
@@ -156,7 +144,7 @@ async def test_collab_rejects_user_without_access(
 
     response = await client.post(
         "/api/v1/collab/authorize",
-        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        json={"document_name": f"scope:{owner_scope_id}:page:{page['id']}"},
         headers=_auth(outsider_key),
     )
 
@@ -166,16 +154,10 @@ async def test_collab_rejects_user_without_access(
 @pytest.mark.asyncio
 async def test_collab_rejects_html_pages(client: AsyncClient):
     api_key, _user = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(api_key),
-        )
-    ).json()
+    scope_id = await _scope_id(client, api_key)
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={
                 "name": "Demo",
                 "content_type": "html",
@@ -187,7 +169,7 @@ async def test_collab_rejects_html_pages(client: AsyncClient):
 
     response = await client.post(
         "/api/v1/collab/authorize",
-        json={"document_name": f"workspace:{workspace['id']}:page:{page['id']}"},
+        json={"document_name": f"scope:{scope_id}:page:{page['id']}"},
         headers=_auth(api_key),
     )
 
@@ -200,16 +182,9 @@ async def test_collab_projection_save_disables_content_hash_guard(
     monkeypatch: pytest.MonkeyPatch,
 ):
     api_key, _user = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(api_key),
-        )
-    ).json()
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Plan", "content": "# Draft"},
             headers=_auth(api_key),
         )
@@ -222,7 +197,7 @@ async def test_collab_projection_save_disables_content_hash_guard(
     monkeypatch.setattr(files_tree_service, "update_page", update_page_with_conflict)
 
     response = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/pages/{page['id']}",
+        f"/api/v1/me/pages/{page['id']}",
         json={"content": "CRDT projection", "collab_projection": True},
         headers=_auth(api_key),
     )
@@ -234,16 +209,9 @@ async def test_collab_projection_save_disables_content_hash_guard(
 @pytest.mark.asyncio
 async def test_concurrent_collab_projection_saves_do_not_500(client: AsyncClient):
     api_key, _user = await _register(client)
-    workspace = (
-        await client.post(
-            "/api/v1/workspaces",
-            json={"name": "Collab"},
-            headers=_auth(api_key),
-        )
-    ).json()
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Plan", "content": "# Draft"},
             headers=_auth(api_key),
         )
@@ -251,7 +219,7 @@ async def test_concurrent_collab_projection_saves_do_not_500(client: AsyncClient
 
     async def save_projection(index: int):
         return await client.patch(
-            f"/api/v1/workspaces/{workspace['id']}/pages/{page['id']}",
+            f"/api/v1/me/pages/{page['id']}",
             json={"content": f"CRDT projection {index}", "collab_projection": True},
             headers=_auth(api_key),
         )

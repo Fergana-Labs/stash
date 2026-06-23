@@ -10,15 +10,7 @@ import { useMemo, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
-import {
-  ShellChromeProvider,
-  useActiveWorkspaceId,
-  useShareAction,
-} from "./ShellChromeContext";
-import {
-  getCachedWorkspaces,
-  readCachedWorkspaces,
-} from "../lib/skillNavigationCache";
+import { ShellChromeProvider, useShareAction } from "./ShellChromeContext";
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
@@ -50,19 +42,6 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("../lib/skillNavigationCache", () => ({
-  getCachedWorkspaces: vi.fn(),
-  readCachedWorkspaces: vi.fn(),
-}));
-
-// Stands in for a detail client (PageClient / SessionClient): canonical item
-// URLs carry no workspace, so the client publishes the loaded resource's
-// workspace to the shell.
-function PublishActiveWorkspace({ id }: { id: string }) {
-  useActiveWorkspaceId(id);
-  return null;
-}
-
 vi.mock("./AppSidebar", () => ({
   default: () => <aside data-testid="app-sidebar">Sidebar</aside>,
 }));
@@ -90,38 +69,16 @@ const user = {
   last_seen: "2026-05-11T00:00:00Z",
 };
 
-const workspace = {
-  id: "ws-1",
-  name: "Demo Skill",
-  description: "",
-  creator_id: user.id,
-  invite_code: "invite",
-  created_at: "2026-05-11T00:00:00Z",
-  updated_at: "2026-05-11T00:00:00Z",
-  member_count: 1,
-};
-
 function BreadcrumbPage() {
   useBreadcrumbs(
     [
-      { label: "Product", href: "/workspaces/ws-1/folders/folder-1" },
+      { label: "Product", href: "/folders/folder-1" },
       { label: "Launch plan" },
     ],
     "breadcrumb-page",
   );
 
   return <div>Page content</div>;
-}
-
-function mockWorkspaceCache() {
-  const cache = {
-    userId: user.id,
-    all: [workspace],
-    mine: [],
-    shared: [],
-  };
-  vi.mocked(readCachedWorkspaces).mockReturnValue(cache);
-  vi.mocked(getCachedWorkspaces).mockResolvedValue(cache);
 }
 
 describe("AppShell sidebar collapse", () => {
@@ -133,18 +90,6 @@ describe("AppShell sidebar collapse", () => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
-    });
-    vi.mocked(readCachedWorkspaces).mockReturnValue({
-      userId: user.id,
-      all: [],
-      mine: [],
-      shared: [],
-    });
-    vi.mocked(getCachedWorkspaces).mockResolvedValue({
-      userId: user.id,
-      all: [],
-      mine: [],
-      shared: [],
     });
   });
 
@@ -221,12 +166,10 @@ describe("AppShell sidebar collapse", () => {
 
   it("opens top-bar search with session scope", () => {
     nav.pathname = "/sessions/session-123";
-    mockWorkspaceCache();
 
     render(
       <ShellChromeProvider>
           <AppShell user={user} onLogout={vi.fn()}>
-            <PublishActiveWorkspace id="ws-1" />
             <div>Session content</div>
           </AppShell>
       </ShellChromeProvider>,
@@ -240,39 +183,32 @@ describe("AppShell sidebar collapse", () => {
     expect(commandPaletteState.props?.searchScope?.kind).toBe("session");
   });
 
-  it("keeps Home clickable on the workspace home route", async () => {
-    nav.pathname = "/workspaces/ws-1";
-    mockWorkspaceCache();
+  it("keeps Home clickable on the home route", async () => {
+    nav.pathname = "/";
 
     render(
         <AppShell user={user} onLogout={vi.fn()}>
-          <div>Workspace content</div>
+          <div>Home content</div>
         </AppShell>
     );
 
     const home = screen.getByRole("link", { name: "Home" });
-    await waitFor(() =>
-      expect(home).toHaveAttribute("href", "/workspaces/ws-1"),
-    );
+    await waitFor(() => expect(home).toHaveAttribute("href", "/"));
     expect(
       screen.queryByRole("button", { name: "Back" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Demo Skill" }),
-    ).not.toBeInTheDocument();
   });
 
-  it("hides the default Share action on the workspace home route", async () => {
-    nav.pathname = "/workspaces/ws-1";
-    mockWorkspaceCache();
+  it("hides the default Share action on the home route", async () => {
+    nav.pathname = "/";
 
     render(
         <AppShell user={user} onLogout={vi.fn()}>
-          <div>Workspace content</div>
+          <div>Home content</div>
         </AppShell>
     );
 
-    await screen.findByText("Workspace content");
+    await screen.findByText("Home content");
     expect(
       screen.queryByRole("button", { name: "Share" }),
     ).not.toBeInTheDocument();
@@ -282,15 +218,13 @@ describe("AppShell sidebar collapse", () => {
     "/f/file-1",
     "/p/page-1",
     "/sessions/session-route-id",
-    "/workspaces/ws-1/folders/folder-1",
+    "/folders/folder-1",
   ])("does not render a default Share action on %s", async (pathname) => {
     nav.pathname = pathname;
-    mockWorkspaceCache();
 
     render(
       <ShellChromeProvider>
           <AppShell user={user} onLogout={vi.fn()}>
-            <PublishActiveWorkspace id="ws-1" />
             <div>File content</div>
           </AppShell>
       </ShellChromeProvider>,
@@ -302,9 +236,8 @@ describe("AppShell sidebar collapse", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders a custom header Share action outside workspace routes", async () => {
+  it("renders a custom header Share action", async () => {
     nav.pathname = "/skills/shared-skill";
-    mockWorkspaceCache();
 
     function PageWithShareAction() {
       // Memo the node so each re-render registers the same ReactNode identity;
@@ -330,8 +263,7 @@ describe("AppShell sidebar collapse", () => {
   });
 
   it("renders breadcrumbs as a Home-rooted file path", async () => {
-    nav.pathname = "/workspaces/ws-1/p/page-1";
-    mockWorkspaceCache();
+    nav.pathname = "/p/page-1";
 
     render(
       <BreadcrumbProvider>
@@ -342,19 +274,14 @@ describe("AppShell sidebar collapse", () => {
     );
 
     const home = await screen.findByRole("link", { name: "Home" });
-    await waitFor(() =>
-      expect(home).toHaveAttribute("href", "/workspaces/ws-1"),
-    );
+    await waitFor(() => expect(home).toHaveAttribute("href", "/"));
 
     const header = home.closest("header");
     expect(header).not.toBeNull();
     expect(
       within(header!).getByRole("link", { name: "Product" }),
-    ).toHaveAttribute("href", "/workspaces/ws-1/folders/folder-1");
+    ).toHaveAttribute("href", "/folders/folder-1");
     expect(within(header!).getByText("Launch plan")).toBeInTheDocument();
     expect(within(header!).getAllByText("/")).toHaveLength(2);
-    expect(
-      within(header!).queryByRole("link", { name: "Demo Skill" }),
-    ).not.toBeInTheDocument();
   });
 });

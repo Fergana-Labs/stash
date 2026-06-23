@@ -32,7 +32,7 @@ def main():
     event = adapt_session_start(get_stdin_data())
     cfg = get_config()
     state = load_state(DATA_DIR)
-    if not uploads_enabled(cfg, event):
+    if not uploads_enabled(cfg):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
         if warning:
             print(color_upload_health_warning(warning))
@@ -50,7 +50,7 @@ def main():
     except Exception:
         pass
 
-    spawn_skills_sync(cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", ""))
+    spawn_skills_sync(cfg)
 
 
 if __name__ == "__main__":

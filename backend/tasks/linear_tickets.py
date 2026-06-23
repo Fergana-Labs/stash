@@ -13,7 +13,7 @@ GITHUB_PR_RECONCILE_BATCH_SIZE = 50
 
 
 @celery.task(name="backend.tasks.linear_tickets.enrich_session")
-def enrich_session_linear_tickets(_workspace_id: str, session_row_id: str) -> int:
+def enrich_session_linear_tickets(_owner_user_id: str, session_row_id: str) -> int:
     if not linear_api_service.is_configured():
         return 0
     return run_async(linear_ticket_service.enrich_session_labels(UUID(session_row_id)))

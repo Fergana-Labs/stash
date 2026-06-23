@@ -32,7 +32,7 @@ def source_hash(session: dict) -> str:
 
 
 async def titles_for_sessions(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     sessions: list[dict],
     *,
     enqueue_missing: bool = True,
@@ -44,8 +44,8 @@ async def titles_for_sessions(
     session_ids = [s["session_id"] for s in sessions]
     rows = await pool.fetch(
         "SELECT session_id, title, source_hash, user_set FROM session_titles "
-        "WHERE workspace_id = $1 AND session_id = ANY($2::text[])",
-        workspace_id,
+        "WHERE owner_user_id = $1 AND session_id = ANY($2::text[])",
+        owner_user_id,
         session_ids,
     )
     cached = {r["session_id"]: dict(r) for r in rows}
@@ -68,26 +68,26 @@ async def titles_for_sessions(
         stale_session_ids.append(session_id)
 
     if enqueue_missing and stale_session_ids:
-        _enqueue_title_generation(workspace_id, stale_session_ids[:ENQUEUE_MISSING_LIMIT])
+        _enqueue_title_generation(owner_user_id, stale_session_ids[:ENQUEUE_MISSING_LIMIT])
 
     return titles
 
 
-async def title_for_events(workspace_id: UUID, session_id: str, events: list[dict]) -> str:
+async def title_for_events(owner_user_id: UUID, session_id: str, events: list[dict]) -> str:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT title FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
-        workspace_id,
+        "SELECT title FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
+        owner_user_id,
         session_id,
     )
     if row:
         return row["title"]
 
-    _enqueue_title_generation(workspace_id, [session_id])
+    _enqueue_title_generation(owner_user_id, [session_id])
     return title_from_events(events, session_id)
 
 
-async def set_user_title(workspace_id: UUID, session_id: str, title: str) -> str:
+async def set_user_title(owner_user_id: UUID, session_id: str, title: str) -> str:
     """Persist a user-provided title. Future auto-generation skips this row.
 
     Returns the cleaned title that was stored.
@@ -98,28 +98,28 @@ async def set_user_title(workspace_id: UUID, session_id: str, title: str) -> str
     pool = get_pool()
     await pool.execute(
         """
-        INSERT INTO session_titles (workspace_id, session_id, title, source_hash, user_set)
+        INSERT INTO session_titles (owner_user_id, session_id, title, source_hash, user_set)
         VALUES ($1, $2, $3, '', TRUE)
-        ON CONFLICT (workspace_id, session_id) DO UPDATE SET
+        ON CONFLICT (owner_user_id, session_id) DO UPDATE SET
           title = EXCLUDED.title,
           user_set = TRUE,
           updated_at = now()
         """,
-        workspace_id,
+        owner_user_id,
         session_id,
         cleaned,
     )
     return cleaned
 
 
-def _enqueue_title_generation(workspace_id: UUID, session_ids: list[str]) -> None:
+def _enqueue_title_generation(owner_user_id: UUID, session_ids: list[str]) -> None:
     if not settings.ANTHROPIC_API_KEY:
         return
 
     from ..tasks.session_titles import generate_session_title
 
     for session_id in session_ids:
-        generate_session_title.delay(str(workspace_id), session_id)
+        generate_session_title.delay(str(owner_user_id), session_id)
 
 
 def title_from_text(text: str | None, session_id: str) -> str:

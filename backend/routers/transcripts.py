@@ -25,10 +25,10 @@ from ..services import (
     session_folder_service,
     session_service,
     transcript_import,
-    workspace_service,
+    user_scope_service,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/transcripts", tags=["transcripts"])
+router = APIRouter(prefix="/api/v1/me/transcripts", tags=["transcripts"])
 
 MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
 
@@ -40,14 +40,13 @@ def _is_jsonl(filename: str | None) -> bool:
     return name.endswith(".jsonl") or name.endswith(".jsonl.gz")
 
 
-async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.can_write(workspace_id, user_id):
+async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
+    if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Viewers can read but not upload transcripts")
 
 
 @router.post("", status_code=201)
 async def upload_transcript(
-    workspace_id: UUID,
     file: UploadFile,
     session_id: str = Form(...),
     agent_name: str = Form(...),
@@ -61,15 +60,19 @@ async def upload_transcript(
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
-    await _check_write(workspace_id, current_user["id"])
+    owner_user_id = current_user["id"]
+    await _check_write(owner_user_id, current_user["id"])
     if not _is_jsonl(file.filename):
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
-    if session_folder_id is not None and not await session_folder_service.can_add_session_to_folder(
-        workspace_id=workspace_id,
-        user_id=current_user["id"],
-        folder_id=session_folder_id,
+    if (
+        session_folder_id is not None
+        and not await session_folder_service.can_add_session_to_folder(
+            owner_user_id=owner_user_id,
+            user_id=current_user["id"],
+            folder_id=session_folder_id,
+        )
     ):
         raise HTTPException(status_code=404, detail="Session folder not found")
 
@@ -79,22 +82,22 @@ async def upload_transcript(
 
     pool = get_pool()
     existing = await pool.fetchval(
-        "SELECT COUNT(*) FROM history_events " "WHERE workspace_id = $1 AND session_id = $2",
-        workspace_id,
+        "SELECT COUNT(*) FROM history_events " "WHERE owner_user_id = $1 AND session_id = $2",
+        owner_user_id,
         session_id,
     )
     if existing:
-        if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+        if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
             raise HTTPException(status_code=404, detail="Transcript not found")
         if replace:
             await pool.execute(
-                "DELETE FROM history_events WHERE workspace_id = $1 AND session_id = $2",
-                workspace_id,
+                "DELETE FROM history_events WHERE owner_user_id = $1 AND session_id = $2",
+                owner_user_id,
                 session_id,
             )
         else:
             await session_service.upsert_session(
-                workspace_id,
+                owner_user_id,
                 session_id,
                 agent_name=agent_name,
                 cwd=cwd,
@@ -110,7 +113,7 @@ async def upload_transcript(
 
     if not existing or replace:
         await session_service.upsert_session(
-            workspace_id,
+            owner_user_id,
             session_id,
             agent_name=agent_name,
             cwd=cwd,
@@ -125,7 +128,7 @@ async def upload_transcript(
         for e in events:
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
-    inserted = await memory_service.push_events_batch(workspace_id, current_user["id"], events)
+    inserted = await memory_service.push_events_batch(owner_user_id, current_user["id"], events)
     return {
         "session_id": session_id,
         "imported": len(inserted),
@@ -167,18 +170,32 @@ def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
     return out
 
 
+async def _resolve_readable_events(
+    session_id: str, user_id: UUID
+) -> tuple[UUID, list[dict]] | None:
+    """session_id is unique per scope, not globally. Return (owner, events) for
+    the newest scope holding this session that the caller can read — mirrors the
+    canonical /sessions/{id} route so shared transcripts resolve to their real
+    owner instead of being forced onto the caller's scope."""
+    for row in await session_service.list_sessions_for_session_id(session_id):
+        events = await memory_service.read_session_events(row["owner_user_id"], session_id, user_id)
+        if events:
+            return row["owner_user_id"], events
+    return None
+
+
 @router.get("/{session_id}")
 async def get_transcript_metadata(
-    workspace_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Metadata-only response. The frontend follows up with /events for
     the bytes. No membership gate: read_session_events enforces
     can_read_session, so a non-member with a share can read it."""
-    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
-    if not events:
+    resolved = await _resolve_readable_events(session_id, current_user["id"])
+    if not resolved:
         raise HTTPException(status_code=404, detail="Transcript not found")
+    owner_user_id, events = resolved
     agent_name = events[0]["agent_name"] or ""
     cwd = ""
     for e in events:
@@ -189,7 +206,7 @@ async def get_transcript_metadata(
     size_bytes = sum(len(e.get("content") or "") for e in events)
     return {
         "session_id": session_id,
-        "workspace_id": str(workspace_id),
+        "owner_user_id": str(owner_user_id),
         "agent_name": agent_name,
         "event_count": len(events),
         "size_bytes": size_bytes,
@@ -201,24 +218,23 @@ async def get_transcript_metadata(
 
 @router.get("/{session_id}/events")
 async def get_transcript_events(
-    workspace_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Chat-thread turns for a session, in render order. Sourced directly
     from history_events — no JSONL serialization round-trip.
 
-    No workspace-membership gate: read_session_events enforces
+    No membership gate: read_session_events enforces
     can_read_session, so a non-member the session is shared with can read it."""
-    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
-    if not events:
+    resolved = await _resolve_readable_events(session_id, current_user["id"])
+    if not resolved:
         raise HTTPException(status_code=404, detail="Transcript not found")
+    _, events = resolved
     return {"events": _events_to_viewer_shape(events)}
 
 
 @router.get("/{session_id}/export.jsonl")
 async def export_transcript_jsonl(
-    workspace_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -227,9 +243,10 @@ async def export_transcript_jsonl(
     a share can export it."""
     import json as json_mod
 
-    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
-    if not events:
+    resolved = await _resolve_readable_events(session_id, current_user["id"])
+    if not resolved:
         raise HTTPException(status_code=404, detail="Transcript not found")
+    _, events = resolved
 
     lines: list[str] = []
     for ev in events:

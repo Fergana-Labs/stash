@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { addWorkspaceSource } from "@/lib/api";
+import { addSource } from "@/lib/api";
 import {
   type IntegrationAccount,
   listAsanaProjects,
@@ -37,17 +37,15 @@ export function secondaryButton(): string {
 }
 
 // Renders the right "add a specific project/page/repo" UI for a connector and
-// calls addWorkspaceSource, then onAdded(). Connected-only — callers gate on it.
+// calls addSource, then onAdded(). Connected-only — callers gate on it.
 export function AddSourceControls({
   connector,
-  workspaceId,
   connected,
   accounts = [],
   existingRefs = [],
   onAdded,
 }: {
   connector: Connector;
-  workspaceId: string;
   connected: boolean;
   accounts?: IntegrationAccount[];
   existingRefs?: string[];
@@ -55,13 +53,13 @@ export function AddSourceControls({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [gongWorkspaceIds, setGongWorkspaceIds] = useState("");
+  const [gongscopeIds, setGongscopeIds] = useState("");
 
   async function add(body?: AddSourceBody) {
     setBusy(true);
     setError("");
     try {
-      await addWorkspaceSource(workspaceId, {
+      await addSource({
         source_type: connector.sourceType,
         ...body,
       });
@@ -146,7 +144,7 @@ export function AddSourceControls({
   }
 
   if (connector.sourceType === "gong_calls") {
-    const ids = gongWorkspaceIds
+    const ids = gongscopeIds
       .split(",")
       .map((id) => id.trim())
       .filter(Boolean);
@@ -156,8 +154,8 @@ export function AddSourceControls({
           <div className="text-[11.5px] text-muted">Connect Gong first to add it.</div>
         )}
         <input
-          value={gongWorkspaceIds}
-          onChange={(event) => setGongWorkspaceIds(event.target.value)}
+          value={gongscopeIds}
+          onChange={(event) => setGongscopeIds(event.target.value)}
           placeholder="Gong workspace IDs"
           className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted"
           disabled={busy || !connected}

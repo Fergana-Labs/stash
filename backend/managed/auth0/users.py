@@ -4,7 +4,7 @@ import logging
 import re
 
 from backend.database import get_pool
-from backend.services import share_service, workspace_service
+from backend.services import share_service, user_scope_service
 from backend.services.email_service import send_welcome_email
 
 logger = logging.getLogger(__name__)
@@ -78,12 +78,7 @@ async def get_or_create_user_row_from_auth0(
     )
     user = dict(row)
 
-    # Named "Stash" — we don't surface "workspace" terminology in the product.
-    await workspace_service.create_workspace(
-        name="Stash",
-        description="",
-        creator_id=user["id"],
-    )
+    await user_scope_service.seed_user_scope(user["id"])
 
     await share_service.convert_pending_invites(user["id"], email)
 

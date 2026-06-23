@@ -192,7 +192,6 @@ async def index_jira(source: dict) -> str | None:
     """Build the navigable index only — one row per issue (key + title), no body.
     The body is fetched lazily on read and search is federated to JQL."""
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     cloud_id, project_key = source_service.parse_jira_project_ref(source["external_ref"])
 
@@ -218,7 +217,7 @@ async def index_jira(source: dict) -> str | None:
                 await source_service.upsert_index_row(
                     table="jira_documents",
                     source_id=source_id,
-                    workspace_id=workspace_id,
+                    owner_user_id=owner_user_id,
                     path=key,
                     name=f"{key}: {summary}",
                     kind="issue",

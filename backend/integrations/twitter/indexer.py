@@ -320,7 +320,7 @@ async def search_twitter(source: dict, query: str, limit: int = SEARCH_LIMIT) ->
 
     users = _users_by_id(payload)
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
     hits: list[dict] = []
     for tweet in payload.get("data", [])[:limit]:
         tweet_id = tweet.get("id")
@@ -330,7 +330,7 @@ async def search_twitter(source: dict, query: str, limit: int = SEARCH_LIMIT) ->
         await source_service.upsert_index_row(
             table="twitter_posts",
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path=tweet_id,
             name=name,
             kind="post",

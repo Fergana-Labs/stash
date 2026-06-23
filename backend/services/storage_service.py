@@ -34,9 +34,9 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
-def _storage_key(workspace_id: str | None, filename: str) -> str:
-    """Generate a unique storage key: {workspace_or_personal}/{uuid}/{filename}."""
-    prefix = str(workspace_id) if workspace_id else "personal"
+def _storage_key(owner_user_id: str | None, filename: str) -> str:
+    """Generate a unique storage key: {owner_or_personal}/{uuid}/{filename}."""
+    prefix = str(owner_user_id) if owner_user_id else "personal"
     return f"{prefix}/{uuid4().hex[:12]}/{filename}"
 
 
@@ -47,7 +47,7 @@ def _object_uri(key: str) -> str:
 
 
 async def upload_file(
-    workspace_id: str | None,
+    owner_user_id: str | None,
     filename: str,
     content: bytes,
     content_type: str,
@@ -56,7 +56,7 @@ async def upload_file(
     if not is_configured():
         raise RuntimeError("S3 storage is not configured")
 
-    key = _storage_key(workspace_id, filename)
+    key = _storage_key(owner_user_id, filename)
 
     # Use S3 PUT Object with presigned-style direct upload
     # For simplicity, use the S3 REST API directly via httpx

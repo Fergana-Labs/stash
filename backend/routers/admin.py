@@ -37,7 +37,7 @@ async def _record_admin_access(
     await security_audit_service.record_event(
         action=action,
         actor_user_id=None,
-        workspace_id=None,
+        owner_user_id=None,
         target_type="admin_endpoint",
         target_id=request.scope["route"].path,
         metadata=metadata,

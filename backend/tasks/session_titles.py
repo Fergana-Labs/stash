@@ -22,7 +22,7 @@ def _clean_title(text: str) -> str:
     return session_title_service.clean_generated_title(text)
 
 
-async def _session_stats(workspace_id: UUID, session_id: str) -> dict | None:
+async def _session_stats(owner_user_id: UUID, session_id: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         """
@@ -31,32 +31,32 @@ async def _session_stats(workspace_id: UUID, session_id: str) -> dict | None:
           COUNT(*)::INT AS event_count,
           MAX(h.created_at) AS last_at
         FROM history_events h
-        JOIN sessions s ON s.workspace_id = h.workspace_id AND s.session_id = h.session_id
-        WHERE h.workspace_id = $1
+        JOIN sessions s ON s.owner_user_id = h.owner_user_id AND s.session_id = h.session_id
+        WHERE h.owner_user_id = $1
           AND h.session_id = $2
           AND NULLIF(BTRIM(h.content), '') IS NOT NULL
           AND s.deleted_at IS NULL
         GROUP BY h.session_id
         """,
-        workspace_id,
+        owner_user_id,
         session_id,
     )
     return dict(row) if row else None
 
 
-async def _session_source(workspace_id: UUID, session_id: str) -> str:
+async def _session_source(owner_user_id: UUID, session_id: str) -> str:
     pool = get_pool()
     rows = await pool.fetch(
         """
         SELECT event_type, tool_name, content
         FROM history_events
-        WHERE workspace_id = $1
+        WHERE owner_user_id = $1
           AND session_id = $2
           AND NULLIF(BTRIM(content), '') IS NOT NULL
         ORDER BY created_at ASC, id ASC
         LIMIT 16
         """,
-        workspace_id,
+        owner_user_id,
         session_id,
     )
     parts: list[str] = []
@@ -94,8 +94,8 @@ async def _generate_title(source: str) -> str:
     return _clean_title(text)
 
 
-async def _generate_for_session(workspace_id: UUID, session_id: str) -> str:
-    stats = await _session_stats(workspace_id, session_id)
+async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
+    stats = await _session_stats(owner_user_id, session_id)
     if not stats:
         return "missing"
 
@@ -103,8 +103,8 @@ async def _generate_for_session(workspace_id: UUID, session_id: str) -> str:
     pool = get_pool()
     cached = await pool.fetchrow(
         "SELECT source_hash, user_set FROM session_titles "
-        "WHERE workspace_id = $1 AND session_id = $2",
-        workspace_id,
+        "WHERE owner_user_id = $1 AND session_id = $2",
+        owner_user_id,
         session_id,
     )
     if cached and cached["user_set"]:
@@ -112,7 +112,7 @@ async def _generate_for_session(workspace_id: UUID, session_id: str) -> str:
     if cached and cached["source_hash"] == source_hash:
         return "fresh"
 
-    source = await _session_source(workspace_id, session_id)
+    source = await _session_source(owner_user_id, session_id)
     if not source:
         return "empty"
 
@@ -122,14 +122,14 @@ async def _generate_for_session(workspace_id: UUID, session_id: str) -> str:
 
     await pool.execute(
         """
-        INSERT INTO session_titles (workspace_id, session_id, title, source_hash)
+        INSERT INTO session_titles (owner_user_id, session_id, title, source_hash)
         VALUES ($1, $2, $3, $4)
-        ON CONFLICT (workspace_id, session_id) DO UPDATE SET
+        ON CONFLICT (owner_user_id, session_id) DO UPDATE SET
           title = EXCLUDED.title,
           source_hash = EXCLUDED.source_hash,
           updated_at = now()
         """,
-        workspace_id,
+        owner_user_id,
         session_id,
         title,
         source_hash,
@@ -138,8 +138,8 @@ async def _generate_for_session(workspace_id: UUID, session_id: str) -> str:
 
 
 @celery.task(name="backend.tasks.session_titles.generate_session_title")
-def generate_session_title(workspace_id: str, session_id: str) -> str:
-    return run_async(_generate_for_session(UUID(workspace_id), session_id))
+def generate_session_title(owner_user_id: str, session_id: str) -> str:
+    return run_async(_generate_for_session(UUID(owner_user_id), session_id))
 
 
 async def _reconcile_missing() -> int:
@@ -149,24 +149,24 @@ async def _reconcile_missing() -> int:
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT h.workspace_id, h.session_id
+        SELECT h.owner_user_id, h.session_id
         FROM history_events h
-        JOIN sessions s ON s.workspace_id = h.workspace_id AND s.session_id = h.session_id
+        JOIN sessions s ON s.owner_user_id = h.owner_user_id AND s.session_id = h.session_id
         LEFT JOIN session_titles st
-          ON st.workspace_id = h.workspace_id AND st.session_id = h.session_id
-        WHERE h.workspace_id IS NOT NULL
+          ON st.owner_user_id = h.owner_user_id AND st.session_id = h.session_id
+        WHERE h.owner_user_id IS NOT NULL
           AND h.session_id IS NOT NULL
           AND st.session_id IS NULL
           AND s.deleted_at IS NULL
           AND NULLIF(BTRIM(h.content), '') IS NOT NULL
-        GROUP BY h.workspace_id, h.session_id
+        GROUP BY h.owner_user_id, h.session_id
         ORDER BY MAX(h.created_at) DESC
         LIMIT $1
         """,
         RECONCILE_BATCH_SIZE,
     )
     for row in rows:
-        generate_session_title.delay(str(row["workspace_id"]), row["session_id"])
+        generate_session_title.delay(str(row["owner_user_id"]), row["session_id"])
     return len(rows)
 
 

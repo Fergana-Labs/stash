@@ -87,41 +87,6 @@ class ApiKeyCreateResponse(BaseModel):
     created_at: datetime
 
 
-# --- Workspaces ---
-
-
-class WorkspaceCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=128)
-    description: str = Field("", max_length=50000)
-
-
-class WorkspaceUpdateRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=128)
-    description: str | None = Field(None, max_length=50000)
-    cover_image_url: str | None = None
-    icon_url: str | None = None
-    color_gradient: str | None = Field(None, max_length=256)
-
-
-class WorkspaceResponse(BaseModel):
-    id: UUID
-    name: str
-    description: str
-    creator_id: UUID
-    invite_code: str
-    created_at: datetime
-    updated_at: datetime
-    member_count: int | None = None
-    cover_image_url: str | None = None
-    icon_url: str | None = None
-    color_gradient: str | None = None
-    is_primary: bool = False
-
-
-class WorkspaceListResponse(BaseModel):
-    workspaces: list[WorkspaceResponse]
-
-
 # --- Skills (special folders + their publish records) ---
 
 SkillGeneralPermission = str  # 'none' | 'read' | 'write'
@@ -146,7 +111,7 @@ class SkillUpdateRequest(BaseModel):
 
 class SkillResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    owner_user_id: UUID
     folder_id: UUID
     slug: str
     title: str
@@ -169,75 +134,14 @@ class SkillResponse(BaseModel):
 
 class SkillPublicResponse(BaseModel):
     skill: SkillResponse
-    workspace_name: str
+    owner_name: str
     folder_name: str
     contents: dict
     can_write: bool = False
 
 
 class ForkSkillRequest(BaseModel):
-    workspace_id: UUID
-
-
-class WorkspaceMember(BaseModel):
-    user_id: UUID
-    name: str
-    display_name: str
-    role: str
-    joined_at: datetime
-
-
-# --- Invite tokens (magic-link onboarding) ---
-
-
-class InviteTokenCreateRequest(BaseModel):
-    max_uses: int = Field(1, ge=1, le=1000)
-    ttl_days: int = Field(7, ge=1, le=90)
-
-
-class InviteTokenCreateResponse(BaseModel):
-    id: UUID
-    token: str
-    workspace_id: UUID
-    workspace_name: str
-    max_uses: int
-    expires_at: datetime
-
-
-class InviteTokenSummary(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    max_uses: int
-    uses_count: int
-    expires_at: datetime
-    created_at: datetime
-    revoked_at: datetime | None = None
-
-
-class InviteTokenListResponse(BaseModel):
-    tokens: list[InviteTokenSummary]
-
-
-class RedeemInviteRequest(BaseModel):
-    """Unauthenticated redemption: creates a fresh user + joins the workspace."""
-
-    token: str = Field(..., min_length=8, max_length=128)
-    display_name: str = Field(..., min_length=1, max_length=128)
-
-
-class RedeemInviteResponse(BaseModel):
-    api_key: str
-    user_id: UUID
-    username: str
-    display_name: str
-    workspace_id: UUID
-    workspace_name: str
-
-
-class RedeemInviteAuthedRequest(BaseModel):
-    """Authenticated redemption: just joins the existing user to the workspace."""
-
-    token: str = Field(..., min_length=8, max_length=128)
+    owner_user_id: UUID
 
 
 # --- Files: folders (nested) and pages ---
@@ -256,7 +160,7 @@ class FolderUpdateRequest(BaseModel):
 
 class FolderResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    owner_user_id: UUID
     parent_folder_id: UUID | None = None
     name: str
     created_by: UUID
@@ -312,7 +216,7 @@ class BatchRequest(BaseModel):
 
 class PageResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    owner_user_id: UUID
     folder_id: UUID | None
     name: str
     content_markdown: str
@@ -330,31 +234,31 @@ class PageResponse(BaseModel):
 
 
 class PageSummary(BaseModel):
-    """Lightweight page entry used in workspace tree responses."""
+    """Lightweight page entry used in scope tree responses."""
 
     id: UUID
     name: str
     content_type: str
-    workspace_id: UUID
+    owner_user_id: UUID
     folder_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
-class WorkspaceTreeFolder(BaseModel):
+class ScopeTreeFolder(BaseModel):
     id: UUID
-    workspace_id: UUID
+    owner_user_id: UUID
     parent_folder_id: UUID | None
     name: str
     created_by: UUID
     created_at: datetime
     updated_at: datetime
-    folders: list["WorkspaceTreeFolder"] = []
+    folders: list["ScopeTreeFolder"] = []
     pages: list[PageSummary] = []
 
 
-class WorkspaceTreeResponse(BaseModel):
-    folders: list[WorkspaceTreeFolder]
+class ScopeTreeResponse(BaseModel):
+    folders: list[ScopeTreeFolder]
     pages: list[PageSummary]
 
 
@@ -407,10 +311,10 @@ class CommentThreadListResponse(BaseModel):
     threads: list[CommentThread]
 
 
-class WorkspacePageEntry(BaseModel):
-    """Flat reference to a page for workspace-wide search and pickers.
+class ScopePageEntry(BaseModel):
+    """Flat reference to a page for scope-wide search and pickers.
 
-    folder_path is the chain of folder names from the workspace root down to
+    folder_path is the chain of folder names from the scope root down to
     the immediate parent — empty for root pages, ['Architecture', 'API'] for
     a page nested two folders deep. Used to render and resolve
     Folder path is included so callers can display disambiguated page names.
@@ -419,20 +323,20 @@ class WorkspacePageEntry(BaseModel):
     id: UUID
     name: str
     content_type: str
-    workspace_id: UUID
+    owner_user_id: UUID
     folder_id: UUID | None = None
     folder_path: list[str] = []
     updated_at: datetime
 
 
-class WorkspacePageListResponse(BaseModel):
-    pages: list[WorkspacePageEntry]
+class ScopePageListResponse(BaseModel):
+    pages: list[ScopePageEntry]
 
 
-class UserPageEntry(WorkspacePageEntry):
-    """Cross-workspace flat page list used by /me/pages."""
+class UserPageEntry(ScopePageEntry):
+    """Cross-scope flat page list used by /me/pages."""
 
-    workspace_name: str
+    owner_name: str
 
 
 class UserPageListResponse(BaseModel):
@@ -472,7 +376,7 @@ class TableUpdateRequest(BaseModel):
 
 class TableResponse(BaseModel):
     id: UUID
-    workspace_id: UUID | None
+    owner_user_id: UUID | None
     folder_id: UUID | None = None
     name: str
     description: str
@@ -585,7 +489,7 @@ class HistoryEventBatchRequest(BaseModel):
 
 class HistoryEventResponse(BaseModel):
     id: UUID
-    workspace_id: UUID | None = None
+    owner_user_id: UUID | None = None
     created_by: UUID | None = None
     created_by_name: str | None = None
     agent_name: str
@@ -596,7 +500,7 @@ class HistoryEventResponse(BaseModel):
     metadata: dict
     attachments: list[dict] | None = None
     created_at: datetime
-    workspace_name: str | None = None
+    owner_name: str | None = None
     rank: float | None = None
 
 
@@ -617,10 +521,10 @@ class HistoryQueryResponse(BaseModel):
 
 class PublishRequest(BaseModel):
     """Single-call publish: create a Page from supplied content, wrap it in a
-    Stash, and return the Stash URL. Folder is optional; defaults to a
-    workspace's "AI Drafts" folder that's auto-created on first use."""
+    Stash, and return the Stash URL. Folder is optional; defaults to the
+    scope's "AI Drafts" folder that's auto-created on first use."""
 
-    workspace_id: UUID | None = None
+    owner_user_id: UUID | None = None
     title: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
@@ -631,7 +535,7 @@ class PublishRequest(BaseModel):
 class PublishResponse(BaseModel):
     page_id: UUID
     folder_id: UUID | None
-    workspace_id: UUID
+    owner_user_id: UUID
     url: str
     skill_id: UUID | None = None
     skill_slug: str | None = None
@@ -642,7 +546,7 @@ class PublishResponse(BaseModel):
 
 class FileResponse(BaseModel):
     id: UUID
-    workspace_id: UUID | None
+    owner_user_id: UUID | None
     folder_id: UUID | None = None
     name: str
     content_type: str
@@ -667,7 +571,7 @@ class FileUpdateRequest(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    """Result of POST /workspaces/{id}/files.
+    """Result of POST /me/files.
 
     Polymorphic: markdown and HTML uploads become pages (editable in-app);
     everything else becomes a binary file in S3. Callers branch on `kind`;
@@ -676,7 +580,7 @@ class UploadResponse(BaseModel):
 
     kind: Literal["file", "page"]
     id: UUID
-    workspace_id: UUID
+    owner_user_id: UUID
     folder_id: UUID | None = None
     name: str
     content_type: str
@@ -695,7 +599,7 @@ class UploadResponse(BaseModel):
 
 class SessionTranscriptResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    owner_user_id: UUID
     session_id: str
     agent_name: str
     size_bytes: int

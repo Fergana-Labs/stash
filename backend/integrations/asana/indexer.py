@@ -51,7 +51,6 @@ def _headers(token: str) -> dict:
 async def index_asana(source: dict) -> str | None:
     """Build the navigable index only — one row per task (gid + name), no body."""
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     project_gid = source["external_ref"]
 
@@ -75,7 +74,7 @@ async def index_asana(source: dict) -> str | None:
                 await source_service.upsert_index_row(
                     table="asana_documents",
                     source_id=source_id,
-                    workspace_id=workspace_id,
+                    owner_user_id=owner_user_id,
                     path=gid,
                     name=task.get("name") or "(untitled task)",
                     kind="task",

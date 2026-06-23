@@ -10,33 +10,32 @@ class CountingClient(FakeClient):
         super().__init__()
         self.lazy_loads = 0
 
-    def get_page(self, workspace_id, page_id):
+    def get_page(self, page_id):
         self.lazy_loads += 1
-        return super().get_page(workspace_id, page_id)
+        return super().get_page(page_id)
 
-    def download_ws_file(self, workspace_id, file_id):
+    def download_file(self, file_id):
         self.lazy_loads += 1
-        return super().download_ws_file(workspace_id, file_id)
+        return super().download_file(file_id)
 
     def get_skill_text(self, slug):
         self.lazy_loads += 1
         return super().get_skill_text(slug)
 
-    def get_transcript_events(self, workspace_id, session_id):
+    def get_transcript_events(self, session_id):
         self.lazy_loads += 1
-        return super().get_transcript_events(workspace_id, session_id)
+        return super().get_transcript_events(session_id)
 
-    def export_transcript_jsonl(self, workspace_id, session_id):
+    def export_transcript_jsonl(self, session_id):
         self.lazy_loads += 1
-        return super().export_transcript_jsonl(workspace_id, session_id)
+        return super().export_transcript_jsonl(session_id)
 
-    def get_table(self, workspace_id, table_id):
+    def get_table(self, table_id):
         self.lazy_loads += 1
-        return super().get_table(workspace_id, table_id)
+        return super().get_table(table_id)
 
     def list_table_rows(
         self,
-        workspace_id,
         table_id,
         limit=1000,
         offset=0,
@@ -46,7 +45,6 @@ class CountingClient(FakeClient):
     ):
         self.lazy_loads += 1
         return super().list_table_rows(
-            workspace_id,
             table_id,
             limit=limit,
             offset=offset,
@@ -64,8 +62,7 @@ def _shell(client=None):
 
 
 def _page_path(shell: SkillAppVfsShell) -> str:
-    workspace_name = shell.model.list_dir("/workspaces")[0]
-    files_path = f"/workspaces/{workspace_name}/files"
+    files_path = "/me/files"
     folder_name = next(
         name for name in shell.model.list_dir(files_path) if name.startswith("Notes--")
     )
@@ -79,20 +76,20 @@ def _page_path(shell: SkillAppVfsShell) -> str:
 def test_app_vfs_runs_bash_shaped_navigation_commands():
     shell, _client = _shell()
 
-    assert "workspaces" in shell.run("ls /").stdout
-    find_output = shell.run("find /workspaces -maxdepth 2 -type d").stdout
-    assert "/workspaces/Demo Workspace--workspac/files" in find_output
+    assert "me" in shell.run("ls /").stdout
+    find_output = shell.run("find /me -maxdepth 2 -type d").stdout
+    assert "/me/files" in find_output
 
 
 def test_app_vfs_supports_common_agent_listing_patterns():
     client = CountingClient()
     shell, _client = _shell(client)
 
-    assert "files" in shell.run("ls -la /workspaces/Demo\\ Workspace--workspac").stdout
-    assert shell.run("find /workspaces -name '*.md' -type f").stdout.splitlines()
-    tree_output = shell.run("tree /workspaces -L 2").stdout
+    assert "files" in shell.run("ls -la /me").stdout
+    assert shell.run("find /me -name '*.md' -type f").stdout.splitlines()
+    tree_output = shell.run("tree /me -L 2").stdout
 
-    assert "Demo Workspace--workspac" in tree_output
+    assert "files" in tree_output
     assert client.lazy_loads == 0
 
 
@@ -102,17 +99,17 @@ def test_app_vfs_pipes_cat_to_sed_and_grep():
 
     assert shell.run(f"cat {shlex.quote(page_path)} | sed -n '1,1p'").stdout == "# Plan\n"
 
-    result = shell.run("rg hello /workspaces")
+    result = shell.run("rg hello /me")
 
     assert result.exit_code == 0
     assert "transcript.md" in result.stdout
-    assert "transcript.md:" in shell.run("rg -n hello /workspaces").stdout
+    assert "transcript.md:" in shell.run("rg -n hello /me").stdout
 
 
 def test_app_vfs_grep_no_match_stops_and_chain():
     shell, _client = _shell()
 
-    result = shell.run("rg missing-sentinel /workspaces && echo found")
+    result = shell.run("rg missing-sentinel /me && echo found")
 
     assert result.exit_code == 1
     assert result.stdout == ""
@@ -147,7 +144,6 @@ def test_app_vfs_writes_existing_writable_pages_with_redirect():
     assert result.exit_code == 0
     assert client.page_updates == [
         (
-            "workspace-12345678",
             "page-12345678",
             {"content": "# App edit\n"},
         )
@@ -164,7 +160,6 @@ def test_app_vfs_appends_existing_writable_pages_with_tee():
     assert result.stdout == "Second line\n"
     assert client.page_updates == [
         (
-            "workspace-12345678",
             "page-12345678",
             {"content": "# Plan\nSecond line\n"},
         )
@@ -193,7 +188,7 @@ def test_app_vfs_reports_unsupported_commands():
 def test_app_vfs_cd_updates_virtual_working_directory():
     shell, _client = _shell()
 
-    result = shell.run("cd /workspaces && pwd")
+    result = shell.run("cd /me && pwd")
 
-    assert result.stdout == "/workspaces\n"
-    assert result.cwd == "/workspaces"
+    assert result.stdout == "/me\n"
+    assert result.cwd == "/me"

@@ -1,6 +1,7 @@
 """Lightweight Stash HTTP client for plugin hooks. Extracted from cli/client.py.
 
-Events now live directly on a workspace. No intermediate "store" abstraction.
+Sessions and events stream to the calling user's scope (`/api/v1/me/...`). No
+scope abstraction.
 
 Failed event pushes (network blip, backend cold start, slow GC) get appended to
 `<data_dir>/event_queue.jsonl`. The next successful push drains a batch of the
@@ -88,26 +89,12 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
-    # --- Workspaces ---
-
-    def create_workspace(self, name: str, description: str = "") -> dict:
-        return self._post("/api/v1/workspaces", json={
-            "name": name, "description": description,
-        })
-
-    def list_workspaces(self, mine: bool = False) -> list:
-        path = "/api/v1/workspaces/mine" if mine else "/api/v1/workspaces"
-        return self._list(path, "workspaces")
-
     # --- Events ---
 
-    def _events_path(self, workspace_id: str | None) -> str:
-        if not workspace_id:
-            raise ValueError("workspace_id is required for session events")
-        return f"/api/v1/workspaces/{workspace_id}/sessions/events"
+    _EVENTS_PATH = "/api/v1/me/sessions/events"
 
     def push_event(
-        self, workspace_id: str | None,
+        self,
         agent_name: str, event_type: str, content: str,
         session_id: str | None = None, tool_name: str | None = None,
         metadata: dict | None = None, client: str | None = None,
@@ -129,7 +116,7 @@ class StashClient:
         if merged_meta:
             body["metadata"] = merged_meta
 
-        path = self._events_path(workspace_id)
+        path = self._EVENTS_PATH
         record_upload_attempt(self._data_dir, "event")
         try:
             result = self._post(path, json=body)
@@ -219,7 +206,7 @@ class StashClient:
         return drained
 
     def query_events(
-        self, workspace_id: str | None,
+        self,
         agent_name: str | None = None, event_type: str | None = None,
         session_id: str | None = None,
         limit: int = 50, after: str | None = None, order: str | None = None,
@@ -235,11 +222,11 @@ class StashClient:
             params["after"] = after
         if order:
             params["order"] = order
-        return self._list(self._events_path(workspace_id), "events", **params)
+        return self._list(self._EVENTS_PATH, "events", **params)
 
-    def search_events(self, workspace_id: str | None, query: str, limit: int = 50) -> list:
+    def search_events(self, query: str, limit: int = 50) -> list:
         return self._list(
-            f"{self._events_path(workspace_id)}/search",
+            f"{self._EVENTS_PATH}/search",
             "events", q=query, limit=limit,
         )
 
@@ -248,7 +235,7 @@ class StashClient:
     # timeout is 2s — way too short for a big file — so we override per-
     # request.
     def upload_transcript(
-        self, workspace_id: str, session_id: str, transcript_path: Path,
+        self, session_id: str, transcript_path: Path,
         agent_name: str, cwd: str | None = None, session_folder_id: str | None = None,
     ) -> dict:
         import gzip
@@ -268,7 +255,7 @@ class StashClient:
         try:
             resp = self._http.request(
                 "POST",
-                f"/api/v1/workspaces/{workspace_id}/transcripts",
+                "/api/v1/me/transcripts",
                 headers=self._headers(),
                 data=data,
                 files={"file": (name, body, "application/gzip")},
@@ -285,7 +272,7 @@ class StashClient:
     # --- Sessions ---
 
     def create_session(
-        self, workspace_id: str, session_id: str, agent_name: str,
+        self, session_id: str, agent_name: str,
         cwd: str | None = None, files_touched: list[str] | None = None,
         session_folder_id: str | None = None,
     ) -> dict:
@@ -298,17 +285,17 @@ class StashClient:
         # Omit when unset so the backend routes the session to the Default folder.
         if session_folder_id:
             body["session_folder_id"] = session_folder_id
-        return self._post(f"/api/v1/workspaces/{workspace_id}/sessions", json=body)
+        return self._post("/api/v1/me/sessions", json=body)
 
     def upload_session_artifact(
-        self, workspace_id: str, session_row_id: str, file_path: str, content: bytes,
+        self, session_row_id: str, file_path: str, content: bytes,
     ) -> dict:
         """Upload a file the agent touched during a session."""
         record_upload_attempt(self._data_dir, "artifact")
         try:
             resp = self._http.request(
                 "POST",
-                f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts",
+                f"/api/v1/me/sessions/{session_row_id}/artifacts",
                 headers=self._headers(),
                 data={"file_path": file_path},
                 files={"file": (file_path.split("/")[-1], content, "application/octet-stream")},
@@ -322,7 +309,7 @@ class StashClient:
         record_upload_success(self._data_dir, "artifact")
         return resp.json()
 
-    # --- Cross-workspace aggregate (optional) ---
+    # --- History aggregate (optional) ---
 
     def list_all_history_events(
         self, agent_name: str | None = None, event_type: str | None = None,

@@ -1,7 +1,7 @@
 """Batch move / soft-delete / restore over many tree items.
 
 Best-effort: each item is processed independently and we return per-item
-results, so one failure (no write access, wrong workspace) never blocks the
+results, so one failure (no write access, wrong scope) never blocks the
 rest. Composes the existing per-item service functions — no new persistence.
 
 move covers pages, files, folders, and tables; delete/restore cover the
@@ -14,21 +14,27 @@ from __future__ import annotations
 from uuid import UUID
 
 from ..database import get_pool
-from . import files_service, files_tree_service, permission_service, table_service
+from . import (
+    files_service,
+    files_tree_service,
+    permission_service,
+    table_service,
+    user_scope_service,
+)
 
 _MOVABLE = {"page", "file", "folder", "table"}
 _TRASHABLE = {"page", "file"}
 
 
-async def _authorize(object_type: str, object_id: UUID, workspace_id: UUID, user_id: UUID) -> None:
-    """Raise ValueError unless the object lives in this workspace and the user
-    may write it. Resolving the real workspace closes the cross-workspace hole
-    where membership in the request's workspace would otherwise pass."""
-    obj_ws = await permission_service.resolve_workspace_id(object_type, object_id)
-    if obj_ws != workspace_id:
+async def _authorize(object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID) -> None:
+    """Raise ValueError unless the object lives in this scope and the user
+    may write it. Resolving the real scope closes the cross-scope hole
+    where membership in the request's scope would otherwise pass."""
+    obj_owner = await permission_service.resolve_owner_user_id(object_type, object_id)
+    if obj_owner != owner_user_id:
         raise ValueError("not found")
     if not await permission_service.check_access(
-        object_type, object_id, user_id, workspace_id=workspace_id, require="write"
+        object_type, object_id, user_id, owner_user_id=owner_user_id, require="write"
     ):
         raise ValueError("no write access")
 
@@ -36,19 +42,19 @@ async def _authorize(object_type: str, object_id: UUID, workspace_id: UUID, user
 async def _move_one(
     object_type: str,
     object_id: UUID,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     target_folder_id: UUID | None,
     move_to_root: bool,
 ) -> bool:
     if object_type == "page":
         page = await files_tree_service.update_page(
-            object_id, workspace_id, user_id, folder_id=target_folder_id, move_to_root=move_to_root
+            object_id, owner_user_id, user_id, folder_id=target_folder_id, move_to_root=move_to_root
         )
         return page is not None
     if object_type == "folder":
         folder = await files_tree_service.update_folder(
-            object_id, workspace_id, parent_folder_id=target_folder_id, move_to_root=move_to_root
+            object_id, owner_user_id, parent_folder_id=target_folder_id, move_to_root=move_to_root
         )
         return folder is not None
     if object_type == "table":
@@ -61,37 +67,39 @@ async def _move_one(
         if move_to_root:
             res = await pool.execute(
                 "UPDATE files SET folder_id = NULL "
-                "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+                "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
                 object_id,
-                workspace_id,
+                owner_user_id,
             )
         else:
             res = await pool.execute(
                 "UPDATE files SET folder_id = $3 "
-                "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+                "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
                 object_id,
-                workspace_id,
+                owner_user_id,
                 target_folder_id,
             )
         return res.endswith("1")
     raise ValueError(f"can't move a {object_type}")
 
 
-async def _delete_one(object_type: str, object_id: UUID, workspace_id: UUID, user_id: UUID) -> bool:
+async def _delete_one(
+    object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID
+) -> bool:
     if object_type == "page":
-        return await files_tree_service.delete_page(object_id, workspace_id, user_id)
+        return await files_tree_service.delete_page(object_id, owner_user_id, user_id)
     if object_type == "file":
-        return await files_service.delete_file(object_id, workspace_id, user_id)
+        return await files_service.delete_file(object_id, owner_user_id, user_id)
     raise ValueError(f"batch delete supports pages and files, not {object_type}")
 
 
 async def _restore_one(
-    object_type: str, object_id: UUID, workspace_id: UUID, user_id: UUID
+    object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID
 ) -> bool:
     if object_type == "page":
-        return await files_tree_service.restore_page(object_id, workspace_id, user_id)
+        return await files_tree_service.restore_page(object_id, owner_user_id, user_id)
     if object_type == "file":
-        return await files_service.restore_file(object_id, workspace_id, user_id)
+        return await files_service.restore_file(object_id, owner_user_id, user_id)
     raise ValueError(f"batch restore supports pages and files, not {object_type}")
 
 
@@ -115,7 +123,7 @@ async def _run(items: list[dict], handler) -> dict:
 
 
 async def batch_move(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID,
     items: list[dict],
     target_folder_id: UUID | None = None,
@@ -124,32 +132,32 @@ async def batch_move(
     async def handler(object_type: str, object_id: UUID) -> bool:
         if object_type not in _MOVABLE:
             raise ValueError(f"can't move a {object_type}")
-        await _authorize(object_type, object_id, workspace_id, user_id)
+        await _authorize(object_type, object_id, owner_user_id, user_id)
         return await _move_one(
-            object_type, object_id, workspace_id, user_id, target_folder_id, move_to_root
+            object_type, object_id, owner_user_id, user_id, target_folder_id, move_to_root
         )
 
     return await _run(items, handler)
 
 
-async def batch_delete(workspace_id: UUID, user_id: UUID, items: list[dict]) -> dict:
+async def batch_delete(owner_user_id: UUID, user_id: UUID, items: list[dict]) -> dict:
     async def handler(object_type: str, object_id: UUID) -> bool:
         if object_type not in _TRASHABLE:
             raise ValueError(f"batch delete supports pages and files, not {object_type}")
-        await _authorize(object_type, object_id, workspace_id, user_id)
-        return await _delete_one(object_type, object_id, workspace_id, user_id)
+        await _authorize(object_type, object_id, owner_user_id, user_id)
+        return await _delete_one(object_type, object_id, owner_user_id, user_id)
 
     return await _run(items, handler)
 
 
-async def batch_restore(workspace_id: UUID, user_id: UUID, items: list[dict]) -> dict:
+async def batch_restore(owner_user_id: UUID, user_id: UUID, items: list[dict]) -> dict:
     async def handler(object_type: str, object_id: UUID) -> bool:
         if object_type not in _TRASHABLE:
             raise ValueError(f"batch restore supports pages and files, not {object_type}")
         # Trashed rows can't be permission-checked the normal way (live-only
-        # queries skip them); workspace membership + write is the gate.
-        if not await permission_service.is_workspace_member(workspace_id, user_id):
+        # queries skip them); scope membership + write is the gate.
+        if not await user_scope_service.is_member(owner_user_id, user_id):
             raise ValueError("no write access")
-        return await _restore_one(object_type, object_id, workspace_id, user_id)
+        return await _restore_one(object_type, object_id, owner_user_id, user_id)
 
     return await _run(items, handler)

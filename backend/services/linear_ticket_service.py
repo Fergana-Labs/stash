@@ -124,7 +124,7 @@ def has_ticket_hint(contents: list[str]) -> bool:
 
 
 async def upsert_session_labels(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     labels: list[LinearTicketLabel],
 ) -> None:
@@ -135,7 +135,7 @@ async def upsert_session_labels(
     await pool.executemany(
         """
         INSERT INTO session_linear_tickets (
-          workspace_id,
+          owner_user_id,
           session_row_id,
           ticket_identifier,
           ticket_title,
@@ -157,7 +157,7 @@ async def upsert_session_labels(
         """,
         [
             (
-                workspace_id,
+                owner_user_id,
                 session_row_id,
                 label.ticket_identifier,
                 label.ticket_title,
@@ -171,16 +171,16 @@ async def upsert_session_labels(
 
 
 async def sync_session_labels(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     session_row_id: UUID,
     session_id: str,
 ) -> None:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT content FROM history_events "
-        "WHERE workspace_id = $1 AND session_id = $2 "
+        "WHERE owner_user_id = $1 AND session_id = $2 "
         "ORDER BY created_at, id",
-        workspace_id,
+        owner_user_id,
         session_id,
     )
     labels = extract_labels([row["content"] for row in rows])
@@ -193,35 +193,34 @@ async def sync_session_labels(
                 session_row_id,
                 list(_DIRECT_SOURCES),
             )
-    await upsert_session_labels(workspace_id, session_row_id, labels)
+    await upsert_session_labels(owner_user_id, session_row_id, labels)
     if not labels:
         return
-    enqueue_session_enrichment(workspace_id, session_row_id)
+    enqueue_session_enrichment(owner_user_id, session_row_id)
 
 
-def enqueue_session_enrichment(workspace_id: UUID, session_row_id: UUID) -> None:
+def enqueue_session_enrichment(owner_user_id: UUID, session_row_id: UUID) -> None:
     if not linear_api_service.is_configured():
         return
     from ..tasks.linear_tickets import enrich_session_linear_tickets
 
-    enrich_session_linear_tickets.delay(str(workspace_id), str(session_row_id))
+    enrich_session_linear_tickets.delay(str(owner_user_id), str(session_row_id))
 
 
-async def _workspace_linear_token(workspace_id: UUID) -> str | None:
-    """A Linear OAuth token for any member of this workspace, or None if no
-    member has connected Linear. Linear issues are workspace-shared, so any
-    member's token can read the tickets every session in the workspace cites."""
+async def _owner_linear_token(owner_user_id: UUID) -> str | None:
+    """A Linear OAuth token for this scope's owner, or None if the owner has not
+    connected Linear. The owner is the user, so their token can read the tickets
+    every session in their scope cites."""
     pool = get_pool()
     row = await pool.fetchrow(
         """
-        SELECT ui.user_id
-        FROM user_integrations ui
-        JOIN workspace_members wm ON wm.user_id = ui.user_id
-        WHERE ui.provider = 'linear' AND wm.workspace_id = $1
-        ORDER BY ui.created_at
+        SELECT user_id
+        FROM user_integrations
+        WHERE provider = 'linear' AND user_id = $1
+        ORDER BY created_at
         LIMIT 1
         """,
-        workspace_id,
+        owner_user_id,
     )
     if row is None:
         return None
@@ -231,14 +230,14 @@ async def _workspace_linear_token(workspace_id: UUID) -> str | None:
 async def enrich_session_labels(session_row_id: UUID) -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT ticket_identifier, workspace_id FROM session_linear_tickets "
+        "SELECT ticket_identifier, owner_user_id FROM session_linear_tickets "
         "WHERE session_row_id = $1 ORDER BY ticket_identifier",
         session_row_id,
     )
     if not rows:
         return 0
 
-    token = await _workspace_linear_token(rows[0]["workspace_id"])
+    token = await _owner_linear_token(rows[0]["owner_user_id"])
     if token is None:
         return 0
 
@@ -308,18 +307,18 @@ async def enrich_stale_sessions(limit: int) -> int:
 
 
 async def enrich_ticket(ticket_identifier: str) -> int:
-    """Re-enrich every session that cites this ticket, one workspace at a time.
+    """Re-enrich every session that cites this ticket, one scope at a time.
     Driven by the Linear webhook so a ticket's status/assignee refreshes the
     moment it changes upstream, instead of waiting for the periodic reconcile."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT DISTINCT workspace_id FROM session_linear_tickets WHERE ticket_identifier = $1",
+        "SELECT DISTINCT owner_user_id FROM session_linear_tickets WHERE ticket_identifier = $1",
         ticket_identifier,
     )
 
     updated = 0
     for row in rows:
-        token = await _workspace_linear_token(row["workspace_id"])
+        token = await _owner_linear_token(row["owner_user_id"])
         if token is None:
             continue
         issue = await linear_api_service.fetch_issue(ticket_identifier, token)
@@ -339,9 +338,9 @@ async def enrich_ticket(ticket_identifier: str) -> int:
               linear_updated_at = $11,
               enriched_at = now(),
               updated_at = now()
-            WHERE workspace_id = $1 AND ticket_identifier = $2
+            WHERE owner_user_id = $1 AND ticket_identifier = $2
             """,
-            row["workspace_id"],
+            row["owner_user_id"],
             ticket_identifier,
             issue.issue_id,
             issue.title,

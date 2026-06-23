@@ -11,7 +11,6 @@ type VaultStatus =
   | { kind: "error"; message: string };
 
 type Props = {
-  workspaceId: string;
   onUploaded: (uploadedCount: number) => void;
 };
 
@@ -20,7 +19,7 @@ type Props = {
 // (browse), parents-first folder creation, files routed to
 // uploadFileOrPage which makes .md/.html into pages and lands others
 // in Files.
-export default function ObsidianVaultDropZone({ workspaceId, onUploaded }: Props) {
+export default function ObsidianVaultDropZone({ onUploaded }: Props) {
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<VaultStatus>({ kind: "idle" });
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -74,11 +73,7 @@ export default function ObsidianVaultDropZone({ workspaceId, onUploaded }: Props
       const cached = folderCache.get(key);
       if (cached !== undefined) return cached || null;
       const parentId = await ensureFolder(path.slice(0, -1));
-      const folder = await createFolder(
-        workspaceId,
-        path[path.length - 1],
-        parentId,
-      );
+      const folder = await createFolder(path[path.length - 1], parentId);
       folderCache.set(key, folder.id);
       return folder.id;
     }
@@ -87,7 +82,7 @@ export default function ObsidianVaultDropZone({ workspaceId, onUploaded }: Props
     try {
       for (const { file, path } of items) {
         const folderId = await ensureFolder(path);
-        await uploadFileOrPage(workspaceId, file, folderId);
+        await uploadFileOrPage(file, folderId);
         uploaded += 1;
       }
     } catch (e) {

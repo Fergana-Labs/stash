@@ -274,7 +274,7 @@ export default function VisualizationsShowcase() {
           <div>
             <GrepSearchMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              Agents search the workspace like a repo — for the exact lookups
+              Agents search your Stash like a repo — for the exact lookups
               embeddings miss.
             </p>
           </div>

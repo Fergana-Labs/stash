@@ -58,7 +58,7 @@ async def test_task_status_requires_task_owner(
     await task_service.register_task(
         task_id=task_id,
         user_id=UUID(owner["id"]),
-        workspace_id=None,
+        owner_user_id=None,
         task_type="test",
     )
     calls = _mock_success_result(monkeypatch, {"download_url": "https://example.test/file"})
@@ -83,7 +83,7 @@ async def test_task_failure_errors_are_redacted(
     await task_service.register_task(
         task_id=task_id,
         user_id=UUID(owner["id"]),
-        workspace_id=None,
+        owner_user_id=None,
         task_type="test",
     )
     calls = _mock_failure_result(
@@ -112,12 +112,10 @@ async def test_export_registers_user_owned_task(
     monkeypatch: pytest.MonkeyPatch,
 ):
     owner_key, owner = await _register(client)
-    workspace_id = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
-        "workspaces"
-    ][0]["id"]
+    owner_user_id = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()["id"]
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace_id}/pages/new",
+            "/api/v1/me/pages/new",
             json={
                 "name": "Deck",
                 "content_type": "html",
@@ -151,7 +149,7 @@ async def test_export_registers_user_owned_task(
     ]
     task_row = await pool.fetchrow("SELECT * FROM task_records WHERE task_id = $1", task_id)
     assert task_row["user_id"] == UUID(owner["id"])
-    assert task_row["workspace_id"] == UUID(workspace_id)
+    assert task_row["owner_user_id"] == UUID(owner_user_id)
     assert task_row["task_type"] == "export:pdf"
     assert task_row["object_type"] == "page"
     assert task_row["object_id"] == UUID(page["id"])
@@ -164,12 +162,9 @@ async def test_source_sync_registers_user_owned_task(
     monkeypatch: pytest.MonkeyPatch,
 ):
     api_key, owner = await _register(client)
-    workspace_id = (await client.get("/api/v1/workspaces/mine", headers=_auth(api_key))).json()[
-        "workspaces"
-    ][0]["id"]
+    owner_user_id = (await client.get("/api/v1/users/me", headers=_auth(api_key))).json()["id"]
     source = await source_service.create_source(
-        workspace_id=UUID(workspace_id),
-        owner_user_id=UUID(owner["id"]),
+        owner_user_id=UUID(owner_user_id),
         source_type="github_repo",
         external_ref=f"repo-{uuid.uuid4().hex}",
         display_name="Repo",
@@ -182,7 +177,7 @@ async def test_source_sync_registers_user_owned_task(
     monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
 
     response = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/sources/{source['id']}/sync",
+        f"/api/v1/me/sources/{source['id']}/sync",
         headers=_auth(api_key),
     )
 
@@ -197,7 +192,7 @@ async def test_source_sync_registers_user_owned_task(
     ]
     task_row = await pool.fetchrow("SELECT * FROM task_records WHERE task_id = $1", task_id)
     assert task_row["user_id"] == UUID(owner["id"])
-    assert task_row["workspace_id"] == UUID(workspace_id)
+    assert task_row["owner_user_id"] == UUID(owner_user_id)
     assert task_row["task_type"] == "source_sync"
     assert task_row["object_type"] == "source"
     assert task_row["object_id"] == UUID(source["id"])

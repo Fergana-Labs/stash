@@ -62,7 +62,7 @@ def main():
     except Exception:
         pass
 
-    spawn_skills_sync(cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", ""))
+    spawn_skills_sync(cfg)
 
 
 if __name__ == "__main__":

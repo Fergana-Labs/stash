@@ -71,7 +71,7 @@ async def test_tool_failures_do_not_log_tool_inputs(monkeypatch):
             tier="fast",
             system="system",
             prompt="prompt",
-            workspace_id=uuid4(),
+            owner_user_id=uuid4(),
             user_id=uuid4(),
             tool_set=("search_source",),
             max_turns=1,

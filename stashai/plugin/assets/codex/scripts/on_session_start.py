@@ -40,13 +40,12 @@ def main():
     except Exception:
         return
 
-    spawn_skills_sync(cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", ""))
+    spawn_skills_sync(cfg)
 
     if state.get("session_row_id"):
         spawn_session_watcher(
             agent_pid=os.getppid(),
             session_id=event.session_id,
-            workspace_id=state.get("uploaded_workspace_id") or cfg.get("workspace_id", ""),
             agent_name=cfg.get("agent_name", ""),
             base_url=cfg.get("api_endpoint", ""),
             api_key=cfg.get("api_key", ""),

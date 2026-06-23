@@ -10,10 +10,9 @@ export type PublicSkillCard = {
   cover_image_url: string | null;
   source_github_url: string | null;
   view_count: number;
+  owner_user_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  workspace_id: string;
-  workspace_name: string;
   item_count: number;
   created_at: string;
   updated_at: string;

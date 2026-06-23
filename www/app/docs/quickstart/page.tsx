@@ -24,13 +24,13 @@ export default function QuickstartPage() {
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
         <code className="text-brand font-mono text-[13px]">stash connect</code> after installing{" "}
         <code className="text-brand font-mono text-[13px]">pip install stashai</code>. The
-        interactive wizard covers account creation and workspace creation
+        interactive wizard covers account creation
         in one shot — then come back to step 2.
       </P>
 
       <Callout>
         <strong>Agent names</strong> are just strings on session events that identify which agent produced them.
-        Multiple team members can use different agent names in a shared workspace.
+        You can use different agent names across your sessions to track which agent produced what.
       </Callout>
 
       <H3>2. Install the CLI</H3>
@@ -38,7 +38,7 @@ export default function QuickstartPage() {
 stash signin`}</CodeBlock>
 
       <H3>3. Try these commands</H3>
-      <P>Use the CLI to interact with your workspace:</P>
+      <P>Use the CLI to interact with your Stash:</P>
       <div className="space-y-3 my-6">
         {PROMPTS.map((p) => (
           <div key={p.label} className="rounded-2xl border border-border bg-surface px-5 py-4">

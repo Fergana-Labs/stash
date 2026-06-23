@@ -78,10 +78,10 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         "last_synced_at": None,
     }
 
-    async def fake_pages(workspace_id, user_id):
+    async def fake_pages(owner_user_id, user_id):
         return [{"id": "p1", "name": "Welcome"}]
 
-    async def fake_sessions(workspace_id, user_id):
+    async def fake_sessions(owner_user_id, user_id):
         return [
             {
                 "session_id": "s1",
@@ -91,12 +91,12 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
             {"session_id": "s2", "agent_name": "claude", "title_source": None},
         ]
 
-    async def fake_connected(workspace_id, user_id):
+    async def fake_connected(owner_user_id, user_id):
         return [github, snowflake]
 
     async def fake_documents(source, prefix="", limit=200):
         # The registry row itself must pass through — list_documents applies
-        # the per-source security filters (Slack channel / Gong workspace
+        # the per-source security filters (Slack channel / Gong account
         # allowlists) from it.
         assert source is github
         return [{"path": "docs/api.md", "name": "api.md", "kind": "file"}]
@@ -106,8 +106,8 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
     async def fake_audit(**kwargs):
         audits.append(kwargs)
 
-    monkeypatch.setattr(files_tree_service, "list_workspace_pages", fake_pages)
-    monkeypatch.setattr(memory_service, "list_workspace_sessions", fake_sessions)
+    monkeypatch.setattr(files_tree_service, "list_scope_pages", fake_pages)
+    monkeypatch.setattr(memory_service, "list_scope_sessions", fake_sessions)
     monkeypatch.setattr(source_service, "list_connected_sources", fake_connected)
     monkeypatch.setattr(source_service, "list_documents", fake_documents)
     monkeypatch.setattr(source_service, "_audit_source_read", fake_audit)

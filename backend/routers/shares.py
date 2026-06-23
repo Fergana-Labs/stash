@@ -79,7 +79,7 @@ async def delete_pending_invite(
 
 @router.get("/with-me")
 async def list_shared_with_me(current_user: dict = Depends(get_current_user)):
-    """Everything shared with the current user, across workspaces."""
+    """Everything shared with the current user, across scopes."""
     return {"items": await share_service.list_shared_with_user(current_user["id"])}
 
 

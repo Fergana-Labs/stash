@@ -17,6 +17,6 @@ describe("skillSlugFromInput", () => {
   });
 
   it("rejects unrelated URLs", () => {
-    expect(skillSlugFromInput("https://joinstash.ai/workspaces/ws-1")).toBe("");
+    expect(skillSlugFromInput("https://joinstash.ai/files/file-1")).toBe("");
   });
 });

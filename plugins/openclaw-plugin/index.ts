@@ -7,7 +7,7 @@
  * turn regardless of transport — telegram, webchat, Control UI direct chat,
  * subagents — because they're emitted by the canonical agent runtime.
  *
- * All HTTP work runs in-process. Auth + workspace come from
+ * All HTTP work runs in-process. Auth comes from
  * `~/.stash/config.json` (the CLI's config, populated by `stash connect`).
  * Failed posts are queued to `<data>/event_queue.jsonl` and retried on the
  * next successful post, matching the stashai Python client's behavior.
@@ -25,10 +25,6 @@ type StashConfig = {
   base_url?: string;
   api_key?: string;
   username?: string;
-};
-
-type StashManifest = {
-  workspace_id?: string;
 };
 
 type EventBody = {
@@ -56,27 +52,7 @@ function readConfig(): StashConfig {
   }
 }
 
-function findManifest(): StashManifest | null {
-  let dir = process.cwd();
-  while (true) {
-    const candidate = join(dir, ".stash", "stash.json");
-    if (existsSync(candidate)) {
-      try { return JSON.parse(readFileSync(candidate, "utf8")) as StashManifest; }
-      catch { return null; }
-    }
-    const parent = join(dir, "..");
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-function eventsPath(workspaceId: string): string {
-  if (!workspaceId) {
-    throw new Error("workspaceId is required for session events");
-  }
-  return `/api/v1/workspaces/${workspaceId}/sessions/events`;
-}
+const EVENTS_PATH = "/api/v1/me/sessions/events";
 
 function extractText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -162,10 +138,8 @@ async function drainQueue(base: string, apiKey: string): Promise<void> {
 
 async function pushEvent(body: EventBody): Promise<void> {
   const cfg = readConfig();
-  const manifest = findManifest();
   const base = cfg.base_url ?? "https://joinstash.ai";
   const apiKey = cfg.api_key ?? "";
-  const workspaceId = manifest?.workspace_id ?? "";
   if (!apiKey) return;
 
   const fullBody: EventBody = {
@@ -173,7 +147,7 @@ async function pushEvent(body: EventBody): Promise<void> {
     agent_name: cfg.username ?? "openclaw",
     metadata: { ...(body.metadata ?? {}), client: "openclaw" },
   };
-  const path = eventsPath(workspaceId);
+  const path = EVENTS_PATH;
 
   const ok = await postRaw(base, apiKey, path, fullBody);
   if (!ok) { enqueue(path, fullBody); return; }
@@ -204,7 +178,7 @@ function runHook(script: string, payload: unknown): void {
 export default definePluginEntry({
   id: "stash",
   name: "Stash",
-  description: "Stream Openclaw sessions to a Stash workspace.",
+  description: "Stream Openclaw sessions to your Stash.",
   register(api) {
     api.on("session_start", (event, ctx) => {
       const sessionId = event.sessionKey ?? event.sessionId ?? ctx.sessionKey;

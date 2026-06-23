@@ -48,28 +48,27 @@ class _FakeClient:
             }
         ]
 
-    def snapshot_source_into_skill(self, workspace_id, skill_id, source_id, path):
-        self._calls.append(("snapshot", workspace_id, skill_id, source_id, path))
+    def snapshot_source_into_skill(self, skill_id, source_id, path):
+        self._calls.append(("snapshot", skill_id, source_id, path))
         return {"id": "page-1"}
 
     # session folders
-    def list_session_folders(self, workspace_id):
-        self._calls.append(("folders", workspace_id))
+    def list_session_folders(self):
+        self._calls.append(("folders",))
         return [{"name": "Launch", "id": "f1"}]
 
-    def create_session_folder(self, workspace_id, name):
-        self._calls.append(("new_folder", workspace_id, name))
+    def create_session_folder(self, name):
+        self._calls.append(("new_folder", name))
         return {"id": "f1", "name": name}
 
-    def assign_session_folder(self, workspace_id, session_row_id, folder_id=None):
-        self._calls.append(("assign", workspace_id, session_row_id, folder_id))
+    def assign_session_folder(self, session_row_id, folder_id=None):
+        self._calls.append(("assign", session_row_id, folder_id))
         return {"ok": True}
 
 
 def _wire(monkeypatch) -> list:
     calls: list = []
     monkeypatch.setattr(main, "_require_auth", lambda: None)
-    monkeypatch.setattr(main, "_resolve_workspace", lambda: "ws-1")
     monkeypatch.setattr(main, "_client", lambda: _FakeClient(calls))
     return calls
 
@@ -84,17 +83,15 @@ def test_shares_add_and_remove(monkeypatch) -> None:
 
 def test_skill_snapshot_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.skills_snapshot_source(
-        "cart-1", source="src-1", path="specs/auth.md", workspace_id=None, as_json=True
-    )
-    assert ("snapshot", "ws-1", "cart-1", "src-1", "specs/auth.md") in calls
+    main.skills_snapshot_source("cart-1", source="src-1", path="specs/auth.md", as_json=True)
+    assert ("snapshot", "cart-1", "src-1", "specs/auth.md") in calls
 
 
 def test_session_folders(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.hist_folders(workspace_id=None, as_json=True)
-    main.hist_new_folder("Launch", workspace_id=None, as_json=True)
-    main.mv_cmd(["session:sess-1"], to_folder="f1", to_root=False, workspace_id=None)
-    assert ("folders", "ws-1") in calls
-    assert ("new_folder", "ws-1", "Launch") in calls
-    assert ("assign", "ws-1", "sess-1", "f1") in calls
+    main.hist_folders(as_json=True)
+    main.hist_new_folder("Launch", as_json=True)
+    main.mv_cmd(["session:sess-1"], to_folder="f1", to_root=False)
+    assert ("folders",) in calls
+    assert ("new_folder", "Launch") in calls
+    assert ("assign", "sess-1", "f1") in calls

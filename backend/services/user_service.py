@@ -34,16 +34,10 @@ async def register_user(
     user = dict(row)
     api_key = await create_api_key(user["id"], name="password register", key_type="password")
 
-    # Auto-provision a default space for new users. Named "Stash" — we don't
-    # surface "workspace" terminology in the product anymore.
-    from . import workspace_service
+    # Seed the new user's scope (the user is their own scope).
+    from . import user_scope_service
 
-    await workspace_service.create_workspace(
-        name="Stash",
-        description="",
-        creator_id=user["id"],
-        is_primary=True,
-    )
+    await user_scope_service.seed_user_scope(user["id"])
 
     # Turn any pending share invites for this email into real shares.
     from . import share_service

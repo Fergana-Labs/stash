@@ -21,7 +21,6 @@ class _FakeClient:
 
 def _cfg() -> dict:
     return {
-        "workspace_id": "ws1",
         "agent_name": "alice-agent",
         "client": "codex_cli",
         "api_endpoint": "https://joinstash.ai",
@@ -47,28 +46,7 @@ def test_create_session_record_saves_url_and_transcript_path(tmp_path):
     assert state["session_row_id"] == "session-row-1"
     assert state["session_url"] == "https://app.joinstash.ai/sessions/s1"
     assert state["uploaded_session_id"] == "s1"
-    assert state["uploaded_workspace_id"] == "ws1"
     assert state["transcript_path"] == "/tmp/s1.jsonl"
-
-
-def test_create_session_record_resolves_workspace_from_event_cwd(monkeypatch, tmp_path):
-    from stashai.plugin import hooks
-
-    monkeypatch.setattr(
-        hooks,
-        "find_manifest",
-        lambda cwd: {"workspace_id": "ws-from-cwd"} if cwd == "/repo" else None,
-    )
-    cfg = {**_cfg(), "workspace_id": ""}
-    state = {"session_id": "s1"}
-    event = HookEvent(kind="session_start", session_id="s1", cwd="/repo")
-    client = _FakeClient()
-
-    url = create_session_record(client, cfg, state, event, tmp_path)
-
-    assert url == "https://app.joinstash.ai/sessions/s1"
-    assert client.created[0]["workspace_id"] == "ws-from-cwd"
-    assert state["uploaded_workspace_id"] == "ws-from-cwd"
 
 
 def test_finalize_session_upload_spawns_upload_with_transcript(monkeypatch, tmp_path):
@@ -105,7 +83,6 @@ def test_finalize_session_upload_spawns_upload_with_transcript(monkeypatch, tmp_
             "transcript_path": "/tmp/s1.jsonl",
             "cwd": "/repo",
             "files_touched": ["app.py"],
-            "workspace_id": "ws1",
             "session_id": "s1",
             "agent_name": "alice-agent",
             "base_url": "https://joinstash.ai",
@@ -135,7 +112,6 @@ def test_finalize_session_upload_spawns_history_fallback_without_transcript(monk
     assert finalize_session_upload(_FakeClient(), _cfg(), state, event)
     assert calls[0]["transcript_path"] == ""
     assert calls[0]["session_id"] == "s1"
-    assert calls[0]["workspace_id"] == "ws1"
 
 
 def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
@@ -159,8 +135,8 @@ def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
         def __exit__(self, *args):
             return None
 
-        def upload_session_artifact(self, workspace_id, session_row_id, display_path, content):
-            uploads.append((workspace_id, session_row_id, display_path, content))
+        def upload_session_artifact(self, session_row_id, display_path, content):
+            uploads.append((session_row_id, display_path, content))
 
     monkeypatch.setattr(_do_session_upload, "StashClient", FakeClient)
     monkeypatch.setattr(_do_session_upload, "_collect_git_files", lambda cwd: [])
@@ -173,7 +149,6 @@ def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
             "session-row-1",
             "",
             str(tmp_path),
-            "ws1",
             "s1",
             "alice-agent",
             "https://joinstash.ai",
@@ -184,7 +159,7 @@ def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
 
     _do_session_upload.main()
 
-    assert uploads == [("ws1", "session-row-1", "app.py", b"print('hi')\n")]
+    assert uploads == [("session-row-1", "app.py", b"print('hi')\n")]
 
 
 def _capture_spawn(monkeypatch) -> list:
@@ -219,13 +194,11 @@ def test_skills_sync_targets_per_agent_dir(monkeypatch):
         calls = _capture_spawn(monkeypatch)
         spawn_skills_sync(
             {"client": client, "api_endpoint": "https://joinstash.ai", "api_key": "k"},
-            "ws-1",
         )
         assert len(calls) == 1, client
         cmd = calls[0]["cmd"]
         assert cmd[:3] == ["stash", "skills", "sync"]
         assert cmd[cmd.index("--dir") + 1] == expected_dir
-        assert cmd[cmd.index("--workspace") + 1] == "ws-1"
         assert calls[0]["env"]["STASH_URL"] == "https://joinstash.ai"
         assert calls[0]["env"]["STASH_API_KEY"] == "k"
 
@@ -236,5 +209,5 @@ def test_skills_sync_noop_for_project_only_agents(monkeypatch):
     # Cursor only loads project-level .cursor/skills — no global dir, no spawn.
     for client in ("cursor", "unknown_agent", ""):
         calls = _capture_spawn(monkeypatch)
-        spawn_skills_sync({"client": client}, "ws-1")
+        spawn_skills_sync({"client": client})
         assert calls == [], client

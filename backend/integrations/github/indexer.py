@@ -76,7 +76,6 @@ async def index_github_repo(source: dict) -> str | None:
     from uuid import UUID
 
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     external_ref = source["external_ref"]
 
@@ -95,7 +94,7 @@ async def index_github_repo(source: dict) -> str | None:
         await source_service.upsert_content_document(
             table="github_documents",
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path=rel,
             name=rel.rsplit("/", 1)[-1],
             kind="file",

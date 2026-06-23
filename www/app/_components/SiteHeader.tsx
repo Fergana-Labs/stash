@@ -35,7 +35,7 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
             <div className="invisible absolute left-0 top-full w-60 pt-2 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
               <div className="overflow-hidden rounded-xl border border-border bg-background p-1.5 shadow-card">
                 <UseCaseItem href="/connect-your-data" title="Connect your data" desc="Plug in GitHub, Drive, Gmail, Notion, Slack." />
-                <UseCaseItem href="/agent-native-drive" title="Agent-native Drive" desc="A workspace agents read and write like a repo." />
+                <UseCaseItem href="/agent-native-drive" title="Agent-native Drive" desc="A space agents read and write like a repo." />
                 <UseCaseItem href="/memory" title="Memory" desc="Best-in-class retrieval: wiki + vectors + grep." />
                 <UseCaseItem href="/audit-agent-sessions" title="Audit agent sessions" desc="Onboard, coach, and monitor like Granola or Gong." />
                 <UseCaseItem href="/skills" title="Skills" desc="Bundle repeatable processes, share them, fork them." />

@@ -9,7 +9,7 @@ async def register_task(
     *,
     task_id: str,
     user_id: UUID,
-    workspace_id: UUID | None,
+    owner_user_id: UUID | None,
     task_type: str,
     object_type: str | None = None,
     object_id: UUID | None = None,
@@ -17,12 +17,12 @@ async def register_task(
     await get_pool().execute(
         """
         INSERT INTO task_records
-            (task_id, user_id, workspace_id, task_type, object_type, object_id)
+            (task_id, user_id, owner_user_id, task_type, object_type, object_id)
         VALUES ($1, $2, $3, $4, $5, $6)
         """,
         task_id,
         user_id,
-        workspace_id,
+        owner_user_id,
         task_type,
         object_type,
         object_id,

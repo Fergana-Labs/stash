@@ -46,10 +46,10 @@ class FakeClient:
     def __exit__(self, *args):
         return False
 
-    def sources_tree(self, workspace_id, depth=3):
+    def sources_tree(self, depth=3):
         return SOURCES
 
-    def list_source_entries(self, workspace_id, source, path=""):
+    def list_source_entries(self, source, path=""):
         assert source == "11111111-1111-1111-1111-111111111111"
         return [
             {"path": "docs/api.md", "name": "api.md", "kind": "file"},
@@ -60,7 +60,6 @@ class FakeClient:
 
 def _setup(monkeypatch):
     monkeypatch.setattr(main, "_require_auth", lambda: {"api_key": "k"})
-    monkeypatch.setattr(main, "_resolve_workspace", lambda: "ws-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
     monkeypatch.setattr(main.telemetry, "record", lambda *a, **k: None)
 
@@ -68,7 +67,7 @@ def _setup(monkeypatch):
 def test_ls_overview_shows_every_source_as_a_directory(monkeypatch, capsys):
     _setup(monkeypatch)
 
-    main.ls_cmd(path="", workspace_id=None, depth=2, as_json=False)
+    main.ls_cmd(path="", depth=2, as_json=False)
 
     out = capsys.readouterr().out
     assert "files/" in out
@@ -83,7 +82,7 @@ def test_ls_overview_shows_every_source_as_a_directory(monkeypatch, capsys):
 def test_ls_path_collapses_prefix_listing_to_one_level(monkeypatch, capsys):
     _setup(monkeypatch)
 
-    main.ls_cmd(path="stash/docs", workspace_id=None, depth=2, as_json=False)
+    main.ls_cmd(path="stash/docs", depth=2, as_json=False)
 
     out = capsys.readouterr().out
     assert "api.md" in out
@@ -97,7 +96,7 @@ def test_ls_unknown_source_fails_loudly(monkeypatch, capsys):
     _setup(monkeypatch)
 
     try:
-        main.ls_cmd(path="nope", workspace_id=None, depth=2, as_json=False)
+        main.ls_cmd(path="nope", depth=2, as_json=False)
     except Exception as e:
         assert type(e).__name__ == "Exit"
     out = capsys.readouterr().out

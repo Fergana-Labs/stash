@@ -19,21 +19,17 @@ async def _register(client: AsyncClient) -> str:
     return resp.json()["api_key"]
 
 
-async def _workspace(client: AsyncClient, api_key: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "History pagination"},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
+async def _scope(client: AsyncClient, api_key: str) -> dict:
+    resp = await client.get("/api/v1/users/me", headers=_auth(api_key))
+    assert resp.status_code == 200
     return resp.json()
 
 
-async def _seed_events(client: AsyncClient, api_key: str, workspace_id: str) -> None:
+async def _seed_events(client: AsyncClient, api_key: str, owner_user_id: str) -> None:
     headers = _auth(api_key)
     for day in range(1, 4):
         resp = await client.post(
-            f"/api/v1/workspaces/{workspace_id}/sessions/events",
+            "/api/v1/me/sessions/events",
             json={
                 "agent_name": "tester",
                 "event_type": "note",
@@ -47,14 +43,14 @@ async def _seed_events(client: AsyncClient, api_key: str, workspace_id: str) -> 
 
 
 @pytest.mark.asyncio
-async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
+async def test_scope_history_before_and_after_cursors(client: AsyncClient):
     api_key = await _register(client)
-    ws = await _workspace(client, api_key)
+    scope = await _scope(client, api_key)
     headers = _auth(api_key)
-    await _seed_events(client, api_key, ws["id"])
+    await _seed_events(client, api_key, scope["id"])
 
     first = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2},
         headers=headers,
     )
@@ -64,7 +60,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     assert first_body["has_more"] is True
 
     older = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2, "before": first_body["events"][-1]["created_at"]},
         headers=headers,
     )
@@ -74,7 +70,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     assert older_body["has_more"] is False
 
     asc = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2, "order": "asc"},
         headers=headers,
     )
@@ -83,7 +79,7 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
     assert [e["content"] for e in asc_body["events"]] == ["event-1", "event-2"]
 
     newer = await client.get(
-        f"/api/v1/workspaces/{ws['id']}/sessions/events",
+        "/api/v1/me/sessions/events",
         params={"limit": 2, "order": "asc", "after": asc_body["events"][-1]["created_at"]},
         headers=headers,
     )
@@ -94,9 +90,9 @@ async def test_workspace_history_before_and_after_cursors(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_all_history_events_before_cursor(client: AsyncClient):
     api_key = await _register(client)
-    ws = await _workspace(client, api_key)
+    scope = await _scope(client, api_key)
     headers = _auth(api_key)
-    await _seed_events(client, api_key, ws["id"])
+    await _seed_events(client, api_key, scope["id"])
 
     first = await client.get(
         "/api/v1/me/session-events",

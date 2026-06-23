@@ -14,7 +14,6 @@ def _detail() -> dict:
     return {
         "skill": {"title": "Hivemind Memory"},
         "folder_name": "hivemind-memory",
-        "workspace_name": "Stash Curated",
         "contents": {
             "subfolders": [{"name": "references", "path": ["references"]}],
             "pages": [

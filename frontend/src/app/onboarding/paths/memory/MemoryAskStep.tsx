@@ -5,27 +5,18 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { track } from "@/lib/analytics";
-import { API_BASE, apiFetch, getAuthToken } from "@/lib/api";
+import { API_BASE, getAuthToken, getOverview } from "@/lib/api";
 import { READ_TOOLS, describeToolCall } from "@/lib/agentChat";
-import type { StepCtx } from "@/lib/onboarding/paths";
-
-type Overview = {
-  sessions: { session_id?: string; name?: string }[];
-  files: {
-    pages: { id: string; name: string }[];
-  };
-};
 
 type Citation = { id: string; tool: string; label: string };
 
 // Step 3: one live agentic search. Show a few personalized suggestions
 // (or let user type their own), stream the answer with citations, then
-// the wizard's "Continue" hands off to /workspaces/{id}. Single question
-// by design — this is the demo, not the workspace itself.
+// the wizard's "Continue" hands off to the user's drive. Single question
+// by design — this is the demo, not the drive itself.
 export default function MemoryAskStep({
-  workspaceId,
   onAnswered,
-}: StepCtx & { onAnswered?: () => void }) {
+}: { onAnswered?: () => void }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -42,15 +33,14 @@ export default function MemoryAskStep({
   }, [citations]);
 
   useEffect(() => {
-    if (!workspaceId) return;
-    apiFetch<Overview>(`/api/v1/workspaces/${workspaceId}/overview`)
+    getOverview()
       .then((o) => {
         const pages = (o.files?.pages ?? []).slice(0, 2);
         const sessions = (o.sessions ?? []).slice(0, 1);
         const out: string[] = [];
         if (sessions.length > 0) {
           const s = sessions[0];
-          const label = s.name || s.session_id || "the last session";
+          const label = s.title || s.session_id || "the last session";
           out.push(`What was I working on in ${label}?`);
         }
         if (pages.length > 0) {
@@ -62,7 +52,7 @@ export default function MemoryAskStep({
         if (out.length === 0) {
           out.push(
             "What's the last thing I worked on?",
-            "Catch me up on this workspace",
+            "Catch me up on my drive",
           );
         }
         setSuggestions(out.slice(0, 3));
@@ -70,14 +60,14 @@ export default function MemoryAskStep({
       .catch(() => {
         setSuggestions([
           "What's the last thing I worked on?",
-          "Catch me up on this workspace",
+          "Catch me up on my drive",
         ]);
       });
-  }, [workspaceId]);
+  }, []);
 
   const ask = useCallback(
     async (q: string) => {
-      if (!workspaceId || !q.trim() || streaming) return;
+      if (!q.trim() || streaming) return;
       setSubmitted(true);
       setStreaming(true);
       setAnswer("");
@@ -89,21 +79,17 @@ export default function MemoryAskStep({
 
       try {
         const token = await getAuthToken();
-        const res = await fetch(
-          `${API_BASE}/api/v1/workspaces/${workspaceId}/ask`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              messages: [{ role: "user", content: q }],
-              scope: "workspace",
-            }),
-            signal: controller.signal,
+        const res = await fetch(`${API_BASE}/api/v1/me/ask`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-        );
+          body: JSON.stringify({
+            messages: [{ role: "user", content: q }],
+          }),
+          signal: controller.signal,
+        });
         if (!res.ok || !res.body) {
           throw new Error(`Ask failed: ${res.status}`);
         }
@@ -143,7 +129,7 @@ export default function MemoryAskStep({
             }
           }
         }
-        // The agent finished — unblock "Launch workspace".
+        // The agent finished — unblock "Launch drive".
         onAnswered?.();
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
@@ -155,12 +141,11 @@ export default function MemoryAskStep({
         // Fire after the stream finishes so has_results reflects what we
         // actually rendered, not whether the request started.
         track("web.ask_skill", {
-          workspace_id: workspaceId,
           has_results: citationsRef.current.length > 0,
         });
       }
     },
-    [workspaceId, streaming, onAnswered],
+    [streaming, onAnswered],
   );
 
   useEffect(() => () => abortRef.current?.abort(), []);

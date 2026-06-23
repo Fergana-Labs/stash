@@ -25,8 +25,8 @@ _SKILLS_DIR_BY_CLIENT = {
 }
 
 
-def spawn_skills_sync(cfg: dict, workspace_id: str) -> None:
-    """Sync the workspace's skills into the agent's skills directory in the
+def spawn_skills_sync(cfg: dict) -> None:
+    """Sync the user's skills into the agent's skills directory in the
     background, so they're loaded next session. Detached and silent — a failed
     sync must never break a session. No-op for agents without a global skills
     directory (e.g. Cursor, which is project-only)."""
@@ -34,8 +34,6 @@ def spawn_skills_sync(cfg: dict, workspace_id: str) -> None:
     if not skills_dir:
         return
     cmd = ["stash", "skills", "sync", "--dir", skills_dir]
-    if workspace_id:
-        cmd += ["--workspace", workspace_id]
     env = dict(os.environ)
     if cfg.get("api_endpoint"):
         env["STASH_URL"] = cfg["api_endpoint"]
@@ -58,7 +56,6 @@ def spawn_skills_sync(cfg: dict, workspace_id: str) -> None:
 def spawn_session_watcher(
     agent_pid: int,
     session_id: str,
-    workspace_id: str,
     agent_name: str,
     base_url: str,
     api_key: str,
@@ -73,7 +70,7 @@ def spawn_session_watcher(
         subprocess.Popen(
             [
                 sys.executable, str(script),
-                str(agent_pid), session_id, workspace_id, agent_name,
+                str(agent_pid), session_id, agent_name,
                 base_url, api_key, cwd, str(data_dir), session_row_id, transcript_path,
             ],
             stdin=subprocess.DEVNULL,
@@ -92,7 +89,6 @@ def spawn_session_upload(
     transcript_path: str,
     cwd: str,
     files_touched: list[str],
-    workspace_id: str,
     session_id: str,
     agent_name: str,
     base_url: str,
@@ -108,7 +104,7 @@ def spawn_session_upload(
         subprocess.Popen(
             [
                 sys.executable, str(script),
-                session_row_id, transcript_path, cwd, workspace_id, session_id,
+                session_row_id, transcript_path, cwd, session_id,
                 agent_name, base_url, api_key, upload_status_dir,
             ],
             env=env,

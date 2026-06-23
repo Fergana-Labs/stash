@@ -3,12 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { listAllTables, semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
-import {
-  getCachedWorkspaceSidebar,
-  readCachedWorkspaceSidebar,
-} from "../lib/skillNavigationCache";
-import type { TableWithWorkspace } from "../lib/types";
+import { getSidebar, listAllTables, semanticSearchPages, type Sidebar } from "../lib/api";
+import type { TableWithOwner } from "../lib/types";
 import type { SearchScope } from "./AppShell";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -16,8 +12,6 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   anchorRef: RefObject<HTMLDivElement | null>;
-  workspaceId: string | null;
-  workspaceName?: string | null;
   searchScope: SearchScope | null;
 }
 
@@ -32,16 +26,12 @@ export default function CommandPalette({
   open,
   onClose,
   anchorRef,
-  workspaceId,
-  workspaceName,
   searchScope,
 }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [spine, setSpine] = useState<WorkspaceSidebar | null>(() =>
-    workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null
-  );
-  const [tables, setTables] = useState<TableWithWorkspace[]>([]);
+  const [spine, setSpine] = useState<Sidebar | null>(null);
+  const [tables, setTables] = useState<TableWithOwner[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -61,19 +51,11 @@ export default function CommandPalette({
     setSelected(0);
     setTables([]);
     inputRef.current?.focus();
-    const cached = workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null;
-    if (cached) {
-      setSpine(cached);
-    } else {
-      setSpine(null);
-    }
-    if (workspaceId && !cached) {
-      getCachedWorkspaceSidebar(workspaceId)
-        .then((nextSpine) => {
-          if (!cancelled) setSpine(nextSpine);
-        })
-        .catch(() => {});
-    }
+    getSidebar()
+      .then((nextSpine) => {
+        if (!cancelled) setSpine(nextSpine);
+      })
+      .catch(() => {});
     listAllTables()
       .then((data) => {
         if (!cancelled) setTables(data.tables);
@@ -84,7 +66,7 @@ export default function CommandPalette({
     return () => {
       cancelled = true;
     };
-  }, [open, workspaceId]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -92,7 +74,7 @@ export default function CommandPalette({
       setSelected(0);
       return;
     }
-    const fullPageSearch = fullPageSearchResult(searchScope, workspaceId, workspaceName, query);
+    const fullPageSearch = fullPageSearchResult(searchScope, query);
     if (!query.trim()) {
       setResults([fullPageSearch]);
       setSelected(0);
@@ -102,7 +84,7 @@ export default function CommandPalette({
 
     // Local spine fuzzy match (instant)
     const local: Result[] = [fullPageSearch];
-    if (spine && workspaceId) {
+    if (spine) {
       const filesTree = spine.files;
       filesTree.pages.forEach((p) => {
         if (p.name.toLowerCase().includes(q))
@@ -127,7 +109,7 @@ export default function CommandPalette({
           local.push({
             kind: "folder",
             label: f.name,
-            href: `/workspaces/${workspaceId}/folders/${f.id}`,
+            href: `/folders/${f.id}`,
             detail: `${f.page_count} pages · ${f.file_count} files`,
           });
       });
@@ -144,7 +126,6 @@ export default function CommandPalette({
       });
     }
     tables.forEach((table) => {
-      if (workspaceId && table.workspace_id !== workspaceId) return;
       if (!tableMatchesQuery(table, q)) return;
       local.push({
         kind: "table",
@@ -157,10 +138,9 @@ export default function CommandPalette({
     setSelected(0);
 
     // Remote debounce (250ms): semantic page search
-    if (!workspaceId) return;
     const timer = setTimeout(async () => {
       try {
-        const pages = await semanticSearchPages(workspaceId, query, 6);
+        const pages = await semanticSearchPages(query, 6);
         const remote: Result[] = pages.map((p) => ({
           kind: "page" as const,
           label: p.name.replace(/\.md$/, ""),
@@ -176,7 +156,7 @@ export default function CommandPalette({
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, open, spine, tables, workspaceId, workspaceName, searchScope]);
+  }, [query, open, spine, tables, searchScope]);
 
   useEffect(() => {
     if (!open) return;
@@ -284,45 +264,38 @@ export default function CommandPalette({
   );
 }
 
-function fullPageSearchResult(
-  scope: SearchScope | null,
-  workspaceId: string | null,
-  workspaceName: string | null | undefined,
-  query: string
-): Result {
+function fullPageSearchResult(scope: SearchScope | null, query: string): Result {
   const params = new URLSearchParams(scope?.params);
-  if (!scope && workspaceId) params.set("workspace", workspaceId);
 
   const q = query.trim();
   if (q) params.set("q", q);
 
-  const label = scope?.label ?? workspaceName ?? (workspaceId ? "this workspace" : "Skill");
+  const label = scope?.label ?? "Skill";
   const hrefParams = params.toString();
 
   return {
     kind: "search",
     label: q ? `Search ${label} for "${q}"` : `Search ${label}`,
     href: hrefParams ? `/search?${hrefParams}` : "/search",
-    detail: scope?.detail ?? (workspaceId ? "Search this workspace" : "Search all workspaces"),
+    detail: scope?.detail ?? "Search everything",
   };
 }
 
-function tableMatchesQuery(table: TableWithWorkspace, query: string): boolean {
+function tableMatchesQuery(table: TableWithOwner, query: string): boolean {
   const columns = table.columns.map((column) => column.name).join(" ");
   return [table.name, table.description, columns].some((value) =>
     value.toLowerCase().includes(query)
   );
 }
 
-function tableHref(table: TableWithWorkspace): string {
+function tableHref(table: TableWithOwner): string {
   return `/tables/${table.id}`;
 }
 
-function tableDetail(table: TableWithWorkspace): string {
+function tableDetail(table: TableWithOwner): string {
   const parts = ["Table"];
   if (typeof table.row_count === "number") {
     parts.push(`${table.row_count} row${table.row_count === 1 ? "" : "s"}`);
   }
-  if (table.workspace_name) parts.push(table.workspace_name);
   return parts.join(" · ");
 }

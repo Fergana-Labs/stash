@@ -26,20 +26,20 @@ def not_skill_folder_pred(alias: str) -> str:
     )
 
 
-async def skill_subtree_folder_ids(workspace_id: UUID) -> set[UUID]:
+async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     """Every folder inside any skill subtree: the SKILL.md folders themselves
     plus all their descendants. Used to keep Files surfaces skill-free."""
     pool = get_pool()
     rows = await pool.fetch(
         "WITH RECURSIVE skill_tree AS ("
         "  SELECT f.id FROM folders f "
-        "  WHERE f.workspace_id = $1 "
+        "  WHERE f.owner_user_id = $1 "
         "    AND EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
         "                AND p.name = 'SKILL.md' AND p.deleted_at IS NULL)"
         "  UNION"
         "  SELECT f.id FROM folders f JOIN skill_tree st ON f.parent_folder_id = st.id"
         ") SELECT id FROM skill_tree",
-        workspace_id,
+        owner_user_id,
     )
     return {r["id"] for r in rows}
 
@@ -74,8 +74,8 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
     return meta, body
 
 
-async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
-    """List every skill folder in the workspace: folder + SKILL.md frontmatter,
+async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+    """List every skill folder in the scope: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared."""
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)
@@ -89,9 +89,9 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
         "FROM folders f "
         "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "LEFT JOIN skills s ON s.folder_id = f.id "
-        f"WHERE f.workspace_id = $1 AND {readable} "
+        f"WHERE f.owner_user_id = $1 AND {readable} "
         "ORDER BY f.name",
-        workspace_id,
+        owner_user_id,
         user_id,
     )
     out = []
@@ -123,12 +123,12 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
     return out
 
 
-async def read_skill(workspace_id: UUID, name: str, user_id: UUID) -> dict | None:
+async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | None:
     """Read a skill by its frontmatter name OR its folder name. Returns the
     parsed SKILL.md plus the full text of every sibling file concatenated, so
     an agent can load the whole skill in one call."""
     pool = get_pool()
-    skills = await list_skills(workspace_id, user_id)
+    skills = await list_skills(owner_user_id, user_id)
     match = next(
         (s for s in skills if s["name"] == name or s["folder_id"] == name),
         None,
@@ -154,7 +154,7 @@ async def read_skill(workspace_id: UUID, name: str, user_id: UUID) -> dict | Non
             "page",
             page["id"],
             user_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
         ):
             readable_pages.append(page)
     pages = readable_pages

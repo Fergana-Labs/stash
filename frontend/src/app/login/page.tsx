@@ -6,7 +6,7 @@ import Header from "../../components/Header";
 import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { API_BASE, getToken, setToken, listMyWorkspaces } from "../../lib/api";
+import { API_BASE, getToken, setToken } from "../../lib/api";
 import { consumeManualAuth0Logout } from "../../lib/authLogout";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -64,15 +64,7 @@ function LoginPageInner() {
       return;
     }
 
-    listMyWorkspaces().then(({ workspaces }) => {
-      if (workspaces.length === 1) {
-        router.push(`/workspaces/${workspaces[0].id}`);
-      } else {
-        router.push("/");
-      }
-    }).catch(() => {
-      router.push("/");
-    });
+    router.push("/");
   }, [user, loading, cliSession, nextPath, router, justRegistered]);
 
   // Wait for useAuth to load before rendering — otherwise the signed-out form
@@ -218,7 +210,7 @@ function LoginPageInner() {
       title={mode === "login" ? "Welcome back" : "Create your stash"}
       subtitle={
         mode === "login"
-          ? "Sign in to the workspace you share with your agents."
+          ? "Sign in to the stash you share with your agents."
           : "One account for you and your agents."
       }
     >
@@ -366,7 +358,7 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
   return (
     <AuthShell
       title="Welcome back"
-      subtitle="Sign in to the workspace you share with your agents."
+      subtitle="Sign in to the stash you share with your agents."
     >
       <FormCard>{body}</FormCard>
     </AuthShell>

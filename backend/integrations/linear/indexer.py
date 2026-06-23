@@ -39,7 +39,6 @@ def _render_issue(issue: linear_api_service.LinearIssue) -> str:
 async def index_linear(source: dict) -> str | None:
     """Build the navigable index only — one row per issue (identifier + title)."""
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
 
     token = await get_valid_token(owner_user_id, "linear")
@@ -53,7 +52,7 @@ async def index_linear(source: dict) -> str | None:
             await source_service.upsert_index_row(
                 table="linear_index",
                 source_id=source_id,
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 path=identifier,
                 name=f"{identifier} {issue['title']}",
                 kind="issue",

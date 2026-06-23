@@ -20,31 +20,30 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _make_workspace_with_session(client: AsyncClient, api_key: str, session_id: str):
-    workspace_resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "Rename ws"},
+async def _make_scope_with_session(client: AsyncClient, api_key: str, session_id: str):
+    scope_resp = await client.get(
+        "/api/v1/users/me",
         headers=_auth(api_key),
     )
-    assert workspace_resp.status_code == 201
-    workspace = workspace_resp.json()
+    assert scope_resp.status_code == 200
+    scope = scope_resp.json()
 
     session_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/sessions",
+        "/api/v1/me/sessions",
         json={"session_id": session_id, "agent_name": "claude"},
         headers=_auth(api_key),
     )
     assert session_resp.status_code == 201
-    return workspace, session_resp.json()
+    return scope, session_resp.json()
 
 
 @pytest.mark.asyncio
 async def test_rename_session_persists_title(client: AsyncClient, pool):
     api_key, _user = await _register(client)
-    workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-1")
+    scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-1")
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-1/title",
+        "/api/v1/me/sessions/sess-rename-1/title",
         json={"title": "  Investigate flaky auth test  "},
         headers=_auth(api_key),
     )
@@ -52,15 +51,15 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     assert resp.json() == {"title": "Investigate flaky auth test"}
 
     get_resp = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-1",
+        "/api/v1/me/sessions/sess-rename-1",
         headers=_auth(api_key),
     )
     assert get_resp.status_code == 200
     assert get_resp.json()["title"] == "Investigate flaky auth test"
 
     row = await pool.fetchrow(
-        "SELECT title, user_set FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
-        workspace["id"],
+        "SELECT title, user_set FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
+        scope["id"],
         "sess-rename-1",
     )
     assert row["title"] == "Investigate flaky auth test"
@@ -70,11 +69,11 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
 @pytest.mark.asyncio
 async def test_rename_session_truncates_overlong_title(client: AsyncClient, pool):
     api_key, _user = await _register(client)
-    workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-2")
+    _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-2")
 
     long_title = "a" * 200
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-2/title",
+        "/api/v1/me/sessions/sess-rename-2/title",
         json={"title": long_title},
         headers=_auth(api_key),
     )
@@ -86,10 +85,10 @@ async def test_rename_session_truncates_overlong_title(client: AsyncClient, pool
 @pytest.mark.asyncio
 async def test_rename_session_rejects_empty_title(client: AsyncClient):
     api_key, _user = await _register(client)
-    workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-3")
+    _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-3")
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-3/title",
+        "/api/v1/me/sessions/sess-rename-3/title",
         json={"title": "   "},
         headers=_auth(api_key),
     )
@@ -101,10 +100,10 @@ async def test_rename_session_rejects_empty_title(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_rename_session_rejects_unknown_session(client: AsyncClient):
     api_key, _user = await _register(client)
-    workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-4")
+    _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-4")
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/does-not-exist/title",
+        "/api/v1/me/sessions/does-not-exist/title",
         json={"title": "noop"},
         headers=_auth(api_key),
     )
@@ -114,11 +113,11 @@ async def test_rename_session_rejects_unknown_session(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_rename_session_blocks_non_member(client: AsyncClient):
     owner_key, _owner = await _register(client)
-    workspace, _session = await _make_workspace_with_session(client, owner_key, "sess-rename-5")
+    _scope, _session = await _make_scope_with_session(client, owner_key, "sess-rename-5")
 
     outsider_key, _outsider = await _register(client)
     resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-5/title",
+        "/api/v1/me/sessions/sess-rename-5/title",
         json={"title": "should not stick"},
         headers=_auth(outsider_key),
     )
@@ -133,19 +132,19 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     from backend.tasks import session_titles as session_titles_task
 
     api_key, _user = await _register(client)
-    workspace, _session = await _make_workspace_with_session(client, api_key, "sess-rename-6")
+    scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-6")
 
     # Seed an event so the generator sees content to work with.
     await pool.execute(
         "INSERT INTO history_events "
-        "(workspace_id, session_id, agent_name, event_type, content, created_at) "
+        "(owner_user_id, session_id, agent_name, event_type, content, created_at) "
         "VALUES ($1, $2, 'claude', 'user_message', 'first prompt', now())",
-        workspace["id"],
+        scope["id"],
         "sess-rename-6",
     )
 
     rename_resp = await client.patch(
-        f"/api/v1/workspaces/{workspace['id']}/sessions/sess-rename-6/title",
+        "/api/v1/me/sessions/sess-rename-6/title",
         json={"title": "User wrote this"},
         headers=_auth(api_key),
     )
@@ -154,14 +153,14 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     # Run the generator directly. Real prod path goes through Celery but the
     # body is the same coroutine.
     result = await session_titles_task._generate_for_session(
-        UUID(workspace["id"]),
+        UUID(scope["id"]),
         "sess-rename-6",
     )
     assert result == "user-set"
 
     row = await pool.fetchrow(
-        "SELECT title, user_set FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
-        workspace["id"],
+        "SELECT title, user_set FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
+        scope["id"],
         "sess-rename-6",
     )
     assert row["title"] == "User wrote this"

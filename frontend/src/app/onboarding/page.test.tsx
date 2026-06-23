@@ -29,7 +29,6 @@ vi.mock("../../lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("../../lib/api", () => ({
   createPage: vi.fn(),
   getAgentApiKey: vi.fn(),
-  listMyWorkspaces: vi.fn().mockResolvedValue({ workspaces: [] }),
   updateMe: vi.fn(),
   updatePage: vi.fn(),
 }));

@@ -29,7 +29,7 @@ from stashai.plugin.state import load_state, reset_stats, save_state
 
 CONTEXT = (
     "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
-    "Your activity in this repo is streamed to your team's Stash workspace.\n\n"
+    "Your activity in this repo is streamed to your Stash account.\n\n"
     "What a Skill is: a *special folder* (one containing a SKILL.md) of related "
     "files, tables) that shares like any folder and gains a public URL when "
     "published. A Skill is for a collection — a project writeup with its "
@@ -38,7 +38,7 @@ CONTEXT = (
     "When sharing artifacts, pick the right tool:\n"
     " - Single file your teammate should look at → `stash upload "
     "<path> --json` and hand them the returned `app_url`. NO Skill needed.\n"
-    " - Upload a folder/project into the workspace → `stash upload <path> "
+    " - Upload a folder/project into your Stash → `stash upload <path> "
     "--json` returns the folder `app_url`. NO Skill created by default.\n"
     " - You're publishing a curated bundle people should see together → "
     '`stash upload <path> --skill "<title>" --json` (or `stash skills '
@@ -55,16 +55,16 @@ CONTEXT = (
     "session transcripts, and every connected integration (GitHub, Slack, "
     "Gong, Gmail, Drive, Notion, …). When asked what you have access to, run "
     "it and show the tree; drill in with `stash ls <source>/<path>`.\n\n"
-    "Browse Stash through the virtual filesystem first when you need workspace "
-    'context: `stash vfs ls /`, `stash vfs "find /workspaces -maxdepth 3 '
-    '-type f"`, `stash vfs "rg \\"query\\" /workspaces"`, or '
-    "`stash vfs \"cat '/workspaces/<workspace>/README.md' | sed -n "
+    "Browse Stash through the virtual filesystem first when you need "
+    'context: `stash vfs ls /me`, `stash vfs "find /me -maxdepth 3 '
+    '-type f"`, `stash vfs "rg \\"query\\" /me"`, or '
+    "`stash vfs \"cat '/me/files/README.md' | sed -n "
     "'1,80p'\"`.\n\n"
     "Common direct reads: "
     '`stash search "<query>"`, '
-    "`stash vfs \"cat '/workspaces/<id>/sessions/_index.jsonl'\"`, "
+    "`stash vfs \"cat '/me/sessions/_index.jsonl'\"`, "
     "`stash sessions agents`, "
-    "`stash vfs \"find /workspaces -name '*.md'\"`."
+    "`stash vfs \"find /me -name '*.md'\"`."
 )
 
 SESSION_CONTEXT = (
@@ -79,7 +79,7 @@ def main():
     cfg = get_config()
 
     state = load_state(DATA_DIR)
-    if not uploads_enabled(cfg, event):
+    if not uploads_enabled(cfg):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
         messages = [m for m in (warning, shadow_install_warning()) if m]
         if messages:
@@ -101,16 +101,13 @@ def main():
     except Exception:
         session_url = None
 
-    spawn_skills_sync(
-        cfg, state.get("uploaded_workspace_id") or cfg.get("workspace_id", "")
-    )
+    spawn_skills_sync(cfg)
 
     if session_url:
         session_context = "\n" + SESSION_CONTEXT.format(url=session_url)
         spawn_session_watcher(
             agent_pid=os.getppid(),
             session_id=event.session_id,
-            workspace_id=state.get("uploaded_workspace_id") or cfg.get("workspace_id", ""),
             agent_name=cfg.get("agent_name", ""),
             base_url=cfg.get("api_endpoint", ""),
             api_key=cfg.get("api_key", ""),

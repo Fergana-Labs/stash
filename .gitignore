@@ -6,6 +6,7 @@ __pycache__/
 *.pyo
 .env
 .env.local
+.env.1password
 *.db
 venv/
 .venv/

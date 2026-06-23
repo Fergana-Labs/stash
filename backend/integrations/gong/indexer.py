@@ -26,7 +26,8 @@ LOOKBACK_DAYS = 90
 MAX_CALLS = 5000
 
 
-def _call_workspace_id(meta: dict) -> str:
+def _call_account_id(meta: dict) -> str:
+    # Gong's API still labels the call's account scope "workspaceId".
     return str(meta.get("workspaceId") or "")
 
 
@@ -89,15 +90,14 @@ async def _fetch_transcripts(
 
 async def index_gong(source: dict) -> str | None:
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
-    allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
+    allowed_account_ids = set(source_service.gong_allowed_workspace_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
-    if not allowed_workspace_ids:
+    if not allowed_account_ids:
         # purge_disallowed_copied_documents above already removed unscoped
         # transcripts; fail loudly so the sync records a sync_error instead
         # of reporting a successful no-op.
-        raise RuntimeError("no allowed workspaces configured")
+        raise RuntimeError("no allowed gong accounts configured")
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
     headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
@@ -110,19 +110,19 @@ async def index_gong(source: dict) -> str | None:
 
     present: list[str] = []
     for call_id, meta in meta_by_id.items():
-        call_workspace_id = _call_workspace_id(meta)
-        if call_workspace_id not in allowed_workspace_ids:
+        call_account_id = _call_account_id(meta)
+        if call_account_id not in allowed_account_ids:
             continue
         await source_service.upsert_content_document(
             table="gong_documents",
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path=call_id,
             name=meta.get("title") or call_id,
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
-            extra={"gong_workspace_id": call_workspace_id},
+            extra={"gong_account_id": call_account_id},
         )
         present.append(call_id)
 
@@ -137,10 +137,9 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     afterward, and returns the call ids found. No soft-delete: this adds to the
     cache, it doesn't define the live set."""
     source_id = UUID(source["id"])
-    workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
-    allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
-    if not allowed_workspace_ids:
+    allowed_account_ids = set(source_service.gong_allowed_workspace_ids(source))
+    if not allowed_account_ids:
         return {
             "fetched": 0,
             "since": since.isoformat(),
@@ -161,19 +160,19 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     for call_id, meta in meta_by_id.items():
         if len(refs) >= limit:
             break
-        call_workspace_id = _call_workspace_id(meta)
-        if call_workspace_id not in allowed_workspace_ids:
+        call_account_id = _call_account_id(meta)
+        if call_account_id not in allowed_account_ids:
             continue
         await source_service.upsert_content_document(
             table="gong_documents",
             source_id=source_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             path=call_id,
             name=meta.get("title") or call_id,
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
-            extra={"gong_workspace_id": call_workspace_id},
+            extra={"gong_account_id": call_account_id},
         )
         refs.append(call_id)
 

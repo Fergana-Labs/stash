@@ -14,7 +14,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Jira issues, comments, project metadata, and JQL-derived results.
 - Gong calls, transcripts, participants, and workspace metadata.
 - Source integration credentials, OAuth tokens, refresh tokens, and webhook payloads.
-- Workspace membership, permissions, analytics, and security audit events.
+- Account permissions, analytics, and security audit events.
 
 ## Code Controls Required For Managed Access
 
@@ -28,28 +28,25 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Managed Auth0 deployments must reject password-login, manually-created, migrated, and invite-redemption API keys; only explicitly approved CLI device keys may authenticate as Stash API keys.
 - Replayed CLI auth approvals must not mint orphaned device API keys.
 - Expired CLI auth sessions must purge raw pending API keys and revoke approved-but-unclaimed CLI keys.
-- Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
-- User search must be scoped to a workspace where the requester is already a member; it must not enumerate users across tenants.
-- Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
-- User-wide analytics visualizations must not serve cached workspace-derived labels or topics after membership changes; only explicit workspace-scoped visualization results may use persistent caches.
-- Workspace writes must require editor or owner membership. Viewer access is read-only.
-- Skill publishing and forking must require the same workspace write/owner gates as creating workspace content; viewers are read-only.
-- Public, discoverable, or non-default workspace-readable session folders must require workspace owner membership; private session-folder management and session assignment must require current workspace write access.
+- Aggregate session lists must require the requesting user to own the sessions; event authorship alone must not grant access to another user's sessions.
+- Analytics visualizations must serve only the requesting user's own labels and topics; cross-user data must not leak through persistent caches.
+- Reads and writes must be scoped to the authenticated user; one user must not be able to read or modify another user's content.
+- Skill publishing and forking must require ownership of the source content; published Skills are read-only to anyone but their owner.
+- Public, discoverable, or shared session folders must require owner authentication; session-folder management and session assignment must require the authenticated owner.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
 - Stored file access must use signed URLs. Raw storage URLs must not be returned to clients.
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
 - Slack and Gong allowlist reductions must physically delete copied rows outside the current allowlist.
 - Slack deleted-message events must remove copied message rows, and Slack changed-message events must update the existing copied row without duplicating old content.
-- Slack push-event ingestion must only copy new or changed messages into enabled sources whose owners are still workspace members.
+- Slack push-event ingestion must only copy new or changed messages into enabled sources owned by an active account.
 - Copied source documents that disappear from an upstream crawl must be physically deleted rather than retained as hidden soft-deleted content.
 - Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
 - On-demand source history fetch failures must return generic errors, preserve a hashed security audit event, and log only source metadata plus exception class.
 - Index-only source document read failures, including Jira, Drive, and Asana lazy fetches, must return generic errors, preserve hashed security audit events, and log only source metadata plus exception class.
 - Jira source references and JQL must be scoped and quoted before execution.
-- Source handles must be scoped to the route workspace and source owner.
-- Source sync must require the source owner to still be a workspace member; leaving a workspace must remove member-owned connected sources and copied integration documents.
-- Leaving or removing a workspace member must remove direct shares, share invites, Stash memberships, Stash invites, and member-owned Stashes that user received or granted in that workspace.
+- Source handles must be scoped to the authenticated source owner.
+- Source sync must require the authenticated source owner; deleting an account must remove that user's connected sources and copied integration documents.
 - OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL, clamp row limits before execution, and return generic errors for live query, table listing, and table description failures.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
@@ -67,14 +64,12 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Integration disconnect must delete Stash's local encrypted credentials even when provider token revocation or decryption fails.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Permanent delete paths must delete a storage object only when no surviving file or session artifact still references its storage key.
-- Sensitive integration and source actions must emit workspace security audit events that only admins can read.
+- Sensitive integration and source actions must emit security audit events that only the owning user and admins can read.
 - Connected-source document reads, searches, history fetches, queries, and Stash snapshots must audit hashed refs or filters rather than storing source names, provider refs, queries, or customer content.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
 - Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
-- Workspace invite token creation/revocation and member join/leave events must emit workspace security audit events without storing raw invite tokens, member names, emails, or workspace names in event metadata.
-- Explicit Stash member grants and removals must emit workspace security audit events without storing recipient names, emails, or customer content in event metadata.
-- Explicit object share grants, email invites, pending invite revocations, invite conversions, and share revocations must emit workspace security audit events without storing recipient names, emails, or customer content in event metadata.
-- Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.
+- Explicit object share grants, email invites, pending invite revocations, invite conversions, and share revocations must emit security audit events without storing recipient names, emails, or customer content in event metadata.
+- Page, file, and session delete/restore/permanent-purge actions must emit security audit events without storing customer content, object names, or storage keys in event metadata.
 - Credentialed CORS must reject wildcard origins.
 - API and Next.js responses must include baseline security headers.
 - Next.js routes must deny cross-origin framing except for explicit published Skill embed routes.

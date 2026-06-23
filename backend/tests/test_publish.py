@@ -1,8 +1,8 @@
 """Tests for the /api/v1/publish single-call publish endpoint.
 
-The interesting behaviour is the workspace_id fallback: a brand-new user can
-publish without first looking up their workspace, because register_user marks
-the auto-provisioned signup workspace primary.
+The interesting behaviour is the owner_user_id fallback: a brand-new user can
+publish without first looking up their scope, because register_user marks
+the auto-provisioned signup scope primary.
 """
 
 import pytest
@@ -31,8 +31,8 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_publish_falls_back_to_primary_workspace(client: AsyncClient):
-    """A new user can call /publish without supplying workspace_id."""
+async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
+    """A new user can call /publish without supplying owner_user_id."""
     key = await _register(client)
 
     resp = await client.post(
@@ -47,22 +47,22 @@ async def test_publish_falls_back_to_primary_workspace(client: AsyncClient):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["page_id"]
-    assert body["workspace_id"]
+    assert body["owner_user_id"]
     assert body["url"].endswith(f"/skills/{body['skill_slug']}")
 
 
 @pytest.mark.asyncio
-async def test_publish_with_explicit_workspace(client: AsyncClient):
-    """Explicit workspace_id works the same as before for members."""
+async def test_publish_with_explicit_scope(client: AsyncClient):
+    """Explicit owner_user_id works the same as before for the owner."""
     key = await _register(client)
 
-    mine = await client.get("/api/v1/workspaces/mine", headers=_auth(key))
-    workspace_id = mine.json()["workspaces"][0]["id"]
+    mine = await client.get("/api/v1/users/me", headers=_auth(key))
+    owner_user_id = mine.json()["id"]
 
     resp = await client.post(
         "/api/v1/publish",
         json={
-            "workspace_id": workspace_id,
+            "owner_user_id": owner_user_id,
             "title": "Explicit-WS publish",
             "content_type": "markdown",
             "content": "# hello",
@@ -70,22 +70,22 @@ async def test_publish_with_explicit_workspace(client: AsyncClient):
         headers=_auth(key),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["workspace_id"] == workspace_id
+    assert resp.json()["owner_user_id"] == owner_user_id
 
 
 @pytest.mark.asyncio
-async def test_publish_rejects_non_member_workspace(client: AsyncClient):
-    """If the user passes a workspace_id they don't belong to, return 403."""
+async def test_publish_rejects_non_owner_scope(client: AsyncClient):
+    """If the user passes a owner_user_id they don't own, return 403."""
     key_a = await _register(client)
     key_b = await _register(client)
 
-    mine_b = await client.get("/api/v1/workspaces/mine", headers=_auth(key_b))
-    foreign_workspace = mine_b.json()["workspaces"][0]["id"]
+    mine_b = await client.get("/api/v1/users/me", headers=_auth(key_b))
+    foreign_owner = mine_b.json()["id"]
 
     resp = await client.post(
         "/api/v1/publish",
         json={
-            "workspace_id": foreign_workspace,
+            "owner_user_id": foreign_owner,
             "title": "Foreign publish",
             "content_type": "markdown",
             "content": "# nope",
@@ -96,63 +96,45 @@ async def test_publish_rejects_non_member_workspace(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_publish_rejects_viewer_without_creating_page(client: AsyncClient, pool):
-    """Publishing is a write action; viewers cannot create private draft pages."""
+async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
+    """Publishing is owner-only. A user with a share row into another user's
+    scope is still not the owner, so the gate must fire before the skill
+    folder and page side effects are created."""
     owner_key = await _register(client)
-    viewer_key, viewer_id = await _register_user(client)
+    sharee_key, sharee_id = await _register_user(client)
 
-    mine = await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))
-    workspace_id = mine.json()["workspaces"][0]["id"]
+    mine = await client.get("/api/v1/users/me", headers=_auth(owner_key))
+    owner_user_id = mine.json()["id"]
+    owner_id = owner_user_id
+
+    folder_id = await pool.fetchval(
+        "INSERT INTO folders (name, owner_user_id, created_by) VALUES ('shared', $1, $2) "
+        "RETURNING id",
+        owner_user_id,
+        owner_id,
+    )
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'viewer')",
-        workspace_id,
-        viewer_id,
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) "
+        "VALUES ($1, 'folder', $2, 'user', $3, 'write', $4)",
+        owner_user_id,
+        folder_id,
+        sharee_id,
+        owner_id,
     )
 
     resp = await client.post(
         "/api/v1/publish",
         json={
-            "workspace_id": workspace_id,
-            "title": "Viewer draft",
+            "owner_user_id": owner_user_id,
+            "title": "Sharee draft",
             "content": "# should not persist",
         },
-        headers=_auth(viewer_key),
+        headers=_auth(sharee_key),
     )
 
     assert resp.status_code == 403
     page_count = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1", workspace_id
-    )
-    assert page_count == 0
-
-
-@pytest.mark.asyncio
-async def test_publish_rejects_non_owner_editor_without_creating_page(client: AsyncClient, pool):
-    """Publishing is owner-only; the gate must fire before the skill folder
-    and page side effects are created."""
-    owner_key = await _register(client)
-    editor_key, editor_id = await _register_user(client)
-
-    mine = await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))
-    workspace_id = mine.json()["workspaces"][0]["id"]
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        workspace_id,
-        editor_id,
-    )
-
-    resp = await client.post(
-        "/api/v1/publish",
-        json={
-            "workspace_id": workspace_id,
-            "title": "Editor draft",
-            "content": "# should not persist",
-        },
-        headers=_auth(editor_key),
-    )
-
-    assert resp.status_code == 403
-    page_count = await pool.fetchval(
-        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1", workspace_id
+        "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", owner_user_id
     )
     assert page_count == 0

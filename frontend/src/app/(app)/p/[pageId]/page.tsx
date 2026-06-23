@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
-import { DocumentPageSkeleton } from "../../../../components/SkeletonStates";
+import { DocumentPageSkeleton } from "@/components/SkeletonStates";
 import {
   firstSearchParam,
   metadataForPublicSkillItem,
-} from "../../../../lib/skillMetadata";
+} from "@/lib/skillMetadata";
 import PageClient from "./PageClient";
 
 type PageProps = {

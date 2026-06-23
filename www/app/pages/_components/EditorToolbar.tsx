@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Editor } from "@tiptap/react";
 
-// Copy of the product app's EditorToolbar minus the workspace-only
+// Copy of the product app's EditorToolbar minus the account-only
 // affordances (file upload, comments). Fixed pill toolbar centered along
 // the viewport bottom, rendered via a portal so it floats above any
 // flex/scroll ancestor. visibility="when-focused" hides it unless the

@@ -18,91 +18,25 @@ def _auth(api_key: str) -> dict:
 
 
 async def _setup_page(client: AsyncClient, headers: dict) -> tuple[str, str]:
-    ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Comments"}, headers=headers)
-    ).json()
+    me = (await client.get("/api/v1/users/me", headers=headers)).json()
     page = (
         await client.post(
-            f"/api/v1/workspaces/{ws['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Doc", "content": "Hello world, this is a sample page."},
             headers=headers,
         )
     ).json()
-    return ws["id"], page["id"]
-
-
-async def _register_with_email(client: AsyncClient, email: str) -> tuple[str, str]:
-    resp = await client.post(
-        "/api/v1/users/register",
-        json={"name": unique_name(), "password": "securepassword1", "email": email},
-    )
-    assert resp.status_code == 201
-    return resp.json()["api_key"]
-
-
-@pytest.mark.asyncio
-async def test_read_share_cannot_comment_but_comment_share_can(client: AsyncClient) -> None:
-    """The comment tier: a read-only share can view threads but not post; a
-    'comment' share can post. Exercised across the trust boundary (a sharee who
-    is NOT a workspace member)."""
-    owner_key = await _register(client)
-    owner = _auth(owner_key)
-    friend_email = f"{unique_name()}@example.com"
-    friend_key = await _register_with_email(client, friend_email)
-    friend = _auth(friend_key)
-    ws_id, page_id = await _setup_page(client, owner)
-
-    comment_body = {"quoted_text": "Hello", "prefix": "", "suffix": "", "body": "hi"}
-
-    # Read-only share: friend can read threads, but commenting 404s.
-    await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "page",
-            "object_id": page_id,
-            "email": friend_email,
-            "permission": "read",
-        },
-        headers=owner,
-    )
-    list_resp = await client.get(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads", headers=friend
-    )
-    assert list_resp.status_code == 200
-    denied = await client.post(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
-        json=comment_body,
-        headers=friend,
-    )
-    assert denied.status_code == 404
-
-    # Upgrade to a comment share: now the post succeeds.
-    await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "page",
-            "object_id": page_id,
-            "email": friend_email,
-            "permission": "comment",
-        },
-        headers=owner,
-    )
-    allowed = await client.post(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
-        json=comment_body,
-        headers=friend,
-    )
-    assert allowed.status_code == 201
+    return me["id"], page["id"]
 
 
 @pytest.mark.asyncio
 async def test_create_thread_with_first_message(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     resp = await client.post(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+        f"/api/v1/me/pages/{page_id}/comments/threads",
         json={
             "quoted_text": "Hello world",
             "prefix": "",
@@ -124,11 +58,11 @@ async def test_create_thread_with_first_message(client: AsyncClient) -> None:
 async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     created = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             json={"quoted_text": "Hello", "prefix": "", "suffix": "", "body": "first"},
             headers=headers,
         )
@@ -136,7 +70,7 @@ async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
     thread_id = created["id"]
 
     reply = await client.post(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{thread_id}/messages",
+        f"/api/v1/me/pages/{page_id}/comments/threads/{thread_id}/messages",
         json={"body": "second"},
         headers=headers,
     )
@@ -144,7 +78,7 @@ async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
     assert [m["body"] for m in reply.json()["messages"]] == ["first", "second"]
 
     resolved = await client.patch(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{thread_id}",
+        f"/api/v1/me/pages/{page_id}/comments/threads/{thread_id}",
         json={"resolved": True},
         headers=headers,
     )
@@ -152,7 +86,7 @@ async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
     assert resolved.json()["resolved_at"] is not None
 
     reopened = await client.patch(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{thread_id}",
+        f"/api/v1/me/pages/{page_id}/comments/threads/{thread_id}",
         json={"resolved": False},
         headers=headers,
     )
@@ -164,25 +98,25 @@ async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
 async def test_delete_thread_removes_it_for_creator(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     created = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "msg"},
             headers=headers,
         )
     ).json()
 
     deleted = await client.delete(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{created['id']}",
+        f"/api/v1/me/pages/{page_id}/comments/threads/{created['id']}",
         headers=headers,
     )
     assert deleted.status_code == 204
 
     listing = (
         await client.get(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             headers=headers,
         )
     ).json()["threads"]
@@ -190,42 +124,13 @@ async def test_delete_thread_removes_it_for_creator(client: AsyncClient) -> None
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_forbidden_for_other_user(client: AsyncClient) -> None:
-    owner_key = await _register(client)
-    owner_headers = _auth(owner_key)
-    ws_id, page_id = await _setup_page(client, owner_headers)
-    created = (
-        await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
-            json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "msg"},
-            headers=owner_headers,
-        )
-    ).json()
-
-    # Join the workspace as a second user via the invite code.
-    workspace = (await client.get(f"/api/v1/workspaces/{ws_id}", headers=owner_headers)).json()
-    other_key = await _register(client)
-    other_headers = _auth(other_key)
-    await client.post(
-        f"/api/v1/workspaces/join/{workspace['invite_code']}",
-        headers=other_headers,
-    )
-
-    forbidden = await client.delete(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{created['id']}",
-        headers=other_headers,
-    )
-    assert forbidden.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
     created = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "only"},
             headers=headers,
         )
@@ -233,7 +138,7 @@ async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> 
     msg_id = created["messages"][0]["id"]
 
     resp = await client.delete(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/messages/{msg_id}",
+        f"/api/v1/me/pages/{page_id}/comments/messages/{msg_id}",
         headers=headers,
     )
     assert resp.status_code == 200
@@ -243,7 +148,7 @@ async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> 
 
     listing = (
         await client.get(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             headers=headers,
         )
     ).json()["threads"]
@@ -254,17 +159,17 @@ async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> 
 async def test_delete_one_message_keeps_thread_alive(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
     created = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "first"},
             headers=headers,
         )
     ).json()
     second = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{created['id']}/messages",
+            f"/api/v1/me/pages/{page_id}/comments/threads/{created['id']}/messages",
             json={"body": "second"},
             headers=headers,
         )
@@ -272,7 +177,7 @@ async def test_delete_one_message_keeps_thread_alive(client: AsyncClient) -> Non
 
     first_msg_id = created["messages"][0]["id"]
     resp = await client.delete(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/messages/{first_msg_id}",
+        f"/api/v1/me/pages/{page_id}/comments/messages/{first_msg_id}",
         headers=headers,
     )
     assert resp.status_code == 200
@@ -287,25 +192,25 @@ async def test_delete_one_message_keeps_thread_alive(client: AsyncClient) -> Non
 async def test_reconcile_flags_missing_threads_as_orphaned(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)
-    ws_id, page_id = await _setup_page(client, headers)
+    scope_id, page_id = await _setup_page(client, headers)
 
     alive = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             json={"quoted_text": "alive", "prefix": "", "suffix": "", "body": "still"},
             headers=headers,
         )
     ).json()
     gone = (
         await client.post(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             json={"quoted_text": "gone", "prefix": "", "suffix": "", "body": "deleted"},
             headers=headers,
         )
     ).json()
 
     rec = await client.post(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/reconcile",
+        f"/api/v1/me/pages/{page_id}/comments/reconcile",
         json={"present_ids": [alive["id"]]},
         headers=headers,
     )
@@ -313,7 +218,7 @@ async def test_reconcile_flags_missing_threads_as_orphaned(client: AsyncClient) 
 
     listing = (
         await client.get(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             headers=headers,
         )
     ).json()["threads"]
@@ -323,18 +228,18 @@ async def test_reconcile_flags_missing_threads_as_orphaned(client: AsyncClient) 
 
     # Resolved threads should NOT flip to orphaned even if absent.
     await client.patch(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{alive['id']}",
+        f"/api/v1/me/pages/{page_id}/comments/threads/{alive['id']}",
         json={"resolved": True},
         headers=headers,
     )
     await client.post(
-        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/reconcile",
+        f"/api/v1/me/pages/{page_id}/comments/reconcile",
         json={"present_ids": []},
         headers=headers,
     )
     listing2 = (
         await client.get(
-            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            f"/api/v1/me/pages/{page_id}/comments/threads",
             headers=headers,
         )
     ).json()["threads"]

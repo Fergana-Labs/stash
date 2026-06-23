@@ -398,7 +398,7 @@ async def test_top_events_returns_ranked_list(client: AsyncClient):
     payload = {
         "events": (
             [{"surface": "web", "event_name": "web.page_created", "properties": {}}] * 3
-            + [{"surface": "web", "event_name": "web.workspace_created", "properties": {}}]
+            + [{"surface": "web", "event_name": "web.scope_created", "properties": {}}]
         )
     }
     await client.post("/api/v1/analytics/events", json=payload, headers=_auth(key))
@@ -411,4 +411,4 @@ async def test_top_events_returns_ranked_list(client: AsyncClient):
     rows = resp.json()["rows"]
     names = [r["event_name"] for r in rows]
     assert names[0] == "web.page_created"
-    assert "web.workspace_created" in names
+    assert "web.scope_created" in names

@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 import { generateWelcomeHtml } from "./welcomeContent";
 
 describe("generateWelcomeHtml", () => {
-  it("omits the explanatory About-page copy from new workspaces", () => {
+  it("omits the explanatory About-page copy from new spaces", () => {
     const html = generateWelcomeHtml({
       displayName: "Ada",
-      inviteLink: null,
     });
 
     expect(html).toContain("<h1>Welcome to Stash, Ada</h1>");

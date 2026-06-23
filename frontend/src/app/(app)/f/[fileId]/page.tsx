@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import {
   firstSearchParam,
   metadataForPublicSkillItem,
-} from "../../../../lib/skillMetadata";
+} from "@/lib/skillMetadata";
 import FileClient from "./FileClient";
 
 type PageProps = {

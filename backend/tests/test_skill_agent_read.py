@@ -18,25 +18,20 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
-async def _create_workspace(client: AsyncClient, api_key: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": unique_name("agent_read_workspace")},
-        headers=_auth(api_key),
-    )
-    assert resp.status_code == 201
-    return resp.json()
+def _scope(register_body: dict) -> dict:
+    """The scope IS the user; registration seeds it. The scope id is the user id."""
+    return {"id": register_body["id"]}
 
 
 async def _create_page(
     client: AsyncClient,
     api_key: str,
-    workspace_id: str,
+    owner_user_id: str,
     name: str,
     content: str,
 ) -> dict:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": name, "content": content},
         headers=_auth(api_key),
     )
@@ -46,25 +41,24 @@ async def _create_page(
 
 @pytest.mark.asyncio
 async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
-    api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key)
+    api_key, register_body = await _register(client)
     folder = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/folders",
+            "/api/v1/me/folders",
             json={"name": "Auth 401 spike"},
             headers=_auth(api_key),
         )
     ).json()
     page = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            "/api/v1/me/pages/new",
             json={"name": "Root cause", "content": "# Finding", "folder_id": folder["id"]},
             headers=_auth(api_key),
         )
     ).json()
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/skills",
+        "/api/v1/me/skills",
         json={
             "folder_id": folder["id"],
             "title": "Auth 401 spike",
@@ -95,10 +89,12 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
         "Would you like me to install Stash and connect this repository so future "
         "agents can remember and share this work?"
     ) in text
-    assert ('bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser') in text
-    assert "This prints a browser consent URL for the user" in text
+    assert (
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --non-interactive'
+    ) in text
+    assert "This opens (or prints) a browser consent URL for the user" in text
     assert "Do not complete setup without user approval." in text
-    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in text
+    assert 'stash vfs "find /me -maxdepth 3 -type f"' in text
     assert "stash connect" in text
     assert '"$HOME/.local/bin/stash" connect' in text
     assert f"stash read http://localhost:3457/skills/{slug}" in text
@@ -106,13 +102,13 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_public_skill_item_text_strips_html_page_content(client: AsyncClient):
-    api_key, _ = await _register(client)
-    workspace = await _create_workspace(client, api_key)
+    api_key, register_body = await _register(client)
+    scope = _scope(register_body)
 
     published = await client.post(
         "/api/v1/publish",
         json={
-            "workspace_id": workspace["id"],
+            "owner_user_id": scope["id"],
             "title": "HTML strategy memo",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",
@@ -131,9 +127,9 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
     assert "<h1>" not in resp.text
     assert "## Connect This Repo To Stash" in resp.text
     assert (
-        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --non-interactive'
     ) in resp.text
-    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in resp.text
+    assert 'stash vfs "find /me -maxdepth 3 -type f"' in resp.text
     assert f"stash read http://localhost:3457/skills/{body['skill_slug']}" in resp.text
 
     json_resp = await client.get(
@@ -152,10 +148,10 @@ async def test_llms_txt_documents_agent_skill_reads(client: AsyncClient):
     assert "## Connect This Repo To Stash" in resp.text
     assert "Ask the user:" in resp.text
     assert (
-        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --non-interactive'
     ) in resp.text
-    assert "stash signin --no-browser" in resp.text
-    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in resp.text
+    assert "stash signin --non-interactive" in resp.text
+    assert 'stash vfs "find /me -maxdepth 3 -type f"' in resp.text
     assert "stash read https://app.joinstash.ai/skills/example" in resp.text
 
 
@@ -163,9 +159,9 @@ async def test_llms_txt_documents_agent_skill_reads(client: AsyncClient):
 async def test_skill_skill_manifest_includes_agent_install_pitch(client: AsyncClient):
     resp = await client.get("/skill/stash/SKILL.md")
     assert resp.status_code == 200
-    assert "Stash — Workspaces, Skills, and Memory System" in resp.text
+    assert "Stash — Files, Skills, and Memory System" in resp.text
     assert "## Connect This Repo To Stash" in resp.text
     assert "Ask the user:" in resp.text
     assert (
-        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --non-interactive'
     ) in resp.text

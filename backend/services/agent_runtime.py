@@ -1,9 +1,9 @@
-"""Claude Agent SDK runtime for ask-the-workspace.
+"""Claude Agent SDK runtime for ask-the-stash.
 
 Replaces the old hand-rolled agent harness (`backend/services/llm.py`).
-The workspace tools are exposed as an in-process MCP server attached to
-every call. Workspace scoping is handled through a ContextVar so each tool
-implementation can find the active Stash Workspace without threading the id
+The Stash tools are exposed as an in-process MCP server attached to
+every call. Scoping is handled through a ContextVar so each tool
+implementation can find the active owner scope without threading the id
 through the SDK.
 
 `stream_agent(...)` yields SSE-encoded chunks for the ask endpoint.
@@ -43,8 +43,8 @@ from . import (
 
 logger = logging.getLogger(__name__)
 
-_workspace_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
-    "stash_workspace_id", default=None
+_scope_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
+    "stash_owner_user_id", default=None
 )
 _user_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
     "stash_user_id", default=None
@@ -67,11 +67,11 @@ def _current_agent_name() -> str | None:
     return _agent_name_ctx.get()
 
 
-def _current_workspace() -> UUID:
-    workspace_id = _workspace_ctx.get()
-    if workspace_id is None:
-        raise RuntimeError("agent_runtime: no workspace_id in context")
-    return workspace_id
+def _current_scope() -> UUID:
+    owner_user_id = _scope_ctx.get()
+    if owner_user_id is None:
+        raise RuntimeError("agent_runtime: no owner_user_id in context")
+    return owner_user_id
 
 
 def _current_user() -> UUID:
@@ -88,7 +88,7 @@ def _text_result(text: str) -> dict:
 def _skill_to_dict(skill: dict) -> dict:
     return {
         "id": str(skill["id"]),
-        "workspace_id": str(skill["workspace_id"]),
+        "owner_user_id": str(skill["owner_user_id"]),
         "folder_id": str(skill["folder_id"]),
         "slug": skill["slug"],
         "title": skill["title"],
@@ -105,7 +105,7 @@ def _skill_to_dict(skill: dict) -> dict:
 
 @tool(
     "search_history",
-    "Full-text search across this Stash Workspace's agent transcripts and session events.",
+    "Full-text search across this Stash account's agent transcripts and session events.",
     {
         "type": "object",
         "properties": {
@@ -116,10 +116,10 @@ def _skill_to_dict(skill: dict) -> dict:
     },
 )
 async def _search_history(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    rows = await memory_service.search_workspace_events(
-        workspace_id,
+    rows = await memory_service.search_scope_events(
+        owner_user_id,
         user_id,
         args.get("query", ""),
         limit=int(args.get("limit", 10)),
@@ -147,9 +147,9 @@ async def _search_history(args: dict) -> dict:
     },
 )
 async def _read_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    page = await files_tree_service.get_page(UUID(args["page_id"]), workspace_id, user_id)
+    page = await files_tree_service.get_page(UUID(args["page_id"]), owner_user_id, user_id)
     if not page:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
@@ -165,7 +165,7 @@ async def _read_page(args: dict) -> dict:
 
 @tool(
     "grep_pages",
-    "Full-text search across pages in this Stash Workspace. Returns page id + snippet.",
+    "Full-text search across pages in this Stash account. Returns page id + snippet.",
     {
         "type": "object",
         "properties": {
@@ -176,10 +176,10 @@ async def _read_page(args: dict) -> dict:
     },
 )
 async def _grep_pages(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     rows = await files_tree_service.search_pages_fts(
-        workspace_id,
+        owner_user_id,
         args.get("pattern", ""),
         limit=int(args.get("limit", 10)),
         user_id=user_id,
@@ -197,19 +197,19 @@ async def _grep_pages(args: dict) -> dict:
 
 @tool(
     "list_files",
-    "List files (PDFs, docs, images) uploaded to this Stash Workspace.",
+    "List files (PDFs, docs, images) uploaded to this Stash account.",
     {"type": "object", "properties": {}},
 )
 async def _list_files(args: dict) -> dict:
     from ..database import get_pool
 
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     rows = await get_pool().fetch(
-        "SELECT id, name, content_type, size_bytes FROM files WHERE workspace_id = $1 "
+        "SELECT id, name, content_type, size_bytes FROM files WHERE owner_user_id = $1 "
         "AND deleted_at IS NULL "
         "ORDER BY created_at DESC LIMIT 50",
-        workspace_id,
+        owner_user_id,
     )
     visible_rows = []
     for row in rows:
@@ -217,7 +217,7 @@ async def _list_files(args: dict) -> dict:
             "file",
             row["id"],
             user_id,
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
         ):
             visible_rows.append(row)
     out = [
@@ -234,7 +234,7 @@ async def _list_files(args: dict) -> dict:
 
 @tool(
     "read_file",
-    "Read extracted text content from a Stash Workspace file by id.",
+    "Read extracted text content from a Stash account file by id.",
     {
         "type": "object",
         "properties": {"file_id": {"type": "string"}},
@@ -244,14 +244,14 @@ async def _list_files(args: dict) -> dict:
 async def _read_file(args: dict) -> dict:
     from ..database import get_pool
 
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     file_id = UUID(args["file_id"])
     row = await get_pool().fetchrow(
         "SELECT name, extracted_text FROM files "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         file_id,
-        workspace_id,
+        owner_user_id,
     )
     if not row:
         return _text_result(json.dumps({"error": "not found"}))
@@ -259,7 +259,7 @@ async def _read_file(args: dict) -> dict:
         "file",
         file_id,
         user_id,
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
     ):
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
@@ -282,9 +282,9 @@ async def _read_file(args: dict) -> dict:
 async def _query_table(args: dict) -> dict:
     from ..database import get_pool
 
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    tables = await table_service.list_tables(workspace_id, user_id)
+    tables = await table_service.list_tables(owner_user_id, user_id)
     match = next(
         (t for t in tables if t.get("name", "").lower() == args.get("table_name", "").lower()),
         None,
@@ -302,14 +302,14 @@ async def _query_table(args: dict) -> dict:
 
 @tool(
     "list_skills",
-    "List skills (folders with SKILL.md) in this Stash Workspace, with their "
+    "List skills (folders with SKILL.md) in this Stash account, with their "
     "publish info when shared.",
     {"type": "object", "properties": {}},
 )
 async def _list_skills(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    skills = await skill_service.list_skills(workspace_id, user_id)
+    skills = await skill_service.list_skills(owner_user_id, user_id)
     out = [
         {
             "name": s["name"],
@@ -333,9 +333,9 @@ async def _list_skills(args: dict) -> dict:
     },
 )
 async def _read_skill(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    skill = await skill_service.read_skill(workspace_id, args.get("name", ""), user_id)
+    skill = await skill_service.read_skill(owner_user_id, args.get("name", ""), user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps({"name": skill["name"], "combined": skill["combined"]}))
@@ -370,11 +370,11 @@ async def _read_skill(args: dict) -> dict:
     },
 )
 async def _create_skill(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    folder = await files_tree_service.create_folder(workspace_id, args["name"], user_id)
+    folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)
     await files_tree_service.create_page(
-        workspace_id,
+        owner_user_id,
         "SKILL.md",
         user_id,
         folder_id=folder["id"],
@@ -383,7 +383,7 @@ async def _create_skill(args: dict) -> dict:
     )
     for extra in args.get("files") or []:
         await files_tree_service.create_page(
-            workspace_id,
+            owner_user_id,
             extra["name"],
             user_id,
             folder_id=folder["id"],
@@ -406,11 +406,11 @@ async def _create_skill(args: dict) -> dict:
     },
 )
 async def _publish_skill(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     try:
         skill = await shared_skill_service.publish_folder(
-            workspace_id,
+            owner_user_id,
             user_id,
             UUID(args["folder_id"]),
             discoverable=bool(args.get("discoverable", False)),
@@ -468,7 +468,7 @@ async def _unpublish_skill(args: dict) -> dict:
 # --- Source-aware tools ----------------------------------------------------
 #
 # One surface over every source: the two native sources (files, session
-# transcripts — workspace-scoped) and the user's own connected sources
+# transcripts — owner-scoped) and the user's own connected sources
 # (GitHub/Drive/Gmail/Notion/Slack/Granola — user-scoped). Connected-source access
 # always goes through source_service.get_owned_source, which is the single
 # user-scoping guard.
@@ -484,7 +484,7 @@ async def _unpublish_skill(args: dict) -> dict:
     {"type": "object", "properties": {}},
 )
 async def _list_sources(args: dict) -> dict:
-    sources = await source_service.list_sources(_current_workspace(), _current_user())
+    sources = await source_service.list_sources(_current_scope(), _current_user())
     return _text_result(json.dumps(sources))
 
 
@@ -504,7 +504,7 @@ async def _list_sources(args: dict) -> dict:
 )
 async def _list_source(args: dict) -> dict:
     entries = await source_service.source_entries(
-        _current_workspace(), _current_user(), args.get("source", ""), prefix=args.get("path") or ""
+        _current_scope(), _current_user(), args.get("source", ""), prefix=args.get("path") or ""
     )
     if entries is None:
         return _text_result(json.dumps({"error": "source not found"}))
@@ -526,7 +526,7 @@ async def _list_source(args: dict) -> dict:
 )
 async def _read_source(args: dict) -> dict:
     source_ok, doc = await source_service.source_document(
-        _current_workspace(), _current_user(), args.get("source", ""), args.get("ref", "")
+        _current_scope(), _current_user(), args.get("source", ""), args.get("ref", "")
     )
     if not source_ok:
         return _text_result(json.dumps({"error": "source not found"}))
@@ -557,7 +557,7 @@ async def _read_source(args: dict) -> dict:
 )
 async def _search(args: dict) -> dict:
     results = await source_service.search_all(
-        _current_workspace(),
+        _current_scope(),
         _current_user(),
         args.get("query", ""),
         source=args.get("source"),
@@ -587,7 +587,7 @@ async def _search(args: dict) -> dict:
 )
 async def _query_source(args: dict) -> dict:
     result = await source_service.query_source(
-        _current_workspace(),
+        _current_scope(),
         _current_user(),
         args.get("source", ""),
         args.get("sql", ""),
@@ -618,7 +618,7 @@ async def _query_source(args: dict) -> dict:
 )
 async def _fetch_history(args: dict) -> dict:
     result = await source_service.fetch_history(
-        _current_workspace(),
+        _current_scope(),
         _current_user(),
         args.get("source", ""),
         args.get("since", ""),
@@ -632,7 +632,7 @@ async def _fetch_history(args: dict) -> dict:
 
 @tool(
     "create_page",
-    "Create a new page in the workspace. Use content_type 'markdown' with `content`, "
+    "Create a new page in this account. Use content_type 'markdown' with `content`, "
     "or 'html' with `content_html`. Returns the new page id.",
     {
         "type": "object",
@@ -651,12 +651,12 @@ async def _fetch_history(args: dict) -> dict:
     },
 )
 async def _create_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
     try:
         page = await files_tree_service.create_page(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             name=args["name"],
             created_by=user_id,
             folder_id=folder_id,
@@ -690,11 +690,11 @@ async def _create_page(args: dict) -> dict:
     },
 )
 async def _update_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     page = await files_tree_service.update_page(
         page_id=UUID(args["page_id"]),
-        workspace_id=workspace_id,
+        owner_user_id=owner_user_id,
         updated_by=user_id,
         name=args.get("name"),
         content=args.get("content"),
@@ -726,12 +726,12 @@ async def _update_page(args: dict) -> dict:
     },
 )
 async def _edit_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     try:
         page = await files_tree_service.edit_page(
             page_id=UUID(args["page_id"]),
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             updated_by=user_id,
             old_string=args.get("old_string") or "",
             new_string=args["new_string"],
@@ -758,19 +758,19 @@ async def _edit_page(args: dict) -> dict:
 # --- Tree mutation tools (folders, pages, tables) --------------------------
 #
 # These wrap the same service functions the REST/MCP layer uses, so the in-app
-# agent can organize the workspace, not just write page bodies. Operations on an
-# existing object by id are workspace-scoped by the service WHERE clause (pages)
+# agent can organize the account, not just write page bodies. Operations on an
+# existing object by id are owner-scoped by the service WHERE clause (pages)
 # or by an explicit guard (tables, which the service does not scope).
 
 
-async def _table_in_workspace(table_id: UUID, workspace_id: UUID) -> bool:
+async def _table_in_scope(table_id: UUID, owner_user_id: UUID) -> bool:
     meta = await table_service.get_table_metadata(table_id)
-    return bool(meta and meta["workspace_id"] == workspace_id)
+    return bool(meta and meta["owner_user_id"] == owner_user_id)
 
 
 @tool(
     "create_folder",
-    "Create a folder in the workspace. Pass parent_folder_id to nest it.",
+    "Create a folder in this account. Pass parent_folder_id to nest it.",
     {
         "type": "object",
         "properties": {
@@ -781,12 +781,12 @@ async def _table_in_workspace(table_id: UUID, workspace_id: UUID) -> bool:
     },
 )
 async def _create_folder(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     parent_folder_id = UUID(args["parent_folder_id"]) if args.get("parent_folder_id") else None
     try:
         folder = await files_tree_service.create_folder(
-            workspace_id, args["name"], user_id, parent_folder_id=parent_folder_id
+            owner_user_id, args["name"], user_id, parent_folder_id=parent_folder_id
         )
     except files_tree_service.DuplicateFolderName:
         return _text_result(json.dumps({"error": "a folder with that name already exists here"}))
@@ -797,7 +797,7 @@ async def _create_folder(args: dict) -> dict:
 
 @tool(
     "move_page",
-    "Move a page into a folder, or to the workspace root with move_to_root.",
+    "Move a page into a folder, or to the account root with move_to_root.",
     {
         "type": "object",
         "properties": {
@@ -809,13 +809,13 @@ async def _create_folder(args: dict) -> dict:
     },
 )
 async def _move_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
     try:
         page = await files_tree_service.update_page(
             page_id=UUID(args["page_id"]),
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             updated_by=user_id,
             folder_id=folder_id,
             move_to_root=bool(args.get("move_to_root", False)),
@@ -837,12 +837,12 @@ async def _move_page(args: dict) -> dict:
     },
 )
 async def _rename_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     try:
         page = await files_tree_service.update_page(
             page_id=UUID(args["page_id"]),
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             updated_by=user_id,
             name=args["name"],
         )
@@ -863,9 +863,9 @@ async def _rename_page(args: dict) -> dict:
     },
 )
 async def _delete_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
-    deleted = await files_tree_service.delete_page(UUID(args["page_id"]), workspace_id, user_id)
+    deleted = await files_tree_service.delete_page(UUID(args["page_id"]), owner_user_id, user_id)
     if not deleted:
         return _text_result(json.dumps({"error": "page not found"}))
     return _text_result(json.dumps({"deleted": True, "page_id": args["page_id"]}))
@@ -888,12 +888,12 @@ async def _delete_page(args: dict) -> dict:
     },
 )
 async def _create_table(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
     try:
         table = await table_service.create_table(
-            workspace_id,
+            owner_user_id,
             args["name"],
             args.get("description") or "",
             args.get("columns") or [],
@@ -918,9 +918,9 @@ async def _create_table(args: dict) -> dict:
     },
 )
 async def _insert_row(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     table_id = UUID(args["table_id"])
-    if not await _table_in_workspace(table_id, workspace_id):
+    if not await _table_in_scope(table_id, owner_user_id):
         return _text_result(json.dumps({"error": "table not found"}))
     row = await table_service.create_row(table_id, args.get("data") or {}, _current_user())
     return _text_result(json.dumps({"id": str(row["id"])}))
@@ -940,9 +940,9 @@ async def _insert_row(args: dict) -> dict:
     },
 )
 async def _update_row(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     table_id = UUID(args["table_id"])
-    if not await _table_in_workspace(table_id, workspace_id):
+    if not await _table_in_scope(table_id, owner_user_id):
         return _text_result(json.dumps({"error": "table not found"}))
     row = await table_service.update_row(
         UUID(args["row_id"]), args.get("data") or {}, _current_user(), table_id=table_id
@@ -965,9 +965,9 @@ async def _update_row(args: dict) -> dict:
     },
 )
 async def _add_column(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     table_id = UUID(args["table_id"])
-    if not await _table_in_workspace(table_id, workspace_id):
+    if not await _table_in_scope(table_id, owner_user_id):
         return _text_result(json.dumps({"error": "table not found"}))
     table = await table_service.add_column(table_id, args.get("column") or {}, _current_user())
     return _text_result(json.dumps({"id": str(table["id"]), "name": table["name"]}))
@@ -986,9 +986,9 @@ async def _add_column(args: dict) -> dict:
     },
 )
 async def _delete_row(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     table_id = UUID(args["table_id"])
-    if not await _table_in_workspace(table_id, workspace_id):
+    if not await _table_in_scope(table_id, owner_user_id):
         return _text_result(json.dumps({"error": "table not found"}))
     deleted = await table_service.delete_row(UUID(args["row_id"]), table_id=table_id)
     if not deleted:
@@ -1010,11 +1010,11 @@ async def _delete_row(args: dict) -> dict:
     },
 )
 async def _copy_page(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     target = UUID(args["target_folder_id"]) if args.get("target_folder_id") else None
     page = await files_tree_service.copy_page(
-        UUID(args["page_id"]), workspace_id, user_id, target_folder_id=target
+        UUID(args["page_id"]), owner_user_id, user_id, target_folder_id=target
     )
     if page is None:
         return _text_result(json.dumps({"error": "page not found"}))
@@ -1035,12 +1035,12 @@ async def _copy_page(args: dict) -> dict:
     },
 )
 async def _copy_folder(args: dict) -> dict:
-    workspace_id = _current_workspace()
+    owner_user_id = _current_scope()
     user_id = _current_user()
     target = UUID(args["target_parent_id"]) if args.get("target_parent_id") else None
     try:
         folder = await files_tree_service.copy_folder(
-            UUID(args["folder_id"]), workspace_id, user_id, target_parent_id=target
+            UUID(args["folder_id"]), owner_user_id, user_id, target_parent_id=target
         )
     except files_tree_service.FolderCycle as e:
         return _text_result(json.dumps({"error": str(e)}))
@@ -1085,7 +1085,7 @@ async def _batch_move(args: dict) -> dict:
 
     target = UUID(args["target_folder_id"]) if args.get("target_folder_id") else None
     result = await batch_service.batch_move(
-        _current_workspace(),
+        _current_scope(),
         _current_user(),
         args.get("items") or [],
         target_folder_id=target,
@@ -1108,7 +1108,7 @@ async def _batch_delete(args: dict) -> dict:
     from . import batch_service
 
     result = await batch_service.batch_delete(
-        _current_workspace(), _current_user(), args.get("items") or []
+        _current_scope(), _current_user(), args.get("items") or []
     )
     return _text_result(json.dumps(result))
 
@@ -1127,7 +1127,7 @@ async def _batch_restore(args: dict) -> dict:
     from . import batch_service
 
     result = await batch_service.batch_restore(
-        _current_workspace(), _current_user(), args.get("items") or []
+        _current_scope(), _current_user(), args.get("items") or []
     )
     return _text_result(json.dumps(result))
 
@@ -1201,14 +1201,14 @@ async def stream_agent(
     *,
     system: str,
     prompt: str,
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user_id: UUID | None = None,
 ) -> AsyncIterator[str]:
-    """SSE generator for ask-the-workspace. Caller must verify
+    """SSE generator for ask-the-stash. Caller must verify
     `settings.ANTHROPIC_API_KEY` is set before invoking."""
     options = _build_options(system=system)
 
-    workspace_token = _workspace_ctx.set(workspace_id)
+    scope_token = _scope_ctx.set(owner_user_id)
     user_token = _user_ctx.set(user_id)
     try:
         async for msg in query(prompt=prompt, options=options):
@@ -1242,6 +1242,6 @@ async def stream_agent(
                 continue
     finally:
         _user_ctx.reset(user_token)
-        _workspace_ctx.reset(workspace_token)
+        _scope_ctx.reset(scope_token)
 
     yield _sse({"type": "end"})

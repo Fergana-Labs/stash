@@ -33,7 +33,6 @@ from backend.services import (  # noqa: E402
     storage_service,
     table_service,
     user_service,
-    workspace_service,
 )
 
 logging.basicConfig(
@@ -47,16 +46,6 @@ if not log.handlers:
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     log.addHandler(handler)
 log.setLevel(logging.INFO)
-
-SAMPLE_WORKSPACE_NAME = "Sample Product Studio"
-SAMPLE_WORKSPACE_DESCRIPTION = (
-    "Local development dataset used to preview the Sessions/Files/Skills product "
-    "UI with realistic sample content."
-)
-SAMPLE_EXTERNAL_WORKSPACE_NAME = "Sample Partner Workspace"
-SAMPLE_EXTERNAL_WORKSPACE_DESCRIPTION = (
-    "Small external workspace used to seed one attachable external skill."
-)
 
 SAMPLE_USERS = [
     {
@@ -170,7 +159,7 @@ SAMPLE_TABLES = [
         ],
         "rows": [
             {
-                "Feature": "Cross-workspace search",
+                "Feature": "Cross-scope search",
                 "Priority": 1,
                 "Status": "In progress",
                 "Owner": "aria",
@@ -205,7 +194,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-design-architecture",
         "agent_name": "claude",
-        "cwd": "/workspace/product",
+        "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["docs/architecture.md", "product/vision.md"],
         "events": [
@@ -221,7 +210,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-dashboard-overhaul",
         "agent_name": "copilot",
-        "cwd": "/workspace/frontend",
+        "cwd": "/scope/frontend",
         "created_by": "demo_maya",
         "files_touched": ["frontend/src/AppSidebar.tsx", "frontend/src/styles.css"],
         "events": [
@@ -234,7 +223,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-file-pipeline",
         "agent_name": "assistant",
-        "cwd": "/workspace/backend",
+        "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": ["backend/routers/files.py", "backend/services/files_tree_service.py"],
         "events": [
@@ -249,11 +238,11 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-session-index",
         "agent_name": "agent",
-        "cwd": "/workspace/backend",
+        "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
             "backend/services/memory_service.py",
-            "backend/routers/workspace_knowledge.py",
+            "backend/routers/scope_knowledge.py",
         ],
         "events": [
             ("prompt", "We need stable session list rendering with minimal payload."),
@@ -265,14 +254,14 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-permissions-path",
         "agent_name": "claude",
-        "cwd": "/workspace/backend",
+        "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": [
             "backend/services/permission_service.py",
             "backend/services/shared_skill_service.py",
         ],
         "events": [
-            ("prompt", "Can we test workspace/private/public access rules for skills?"),
+            ("prompt", "Can we test scope/private/public access rules for skills?"),
             ("assistant", "I mapped access checks and identified partition collisions."),
             ("assistant", "I confirmed private bundles reject cross-level items."),
             ("tool_call", "policy_test"),
@@ -281,7 +270,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-documenting-practices",
         "agent_name": "assistant",
-        "cwd": "/workspace/docs",
+        "cwd": "/scope/docs",
         "created_by": "demo_maya",
         "files_touched": ["README.md", "docs/notes.md", "notes/session-ops.md"],
         "events": [
@@ -293,23 +282,23 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-query-quality",
         "agent_name": "copilot",
-        "cwd": "/workspace/backend",
+        "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
-            "backend/routers/workspace_knowledge.py",
+            "backend/routers/scope_knowledge.py",
             "backend/services/memory_service.py",
         ],
         "events": [
             ("prompt", "Any index changes needed for history session queries?"),
             ("assistant", "I validated current indexes and query shape with sessions join."),
-            ("assistant", "I highlighted the key path as workspace+session_id group by."),
+            ("assistant", "I highlighted the key path as owner+session_id group by."),
             ("assistant", "I kept results bounded but complete for overview endpoints."),
         ],
     },
     {
         "session_id": "session-observability",
         "agent_name": "assistant",
-        "cwd": "/workspace/ops",
+        "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/checks.md", "ops/incident-template.md"],
         "events": [
@@ -321,7 +310,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-qa-sanity",
         "agent_name": "claude",
-        "cwd": "/workspace/tests",
+        "cwd": "/scope/tests",
         "created_by": "demo_maya",
         "files_touched": [
             "backend/tests/test_history.py",
@@ -330,13 +319,13 @@ SAMPLE_SESSIONS = [
         "events": [
             ("prompt", "What are the riskiest regressions in this area?"),
             ("assistant", "I added checks for session list shape and sidebar items."),
-            ("assistant", "I included skills edge cases for private/workspace/public mix."),
+            ("assistant", "I included skills edge cases for private/scope/public mix."),
         ],
     },
     {
         "session_id": "session-product-feedback",
         "agent_name": "assistant",
-        "cwd": "/workspace/product",
+        "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["product/feedback.md", "docs/roadmap.md"],
         "events": [
@@ -348,7 +337,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-oncall-playbook",
         "agent_name": "agent",
-        "cwd": "/workspace/ops",
+        "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/oncall.md", "ops/status-template.md"],
         "events": [
@@ -360,7 +349,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-release-triage",
         "agent_name": "assistant",
-        "cwd": "/workspace/backend",
+        "cwd": "/scope/backend",
         "created_by": "demo_maya",
         "files_touched": [
             "backend/routers/sessions.py",
@@ -448,55 +437,22 @@ async def _ensure_user(pool, user: dict) -> tuple[dict, str | None, bool]:
     return new_user, api_key, True
 
 
-async def _ensure_workspace(
-    pool,
-    owner: dict,
-    workspace_name: str,
-    workspace_description: str,
-) -> tuple[dict, bool]:
-    row = await pool.fetchrow(
-        "SELECT id, name, description, creator_id, updated_at FROM workspaces "
-        "WHERE name = $1 AND creator_id = $2 ORDER BY created_at DESC LIMIT 1",
-        workspace_name,
-        owner["id"],
-    )
-    if row:
-        return dict(row), False
-    ws = await workspace_service.create_workspace(
-        name=workspace_name,
-        description=workspace_description,
-        creator_id=owner["id"],
-    )
-    return ws, True
-
-
-async def _ensure_membership(workspace_id: UUID, users: list[dict], owner: dict) -> None:
-    owner_id = owner["id"]
-    for u in users:
-        await workspace_service.join_workspace(workspace_id, u["id"])
-
-    # Keep one user as viewer if we can set roles from workspace owner.
-    if users and owner_id == users[0]["id"]:
-        target = users[-1]
-        await workspace_service.set_member_role(workspace_id, target["id"], owner_id, "viewer")
-
-
 async def _get_folder(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     name: str,
     parent_id: UUID | None,
 ) -> dict | None:
     return await database.get_pool().fetchrow(
-        "SELECT id, workspace_id, parent_folder_id, name, created_by, created_at, updated_at "
-        "FROM folders WHERE workspace_id = $1 AND name = $2 "
+        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "FROM folders WHERE owner_user_id = $1 AND name = $2 "
         "AND parent_folder_id IS NOT DISTINCT FROM $3",
-        workspace_id,
+        owner_user_id,
         name,
         parent_id,
     )
 
 
-async def _ensure_folders(workspace_id: UUID, creator_id: UUID) -> dict[str, dict]:
+async def _ensure_folders(owner_user_id: UUID, creator_id: UUID) -> dict[str, dict]:
     created: dict[str, dict] = {}
     folders_by_name: dict[str, UUID | None] = {}
     for item in SAMPLE_FOLDERS:
@@ -509,10 +465,10 @@ async def _ensure_folders(workspace_id: UUID, creator_id: UUID) -> dict[str, dic
             parent_id = folders_by_name[parent_key]
             key = f"{parent_name} / {name}"
 
-        row = await _get_folder(workspace_id, name, parent_id)
+        row = await _get_folder(owner_user_id, name, parent_id)
         if not row:
             row = await files_tree_service.create_folder(
-                workspace_id=workspace_id,
+                owner_user_id=owner_user_id,
                 name=name,
                 created_by=creator_id,
                 parent_folder_id=parent_id,
@@ -523,7 +479,7 @@ async def _ensure_folders(workspace_id: UUID, creator_id: UUID) -> dict[str, dic
 
 
 async def _ensure_pages(
-    workspace_id: UUID, creator_id: UUID, folders: dict[str, dict]
+    owner_user_id: UUID, creator_id: UUID, folders: dict[str, dict]
 ) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for spec in SAMPLE_PAGES:
@@ -534,10 +490,10 @@ async def _ensure_pages(
             if folder_key in folders:
                 parent_id = folders[folder_key]["id"]
             else:
-                row = await _get_folder(workspace_id, parent_parts[0], None)
+                row = await _get_folder(owner_user_id, parent_parts[0], None)
                 if not row:
                     row = await files_tree_service.create_folder(
-                        workspace_id=workspace_id,
+                        owner_user_id=owner_user_id,
                         name=parent_parts[0],
                         created_by=creator_id,
                         parent_folder_id=None,
@@ -548,9 +504,9 @@ async def _ensure_pages(
             parent_id = folders[folder_key]["id"] if folder_key in folders else None
 
         existing = await database.get_pool().fetchrow(
-            "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 "
+            "SELECT id FROM pages WHERE owner_user_id = $1 AND name = $2 "
             "AND folder_id IS NOT DISTINCT FROM $3",
-            workspace_id,
+            owner_user_id,
             spec["name"],
             parent_id,
         )
@@ -559,7 +515,7 @@ async def _ensure_pages(
             continue
 
         page = await files_tree_service.create_page(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             name=spec["name"],
             created_by=creator_id,
             folder_id=parent_id,
@@ -569,15 +525,15 @@ async def _ensure_pages(
     return out
 
 
-async def _ensure_tables(workspace_id: UUID, creator_id: UUID) -> dict[str, dict]:
+async def _ensure_tables(owner_user_id: UUID, creator_id: UUID) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for spec in SAMPLE_TABLES:
         table = await database.get_pool().fetchrow(
-            "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.created_by, "
+            "SELECT t.id, t.owner_user_id, t.name, t.description, t.columns, t.created_by, "
             "t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
-            "FROM tables t WHERE t.workspace_id = $1 AND t.name = $2",
-            workspace_id,
+            "FROM tables t WHERE t.owner_user_id = $1 AND t.name = $2",
+            owner_user_id,
             spec["name"],
         )
         if table:
@@ -597,7 +553,7 @@ async def _ensure_tables(workspace_id: UUID, creator_id: UUID) -> dict[str, dict
             continue
 
         new_table = await table_service.create_table(
-            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             name=spec["name"],
             description=spec["description"],
             columns=[dict(c) for c in spec["columns"]],
@@ -621,11 +577,11 @@ async def _session_time_offset(index: int, event_offset: int) -> datetime:
 
 
 async def _ensure_sessions(
-    workspace_id: UUID, users: dict[str, dict], folders: dict[str, dict]
+    owner_user_id: UUID, users: dict[str, dict], folders: dict[str, dict]
 ) -> dict[str, dict]:
     created: dict[str, dict] = {}
     for i, spec in enumerate(SAMPLE_SESSIONS):
-        existing = await session_service.get_session(workspace_id, spec["session_id"])
+        existing = await session_service.get_session(owner_user_id, spec["session_id"])
         if existing:
             created[spec["session_id"]] = existing
             continue
@@ -655,10 +611,10 @@ async def _ensure_sessions(
                 }
             )
         await memory_service.push_events_batch(
-            workspace_id=workspace_id, created_by=created_by["id"], events=events
+            owner_user_id=owner_user_id, created_by=created_by["id"], events=events
         )
 
-        row = await session_service.get_session(workspace_id, spec["session_id"])
+        row = await session_service.get_session(owner_user_id, spec["session_id"])
         if row:
             await session_service.set_files_touched(row["id"], spec["files_touched"])
             created[spec["session_id"]] = row
@@ -668,7 +624,7 @@ async def _ensure_sessions(
 
 
 async def _ensure_files(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     creator_id: UUID,
     folders: dict[str, dict],
     tables: dict[str, dict],
@@ -681,19 +637,19 @@ async def _ensure_files(
     for spec in SAMPLE_FILES:
         parent_id = folders.get(spec["folder"], {}).get("id")
         storage_key = await storage_service.upload_file(
-            str(workspace_id),
+            str(owner_user_id),
             spec["name"],
             spec["content"].encode("utf-8"),
             spec["content_type"],
         )
         row = await database.get_pool().fetchrow(
-            "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, "
+            "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, "
             "extracted_text, extraction_status, extraction_attempts) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'done', 1) "
             "ON CONFLICT (storage_key) DO UPDATE SET "
             "name = EXCLUDED.name, size_bytes = EXCLUDED.size_bytes "
             "RETURNING id, name, size_bytes, content_type, folder_id, created_at, linked_table_id",
-            workspace_id,
+            owner_user_id,
             spec["name"],
             spec["content_type"],
             len(spec["content"].encode("utf-8")),
@@ -717,7 +673,7 @@ async def _ensure_files(
 
 
 async def _ensure_skills(
-    workspace_id: UUID,
+    owner_user_id: UUID,
     user: dict,
     folders: dict[str, dict],
     pages: dict[str, dict],
@@ -730,7 +686,7 @@ async def _ensure_skills(
     pool = database.get_pool()
     skill_defs: list[dict[str, Any]] = [
         {
-            "title": "Workspace Product Pack",
+            "title": "Scope Product Pack",
             "description": "Core product artifacts for sprint planning.",
             "publish": False,
             "discoverable": False,
@@ -757,20 +713,20 @@ async def _ensure_skills(
 
     for spec in skill_defs:
         exists = await pool.fetchrow(
-            "SELECT id FROM skills WHERE workspace_id = $1 AND title = $2",
-            workspace_id,
+            "SELECT id FROM skills WHERE owner_user_id = $1 AND title = $2",
+            owner_user_id,
             spec["title"],
         )
         if exists:
             continue
         folder = await pool.fetchrow(
-            "SELECT id FROM folders WHERE workspace_id = $1 AND name = $2 "
+            "SELECT id FROM folders WHERE owner_user_id = $1 AND name = $2 "
             "AND parent_folder_id IS NULL",
-            workspace_id,
+            owner_user_id,
             spec["title"],
         )
         if folder is None:
-            folder = await files_tree_service.create_folder(workspace_id, spec["title"], user["id"])
+            folder = await files_tree_service.create_folder(owner_user_id, spec["title"], user["id"])
         for page_name in spec["pages"]:
             page = pages.get(page_name)
             if page:
@@ -784,11 +740,11 @@ async def _ensure_skills(
                     "UPDATE tables SET folder_id = $1 WHERE id = $2", folder["id"], table["id"]
                 )
         await shared_skill_service._ensure_skill_md(
-            workspace_id, folder["id"], user["id"], spec["title"]
+            owner_user_id, folder["id"], user["id"], spec["title"]
         )
         if spec["publish"]:
             await shared_skill_service.publish_folder(
-                workspace_id,
+                owner_user_id,
                 user["id"],
                 folder["id"],
                 title=spec["title"],
@@ -799,38 +755,37 @@ async def _ensure_skills(
     # Freeze a couple of sessions into a published skill folder.
     story_title = "Session Story Bundle"
     exists = await pool.fetchrow(
-        "SELECT id FROM skills WHERE workspace_id = $1 AND title = $2",
-        workspace_id,
+        "SELECT id FROM skills WHERE owner_user_id = $1 AND title = $2",
+        owner_user_id,
         story_title,
     )
     if not exists and sessions:
-        folder = await files_tree_service.create_folder(workspace_id, story_title, user["id"])
+        folder = await files_tree_service.create_folder(owner_user_id, story_title, user["id"])
         for session_key in sorted(sessions)[:3]:
             await shared_skill_service.materialize_session_page(
-                workspace_id,
+                owner_user_id,
                 sessions[session_key]["session_id"],
                 folder["id"],
                 user["id"],
             )
         await shared_skill_service._ensure_skill_md(
-            workspace_id, folder["id"], user["id"], story_title
+            owner_user_id, folder["id"], user["id"], story_title
         )
 
 
-async def _seed_workspace_bundle(
-    workspace_id: UUID,
-    workspace_owner_id: UUID,
+async def _seed_scope_bundle(
+    owner_user_id: UUID,
     created_users: dict[str, dict],
 ) -> dict[str, int]:
-    folders = await _ensure_folders(workspace_id, workspace_owner_id)
-    pages = await _ensure_pages(workspace_id, workspace_owner_id, folders)
-    tables = await _ensure_tables(workspace_id, workspace_owner_id)
-    files = await _ensure_files(workspace_id, workspace_owner_id, folders, tables)
-    sessions = await _ensure_sessions(workspace_id, created_users, folders)
+    folders = await _ensure_folders(owner_user_id, owner_user_id)
+    pages = await _ensure_pages(owner_user_id, owner_user_id, folders)
+    tables = await _ensure_tables(owner_user_id, owner_user_id)
+    files = await _ensure_files(owner_user_id, owner_user_id, folders, tables)
+    sessions = await _ensure_sessions(owner_user_id, created_users, folders)
 
-    owner = {"id": workspace_owner_id}
+    owner = {"id": owner_user_id}
     await _ensure_skills(
-        workspace_id,
+        owner_user_id,
         owner,
         folders,
         pages,
@@ -849,56 +804,50 @@ async def _seed_workspace_bundle(
 
 
 async def _ensure_external_skill_sample(
-    workspace_id: UUID,
-    workspace_owner: dict,
+    owner_user_id: UUID,
+    owner: dict,
     users: dict[str, dict],
 ) -> None:
     external_owner = users["demo_devon"]
-    external_workspace, _ = await _ensure_workspace(
-        database.get_pool(),
-        external_owner,
-        workspace_name=SAMPLE_EXTERNAL_WORKSPACE_NAME,
-        workspace_description=SAMPLE_EXTERNAL_WORKSPACE_DESCRIPTION,
-    )
-    external_workspace_id = external_workspace["id"]
+    external_owner_id = external_owner["id"]
 
     external_skill_title = "Partner Briefs"
     pool = database.get_pool()
     existing_external = await pool.fetchrow(
-        "SELECT id, slug FROM skills WHERE workspace_id = $1 AND title = $2",
-        external_workspace_id,
+        "SELECT id, slug FROM skills WHERE owner_user_id = $1 AND title = $2",
+        external_owner_id,
         external_skill_title,
     )
     if existing_external:
         external_slug = existing_external["slug"]
     else:
         folder = await files_tree_service.create_folder(
-            external_workspace_id, external_skill_title, external_owner["id"]
+            external_owner_id, external_skill_title, external_owner["id"]
         )
         await files_tree_service.create_page(
-            workspace_id=external_workspace_id,
+            owner_user_id=external_owner_id,
             name="External Contributor Brief",
             created_by=external_owner["id"],
             folder_id=folder["id"],
             content=(
                 "# External collaborator brief\n\n"
-                "This page lives in a different workspace and arrives via a forked skill.\n"
+                "This page lives in a different scope and arrives via a forked skill.\n"
             ),
         )
         created_external = await shared_skill_service.publish_folder(
-            external_workspace_id,
+            external_owner_id,
             external_owner["id"],
             folder["id"],
             title=external_skill_title,
-            description="Sample public skill from a different workspace.",
+            description="Sample public skill from a different scope.",
             discoverable=True,
         )
         external_slug = created_external["slug"]
 
     attached = await shared_skill_service.fork_skill(
-        workspace_id,
+        owner_user_id,
         external_slug,
-        workspace_owner["id"],
+        owner["id"],
     )
     if attached:
         log.info("Forked external skill sample: %s", attached["name"])
@@ -906,16 +855,15 @@ async def _ensure_external_skill_sample(
 
 async def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--workspace-name", default=SAMPLE_WORKSPACE_NAME)
-    parser.add_argument("--workspace-id", help="Seed an explicit workspace by ID.")
+    parser.add_argument("--user-name", help="Seed into this user's scope (by name).")
+    parser.add_argument("--user-id", help="Seed an explicit user's scope by ID.")
     parser.add_argument(
-        "--seed-empty-workspaces",
+        "--seed-empty-users",
         action="store_true",
-        help="Seed every workspace that currently has no skills.",
+        help="Seed every user scope that currently has no skills.",
     )
     args = parser.parse_args()
 
-    workspace_name = args.workspace_name
     if not os.getenv("DATABASE_URL"):
         log.error("DATABASE_URL is required")
         return 2
@@ -934,84 +882,67 @@ async def main() -> int:
                 created_api_keys[row["name"]] = api_key
             log.info("User %s %s", "created" if created else "found", row["name"])
 
-        workspace_owner = created_users[SAMPLE_USERS[0]["name"]]
-        seeded_workspace_count = 0
+        default_owner = created_users[SAMPLE_USERS[0]["name"]]
+        seeded_scope_count = 0
         seeded_session_total = 0
         seeded_file_total = 0
 
-        if args.workspace_id:
-            target_workspace = await database.get_pool().fetchrow(
-                "SELECT id, name, creator_id FROM workspaces WHERE id = $1",
-                args.workspace_id,
-            )
-            if not target_workspace:
-                log.error("No workspace found for --workspace-id=%s", args.workspace_id)
+        if args.user_id or args.user_name:
+            if args.user_id:
+                target_user = await pool.fetchrow(
+                    "SELECT id, name FROM users WHERE id = $1", args.user_id
+                )
+                missing = f"--user-id={args.user_id}"
+            else:
+                target_user = await pool.fetchrow(
+                    "SELECT id, name FROM users WHERE name = $1", args.user_name
+                )
+                missing = f"--user-name={args.user_name}"
+            if not target_user:
+                log.error("No user found for %s", missing)
                 return 1
 
-            target_id = target_workspace["id"]
-            target_name = target_workspace["name"]
-            target_owner_id = target_workspace["creator_id"] or workspace_owner["id"]
-            metrics = await _seed_workspace_bundle(target_id, target_owner_id, created_users)
-            log.info("Seeded explicit workspace: %s", target_name)
-            workspace_name = target_name
-            workspace_id = target_id
-            seeded_workspace_count = 1
+            owner_user_id = target_user["id"]
+            metrics = await _seed_scope_bundle(owner_user_id, created_users)
+            log.info("Seeded explicit user scope: %s", target_user["name"])
+            seeded_scope_count = 1
             seeded_session_total += metrics["sessions"]
             seeded_file_total += metrics["files"]
         else:
-            workspace, created = await _ensure_workspace(
-                pool,
-                workspace_owner,
-                workspace_name=workspace_name,
-                workspace_description=SAMPLE_WORKSPACE_DESCRIPTION,
-            )
-            workspace_name = workspace["name"]
-            workspace_id = workspace["id"]
-            await _ensure_membership(workspace_id, list(created_users.values()), workspace_owner)
-
-            if created:
-                log.info("Created workspace: %s", workspace_name)
-            else:
-                log.info("Reusing workspace: %s", workspace_name)
-
-            metrics = await _seed_workspace_bundle(
-                workspace_id, workspace_owner["id"], created_users
-            )
-            await _ensure_external_skill_sample(workspace_id, workspace_owner, created_users)
-            seeded_workspace_count = 1
+            owner_user_id = default_owner["id"]
+            metrics = await _seed_scope_bundle(owner_user_id, created_users)
+            await _ensure_external_skill_sample(owner_user_id, default_owner, created_users)
+            log.info("Seeded user scope: %s", default_owner["name"])
+            seeded_scope_count = 1
             seeded_session_total += metrics["sessions"]
             seeded_file_total += metrics["files"]
 
-            if args.seed_empty_workspaces:
-                empty_workspaces = await pool.fetch("""
-                    SELECT w.id, w.name, w.creator_id
-                    FROM workspaces w
-                    LEFT JOIN skills s ON s.workspace_id = w.id
+            if args.seed_empty_users:
+                empty_users = await pool.fetch("""
+                    SELECT u.id, u.name
+                    FROM users u
+                    LEFT JOIN skills s ON s.owner_user_id = u.id
                     WHERE s.id IS NULL
-                    ORDER BY w.created_at
+                    ORDER BY u.created_at
                     """)
-                for workspace_row in empty_workspaces:
-                    metrics = await _seed_workspace_bundle(
-                        workspace_row["id"],
-                        workspace_row["creator_id"] or workspace_owner["id"],
-                        created_users,
-                    )
-                    seeded_workspace_count += 1
+                for user_row in empty_users:
+                    metrics = await _seed_scope_bundle(user_row["id"], created_users)
+                    seeded_scope_count += 1
                     seeded_session_total += metrics["sessions"]
                     seeded_file_total += metrics["files"]
 
-        if seeded_workspace_count:
-            log.info("Seeded %d workspace(s).", seeded_workspace_count)
+        if seeded_scope_count:
+            log.info("Seeded %d user scope(s).", seeded_scope_count)
 
-        log.info("Seed complete for workspace: %s", workspace_name)
+        log.info("Seed complete for user scope: %s", owner_user_id)
         if created_api_keys:
             log.info("Sample API keys (new users):")
             for username, key in created_api_keys.items():
                 log.info("  %s: %s", username, key)
 
-        skill_count = await database.get_pool().fetchval(
-            "SELECT count(*) FROM skills WHERE workspace_id = $1",
-            workspace_id,
+        skill_count = await pool.fetchval(
+            "SELECT count(*) FROM skills WHERE owner_user_id = $1",
+            owner_user_id,
         )
         print(
             "Seed complete: "

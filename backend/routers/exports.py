@@ -36,7 +36,7 @@ async def export_page(
 ):
     pool = get_pool()
     page = await pool.fetchrow(
-        "SELECT id, workspace_id, content_type, html_layout FROM pages WHERE id = $1",
+        "SELECT id, owner_user_id, content_type, html_layout FROM pages WHERE id = $1",
         page_id,
     )
     if not page:
@@ -50,7 +50,7 @@ async def export_page(
         "page",
         page_id,
         current_user["id"],
-        workspace_id=page["workspace_id"],
+        owner_user_id=page["owner_user_id"],
     )
     if not can_read:
         raise HTTPException(status_code=404, detail="page not found")
@@ -60,7 +60,7 @@ async def export_page(
     await task_service.register_task(
         task_id=task_id,
         user_id=current_user["id"],
-        workspace_id=page["workspace_id"],
+        owner_user_id=page["owner_user_id"],
         task_type=f"export:{body.format}",
         object_type="page",
         object_id=page_id,

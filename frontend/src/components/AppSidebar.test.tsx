@@ -3,12 +3,7 @@ import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
 import { resetSkillNavigationCache } from "../lib/skillNavigationCache";
-import {
-  getWorkspacePins,
-  getWorkspaceSidebar,
-  listMyWorkspaces,
-  listWorkspaceSources,
-} from "../lib/api";
+import { getPins, getSidebar, listSources } from "../lib/api";
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
@@ -44,13 +39,12 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
-  getWorkspaceSidebar: vi.fn(),
-  listMyWorkspaces: vi.fn(),
-  getWorkspacePins: vi.fn(),
-  setWorkspacePins: vi.fn(),
-  getWorkspaceRecents: vi.fn(),
-  recordWorkspaceRecent: vi.fn(),
-  listWorkspaceSources: vi.fn(),
+  getSidebar: vi.fn(),
+  getPins: vi.fn(),
+  setPins: vi.fn(),
+  getMyRecents: vi.fn(),
+  recordRecent: vi.fn(),
+  listSources: vi.fn(),
 }));
 
 const user = {
@@ -62,17 +56,6 @@ const user = {
   last_seen: "2026-05-11T00:00:00Z",
 };
 
-const workspace = {
-  id: "ws-1",
-  name: "Demo Skill",
-  description: "",
-  creator_id: "user-1",
-  invite_code: "invite",
-  created_at: "2026-05-11T00:00:00Z",
-  updated_at: "2026-05-11T00:00:00Z",
-  member_count: 1,
-};
-
 function navLink(label: string): HTMLAnchorElement {
   const link = screen.getByText(label).closest("a");
   if (!link) throw new Error(`No link for ${label}`);
@@ -80,17 +63,16 @@ function navLink(label: string): HTMLAnchorElement {
 }
 
 beforeEach(() => {
-  nav.pathname = "/workspaces/ws-1";
+  nav.pathname = "/";
   localStorage.clear();
   resetSkillNavigationCache();
-  vi.mocked(listMyWorkspaces).mockResolvedValue({ workspaces: [workspace] });
-  vi.mocked(getWorkspaceSidebar).mockResolvedValue({
+  vi.mocked(getSidebar).mockResolvedValue({
     sessions: [],
     files: { folders: [], pages: [], files: [] },
     skills: [],
   });
-  vi.mocked(getWorkspacePins).mockResolvedValue({ skills: [], sessions: [], files: [] });
-  vi.mocked(listWorkspaceSources).mockResolvedValue([]);
+  vi.mocked(getPins).mockResolvedValue({ skills: [], sessions: [], files: [] });
+  vi.mocked(listSources).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -98,16 +80,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("AppSidebar workspace nav", () => {
+describe("AppSidebar nav", () => {
   it("links Skills, Sessions, and Files straight to their list pages", async () => {
     render(<AppSidebar user={user} />);
 
     await waitFor(() => expect(navLink("Skills")).toBeTruthy());
 
-    expect(navLink("Skills").getAttribute("href")).toBe("/workspaces/ws-1/skills");
-    expect(navLink("Agent Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
-    expect(navLink("Files").getAttribute("href")).toBe("/workspaces/ws-1/files");
-    expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");
+    expect(navLink("Skills").getAttribute("href")).toBe("/skills");
+    expect(navLink("Agent Sessions").getAttribute("href")).toBe("/sessions");
+    expect(navLink("Files").getAttribute("href")).toBe("/files");
+    expect(navLink("Trash").getAttribute("href")).toBe("/trash");
   });
 
   it("labels the top nav Index and splits Your Brain from External Sources", async () => {
@@ -116,8 +98,6 @@ describe("AppSidebar workspace nav", () => {
     await waitFor(() => expect(navLink("Index")).toBeTruthy());
 
     expect(navLink("Index").getAttribute("href")).toBe("/activity");
-    // The section headers render only after the workspace fetch resolves,
-    // later than the Index link — await them or this test flakes under load.
     expect(await screen.findByText("Your Brain")).toBeTruthy();
     // The External Sources header renders even with no connected sources.
     expect(await screen.findByText("External Sources")).toBeTruthy();
@@ -140,7 +120,7 @@ describe("AppSidebar workspace nav", () => {
   });
 
   it("marks the Files section active when viewing a file route", async () => {
-    nav.pathname = "/workspaces/ws-1/folders/folder-1";
+    nav.pathname = "/folders/folder-1";
     render(<AppSidebar user={user} />);
 
     await waitFor(() => expect(navLink("Files")).toBeTruthy());

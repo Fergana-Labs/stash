@@ -43,12 +43,9 @@ export function describeToolCall(
   return name;
 }
 
-export async function getAgentChat(
-  workspaceId: string,
-  sessionId: string,
-): Promise<ChatMessage[]> {
+export async function getAgentChat(sessionId: string): Promise<ChatMessage[]> {
   const data = await apiFetch<{ messages: { role: ChatRole; content: string }[] }>(
-    `/api/v1/workspaces/${workspaceId}/agent-chat/${encodeURIComponent(sessionId)}`,
+    `/api/v1/me/agent-chat/${encodeURIComponent(sessionId)}`,
   );
   return data.messages.map((m) => ({ role: m.role, content: m.content }));
 }
@@ -63,14 +60,13 @@ type StreamHandlers = {
 // POST a message and dispatch streamed events. Resolves when the stream ends.
 export async function streamAgentChat(
   opts: {
-    workspaceId: string;
     sessionId: string | null;
     message: string;
     signal?: AbortSignal;
   } & StreamHandlers,
 ): Promise<void> {
   const token = await getAuthToken();
-  const res = await fetch(`${API_BASE}/api/v1/workspaces/${opts.workspaceId}/agent-chat`, {
+  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

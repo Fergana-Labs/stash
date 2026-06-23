@@ -395,7 +395,7 @@ async def integration_disconnect(
         await security_audit_service.record_event(
             action="source.deleted",
             actor_user_id=current_user["id"],
-            workspace_id=UUID(source["workspace_id"]),
+            owner_user_id=UUID(source["owner_user_id"]),
             target_type="source",
             target_id=source["id"],
             provider=provider,

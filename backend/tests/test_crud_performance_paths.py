@@ -19,24 +19,22 @@ async def _register(client: AsyncClient) -> str:
     return resp.json()["api_key"]
 
 
-async def _workspace(client: AsyncClient, api_key: str) -> dict:
-    resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": "CRUD performance"},
+async def _scope(client: AsyncClient, api_key: str) -> dict:
+    resp = await client.get(
+        "/api/v1/users/me",
         headers=_auth(api_key),
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 200
     return resp.json()
 
 
 @pytest.mark.asyncio
 async def test_batch_row_create_and_update_preserve_order(client: AsyncClient):
     api_key = await _register(client)
-    workspace = await _workspace(client, api_key)
     headers = _auth(api_key)
 
     table_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/tables",
+        "/api/v1/me/tables",
         json={
             "name": "Bulk rows",
             "columns": [
@@ -50,7 +48,7 @@ async def test_batch_row_create_and_update_preserve_order(client: AsyncClient):
     table_id = table_resp.json()["id"]
 
     create_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/tables/{table_id}/rows/batch",
+        f"/api/v1/me/tables/{table_id}/rows/batch",
         json={"rows": [{"data": {"col_name": f"row-{i}", "col_score": i}} for i in range(250)]},
         headers=headers,
     )
@@ -61,7 +59,7 @@ async def test_batch_row_create_and_update_preserve_order(client: AsyncClient):
 
     selected = list(reversed(created[10:20]))
     update_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/tables/{table_id}/rows/update",
+        f"/api/v1/me/tables/{table_id}/rows/update",
         json={
             "rows": [
                 {"row_id": row["id"], "data": {"col_name": f"updated-{i}"}}
@@ -81,11 +79,10 @@ async def test_batch_row_create_and_update_preserve_order(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_page_listing_ignores_trashed_pages(client: AsyncClient):
     api_key = await _register(client)
-    workspace = await _workspace(client, api_key)
     headers = _auth(api_key)
 
     page_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        "/api/v1/me/pages/new",
         json={"name": "Draft", "content": "temporary"},
         headers=headers,
     )
@@ -93,13 +90,13 @@ async def test_page_listing_ignores_trashed_pages(client: AsyncClient):
     page_id = page_resp.json()["id"]
 
     delete_resp = await client.delete(
-        f"/api/v1/workspaces/{workspace['id']}/pages/{page_id}",
+        f"/api/v1/me/pages/{page_id}",
         headers=headers,
     )
     assert delete_resp.status_code == 204
 
     pages_resp = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/pages",
+        "/api/v1/me/pages",
         headers=headers,
     )
     assert pages_resp.status_code == 200
