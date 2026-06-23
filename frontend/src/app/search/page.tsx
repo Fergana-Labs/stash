@@ -299,7 +299,7 @@ function SearchPageInner() {
                 setSelectedFolderId(next);
                 if (next) setSelectedPageId("");
               }}
-              disabled={!selectedWorkspaceId || Boolean(selectedPageId)}
+              disabled={Boolean(selectedPageId)}
               ariaLabel="Folder"
               searchable
               searchPlaceholder="Filter folders…"
@@ -317,7 +317,7 @@ function SearchPageInner() {
                 setSelectedPageId(next);
                 if (next) setSelectedFolderId("");
               }}
-              disabled={!selectedWorkspaceId || Boolean(selectedFolderId)}
+              disabled={Boolean(selectedFolderId)}
               ariaLabel="Page"
               searchable
               searchPlaceholder="Filter pages…"
@@ -460,6 +460,7 @@ function searchSkills(skills: Skill[], query: string, sourceName: string): Searc
 
       href: `/skills/folder/${skill.folder_id}`,
       sourceName,
+      detail:
         contextSnippet(skill.description, query) ??
         `Skill / ${skill.description || `${skill.file_count} files`}`,
       updatedAt: skill.updated_at,
