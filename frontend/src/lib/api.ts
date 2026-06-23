@@ -1549,11 +1549,35 @@ export interface SessionEvent {
   created_at: string | null;
 }
 
-export async function getSessionEvents(sessionId: string): Promise<SessionEvent[]> {
-  const res = await apiFetch<{ events: SessionEvent[] }>(
-    `${ME}/transcripts/${encodeURIComponent(sessionId)}/events`
+export interface SessionEventsPage {
+  events: SessionEvent[];
+  total: number;
+  has_more: boolean;
+}
+
+export async function getSessionEventsPage(
+  sessionId: string,
+  limit = 100,
+  offset = 0
+): Promise<SessionEventsPage> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (offset) qs.set("offset", String(offset));
+  return apiFetch<SessionEventsPage>(
+    `${ME}/transcripts/${encodeURIComponent(sessionId)}/events?${qs}`
   );
-  return res.events;
+}
+
+// Drains every page. For consumers that search a whole session client-side;
+// the viewer uses getSessionEventsPage directly for lazy loading.
+export async function getSessionEvents(sessionId: string): Promise<SessionEvent[]> {
+  const all: SessionEvent[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await getSessionEventsPage(sessionId, 500, offset);
+    all.push(...page.events);
+    if (!page.has_more || page.events.length === 0) return all;
+    offset += page.events.length;
+  }
 }
 
 export interface HistoryEvent {

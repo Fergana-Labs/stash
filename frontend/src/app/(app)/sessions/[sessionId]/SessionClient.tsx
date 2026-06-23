@@ -16,7 +16,7 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   fetchAuthed,
   getSessionDetail,
-  getSessionEvents,
+  getSessionEventsPage,
   listSkills,
   materializeSession,
   renameSession,
@@ -26,6 +26,10 @@ import {
   type Skill,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
+
+// One transcript page. The viewer loads this many turns at a time and fetches
+// more on scroll, so long sessions don't load every event up front.
+const TRANSCRIPT_PAGE_SIZE = 100;
 
 interface MessageTurn {
   kind: "message";
@@ -125,6 +129,9 @@ export default function SessionViewerPage() {
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
+  const [totalTurns, setTotalTurns] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
   useBreadcrumbs(
@@ -152,10 +159,14 @@ export default function SessionViewerPage() {
   const load = useCallback(async () => {
     try {
       const detail = await getSessionDetail(sessionId);
-      const events = await getSessionEvents(sessionId);
-      setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
+      const page = await getSessionEventsPage(sessionId, TRANSCRIPT_PAGE_SIZE, 0);
+      setAgentName(
+        detail.agent_name || page.events.find((event) => event.agent_name)?.agent_name || ""
+      );
       setSessionDetail(detail);
-      setTurns(events.map(eventToTurn));
+      setTurns(page.events.map(eventToTurn));
+      setTotalTurns(page.total);
+      setHasMore(page.has_more);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
@@ -164,6 +175,36 @@ export default function SessionViewerPage() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await getSessionEventsPage(sessionId, TRANSCRIPT_PAGE_SIZE, turns.length);
+      setTurns((prev) => [...prev, ...page.events.map(eventToTurn)]);
+      setHasMore(page.has_more);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load more messages");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [sessionId, loadingMore, hasMore, turns.length]);
+
+  // Auto-load the next page when the sentinel scrolls into view; the button it
+  // wraps is the manual fallback if the observer can't fire.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -202,12 +243,12 @@ export default function SessionViewerPage() {
                   }}
                 />
               </h1>
-              {turns.length > 0 && (
+              {totalTurns > 0 && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted">
                   {sessionDate && <span>{sessionDate}</span>}
                   {sessionDate && <span>·</span>}
                   <span>
-                    {turns.length} message{turns.length === 1 ? "" : "s"}
+                    {totalTurns} message{totalTurns === 1 ? "" : "s"}
                   </span>
                 </div>
               )}
@@ -299,7 +340,19 @@ export default function SessionViewerPage() {
                 </div>
               );
             })}
-            {!error && turns.length === 0 && (
+            {hasMore && (
+              <div ref={sentinelRef} className="flex justify-center py-4">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                >
+                  {loadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            )}
+            {!error && totalTurns === 0 && (
               <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
                 No transcript events yet.
               </div>

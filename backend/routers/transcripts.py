@@ -141,9 +141,9 @@ def _event_role(event_type: str | None) -> str | None:
 
     tool_use events fold into 'assistant' so the timeline shows tool calls
     inline with assistant turns instead of dropping them silently."""
-    if event_type in ("user_message", "prompt", "user"):
+    if event_type in memory_service.USER_EVENT_TYPES:
         return "user"
-    if event_type in ("assistant_message", "assistant", "tool_use", "tool_call", "tool_result"):
+    if event_type in memory_service.ASSISTANT_EVENT_TYPES:
         return "assistant"
     return None
 
@@ -219,18 +219,31 @@ async def get_transcript_metadata(
 @router.get("/{session_id}/events")
 async def get_transcript_events(
     session_id: str,
+    limit: int = 100,
+    offset: int = 0,
     current_user: dict = Depends(get_current_user),
 ):
-    """Chat-thread turns for a session, in render order. Sourced directly
-    from history_events — no JSONL serialization round-trip.
+    """One page of chat-thread turns for a session, oldest first, sourced
+    directly from history_events. The viewer loads the first page on open and
+    fetches more as the reader scrolls. offset is a turn ordinal, so a future
+    in-session search can jump straight to a match's window.
 
-    No membership gate: read_session_events enforces
-    can_read_session, so a non-member the session is shared with can read it."""
-    resolved = await _resolve_readable_events(session_id, current_user["id"])
-    if not resolved:
-        raise HTTPException(status_code=404, detail="Transcript not found")
-    _, events = resolved
-    return {"events": _events_to_viewer_shape(events)}
+    No membership gate: can_read_session is enforced per scope below, so a
+    non-member the session is shared with can read it."""
+    for row in await session_service.list_sessions_for_session_id(session_id):
+        owner_user_id = row["owner_user_id"]
+        if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
+            continue
+        events, total = await memory_service.read_session_events_page(
+            owner_user_id, session_id, limit, offset
+        )
+        if total:
+            return {
+                "events": _events_to_viewer_shape(events),
+                "total": total,
+                "has_more": offset + len(events) < total,
+            }
+    raise HTTPException(status_code=404, detail="Transcript not found")
 
 
 @router.get("/{session_id}/export.jsonl")

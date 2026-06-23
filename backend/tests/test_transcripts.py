@@ -99,6 +99,58 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_events_endpoint_paginates(client: AsyncClient):
+    """The viewer loads the transcript a page at a time. offset is a turn
+    ordinal, total is the full turn count, and has_more drives infinite scroll —
+    so a long session never loads every event up front."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    body = (
+        "\n".join(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {"content": f"msg-{i}"},
+                    "timestamp": f"2026-05-10T20:00:0{i}Z",
+                }
+            )
+            for i in range(5)
+        )
+        + "\n"
+    ).encode()
+    up = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(body), "application/jsonl")},
+        data={"session_id": "sess-page", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    first = await client.get(
+        "/api/v1/me/transcripts/sess-page/events",
+        params={"limit": 2, "offset": 0},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    page = first.json()
+    assert page["total"] == 5
+    assert page["has_more"] is True
+    assert [e["content"] for e in page["events"]] == ["msg-0", "msg-1"]
+
+    last = await client.get(
+        "/api/v1/me/transcripts/sess-page/events",
+        params={"limit": 2, "offset": 4},
+        headers=headers,
+    )
+    assert last.status_code == 200
+    tail = last.json()
+    assert tail["total"] == 5
+    assert tail["has_more"] is False
+    assert [e["content"] for e in tail["events"]] == ["msg-4"]
+
+
+@pytest.mark.asyncio
 async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
     key = await _register(client)
     headers = {"Authorization": f"Bearer {key}"}

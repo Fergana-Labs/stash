@@ -301,6 +301,15 @@ async def can_read_session(owner_user_id: UUID, session_id: str, user_id: UUID) 
     )
 
 
+# Event types the session viewer renders as turns. The user/assistant split
+# lives in transcripts._event_role; this is the single source of truth for
+# which rows count as renderable turns, shared by the paginated reader's
+# LIMIT/OFFSET so a page offset equals a turn ordinal.
+USER_EVENT_TYPES = ("user_message", "prompt", "user")
+ASSISTANT_EVENT_TYPES = ("assistant_message", "assistant", "tool_use", "tool_call", "tool_result")
+RENDERABLE_EVENT_TYPES = USER_EVENT_TYPES + ASSISTANT_EVENT_TYPES
+
+
 async def read_session_events(
     owner_user_id: UUID,
     session_id: str,
@@ -321,6 +330,38 @@ async def read_session_events(
         session_id,
     )
     return [dict(r) for r in rows]
+
+
+async def read_session_events_page(
+    owner_user_id: UUID,
+    session_id: str,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict], int]:
+    """One page of renderable session events (oldest first) plus the total
+    renderable count, for the lazily-loaded transcript viewer. Filtering to
+    renderable event types keeps the offset aligned with the turn ordinal the
+    viewer shows. Callers enforce readability."""
+    pool = get_pool()
+    total = await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND event_type = ANY($3::text[])",
+        owner_user_id,
+        session_id,
+        list(RENDERABLE_EVENT_TYPES),
+    )
+    rows = await pool.fetch(
+        "SELECT id, agent_name, event_type, tool_name, content, metadata, created_at "
+        "FROM history_events "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND event_type = ANY($3::text[]) "
+        "ORDER BY created_at, id LIMIT $4 OFFSET $5",
+        owner_user_id,
+        session_id,
+        list(RENDERABLE_EVENT_TYPES),
+        limit,
+        offset,
+    )
+    return [dict(r) for r in rows], total
 
 
 async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
