@@ -99,6 +99,9 @@ export default function SkillSessionsPage() {
   const [folders, setFolders] = useState<SessionFolder[]>([]);
   const [sharedFolders, setSharedFolders] = useState<SharedWithMeItem[]>([]);
   const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
+  // Bumped after a move/assign so a drilled-in folder refetches its own
+  // sessions — its list is fetched independently of the global recent window.
+  const [drillRefresh, setDrillRefresh] = useState(0);
   const [shareFolder, setShareFolder] = useState<SessionFolder | null>(null);
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
@@ -233,6 +236,7 @@ export default function SkillSessionsPage() {
       );
       clearSelection();
       await load();
+      setDrillRefresh((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not move sessions");
     }
@@ -245,6 +249,7 @@ export default function SkillSessionsPage() {
       await assignSessionFolder(rowIds, folderId);
       clearSelection();
       await load();
+      setDrillRefresh((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not move sessions");
     }
@@ -313,7 +318,7 @@ export default function SkillSessionsPage() {
         {openFolder ? (
           <FolderDrill
             folder={openFolder}
-            sessions={sorted ?? []}
+            refreshKey={drillRefresh}
             folders={folders}
             view={view}
             sort={sort}
@@ -1077,7 +1082,7 @@ function SharedFolderCard({
 
 function FolderDrill({
   folder,
-  sessions,
+  refreshKey,
   folders,
   view,
   sort,
@@ -1095,7 +1100,7 @@ function FolderDrill({
   onDropSessions,
 }: {
   folder: OpenFolder;
-  sessions: SessionSummary[];
+  refreshKey: number;
   folders: SessionFolder[];
   view: ViewKey;
   sort: SortKey;
@@ -1112,23 +1117,26 @@ function FolderDrill({
   dragActive: boolean;
   onDropSessions: (rowIds: string[], folderId: string) => void;
 }) {
-  const [shared, setShared] = useState<SessionSummary[] | null>(null);
+  const [folderSessions, setFolderSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");
 
+  // Always fetch the folder's own sessions from the backend. The global recent
+  // window the landing page loads can miss a folder's older sessions entirely,
+  // so a folder-scoped query is the only thing that reliably fills the drill.
   useEffect(() => {
-    if (!folder.shared) return;
-    setShared(null);
-    listSharedSessionFolderSessions(folder.id)
-      .then(setShared)
+    setFolderSessions(null);
+    const request = folder.shared
+      ? listSharedSessionFolderSessions(folder.id)
+      : listMySessions(200, folder.id);
+    request
+      .then(setFolderSessions)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load sessions"));
-  }, [folder]);
+  }, [folder, refreshKey]);
 
   const ownFolder = folder.folder;
   // Shared folders are read-only: render the same chronological browser, but
   // without selection (no move/delete on sessions you don't own).
-  const drillSessions = folder.shared
-    ? sortSessions(shared ?? [], sort)
-    : sessions.filter((s) => s.session_folder_id === folder.id);
+  const drillSessions = sortSessions(folderSessions ?? [], sort);
 
   return (
     <div>
@@ -1199,7 +1207,7 @@ function FolderDrill({
           onChange={(v) => onChangeSort(v as SortKey)}
         />
       </div>
-      {folder.shared && shared === null ? (
+      {folderSessions === null ? (
         <p className="text-[12.5px] text-muted">Loading…</p>
       ) : (
         <SessionsView

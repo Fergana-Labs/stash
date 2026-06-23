@@ -90,12 +90,16 @@ async def _session_artifacts(session_row_id: UUID) -> list[dict]:
 @router.get("/me/sessions")
 async def list_my_sessions(
     owner_user_id: UUID | None = Query(None),
+    session_folder_id: UUID | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
     """Recent sessions across the user's accessible scopes, grouped by
     session_id. Each row carries the agent name, event count, first & last
-    timestamps, and a preview of the first prompt."""
+    timestamps, and a preview of the first prompt.
+
+    Pass `session_folder_id` to scope to one folder — without it the list is a
+    global recent window, so a folder's older sessions would never appear."""
     pool = get_pool()
     args: list = [current_user["id"]]
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
@@ -116,6 +120,9 @@ async def list_my_sessions(
         args.append(owner_user_id)
         where.append(f"he.owner_user_id = ${len(args)}")
         title_where.append(f"he_title.owner_user_id = ${len(args)}")
+    if session_folder_id is not None:
+        args.append(session_folder_id)
+        where.append(f"s.session_folder_id = ${len(args)}")
 
     rows = await pool.fetch(
         f"""
