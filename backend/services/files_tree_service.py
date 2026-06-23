@@ -116,25 +116,6 @@ def _sanitize_html(html: str) -> str:
 _WORKSPACE_PAGE_FILTER = "deleted_at IS NULL"
 
 
-async def _filter_readable(
-    rows: list[dict],
-    object_type: str,
-    user_id: UUID,
-    workspace_id: UUID | None = None,
-) -> list[dict]:
-    readable = []
-    for row in rows:
-        row_workspace_id = workspace_id or row.get("workspace_id")
-        if await permission_service.check_access(
-            object_type,
-            row["id"],
-            user_id,
-            workspace_id=row_workspace_id,
-        ):
-            readable.append(row)
-    return readable
-
-
 class DuplicatePageName(Exception):
     """A page with this name already exists in the target folder."""
 
@@ -1118,23 +1099,26 @@ async def search_pages_fts(
         f"setweight(to_tsvector('english', {content_text_expr}), 'B') || "
         f"setweight(to_tsvector('english', {kw_text_expr}), 'A')"
     )
+    args: list = [workspace_id, query]
+    where = (
+        f"p.workspace_id = $1 "
+        f"AND {_WORKSPACE_PAGE_FILTER} "
+        f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2)"
+    )
+    if user_id is not None:
+        args.append(user_id)
+        where += " AND " + permission_service.readable_content_condition("page", "p", 3)
+    args.append(limit)
     rows = await pool.fetch(
         f"SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
         f"content_type, {content_text_expr} AS search_text, metadata, updated_at, "
         f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
-        f"FROM pages "
-        f"WHERE workspace_id = $1 "
-        f"AND {_WORKSPACE_PAGE_FILTER} "
-        f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
-        f"ORDER BY rank DESC LIMIT $3",
-        workspace_id,
-        query,
-        limit * 3,
+        f"FROM pages p "
+        f"WHERE {where} "
+        f"ORDER BY rank DESC LIMIT ${len(args)}",
+        *args,
     )
-    pages = [dict(r) for r in rows]
-    if user_id is not None:
-        pages = await _filter_readable(pages, "page", user_id, workspace_id)
-    return pages[:limit]
+    return [dict(r) for r in rows]
 
 
 # --- Page embeddings ---
@@ -1167,22 +1151,22 @@ async def search_pages_vector(
     user_id: UUID | None = None,
 ) -> list[dict]:
     pool = get_pool()
+    args: list = [workspace_id, query_embedding]
+    where = f"p.workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} AND embedding IS NOT NULL"
+    if user_id is not None:
+        args.append(user_id)
+        where += " AND " + permission_service.readable_content_condition("page", "p", 3)
+    args.append(limit)
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
         "content_type, html_layout, metadata, "
         "created_by, updated_by, created_at, updated_at, "
         "1 - (embedding <=> $2) AS similarity "
-        f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} "
-        "AND embedding IS NOT NULL "
-        "ORDER BY embedding <=> $2 LIMIT $3",
-        workspace_id,
-        query_embedding,
-        limit * 3,
+        f"FROM pages p WHERE {where} "
+        f"ORDER BY embedding <=> $2 LIMIT ${len(args)}",
+        *args,
     )
-    pages = [dict(r) for r in rows]
-    if user_id is not None:
-        pages = await _filter_readable(pages, "page", user_id, workspace_id)
-    return pages[:limit]
+    return [dict(r) for r in rows]
 
 
 # --- Folder helpers used by other services ---
