@@ -105,6 +105,15 @@ def upgrade() -> None:
         "ON session_folders (owner_user_id) WHERE is_default"
     )
 
+    # Recreate the session_titles -> sessions cascade that 0118 dropped to make
+    # the scope re-homing order-independent, now keyed on the renamed columns.
+    op.execute(
+        "ALTER TABLE session_titles ADD CONSTRAINT "
+        "session_titles_owner_user_id_session_id_fkey "
+        "FOREIGN KEY (owner_user_id, session_id) "
+        "REFERENCES sessions(owner_user_id, session_id) ON DELETE CASCADE"
+    )
+
     op.execute("DROP TABLE workspaces")
 
 

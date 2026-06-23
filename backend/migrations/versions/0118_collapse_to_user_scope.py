@@ -155,13 +155,138 @@ def upgrade() -> None:
           AND (a.viewed_at, a.workspace_id) < (b.viewed_at, b.workspace_id)
         """)
 
-    # 5. Re-home content from every workspace onto its target scope.
+    # 4b. Resolve unique-constraint collisions that re-homing would otherwise
+    #     trigger. When two workspaces collapse into one scope they can carry
+    #     duplicate root folder/page names, more than one default session
+    #     folder, and the same external session_id (the same agent session
+    #     re-imported in each workspace). Every block keys on the TARGET scope
+    #     (ws_target.new_ws) so it sees the post-re-home layout; the row already
+    #     living in the target scope wins, and the others are renamed or merged.
+    #     The remaining workspace_id-bearing unique keys (embedding_projections,
+    #     knowledge_density_cache, webhooks, workspace_sources) carry no
+    #     duplicates today, so re-homing them is a no-op.
+
+    # Root folders are unique on (workspace_id, name) where parent_folder_id IS
+    # NULL. Rename all but the winner, suffixing with a stable id fragment.
+    op.execute("""
+        WITH ranked AS (
+            SELECT f.id,
+                   row_number() OVER (
+                       PARTITION BY t.new_ws, f.name
+                       ORDER BY (f.workspace_id = t.new_ws) DESC, f.created_at, f.id
+                   ) AS rn
+            FROM folders f
+            JOIN ws_target t ON t.old_ws = f.workspace_id
+            WHERE f.parent_folder_id IS NULL
+        )
+        UPDATE folders f
+        SET name = f.name || ' (' || left(f.id::text, 8) || ')'
+        FROM ranked
+        WHERE ranked.id = f.id AND ranked.rn > 1
+        """)
+
+    # Root pages are unique on (workspace_id, name) where folder_id IS NULL.
+    op.execute("""
+        WITH ranked AS (
+            SELECT p.id,
+                   row_number() OVER (
+                       PARTITION BY t.new_ws, p.name
+                       ORDER BY (p.workspace_id = t.new_ws) DESC, p.created_at, p.id
+                   ) AS rn
+            FROM pages p
+            JOIN ws_target t ON t.old_ws = p.workspace_id
+            WHERE p.folder_id IS NULL
+        )
+        UPDATE pages p
+        SET name = p.name || ' (' || left(p.id::text, 8) || ')'
+        FROM ranked
+        WHERE ranked.id = p.id AND ranked.rn > 1
+        """)
+
+    # At most one default session folder per scope: keep one, demote the rest.
+    op.execute("""
+        WITH ranked AS (
+            SELECT sf.id,
+                   row_number() OVER (
+                       PARTITION BY t.new_ws
+                       ORDER BY (sf.workspace_id = t.new_ws) DESC, sf.created_at, sf.id
+                   ) AS rn
+            FROM session_folders sf
+            JOIN ws_target t ON t.old_ws = sf.workspace_id
+            WHERE sf.is_default
+        )
+        UPDATE session_folders sf
+        SET is_default = FALSE
+        FROM ranked
+        WHERE ranked.id = sf.id AND ranked.rn > 1
+        """)
+
+    # The same external session_id re-imported into several workspaces collides
+    # on (workspace_id, session_id). Keep the richest row (most events), move the
+    # duplicates' child rows onto it, and drop the rest. history_events have no
+    # per-row unique key, so their events fold together under (scope, session_id)
+    # when re-homed; the loser's session_titles cascade-delete with its session.
+    op.execute("""
+        CREATE TEMP TABLE session_dupes ON COMMIT DROP AS
+        WITH counted AS (
+            SELECT s.id, t.new_ws, s.session_id, s.started_at,
+                   (SELECT count(*) FROM history_events he
+                    WHERE he.workspace_id = s.workspace_id
+                      AND he.session_id = s.session_id) AS events
+            FROM sessions s
+            JOIN ws_target t ON t.old_ws = s.workspace_id
+        ), ranked AS (
+            SELECT id,
+                   first_value(id) OVER (
+                       PARTITION BY new_ws, session_id
+                       ORDER BY events DESC, started_at, id
+                   ) AS keeper_id
+            FROM counted
+        )
+        SELECT id AS loser_id, keeper_id
+        FROM ranked
+        WHERE id <> keeper_id
+        """)
+    op.execute("""
+        UPDATE session_artifacts a SET session_id = d.keeper_id
+        FROM session_dupes d WHERE a.session_id = d.loser_id
+        """)
+    op.execute("""
+        UPDATE session_github_pull_requests p SET session_row_id = d.keeper_id
+        FROM session_dupes d WHERE p.session_row_id = d.loser_id
+        """)
+    op.execute("""
+        UPDATE session_linear_tickets l SET session_row_id = d.keeper_id
+        FROM session_dupes d WHERE l.session_row_id = d.loser_id
+        """)
+    op.execute("DELETE FROM sessions s USING session_dupes d WHERE s.id = d.loser_id")
+
+    # The session_titles -> sessions composite FK (workspace_id, session_id) is
+    # ON UPDATE NO ACTION, so re-homing the two tables in separate statements
+    # transiently dangles it whichever order we pick — and 0119 re-points the
+    # same columns again. Drop it now (after the merge above, which relied on its
+    # ON DELETE CASCADE) and let 0119 recreate it owner-scoped once both columns
+    # have settled.
+    op.execute(
+        "ALTER TABLE session_titles "
+        'DROP CONSTRAINT IF EXISTS "session_titles_workspace_id_session_id_fkey"'
+    )
+
+    # 5. Re-home content from every workspace onto its target scope. Some tables
+    #    are optional (integration indexes created on first connect, absent in
+    #    deployments that never used that integration), so guard each one.
     for table in _CONTENT_TABLES:
         op.execute(f"""
-            UPDATE {table} c
-            SET workspace_id = t.new_ws
-            FROM ws_target t
-            WHERE c.workspace_id = t.old_ws AND c.workspace_id <> t.new_ws
+            DO $$
+            BEGIN
+                IF to_regclass('public.{table}') IS NULL THEN
+                    RETURN;
+                END IF;
+                UPDATE {table} c
+                SET workspace_id = t.new_ws
+                FROM ws_target t
+                WHERE c.workspace_id = t.old_ws AND c.workspace_id <> t.new_ws;
+            END $$;
             """)
 
     # 6. Delete now-empty non-primary workspaces. Content has been re-homed; the
