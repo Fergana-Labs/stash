@@ -91,7 +91,6 @@ function SearchPageInner() {
   const [contentScope, setContentScope] = useState<ContentScope>(
     () => initialContentScope(searchParams.get("content"), initialSessionId)
   );
-  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [fetching, setFetching] = useState(true);
@@ -159,8 +158,8 @@ function SearchPageInner() {
 
   const sourceName = user?.display_name ?? "You";
 
-  const handleSearch = useCallback(async (rawQuery?: string) => {
-    const q = (rawQuery ?? query).trim();
+  const handleSearch = useCallback(async (rawQuery: string) => {
+    const q = rawQuery.trim();
     if (!q) {
       setResults([]);
       setSearchedQuery("");
@@ -241,7 +240,6 @@ function SearchPageInner() {
     }
   }, [
     contentScope,
-    query,
     skills,
     selectedFolderId,
     selectedPageId,
@@ -252,14 +250,9 @@ function SearchPageInner() {
     sourceName,
   ]);
 
-  // The header search input writes the query into the URL; mirror it into
-  // local state and re-run the search in real time as it (or any filter)
-  // changes.
+  // The header search input writes the query into the URL; re-run the search
+  // in real time as it (or any filter) changes.
   const urlQuery = searchParams.get("q") ?? "";
-
-  useEffect(() => {
-    setQuery(urlQuery);
-  }, [urlQuery]);
 
   useEffect(() => {
     if (fetching) return;
