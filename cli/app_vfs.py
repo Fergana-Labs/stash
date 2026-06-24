@@ -8,6 +8,7 @@ import re
 import shlex
 from dataclasses import dataclass
 
+from .client import StashError
 from .mount import MountError, StashVfsModel
 
 
@@ -23,10 +24,12 @@ class SkillAppVfsShell:
     def __init__(self, model: StashVfsModel, cwd: str = "/"):
         self.model = model
         self.cwd = self._resolve_path(cwd)
+        self._warnings: list[str] = []
         self._require_dir(self.cwd)
 
     def run(self, script: str) -> VfsCommandResult:
         stdout_parts = []
+        stderr_parts = []
         for command in _split_unquoted(script, "&&"):
             for part in _split_unquoted(command, ";"):
                 part = part.strip()
@@ -35,29 +38,39 @@ class SkillAppVfsShell:
                 result = self._run_pipeline(part)
                 if result.stdout:
                     stdout_parts.append(result.stdout)
+                if result.stderr:
+                    stderr_parts.append(result.stderr)
                 if result.exit_code != 0:
                     result.stdout = "".join(stdout_parts)
+                    result.stderr = "".join(stderr_parts)
                     result.cwd = self.cwd
                     return result
-        return VfsCommandResult(stdout="".join(stdout_parts), cwd=self.cwd)
+        return VfsCommandResult(
+            stdout="".join(stdout_parts), stderr="".join(stderr_parts), cwd=self.cwd
+        )
 
     def _run_pipeline(self, script: str) -> VfsCommandResult:
         stdin = ""
+        stderr_parts = []
         stages = _split_unquoted(script, "|")
         for index, stage in enumerate(stages):
             result = self._run_stage(stage.strip(), stdin if index else None)
+            if result.stderr:
+                stderr_parts.append(result.stderr)
             if result.exit_code != 0:
+                result.stderr = "".join(stderr_parts)
                 return result
             stdin = result.stdout
-        return VfsCommandResult(stdout=stdin, cwd=self.cwd)
+        return VfsCommandResult(stdout=stdin, stderr="".join(stderr_parts), cwd=self.cwd)
 
     def _run_stage(self, stage: str, stdin: str | None) -> VfsCommandResult:
         name = "shell"
+        self._warnings = []
         try:
             command, redirect = _split_redirect(stage)
             args = shlex.split(command)
             if not args:
-                return VfsCommandResult(cwd=self.cwd)
+                return self._stage_result()
 
             name = args[0]
             output = self._dispatch(name, args[1:], stdin)
@@ -65,16 +78,31 @@ class SkillAppVfsShell:
                 path, append = redirect
                 self._write_output(path, output, append)
                 output = ""
-            return VfsCommandResult(stdout=output, cwd=self.cwd)
+            return self._stage_result(stdout=output)
         except VfsShellExit as e:
-            return VfsCommandResult(exit_code=e.exit_code, cwd=self.cwd)
+            return self._stage_result(exit_code=e.exit_code)
         except VfsShellError as e:
-            return VfsCommandResult(stderr=f"{name}: {e}\n", exit_code=e.exit_code, cwd=self.cwd)
+            return self._stage_result(stderr=f"{name}: {e}\n", exit_code=e.exit_code)
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, PermissionError) as e:
             message = e.args[0] if e.args else str(e)
-            return VfsCommandResult(stderr=f"{name}: {message}\n", exit_code=1, cwd=self.cwd)
+            return self._stage_result(stderr=f"{name}: {message}\n", exit_code=1)
         except (MountError, ValueError) as e:
-            return VfsCommandResult(stderr=f"{name}: {e}\n", exit_code=2, cwd=self.cwd)
+            return self._stage_result(stderr=f"{name}: {e}\n", exit_code=2)
+        except StashError as e:
+            return self._stage_result(stderr=f"{name}: {e}\n", exit_code=2)
+
+    def _stage_result(
+        self, *, stdout: str = "", stderr: str = "", exit_code: int = 0
+    ) -> VfsCommandResult:
+        return VfsCommandResult(
+            stdout=stdout,
+            stderr="".join(self._warnings) + stderr,
+            exit_code=exit_code,
+            cwd=self.cwd,
+        )
+
+    def _warn(self, message: str) -> None:
+        self._warnings.append(f"{message}\n")
 
     def _dispatch(self, name: str, args: list[str], stdin: str | None) -> str:
         if name == "pwd":
@@ -328,7 +356,11 @@ class SkillAppVfsShell:
             if node.is_dir and not recursive:
                 raise VfsShellError(f"{raw_path}: is a directory")
             for file_path in file_paths:
-                text = self._read_text(file_path)
+                try:
+                    text = self._read_text(file_path)
+                except StashError as e:
+                    self._warn(f"{name}: {file_path}: {e.detail}")
+                    continue
                 matches.append(
                     _grep_text(
                         regex,
