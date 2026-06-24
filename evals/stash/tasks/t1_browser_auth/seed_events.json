@@ -1,0 +1,198 @@
+[
+  {
+    "type": "user_intent",
+    "text": "User wants to simplify the CLI onboarding/authentication flow from typed prompts (username, password, login-vs-register choice) to browser-based auth ('press enter to authenticate'). The flow should open a browser to authenticate, then the CLI polls the backend for completion.",
+    "tags": [
+      "onboarding",
+      "auth",
+      "cli",
+      "browser-flow",
+      "user-experience"
+    ]
+  },
+  {
+    "type": "discovery",
+    "text": "Session found existing Vercel deployment: 'stash-web' project deployed to www.stash.ac with frontend root directory. Backend is Docker-based and runs separately (not on Vercel), likely on Render.io. The domain stash.ac currently serves a different product (auth0-based slides editor) but will be replaced.",
+    "tags": [
+      "hosting",
+      "vercel",
+      "render",
+      "deployment",
+      "stash.ac"
+    ]
+  },
+  {
+    "type": "decision",
+    "text": "Implemented browser-based CLI auth (device-code style): CLI creates a session, opens browser to /login?cli=<session_id>, polls the backend every second for 2 minutes waiting for user to authenticate, then stores the resulting API key. No username/password prompts in terminal.",
+    "tags": [
+      "auth",
+      "device-code",
+      "browser-flow",
+      "polling",
+      "implementation"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Backend: Added three new endpoints to backend/routers/users.py for CLI browser auth: POST /api/v1/users/cli-auth/sessions (creates session), GET /api/v1/users/cli-auth/sessions/{id} (polls for completion), POST /api/v1/users/cli-auth/sessions/{id}/approve (frontend calls after login). Sessions stored in-memory with 10-minute TTL.",
+    "tags": [
+      "backend",
+      "auth",
+      "endpoints",
+      "cli-auth",
+      "polling"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Frontend: Updated login/page.tsx to detect ?cli query param, auto-approve CLI sessions after user logs in (if already logged in, approve immediately), and add sign-in/sign-up toggle so users can register from the same page without separate register endpoint.",
+    "tags": [
+      "frontend",
+      "login",
+      "registration",
+      "query-params",
+      "browser-auth"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "CLI: Replaced username/password/login-vs-register prompts in connect command with: 1) create CLI session, 2) open browser via webbrowser.open(), 3) poll /api/v1/users/cli-auth/sessions/{id} every second with 120-second timeout, 4) save API key and username on completion.",
+    "tags": [
+      "cli",
+      "onboarding",
+      "browser-auth",
+      "polling",
+      "main.py"
+    ]
+  },
+  {
+    "type": "decision",
+    "text": "Session decided to defer the octopus\u2192stash product rename to a separate PR after the onboarding work, keeping the PRs focused and reviewable.",
+    "tags": [
+      "project-management",
+      "pr-strategy",
+      "rename"
+    ]
+  },
+  {
+    "type": "discovery",
+    "text": "Session completed a comprehensive audit of all 'octopus' references across the codebase (~60+ files across CLI, backend, frontend, plugins, infra, docs). Identified that ~11 remaining GitHub repo URL references (Fergana-Labs/octopus) should stay since the repo itself isn't being renamed.",
+    "tags": [
+      "codebase-structure",
+      "naming",
+      "audit"
+    ]
+  },
+  {
+    "type": "decision",
+    "text": "Octopus\u2192Stash rename strategy: Leave mc_ API key prefix unchanged (opaque to users, only two lines in backend/auth.py; changing it would invalidate dev/staging API keys). Handle in 4 phases: (1) CLI + core files, (2) plugins + backend, (3) frontend + docs, (4) infra + CI. GitHub repo URL references stay.",
+    "tags": [
+      "rename-strategy",
+      "design-decision",
+      "phases"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Phase 1 (core): Renamed pyproject.toml entry point octopus\u2192stash, updated cli/config.py (~/.octopus\u2192~/.stash), cli/client.py (OctopusClient\u2192StashClient, OctopusError\u2192StashError), cli/formatting.py docstring, and git mv octopus_client.py\u2192stash_client.py in plugins/shared/.",
+    "tags": [
+      "rename",
+      "phase-1",
+      "cli",
+      "core-files"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Phase 1 (cli/main.py): Replaced all 'octopus' references: app name octopus\u2192stash, help text, branding strings 'Octopus'\u2192'Stash', getoctopus.com\u2192stash.ac, command help descriptions. Preserved GitHub repo clone URLs.",
+    "tags": [
+      "rename",
+      "phase-1",
+      "cli-main",
+      "user-facing-strings"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Phase 2 (plugins + backend, delegated to agent): Updated all plugin files (claude, cursor, gemini, codex, opencode): env vars OCTOPUS_*\u2192STASH_*, config paths ~/.octopus\u2192~/.stash, imports octopus_client\u2192stash_client, class names OctopusClient\u2192StashClient. Updated backend/main.py logger name, backend/config.py DB creds, backend/routers/skill.py /skill/octopus\u2192/skill/stash, all plugin tests, plugin.json metadata.",
+    "tags": [
+      "rename",
+      "phase-2",
+      "plugins",
+      "backend",
+      "env-vars"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Phase 3 (frontend + docs, delegated to agent): 19 files updated: package.json name\u2192stash, layout.tsx title, api.ts TOKEN_KEY octopus_token\u2192stash_token, localStorage keys updated across components, all 9 docs pages (quickstart, cli, consume, curate, concepts, api, self-hosting, contributing, workspaces) with stash.ac URLs, commands, paths.",
+    "tags": [
+      "rename",
+      "phase-3",
+      "frontend",
+      "documentation",
+      "localStorage"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Phase 4 (infra + docs, delegated to agent): 15 files updated: Dockerfile USER/GROUP octopus\u2192stash, docker-compose.yml POSTGRES_USER/DB, CI workflow test DB names, .env.example DATABASE_URL and S3 bucket names, Caddyfile, all 6 docs (README, ARCHITECTURE, CONTRIBUTING, USE_CASES, TESTING, DESIGN), GitHub issue templates.",
+    "tags": [
+      "rename",
+      "phase-4",
+      "infra",
+      "docker",
+      "ci",
+      "documentation"
+    ]
+  },
+  {
+    "type": "file_edit",
+    "text": "Final cleanup: Fixed remaining docstring references in plugin on_prompt.py and on_tool_use.py files, .claude-plugin/marketplace.json plugin metadata (name, description), and settings.snippet.json. All Python files validated for syntax; pycache cleaned.",
+    "tags": [
+      "rename",
+      "final-cleanup",
+      "validation",
+      "metadata"
+    ]
+  },
+  {
+    "type": "discovery",
+    "text": "Final audit found 81 files changed (549 insertions, 549 deletions \u2014 pure rename, no logic changes). Only 11 remaining 'octopus' references are GitHub repo URLs (Fergana-Labs/octopus) and git clone directory names, which remain intentionally as the repo itself is not renamed.",
+    "tags": [
+      "rename",
+      "audit",
+      "completion",
+      "github-urls"
+    ]
+  },
+  {
+    "type": "decision",
+    "text": "Used 3 parallel agents to handle independent work groups (plugins+backend, frontend, infra+docs) to speed up the large rename task. Session parallelization reduced execution time significantly while maintaining correctness.",
+    "tags": [
+      "workflow",
+      "parallelization",
+      "agents",
+      "productivity"
+    ]
+  },
+  {
+    "type": "discovery",
+    "text": "Session created two PRs: (1) PR#56 for browser-based auth onboarding (3 files: backend routes, frontend login page, CLI main), and (2) PR#57 for octopus\u2192stash rename (81 files, pure rename). PRs kept focused and non-overlapping.",
+    "tags": [
+      "github",
+      "pull-requests",
+      "pr-management"
+    ]
+  },
+  {
+    "type": "gotcha",
+    "text": "The mc_ API key prefix in backend/auth.py was intentionally left unchanged during the octopus\u2192stash rename because it's opaque to users and appears in only 2 lines. Changing it would invalidate all existing API keys in dev/staging databases. It can be migrated later with a database migration if needed.",
+    "tags": [
+      "rename",
+      "api-keys",
+      "backward-compatibility",
+      "design-rationale"
+    ]
+  }
+]

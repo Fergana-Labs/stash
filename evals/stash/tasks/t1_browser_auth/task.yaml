@@ -1,0 +1,38 @@
+id: t1_browser_auth
+title: "Apply browser-based auth flow to `stash login`"
+
+# Session A (b24ae7d9) designed the browser/device-flow auth pattern for `stash connect`.
+# Session B (ac7cef7b) asks to extend that pattern to the `stash login` command.
+# At base_sha, `stash connect` has browser-poll auth; `stash login` still uses name+password.
+
+repo:
+  # Clone/worktree source. The eval runner makes a git worktree from this.
+  source_repo: /Users/henrydowling/projects/octopus-questions
+  base_sha: 8cf1bfd
+
+starting_prompt_file: starting_prompt.md
+rubric_file: rubric.md
+seed_events_file: seed_events.json
+
+# Files Session A's work touched — used for the "rediscovery overhead" metric.
+# An agent that knows about Session A's work should go straight to these.
+session_a_touched_paths:
+  - cli/main.py
+  - backend/routers/users.py
+  - frontend/src/app/login/page.tsx
+
+# Deterministic checks. Run after the trial's agent finishes.
+# If any check fails, the trial is a fail regardless of the judge.
+checks:
+  # Verify the AGENT added these patterns (not that they were pre-existing).
+  - kind: diff_contains
+    pattern: "cli-auth/sessions"
+  - kind: diff_contains
+    pattern: "webbrowser"
+  # `stash login` should no longer REQUIRE a positional `name` arg.
+  - kind: login_command_not_argument
+
+budgets:
+  max_wall_clock_s: 1800
+  max_tokens: 800000
+  max_tool_calls: 400
