@@ -7,12 +7,12 @@ import SiteHeader from "../_components/SiteHeader";
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export const metadata: Metadata = {
-  title: "Connect your data · Stash",
+  title: "Company Brain · Stash",
   description:
-    "The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack, and more. Read and search across everything from day one.",
+    "A brain for your company. Stash connects your tools, synthesizes them into one permission-aware source of truth, and surfaces it as a filesystem any agent can read — GitHub, Drive, Gmail, Notion, Slack, and more.",
 };
 
-export default function ConnectYourDataPage() {
+export default function CompanyBrainPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -21,16 +21,18 @@ export default function ConnectYourDataPage() {
         <div className="mx-auto max-w-[1200px] px-7">
           <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Connect your data
+            Company Brain
           </p>
           <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-            One place your agents connect to{" "}
-            <span className="text-brand">all your data.</span>
+            A brain for{" "}
+            <span className="text-brand">your company.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
-            Connect GitHub, Drive, Gmail, Notion, Slack and more in a couple of
-            clicks. Your agent reads and searches across everything you connect —
-            grounded on your real work from day one instead of starting empty.
+            Your agent is a clueless genius — brilliant, but it doesn&apos;t know
+            your people, your projects, or what changed yesterday. Stash connects
+            your tools and weaves them into a permission-aware context graph —
+            one source of truth, surfaced as a filesystem any agent can read.
+            Enterprise context in under five minutes.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link
@@ -77,17 +79,20 @@ export default function ConnectYourDataPage() {
 
       <section className="border-b border-border-subtle py-20 md:py-28">
         <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-8 px-7 md:grid-cols-3 md:gap-12">
-          <Point title="OAuth in two clicks">
-            Connect a source from settings — no tokens to paste, no scripts to
-            run. Access stays scoped to what you grant.
+          <Point title="Connect">
+            OAuth in and permissions are inherited automatically — no tokens to
+            paste, no scripts to run. Access stays scoped to exactly what you
+            grant.
           </Point>
-          <Point title="Kept in sync">
-            Stash keeps connected sources fresh, so your agent reasons over the
-            current state of your data, not a one-time export.
+          <Point title="Synthesize">
+            Stash continuously weaves your sources into a context graph of the
+            company — the people, projects, and decisions and how they connect,
+            kept accurate in real time, not a one-time export.
           </Point>
-          <Point title="Search and ask across everything">
+          <Point title="Serve">
             Ask one question and your agent answers across every source at once —
-            grounded on your stuff, with citations back to where it came from.
+            structured results or LLM-ready Markdown, with citations back to
+            where it came from.
           </Point>
         </div>
       </section>
@@ -95,7 +100,7 @@ export default function ConnectYourDataPage() {
       <section className="bg-surface py-28 text-center">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
-            Give your agents everything you know.
+            Give your agents the why, not just the what.
           </h2>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
@@ -105,10 +110,10 @@ export default function ConnectYourDataPage() {
               Start free →
             </Link>
             <Link
-              href="/agent-native-drive"
+              href="/agent-drive"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              See the agent-native Drive →
+              See the Agent Drive →
             </Link>
           </div>
         </div>

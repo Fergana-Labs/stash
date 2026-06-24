@@ -6,39 +6,43 @@ import SiteHeader from "../_components/SiteHeader";
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export const metadata: Metadata = {
-  title: "Skills · Stash",
+  title: "Agent Drive · Stash",
   description:
-    "Package any repeatable process into a Skill — a folder of pages, files, prompts, and sessions your agents can run. Share it with a link, fork it, and keep it in sync.",
+    "A Drive that speaks your agent's language — Markdown files, HTML pages, and Skills, all mounted as a virtual filesystem your agents ls, find, and rg. Reachable through the CLI, MCP, and API.",
 };
 
 const FEATURES = [
   [
-    "A Skill is a folder",
-    "Just a folder with a SKILL.md and the pages, files, and sessions it needs. No proprietary format — your agent reads it like a repo.",
+    "Markdown & HTML, natively",
+    "Pages are real Markdown and HTML — plus CSV, PDF, and images. The formats your agent already reads and writes, not a proprietary block format.",
   ],
   [
-    "Bundle a repeatable process",
-    "Capture how a task actually gets done — the steps, the context, the examples — into one Skill your team and their agents can run again.",
+    "A virtual filesystem",
+    "The whole Drive mounts as a filesystem your agent can ls, find, and rg — pages, files, Skills, and session transcripts side by side, addressed by path.",
   ],
   [
-    "Share with a link",
-    "Publish a Skill public on Discover or share it privately with specific people. They bring their own agents and run the same process.",
+    "Skills are just folders",
+    "A Skill is a folder with a SKILL.md and the pages, files, and sessions it needs. No new format to learn — your agent reads it like a repo.",
   ],
   [
-    "Fork and stay in sync",
-    "Anyone can fork a Skill into their own Stash, and it stays live with the source as it changes — improvements flow downstream.",
+    "WYSIWYG HTML editing",
+    "When your agent builds an HTML page — a report, a dashboard, a deck — you edit it visually in a WYSIWYG editor. Tweak the result by hand without touching the markup.",
   ],
   [
-    "Run it anywhere",
-    "Skills are reachable through the CLI, the Stash MCP server, and the API. Point Claude Code, Cursor, Codex, or OpenCode at one and it loads the process.",
+    "Real-time collaboration",
+    "You and your agent edit the same page at the same time — two cursors at once. Edits save automatically.",
   ],
   [
-    "Compounds over time",
-    "Promote your best sessions and docs into Skills, so a process you figure out once becomes something the whole team repeats.",
+    "Reachable everywhere",
+    "Through the CLI, the Stash MCP server, or the HTTP API. Point Claude Code, Cursor, Codex, or OpenCode at it and they read and write directly.",
+  ],
+  [
+    "Sessions land here too",
+    "Every coding-agent session streams in automatically, indexed alongside your docs — no manual upload, no copy-paste.",
   ],
 ];
 
-export default function SkillsPage() {
+export default function AgentDrivePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -47,17 +51,18 @@ export default function SkillsPage() {
         <div className="mx-auto max-w-[1200px] px-7">
           <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Skills
+            Agent Drive
           </p>
           <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-            Package any repeatable process into a{" "}
-            <span className="text-brand">Skill.</span>
+            A Drive that speaks your{" "}
+            <span className="text-brand">agent&apos;s language.</span>
           </h1>
-          <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
-            A Skill bundles the pages, files, prompts, and sessions behind a
-            workflow into one folder your agents can run. Share it with a link,
-            fork it into your own Stash, and keep it in sync — so a process
-            you figure out once becomes something your whole team repeats.
+          <p className="mt-7 max-w-[640px] text-[18px] leading-[1.55] text-foreground">
+            Markdown files, HTML pages, and Skills — all mounted as a virtual
+            filesystem your agent can ls, find, and rg, the way it already works
+            in a repo. No proprietary block format, no API to learn. Reachable
+            through the CLI, MCP, and API, so your agent reads and writes it as
+            naturally as you do.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link
@@ -67,10 +72,10 @@ export default function SkillsPage() {
               Start free →
             </Link>
             <Link
-              href="/discover"
+              href="/docs/quickstart"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Browse Discover →
+              Quickstart →
             </Link>
           </div>
         </div>
@@ -79,7 +84,7 @@ export default function SkillsPage() {
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Repeatable processes, packaged and shared.
+            Built for the way agents read and write.
           </h2>
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(([name, blurb]) => (
@@ -101,36 +106,44 @@ export default function SkillsPage() {
         <div className="mx-auto max-w-[1200px] px-7">
           <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Discover
+            Skills
           </p>
           <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Public Skills from teams building in the open.
+            Package a repeatable process into a folder.
           </h2>
-          <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-foreground">
-            Discover is where published Skills live. Browse sessions, pages,
-            tables, and files from public Skills, open one to read it without
-            signing in, and fork the ones you want into your own Stash.
+          <p className="mt-5 max-w-[640px] text-[16px] leading-[1.6] text-foreground">
+            A Skill is just a folder in your Drive with a SKILL.md and the pages,
+            files, and sessions a workflow needs. Bundle how a task actually gets
+            done into one place your team and their agents can run again — so a
+            process you figure out once becomes something everyone repeats.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
-            <Point title="Publish in one step">
-              Turn any folder into a public Skill with a link. It shows up on
-              Discover for anyone to find, read, and fork.
+            <Point title="Just a folder + SKILL.md">
+              No proprietary format. The Skill is Markdown and files on a virtual
+              filesystem, so your agent loads it like a repo.
             </Point>
-            <Point title="Browse what others ship">
-              See how other teams package their workflows, and read the real
-              sessions and docs behind them — no signup to look.
+            <Point title="Share with a link">
+              Publish a Skill public on Discover or share it privately with
+              specific people. They bring their own agents and run the same
+              process.
             </Point>
-            <Point title="Fork into your Stash">
-              Pull a Skill into your own Stash and run it with your agents. It
-              stays live with the source as the author improves it.
+            <Point title="Fork and stay in sync">
+              Fork a Skill into your own Stash and it stays live with the source
+              as it changes — improvements flow downstream.
             </Point>
           </div>
-          <div className="mt-10">
+          <div className="mt-10 flex flex-wrap gap-3">
             <Link
               href="/discover"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
               Browse Discover →
+            </Link>
+            <Link
+              href="/pages"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+            >
+              Share a doc →
             </Link>
           </div>
         </div>
@@ -139,7 +152,7 @@ export default function SkillsPage() {
       <section className="bg-surface py-28 text-center">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
-            Build a process once. Share it everywhere.
+            Give your agents somewhere to write.
           </h2>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
@@ -149,10 +162,10 @@ export default function SkillsPage() {
               Start free →
             </Link>
             <Link
-              href="/agent-native-drive"
+              href="/company-brain"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Agent-native Drive →
+              See the Company Brain →
             </Link>
           </div>
         </div>

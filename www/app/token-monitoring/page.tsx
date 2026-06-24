@@ -6,9 +6,9 @@ import SiteHeader from "../_components/SiteHeader";
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export const metadata: Metadata = {
-  title: "Audit agent sessions · Stash",
+  title: "Token Monitoring · Stash",
   description:
-    "Audit your team's agent sessions like Granola or Gong — onboard faster, coach your team, monitor what's happening, and build automations for continual improvement.",
+    "Monitor your team's agent sessions like Granola or Gong — onboard faster, coach your team, see what's happening across every session, and build automations for continual improvement.",
 };
 
 const FEATURES = [
@@ -30,7 +30,7 @@ const FEATURES = [
   ],
 ];
 
-export default function AuditAgentSessionsPage() {
+export default function TokenMonitoringPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -39,10 +39,10 @@ export default function AuditAgentSessionsPage() {
         <div className="mx-auto max-w-[1200px] px-7">
           <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Audit agent sessions
+            Token Monitoring
           </p>
           <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-            Audit your team&apos;s{" "}
+            Monitor your team&apos;s{" "}
             <span className="text-brand">agent sessions.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
@@ -133,10 +133,10 @@ export default function AuditAgentSessionsPage() {
               Start free →
             </Link>
             <Link
-              href="/connect-your-data"
+              href="/company-brain"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Connect your data →
+              See the Company Brain →
             </Link>
           </div>
         </div>

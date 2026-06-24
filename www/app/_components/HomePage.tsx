@@ -136,15 +136,15 @@ function Hero() {
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
           <div>
             <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-              Knowledge bases for
+              Memory for
               <br />
-              the <span className="text-brand">agent era.</span>
+              <span className="text-brand">agents.</span>
             </h1>
 
             <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-              The one place your agents connect to all your data — GitHub, Drive,
-              Gmail, Notion, Slack and more. Plus an agent-native Drive to store
-              your agent-generated docs and data in.
+              Stash captures data from your integrations and agent sessions to
+              build a context graph — so your agents remember what you did last
+              time instead of starting from scratch.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -996,10 +996,10 @@ export function Footer() {
     {
       h: "Product",
       links: [
-        ["Connect your data", "/connect-your-data"],
-        ["Agent-native Drive", "/agent-native-drive"],
-        ["Audit agent sessions", "/audit-agent-sessions"],
-        ["Skills", "/skills"],
+        ["Company Brain", "/company-brain"],
+        ["Agent Drive", "/agent-drive"],
+        ["Token Monitoring", "/token-monitoring"],
+        ["Memory", "/memory"],
         ["Discover", "/discover"],
         ["Pricing", "/#pricing"],
         ["Docs", "/docs"],

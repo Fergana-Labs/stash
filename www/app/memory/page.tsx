@@ -75,10 +75,10 @@ export default function MemoryPage() {
               Start free →
             </Link>
             <Link
-              href="/connect-your-data"
+              href="/company-brain"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              Connect your data →
+              See the Company Brain →
             </Link>
           </div>
         </div>
@@ -140,10 +140,10 @@ export default function MemoryPage() {
               Start free →
             </Link>
             <Link
-              href="/agent-native-drive"
+              href="/agent-drive"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              See the agent-native Drive →
+              See the Agent Drive →
             </Link>
           </div>
         </div>
