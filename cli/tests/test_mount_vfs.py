@@ -24,6 +24,8 @@ class FakeClient:
                         "name": "Plan",
                         "content_type": "markdown",
                         "folder_id": "folder-12345678",
+                        "created_at": "2026-05-01T09:00:00Z",
+                        "updated_at": "2026-05-02T10:30:00Z",
                     }
                 ],
                 "files": [
@@ -32,6 +34,7 @@ class FakeClient:
                         "name": "diagram.txt",
                         "folder_id": None,
                         "size_bytes": 12,
+                        "created_at": "2026-04-20T12:00:00Z",
                     }
                 ],
             },
@@ -49,6 +52,7 @@ class FakeClient:
                     "session_id": "session-abc",
                     "title": "Fix login",
                     "agent_name": "codex",
+                    "updated_at": "2026-05-03T08:15:00Z",
                 }
             ],
         }

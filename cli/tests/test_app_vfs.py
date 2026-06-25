@@ -1,6 +1,7 @@
 import shlex
+from datetime import datetime
 
-from cli.app_vfs import SkillAppVfsShell
+from cli.app_vfs import SkillAppVfsShell, _ls_time
 from cli.client import StashError
 from cli.mount import StashVfsModel
 from cli.tests.test_mount_vfs import FakeClient
@@ -103,6 +104,31 @@ def test_app_vfs_supports_common_agent_listing_patterns():
 
     assert "files" in tree_output
     assert client.lazy_loads == 0
+
+
+def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
+    """A node's modified time comes from the backend payload and flows through
+    to `ls -l` and `stat`. A node the backend gave no timestamp for shows `-`,
+    never a fabricated "now" — that distinction is the whole point of the
+    feature, so it must hold even when some content lacks timestamps."""
+    shell, _client = _shell()
+
+    # A page carries distinct created/updated times straight from the backend.
+    page_path = _page_path(shell)
+    page_node = shell.model._get_node(page_path)
+    expected = datetime.fromtimestamp(page_node.updated_at).isoformat()
+    assert f"modified: {expected}" in shell.run(f"stat {page_path}").stdout
+    assert _ls_time(page_node.updated_at) in shell.run(f"ls -l {page_path}").stdout
+
+    # An uploaded file is immutable, so its modified-time is its creation time.
+    file_name = next(
+        name for name in shell.model.list_dir("/me/files") if name.startswith("diagram")
+    )
+    file_node = shell.model._get_node(f"/me/files/{file_name}")
+    assert file_node.updated_at == file_node.created_at is not None
+
+    # A synthetic directory the backend never timestamps shows "-", not a faked now.
+    assert "modified: -" in shell.run("stat /me/files").stdout
 
 
 def test_app_vfs_pipes_cat_to_sed_and_grep():

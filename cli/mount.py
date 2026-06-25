@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from .client import StashClient, StashError
@@ -36,8 +37,8 @@ class VfsNode:
     content: bytes | None = None
     size_hint: int | None = None
     children: dict[str, str] = field(default_factory=dict)
-    created_at: float = field(default_factory=time.time)
-    updated_at: float = field(default_factory=time.time)
+    created_at: float | None = None
+    updated_at: float | None = None
 
     @property
     def is_dir(self) -> bool:
@@ -136,8 +137,8 @@ class StashVfsModel:
             "st_uid": os.getuid(),
             "st_gid": os.getgid(),
             "st_size": size or 0,
-            "st_ctime": node.created_at,
-            "st_mtime": node.updated_at,
+            "st_ctime": node.created_at or 0.0,
+            "st_mtime": node.updated_at or 0.0,
             "st_atime": now,
         }
 
@@ -165,6 +166,8 @@ class StashVfsModel:
             path = self._add_dir_child(
                 parent_path,
                 _object_dir_name(folder.get("name") or "folder", folder_id),
+                created_at=folder.get("created_at"),
+                updated_at=folder.get("updated_at"),
             )
             folder_paths[folder_id] = path
             return path
@@ -189,6 +192,8 @@ class StashVfsModel:
                     body,
                 ),
                 writable=True,
+                created_at=page.get("created_at"),
+                updated_at=page.get("updated_at"),
             )
 
         for file in tree.get("files", []):
@@ -197,10 +202,15 @@ class StashVfsModel:
                 folder_path(str(file["folder_id"])) if file.get("folder_id") else root_path
             )
             name = _object_file_name(file.get("name") or "file", file_id, "")
+            # Uploaded files are immutable — there is no separate update event,
+            # so the file's last-modified time is its creation time.
+            created_at = file.get("created_at")
             self._add_file(
                 f"{parent_path}/{name}",
                 loader=lambda fid=file_id: self.client.download_file(fid),
                 size_hint=file.get("size_bytes"),
+                created_at=created_at,
+                updated_at=created_at,
             )
 
     def _add_skills(self, skills: list[dict]) -> None:
@@ -227,26 +237,31 @@ class StashVfsModel:
         for session in sessions:
             session_id = str(session["session_id"])
             row_id = str(session.get("id") or session_id)
+            updated_at = session.get("updated_at")
             session_path = self._add_dir_child(
                 sessions_path,
                 _object_dir_name(session.get("title") or session_id, row_id),
+                updated_at=updated_at,
             )
-            self._add_json_file(f"{session_path}/metadata.json", session)
+            self._add_json_file(f"{session_path}/metadata.json", session, updated_at=updated_at)
             self._add_file(
                 f"{session_path}/events.json",
                 loader=lambda sid=session_id: _json_bytes(
                     {"events": self.client.get_transcript_events(sid)}
                 ),
+                updated_at=updated_at,
             )
             self._add_file(
                 f"{session_path}/transcript.jsonl",
                 loader=lambda sid=session_id: _text_bytes(self.client.export_transcript_jsonl(sid)),
+                updated_at=updated_at,
             )
             self._add_file(
                 f"{session_path}/transcript.md",
                 loader=lambda sid=session_id: _text_bytes(
                     _session_markdown(self.client.get_transcript_events(sid))
                 ),
+                updated_at=updated_at,
             )
 
     def _add_tables(self) -> None:
@@ -256,23 +271,33 @@ class StashVfsModel:
         self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
         for table in tables:
             table_id = str(table["id"])
+            created_at = table.get("created_at")
+            updated_at = table.get("updated_at")
             table_path = self._add_dir_child(
                 tables_path,
                 _object_dir_name(table.get("name") or "table", table_id),
+                created_at=created_at,
+                updated_at=updated_at,
             )
             self._add_file(
                 f"{table_path}/schema.json",
                 loader=lambda tid=table_id: _json_bytes(self.client.get_table(tid)),
+                created_at=created_at,
+                updated_at=updated_at,
             )
             self._add_file(
                 f"{table_path}/rows.json",
                 loader=lambda tid=table_id: _json_bytes(self._load_all_table_rows(tid)),
+                created_at=created_at,
+                updated_at=updated_at,
             )
             self._add_file(
                 f"{table_path}/rows.jsonl",
                 loader=lambda tid=table_id: _jsonl_bytes(
                     self._load_all_table_rows(tid).get("rows", [])
                 ),
+                created_at=created_at,
+                updated_at=updated_at,
             )
 
     def _add_sources(self) -> None:
@@ -355,19 +380,37 @@ class StashVfsModel:
             offset += limit
         return {"rows": rows, "total_count": total_count}
 
-    def _add_dir(self, path: str) -> str:
+    def _add_dir(
+        self,
+        path: str,
+        *,
+        created_at: str | None = None,
+        updated_at: str | None = None,
+    ) -> str:
         path = self._clean_path(path)
         if path in self.nodes:
             return path
-        self.nodes[path] = VfsNode(path=path, mode=stat.S_IFDIR | 0o755)
+        self.nodes[path] = VfsNode(
+            path=path,
+            mode=stat.S_IFDIR | 0o755,
+            created_at=_parse_iso(created_at),
+            updated_at=_parse_iso(updated_at),
+        )
         if path != "/":
             parent, name = self._split_parent(path)
             self.nodes[parent].children[name] = path
         return path
 
-    def _add_dir_child(self, parent: str, name: str) -> str:
+    def _add_dir_child(
+        self,
+        parent: str,
+        name: str,
+        *,
+        created_at: str | None = None,
+        updated_at: str | None = None,
+    ) -> str:
         name = self._unique_child_name(parent, name)
-        return self._add_dir(f"{parent}/{name}")
+        return self._add_dir(f"{parent}/{name}", created_at=created_at, updated_at=updated_at)
 
     def _add_file(
         self,
@@ -378,6 +421,8 @@ class StashVfsModel:
         content: bytes | None = None,
         size_hint: int | None = None,
         writable: bool = False,
+        created_at: str | None = None,
+        updated_at: str | None = None,
     ) -> str:
         path = self._clean_path(path)
         parent, requested_name = self._split_parent(path)
@@ -395,6 +440,8 @@ class StashVfsModel:
                 if size_hint is not None
                 else (len(content) if content is not None else None)
             ),
+            created_at=_parse_iso(created_at),
+            updated_at=_parse_iso(updated_at),
         )
         self.nodes[parent].children[name] = path
         return path
@@ -402,8 +449,8 @@ class StashVfsModel:
     def _add_static_file(self, path: str, content: str) -> str:
         return self._add_file(path, content=_text_bytes(content))
 
-    def _add_json_file(self, path: str, payload: dict) -> str:
-        return self._add_file(path, content=_json_bytes(payload))
+    def _add_json_file(self, path: str, payload: dict, *, updated_at: str | None = None) -> str:
+        return self._add_file(path, content=_json_bytes(payload), updated_at=updated_at)
 
     def _add_jsonl_file(self, path: str, rows: list[dict]) -> str:
         return self._add_file(path, content=_jsonl_bytes(rows))
@@ -818,6 +865,14 @@ def _object_file_name(name: str, object_id: str, default_extension: str) -> str:
     if not extension:
         extension = default_extension
     return f"{stem or 'untitled'}--{object_id[:8]}{extension}"
+
+
+def _parse_iso(value: str | None) -> float | None:
+    """ISO-8601 timestamp from the backend → epoch seconds. None when the
+    backend doesn't carry a timestamp for this node (e.g. synthetic dirs)."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value).timestamp()
 
 
 def _text_bytes(text: str) -> bytes:
