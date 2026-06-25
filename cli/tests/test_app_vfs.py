@@ -1,7 +1,7 @@
 import shlex
 from datetime import datetime
 
-from cli.app_vfs import SkillAppVfsShell, _ls_time
+from cli.app_vfs import MAX_OUTPUT_LINES, SkillAppVfsShell, _cap_output, _ls_time
 from cli.client import StashError
 from cli.mount import StashVfsModel
 from cli.tests.test_mount_vfs import FakeClient
@@ -250,3 +250,39 @@ def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     assert result.exit_code == 2
     assert result.stdout == ""
     assert "Transcript not found" in result.stderr
+
+
+def test_cap_output_truncates_long_output_with_paging_footer():
+    text = "".join(f"line{i}\n" for i in range(MAX_OUTPUT_LINES + 100))
+
+    capped = _cap_output("cat /big.md", text)
+
+    lines = capped.splitlines()
+    assert lines[:MAX_OUTPUT_LINES] == [f"line{i}" for i in range(MAX_OUTPUT_LINES)]
+    footer = lines[MAX_OUTPUT_LINES]
+    assert f"of {MAX_OUTPUT_LINES + 100}" in footer
+    assert f"cat /big.md | sed -n '{MAX_OUTPUT_LINES + 1},{MAX_OUTPUT_LINES * 2}p'" in footer
+
+
+def test_cap_output_leaves_output_within_budget_untouched():
+    text = "a\nb\nc\n"
+
+    assert _cap_output("ls /", text) == text
+
+
+def test_app_vfs_output_cap_is_terminal_only_so_sed_paging_returns_next_page(monkeypatch):
+    # Cap low so a small fixture exercises the boundary.
+    monkeypatch.setattr("cli.app_vfs.MAX_OUTPUT_LINES", 2)
+    shell, _client = _shell()
+    page_path = _page_path(shell)
+    shell.run(f"printf 'l1\\nl2\\nl3\\nl4\\nl5\\n' > {shlex.quote(page_path)}")
+
+    capped = shell.run(f"cat {shlex.quote(page_path)}")
+    assert capped.stdout.splitlines()[:2] == ["l1", "l2"]
+    assert "of 5" in capped.stdout
+    assert "sed -n '3,4p'" in capped.stdout
+
+    # The stage feeding sed is not capped, so the footer's own paging command
+    # returns the next page intact rather than a doubly-truncated fragment.
+    page2 = shell.run(f"cat {shlex.quote(page_path)} | sed -n '3,4p'")
+    assert page2.stdout == "l3\nl4\n"

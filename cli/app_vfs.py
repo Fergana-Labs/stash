@@ -13,6 +13,11 @@ from datetime import datetime
 from .client import StashError
 from .mount import MountError, StashVfsModel
 
+# Agents read command output into a finite context window. Cap what a single
+# command returns so `cat` of a long transcript or `ls` of a 1000-message Slack
+# channel can't flood it; the footer tells the agent how to page the rest.
+MAX_OUTPUT_LINES = 500
+
 
 @dataclass
 class VfsCommandResult:
@@ -43,12 +48,14 @@ class SkillAppVfsShell:
                 if result.stderr:
                     stderr_parts.append(result.stderr)
                 if result.exit_code != 0:
-                    result.stdout = "".join(stdout_parts)
+                    result.stdout = _cap_output(script, "".join(stdout_parts))
                     result.stderr = "".join(stderr_parts)
                     result.cwd = self.cwd
                     return result
         return VfsCommandResult(
-            stdout="".join(stdout_parts), stderr="".join(stderr_parts), cwd=self.cwd
+            stdout=_cap_output(script, "".join(stdout_parts)),
+            stderr="".join(stderr_parts),
+            cwd=self.cwd,
         )
 
     def _run_pipeline(self, script: str) -> VfsCommandResult:
@@ -641,12 +648,30 @@ def _split_unquoted(text: str, separator: str) -> list[str]:
     return parts
 
 
+def _cap_output(script: str, text: str) -> str:
+    """Cap the final output a command returns to the agent. Only the terminal
+    result is capped — pipeline stages still see full output, so paging the
+    truncated result back through `sed -n` returns the next page intact."""
+    body = text[:-1] if text.endswith("\n") else text
+    if not body:
+        return text
+    lines = body.split("\n")
+    if len(lines) <= MAX_OUTPUT_LINES:
+        return text
+    footer = (
+        f"[showing lines 1-{MAX_OUTPUT_LINES} of {len(lines)} "
+        f"— page with: {script.strip()} | sed -n '{MAX_OUTPUT_LINES + 1},{MAX_OUTPUT_LINES * 2}p']"
+    )
+    return "\n".join(lines[:MAX_OUTPUT_LINES]) + "\n" + footer + "\n"
+
+
 def _help_text() -> str:
     return "\n".join(
         [
             "Supported commands:",
             "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc, echo, printf, tee, stat",
             "  pipes with |, command chaining with && or ;, and > / >> writes to existing writable files",
+            f"  output is capped at {MAX_OUTPUT_LINES} lines; page the rest with | sed -n 'N,Mp'",
             "",
         ]
     )
