@@ -14,7 +14,7 @@ export default function LegalShell({ title, updated, children }: Props) {
         <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7">
           <Link
             href="/"
-            className="font-display text-[20px] font-black tracking-[-0.03em] text-ink"
+            className="font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
           >
             stash
           </Link>
@@ -33,7 +33,7 @@ export default function LegalShell({ title, updated, children }: Props) {
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
           Last updated {updated}
         </p>
-        <h1 className="mt-3 font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.05] tracking-[-0.03em] text-ink">
+        <h1 className="mt-3 font-display text-[clamp(36px,4.6vw,56px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink">
           {title}
         </h1>
         <div className="legal-prose mt-10 space-y-6 text-[16px] leading-[1.7] text-foreground">

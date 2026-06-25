@@ -57,7 +57,7 @@ function PageGraphMock() {
     if (degree >= 5) return "#F97316";
     if (degree >= 3) return "#EA7C1F";
     if (degree === 0) return "#F97316";
-    return "#64748B";
+    return "#6B655B";
   };
 
   return (
@@ -91,14 +91,14 @@ function PageGraphMock() {
               <path
                 d="M 40 0 L 0 0 0 40"
                 fill="none"
-                stroke="rgba(15,23,42,0.04)"
+                stroke="rgba(26,23,20,0.04)"
                 strokeWidth="1"
               />
             </pattern>
           </defs>
           <rect width={width} height={height} fill="url(#tree-grid)" />
 
-          <g stroke="rgba(15,23,42,0.22)" strokeWidth="1">
+          <g stroke="rgba(26,23,20,0.22)" strokeWidth="1">
             {GRAPH_EDGES.map(([a, b], i) => {
               const na = nodeById.get(a);
               const nb = nodeById.get(b);
@@ -128,7 +128,7 @@ function PageGraphMock() {
                   textAnchor={labelLeft ? "end" : "start"}
                   fontFamily="ui-monospace, Menlo, monospace"
                   fontSize="12"
-                  fill="rgba(15,23,42,0.62)"
+                  fill="rgba(26,23,20,0.62)"
                 >
                   {n.id}
                 </text>
@@ -140,7 +140,7 @@ function PageGraphMock() {
         <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border-subtle bg-background/85 px-2.5 py-2 backdrop-blur">
           {[
             { dot: "#F97316", label: "hub" },
-            { dot: "#64748B", label: "leaf" },
+            { dot: "#6B655B", label: "leaf" },
           ].map((row) => (
             <div
               key={row.label}
@@ -192,7 +192,7 @@ function GrepSearchMock() {
               <path
                 d="M 40 0 L 0 0 0 40"
                 fill="none"
-                stroke="rgba(15,23,42,0.04)"
+                stroke="rgba(26,23,20,0.04)"
                 strokeWidth="1"
               />
             </pattern>
@@ -228,12 +228,7 @@ function GrepSearchMock() {
 }
 
 function EyebrowDot({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-      <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-      {children}
-    </p>
-  );
+  return <p className="kicker">{children}</p>;
 }
 
 export default function VisualizationsShowcase() {
@@ -244,7 +239,7 @@ export default function VisualizationsShowcase() {
     >
       <div className="mx-auto max-w-[1200px] px-7">
         <div className="flex max-w-[880px] flex-col gap-4">
-          <EyebrowDot>Best-in-class memory</EyebrowDot>
+          <EyebrowDot>Retrieval</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
             Your team&apos;s memory,
             <br />

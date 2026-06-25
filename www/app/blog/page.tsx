@@ -84,7 +84,7 @@ export default function BlogPage() {
           <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
           Blog
         </p>
-        <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
+        <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
           Notes from the team<br />
           <span className="text-brand">building Stash.</span>
         </h1>
@@ -120,7 +120,7 @@ function PostCard({ post }: { post: Post }) {
       rel="noopener noreferrer"
       className="group flex flex-col rounded-xl border border-border-subtle bg-raised/40 p-6 transition hover:border-ink hover:bg-raised"
     >
-      <h2 className="font-display text-[20px] font-black leading-[1.2] tracking-[-0.02em] text-ink">
+      <h2 className="font-display text-[20px] font-bold leading-[1.2] tracking-[-0.02em] text-ink">
         {post.title}
       </h2>
       <p className="mt-3 flex-1 text-[15px] leading-[1.55] text-dim">
@@ -142,7 +142,7 @@ function Header() {
       <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7">
         <Link
           href="/"
-          className="font-display text-[20px] font-black tracking-[-0.03em] text-ink"
+          className="font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
         >
           stash
         </Link>

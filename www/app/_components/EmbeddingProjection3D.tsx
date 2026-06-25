@@ -169,7 +169,7 @@ export default function EmbeddingProjection3D() {
               <path
                 d="M 40 0 L 0 0 0 40"
                 fill="none"
-                stroke="rgba(15,23,42,0.04)"
+                stroke="rgba(26,23,20,0.04)"
                 strokeWidth="1"
               />
             </pattern>

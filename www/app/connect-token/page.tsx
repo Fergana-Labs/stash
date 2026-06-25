@@ -112,7 +112,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Heading({ children }: { children: React.ReactNode }) {
   return (
-    <h1 className="mt-3 font-display text-[40px] font-black leading-[1.05] tracking-[-0.03em] text-ink">
+    <h1 className="mt-3 font-display text-[40px] font-bold leading-[1.05] tracking-[-0.03em] text-ink">
       {children}
     </h1>
   );

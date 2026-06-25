@@ -32,7 +32,7 @@ export default async function DiscoverPage({
           <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
           Discover
         </p>
-        <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
+        <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
           Public Skills from teams<br />
           <span className="text-brand">building in the open.</span>
         </h1>
@@ -65,7 +65,7 @@ function Header() {
       <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7">
         <Link
           href="/"
-          className="font-display text-[20px] font-black tracking-[-0.03em] text-ink"
+          className="font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
         >
           stash
         </Link>

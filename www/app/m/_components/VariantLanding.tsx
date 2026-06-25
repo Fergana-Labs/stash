@@ -63,7 +63,7 @@ function VariantHero({
       <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-12 pt-20 lg:pb-20 lg:pt-28">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
           <div>
-            <h1 className="text-balance font-display text-[clamp(40px,5.6vw,72px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
+            <h1 className="text-balance font-display text-[clamp(40px,5.6vw,72px)] font-bold leading-[1.02] tracking-[-0.04em] text-ink">
               {copy.headline}
             </h1>
             <p className="mt-7 max-w-[560px] text-[18px] leading-[1.55] text-foreground">

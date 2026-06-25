@@ -15,7 +15,7 @@ export default function AdminLoginPage() {
         <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
           Admin
         </p>
-        <h1 className="mt-3 font-display text-[32px] font-black leading-[1.05] tracking-[-0.03em] text-ink">
+        <h1 className="mt-3 font-display text-[32px] font-bold leading-[1.05] tracking-[-0.03em] text-ink">
           Sign in
         </h1>
         <p className="mt-3 text-[14px] leading-[1.55] text-dim">

@@ -2,20 +2,23 @@
 @plugin "@tailwindcss/typography";
 
 :root {
-  --bg-base: #FFFFFF;
-  --bg-surface: #F8FAFC;
-  --bg-raised: #F1F5F9;
-  --bg-inverted: #0F172A;
+  /* Warm paper palette — deliberately off the cool clinical white that
+     Supermemory/Hyperspell use, and matched to the product's Notion-tan UI
+     so the landing and the app finally read as the same brand. */
+  --bg-base: #FBFAF8;
+  --bg-surface: #F4F2EC;
+  --bg-raised: #EBE8DF;
+  --bg-inverted: #1A1714;
 
-  --border: #E2E8F0;
-  --border-subtle: #F1F5F9;
+  --border: #E4E0D7;
+  --border-subtle: #EEEBE3;
 
-  --text-strong: #0F172A;
-  --text: #334155;
-  --text-dim: #64748B;
-  --text-muted: #94A3B8;
-  --text-on-inverted: #E2E8F0;
-  --text-on-inverted-dim: #94A3B8;
+  --text-strong: #1A1714;
+  --text: #44403A;
+  --text-dim: #6B655B;
+  --text-muted: #9A9389;
+  --text-on-inverted: #EDE9E2;
+  --text-on-inverted-dim: #A39C90;
 
   --brand: #F97316;
   --brand-hover: #EA580C;
@@ -24,11 +27,16 @@
 
   --agent: #EA580C;
   --agent-soft: rgba(249, 115, 22, 0.14);
-  --human: #3B82F6;
-  --human-soft: rgba(59, 130, 246, 0.14);
+  --human: #2563EB;
+  --human-soft: rgba(37, 99, 235, 0.12);
 
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 28px -18px rgba(15, 23, 42, 0.18);
-  --shadow-terminal: 0 30px 80px -40px rgba(15, 23, 42, 0.55);
+  --shadow-card: 0 1px 2px rgba(26, 23, 20, 0.04), 0 12px 28px -18px rgba(26, 23, 20, 0.16);
+  --shadow-terminal: 0 30px 80px -40px rgba(26, 23, 20, 0.55);
+
+  /* Warm dot-field texture — the reusable brand motif. A sparse, low-opacity
+     dotted field, NOT a stroke-heavy grid (the look we're avoiding). */
+  --dot-field: radial-gradient(rgba(26, 23, 20, 0.05) 1px, transparent 1.4px);
+  --dot-field-size: 22px 22px;
 }
 
 @theme inline {
@@ -52,7 +60,7 @@
   --color-brand-ink: var(--brand-ink);
 
   --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
-  --font-display: 'Satoshi', var(--font-instrument-sans), sans-serif;
+  --font-display: var(--font-space-grotesk), 'Space Grotesk', var(--font-instrument-sans), sans-serif;
   --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
 }
 
@@ -197,4 +205,35 @@ html, body {
 
 @keyframes cursor-blink {
   50% { opacity: 0; }
+}
+
+/* Section reveal — a short, brand-quiet rise used on kickers and headings.
+   Disabled under reduced-motion below. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.rise-in {
+  animation: rise-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* The signature mono kicker: [ SECTION.NAME ] in JetBrains Mono. One
+   ownable label treatment reused across every section. */
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+.kicker::before { content: "["; color: var(--brand); }
+.kicker::after  { content: "]"; color: var(--brand); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in { animation: none; }
 }

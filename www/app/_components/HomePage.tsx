@@ -3,12 +3,15 @@ import type { ReactNode } from "react";
 
 import AppRedirectForSignedInUsers from "./AppRedirectForSignedInUsers";
 import { INTEGRATIONS, integrationIcon } from "./BrandIcons";
+import HeroTerminal from "./HeroTerminal";
 import Logo from "./Logo";
 import ScrollLink from "./ScrollLink";
 import SiteHeader from "./SiteHeader";
+import Texture from "./Texture";
 import VisualizationsShowcase from "./VisualizationsShowcase";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
+const CALL_URL = "/contact-sales";
 
 export default function HomePage() {
   return (
@@ -24,19 +27,53 @@ export default function HomePage() {
       <VisualizationsShowcase />
       <Features />
       <CliAndPlugin />
+      <Proof />
+      <OpenSource />
       <Pricing />
+      <EnterpriseStrip />
       <ClosingCTA />
       <Footer />
     </main>
   );
 }
 
-function EyebrowDot({ children }: { children: ReactNode }) {
+// The signature mono kicker — [ SECTION.NAME ] — defined once in globals.css
+// (.kicker) and reused as every section's eyebrow.
+function Kicker({ children }: { children: ReactNode }) {
+  return <p className="kicker">{children}</p>;
+}
+
+// One consistent CTA pair everywhere: orange "Sign up free" as the primary
+// goal, outlined "Book a call" as the enterprise secondary.
+function CtaPair({
+  signupHref = APP_URL,
+  align = "start",
+}: {
+  signupHref?: string;
+  align?: "start" | "center";
+}) {
+  const primaryClass =
+    "inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover";
   return (
-    <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-      <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-      {children}
-    </p>
+    <div
+      className={`flex flex-wrap items-center gap-3 ${align === "center" ? "justify-center" : ""}`}
+    >
+      {signupHref.startsWith("#") ? (
+        <ScrollLink to={signupHref} className={primaryClass}>
+          Sign up free →
+        </ScrollLink>
+      ) : (
+        <Link href={signupHref} className={primaryClass}>
+          Sign up free →
+        </Link>
+      )}
+      <Link
+        href={CALL_URL}
+        className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+      >
+        Book a call
+      </Link>
+    </div>
   );
 }
 
@@ -123,55 +160,53 @@ export function HeroFunnel() {
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden">
+    <section className="relative overflow-hidden border-b border-border-subtle">
+      <Texture className="h-[760px]" fade="top" />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[680px]"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 20% 10%, rgba(249,115,22,0.09), transparent 60%)",
+            "radial-gradient(ellipse 80% 60% at 18% 8%, rgba(249,115,22,0.10), transparent 60%)",
         }}
       />
-      <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-12 pt-20 lg:pb-20 lg:pt-28">
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
+      <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-16 pt-20 lg:pb-24 lg:pt-28">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:items-center lg:gap-16">
           <div>
-            <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-              Memory for
+            <p className="kicker rise-in mb-6">Memory.for.agents</p>
+            <h1 className="text-balance font-display text-[clamp(42px,6vw,76px)] font-bold leading-[0.98] tracking-[-0.035em] text-ink">
+              Give your agents a
               <br />
-              <span className="text-brand">agents.</span>
+              memory that <span className="text-brand">compounds.</span>
             </h1>
 
             <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-              Stash captures data from your integrations and agent sessions to
-              build a context graph — so your agents remember what you did last
-              time instead of starting from scratch.
+              Stash connects your tools and captures every agent session into one
+              context graph your agents — and your team — can read. They pick up
+              where they left off instead of starting from scratch.
             </p>
 
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link
-                href={APP_URL}
-                className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-              >
-                Start free →
-              </Link>
-              <Link
-                href="/contact-sales"
-                className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-              >
-                Talk to us
-              </Link>
+            <div className="mt-9">
+              <CtaPair />
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[12px] text-dim">
               <Link
                 href="https://github.com/Fergana-Labs/stash"
-                className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 text-[14px] font-medium text-ink transition hover:border-ink"
+                className="inline-flex items-center gap-2 transition hover:text-ink"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                   <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
                 </svg>
                 Open source
               </Link>
+              <span className="text-border">·</span>
+              <span>MIT licensed</span>
+              <span className="text-border">·</span>
+              <span>Self-hostable</span>
             </div>
           </div>
-          <HeroFunnel />
+          <HeroTerminal />
         </div>
       </div>
     </section>
@@ -265,24 +300,24 @@ function Problem() {
   return (
     <section className="border-b border-border-subtle py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
-        <EyebrowDot>The shape of work is changing</EyebrowDot>
-        <h2 className="mt-4 max-w-[980px] text-balance font-display text-[clamp(40px,5.2vw,68px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-          Your agents are about to{" "}
-          <span className="text-brand">out-produce</span>{" "}
-          your team.
+        <Kicker>The problem</Kicker>
+        <h2 className="mt-4 max-w-[980px] text-balance font-display text-[clamp(38px,5vw,64px)] font-bold leading-[1.04] tracking-[-0.035em] text-ink">
+          Your agent is a clueless genius.{" "}
+          <span className="text-dim">It forgets everything by{" "}</span>
+          <span className="text-brand">tomorrow.</span>
         </h2>
         <div className="mt-12 grid grid-cols-1 gap-8 text-[17px] leading-[1.6] text-foreground md:grid-cols-2 md:gap-14">
           <p>
-            Every Claude, Cursor, or Codex run already generates pages of
-            output — transcripts, plans, scratch tables, half-finished
-            documents, dashboards your agent made on its own. Most of it
-            evaporates the moment the session closes.
+            Every Claude, Cursor, or Codex run generates pages of work —
+            transcripts, plans, the decisions it reasoned through, the files it
+            wrote. Most of it evaporates the moment the session closes, so the
+            next run starts cold and re-derives what you already solved.
           </p>
           <p>
-            Stash is built for that flow. It&rsquo;s the one place your agents
-            connect to all your data — GitHub, Drive, Gmail, Notion, Slack — and
-            an agent-native Drive in Markdown and HTML where sessions, files, and
-            pages all land. Bundle any slice into a link you can publish or fork.
+            Stash fixes that. It connects to all your data — GitHub, Drive,
+            Gmail, Notion, Slack — and captures every session into one
+            agent-native Drive your agents can read, search, and write back into.
+            Memory that builds itself, shared across every agent and teammate.
           </p>
         </div>
       </div>
@@ -337,7 +372,7 @@ export function Comparisons() {
     <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
         <div className="flex max-w-[880px] flex-col gap-4">
-          <EyebrowDot>Where Stash fits</EyebrowDot>
+          <Kicker>Where Stash fits</Kicker>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
             Built where your current tools stop.
             <br />
@@ -542,7 +577,7 @@ export function HowItWorks({
     <section id="how" className="border-b border-border-subtle bg-surface py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
         <div className="flex max-w-[880px] flex-col gap-4">
-          <EyebrowDot>How it works</EyebrowDot>
+          <Kicker>How.it.works</Kicker>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
             {title}
             <br />
@@ -583,7 +618,7 @@ function KarpathyQuote() {
   return (
     <section className="border-b border-border-subtle py-28 md:py-36">
       <div className="mx-auto max-w-[1100px] px-7">
-        <EyebrowDot>The case for this category</EyebrowDot>
+        <Kicker>The category</Kicker>
         <figure className="mt-8">
           <blockquote className="font-display text-[clamp(26px,3.4vw,42px)] font-medium leading-[1.25] tracking-[-0.02em] text-ink">
             <span className="text-dim">“raw data from a number of sources is collected, then compiled by an LLM into a .md knowledge base, then operated on by various CLIs by the LLM to do Q&amp;A and to incrementally enhance it… </span>
@@ -600,7 +635,7 @@ function KarpathyQuote() {
           markdown.
         </p>
         <div className="mt-16 border-t border-border-subtle pt-12">
-          <EyebrowDot>Use cases</EyebrowDot>
+          <Kicker>Use.cases</Kicker>
           <h3 className="mt-4 font-display text-[clamp(24px,2.8vw,36px)] font-bold tracking-[-0.02em] text-ink">
             Built for —
           </h3>
@@ -708,7 +743,7 @@ export function Features() {
   return (
     <section id="features" className="border-b border-border-subtle py-24 md:py-32">
       <div className="mx-auto max-w-[920px] px-7">
-        <EyebrowDot>Features</EyebrowDot>
+        <Kicker>Features</Kicker>
         <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
           A space shaped like the tools
           <br />
@@ -738,7 +773,7 @@ function CliAndPlugin() {
       <div className="mx-auto max-w-[1200px] px-7">
         <div className="grid grid-cols-1 gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-16">
           <div>
-            <EyebrowDot>Agent-native</EyebrowDot>
+            <Kicker>Agent.native</Kicker>
             <h2 className="mt-4 font-display text-[clamp(28px,3.4vw,42px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
               Designed so an agent can actually use it.
             </h2>
@@ -846,6 +881,165 @@ function CliAndPlugin() {
   );
 }
 
+// Real customer quotes go here. Intentionally empty — we don't ship invented
+// testimonials. Add { quote, name, role } objects and the grid renders itself.
+type Testimonial = { quote: string; name: string; role: string };
+const TESTIMONIALS: Testimonial[] = [];
+
+function Proof() {
+  return (
+    <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <Kicker>Proof</Kicker>
+        <div className="mt-8 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-16">
+          <div>
+            <p className="font-display text-[clamp(72px,9vw,128px)] font-bold leading-[0.9] tracking-[-0.05em] text-brand">
+              49%
+            </p>
+            <h2 className="mt-4 max-w-[440px] font-display text-[clamp(24px,2.8vw,34px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+              faster on long-running Claude Code sessions.
+            </h2>
+            <p className="mt-4 max-w-[440px] text-[15px] leading-[1.6] text-dim">
+              When the agent can read what it already figured out — past sessions,
+              decisions, the files it wrote — it stops re-deriving context every
+              run. Measured internally across our own agent runs.
+            </p>
+          </div>
+          <ul className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-1">
+            {[
+              ["Plugs into your stack", "Claude Code, Cursor, Codex, OpenCode, and any MCP client — sessions stream in automatically."],
+              ["No copy-paste memory", "Transcripts, plans, and artifacts land on their own. Nothing to export, nothing to wire up."],
+              ["Yours to run", "MIT licensed and self-hostable on your own Postgres. Run the exact thing we run."],
+            ].map(([h, b]) => (
+              <li key={h} className="bg-background p-6">
+                <p className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">{h}</p>
+                <p className="mt-1.5 text-[14.5px] leading-[1.55] text-dim">{b}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {TESTIMONIALS.length > 0 && (
+          <div className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
+            {TESTIMONIALS.map((t) => (
+              <figure
+                key={t.name}
+                className="flex flex-col rounded-[14px] border border-border bg-background p-6"
+              >
+                <blockquote className="text-[15px] leading-[1.6] text-foreground">
+                  “{t.quote}”
+                </blockquote>
+                <figcaption className="mt-5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
+                  {t.name} · {t.role}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OpenSource() {
+  return (
+    <section className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center md:gap-16">
+          <div>
+            <Kicker>Open.source</Kicker>
+            <h2 className="mt-4 font-display text-[clamp(30px,3.6vw,46px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+              No black box.
+              <br />
+              <span className="font-medium text-dim">Run the same thing we run.</span>
+            </h2>
+            <p className="mt-5 max-w-[480px] text-[16px] leading-[1.6] text-foreground">
+              Stash is MIT licensed and self-hostable on your own Postgres. Read
+              the code, fork it, or point it at your own infrastructure — no opaque
+              memory store, no vendor lock-in, no data you can&rsquo;t see.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                href="https://github.com/Fergana-Labs/stash"
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-background px-4 text-[13.5px] font-medium text-ink transition hover:border-ink"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+                </svg>
+                View on GitHub
+              </Link>
+              <Link
+                href="/docs/self-hosting"
+                className="inline-flex h-10 items-center rounded-lg px-2 text-[13.5px] font-medium text-dim transition hover:text-ink"
+              >
+                Self-host docs →
+              </Link>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-border bg-border">
+            {[
+              ["MIT", "licensed"],
+              ["Postgres", "self-hosted"],
+              ["MCP", "native"],
+              ["No", "lock-in"],
+            ].map(([big, small]) => (
+              <div key={big + small} className="flex flex-col gap-1 bg-background p-7">
+                <span className="font-display text-[26px] font-bold tracking-[-0.02em] text-ink">{big}</span>
+                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">{small}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EnterpriseStrip() {
+  return (
+    <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center lg:gap-16">
+          <div>
+            <Kicker>Enterprise</Kicker>
+            <h2 className="mt-4 font-display text-[clamp(30px,3.6vw,46px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+              Bottoms-up adoption,
+              <br />
+              <span className="font-medium text-dim">enterprise-ready when you are.</span>
+            </h2>
+            <p className="mt-5 max-w-[480px] text-[16px] leading-[1.6] text-foreground">
+              Your engineers can start free today. When it&rsquo;s time to roll it
+              across the org, Stash brings SSO, admin controls, deployment options,
+              and support SLAs — or run it entirely inside your own perimeter.
+            </p>
+            <div className="mt-7">
+              <Link
+                href={CALL_URL}
+                className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
+              >
+                Book a call →
+              </Link>
+            </div>
+          </div>
+          <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-2">
+            {[
+              ["SSO & SAML", "Okta, Google, Azure AD — provision and de-provision with your IdP."],
+              ["Admin controls", "Roles, access scopes, and audit over every source and Stash."],
+              ["Self-hosted", "Run on your own Postgres, inside your own VPC. Your data stays yours."],
+              ["Support SLAs", "Priority support and a direct line for production-critical workloads."],
+            ].map(([h, b]) => (
+              <div key={h} className="flex flex-col gap-1.5 bg-background p-6">
+                <dt className="font-mono text-[12px] font-medium uppercase tracking-[0.12em] text-brand">{h}</dt>
+                <dd className="text-[14px] leading-[1.55] text-dim">{b}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const PRICING_TIERS = [
   {
     name: "Free",
@@ -858,7 +1052,7 @@ const PRICING_TIERS = [
       "Full agent access — CLI, MCP, plugins",
       "Self-hostable, MIT licensed",
     ],
-    cta: { label: "Start free →", href: APP_URL },
+    cta: { label: "Sign up free →", href: APP_URL },
     highlight: false,
   },
   {
@@ -885,7 +1079,7 @@ const PRICING_TIERS = [
       "SSO and admin controls",
       "Support SLAs",
     ],
-    cta: { label: "Contact us →", href: "/contact-sales" },
+    cta: { label: "Book a call →", href: CALL_URL },
     highlight: false,
   },
 ];
@@ -894,7 +1088,7 @@ export function Pricing() {
   return (
     <section id="pricing" className="border-b border-border-subtle bg-surface py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
-        <EyebrowDot>Pricing</EyebrowDot>
+        <Kicker>Pricing</Kicker>
         <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
           Free to try.
           <br />
@@ -951,37 +1145,23 @@ export function Pricing() {
 
 // Variant pages pass ctaHref="#survey" so the signup button leads to the form.
 export function ClosingCTA({ ctaHref = APP_URL }: { ctaHref?: string }) {
-  const ctaClassName =
-    "inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover";
   return (
-    <section className="border-b border-border-subtle bg-surface py-32 text-center">
-      <div className="mx-auto max-w-[1200px] px-7">
-        <h2 className="text-balance font-display text-[clamp(44px,5.4vw,80px)] font-black leading-[0.98] tracking-[-0.045em] text-ink">
-          Give your agents somewhere
+    <section className="relative overflow-hidden border-b border-border-subtle bg-surface py-32 text-center">
+      <Texture className="opacity-70" fade="center" />
+      <div className="relative z-10 mx-auto max-w-[1200px] px-7">
+        <p className="kicker mb-6 justify-center">Stop.starting.over</p>
+        <h2 className="text-balance font-display text-[clamp(42px,5.2vw,76px)] font-bold leading-[1] tracking-[-0.035em] text-ink">
+          Give your agents a memory
           <br />
-          <span className="text-brand">to put their work.</span>
+          <span className="text-brand">worth keeping.</span>
         </h2>
         <p className="mx-auto mt-6 max-w-[560px] text-[17px] text-dim">
-          Connect your agents to all your data, and give them an agent-native
-          Drive to write it back into. Start free in the managed app, or run the
-          whole thing on your own Postgres. Open source, MIT licensed.
+          Connect your tools, capture every session, and give your agents an
+          agent-native Drive to write the work back into. Start free in the
+          managed app, or run the whole thing on your own Postgres.
         </p>
-        <div className="mt-9 flex flex-wrap justify-center gap-3">
-          {ctaHref.startsWith("#") ? (
-            <ScrollLink to={ctaHref} className={ctaClassName}>
-              Start free →
-            </ScrollLink>
-          ) : (
-            <Link href={ctaHref} className={ctaClassName}>
-              Start free →
-            </Link>
-          )}
-          <Link
-            href="/contact-sales"
-            className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-          >
-            Talk to us
-          </Link>
+        <div className="mt-9 flex justify-center">
+          <CtaPair signupHref={ctaHref} align="center" />
         </div>
         <p className="mx-auto mt-8 font-mono text-[11.5px] uppercase tracking-[0.1em] text-muted">
           MIT · Self-hostable · No vendor lock-in
@@ -1034,14 +1214,14 @@ export function Footer() {
     <footer className="border-t border-border-subtle">
       <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-7 pb-8 pt-14 sm:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] sm:gap-10">
         <div>
-          <div className="flex items-center gap-2.5 font-display text-[26px] font-black tracking-[-0.03em] text-ink">
+          <div className="flex items-center gap-2.5 font-display text-[26px] font-bold tracking-[-0.03em] text-ink">
             <Logo size={30} />
             stash
           </div>
           <p className="mt-3 max-w-[320px] text-[13.5px] leading-[1.55] text-dim">
-            The one place your agents connect to all your data — plus an
-            agent-native Drive in Markdown and HTML. Open source, MIT licensed,
-            self-hostable.
+            Give your agents a memory that compounds — connect your tools,
+            capture every session, and write the work back into an agent-native
+            Drive. Open source, MIT licensed, self-hostable.
           </p>
         </div>
         {columns.map((col) => (

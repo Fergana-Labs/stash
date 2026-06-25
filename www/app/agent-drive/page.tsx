@@ -53,7 +53,7 @@ export default function AgentDrivePage() {
             <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
             Agent Drive
           </p>
-          <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
+          <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.04em] text-ink">
             A Drive that speaks your{" "}
             <span className="text-brand">agent&apos;s language.</span>
           </h1>
@@ -151,7 +151,7 @@ export default function AgentDrivePage() {
 
       <section className="bg-surface py-28 text-center">
         <div className="mx-auto max-w-[1200px] px-7">
-          <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
+          <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.04em] text-ink">
             Give your agents somewhere to write.
           </h2>
           <div className="mt-8 flex flex-wrap justify-center gap-3">

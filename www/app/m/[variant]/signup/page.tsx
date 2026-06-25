@@ -30,7 +30,7 @@ export default async function SignupPage({
         <div className="mx-auto flex h-16 max-w-[1080px] items-center px-7">
           <Link
             href={`/m/${variant}`}
-            className="flex items-center gap-2.5 font-display text-[20px] font-black tracking-[-0.03em] text-ink"
+            className="flex items-center gap-2.5 font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
           >
             <Logo size={28} />
             stash

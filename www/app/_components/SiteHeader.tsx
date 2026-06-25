@@ -16,7 +16,7 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
       <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7 sm:px-7">
         <Link
           href="/"
-          className="flex items-center gap-2.5 font-display text-[20px] font-black tracking-[-0.03em] text-ink"
+          className="flex items-center gap-2.5 font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
         >
           <Logo size={28} />
           stash
@@ -28,19 +28,20 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
           <NavLink href="/memory" useCase>Memory</NavLink>
           <NavLink href="/docs">Docs</NavLink>
           <NavLink href="/blog">Blog</NavLink>
+          <NavLink href="/contact-sales">Book a call</NavLink>
           <Link
             href="/login"
-            className="hidden h-10 items-center rounded-lg border border-border bg-background px-[18px] text-[14px] font-medium text-ink transition hover:border-ink sm:inline-flex"
+            className="hidden h-10 items-center rounded-lg px-3 text-[14px] font-medium text-ink transition hover:bg-raised sm:inline-flex"
           >
             Sign in
           </Link>
           {ctaHref.startsWith("#") ? (
             <ScrollLink to={ctaHref} className={ctaClassName}>
-              Start free
+              Sign up free
             </ScrollLink>
           ) : (
             <Link href={ctaHref} className={ctaClassName}>
-              Start free
+              Sign up free
             </Link>
           )}
         </nav>
