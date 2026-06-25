@@ -6,7 +6,9 @@ import fnmatch
 import posixpath
 import re
 import shlex
+import time
 from dataclasses import dataclass
+from datetime import datetime
 
 from .client import StashError
 from .mount import MountError, StashVfsModel
@@ -172,12 +174,14 @@ class SkillAppVfsShell:
         return "\n".join(block for block in blocks if block) + ("\n" if blocks else "")
 
     def _format_ls_entry(self, path: str, long: bool) -> str:
+        name = posixpath.basename(path) or "/"
         if not long:
-            return posixpath.basename(path) or "/"
+            return name
+        node = self.model._get_node(path)
         attrs = self.model.getattr(path)
-        mode = "d" if self.model._get_node(path).is_dir else "-"
+        mode = "d" if node.is_dir else "-"
         size = int(attrs.get("st_size", 0))
-        return f"{mode} {size:>8} {posixpath.basename(path) or '/'}"
+        return f"{mode} {size:>8} {_ls_time(node.updated_at)} {name}"
 
     def _cat(self, args: list[str]) -> str:
         if not args:
@@ -476,7 +480,13 @@ class SkillAppVfsShell:
         attrs = self.model.getattr(path)
         node = self.model._get_node(path)
         kind = "directory" if node.is_dir else "file"
-        return f"{path}\n  type: {kind}\n  size: {attrs.get('st_size', 0)}\n"
+        return (
+            f"{path}\n"
+            f"  type: {kind}\n"
+            f"  size: {attrs.get('st_size', 0)}\n"
+            f"  modified: {_iso_time(node.updated_at)}\n"
+            f"  created: {_iso_time(node.created_at)}\n"
+        )
 
     def _write_output(self, raw_path: str, output: str, append: bool) -> None:
         path = self._resolve_path(raw_path)
@@ -640,6 +650,26 @@ def _help_text() -> str:
             "",
         ]
     )
+
+
+_SIX_MONTHS_SECONDS = 182 * 24 * 3600
+
+
+def _ls_time(epoch: float | None) -> str:
+    """`ls -l`-style 12-wide modified-time column. Recent entries show the
+    time, older ones the year, exactly like coreutils. A node the backend
+    gave no timestamp for shows `-` rather than a fabricated date."""
+    if not epoch:
+        return f"{'-':>12}"
+    when = datetime.fromtimestamp(epoch)
+    tail = when.strftime("%H:%M") if abs(time.time() - epoch) < _SIX_MONTHS_SECONDS else when.strftime(" %Y")
+    return f"{when.strftime('%b'):>3} {when.day:>2} {tail}"
+
+
+def _iso_time(epoch: float | None) -> str:
+    if not epoch:
+        return "-"
+    return datetime.fromtimestamp(epoch).isoformat()
 
 
 def _name_matches(path: str, pattern: str, ignore_case: bool) -> bool:

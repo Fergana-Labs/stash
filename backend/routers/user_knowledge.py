@@ -71,7 +71,7 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
     readable_file = permission_service.readable_content_condition("file", "fi", 2)
     folder_rows, page_rows, file_rows = await asyncio.gather(
         pool.fetch(
-            "SELECT f.id, f.name, f.parent_folder_id, "
+            "SELECT f.id, f.name, f.parent_folder_id, f.created_at, f.updated_at, "
             "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
@@ -81,7 +81,8 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
             user_id,
         ),
         pool.fetch(
-            "SELECT p.id, p.name, p.content_type, p.folder_id FROM pages p "
+            "SELECT p.id, p.name, p.content_type, p.folder_id, p.created_at, p.updated_at "
+            "FROM pages p "
             f"WHERE p.owner_user_id = $1 AND p.deleted_at IS NULL AND {readable_page} "
             "ORDER BY p.name",
             owner_user_id,
@@ -110,6 +111,8 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
                 "parent_folder_id": str(r["parent_folder_id"]) if r["parent_folder_id"] else None,
                 "page_count": int(r["page_count"] or 0),
                 "file_count": int(r["file_count"] or 0),
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
             }
             for r in folder_rows
         ],
@@ -119,6 +122,8 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
                 "name": r["name"],
                 "content_type": r["content_type"],
                 "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
             }
             for r in page_rows
         ],
