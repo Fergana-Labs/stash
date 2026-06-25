@@ -1,8 +1,20 @@
 import shlex
 
 from cli.app_vfs import SkillAppVfsShell
+from cli.client import StashError
 from cli.mount import StashVfsModel
 from cli.tests.test_mount_vfs import FakeClient
+
+
+class DeadTranscriptClient(FakeClient):
+    """A session whose transcript bodies 404 on fetch — the backend lists it
+    but can no longer serve it. Mirrors the inconsistency that crashed grep."""
+
+    def get_transcript_events(self, session_id):
+        raise StashError(404, "Transcript not found")
+
+    def export_transcript_jsonl(self, session_id):
+        raise StashError(404, "Transcript not found")
 
 
 class CountingClient(FakeClient):
@@ -192,3 +204,23 @@ def test_app_vfs_cd_updates_virtual_working_directory():
 
     assert result.stdout == "/files\n"
     assert result.cwd == "/files"
+
+
+def test_app_vfs_grep_skips_unreadable_transcript_and_warns():
+    shell, _client = _shell(DeadTranscriptClient())
+
+    result = shell.run("grep -r Plan /")
+
+    assert result.exit_code == 0
+    assert "Plan" in result.stdout
+    assert "Transcript not found" in result.stderr
+
+
+def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
+    shell, _client = _shell(DeadTranscriptClient())
+
+    result = shell.run("cat '/sessions/Fix login--session-/transcript.md'")
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "Transcript not found" in result.stderr

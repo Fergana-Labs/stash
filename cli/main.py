@@ -4178,26 +4178,15 @@ def vfs_command(
         shell = SkillAppVfsShell(model, cwd=cwd)
 
         command = " ".join(ctx.args).strip()
-        if command:
-            result = shell.run(command)
-            sys.stdout.write(result.stdout)
-            sys.stderr.write(result.stderr)
-            if result.exit_code:
-                raise typer.Exit(result.exit_code)
-            return
+        if not command:
+            console.print('[red]Usage: stash vfs "<command>" (e.g. [bold]stash vfs "ls /me"[/bold]).[/red]')
+            raise typer.Exit(2)
 
-        while True:
-            try:
-                command = input(f"stash:{shell.cwd}$ ").strip()
-            except EOFError:
-                return
-            if command in ("exit", "quit"):
-                return
-            if not command:
-                continue
-            result = shell.run(command)
-            sys.stdout.write(result.stdout)
-            sys.stderr.write(result.stderr)
+        result = shell.run(command)
+        sys.stdout.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        if result.exit_code:
+            raise typer.Exit(result.exit_code)
     except MountError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
