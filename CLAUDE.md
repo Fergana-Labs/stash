@@ -49,8 +49,8 @@ Run `stash prompts agent-guidance` to reprint this guidance mid-session.
 
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
-- `stash vfs "ls /me"` — browse your Stash as a filesystem: files, sessions, tables, skills, sources
-- `stash vfs "cat '/me/files/<page>.md'"` — read any page, file, transcript, or source doc
+- `stash vfs "ls /"` — browse your Stash as a filesystem: files, sessions, tables, skills, sources
+- `stash vfs "cat '/files/<page>.md'"` — read any page, file, transcript, or source doc
 - `stash sessions agents` — who's been active
 
 Browsing and reading your Stash content (files, pages, sessions, tables, skills, connected sources) is

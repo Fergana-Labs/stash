@@ -130,7 +130,7 @@ def _model():
 def test_vfs_exposes_user_sections():
     model = _model()
 
-    assert set(model.list_dir("/me")) == {
+    assert set(model.list_dir("/")) == {
         "README.md",
         "files",
         "sessions",
@@ -138,14 +138,14 @@ def test_vfs_exposes_user_sections():
         "tables",
         "sources",
     }
-    assert model.read_file("/me/skills/Demo Skill--skillfol.md") == b"# Demo Stash\n"
-    assert b"hello" in model.read_file("/me/sessions/Fix login--session-/transcript.md")
-    assert b'"Name": "Mount"' in model.read_file("/me/tables/Ideas--table-12/rows.json")
+    assert model.read_file("/skills/Demo Skill--skillfol.md") == b"# Demo Stash\n"
+    assert b"hello" in model.read_file("/sessions/Fix login--session-/transcript.md")
+    assert b'"Name": "Mount"' in model.read_file("/tables/Ideas--table-12/rows.json")
 
     # Connected sources are mounted read-only; native sources are skipped
     # (files/sessions already appear above). Document bodies load lazily.
-    assert model.list_dir("/me/sources") == ["gmail-demo-x.com"]
-    gmail = "/me/sources/gmail-demo-x.com"
+    assert model.list_dir("/sources") == ["gmail-demo-x.com"]
+    gmail = "/sources/gmail-demo-x.com"
     assert "Welcome email" in model.list_dir(gmail)
     assert model.read_file(f"{gmail}/Welcome email") == b"BODY of msg-1"
     assert model.read_file(f"{gmail}/threads/Nested note") == b"BODY of threads/msg-2"
@@ -157,7 +157,7 @@ def test_vfs_loads_source_entries_lazily():
     client = FakeClient()
     model = StashVfsModel(client)
     model.refresh()
-    sources_path = "/me/sources"
+    sources_path = "/sources"
 
     assert model.list_dir(sources_path) == ["gmail-demo-x.com"]
     assert client.source_entry_calls == 0
@@ -173,7 +173,7 @@ def test_vfs_reads_files_and_writes_pages():
     client = FakeClient()
     model = StashVfsModel(client)
     model.refresh()
-    files_path = "/me/files"
+    files_path = "/files"
     upload_name = next(name for name in model.list_dir(files_path) if name.startswith("diagram--"))
 
     assert model.read_file(f"{files_path}/{upload_name}") == b"diagram body"
@@ -197,7 +197,7 @@ def test_fuse_operations_commit_page_writes_on_flush():
     client = FakeClient()
     model = StashVfsModel(client)
     model.refresh()
-    files_path = "/me/files"
+    files_path = "/files"
     folder_name = next(name for name in model.list_dir(files_path) if name.startswith("Notes--"))
     folder_path = f"{files_path}/{folder_name}"
     page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan--"))
@@ -222,13 +222,13 @@ def test_fuse_operations_support_fusepy_dispatch():
     ops = SkillFuseOperations(model)
 
     assert ops("getattr", "/")["st_nlink"] == 2
-    assert "files" in [entry[0] for entry in ops("readdir", "/me", None)]
-    dir_handle = ops("opendir", "/me")
+    assert "files" in [entry[0] for entry in ops("readdir", "/", None)]
+    dir_handle = ops("opendir", "/")
     assert dir_handle > 0
-    assert ops("releasedir", "/me", dir_handle) == 0
-    assert ops("access", "/me/README.md", os.R_OK) == 0
-    assert ops("listxattr", "/me") == []
-    assert ops("statfs", "/me")["f_bsize"] == 4096
+    assert ops("releasedir", "/", dir_handle) == 0
+    assert ops("access", "/README.md", os.R_OK) == 0
+    assert ops("listxattr", "/") == []
+    assert ops("statfs", "/")["f_bsize"] == 4096
 
 
 def test_macos_fskit_mountpoints_must_live_under_volumes():

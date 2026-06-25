@@ -74,7 +74,7 @@ def _shell(client=None):
 
 
 def _page_path(shell: SkillAppVfsShell) -> str:
-    files_path = "/me/files"
+    files_path = "/files"
     folder_name = next(
         name for name in shell.model.list_dir(files_path) if name.startswith("Notes--")
     )
@@ -88,18 +88,18 @@ def _page_path(shell: SkillAppVfsShell) -> str:
 def test_app_vfs_runs_bash_shaped_navigation_commands():
     shell, _client = _shell()
 
-    assert "me" in shell.run("ls /").stdout
-    find_output = shell.run("find /me -maxdepth 2 -type d").stdout
-    assert "/me/files" in find_output
+    assert "files" in shell.run("ls /").stdout
+    find_output = shell.run("find / -maxdepth 2 -type d").stdout
+    assert "/files" in find_output
 
 
 def test_app_vfs_supports_common_agent_listing_patterns():
     client = CountingClient()
     shell, _client = _shell(client)
 
-    assert "files" in shell.run("ls -la /me").stdout
-    assert shell.run("find /me -name '*.md' -type f").stdout.splitlines()
-    tree_output = shell.run("tree /me -L 2").stdout
+    assert "files" in shell.run("ls -la /").stdout
+    assert shell.run("find / -name '*.md' -type f").stdout.splitlines()
+    tree_output = shell.run("tree / -L 2").stdout
 
     assert "files" in tree_output
     assert client.lazy_loads == 0
@@ -111,17 +111,17 @@ def test_app_vfs_pipes_cat_to_sed_and_grep():
 
     assert shell.run(f"cat {shlex.quote(page_path)} | sed -n '1,1p'").stdout == "# Plan\n"
 
-    result = shell.run("rg hello /me")
+    result = shell.run("rg hello /")
 
     assert result.exit_code == 0
     assert "transcript.md" in result.stdout
-    assert "transcript.md:" in shell.run("rg -n hello /me").stdout
+    assert "transcript.md:" in shell.run("rg -n hello /").stdout
 
 
 def test_app_vfs_grep_no_match_stops_and_chain():
     shell, _client = _shell()
 
-    result = shell.run("rg missing-sentinel /me && echo found")
+    result = shell.run("rg missing-sentinel / && echo found")
 
     assert result.exit_code == 1
     assert result.stdout == ""
@@ -200,16 +200,16 @@ def test_app_vfs_reports_unsupported_commands():
 def test_app_vfs_cd_updates_virtual_working_directory():
     shell, _client = _shell()
 
-    result = shell.run("cd /me && pwd")
+    result = shell.run("cd /files && pwd")
 
-    assert result.stdout == "/me\n"
-    assert result.cwd == "/me"
+    assert result.stdout == "/files\n"
+    assert result.cwd == "/files"
 
 
 def test_app_vfs_grep_skips_unreadable_transcript_and_warns():
     shell, _client = _shell(DeadTranscriptClient())
 
-    result = shell.run("grep -r Plan /me")
+    result = shell.run("grep -r Plan /")
 
     assert result.exit_code == 0
     assert "Plan" in result.stdout
@@ -219,7 +219,7 @@ def test_app_vfs_grep_skips_unreadable_transcript_and_warns():
 def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     shell, _client = _shell(DeadTranscriptClient())
 
-    result = shell.run("cat '/me/sessions/Fix login--session-/transcript.md'")
+    result = shell.run("cat '/sessions/Fix login--session-/transcript.md'")
 
     assert result.exit_code == 2
     assert result.stdout == ""
