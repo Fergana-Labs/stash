@@ -10,7 +10,7 @@ type Seg = { t: string; c?: string };
 type Line = { kind: "cmd" | "out" | "comment" | "quote"; segs: Seg[] };
 
 const SCRIPT: Line[] = [
-  { kind: "cmd", segs: [{ t: "stash vfs", c: "w" }, { t: ' "ls /me"' }] },
+  { kind: "cmd", segs: [{ t: "stash vfs", c: "w" }, { t: ' "ls /"' }] },
   { kind: "out", segs: [{ t: "files/  sessions/  skills/  tables/  sources/" }] },
   { kind: "cmd", segs: [{ t: "stash search", c: "w" }, { t: ' "rate-limit fix"' }] },
   {
@@ -20,7 +20,7 @@ const SCRIPT: Line[] = [
       { t: " · sessions/sam:tue-14:22 · files/gateway-limits.md" },
     ],
   },
-  { kind: "cmd", segs: [{ t: "stash share", c: "w" }, { t: " --public auth-patterns" }] },
+  { kind: "cmd", segs: [{ t: "stash skills create", c: "w" }, { t: ' "auth-patterns" --public' }] },
   {
     kind: "out",
     segs: [{ t: "✓ published", c: "g" }, { t: " joinstash.ai/v/auth-patterns-q2" }],

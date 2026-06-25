@@ -802,15 +802,15 @@ function CliAndPlugin() {
               <div className="whitespace-pre">
                 <span className="mr-2.5 select-none text-brand">›</span>
                 <span className="text-white">stash vfs</span>
-                <span className="text-on-inverted-dim"> &quot;tree /me -L 2&quot;</span>
+                <span className="text-on-inverted-dim"> &quot;tree / -L 2&quot;</span>
               </div>
               <div className="whitespace-pre text-on-inverted-dim">
-                » me/ ├ files/ ├ sessions/ ├ stashes/ ├ tables/
+                » / ├ files/ ├ sessions/ ├ skills/ ├ tables/ ├ sources/
               </div>
               <div className="whitespace-pre">
                 <span className="mr-2.5 select-none text-brand">›</span>
                 <span className="text-white">stash vfs</span>
-                <span className="text-on-inverted-dim"> &quot;rg &apos;rate-limit&apos; /me&quot;</span>
+                <span className="text-on-inverted-dim"> &quot;rg &apos;rate-limit&apos; /&quot;</span>
               </div>
               <div className="whitespace-pre">
                 <span className="text-[#22C55E]">✓ 8 hits</span>
@@ -818,7 +818,7 @@ function CliAndPlugin() {
               </div>
               <div className="whitespace-pre">
                 <span className="mr-2.5 select-none text-brand">›</span>
-                <span className="text-white">stash stashes create</span>
+                <span className="text-white">stash skills create</span>
                 <span className="text-on-inverted-dim"> &quot;Auth Patterns · Q2&quot; --public</span>
               </div>
               <div className="whitespace-pre">
