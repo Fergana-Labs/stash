@@ -69,19 +69,19 @@ class StashVfsModel:
         self.nodes = {}
         self._expanders = {}
         self._add_dir("/")
-        self._add_me()
+        self._add_root()
         self._add_static_file(
-            "/me/README.md",
+            "/README.md",
             "\n".join(
                 [
                     "# Stash",
                     "",
                     "This is a virtual filesystem view over Stash.",
                     "",
-                    "- `me/files` exposes folders, pages, and uploaded files.",
+                    "- `files` exposes folders, pages, and uploaded files.",
                     "- Markdown and HTML pages are writable; saves sync back to Stash.",
                     "- Uploaded files, sessions, skills, and tables are read-only projections.",
-                    "- `me/sources` exposes connected integrations (Gmail, "
+                    "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
                     "",
                 ]
@@ -141,19 +141,17 @@ class StashVfsModel:
             "st_atime": now,
         }
 
-    def _add_me(self) -> None:
-        me_path = "/me"
+    def _add_root(self) -> None:
         overview = self.client.get_overview()
 
-        self._add_dir(me_path)
-        self._add_files_tree(me_path, overview.get("files", {}))
-        self._add_skills(me_path, overview.get("skills", []))
-        self._add_sessions(me_path, overview.get("sessions", []))
-        self._add_tables(me_path)
-        self._add_sources(me_path)
+        self._add_files_tree(overview.get("files", {}))
+        self._add_skills(overview.get("skills", []))
+        self._add_sessions(overview.get("sessions", []))
+        self._add_tables()
+        self._add_sources()
 
-    def _add_files_tree(self, me_path: str, tree: dict) -> None:
-        root_path = f"{me_path}/files"
+    def _add_files_tree(self, tree: dict) -> None:
+        root_path = "/files"
         self._add_dir(root_path)
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         folder_paths: dict[str, str] = {}
@@ -205,8 +203,8 @@ class StashVfsModel:
                 size_hint=file.get("size_bytes"),
             )
 
-    def _add_skills(self, me_path: str, skills: list[dict]) -> None:
-        skills_path = f"{me_path}/skills"
+    def _add_skills(self, skills: list[dict]) -> None:
+        skills_path = "/skills"
         self._add_dir(skills_path)
         self._add_jsonl_file(f"{skills_path}/_index.jsonl", skills)
         for skill in skills:
@@ -222,8 +220,8 @@ class StashVfsModel:
                     loader=lambda s=slug: _text_bytes(self.client.get_skill_text(s)),
                 )
 
-    def _add_sessions(self, me_path: str, sessions: list[dict]) -> None:
-        sessions_path = f"{me_path}/sessions"
+    def _add_sessions(self, sessions: list[dict]) -> None:
+        sessions_path = "/sessions"
         self._add_dir(sessions_path)
         self._add_jsonl_file(f"{sessions_path}/_index.jsonl", sessions)
         for session in sessions:
@@ -251,8 +249,8 @@ class StashVfsModel:
                 ),
             )
 
-    def _add_tables(self, me_path: str) -> None:
-        tables_path = f"{me_path}/tables"
+    def _add_tables(self) -> None:
+        tables_path = "/tables"
         self._add_dir(tables_path)
         tables = self.client.list_tables()
         self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
@@ -277,7 +275,7 @@ class StashVfsModel:
                 ),
             )
 
-    def _add_sources(self, me_path: str) -> None:
+    def _add_sources(self) -> None:
         """Expose connected integrations (Gmail, GitHub, Slack, Jira, …) as
         read-only document trees. Native files/sessions are already mounted
         above, so skip them. Each source's full entry list is materialized;
@@ -290,7 +288,7 @@ class StashVfsModel:
         if not connected:
             return
 
-        sources_path = self._add_dir(f"{me_path}/sources")
+        sources_path = self._add_dir("/sources")
         for source in connected:
             handle = str(source.get("source") or "")
             if not handle:

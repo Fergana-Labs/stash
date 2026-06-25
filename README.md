@@ -108,9 +108,9 @@ Agents can browse Stash with an app-level virtual filesystem shell:
 
 ```bash
 stash vfs ls /
-stash vfs "tree /me -L 2"
-stash vfs "find /me -maxdepth 3 -type f | head -n 20"
-stash vfs "rg \"database migration\" /me"
+stash vfs "tree / -L 2"
+stash vfs "find / -maxdepth 3 -type f | head -n 20"
+stash vfs "rg \"database migration\" /"
 ```
 
 ## Integrations

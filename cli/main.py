@@ -1718,7 +1718,7 @@ def skills_fork(
 def skills_snapshot_source(
     skill_id: str = typer.Argument(...),
     source: str = typer.Option(
-        ..., "--source", help="Connected-source handle (see /me/sources via `stash vfs`)."
+        ..., "--source", help="Connected-source handle (see /sources via `stash vfs`)."
     ),
     path: str = typer.Option(..., "--path", help="Document path within the source."),
     as_json: bool = typer.Option(False, "--json"),
@@ -2287,7 +2287,7 @@ def hist_import(
 
 sources_app = typer.Typer(
     help="Sources — connect, sync, and disconnect external sources. "
-    "Browse and read their contents with `stash vfs` under /me/sources."
+    "Browse and read their contents with `stash vfs` under /sources."
 )
 app.add_typer(sources_app, name="sources")
 
@@ -3337,14 +3337,14 @@ Run `stash prompts agent-guidance` to reprint this rule mid-session.
 
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
 - `stash vfs ls /`
-- `stash vfs "find /me -maxdepth 3 -type f"`
-- `stash vfs "rg 'query' /me"`
-- `stash vfs "cat '/me/files/README.md' | sed -n '1,80p'"`
+- `stash vfs "find / -maxdepth 3 -type f"`
+- `stash vfs "rg 'query' /"`
+- `stash vfs "cat '/files/README.md' | sed -n '1,80p'"`
 
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
-- `stash vfs "ls /me"` — browse your files, sessions, tables, skills, and connected sources
-- `stash vfs "cat '/me/sessions/_index.jsonl'"` — recent sessions
+- `stash vfs "ls /"` — browse your files, sessions, tables, skills, and connected sources
+- `stash vfs "cat '/sessions/_index.jsonl'"` — recent sessions
 - `stash sessions agents` — who's been active
 
 Common writes:
@@ -3789,7 +3789,7 @@ def _setup_complete_intro(home_url: str, connected: bool) -> str:
         f"{memory_section}"
         f"{home_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
-        '  [#1e3a8a]stash vfs "find /me -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
+        '  [#1e3a8a]stash vfs "find / -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
         '  [#1e3a8a]stash search "<query>"[/#1e3a8a]   full-text search across files, sessions, and sources\n'
         "  [#1e3a8a]stash sessions agents[/#1e3a8a]   see which agents have been active\n"
         "\n"
@@ -4275,16 +4275,16 @@ Browsing Stash
 session transcripts, and every connected integration (GitHub, Slack, Gong,
 Gmail, Drive, Notion, …). When asked what you have access to, run it and
 show the tree. Drill in with `stash ls <source>/<path>`, and read a
-document with `stash vfs "cat '/me/sources/<source>/<path>'"`.
+document with `stash vfs "cat '/sources/<source>/<path>'"`.
 
 Use `stash vfs` when you want to browse Stash like a filesystem without
 mounting anything into the OS. It accepts bash-shaped commands over the
 virtual Stash tree:
 
 - `stash vfs ls /`
-- `stash vfs "find /me -maxdepth 3 -type f"`
-- `stash vfs "rg 'query' /me"`
-- `stash vfs "cat '/me/files/README.md' | sed -n '1,80p'"`
+- `stash vfs "find / -maxdepth 3 -type f"`
+- `stash vfs "rg 'query' /"`
+- `stash vfs "cat '/files/README.md' | sed -n '1,80p'"`
 
 Anti-pattern: minting one Stash per file you happen to share. Skills
 exist to group related things; one item per Stash defeats the model and
