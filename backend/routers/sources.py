@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/v1/me/sources", tags=["sources"])
 
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if await user_scope_service.get_member_role(owner_user_id, user_id) is None:
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
 

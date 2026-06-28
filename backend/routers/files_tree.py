@@ -50,7 +50,7 @@ canonical_router = APIRouter(prefix="/api/v1", tags=["files"])
 
 async def _check_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
     """Read gate: any member (viewer/editor/owner) is allowed."""
-    if not await user_scope_service.is_member(owner_user_id, user_id):
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a scope member")
 
 

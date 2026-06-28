@@ -17,15 +17,10 @@ async def publish(
 ):
     """Create a skill folder containing the content page and publish it."""
     if req.owner_user_id is None:
-        owner_user_id = await user_scope_service.scope_id_for_user(current_user["id"])
-        if owner_user_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="No primary scope; pass owner_user_id explicitly",
-            )
+        owner_user_id = current_user["id"]
     else:
         owner_user_id = req.owner_user_id
-        if not await user_scope_service.is_member(owner_user_id, current_user["id"]):
+        if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
             raise HTTPException(status_code=403, detail="Not a scope member")
 
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):

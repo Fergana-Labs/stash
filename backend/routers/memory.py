@@ -29,7 +29,7 @@ _TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_messag
 
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_member(owner_user_id, user_id):
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a scope member")
 
 
@@ -160,9 +160,6 @@ async def delete_agent(
     """Delete all events for an agent in this scope."""
     owner_user_id = current_user["id"]
     await _check_member(owner_user_id, current_user["id"])
-    role = await user_scope_service.get_member_role(owner_user_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Scope admin required")
     await memory_service.delete_scope_agent_events(agent_name, owner_user_id)
 
 

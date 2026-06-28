@@ -58,7 +58,7 @@ _FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     """Read gate: any member."""
-    if not await user_scope_service.is_member(owner_user_id, user_id):
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a scope member")
 
 

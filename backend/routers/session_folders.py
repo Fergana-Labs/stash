@@ -23,7 +23,7 @@ GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
 
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_member(owner_user_id, user_id):
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
 
@@ -87,7 +87,7 @@ async def list_folders(current_user: dict = Depends(get_current_user)):
     owner_user_id = current_user["id"]
     # Non-members may still see folders shared with them, so this isn't gated on
     # membership. Members get a Default folder lazily ensured on first listing.
-    if await user_scope_service.is_member(owner_user_id, current_user["id"]):
+    if await user_scope_service.is_owner(owner_user_id, current_user["id"]):
         await session_folder_service.ensure_default_folder(owner_user_id)
     return {"folders": await session_folder_service.list_folders(owner_user_id, current_user["id"])}
 

@@ -39,7 +39,7 @@ async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     Most table endpoints mutate state, so the default is safe-by-default
     write. Read-only endpoints opt into `_check_read` instead."""
     if not await user_scope_service.can_write(owner_user_id, user_id):
-        if not await user_scope_service.is_member(owner_user_id, user_id):
+        if not await user_scope_service.is_owner(owner_user_id, user_id):
             raise HTTPException(status_code=403, detail="Not a scope member")
         raise HTTPException(
             status_code=403,
@@ -49,7 +49,7 @@ async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
 
 async def _check_read(owner_user_id: UUID, user_id: UUID) -> None:
     """Read gate: any scope member (viewer/editor/owner)."""
-    if not await user_scope_service.is_member(owner_user_id, user_id):
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a scope member")
 
 

@@ -33,7 +33,7 @@ _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_member(owner_user_id, user_id):
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a scope member")
 
 

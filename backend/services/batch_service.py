@@ -156,7 +156,7 @@ async def batch_restore(owner_user_id: UUID, user_id: UUID, items: list[dict]) -
             raise ValueError(f"batch restore supports pages and files, not {object_type}")
         # Trashed rows can't be permission-checked the normal way (live-only
         # queries skip them); scope membership + write is the gate.
-        if not await user_scope_service.is_member(owner_user_id, user_id):
+        if not await user_scope_service.is_owner(owner_user_id, user_id):
             raise ValueError("no write access")
         return await _restore_one(object_type, object_id, owner_user_id, user_id)
 

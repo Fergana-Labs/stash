@@ -17,7 +17,7 @@ import logging
 import re
 
 from ...config import settings
-from ...services import ask_service, user_scope_service, user_service
+from ...services import ask_service, user_service
 from . import client, installs, links
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
         await client.post_message(bot_token, channel, _connect_prompt(), thread_ts)
         return
 
-    owner_user_id = await user_scope_service.scope_id_for_user(user["id"])
+    owner_user_id = user["id"]
     # The scope is the user, so its name is the user's display name.
     owner_name = user["display_name"] or user["name"]
     # One continuous session per user → memory accumulates across DMs/channels/time.

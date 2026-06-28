@@ -213,8 +213,7 @@ async def _verify_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
 
     from ..services import user_scope_service
 
-    role = await user_scope_service.get_member_role(owner_user_id, user_id)
-    if role is None:
+    if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not a member of this scope")
 
 

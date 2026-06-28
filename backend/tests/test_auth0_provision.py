@@ -16,7 +16,6 @@ from backend.managed.auth0 import router as auth0_router
 from backend.managed.auth0 import users as auth0_users
 from backend.managed.auth0.jwt import validate_auth0_token
 from backend.managed.auth0.users import get_or_create_user_row_from_auth0
-from backend.services import user_scope_service
 
 from .conftest import unique_name
 
@@ -54,10 +53,6 @@ async def test_first_session_provision_reports_created(pool):
         auth0_sub=sub, email=None, name="New Person"
     )
     assert created is True
-    # First sign-in provisions the user's scope, so a scope lookup alone can't
-    # tell new from returning — only `created` can. The scope is the user.
-    scope_id = await user_scope_service.scope_id_for_user(user["id"])
-    assert scope_id == user["id"]
 
 
 @pytest.mark.asyncio
