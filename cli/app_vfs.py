@@ -893,7 +893,11 @@ def _ls_time(epoch: float | None) -> str:
     if not epoch:
         return f"{'-':>12}"
     when = datetime.fromtimestamp(epoch)
-    tail = when.strftime("%H:%M") if abs(time.time() - epoch) < _SIX_MONTHS_SECONDS else when.strftime(" %Y")
+    tail = (
+        when.strftime("%H:%M")
+        if abs(time.time() - epoch) < _SIX_MONTHS_SECONDS
+        else when.strftime(" %Y")
+    )
     return f"{when.strftime('%b'):>3} {when.day:>2} {tail}"
 
 

@@ -77,11 +77,11 @@ def _shell(client=None):
 def _page_path(shell: SkillAppVfsShell) -> str:
     files_path = "/files"
     folder_name = next(
-        name for name in shell.model.list_dir(files_path) if name.startswith("Notes--")
+        name for name in shell.model.list_dir(files_path) if name.startswith("Notes")
     )
     folder_path = f"{files_path}/{folder_name}"
     page_name = next(
-        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan--")
+        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan")
     )
     return f"{folder_path}/{page_name}"
 
@@ -122,13 +122,13 @@ def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
 
     # An uploaded file is immutable, so its modified-time is its creation time.
     file_name = next(
-        name for name in shell.model.list_dir("/me/files") if name.startswith("diagram")
+        name for name in shell.model.list_dir("/files") if name.startswith("diagram")
     )
-    file_node = shell.model._get_node(f"/me/files/{file_name}")
+    file_node = shell.model._get_node(f"/files/{file_name}")
     assert file_node.updated_at == file_node.created_at is not None
 
     # A synthetic directory the backend never timestamps shows "-", not a faked now.
-    assert "modified: -" in shell.run("stat /me/files").stdout
+    assert "modified: -" in shell.run("stat /files").stdout
 
 
 def test_app_vfs_pipes_cat_to_sed_and_grep():
@@ -304,7 +304,7 @@ def test_app_vfs_grep_skips_unreadable_transcript_and_warns():
 def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     shell, _client = _shell(DeadTranscriptClient())
 
-    result = shell.run("cat '/sessions/Fix login--session-/transcript.md'")
+    result = shell.run("cat '/sessions/Fix login/transcript.md'")
 
     assert result.exit_code == 2
     assert result.stdout == ""

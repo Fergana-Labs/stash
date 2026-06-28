@@ -1085,6 +1085,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     for s in await list_connected_sources(owner_user_id, user_id):
         item = {
             "source": s["id"],
+            "provider": SOURCE_TYPE_PROVIDER[s["source_type"]],
             "type": s["source_type"],
             "capability": s["capability"],
             "display_name": s["display_name"],
@@ -1319,6 +1320,52 @@ def _session_title(session: dict) -> str:
     return title or session.get("agent_name") or "session"
 
 
+async def _member_tree(source: dict, depth: int, per_dir: int) -> list[dict]:
+    """The document tree for one connected source (one repo, one account)."""
+    if source["capability"] == "queryable":
+        # Live-query source (Snowflake): no document table to walk.
+        return []
+    entries = await list_documents(source, limit=TREE_DOC_LIMIT)
+    return build_entry_tree(entries, depth, per_dir)
+
+
+async def _provider_tree_node(
+    provider: str, members: list[dict], depth: int, per_dir: int
+) -> dict:
+    """One provider folder for the sources filesystem. A single connection
+    collapses — its documents sit directly in the provider folder. Multiple
+    connections each become a subfolder named after the connection."""
+    members = sorted(members, key=lambda m: m["display_name"])
+    node = {
+        "source": provider,
+        "type": "provider",
+        "provider": provider,
+        "display_name": provider,
+        # Connection handles, so a caller drilling into the tree knows which
+        # source to read each path against (the provider key is not a handle).
+        "members": [{"handle": m["id"], "display_name": m["display_name"]} for m in members],
+    }
+    if len(members) == 1:
+        node["tree"] = await _member_tree(members[0], depth, per_dir)
+        node["sync_status"] = members[0]["sync_status"]
+        node["last_synced_at"] = members[0]["last_synced_at"]
+        return node
+
+    children = []
+    for member in members:
+        children.append(
+            {
+                "name": member["display_name"],
+                "kind": "folder",
+                "source": member["id"],
+                "sync_status": member["sync_status"],
+                "children": await _member_tree(member, max(1, depth - 1), per_dir),
+            }
+        )
+    node["tree"] = _capped_flat_tree(children, per_dir)
+    return node
+
+
 async def sources_tree(
     owner_user_id: UUID, user_id: UUID, depth: int = 3, per_dir: int = 50
 ) -> list[dict]:
@@ -1358,21 +1405,16 @@ async def sources_tree(
         },
     ]
 
+    # Group connected sources under their provider — the top tier of the
+    # filesystem. The provider folder is the unit ("github", "granola"); the
+    # individual connections (repos, accounts) live inside it.
+    by_provider: dict[str, list[dict]] = {}
     for source in await list_connected_sources(owner_user_id, user_id):
-        item = {
-            "source": source["id"],
-            "type": source["source_type"],
-            "display_name": source["display_name"],
-            "sync_status": source["sync_status"],
-            "last_synced_at": source["last_synced_at"],
-        }
-        if source["capability"] == "queryable":
-            # Live-query source (Snowflake): no document table to walk.
-            item["tree"] = []
-        else:
-            entries = await list_documents(source, limit=TREE_DOC_LIMIT)
-            item["tree"] = build_entry_tree(entries, depth, per_dir)
-        out.append(item)
+        provider = SOURCE_TYPE_PROVIDER[source["source_type"]]
+        by_provider.setdefault(provider, []).append(source)
+
+    for provider in sorted(by_provider):
+        out.append(await _provider_tree_node(provider, by_provider[provider], depth, per_dir))
 
     await _audit_source_read(
         action="source.tree_listed",

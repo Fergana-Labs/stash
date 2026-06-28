@@ -9,6 +9,7 @@ import posixpath
 import re
 import stat
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -128,7 +129,13 @@ class StashVfsModel:
         root_path = "/files"
         self._add_dir(root_path)
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
+        pages = tree.get("pages", [])
+        files = tree.get("files", [])
+        ambiguous = _files_ambiguity(folders.values(), pages, files)
         folder_paths: dict[str, str] = {}
+
+        def siblings(parent_id) -> set[str]:
+            return ambiguous.get(str(parent_id or ""), set())
 
         def folder_path(folder_id: str) -> str:
             if folder_id in folder_paths:
@@ -136,9 +143,10 @@ class StashVfsModel:
             folder = folders[folder_id]
             parent_id = folder.get("parent_folder_id")
             parent_path = folder_path(str(parent_id)) if parent_id else root_path
+            name = _dir_display_name(folder.get("name") or "folder", folder_id, siblings(parent_id))
             path = self._add_dir_child(
                 parent_path,
-                _object_dir_name(folder.get("name") or "folder", folder_id),
+                name,
                 created_at=folder.get("created_at"),
                 updated_at=folder.get("updated_at"),
             )
@@ -148,14 +156,13 @@ class StashVfsModel:
         for folder_id in folders:
             folder_path(folder_id)
 
-        for page in tree.get("pages", []):
+        for page in pages:
             page_id = str(page["id"])
-            parent_path = (
-                folder_path(str(page["folder_id"])) if page.get("folder_id") else root_path
+            parent_id = page.get("folder_id")
+            parent_path = folder_path(str(parent_id)) if parent_id else root_path
+            name = _file_display_name(
+                page.get("name") or "page", page_id, _page_extension(page), siblings(parent_id)
             )
-            content_type = page.get("content_type") or "markdown"
-            extension = ".html" if content_type == "html" else ".md"
-            name = _object_file_name(page.get("name") or "page", page_id, extension)
             self._add_file(
                 f"{parent_path}/{name}",
                 loader=lambda pid=page_id: self._load_page(pid),
@@ -163,12 +170,11 @@ class StashVfsModel:
                 updated_at=page.get("updated_at"),
             )
 
-        for file in tree.get("files", []):
+        for file in files:
             file_id = str(file["id"])
-            parent_path = (
-                folder_path(str(file["folder_id"])) if file.get("folder_id") else root_path
-            )
-            name = _object_file_name(file.get("name") or "file", file_id, "")
+            parent_id = file.get("folder_id")
+            parent_path = folder_path(str(parent_id)) if parent_id else root_path
+            name = _file_display_name(file.get("name") or "file", file_id, "", siblings(parent_id))
             # Uploaded files are immutable — there is no separate update event,
             # so the file's last-modified time is its creation time.
             created_at = file.get("created_at")
@@ -184,11 +190,13 @@ class StashVfsModel:
         skills_path = "/skills"
         self._add_dir(skills_path)
         self._add_jsonl_file(f"{skills_path}/_index.jsonl", skills)
-        for skill in skills:
-            folder_id = str(skill.get("folder_id") or "")
-            if not folder_id:
-                continue
-            basename = _object_basename(skill.get("name") or "skill", folder_id)
+        published = [skill for skill in skills if skill.get("folder_id")]
+        ambiguous = _ambiguous_basenames(
+            [_safe_name(skill.get("name") or "skill") for skill in published]
+        )
+        for skill in published:
+            folder_id = str(skill["folder_id"])
+            basename = _dir_display_name(skill.get("name") or "skill", folder_id, ambiguous)
             self._add_json_file(f"{skills_path}/{basename}.json", skill)
             slug = (skill.get("published") or {}).get("slug")
             if slug:
@@ -201,15 +209,15 @@ class StashVfsModel:
         sessions_path = "/sessions"
         self._add_dir(sessions_path)
         self._add_jsonl_file(f"{sessions_path}/_index.jsonl", sessions)
+        ambiguous = _ambiguous_basenames(
+            [_safe_name(session.get("title") or str(session["session_id"])) for session in sessions]
+        )
         for session in sessions:
             session_id = str(session["session_id"])
             row_id = str(session.get("id") or session_id)
             updated_at = session.get("updated_at")
-            session_path = self._add_dir_child(
-                sessions_path,
-                _object_dir_name(session.get("title") or session_id, row_id),
-                updated_at=updated_at,
-            )
+            name = _dir_display_name(session.get("title") or session_id, row_id, ambiguous)
+            session_path = self._add_dir_child(sessions_path, name, updated_at=updated_at)
             self._add_json_file(f"{session_path}/metadata.json", session, updated_at=updated_at)
             self._add_file(
                 f"{session_path}/events.json",
@@ -236,13 +244,15 @@ class StashVfsModel:
         self._add_dir(tables_path)
         tables = self.client.list_tables()
         self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
+        ambiguous = _ambiguous_basenames([_safe_name(table.get("name") or "table") for table in tables])
         for table in tables:
             table_id = str(table["id"])
             created_at = table.get("created_at")
             updated_at = table.get("updated_at")
+            name = _dir_display_name(table.get("name") or "table", table_id, ambiguous)
             table_path = self._add_dir_child(
                 tables_path,
-                _object_dir_name(table.get("name") or "table", table_id),
+                name,
                 created_at=created_at,
                 updated_at=updated_at,
             )
@@ -281,16 +291,24 @@ class StashVfsModel:
             return
 
         sources_path = self._add_dir("/sources")
-        for source in connected:
-            handle = str(source.get("source") or "")
-            if not handle:
+        for provider, members in _group_by_provider(connected).items():
+            provider_root = self._add_dir_child(sources_path, _source_slug(provider))
+            if len(members) == 1:
+                # Sole connection collapses — its documents sit directly in the
+                # provider folder (e.g. /sources/granola/<call>).
+                handle = str(members[0].get("source") or "")
+                self._expanders[provider_root] = (
+                    lambda root=provider_root, h=handle: self._expand_source(root, h)
+                )
                 continue
-            source_root = self._add_dir_child(
-                sources_path, _source_slug(source.get("display_name") or handle)
-            )
-            self._expanders[source_root] = lambda root=source_root, h=handle: self._expand_source(
-                root, h
-            )
+            for member in members:
+                handle = str(member.get("source") or "")
+                member_root = self._add_dir_child(
+                    provider_root, _source_slug(member.get("display_name") or handle)
+                )
+                self._expanders[member_root] = (
+                    lambda root=member_root, h=handle: self._expand_source(root, h)
+                )
 
     def _expand_source(self, source_root: str, handle: str) -> None:
         try:
@@ -495,24 +513,70 @@ def _ancestor_refs(entries: list[dict]) -> set[str]:
     return refs
 
 
+def _group_by_provider(connected: list[dict]) -> dict[str, list[dict]]:
+    """Connected sources grouped under their provider key, the top tier of the
+    /sources filesystem. Sources with no handle are dropped."""
+    groups: dict[str, list[dict]] = {}
+    for source in connected:
+        if not source.get("source"):
+            continue
+        groups.setdefault(str(source.get("provider") or "source"), []).append(source)
+    return groups
+
+
 def _source_doc_text(doc: dict) -> str:
     return doc.get("content") or doc.get("transcript") or ""
 
 
-def _object_basename(name: str, object_id: str) -> str:
-    return f"{_safe_name(name)}--{object_id[:8]}"
+def _ambiguous_basenames(names: list[str]) -> set[str]:
+    """Display names that occur more than once in a directory. Only these get an
+    id suffix; unique names render clean. Every member of a colliding name is
+    suffixed (not just the later ones), so a path never depends on listing order."""
+    counts = Counter(names)
+    return {name for name, count in counts.items() if count > 1}
 
 
-def _object_dir_name(name: str, object_id: str) -> str:
-    return _object_basename(name, object_id)
+def _dir_display_name(name: str, object_id: str, ambiguous: set[str]) -> str:
+    base = _safe_name(name)
+    return f"{base}--{object_id[:8]}" if base in ambiguous else base
 
 
-def _object_file_name(name: str, object_id: str, default_extension: str) -> str:
-    safe = _safe_name(name)
-    stem, extension = posixpath.splitext(safe)
-    if not extension:
-        extension = default_extension
-    return f"{stem or 'untitled'}--{object_id[:8]}{extension}"
+def _split_filename(name: str, default_extension: str) -> tuple[str, str]:
+    stem, extension = posixpath.splitext(_safe_name(name))
+    return stem or "untitled", extension or default_extension
+
+
+def _file_display_name(
+    name: str, object_id: str, default_extension: str, ambiguous: set[str]
+) -> str:
+    stem, extension = _split_filename(name, default_extension)
+    if f"{stem}{extension}" in ambiguous:
+        return f"{stem}--{object_id[:8]}{extension}"
+    return f"{stem}{extension}"
+
+
+def _page_extension(page: dict) -> str:
+    return ".html" if (page.get("content_type") or "markdown") == "html" else ".md"
+
+
+def _files_ambiguity(folders, pages: list[dict], files: list[dict]) -> dict[str, set[str]]:
+    """Map each parent folder (keyed by id, "" for root) to the set of colliding
+    display names among its folders, pages, and uploaded files combined — paths
+    in one directory must be unique across all three kinds."""
+    by_parent: dict[str, list[str]] = {}
+
+    def record(parent_id, base: str) -> None:
+        by_parent.setdefault(str(parent_id or ""), []).append(base)
+
+    for folder in folders:
+        record(folder.get("parent_folder_id"), _safe_name(folder.get("name") or "folder"))
+    for page in pages:
+        stem, extension = _split_filename(page.get("name") or "page", _page_extension(page))
+        record(page.get("folder_id"), f"{stem}{extension}")
+    for file in files:
+        stem, extension = _split_filename(file.get("name") or "file", "")
+        record(file.get("folder_id"), f"{stem}{extension}")
+    return {parent: _ambiguous_basenames(names) for parent, names in by_parent.items()}
 
 
 def _parse_iso(value: str | None) -> float | None:
