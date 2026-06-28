@@ -173,6 +173,76 @@ def test_app_vfs_command_chaining_preserves_all_stdout():
     assert result.stdout == "one\ntwo\n"
 
 
+def test_app_vfs_sort_orders_dedupes_and_handles_numbers():
+    shell, _client = _shell()
+
+    assert shell.run("printf 'b\\na\\nc\\na\\n' | sort").stdout == "a\na\nb\nc\n"
+    assert shell.run("printf 'b\\na\\nc\\na\\n' | sort -u").stdout == "a\nb\nc\n"
+    # Numeric sort orders by value, not lexically (10 after 2, not before).
+    assert shell.run("printf '10\\n2\\n1\\n' | sort -n").stdout == "1\n2\n10\n"
+    assert shell.run("printf '1\\n2\\n10\\n' | sort -rn").stdout == "10\n2\n1\n"
+
+
+def test_app_vfs_uniq_collapses_adjacent_runs():
+    shell, _client = _shell()
+
+    assert shell.run("printf 'a\\na\\nb\\na\\n' | uniq").stdout == "a\nb\na\n"
+    assert shell.run("printf 'a\\na\\nb\\n' | uniq -c").stdout == "      2 a\n      1 b\n"
+    assert shell.run("printf 'a\\na\\nb\\n' | uniq -d").stdout == "a\n"
+
+
+def test_app_vfs_cut_selects_fields_and_chars():
+    shell, _client = _shell()
+
+    assert shell.run("printf 'a:b:c\\n' | cut -d: -f1,3").stdout == "a:c\n"
+    assert shell.run("printf 'a,b,c\\n' | cut -d, -f2-").stdout == "b,c\n"
+    assert shell.run("printf 'hello\\n' | cut -c1-3").stdout == "hel\n"
+    # Fields are emitted in input order regardless of the spec order, like cut.
+    assert shell.run("printf 'a:b:c\\n' | cut -d: -f3,1").stdout == "a:c\n"
+
+
+def test_app_vfs_cut_passes_through_lines_without_the_delimiter():
+    shell, _client = _shell()
+
+    assert shell.run("printf 'no-delimiter-here\\n' | cut -d: -f2").stdout == "no-delimiter-here\n"
+
+
+def test_app_vfs_grep_emits_context_lines():
+    shell, _client = _shell()
+
+    assert shell.run("printf 'l1\\nl2\\nM\\nl4\\n' | grep -A1 M").stdout == "M\nl4\n"
+    assert shell.run("printf 'l1\\nl2\\nM\\nl4\\n' | grep -B1 M").stdout == "l2\nM\n"
+    assert shell.run("printf 'l1\\nM\\nl3\\n' | grep -C1 M").stdout == "l1\nM\nl3\n"
+
+
+def test_app_vfs_grep_separates_distant_context_groups():
+    shell, _client = _shell()
+
+    # Two matches far apart get their own context blocks split by a `--` line.
+    result = shell.run("printf 'M\\nx\\ny\\nz\\nM\\n' | grep -A1 M")
+
+    assert result.stdout == "M\nx\n--\nM\n"
+
+
+def test_app_vfs_xargs_feeds_paths_with_spaces_into_a_command():
+    shell, _client = _shell()
+
+    # Skill titles contain spaces; xargs must treat each line as one argument.
+    result = shell.run("find /skills -type f -name '*.md' | xargs cat")
+
+    assert result.exit_code == 0
+    assert result.stdout == "# Demo Stash\n"
+
+
+def test_app_vfs_xargs_replaces_placeholder_and_batches():
+    shell, _client = _shell()
+
+    assert shell.run("printf 'x\\ny\\n' | xargs -I {} echo item={}").stdout == "item=x\nitem=y\n"
+    assert shell.run("printf 'a\\nb\\n' | xargs -n1 echo").stdout == "a\nb\n"
+    # Empty input runs nothing rather than invoking the command with no args.
+    assert shell.run("printf '' | xargs cat").stdout == ""
+
+
 def test_app_vfs_rejects_redirect_writes():
     shell, _client = _shell()
     page_path = _page_path(shell)

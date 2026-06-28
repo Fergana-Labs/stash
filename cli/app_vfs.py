@@ -125,6 +125,14 @@ class SkillAppVfsShell:
             return self._head_or_tail(args, stdin, from_tail=True)
         if name == "wc":
             return self._wc(args, stdin)
+        if name == "sort":
+            return self._sort(args, stdin)
+        if name == "uniq":
+            return self._uniq(args, stdin)
+        if name == "cut":
+            return self._cut(args, stdin)
+        if name == "xargs":
+            return self._xargs(args, stdin)
         if name == "echo":
             return self._echo(args)
         if name == "printf":
@@ -298,13 +306,18 @@ class SkillAppVfsShell:
         ignore_case = False
         recursive = name == "rg"
         show_line_numbers = name == "rg"
+        before = 0
+        after = 0
         options_done = False
         values: list[str] = []
-        for arg in args:
+        index = 0
+        while index < len(args):
+            arg = args[index]
             if not options_done and arg == "--":
                 options_done = True
+                index += 1
                 continue
-            if not options_done and arg.startswith("-"):
+            if not options_done and arg.startswith("-") and arg != "-":
                 if arg.startswith("--"):
                     if arg in ("--ignore-case", "--smart-case"):
                         ignore_case = True
@@ -314,6 +327,26 @@ class SkillAppVfsShell:
                         recursive = True
                     else:
                         raise VfsShellError(f"unsupported {name} option: {arg}", exit_code=2)
+                    index += 1
+                    continue
+                if arg[1] in ("A", "B", "C"):
+                    context_flag = arg[1]
+                    value_str = arg[2:]
+                    if not value_str:
+                        index += 1
+                        if index >= len(args):
+                            raise VfsShellError(f"-{context_flag} requires a value", exit_code=2)
+                        value_str = args[index]
+                    try:
+                        value = int(value_str)
+                    except ValueError as e:
+                        msg = f"-{context_flag} value must be an integer"
+                        raise VfsShellError(msg, exit_code=2) from e
+                    if context_flag in ("A", "C"):
+                        after = value
+                    if context_flag in ("B", "C"):
+                        before = value
+                    index += 1
                     continue
                 flags = arg[1:]
                 unsupported = sorted(set(flags) - set("inrR"))
@@ -325,8 +358,10 @@ class SkillAppVfsShell:
                 ignore_case = ignore_case or "i" in flags
                 recursive = recursive or "r" in flags or "R" in flags
                 show_line_numbers = show_line_numbers or "n" in flags
+                index += 1
                 continue
             values.append(arg)
+            index += 1
         if not values:
             raise VfsShellError("missing pattern")
 
@@ -339,7 +374,10 @@ class SkillAppVfsShell:
             raise VfsShellError(str(e)) from e
 
         if stdin is not None and not paths:
-            output = _grep_text(regex, stdin, "", show_line_numbers=False, prefix_path=False)
+            output = _grep_text(
+                regex, stdin, "", show_line_numbers=False, prefix_path=False,
+                before=before, after=after,
+            )
             if not output:
                 raise VfsShellExit(1)
             return output
@@ -366,6 +404,8 @@ class SkillAppVfsShell:
                         file_path,
                         show_line_numbers=show_line_numbers,
                         prefix_path=len(file_paths) > 1 or recursive,
+                        before=before,
+                        after=after,
                     )
                 )
         output = "".join(matches)
@@ -424,6 +464,174 @@ class SkillAppVfsShell:
             return f"{lines}\n"
         words = len(text.split())
         return f"{lines} {words} {len(text.encode('utf-8'))}\n"
+
+    def _sort(self, args: list[str], stdin: str | None) -> str:
+        reverse = numeric = unique = fold = False
+        paths: list[str] = []
+        for arg in args:
+            if arg.startswith("-") and arg != "-":
+                flags = arg[1:]
+                unsupported = sorted(set(flags) - set("rnuf"))
+                if unsupported:
+                    raise VfsShellError(f"unsupported sort option: -{unsupported[0]}", exit_code=2)
+                reverse = reverse or "r" in flags
+                numeric = numeric or "n" in flags
+                unique = unique or "u" in flags
+                fold = fold or "f" in flags
+                continue
+            paths.append(arg)
+        text = stdin if not paths and stdin is not None else self._cat(paths)
+
+        def key(line: str):
+            if numeric:
+                return _numeric_key(line)
+            return line.lower() if fold else line
+
+        keyed = sorted(((key(line), line) for line in text.splitlines()), key=lambda kv: kv[0])
+        if reverse:
+            keyed.reverse()
+        if unique:
+            lines = []
+            previous = object()
+            for k, line in keyed:
+                if k == previous:
+                    continue
+                previous = k
+                lines.append(line)
+        else:
+            lines = [line for _, line in keyed]
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    def _uniq(self, args: list[str], stdin: str | None) -> str:
+        count = only_dup = only_unique = ignore_case = False
+        paths: list[str] = []
+        for arg in args:
+            if arg.startswith("-") and arg != "-":
+                flags = arg[1:]
+                unsupported = sorted(set(flags) - set("cdui"))
+                if unsupported:
+                    raise VfsShellError(f"unsupported uniq option: -{unsupported[0]}", exit_code=2)
+                count = count or "c" in flags
+                only_dup = only_dup or "d" in flags
+                only_unique = only_unique or "u" in flags
+                ignore_case = ignore_case or "i" in flags
+                continue
+            paths.append(arg)
+        if len(paths) > 1:
+            raise VfsShellError("uniq accepts at most one file", exit_code=2)
+        text = stdin if not paths and stdin is not None else self._cat(paths)
+
+        groups: list[tuple[str, int]] = []
+        previous_key = object()
+        for line in text.splitlines():
+            line_key = line.lower() if ignore_case else line
+            if groups and line_key == previous_key:
+                groups[-1] = (groups[-1][0], groups[-1][1] + 1)
+                continue
+            groups.append((line, 1))
+            previous_key = line_key
+
+        rows = []
+        for line, n in groups:
+            if only_dup and n < 2:
+                continue
+            if only_unique and n > 1:
+                continue
+            rows.append(f"{n:>7} {line}" if count else line)
+        return "\n".join(rows) + ("\n" if rows else "")
+
+    def _cut(self, args: list[str], stdin: str | None) -> str:
+        delimiter = "\t"
+        fields_spec = ""
+        chars_spec = ""
+        paths: list[str] = []
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg in ("-d", "-f", "-c"):
+                if index + 1 >= len(args):
+                    raise VfsShellError(f"{arg} requires a value", exit_code=2)
+                index += 1
+                value = args[index]
+            elif arg[:2] in ("-d", "-f", "-c"):
+                value = arg[2:]
+            elif arg.startswith("-") and arg != "-":
+                raise VfsShellError(f"unsupported cut option: {arg}", exit_code=2)
+            else:
+                paths.append(arg)
+                index += 1
+                continue
+            flag = arg[1]
+            if flag == "d":
+                delimiter = value
+            elif flag == "f":
+                fields_spec = value
+            else:
+                chars_spec = value
+            index += 1
+
+        if bool(fields_spec) == bool(chars_spec):
+            raise VfsShellError("cut requires exactly one of -f or -c", exit_code=2)
+        ranges = _parse_cut_ranges(fields_spec or chars_spec)
+        text = stdin if not paths and stdin is not None else self._cat(paths)
+
+        rows = []
+        for line in text.splitlines():
+            if chars_spec:
+                rows.append("".join(_select_indexed(list(line), ranges)))
+            elif delimiter not in line:
+                rows.append(line)
+            else:
+                rows.append(delimiter.join(_select_indexed(line.split(delimiter), ranges)))
+        return "\n".join(rows) + ("\n" if rows else "")
+
+    def _xargs(self, args: list[str], stdin: str | None) -> str:
+        max_args: int | None = None
+        replace: str | None = None
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg == "-n" or arg == "-I":
+                if index + 1 >= len(args):
+                    raise VfsShellError(f"{arg} requires a value", exit_code=2)
+                index += 1
+                max_args, replace = self._set_xargs_value(arg[1], args[index], max_args, replace)
+            elif arg.startswith("-n") or arg.startswith("-I"):
+                max_args, replace = self._set_xargs_value(arg[1], arg[2:], max_args, replace)
+            elif arg.startswith("-") and arg != "-":
+                raise VfsShellError(f"unsupported xargs option: {arg}", exit_code=2)
+            else:
+                break
+            index += 1
+
+        command = args[index:]
+        if not command:
+            raise VfsShellError("xargs requires a command", exit_code=2)
+        name, base = command[0], command[1:]
+
+        # Split on newlines, not arbitrary whitespace: Stash paths routinely
+        # contain spaces (skill/session titles), and the common pipelines feeding
+        # xargs here — `find …` and `grep -l …` — emit one path per line.
+        items = [line.strip() for line in (stdin or "").splitlines() if line.strip()]
+        if not items:
+            return ""
+
+        if replace is not None:
+            calls = [[a.replace(replace, item) for a in base] for item in items]
+        else:
+            batches = _chunk(items, max_args) if max_args else [items]
+            calls = [base + batch for batch in batches]
+        return "".join(self._dispatch(name, call, None) for call in calls)
+
+    def _set_xargs_value(
+        self, flag: str, value: str, max_args: int | None, replace: str | None
+    ) -> tuple[int | None, str | None]:
+        if flag == "I":
+            return max_args, value
+        try:
+            return int(value), replace
+        except ValueError as e:
+            raise VfsShellError("-n value must be an integer", exit_code=2) from e
 
     def _echo(self, args: list[str]) -> str:
         newline = True
@@ -552,18 +760,76 @@ def _grep_text(
     *,
     show_line_numbers: bool,
     prefix_path: bool,
+    before: int = 0,
+    after: int = 0,
 ) -> str:
+    lines = text.splitlines()
+    matched = {i for i, line in enumerate(lines) if regex.search(line)}
+    if not matched:
+        return ""
+
+    # Map each line index we will print to whether it is a match (vs. context).
+    # GNU grep separates matches from their filename/line with `:` and context
+    # lines with `-`, and inserts a `--` line between non-adjacent groups.
+    selected: dict[int, bool] = {}
+    for i in matched:
+        for context in range(max(0, i - before), min(len(lines), i + after + 1)):
+            selected.setdefault(context, context in matched)
+        selected[i] = True
+
     rows = []
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        if not regex.search(line):
-            continue
+    previous = None
+    for i in sorted(selected):
+        if (before or after) and previous is not None and i > previous + 1:
+            rows.append("--")
+        separator = ":" if selected[i] else "-"
         prefix = ""
         if prefix_path:
-            prefix += f"{path}:"
+            prefix += f"{path}{separator}"
         if show_line_numbers:
-            prefix += f"{line_number}:"
-        rows.append(f"{prefix}{line}")
-    return "\n".join(rows) + ("\n" if rows else "")
+            prefix += f"{i + 1}{separator}"
+        rows.append(f"{prefix}{lines[i]}")
+        previous = i
+    return "\n".join(rows) + "\n"
+
+
+def _numeric_key(line: str) -> float:
+    """Leading numeric value of a line, like `sort -n`. Lines without a leading
+    number sort as 0, matching coreutils."""
+    match = re.match(r"\s*([+-]?\d+(?:\.\d+)?)", line)
+    return float(match.group(1)) if match else 0.0
+
+
+def _parse_cut_ranges(spec: str) -> list[tuple[int, int | None]]:
+    """Parse a cut field/char list like `1,3-5,7-` into 1-indexed (start, end)
+    pairs. `end` is None for an open-ended range (`3-`)."""
+    ranges = []
+    for part in spec.split(","):
+        try:
+            if "-" in part:
+                low, high = part.split("-", 1)
+                start = int(low) if low else 1
+                end = int(high) if high else None
+            else:
+                start = end = int(part)
+        except ValueError as e:
+            raise VfsShellError(f"invalid cut range: {part}", exit_code=2) from e
+        ranges.append((start, end))
+    return ranges
+
+
+def _select_indexed(items: list[str], ranges: list[tuple[int, int | None]]) -> list[str]:
+    """Pick 1-indexed items covered by any range. Like cut, output is in item
+    order (not range order) with no duplicates."""
+    chosen: set[int] = set()
+    for start, end in ranges:
+        last = end if end is not None else len(items)
+        chosen.update(i for i in range(start, last + 1) if 1 <= i <= len(items))
+    return [items[i - 1] for i in sorted(chosen)]
+
+
+def _chunk(items: list[str], size: int) -> list[list[str]]:
+    return [items[i : i + size] for i in range(0, len(items), size)]
 
 
 def _reject_redirect(stage: str) -> None:
@@ -609,7 +875,8 @@ def _help_text() -> str:
     return "\n".join(
         [
             "Supported commands (read-only):",
-            "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc, echo, printf, stat",
+            "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc,",
+            "  sort, uniq, cut, xargs, echo, printf, stat",
             "  pipes with |, command chaining with && or ;",
             "",
         ]
