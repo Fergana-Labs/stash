@@ -1,27 +1,21 @@
-"""FUSE-backed virtual filesystem for browsing Stash from local tools."""
+"""Read-only virtual filesystem model over Stash, backing the `stash vfs` shell."""
 
 from __future__ import annotations
 
-import errno
 import hashlib
 import json
 import os
-import platform
 import posixpath
 import re
 import stat
-import sys
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 
 from .client import StashClient, StashError
 
 BytesLoader = Callable[[], bytes]
-BytesWriter = Callable[[bytes], None]
 
 
 class MountError(Exception):
@@ -33,7 +27,6 @@ class VfsNode:
     path: str
     mode: int
     loader: BytesLoader | None = None
-    writer: BytesWriter | None = None
     content: bytes | None = None
     size_hint: int | None = None
     children: dict[str, str] = field(default_factory=dict)
@@ -47,14 +40,6 @@ class VfsNode:
     @property
     def is_file(self) -> bool:
         return stat.S_ISREG(self.mode)
-
-
-@dataclass
-class OpenFile:
-    path: str
-    buffer: bytearray
-    writable: bool
-    dirty: bool = False
 
 
 class StashVfsModel:
@@ -77,11 +62,10 @@ class StashVfsModel:
                 [
                     "# Stash",
                     "",
-                    "This is a virtual filesystem view over Stash.",
+                    "This is a read-only virtual filesystem view over Stash.",
                     "",
                     "- `files` exposes folders, pages, and uploaded files.",
-                    "- Markdown and HTML pages are writable; saves sync back to Stash.",
-                    "- Uploaded files, sessions, skills, and tables are read-only projections.",
+                    "- Sessions, skills, and tables are read-only projections.",
                     "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
                     "",
@@ -111,17 +95,6 @@ class StashVfsModel:
                 node.content = node.loader()
                 node.size_hint = len(node.content)
         return node.content
-
-    def write_file(self, path: str, content: bytes) -> None:
-        node = self._get_node(path)
-        if not node.is_file:
-            raise IsADirectoryError(path)
-        if node.writer is None:
-            raise PermissionError(path)
-        node.writer(content)
-        node.content = bytes(content)
-        node.size_hint = len(node.content)
-        node.updated_at = time.time()
 
     def getattr(self, path: str) -> dict:
         node = self._get_node(path)
@@ -186,12 +159,6 @@ class StashVfsModel:
             self._add_file(
                 f"{parent_path}/{name}",
                 loader=lambda pid=page_id: self._load_page(pid),
-                writer=lambda body, pid=page_id, ctype=content_type: self._write_page(
-                    pid,
-                    ctype,
-                    body,
-                ),
-                writable=True,
                 created_at=page.get("created_at"),
                 updated_at=page.get("updated_at"),
             )
@@ -358,13 +325,6 @@ class StashVfsModel:
             return _text_bytes(page.get("content_html") or "")
         return _text_bytes(page.get("content_markdown") or "")
 
-    def _write_page(self, page_id: str, content_type: str, content: bytes) -> None:
-        text = content.decode("utf-8")
-        if content_type == "html":
-            self.client.update_page(page_id, content_type="html", content_html=text)
-            return
-        self.client.update_page(page_id, content=text)
-
     def _load_all_table_rows(self, table_id: str) -> dict:
         limit = 1000
         offset = 0
@@ -417,10 +377,8 @@ class StashVfsModel:
         path: str,
         *,
         loader: BytesLoader | None = None,
-        writer: BytesWriter | None = None,
         content: bytes | None = None,
         size_hint: int | None = None,
-        writable: bool = False,
         created_at: str | None = None,
         updated_at: str | None = None,
     ) -> str:
@@ -428,12 +386,10 @@ class StashVfsModel:
         parent, requested_name = self._split_parent(path)
         name = self._unique_child_name(parent, requested_name)
         path = f"{parent}/{name}" if parent != "/" else f"/{name}"
-        mode = stat.S_IFREG | (0o644 if writable else 0o444)
         self.nodes[path] = VfsNode(
             path=path,
-            mode=mode,
+            mode=stat.S_IFREG | 0o444,
             loader=loader,
-            writer=writer,
             content=content,
             size_hint=(
                 size_hint
@@ -495,337 +451,6 @@ class StashVfsModel:
         parent = posixpath.dirname(path) or "/"
         name = posixpath.basename(path)
         return parent, name
-
-
-class SkillFuseOperations:
-    def __init__(self, model: StashVfsModel):
-        self.model = model
-        self.handles: dict[int, OpenFile] = {}
-        self.dir_handles: dict[int, str] = {}
-        self.next_handle = 1
-        self.lock = threading.Lock()
-
-    def __call__(self, op: str, *args):
-        handler = getattr(self, op, None)
-        if handler is None:
-            raise _fuse_error(errno.EFAULT)
-        return handler(*args)
-
-    def access(self, path: str, amode: int):
-        if not self.model.exists(path):
-            raise _fuse_error(errno.ENOENT)
-        if amode & os.W_OK:
-            node = self.model._get_node(path)
-            if node.is_dir or node.writer is None:
-                raise _fuse_error(errno.EROFS)
-        return 0
-
-    def getattr(self, path: str, fh=None):
-        try:
-            return self.model.getattr(path)
-        except FileNotFoundError:
-            raise _fuse_error(errno.ENOENT)
-
-    def readdir(self, path: str, fh):
-        try:
-            path = self.model._clean_path(path)
-            # fusepy does not expose the kernel readdir offset to this high-level operation.
-            entries = [
-                (".", self.model.getattr(path), 0),
-                ("..", self.model.getattr(posixpath.dirname(path) or "/"), 0),
-            ]
-            for name in self.model.list_dir(path):
-                child_path = posixpath.join(path, name)
-                entries.append((name, self.model.getattr(child_path), 0))
-            return entries
-        except FileNotFoundError:
-            raise _fuse_error(errno.ENOENT)
-        except NotADirectoryError:
-            raise _fuse_error(errno.ENOTDIR)
-
-    def opendir(self, path: str):
-        if not self.model.exists(path):
-            raise _fuse_error(errno.ENOENT)
-        node = self.model._get_node(path)
-        if not node.is_dir:
-            raise _fuse_error(errno.ENOTDIR)
-        with self.lock:
-            handle = self.next_handle
-            self.next_handle += 1
-            self.dir_handles[handle] = self.model._clean_path(path)
-            return handle
-
-    def releasedir(self, path: str, fh: int):
-        self.dir_handles.pop(fh, None)
-        return 0
-
-    def open(self, path: str, flags: int):
-        if not self.model.exists(path):
-            raise _fuse_error(errno.ENOENT)
-        writable = _flags_request_write(flags)
-        node = self.model._get_node(path)
-        if node.is_dir:
-            raise _fuse_error(errno.EISDIR)
-        if writable and node.writer is None:
-            raise _fuse_error(errno.EROFS)
-        data = b"" if flags & os.O_TRUNC else self.model.read_file(path)
-        with self.lock:
-            handle = self.next_handle
-            self.next_handle += 1
-            self.handles[handle] = OpenFile(path=path, buffer=bytearray(data), writable=writable)
-            return handle
-
-    def read(self, path: str, size: int, offset: int, fh: int):
-        data = self.handles[fh].buffer if fh in self.handles else self.model.read_file(path)
-        return bytes(data[offset : offset + size])
-
-    def write(self, path: str, data: bytes, offset: int, fh: int):
-        opened = self.handles.get(fh)
-        if opened is None or not opened.writable:
-            raise _fuse_error(errno.EBADF)
-        end = offset + len(data)
-        if end > len(opened.buffer):
-            opened.buffer.extend(b"\x00" * (end - len(opened.buffer)))
-        opened.buffer[offset:end] = data
-        opened.dirty = True
-        return len(data)
-
-    def truncate(self, path: str, length: int, fh=None):
-        if fh in self.handles:
-            opened = self.handles[fh]
-            if not opened.writable:
-                raise _fuse_error(errno.EBADF)
-            _resize_buffer(opened.buffer, length)
-            opened.dirty = True
-            return 0
-
-        node = self.model._get_node(path)
-        if node.writer is None:
-            raise _fuse_error(errno.EROFS)
-        data = bytearray(self.model.read_file(path))
-        _resize_buffer(data, length)
-        self.model.write_file(path, bytes(data))
-        return 0
-
-    def flush(self, path: str, fh: int):
-        self._commit_handle(fh)
-        return 0
-
-    def fsync(self, path: str, fdatasync: bool, fh: int):
-        self._commit_handle(fh)
-        return 0
-
-    def release(self, path: str, fh: int):
-        self._commit_handle(fh)
-        self.handles.pop(fh, None)
-        return 0
-
-    def utimens(self, path: str, times=None):
-        if not self.model.exists(path):
-            raise _fuse_error(errno.ENOENT)
-        return 0
-
-    def init(self, path: str):
-        return None
-
-    def destroy(self, path: str):
-        return None
-
-    def fsyncdir(self, path: str, fdatasync: bool, fh: int):
-        return 0
-
-    def statfs(self, path: str):
-        return {
-            "f_bsize": 4096,
-            "f_frsize": 4096,
-            "f_blocks": 1024 * 1024,
-            "f_bavail": 1024 * 1024,
-            "f_bfree": 1024 * 1024,
-            "f_files": len(self.model.nodes) + 1024,
-            "f_ffree": 1024 * 1024,
-            "f_favail": 1024 * 1024,
-        }
-
-    def listxattr(self, path: str):
-        return []
-
-    def getxattr(self, path: str, name: str, position=0):
-        raise _fuse_error(_enotsup())
-
-    def setxattr(self, path: str, name: str, value: bytes, options: int, position=0):
-        raise _fuse_error(_enotsup())
-
-    def removexattr(self, path: str, name: str):
-        raise _fuse_error(_enotsup())
-
-    def readlink(self, path: str):
-        raise _fuse_error(errno.ENOENT)
-
-    def create(self, path: str, mode: int, fi=None):
-        raise _fuse_error(errno.EROFS)
-
-    def mknod(self, path: str, mode: int, dev: int):
-        raise _fuse_error(errno.EROFS)
-
-    def mkdir(self, path: str, mode: int):
-        raise _fuse_error(errno.EROFS)
-
-    def unlink(self, path: str):
-        raise _fuse_error(errno.EROFS)
-
-    def rmdir(self, path: str):
-        raise _fuse_error(errno.EROFS)
-
-    def rename(self, old: str, new: str):
-        raise _fuse_error(errno.EROFS)
-
-    def link(self, target: str, source: str):
-        raise _fuse_error(errno.EROFS)
-
-    def symlink(self, target: str, source: str):
-        raise _fuse_error(errno.EROFS)
-
-    def chmod(self, path: str, mode: int):
-        raise _fuse_error(errno.EROFS)
-
-    def chown(self, path: str, uid: int, gid: int):
-        raise _fuse_error(errno.EROFS)
-
-    def ioctl(self, path: str, cmd: int, arg, fip, flags: int, data):
-        raise _fuse_error(errno.ENOTTY)
-
-    def _commit_handle(self, fh: int) -> None:
-        opened = self.handles.get(fh)
-        if opened is None or not opened.dirty:
-            return
-        self.model.write_file(opened.path, bytes(opened.buffer))
-        opened.dirty = False
-
-
-def mount_stash(client: StashClient, mountpoint: Path) -> None:
-    FUSE = _load_fuse_class()
-    mountpoint.mkdir(parents=True, exist_ok=True)
-    model = StashVfsModel(client)
-    model.refresh()
-    try:
-        FUSE(
-            SkillFuseOperations(model),
-            str(mountpoint),
-            **_fuse_mount_options(mountpoint),
-        )
-    except (OSError, RuntimeError) as e:
-        raise MountError(f"Stash mount failed: {e}") from e
-
-
-def check_fuse_runtime() -> None:
-    _load_fuse_class()
-    _validate_fuse_provider()
-
-
-def _load_fuse_class():
-    _configure_fuse_library_path()
-    try:
-        from fuse import FUSE
-    except (ImportError, OSError) as e:
-        raise MountError(
-            "Stash mount is experimental and requires a local FUSE runtime plus fusepy. "
-            "Use `stash vfs` for the supported app-level virtual filesystem."
-        ) from e
-    return FUSE
-
-
-def _configure_fuse_library_path() -> None:
-    if os.environ.get("FUSE_LIBRARY_PATH") or sys.platform != "darwin":
-        return
-
-    macfuse_path = Path("/usr/local/lib/libfuse.2.dylib")
-    if macfuse_path.is_file():
-        os.environ["FUSE_LIBRARY_PATH"] = str(macfuse_path)
-
-
-def _fuse_mount_options(mountpoint: Path) -> dict:
-    options = {
-        "foreground": True,
-        "nothreads": True,
-        "volname": "Stash",
-    }
-    if sys.platform != "darwin":
-        return options
-
-    _validate_fuse_provider()
-    _require_macos_fskit_mountpoint(mountpoint)
-    options["backend"] = "fskit"
-    return options
-
-
-def _validate_fuse_provider() -> None:
-    if sys.platform != "darwin":
-        return
-    if _active_macos_fuse_provider() != "macfuse":
-        raise MountError(
-            "Stash mount is experimental on macOS and requires macFUSE 5 FSKit. "
-            "Use `stash vfs` for the supported app-level virtual filesystem."
-        )
-    if not _macos_supports_fskit():
-        raise MountError("Stash mount on macOS requires macOS 15.4 or later.")
-
-
-def _active_macos_fuse_provider() -> str:
-    path = os.environ.get("FUSE_LIBRARY_PATH", "")
-    if "libfuse-t" in path:
-        return "fuse-t"
-    if Path("/usr/local/lib/libfuse.2.dylib").is_file():
-        return "macfuse"
-    return ""
-
-
-def _macos_supports_fskit() -> bool:
-    version = platform.mac_ver()[0]
-    parts = version.split(".")
-    if len(parts) < 2:
-        return False
-    try:
-        major = int(parts[0])
-        minor = int(parts[1])
-    except ValueError:
-        return False
-    return (major, minor) >= (15, 4)
-
-
-def _require_macos_fskit_mountpoint(mountpoint: Path) -> None:
-    absolute = mountpoint.expanduser().absolute()
-    volumes = Path("/Volumes")
-    if absolute == volumes or volumes in absolute.parents:
-        return
-    raise MountError(
-        "Stash mount on macOS uses macFUSE FSKit, which requires a mount point under "
-        "/Volumes. Re-run with: stash mount /Volumes/Stash"
-    )
-
-
-def _flags_request_write(flags: int) -> bool:
-    return flags & os.O_ACCMODE in (os.O_WRONLY, os.O_RDWR) or bool(flags & os.O_TRUNC)
-
-
-def _resize_buffer(buffer: bytearray, length: int) -> None:
-    if length < len(buffer):
-        del buffer[length:]
-        return
-    if length > len(buffer):
-        buffer.extend(b"\x00" * (length - len(buffer)))
-
-
-def _fuse_error(err: int) -> OSError:
-    try:
-        from fuse import FuseOSError
-
-        return FuseOSError(err)
-    except (ImportError, OSError):
-        return OSError(err, os.strerror(err))
-
-
-def _enotsup() -> int:
-    return getattr(errno, "ENOTSUP", 45)
 
 
 def _inode_for_path(path: str) -> int:

@@ -1,17 +1,8 @@
-import os
-from pathlib import Path
-
-from cli.mount import (
-    MountError,
-    SkillFuseOperations,
-    StashVfsModel,
-    _require_macos_fskit_mountpoint,
-)
+from cli.mount import StashVfsModel
 
 
 class FakeClient:
     def __init__(self):
-        self.page_updates = []
         self.source_entry_calls = 0
 
     def get_overview(self):
@@ -60,10 +51,6 @@ class FakeClient:
     def get_page(self, page_id):
         assert page_id == "page-12345678"
         return {"content_type": "markdown", "content_markdown": "# Plan\n", "content_html": ""}
-
-    def update_page(self, page_id, **kwargs):
-        self.page_updates.append((page_id, kwargs))
-        return {}
 
     def download_file(self, file_id):
         assert file_id == "file-12345678"
@@ -173,10 +160,8 @@ def test_vfs_loads_source_entries_lazily():
     assert client.source_entry_calls == 1
 
 
-def test_vfs_reads_files_and_writes_pages():
-    client = FakeClient()
-    model = StashVfsModel(client)
-    model.refresh()
+def test_vfs_reads_files_and_pages():
+    model = _model()
     files_path = "/files"
     upload_name = next(name for name in model.list_dir(files_path) if name.startswith("diagram--"))
 
@@ -185,62 +170,4 @@ def test_vfs_reads_files_and_writes_pages():
     folder_name = next(name for name in model.list_dir(files_path) if name.startswith("Notes--"))
     folder_path = f"{files_path}/{folder_name}"
     page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan--"))
-    page_path = f"{folder_path}/{page_name}"
-    assert model.read_file(page_path) == b"# Plan\n"
-    model.write_file(page_path, b"# Updated\n")
-
-    assert client.page_updates == [
-        (
-            "page-12345678",
-            {"content": "# Updated\n"},
-        )
-    ]
-
-
-def test_fuse_operations_commit_page_writes_on_flush():
-    client = FakeClient()
-    model = StashVfsModel(client)
-    model.refresh()
-    files_path = "/files"
-    folder_name = next(name for name in model.list_dir(files_path) if name.startswith("Notes--"))
-    folder_path = f"{files_path}/{folder_name}"
-    page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan--"))
-    page_path = f"{folder_path}/{page_name}"
-
-    ops = SkillFuseOperations(model)
-    handle = ops.open(page_path, os.O_RDWR | os.O_TRUNC)
-    ops.write(page_path, b"# Edited through FUSE\n", 0, handle)
-    ops.flush(page_path, handle)
-    ops.release(page_path, handle)
-
-    assert client.page_updates == [
-        (
-            "page-12345678",
-            {"content": "# Edited through FUSE\n"},
-        )
-    ]
-
-
-def test_fuse_operations_support_fusepy_dispatch():
-    model = _model()
-    ops = SkillFuseOperations(model)
-
-    assert ops("getattr", "/")["st_nlink"] == 2
-    assert "files" in [entry[0] for entry in ops("readdir", "/", None)]
-    dir_handle = ops("opendir", "/")
-    assert dir_handle > 0
-    assert ops("releasedir", "/", dir_handle) == 0
-    assert ops("access", "/README.md", os.R_OK) == 0
-    assert ops("listxattr", "/") == []
-    assert ops("statfs", "/")["f_bsize"] == 4096
-
-
-def test_macos_fskit_mountpoints_must_live_under_volumes():
-    _require_macos_fskit_mountpoint(Path("/Volumes/Stash"))
-
-    try:
-        _require_macos_fskit_mountpoint(Path("~/SkillMount"))
-    except MountError as e:
-        assert "/Volumes/Stash" in str(e)
-    else:
-        raise AssertionError("expected a mountpoint error")
+    assert model.read_file(f"{folder_path}/{page_name}") == b"# Plan\n"

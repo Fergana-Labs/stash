@@ -4108,55 +4108,6 @@ def disconnect_cmd():
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
-@app.command("mount", hidden=True)
-def mount_command(
-    mountpoint: str | None = typer.Argument(
-        None,
-        help="Directory where Stash should be mounted. Defaults to /Volumes/Stash on macOS.",
-    ),
-    check: bool = typer.Option(
-        False,
-        "--check",
-        help="Verify the local experimental FUSE runtime is available, then exit.",
-    ),
-):
-    """Experimentally mount Stash as a local FUSE filesystem."""
-    from .mount import MountError, check_fuse_runtime, mount_stash
-
-    telemetry.record("mount")
-    if check:
-        try:
-            check_fuse_runtime()
-        except MountError as e:
-            console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
-        console.print("[green]FUSE runtime available.[/green]")
-        return
-
-    if mountpoint is None and sys.platform == "darwin":
-        mountpoint = "/Volumes/Stash"
-
-    if mountpoint is None:
-        console.print("[red]MOUNTPOINT is required unless --check is set.[/red]")
-        raise typer.Exit(1)
-
-    cfg = load_config()
-    if not cfg.get("api_key"):
-        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
-        raise typer.Exit(1)
-
-    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
-    try:
-        console.print(f"[green]Mounting Stash at {mountpoint}[/green]")
-        console.print("[dim]Press Ctrl-C to unmount.[/dim]")
-        mount_stash(client, Path(mountpoint).expanduser())
-    except MountError as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
-    finally:
-        client.close()
-
-
 @app.command("vfs", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def vfs_command(
     ctx: typer.Context,

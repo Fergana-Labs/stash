@@ -174,36 +174,33 @@ def test_app_vfs_command_chaining_preserves_all_stdout():
 
 
 def test_app_vfs_rejects_redirect_writes():
-    shell, client = _shell()
+    shell, _client = _shell()
     page_path = _page_path(shell)
 
     result = shell.run(f"printf '# App edit\\n' > {shlex.quote(page_path)}")
 
     assert result.exit_code == 2
     assert "read-only" in result.stderr
-    assert client.page_updates == []
 
 
 def test_app_vfs_rejects_append_redirect_writes():
-    shell, client = _shell()
+    shell, _client = _shell()
     page_path = _page_path(shell)
 
     result = shell.run(f"printf 'Second line\\n' >> {shlex.quote(page_path)}")
 
     assert result.exit_code == 2
     assert "read-only" in result.stderr
-    assert client.page_updates == []
 
 
 def test_app_vfs_tee_is_unsupported():
-    shell, client = _shell()
+    shell, _client = _shell()
     page_path = _page_path(shell)
 
     result = shell.run(f"printf 'Second line\\n' | tee -a {shlex.quote(page_path)}")
 
     assert result.exit_code == 1
     assert "unsupported command: tee" in result.stderr
-    assert client.page_updates == []
 
 
 def test_app_vfs_reports_unsupported_commands():
