@@ -25,13 +25,32 @@ export default function ThreeDimensionsPage() {
         <div className="prose prose-lg mt-10">
           <p>
             There are a lot of different approaches to building memory for coding
-            agents (see <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>,{" "}
-            <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>,{" "}
-            <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>,{" "}
-            <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>,{" "}
-            <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>,{" "}
-            <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>, <Lnk>here</Lnk>,
-            and <Lnk>here</Lnk> for some example implementations.)
+            agents (see{" "}
+            <Lnk href="https://x.com/ashpreetbedi/status/2049180168200106150">here</Lnk>,{" "}
+            <Lnk href="https://www.engram.fyi/">here</Lnk>,{" "}
+            <Lnk href="https://x.com/HilaShmuel/status/2049909354803962328">here</Lnk>,{" "}
+            <Lnk href="https://x.com/JadHindy/status/2050280016387199245">here</Lnk>,{" "}
+            <Lnk href="https://x.com/elementdsj/status/2049892715098169620">here</Lnk>,{" "}
+            <Lnk href="https://x.com/Beever_AI/status/2050051528157778399">here</Lnk>,{" "}
+            <Lnk href="https://x.com/pauliusztin_/status/2049466230663262212">here</Lnk>,{" "}
+            <Lnk href="https://x.com/driaforall/status/1966544319516402105">here</Lnk>,{" "}
+            <Lnk href="https://x.com/appliedcompute/status/2050296179330863329">here</Lnk>,{" "}
+            <Lnk href="https://x.com/msukkarieh1/status/2046279157496057987">here</Lnk>,{" "}
+            <Lnk href="https://x.com/mernit/status/2050309641209290887">here</Lnk>,{" "}
+            <Lnk href="https://x.com/BeauJohnson89/status/2050593791938105439">here</Lnk>,{" "}
+            <Lnk href="https://github.com/poteto/brainmaxxing">here</Lnk>,{" "}
+            <Lnk href="https://x.com/theblessnetwork/status/2047410540012556788">here</Lnk>,{" "}
+            <Lnk href="https://mnemosyne.site/">here</Lnk>,{" "}
+            <Lnk href="https://x.com/bokiko/status/2051354191738597472">here</Lnk>,{" "}
+            <Lnk href="https://traces.com/">here</Lnk>,{" "}
+            <Lnk href="https://github.com/swarmclawai/swarmvault">here</Lnk>,{" "}
+            <Lnk href="https://x.com/Ghatikesh/status/2051780018125275406">here</Lnk>,{" "}
+            <Lnk href="https://x.com/CaelStewart2/status/2051412480572739782">here</Lnk>,{" "}
+            <Lnk href="https://www.unibase.com/">here</Lnk>,{" "}
+            <Lnk href="https://github.com/CodeAbra/iai-mcp">here</Lnk>,{" "}
+            <Lnk href="https://naumu.ai/">here</Lnk>, and{" "}
+            <Lnk href="https://x.com/AirbyteHQ/status/2051686041950523720">here</Lnk>{" "}
+            for some example implementations.)
           </p>
           <p>
             In this article, I&rsquo;m going to give my opinionated stance on how
@@ -58,36 +77,48 @@ export default function ThreeDimensionsPage() {
             <li>
               <strong>Semantic retrieval</strong> (specifically, vector
               embeddings) is the most common naive approach that people use to
-              build agent memory. Here&rsquo;s a <Lnk>thread</Lnk> talking about
-              common patterns. It&rsquo;s great and you should incorporate it.
+              build agent memory. Here&rsquo;s a{" "}
+              <Lnk href="https://x.com/RLanceMartin/status/1711801139459752086">thread</Lnk>{" "}
+              talking about common patterns. It&rsquo;s great and you should
+              incorporate it.
             </li>
             <li>
               <strong>Grep over filesystem</strong> is also much-talked-about
-              (here&rsquo;s an <Lnk>example</Lnk>, here&rsquo;s the supermemory
-              founder <Lnk>talking about it</Lnk>, here&rsquo;s a vercel{" "}
-              <Lnk>blog</Lnk> about this). It&rsquo;s great and you should
-              incorporate it. This feels spiritually the most
-              &ldquo;bitter-lesson-pilled&rdquo; (hence the refrain
+              (here&rsquo;s an{" "}
+              <Lnk href="https://x.com/jerryjliu0/status/2040154840228323468">example</Lnk>,
+              here&rsquo;s the supermemory founder{" "}
+              <Lnk href="https://x.com/DhravyaShah/status/2049326274724945953">talking about it</Lnk>,
+              here&rsquo;s a vercel{" "}
+              <Lnk href="https://vercel.com/blog/how-to-build-agents-with-filesystems-and-bash">blog</Lnk>{" "}
+              about this). It&rsquo;s great and you should incorporate it. This
+              feels spiritually the most &ldquo;bitter-lesson-pilled&rdquo; (hence
+              the{" "}
+              <Lnk href="https://huggingface.co/papers/2605.05242">refrain</Lnk>{" "}
               &ldquo;filesystem + grep is all you need&rdquo;).
             </li>
             <li>
               <strong>Knowledge graphs</strong> are a popular and enticing
-              approach. Mem0&rsquo;s entity linking is an example of this
-              approach. Shortly I will argue that you should not incorporate a
+              approach. Mem0&rsquo;s{" "}
+              <Lnk href="https://mem0.ai/blog/mem0-the-token-efficient-memory-algorithm">entity linking</Lnk>{" "}
+              is an example of this approach. Shortly I will argue that you should
+              not incorporate a
               knowledge graph into your memory system.
             </li>
             <li>
-              <strong>LLM Wiki</strong> (<Lnk>source</Lnk>) is the idea of
-              structuring your codebase/organization&rsquo;s memory as a
-              collection of documents that an AI continually maintains / cleans
-              up. It&rsquo;s very promising and you should use it. Here&rsquo;s a
-              more formal academic <Lnk>paper</Lnk> advocating for this approach.
+              <strong>LLM Wiki</strong> ({" "}
+              <Lnk href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">source</Lnk>
+              ) is the idea of structuring your
+              codebase/organization&rsquo;s memory as a collection of documents
+              that an AI continually maintains / cleans up. It&rsquo;s very
+              promising and you should use it. Here&rsquo;s a more formal academic{" "}
+              <Lnk href="https://openreview.net/forum?id=FiM0M8gcct">paper</Lnk>{" "}
+              advocating for this approach.
             </li>
             <li>
               <strong>Subagent summary</strong>&mdash;take a large piece of stored
               text and summarizing it with several smaller subagents in parallel.
-              This <Lnk>paper</Lnk> on &ldquo;agentic mapreduce&rdquo; is an
-              example.
+              This <Lnk href="https://arxiv.org/abs/2602.01331">paper</Lnk> on
+              &ldquo;agentic mapreduce&rdquo; is an example.
             </li>
           </ul>
 
@@ -167,17 +198,21 @@ export default function ThreeDimensionsPage() {
             there&rsquo;s probably some spicy tea. The fact that the text was
             short, and came out of the blue indicates that maybe she had been
             expecting it or knows that I had been expecting it. Sam Whitmore makes
-            this point very convincingly in her <Lnk>talk</Lnk> on memory last
-            year (at the 2:05 mark)
+            this point very convincingly in her{" "}
+            <Lnk href="https://www.youtube.com/watch?v=7AmhgMAJIT4">talk</Lnk> on
+            memory last year (at the 2:05 mark)
           </p>
           <p>
             Second, I&rsquo;ll claim that even in addition to another way of
             representing memory (e.g. a document store), a knowledge graph is still
             not worth using in your product. Here&rsquo;s some empirical evidence:
             Mem0 tried graph memory and was only able to squeeze out a{" "}
-            <Lnk>2% performance gain</Lnk> on benchmarks. This <Lnk>paper</Lnk>{" "}
-            tried it and found that while token costs go down, so does performance.
-            Similarly, in this <Lnk>paper</Lnk>, some researchers found that
+            <Lnk href="https://arxiv.org/html/2504.19413v1">2% performance gain</Lnk>{" "}
+            on benchmarks. This{" "}
+            <Lnk href="https://arxiv.org/html/2603.27277v1">paper</Lnk> tried it and
+            found that while token costs go down, so does performance. Similarly, in
+            this <Lnk href="https://arxiv.org/html/2511.17208v2">paper</Lnk>, some
+            researchers found that
             between a simple retrieval-based memory, and a simple retrieval-based
             memory augmented with a graph, the retrieval-based memory actually
             performed worse.
@@ -192,7 +227,8 @@ export default function ThreeDimensionsPage() {
             <li>
               <strong>Pull</strong> the agent asks for memory based on a query (via
               semantic search, asking a subagent to summarize, etc), and then
-              receives a result. Eg <Lnk>Letta</Lnk>
+              receives a result. Eg{" "}
+              <Lnk href="https://arxiv.org/pdf/2310.08560">Letta</Lnk>
             </li>
             <li>
               <strong>Push</strong> relevant memories are proactively added to the
@@ -207,7 +243,9 @@ export default function ThreeDimensionsPage() {
           <p>
             <strong>
               Q: We should never push to memory, because pushing irrelevant stuff
-              into memory will cause context rot, right?
+              into memory will cause{" "}
+              <Lnk href="https://www.trychroma.com/research/context-rot">context rot</Lnk>
+              , right?
             </strong>
           </p>
           <p>
@@ -251,7 +289,7 @@ export default function ThreeDimensionsPage() {
             agent is able to remember this fact. So, this fact needs to be pushed
             to the agent. This example comes from a friend of mine, who presents an
             extremely interesting version of the &ldquo;push&rdquo; approach{" "}
-            <Lnk>here</Lnk>.
+            <Lnk href="https://memory.orinlabs.org/">here</Lnk>.
           </p>
           <p>
             Also, I would push back on &ldquo;push&rdquo; being inherently not
@@ -301,8 +339,9 @@ export default function ThreeDimensionsPage() {
             </strong>
           </p>
           <p>
-            A: Yes, if they&rsquo;ll let you! Here&rsquo;s a <Lnk>post</Lnk> that
-            explains the benefits of this in greater detail&mdash;tldr you can make
+            A: Yes, if they&rsquo;ll let you! Here&rsquo;s a{" "}
+            <Lnk href="https://x.com/henrytdowling/status/2049580122852995338">post</Lnk>{" "}
+            that explains the benefits of this in greater detail&mdash;tldr you can make
             your agents 48% more efficient on a team of 2 by sharing transcripts in
             memory.
           </p>
@@ -333,7 +372,9 @@ export default function ThreeDimensionsPage() {
             A: Nope. Authenticating your agent is a separate task from your agent
             remembering things. A better model is to keep secrets in a separate
             server that stores authentication info for the agent (here&rsquo;s a
-            nice <Lnk>article</Lnk> on a common design pattern)
+            nice{" "}
+            <Lnk href="https://browser-use.com/posts/two-ways-to-sandbox-agents">article</Lnk>{" "}
+            on a common design pattern)
           </p>
           <p>
             <strong>
@@ -369,11 +410,22 @@ export default function ThreeDimensionsPage() {
   );
 }
 
-function Lnk({ children }: { children: React.ReactNode }) {
+function Lnk({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
-    <span className="font-medium text-brand underline underline-offset-4">
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-brand underline underline-offset-4 transition hover:text-ink"
+    >
       {children}
-    </span>
+    </a>
   );
 }
 
