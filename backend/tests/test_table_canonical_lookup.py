@@ -71,7 +71,7 @@ async def test_column_width_updates_table_metadata(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_non_member_gets_404_not_403(client: AsyncClient):
+async def test_outsider_gets_404_not_403(client: AsyncClient):
     owner_key = await _register(client)
     _, table_id = await _table_in_new_scope(client, owner_key)
     outsider_key = await _register(client)

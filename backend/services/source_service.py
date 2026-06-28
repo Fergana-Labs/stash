@@ -2,7 +2,7 @@
 
 A *source* is anything the agent can read. Two are native and always present
 per scope — the **file system** and **session transcripts** (scope-wide,
-visible to all members). The rest are **connected sources** (GitHub / Drive /
+visible to the user). The rest are **connected sources** (GitHub / Drive /
 Gmail / Notion / Slack / Granola) — rows in `user_sources`, USER-SCOPED so
 only the owner sees them.
 
@@ -327,7 +327,7 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
 
 async def list_connected_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """The user's own connected sources in this scope. User-scoped: a
-    member never sees another member's connected sources."""
+    user never sees another user's connected sources."""
     rows = await get_pool().fetch(
         "SELECT * FROM user_sources "
         "WHERE owner_user_id = $1 AND owner_user_id = $2 "

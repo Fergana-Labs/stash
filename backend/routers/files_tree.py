@@ -49,17 +49,17 @@ canonical_router = APIRouter(prefix="/api/v1", tags=["files"])
 
 
 async def _check_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
-    """Read gate: any member (viewer/editor/owner) is allowed."""
+    """Read gate: only the scope owner is allowed."""
     if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a scope member")
+        raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
 async def _check_scope_write(owner_user_id: UUID, user_id: UUID) -> None:
-    """Write gate: owner or editor only. Viewer is blocked."""
+    """Write gate: owner only."""
     if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(
             status_code=403,
-            detail="Viewers can read but not edit this scope",
+            detail="Only the scope owner can edit this scope",
         )
 
 
@@ -575,7 +575,7 @@ async def download_page(
     Returns the page's markdown source (or HTML, for html-typed pages) so
     callers can export, diff, or feed it to other tools the same way they
     would a binary file. Permission is the existing page-read check —
-    members of the scope plus anyone the page is shared with.
+    the scope owner plus anyone the page is shared with.
     """
     owner_user_id = current_user["id"]
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
@@ -732,8 +732,8 @@ async def create_comment_thread(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # Commenting needs at least the 'comment' share level (scope members
-    # always qualify); a plain read-only share can view but not comment.
+    # Commenting needs at least the 'comment' share level (the scope owner
+    # always qualifies); a plain read-only share can view but not comment.
     await _check_content_access(
         "page", page_id, owner_user_id, current_user["id"], require="comment"
     )

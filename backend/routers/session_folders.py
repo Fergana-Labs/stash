@@ -29,7 +29,7 @@ async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
 
 async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.can_write(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Viewers can read but not edit this scope")
+        raise HTTPException(status_code=403, detail="Only the scope owner can edit this scope")
 
 
 class CreateFolderRequest(BaseModel):
@@ -43,7 +43,7 @@ async def _require_owner_for_folder_visibility(
     user_id: UUID,
     body: CreateFolderRequest,
 ) -> None:
-    """Scope-visible folders are the everyday default any editor may create;
+    """Scope-visible folders are the everyday default the owner may create;
     only publishing a folder beyond the scope is owner-gated."""
     is_public = body.public_permission != "none" or body.discoverable
     if is_public and not await user_scope_service.is_owner(owner_user_id, user_id):
@@ -85,8 +85,8 @@ async def create_folder(body: CreateFolderRequest, current_user: dict = Depends(
 @me_router.get("")
 async def list_folders(current_user: dict = Depends(get_current_user)):
     owner_user_id = current_user["id"]
-    # Non-members may still see folders shared with them, so this isn't gated on
-    # membership. Members get a Default folder lazily ensured on first listing.
+    # Non-owners may still see folders shared with them, so this isn't gated on
+    # ownership. Owners get a Default folder lazily ensured on first listing.
     if await user_scope_service.is_owner(owner_user_id, current_user["id"]):
         await session_folder_service.ensure_default_folder(owner_user_id)
     return {"folders": await session_folder_service.list_folders(owner_user_id, current_user["id"])}

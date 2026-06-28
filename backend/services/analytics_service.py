@@ -61,7 +61,7 @@ def _activity_bucket_step(bucket: str) -> timedelta:
 
 # Shared CTE for scope access filtering on history_events.
 #   scope_idx -> narrow to a single scope's events (caller has already
-#                authorized membership).
+#                authorized access).
 #   None      -> every event the user can see across all their scopes.
 def _accessible_events_cte(
     scope_idx: int | None = None,
@@ -460,7 +460,7 @@ async def _get_source_counts(user_id: UUID, owner_user_id: UUID | None = None) -
 async def get_overview_counts(user_id: UUID) -> dict:
     """Counts for the 'Your brain' vitals, spanning the user's own content plus
     everything shared with them. Pages/files run through readable_content_condition
-    so a share only surfaces the specific shared rows. Sessions stay member-scoped —
+    so a share only surfaces the specific shared rows. Sessions stay owner-scoped —
     session sharing isn't reflected in these counts yet."""
     pool = get_pool()
     accessible_scopes = permission_service.accessible_scope_ids_sql(1)
@@ -665,9 +665,9 @@ async def get_knowledge_density(
     """Topic clusters for the key topics treemap.
 
     Reads from knowledge_density_cache (migration 0017/0018) only for explicit
-    scopes. User-wide results depend on the user's current scope memberships,
+    scopes. User-wide results depend on which scopes the user can currently access,
     so they are recomputed to avoid serving stale customer data after
-    offboarding."""
+    access is revoked."""
     pool = get_pool()
     max_clusters = min(max_clusters, 50)
 
@@ -717,7 +717,7 @@ async def get_embedding_projection(
     Pass ``owner_user_id`` to scope to one user.
 
     Only explicit scope-scoped requests use the embedding_projections cache.
-    User-wide results depend on current scope memberships."""
+    User-wide results depend on current scope access."""
     pool = get_pool()
     max_points = min(max_points, 2000)
 
@@ -735,8 +735,8 @@ async def get_embedding_projection(
         event_scope_idx = 2
 
     # Cache row keyed by (user_id, source_type, owner_user_id), explicit
-    # scopes only: user-wide results depend on the user's current memberships
-    # and must be recomputed (offboarding).
+    # scopes only: user-wide results depend on the user's current scope access
+    # and must be recomputed when access changes.
     cache = None
     use_cache = owner_user_id is not None
     if use_cache:

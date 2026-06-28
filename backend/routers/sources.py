@@ -1,6 +1,6 @@
 """Connected-source registry endpoints.
 
-A source is added per scope and per user. It belongs to the member who
+A source is added per scope and per user. It belongs to the user who
 connects it (`owner_user_id = current_user`) inside that scope, and only they
 can list, read, or remove it there. The agent reaches a source's indexed content
 through the source tools; these endpoints just manage the registry. Indexing

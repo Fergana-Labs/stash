@@ -1503,7 +1503,7 @@ async def test_slack_sync_without_channels_records_sync_error(client: AsyncClien
 async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     from backend.integrations.slack.indexer import ingest_slack_message
 
-    # Two members each connect the same Slack team, but only the source that
+    # Two users each connect the same Slack team, but only the source that
     # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
     owner_b_key, owner_b = await _register(client, "b")
@@ -2146,7 +2146,7 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
         content="top secret",
     )
 
-    # The other member, asking with their own context, cannot read it.
+    # The other user, asking with their own context, cannot read it.
     scope_token = agent_runtime._scope_ctx.set(ws)
     utoken = agent_runtime._user_ctx.set(other_id)
     try:

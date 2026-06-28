@@ -364,7 +364,7 @@ async def test_user_activity_paginates_with_before_cursor(client: AsyncClient):
         )
 
     # Page through one event at a time using the last event's ts as the cursor.
-    # The feed also contains member.joined events, so only the session events
+    # The feed may also contain page/file events, so only the session events
     # have a known count and order.
     seen: list[tuple[str, str, str]] = []
     before: str | None = None

@@ -57,17 +57,17 @@ _FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
 
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
-    """Read gate: any member."""
+    """Read gate: owner only."""
     if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a scope member")
+        raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
 async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
-    """Write gate: owner or editor only."""
+    """Write gate: owner only."""
     if not await user_scope_service.can_write(owner_user_id, user_id):
         raise HTTPException(
             status_code=403,
-            detail="Viewers can read but not modify files",
+            detail="Only the owner can modify files",
         )
 
 
@@ -157,7 +157,7 @@ async def upload_my_file(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # Scope writers can upload anywhere; non-members can upload into a
+    # Scope writers can upload anywhere; other users can upload into a
     # specific folder shared with them with write permission.
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         can_write_folder = folder_id is not None and await permission_service.check_access(
@@ -170,7 +170,7 @@ async def upload_my_file(
         if not can_write_folder:
             raise HTTPException(
                 status_code=403,
-                detail="Viewers can read but not modify files",
+                detail="Only the owner can modify files",
             )
 
     content = await file.read()

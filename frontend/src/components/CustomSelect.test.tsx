@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import CustomSelect, { CustomSelectOption } from "./CustomSelect";
 
 const OPTIONS: CustomSelectOption[] = [
-  { value: "", label: "All workspaces" },
+  { value: "", label: "All folders" },
   { value: "ws-1", label: "Engineering" },
   { value: "ws-2", label: "Design" },
   { value: "ws-3", label: "Marketing" },
@@ -20,7 +20,7 @@ function Harness({ searchable }: { searchable?: boolean }) {
         value={value}
         options={OPTIONS}
         onChange={setValue}
-        ariaLabel="Workspace"
+        ariaLabel="Folder"
         searchable={searchable}
       />
       <output>{value || "none"}</output>
@@ -33,9 +33,9 @@ afterEach(cleanup);
 describe("CustomSelect searchable", () => {
   it("filters options by the typed query", () => {
     render(<Harness searchable />);
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Folder" }));
 
-    fireEvent.change(screen.getByLabelText("Search Workspace"), {
+    fireEvent.change(screen.getByLabelText("Search Folder"), {
       target: { value: "des" },
     });
 
@@ -45,9 +45,9 @@ describe("CustomSelect searchable", () => {
 
   it("selects a filtered match and reports its value", () => {
     render(<Harness searchable />);
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Folder" }));
 
-    fireEvent.change(screen.getByLabelText("Search Workspace"), {
+    fireEvent.change(screen.getByLabelText("Search Folder"), {
       target: { value: "mark" },
     });
     fireEvent.click(screen.getByRole("option", { name: /Marketing/ }));
@@ -58,9 +58,9 @@ describe("CustomSelect searchable", () => {
 
   it("selects the first match on Enter from the search input", () => {
     render(<Harness searchable />);
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Folder" }));
 
-    const input = screen.getByLabelText("Search Workspace");
+    const input = screen.getByLabelText("Search Folder");
     fireEvent.change(input, { target: { value: "eng" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -70,9 +70,9 @@ describe("CustomSelect searchable", () => {
 
   it("shows an empty state when nothing matches", () => {
     render(<Harness searchable />);
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Folder" }));
 
-    fireEvent.change(screen.getByLabelText("Search Workspace"), {
+    fireEvent.change(screen.getByLabelText("Search Folder"), {
       target: { value: "zzz" },
     });
 
@@ -82,9 +82,9 @@ describe("CustomSelect searchable", () => {
 
   it("renders no search input when not searchable", () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Folder" }));
 
-    expect(screen.queryByLabelText("Search Workspace")).toBeNull();
+    expect(screen.queryByLabelText("Search Folder")).toBeNull();
     expect(screen.getAllByRole("option")).toHaveLength(OPTIONS.length);
   });
 });

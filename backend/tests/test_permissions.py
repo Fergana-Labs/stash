@@ -301,7 +301,7 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
     table = await _make_table(pool, scope, owner, folder_id=folder)
     root_table = await _make_table(pool, scope, owner, name="root-table")
 
-    # Before any share the non-member can't see either table.
+    # Before any share the friend can't see either table.
     assert not await permission_service.check_access("table", table, friend)
 
     await _share(pool, scope, "folder", folder, friend, "read", by=owner)
@@ -447,8 +447,8 @@ async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, po
     is private to its owner until shared by email; the grantee (not the owner)
     then reads it, and a stranger still cannot.
 
-    Regression for the single-item read endpoints gating on scope
-    membership and so ignoring shares."""
+    Regression for the single-item read endpoints gating on
+    ownership and so ignoring shares."""
     owner_key, _ = await _register(client)
     page_id = (
         await client.post(
@@ -483,7 +483,7 @@ async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, po
     )
     assert share.status_code == 200
 
-    # The share grants the non-member read access; the stranger is still denied.
+    # The share grants the other user read access; the stranger is still denied.
     assert (await client.get(page_url, headers=_auth(grantee_key))).status_code == 200
     assert (await client.get(page_url, headers=_auth(stranger_key))).status_code == 404
 
@@ -513,7 +513,7 @@ async def test_unshared_file_read_returns_not_found_over_http(client: AsyncClien
 @pytest.mark.asyncio
 async def test_folder_share_by_email_cascades_read_to_children_over_http(client: AsyncClient):
     """A folder share must cascade read to the folder's nested contents for a
-    non-member: end-to-end over the share-by-email HTTP path, the grantee can't
+    non-owner: end-to-end over the share-by-email HTTP path, the grantee can't
     reach a child page until the parent folder is shared, then reads it via the
     canonical object route. Guards the cascade against gating on ownership."""
     owner_key, _ = await _register(client)
@@ -556,7 +556,7 @@ async def test_folder_share_by_email_cascades_read_to_children_over_http(client:
 
 
 @pytest.mark.asyncio
-async def test_write_share_by_email_grants_non_member_write_over_http(
+async def test_write_share_by_email_grants_non_owner_write_over_http(
     client: AsyncClient,
 ):
     """A write share, set up end-to-end over the share-by-email HTTP path, is a
@@ -726,7 +726,7 @@ async def test_public_write_session_folder_requests_are_rejected(client: AsyncCl
 
 
 @pytest.mark.asyncio
-async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncClient):
+async def test_session_folder_share_by_email_lists_for_non_recipient(client: AsyncClient):
     owner_key, _ = await _register(client)
     folder_id = (
         await client.post(
@@ -749,7 +749,7 @@ async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncC
     assert assigned.status_code == 200
 
     grantee_key, _ = await _register_with_email(client, "session-folder-grantee@example.com")
-    # A non-member sees another user's session folder only once it's shared with
+    # Another user sees this user's session folder only once it's shared with
     # them — it surfaces on their "Shared with me" list, not in their own scope.
     before = await client.get("/api/v1/share/with-me", headers=_auth(grantee_key))
     assert before.status_code == 200
@@ -1214,13 +1214,13 @@ async def test_overview_counts_span_shared_not_unshared(pool):
     """The "Your brain" vitals (analytics_service.get_overview_counts) span the
     user's own content plus content shared with them — but a share only surfaces
     the specific shared rows, never the whole sharing scope, and an unrelated
-    user sees nothing. Guards the widened member∪shared prefilter against leaks."""
+    user sees nothing. Guards the widened owned∪shared prefilter against leaks."""
     from backend.services import analytics_service
 
     owner = await _make_user(pool)
     friend = await _make_user(pool)  # gets one folder shared
     stranger = await _make_user(pool)  # gets nothing
-    scope = await _make_scope(pool, owner)  # friend/stranger are NOT members
+    scope = await _make_scope(pool, owner)  # friend/stranger don't own this scope
     folder = await _make_folder(pool, scope, owner)
     await _make_page(pool, scope, owner, folder_id=folder, name="shared-page")
     await _make_page(pool, scope, owner, name="private-root-page")

@@ -2,7 +2,7 @@
 skill's full subtree (published or not), PUT replaces the folder's
 contents with an uploaded file set. These lock in the replace semantics —
 exact filenames kept, nesting from relative paths, no orphaned rows — and the
-auth boundary (members only, write access to push)."""
+auth boundary (owner only, write access to push)."""
 
 import pytest
 from httpx import AsyncClient
@@ -61,7 +61,7 @@ async def test_get_contents_inlines_unpublished_skill(client: AsyncClient):
     names = {p["name"] for p in body["contents"]["pages"]}
     assert names == {"SKILL.md"}
 
-    # Members only — anonymous reads are for published slugs, not folders.
+    # Authenticated only — anonymous reads are for published slugs, not folders.
     anon = await client.get(f"/api/v1/me/skills/{folder_id}/contents")
     assert anon.status_code in (401, 403)
 
