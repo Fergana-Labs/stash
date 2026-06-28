@@ -25,17 +25,16 @@ USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 class GoogleIntegration(Integration):
     name = "google"
     display_name = "Google"
-    # drive.file is the minimal Drive scope — it only grants access to files
-    # the user explicitly selects through the Drive Picker (for import) or
-    # files our app creates (for Slides export). Avoids the scary
-    # "read all your Drive files" consent screen.
+    # The indexer crawls the user's whole Drive (files.list over My Drive,
+    # "Shared with me", and drives.list for Shared Drives) and runs federated
+    # `fullText` search — all of which need read access across every file, not
+    # just app-picked ones. Only drive.readonly grants that. The narrower
+    # per-file scopes (drive.file / auth/docs) only see files the user opened
+    # with the app, so the crawl returns nothing and drives.list 403s.
+    # drive.readonly is a Google *restricted* scope: the OAuth consent screen
+    # must list it and clear a CASA Tier 2 assessment for production use.
     scopes = [
-        # Read access to the user's Drive for the folder crawl + federated
-        # `fullText` search. `auth/docs` is a *sensitive* scope (already
-        # approved on our consent screen), unlike the *restricted*
-        # `drive.readonly`, which requires a CASA assessment to clear the
-        # "unverified app" screen.
-        "https://www.googleapis.com/auth/docs",
+        "https://www.googleapis.com/auth/drive.readonly",
         "openid",
         "email",
         "profile",
