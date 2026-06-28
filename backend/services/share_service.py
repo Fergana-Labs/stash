@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from ..database import get_pool
 from . import permission_service, security_audit_service, user_scope_service
 
-_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table"}
+_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "source"}
 _PERMISSIONS = {"read", "comment", "write"}
 
 

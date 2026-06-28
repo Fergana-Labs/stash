@@ -24,6 +24,7 @@ _OWNER_LOOKUP = {
     "skill": ("skills", "owner_user_id"),
     "folder": ("folders", "owner_user_id"),
     "page": ("pages", "owner_user_id"),
+    "source": ("user_sources", "owner_user_id"),
 }
 
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
@@ -72,6 +73,12 @@ def _share_target_condition(object_type: str, object_alias: str, share_alias: st
             f"OR ({share_alias}.object_type = 'session_folder' "
             f"AND {object_alias}.session_folder_id IS NOT NULL "
             f"AND {share_alias}.object_id = {object_alias}.session_folder_id))"
+        )
+    if object_type == "source":
+        # Connected sources have no container, so only a direct share grants them.
+        return (
+            f"({share_alias}.object_type = 'source' "
+            f"AND {share_alias}.object_id = {object_alias}.id)"
         )
     if object_type in _CONTENT_TYPES:
         return (

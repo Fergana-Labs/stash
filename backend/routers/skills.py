@@ -171,7 +171,7 @@ async def snapshot_source(
     skill = await shared_skill_service.get_skill(skill_id)
     if not skill or skill["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Skill not found")
-    source = await source_service.get_owned_source(
+    source = await source_service.get_readable_source(
         req.source_id,
         current_user["id"],
     )

@@ -1,10 +1,12 @@
 """Sources: the unified source layer.
 
-A *source* is anything the agent can read. Two are native and always present
-per scope — the **file system** and **session transcripts** (scope-wide,
-visible to the user). The rest are **connected sources** (GitHub / Drive /
-Gmail / Notion / Slack / Granola) — rows in `user_sources`, USER-SCOPED so
-only the owner sees them.
+A *source* is anything the agent can read. Two are native — the **file system**
+and **session transcripts** — readable by the owner and anyone they're shared
+with. The rest are **connected sources** (GitHub / Drive / Gmail / Notion /
+Slack / Granola) — rows in `user_sources`, owned by the connecting user and
+read-shareable: a recipient reads the source's content through Stash using the
+OWNER's token (delegated), but never sees the token, and management/sync stay
+owner-only.
 
 This module owns:
 - the `user_sources` registry (CRUD + sync bookkeeping),
@@ -19,7 +21,7 @@ This module also owns the unified VFS surface (`source_entries`, `source_documen
 `search_all`) over BOTH native and connected sources — the single codepath the
 agent tools and the REST endpoints both call. Native reads delegate to
 files_tree_service / memory_service (imported lazily to avoid an import cycle).
-Connected-source handles are scoped to both owner and scope.
+Connected-source reads resolve through get_readable_source (owner or a share).
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import security_audit_service
+from . import permission_service, security_audit_service
 
 logger = logging.getLogger(__name__)
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
@@ -325,24 +327,39 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """The user's own connected sources in this scope. User-scoped: a
-    user never sees another user's connected sources."""
+async def list_connected_sources(user_id: UUID) -> list[dict]:
+    """Connected sources `user_id` can read: the ones they own, plus any shared
+    with them. Each row keeps its real owner_user_id, so reads of a shared source
+    delegate to the source owner's token."""
+    predicate = permission_service.readable_content_condition("source", "obj", 1)
     rows = await get_pool().fetch(
-        "SELECT * FROM user_sources "
-        "WHERE owner_user_id = $1 AND owner_user_id = $2 "
-        "ORDER BY source_type, display_name",
-        owner_user_id,
+        f"SELECT obj.* FROM user_sources obj WHERE {predicate} "
+        "ORDER BY obj.source_type, obj.display_name",
         user_id,
     )
     return [_source_row(r) for r in rows]
 
 
 async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
-    """Fetch a connected source only if `user_id` owns it — the single
-    enforcement point for user-scoping on every read."""
+    """Fetch a connected source only if `user_id` OWNS it — the gate for
+    management and sync (reconfigure, delete, trigger re-index). Reads go through
+    get_readable_source, which also honours shares."""
     row = await get_pool().fetchrow(
         "SELECT * FROM user_sources WHERE id = $1 AND owner_user_id = $2",
+        source_id,
+        user_id,
+    )
+    return _source_row(row) if row else None
+
+
+async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
+    """Fetch a connected source `user_id` may READ — they own it, or it was
+    shared with them. The row keeps its real owner_user_id, so downstream reads
+    fetch content with the OWNER's token (delegated access — the sharee never
+    sees the token). Management/sync stay owner-only via get_owned_source."""
+    predicate = permission_service.readable_content_condition("source", "obj", 2)
+    row = await get_pool().fetchrow(
+        f"SELECT obj.* FROM user_sources obj WHERE obj.id = $1 AND {predicate}",
         source_id,
         user_id,
     )
@@ -1082,7 +1099,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "display_name": "Session transcripts",
         },
     ]
-    for s in await list_connected_sources(owner_user_id, user_id):
+    for s in await list_connected_sources(user_id):
         item = {
             "source": s["id"],
             "provider": SOURCE_TYPE_PROVIDER[s["source_type"]],
@@ -1147,12 +1164,13 @@ async def source_item_count(source: dict) -> int | None:
 
 
 async def _resolve_connected(source: str, owner_user_id: UUID, user_id: UUID) -> dict | None:
-    """Resolve a connected-source handle inside the current scope boundary."""
+    """Resolve a connected-source handle for READING — the owner or anyone the
+    source was shared with. Reads delegate to the source owner's token."""
     try:
         source_id = UUID(source)
     except ValueError:
         return None
-    return await get_owned_source(source_id, user_id)
+    return await get_readable_source(source_id, user_id)
 
 
 async def _audit_source_read(
@@ -1409,7 +1427,7 @@ async def sources_tree(
     # filesystem. The provider folder is the unit ("github", "granola"); the
     # individual connections (repos, accounts) live inside it.
     by_provider: dict[str, list[dict]] = {}
-    for source in await list_connected_sources(owner_user_id, user_id):
+    for source in await list_connected_sources(user_id):
         provider = SOURCE_TYPE_PROVIDER[source["source_type"]]
         by_provider.setdefault(provider, []).append(source)
 
@@ -1749,7 +1767,7 @@ async def search_all(
         else:
             federated = [
                 s
-                for s in await list_connected_sources(owner_user_id, user_id)
+                for s in await list_connected_sources(user_id)
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
                 and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]
