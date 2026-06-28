@@ -4130,7 +4130,7 @@ def vfs_command(
 
         command = " ".join(ctx.args).strip()
         if not command:
-            console.print('[red]Usage: stash vfs "<command>" (e.g. [bold]stash vfs "ls /me"[/bold]).[/red]')
+            console.print('[red]Usage: stash vfs "<command>" (e.g. [bold]stash vfs "ls"[/bold]).[/red]')
             raise typer.Exit(2)
 
         result = shell.run(command)
