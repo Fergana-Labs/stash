@@ -122,13 +122,13 @@ def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
 
     # An uploaded file is immutable, so its modified-time is its creation time.
     file_name = next(
-        name for name in shell.model.list_dir("/me/files") if name.startswith("diagram")
+        name for name in shell.model.list_dir("/files") if name.startswith("diagram")
     )
-    file_node = shell.model._get_node(f"/me/files/{file_name}")
+    file_node = shell.model._get_node(f"/files/{file_name}")
     assert file_node.updated_at == file_node.created_at is not None
 
     # A synthetic directory the backend never timestamps shows "-", not a faked now.
-    assert "modified: -" in shell.run("stat /me/files").stdout
+    assert "modified: -" in shell.run("stat /files").stdout
 
 
 def test_app_vfs_pipes_cat_to_sed_and_grep():
