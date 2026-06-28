@@ -129,9 +129,9 @@ def test_vfs_exposes_user_sections():
         "tables",
         "sources",
     }
-    assert model.read_file("/skills/Demo Skill--skillfol.md") == b"# Demo Stash\n"
-    assert b"hello" in model.read_file("/sessions/Fix login--session-/transcript.md")
-    assert b'"Name": "Mount"' in model.read_file("/tables/Ideas--table-12/rows.json")
+    assert model.read_file("/skills/Demo Skill.md") == b"# Demo Stash\n"
+    assert b"hello" in model.read_file("/sessions/Fix login/transcript.md")
+    assert b'"Name": "Mount"' in model.read_file("/tables/Ideas/rows.json")
 
     # Connected sources are mounted read-only; native sources are skipped
     # (files/sessions already appear above). Document bodies load lazily.
@@ -163,11 +163,37 @@ def test_vfs_loads_source_entries_lazily():
 def test_vfs_reads_files_and_pages():
     model = _model()
     files_path = "/files"
-    upload_name = next(name for name in model.list_dir(files_path) if name.startswith("diagram--"))
+    upload_name = next(name for name in model.list_dir(files_path) if name.startswith("diagram"))
 
     assert model.read_file(f"{files_path}/{upload_name}") == b"diagram body"
 
-    folder_name = next(name for name in model.list_dir(files_path) if name.startswith("Notes--"))
+    folder_name = next(name for name in model.list_dir(files_path) if name.startswith("Notes"))
     folder_path = f"{files_path}/{folder_name}"
-    page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan--"))
+    page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan"))
     assert model.read_file(f"{folder_path}/{page_name}") == b"# Plan\n"
+
+
+class DuplicateNameClient(FakeClient):
+    """Two tables share a name — the backend allows it. Only the colliding pair
+    should carry an id suffix; the uniquely-named table stays clean."""
+
+    def list_tables(self):
+        return [
+            {"id": "aaaaaaaa-1111", "name": "Untitled table"},
+            {"id": "bbbbbbbb-2222", "name": "Untitled table"},
+            {"id": "cccccccc-3333", "name": "Roadmap"},
+        ]
+
+
+def test_vfs_suffixes_only_colliding_names():
+    model = StashVfsModel(DuplicateNameClient())
+    model.refresh()
+
+    entries = set(model.list_dir("/tables"))
+
+    # The unique name is clean; both members of the collision are suffixed with
+    # their own id (not just the second one), so neither path depends on order.
+    assert "Roadmap" in entries
+    assert "Untitled table--aaaaaaaa" in entries
+    assert "Untitled table--bbbbbbbb" in entries
+    assert "Untitled table" not in entries

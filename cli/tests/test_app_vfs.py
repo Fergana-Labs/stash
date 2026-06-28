@@ -77,11 +77,11 @@ def _shell(client=None):
 def _page_path(shell: SkillAppVfsShell) -> str:
     files_path = "/files"
     folder_name = next(
-        name for name in shell.model.list_dir(files_path) if name.startswith("Notes--")
+        name for name in shell.model.list_dir(files_path) if name.startswith("Notes")
     )
     folder_path = f"{files_path}/{folder_name}"
     page_name = next(
-        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan--")
+        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan")
     )
     return f"{folder_path}/{page_name}"
 
@@ -234,7 +234,7 @@ def test_app_vfs_grep_skips_unreadable_transcript_and_warns():
 def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     shell, _client = _shell(DeadTranscriptClient())
 
-    result = shell.run("cat '/sessions/Fix login--session-/transcript.md'")
+    result = shell.run("cat '/sessions/Fix login/transcript.md'")
 
     assert result.exit_code == 2
     assert result.stdout == ""
