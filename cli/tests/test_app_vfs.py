@@ -173,44 +173,36 @@ def test_app_vfs_command_chaining_preserves_all_stdout():
     assert result.stdout == "one\ntwo\n"
 
 
-def test_app_vfs_writes_existing_writable_pages_with_redirect():
+def test_app_vfs_rejects_redirect_writes():
     shell, client = _shell()
     page_path = _page_path(shell)
 
     result = shell.run(f"printf '# App edit\\n' > {shlex.quote(page_path)}")
 
-    assert result.exit_code == 0
-    assert client.page_updates == [
-        (
-            "page-12345678",
-            {"content": "# App edit\n"},
-        )
-    ]
+    assert result.exit_code == 2
+    assert "read-only" in result.stderr
+    assert client.page_updates == []
 
 
-def test_app_vfs_appends_existing_writable_pages_with_tee():
+def test_app_vfs_rejects_append_redirect_writes():
+    shell, client = _shell()
+    page_path = _page_path(shell)
+
+    result = shell.run(f"printf 'Second line\\n' >> {shlex.quote(page_path)}")
+
+    assert result.exit_code == 2
+    assert "read-only" in result.stderr
+    assert client.page_updates == []
+
+
+def test_app_vfs_tee_is_unsupported():
     shell, client = _shell()
     page_path = _page_path(shell)
 
     result = shell.run(f"printf 'Second line\\n' | tee -a {shlex.quote(page_path)}")
 
-    assert result.exit_code == 0
-    assert result.stdout == "Second line\n"
-    assert client.page_updates == [
-        (
-            "page-12345678",
-            {"content": "# Plan\nSecond line\n"},
-        )
-    ]
-
-
-def test_app_vfs_refuses_read_only_writes():
-    shell, client = _shell()
-
-    result = shell.run("printf 'Nope\\n' > /README.md")
-
     assert result.exit_code == 1
-    assert "/README.md" in result.stderr
+    assert "unsupported command: tee" in result.stderr
     assert client.page_updates == []
 
 

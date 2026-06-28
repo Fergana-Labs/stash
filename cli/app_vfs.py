@@ -69,17 +69,13 @@ class SkillAppVfsShell:
         name = "shell"
         self._warnings = []
         try:
-            command, redirect = _split_redirect(stage)
-            args = shlex.split(command)
+            _reject_redirect(stage)
+            args = shlex.split(stage)
             if not args:
                 return self._stage_result()
 
             name = args[0]
             output = self._dispatch(name, args[1:], stdin)
-            if redirect is not None:
-                path, append = redirect
-                self._write_output(path, output, append)
-                output = ""
             return self._stage_result(stdout=output)
         except VfsShellExit as e:
             return self._stage_result(exit_code=e.exit_code)
@@ -133,8 +129,6 @@ class SkillAppVfsShell:
             return self._echo(args)
         if name == "printf":
             return self._printf(args)
-        if name == "tee":
-            return self._tee(args, stdin)
         if name == "stat":
             return self._stat(args)
         if name == "help":
@@ -458,21 +452,6 @@ class SkillAppVfsShell:
             value_index += used
         return "".join(output)
 
-    def _tee(self, args: list[str], stdin: str | None) -> str:
-        append = False
-        paths = []
-        for arg in args:
-            if arg == "-a":
-                append = True
-            else:
-                paths.append(arg)
-        if not paths:
-            raise VfsShellError("missing file")
-        text = stdin or ""
-        for path in paths:
-            self._write_output(path, text, append)
-        return text
-
     def _stat(self, args: list[str]) -> str:
         if len(args) != 1:
             raise VfsShellError("expected one path")
@@ -487,13 +466,6 @@ class SkillAppVfsShell:
             f"  modified: {_iso_time(node.updated_at)}\n"
             f"  created: {_iso_time(node.created_at)}\n"
         )
-
-    def _write_output(self, raw_path: str, output: str, append: bool) -> None:
-        path = self._resolve_path(raw_path)
-        data = output.encode("utf-8")
-        if append:
-            data = self.model.read_file(path) + data
-        self.model.write_file(path, data)
 
     def _read_text(self, path: str) -> str:
         return self.model.read_file(path).decode("utf-8", errors="replace")
@@ -594,21 +566,13 @@ def _grep_text(
     return "\n".join(rows) + ("\n" if rows else "")
 
 
-def _split_redirect(stage: str) -> tuple[str, tuple[str, bool] | None]:
+def _reject_redirect(stage: str) -> None:
+    """The Stash VFS is read-only. A redirect is the only write syntax the
+    shell could express, so reject it loudly rather than silently treating
+    `>` as a literal argument."""
     for token in (">>", ">"):
-        parts = _split_unquoted(stage, token)
-        if len(parts) == 1:
-            continue
-        if len(parts) != 2:
-            raise VfsShellError("only one redirect is supported", exit_code=2)
-        target = parts[1].strip()
-        if not target:
-            raise VfsShellError("missing redirect target", exit_code=2)
-        target_args = shlex.split(target)
-        if not target_args:
-            raise VfsShellError("missing redirect target", exit_code=2)
-        return parts[0].strip(), (target_args[0], token == ">>")
-    return stage, None
+        if len(_split_unquoted(stage, token)) > 1:
+            raise VfsShellError("the Stash VFS is read-only: writes are not supported", exit_code=2)
 
 
 def _split_unquoted(text: str, separator: str) -> list[str]:
@@ -644,9 +608,9 @@ def _split_unquoted(text: str, separator: str) -> list[str]:
 def _help_text() -> str:
     return "\n".join(
         [
-            "Supported commands:",
-            "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc, echo, printf, tee, stat",
-            "  pipes with |, command chaining with && or ;, and > / >> writes to existing writable files",
+            "Supported commands (read-only):",
+            "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc, echo, printf, stat",
+            "  pipes with |, command chaining with && or ;",
             "",
         ]
     )
