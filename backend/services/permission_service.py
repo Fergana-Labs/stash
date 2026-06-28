@@ -361,7 +361,9 @@ async def check_access(
             return False
         return await _session_folder_open(dict(row), object_id, user_id, require)
 
-    if object_type not in _CONTENT_TYPES:
+    # Connected sources are owner-or-direct-share, executed through the same
+    # predicate as content (no folder cascade, no public grant).
+    if object_type not in _CONTENT_TYPES and object_type != "source":
         return False
 
     # A sufficient share, or a public container — the one predicate, executed for

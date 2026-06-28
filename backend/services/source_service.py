@@ -1007,16 +1007,14 @@ async def _federated_search(
 
 async def search_documents(
     *,
-    owner_user_id: UUID,
     user_id: UUID,
     query: str,
     source: dict | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """FTS over the user's own copied-content sources (github/slack/granola),
-    UNIONed across their tables. The owner join is the user-scoping guard. Pass
-    `source` to scope to one; an index-only source has nothing to FTS, so it
-    returns []."""
+    """FTS over copied-content sources the user can read — their own or shared
+    with them (github/slack/granola), UNIONed across their tables. Pass `source`
+    to scope to one; an index-only source has nothing to FTS, so it returns []."""
     limit = min(limit, 100)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
@@ -1044,24 +1042,24 @@ async def search_documents(
             )
         return ""
 
+    source_readable = permission_service.readable_content_condition("source", "s", 1)
     parts = [f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
-                       websearch_to_tsquery('english', $3)) AS rank
+                       websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
         JOIN user_sources s ON s.id = d.source_id
-        WHERE d.owner_user_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
-          AND ($4::uuid IS NULL OR d.source_id = $4)
+        WHERE {source_readable} AND d.deleted_at IS NULL
+          AND ($3::uuid IS NULL OR d.source_id = $3)
           AND to_tsvector('english', coalesce(d.content, ''))
-              @@ websearch_to_tsquery('english', $3)
+              @@ websearch_to_tsquery('english', $2)
           {visibility_clause(t)}
         """ for t in tables]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
-        f"ORDER BY u.rank DESC LIMIT $5",
-        owner_user_id,
+        f"ORDER BY u.rank DESC LIMIT $4",
         user_id,
         query,
         source_id,
@@ -1083,8 +1081,8 @@ async def search_documents(
 
 
 async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every source visible to this user: the two native sources (scope-
-    wide) plus the user's own connected sources."""
+    """Every source visible to this user: the two native sources plus the
+    connected sources they own or have been shared with."""
     sources = [
         {
             "source": NATIVE_FILES,
@@ -1739,7 +1737,6 @@ async def search_all(
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match).
         docs = await search_documents(
-            owner_user_id=owner_user_id,
             user_id=user_id,
             query=query,
             source=connected,

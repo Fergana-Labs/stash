@@ -63,6 +63,10 @@ async def share_with_user_by_email(
         raise HTTPException(status_code=400, detail=f"can't share a {object_type}")
     if permission not in _PERMISSIONS:
         raise HTTPException(status_code=400, detail="permission must be read, comment, or write")
+    # A connected source rides the owner's OAuth token; a recipient only ever gets
+    # read (delegated). Management/sync/write stay owner-only by design.
+    if object_type == "source" and permission != "read":
+        raise HTTPException(status_code=400, detail="a source can only be shared read-only")
     owner_user_id = await _require_owner(object_type, object_id, owner_id)
     normalized_email = email.strip().lower()
 
