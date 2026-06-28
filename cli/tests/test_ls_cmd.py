@@ -14,9 +14,11 @@ SOURCES = [
         "tree": [{"name": "claude", "kind": "session", "ref": "s1"}],
     },
     {
-        "source": "11111111-1111-1111-1111-111111111111",
-        "type": "github_repo",
-        "display_name": "stash",
+        "source": "github",
+        "type": "provider",
+        "provider": "github",
+        "display_name": "github",
+        "members": [{"handle": "11111111-1111-1111-1111-111111111111", "display_name": "stash"}],
         "sync_status": "idle",
         "tree": [
             {
@@ -30,9 +32,11 @@ SOURCES = [
         ],
     },
     {
-        "source": "22222222-2222-2222-2222-222222222222",
-        "type": "gong_calls",
-        "display_name": "Gong",
+        "source": "gong",
+        "type": "provider",
+        "provider": "gong",
+        "display_name": "gong",
+        "members": [{"handle": "22222222-2222-2222-2222-222222222222", "display_name": "Gong"}],
         "sync_status": "failed",
         "tree": [],
     },
@@ -72,7 +76,8 @@ def test_ls_overview_shows_every_source_as_a_directory(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "files/" in out
     assert "sessions/" in out
-    assert "stash/" in out
+    # The github repo nests under its provider folder, not at the top level.
+    assert "github/" in out
     assert "gong/" in out
     assert "api.md" in out
     assert "+7 more" in out
@@ -82,7 +87,7 @@ def test_ls_overview_shows_every_source_as_a_directory(monkeypatch, capsys):
 def test_ls_path_collapses_prefix_listing_to_one_level(monkeypatch, capsys):
     _setup(monkeypatch)
 
-    main.ls_cmd(path="stash/docs", depth=2, as_json=False)
+    main.ls_cmd(path="github/docs", depth=2, as_json=False)
 
     out = capsys.readouterr().out
     assert "api.md" in out
@@ -101,3 +106,55 @@ def test_ls_unknown_source_fails_loudly(monkeypatch, capsys):
         assert type(e).__name__ == "Exit"
     out = capsys.readouterr().out
     assert "No source named 'nope'" in out
+
+
+# A provider with several connections: the first path segment selects the
+# connection (repo), and reads must hit that connection's handle — never the
+# provider key, which is not a readable source.
+MULTI_SOURCES = [
+    {
+        "source": "github",
+        "type": "provider",
+        "provider": "github",
+        "display_name": "github",
+        "members": [
+            {"handle": "aaaa", "display_name": "stash"},
+            {"handle": "bbbb", "display_name": "plugin"},
+        ],
+        "tree": [
+            {"name": "plugin", "kind": "folder", "source": "bbbb", "children": []},
+            {"name": "stash", "kind": "folder", "source": "aaaa", "children": []},
+        ],
+    },
+]
+
+
+class MultiClient(FakeClient):
+    def sources_tree(self, depth=3):
+        return MULTI_SOURCES
+
+    def list_source_entries(self, source, path=""):
+        assert source == "aaaa"
+        assert path == "docs"
+        return [{"path": "docs/api.md", "name": "api.md", "kind": "file"}]
+
+
+def test_ls_provider_lists_its_connections(monkeypatch, capsys):
+    _setup(monkeypatch)
+    monkeypatch.setattr(main, "_client", lambda: MultiClient())
+
+    main.ls_cmd(path="github", depth=2, as_json=False)
+
+    out = capsys.readouterr().out
+    assert "stash/" in out
+    assert "plugin/" in out
+
+
+def test_ls_drills_into_a_named_connection(monkeypatch, capsys):
+    _setup(monkeypatch)
+    monkeypatch.setattr(main, "_client", lambda: MultiClient())
+
+    main.ls_cmd(path="github/stash/docs", depth=2, as_json=False)
+
+    out = capsys.readouterr().out
+    assert "api.md" in out

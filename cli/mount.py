@@ -281,16 +281,24 @@ class StashVfsModel:
             return
 
         sources_path = self._add_dir("/sources")
-        for source in connected:
-            handle = str(source.get("source") or "")
-            if not handle:
+        for provider, members in _group_by_provider(connected).items():
+            provider_root = self._add_dir_child(sources_path, _source_slug(provider))
+            if len(members) == 1:
+                # Sole connection collapses — its documents sit directly in the
+                # provider folder (e.g. /sources/granola/<call>).
+                handle = str(members[0].get("source") or "")
+                self._expanders[provider_root] = (
+                    lambda root=provider_root, h=handle: self._expand_source(root, h)
+                )
                 continue
-            source_root = self._add_dir_child(
-                sources_path, _source_slug(source.get("display_name") or handle)
-            )
-            self._expanders[source_root] = lambda root=source_root, h=handle: self._expand_source(
-                root, h
-            )
+            for member in members:
+                handle = str(member.get("source") or "")
+                member_root = self._add_dir_child(
+                    provider_root, _source_slug(member.get("display_name") or handle)
+                )
+                self._expanders[member_root] = (
+                    lambda root=member_root, h=handle: self._expand_source(root, h)
+                )
 
     def _expand_source(self, source_root: str, handle: str) -> None:
         try:
@@ -470,6 +478,17 @@ def _safe_name(value: str) -> str:
 def _source_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-")
     return slug or "source"
+
+
+def _group_by_provider(connected: list[dict]) -> dict[str, list[dict]]:
+    """Connected sources grouped under their provider key, the top tier of the
+    /sources filesystem. Sources with no handle are dropped."""
+    groups: dict[str, list[dict]] = {}
+    for source in connected:
+        if not source.get("source"):
+            continue
+        groups.setdefault(str(source.get("provider") or "source"), []).append(source)
+    return groups
 
 
 def _source_doc_text(doc: dict) -> str:

@@ -2379,18 +2379,22 @@ def sources_rm(source_id: str = typer.Argument(...)):
     console.print("[green]Source removed.[/green]")
 
 
+def _safe_slug(name: str) -> str:
+    import re as _re
+
+    return _re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-") or "source"
+
+
 def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
     """Stable filesystem-style directory name per source. Natives keep their
     handle ('files', 'sessions'); connected sources slug their display name,
     with -2/-3 suffixes on collisions."""
-    import re as _re
-
     names: dict[str, dict] = {}
     for s in sources:
         if s["type"].startswith("native_"):
             name = s["source"]
         else:
-            name = _re.sub(r"[^a-z0-9._-]+", "-", s["display_name"].lower()).strip("-") or "source"
+            name = _safe_slug(s["display_name"])
         candidate = name
         suffix = 2
         while candidate in names:
@@ -2401,7 +2405,7 @@ def _source_dir_names(sources: list[dict]) -> dict[str, dict]:
 
 
 def _source_annotation(s: dict) -> str:
-    note = f"  [dim]({s['type']})[/dim]"
+    note = "" if s["type"] == "provider" else f"  [dim]({s['type']})[/dim]"
     if s.get("sync_status") == "failed":
         note += "  [red]sync failed[/red]"
     elif s.get("sync_status") == "syncing":
@@ -2464,23 +2468,59 @@ def _print_ls_path(c: StashClient, sources: list[dict], path: str, as_json: bool
         console.print(f"[red]No source named '{dir_name}'. Run `stash ls` to see them.[/red]")
         raise typer.Exit(1)
 
+    if source["type"] == "provider":
+        _print_provider_path(c, source, rest, as_json)
+        return
+
     entries = c.list_source_entries(source["source"], path=rest)
     if _use_json(as_json):
         output_json({"entries": entries})
         return
+    for entry in entries:
+        console.print(f"  {entry['name']}  [dim]({entry.get('id', '')})[/dim]")
 
-    if source["type"].startswith("native_"):
-        for entry in entries:
-            console.print(f"  {entry['name']}  [dim]({entry.get('id', '')})[/dim]")
+
+def _print_provider_path(c: StashClient, provider: dict, rest: str, as_json: bool) -> None:
+    """Drill into a provider folder. A sole connection collapses, so `rest` is a
+    document path read straight against it; otherwise the first segment selects
+    the connection (repo, account) and the remainder is the document path."""
+    members = provider.get("members") or []
+    if len(members) == 1:
+        handle, doc_path = members[0]["handle"], rest
+    else:
+        member_slug, _, doc_path = rest.partition("/")
+        if not member_slug:
+            _print_connection_dirs(members, as_json)
+            return
+        member = next((m for m in members if _safe_slug(m["display_name"]) == member_slug), None)
+        if member is None:
+            console.print(f"[red]No connection '{member_slug}' under '{provider['source']}'.[/red]")
+            raise typer.Exit(1)
+        handle = member["handle"]
+
+    entries = c.list_source_entries(handle, path=doc_path)
+    if _use_json(as_json):
+        output_json({"entries": entries})
         return
+    _print_dir_children(entries, doc_path)
 
-    # Entries are a recursive prefix listing; collapse to this directory's
-    # immediate children.
-    base = f"{rest}/" if rest else ""
+
+def _print_connection_dirs(members: list[dict], as_json: bool) -> None:
+    if _use_json(as_json):
+        output_json({"entries": [{"name": m["display_name"], "kind": "folder"} for m in members]})
+        return
+    for member in members:
+        console.print(f"  [bold]{_safe_slug(member['display_name'])}/[/bold]")
+
+
+def _print_dir_children(entries: list[dict], base_path: str) -> None:
+    """Entries are a recursive prefix listing; collapse to this directory's
+    immediate children."""
+    base = f"{base_path}/" if base_path else ""
     children: dict[str, str] = {}
     for entry in entries:
         entry_path = entry.get("path") or ""
-        if entry_path == rest:
+        if entry_path == base_path:
             children[entry_path.rsplit("/", 1)[-1]] = entry.get("kind", "file")
             continue
         if not entry_path.startswith(base):

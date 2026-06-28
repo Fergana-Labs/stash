@@ -63,7 +63,12 @@ class FakeClient:
     def list_sources(self):
         return [
             {"type": "native_files", "source": "files", "display_name": "Files"},
-            {"type": "gmail", "source": "src-gmail-1", "display_name": "Gmail (demo@x.com)"},
+            {
+                "type": "gmail",
+                "provider": "gmail",
+                "source": "src-gmail-1",
+                "display_name": "Gmail (demo@x.com)",
+            },
         ]
 
     def list_source_entries(self, source, path=""):
@@ -133,10 +138,11 @@ def test_vfs_exposes_user_sections():
     assert b"hello" in model.read_file("/sessions/Fix login--session-/transcript.md")
     assert b'"Name": "Mount"' in model.read_file("/tables/Ideas--table-12/rows.json")
 
-    # Connected sources are mounted read-only; native sources are skipped
-    # (files/sessions already appear above). Document bodies load lazily.
-    assert model.list_dir("/sources") == ["gmail-demo-x.com"]
-    gmail = "/sources/gmail-demo-x.com"
+    # Connected sources are mounted read-only under their provider folder;
+    # native sources are skipped (files/sessions already appear above). A sole
+    # connection collapses — its documents sit directly in the provider folder.
+    assert model.list_dir("/sources") == ["gmail"]
+    gmail = "/sources/gmail"
     assert "Welcome email" in model.list_dir(gmail)
     assert model.read_file(f"{gmail}/Welcome email") == b"BODY of msg-1"
     assert model.read_file(f"{gmail}/threads/Nested note") == b"BODY of threads/msg-2"
@@ -150,13 +156,13 @@ def test_vfs_loads_source_entries_lazily():
     model.refresh()
     sources_path = "/sources"
 
-    assert model.list_dir(sources_path) == ["gmail-demo-x.com"]
+    assert model.list_dir(sources_path) == ["gmail"]
     assert client.source_entry_calls == 0
 
     # Descending into a source materializes only that source, once.
-    model.list_dir(f"{sources_path}/gmail-demo-x.com")
+    model.list_dir(f"{sources_path}/gmail")
     assert client.source_entry_calls == 1
-    model.list_dir(f"{sources_path}/gmail-demo-x.com")
+    model.list_dir(f"{sources_path}/gmail")
     assert client.source_entry_calls == 1
 
 
