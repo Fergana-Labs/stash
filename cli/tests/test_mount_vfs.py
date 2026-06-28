@@ -160,6 +160,37 @@ def test_vfs_loads_source_entries_lazily():
     assert client.source_entry_calls == 1
 
 
+class NestedPagesClient(FakeClient):
+    # A Notion-style source where a page has both its own body and child pages.
+    def list_sources(self):
+        return [{"type": "notion", "source": "src-notion-1", "display_name": "Notes"}]
+
+    def list_source_entries(self, source, path=""):
+        assert source == "src-notion-1"
+        return [
+            {"path": "Parent", "name": "Parent", "kind": "note"},
+            {"path": "Parent/Child A", "name": "Child A", "kind": "note"},
+            {"path": "Parent/Child B", "name": "Child B", "kind": "note"},
+        ]
+
+    def read_source_doc(self, source, ref):
+        return {"content": f"BODY of {ref}"}
+
+
+def test_vfs_keeps_children_of_a_page_that_has_its_own_body():
+    # A page that is both content and a parent must not swallow its children.
+    # It becomes a directory; its body lives in a same-named index file so the
+    # children stay reachable alongside it.
+    model = StashVfsModel(NestedPagesClient())
+    model.refresh()
+    parent = "/sources/notes/Parent"
+
+    assert sorted(model.list_dir(parent)) == ["Child A", "Child B", "Parent"]
+    assert model.read_file(f"{parent}/Parent") == b"BODY of Parent"
+    assert model.read_file(f"{parent}/Child A") == b"BODY of Parent/Child A"
+    assert model.read_file(f"{parent}/Child B") == b"BODY of Parent/Child B"
+
+
 def test_vfs_reads_files_and_pages():
     model = _model()
     files_path = "/files"

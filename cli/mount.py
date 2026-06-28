@@ -300,6 +300,7 @@ class StashVfsModel:
         self._add_source_entries(source_root, handle, entries)
 
     def _add_source_entries(self, source_root: str, handle: str, entries: list[dict]) -> None:
+        parent_refs = _ancestor_refs(entries)
         for entry in entries:
             ref = str(entry.get("path") or "")
             segments = [_safe_name(seg) for seg in ref.split("/") if seg]
@@ -312,12 +313,22 @@ class StashVfsModel:
             if entry.get("kind") == "folder":
                 self._add_dir(f"{parent}/{display}")
                 continue
-            self._add_file(
-                f"{parent}/{display}",
-                loader=lambda h=handle, r=ref: _text_bytes(
-                    _source_doc_text(self.client.read_source_doc(h, r))
-                ),
-            )
+            # A page that also has child pages becomes a directory holding its own
+            # body in a same-named index file, so the children nest under it
+            # instead of being dropped on the file/dir name collision.
+            if ref in parent_refs:
+                page_dir = self._add_dir(f"{parent}/{display}")
+                self._add_source_doc_file(f"{page_dir}/{display}", handle, ref)
+                continue
+            self._add_source_doc_file(f"{parent}/{display}", handle, ref)
+
+    def _add_source_doc_file(self, path: str, handle: str, ref: str) -> str:
+        return self._add_file(
+            path,
+            loader=lambda h=handle, r=ref: _text_bytes(
+                _source_doc_text(self.client.read_source_doc(h, r))
+            ),
+        )
 
     def _load_page(self, page_id: str) -> bytes:
         page = self.client.get_page(page_id)
@@ -470,6 +481,18 @@ def _safe_name(value: str) -> str:
 def _source_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-")
     return slug or "source"
+
+
+def _ancestor_refs(entries: list[dict]) -> set[str]:
+    """Refs that are an ancestor of some other entry — i.e. pages that have
+    child pages. Such a page renders as a directory so its children nest under
+    it instead of colliding with it on the same path."""
+    refs: set[str] = set()
+    for entry in entries:
+        parts = [p for p in str(entry.get("path") or "").split("/") if p]
+        for depth in range(1, len(parts)):
+            refs.add("/".join(parts[:depth]))
+    return refs
 
 
 def _source_doc_text(doc: dict) -> str:
