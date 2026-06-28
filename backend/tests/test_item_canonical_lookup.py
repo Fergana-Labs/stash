@@ -1,6 +1,6 @@
 """The canonical page/file/session endpoints resolve the scope
 server-side so item links carry only the item ID and can never go stale.
-Same contract as the canonical table endpoint: membership-gated, and every
+Same contract as the canonical table endpoint: scope-gated, and every
 failure is a 404 so an unscoped probe can't confirm an item exists."""
 
 import uuid
@@ -68,7 +68,7 @@ async def _create_session(client: AsyncClient, api_key: str, owner_user_id: str)
 
 
 @pytest.mark.asyncio
-async def test_member_resolves_page_by_id_alone(client: AsyncClient):
+async def test_owner_resolves_page_by_id_alone(client: AsyncClient):
     api_key = await _register(client)
     owner_user_id = await _scope_id(client, api_key)
     page_id = await _create_page(client, api_key, owner_user_id)
@@ -81,7 +81,7 @@ async def test_member_resolves_page_by_id_alone(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_non_member_page_lookup_is_404_not_403(client: AsyncClient):
+async def test_outsider_page_lookup_is_404_not_403(client: AsyncClient):
     owner_key = await _register(client)
     owner_user_id = await _scope_id(client, owner_key)
     page_id = await _create_page(client, owner_key, owner_user_id)
@@ -93,7 +93,7 @@ async def test_non_member_page_lookup_is_404_not_403(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_non_member_file_lookup_is_404_not_403(client: AsyncClient, pool):
+async def test_outsider_file_lookup_is_404_not_403(client: AsyncClient, pool):
     owner_key = await _register(client)
     owner_user_id = await _scope_id(client, owner_key)
     file_id = await _insert_file_row(pool, owner_user_id)
@@ -105,7 +105,7 @@ async def test_non_member_file_lookup_is_404_not_403(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_member_resolves_session_by_external_id_alone(client: AsyncClient):
+async def test_user_resolves_session_by_external_id_alone(client: AsyncClient):
     api_key = await _register(client)
     owner_user_id = await _scope_id(client, api_key)
     session_id = await _create_session(client, api_key, owner_user_id)
@@ -146,7 +146,7 @@ async def test_session_id_in_two_scopes_resolves_to_readable_one(client: AsyncCl
 
 
 @pytest.mark.asyncio
-async def test_non_member_session_lookup_is_404(client: AsyncClient):
+async def test_non_owner_session_lookup_is_404(client: AsyncClient):
     owner_key = await _register(client)
     owner_user_id = await _scope_id(client, owner_key)
     session_id = await _create_session(client, owner_key, owner_user_id)

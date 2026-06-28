@@ -34,7 +34,7 @@ _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a scope member")
+        raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
 @me_router.post("/skills", response_model=SkillResponse, status_code=201)
@@ -102,7 +102,7 @@ async def get_skill_contents(
     current_user: dict = Depends(get_current_user),
 ):
     """The skill folder's full subtree, inlined — same shape as the public
-    skill payload, but for scope members on unpublished skills. This is
+    skill payload, but for the scope owner on unpublished skills. This is
     what `stash skills sync` pulls."""
     owner_user_id = current_user["id"]
     folder = await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
@@ -219,7 +219,7 @@ async def materialize_session(
     how sessions travel into skills (sessions can't live in folders)."""
     owner_user_id = current_user["id"]
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
+        raise HTTPException(status_code=403, detail="Only the owner can materialize sessions")
     page = await shared_skill_service.materialize_session_page(
         owner_user_id, session_id, req.folder_id, current_user["id"]
     )
@@ -350,7 +350,7 @@ async def fork_skill(
     # Forking writes new pages/files/sessions into the scope — same bar as
     # creating a Skill.
     if not await user_scope_service.can_write(req.owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not create Skills")
+        raise HTTPException(status_code=403, detail="You have read-only access and cannot create Skills")
     forked = await shared_skill_service.fork_skill(req.owner_user_id, slug, current_user["id"])
     if not forked:
         raise HTTPException(status_code=404, detail="Skill not found")

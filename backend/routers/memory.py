@@ -30,12 +30,12 @@ _TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_messag
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a scope member")
+        raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
 async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.can_write(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Viewers can read but not write sessions")
+        raise HTTPException(status_code=403, detail="Only the owner can write sessions")
 
 
 # ===== Scope event endpoints =====

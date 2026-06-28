@@ -21,10 +21,10 @@ async def publish(
     else:
         owner_user_id = req.owner_user_id
         if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
-            raise HTTPException(status_code=403, detail="Not a scope member")
+            raise HTTPException(status_code=403, detail="Not the scope owner")
 
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not publish")
+        raise HTTPException(status_code=403, detail="Only the owner can publish")
 
     # Gate before any side effects: publish_folder would reject non-owners
     # anyway, but only after the folder and page were already created.
