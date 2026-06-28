@@ -105,25 +105,54 @@ def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -
     """
 
 
-def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
-    """SQL predicate: may user ${user_arg} READ the content row at object_alias?
-    Owner OR a user share (direct/ancestor folder) OR the object sits inside the
-    folder of a skill the user can open."""
-    share_target = _share_target_condition(object_type, object_alias, "content_share")
-    skill_grant = _skill_grant_condition(object_type, object_alias, user_arg)
-    return f"""
-        (
-          {object_alias}.owner_user_id = ${user_arg}
-          OR EXISTS (
-            SELECT 1 FROM shares content_share
-            WHERE content_share.principal_type = 'user'
-              AND content_share.principal_id = ${user_arg}
-              AND (content_share.expires_at IS NULL OR content_share.expires_at > now())
-              AND {share_target}
-          )
-          OR {skill_grant}
+# A share satisfies a required level when its own level is >= it (read < comment
+# < write). `require` is a trusted internal enum, never user input.
+_LEVEL_SHARE_FILTER = {
+    "read": "",
+    "comment": " AND content_share.permission IN ('comment', 'write')",
+    "write": " AND content_share.permission = 'write'",
+}
+
+
+def _public_read_container_condition(object_type: str, object_alias: str, user_arg: int) -> str | None:
+    """Read-only access a session inherits from its session folder: the folder is
+    public, OR the viewer owns the folder — a folder owner reads every session
+    filed under it, even sessions they don't own. Content rows use the published-
+    skill grant instead; types without a container grant return None."""
+    if object_type == "session":
+        return (
+            f"EXISTS (SELECT 1 FROM session_folders public_sf "
+            f"WHERE public_sf.id = {object_alias}.session_folder_id "
+            f"AND (public_sf.public_permission <> 'none' "
+            f"OR public_sf.owner_user_id = ${user_arg}))"
         )
-    """
+    return None
+
+
+def readable_content_condition(
+    object_type: str, object_alias: str, user_arg: int, require: str = "read"
+) -> str:
+    """SQL predicate: may user ${user_arg} access the row at object_alias at the
+    `require` level (read < comment < write)? The single source of truth for
+    row-level access: owner OR a sufficient user share (direct/ancestor folder)
+    OR — for reads only — a public container (published skill folder / public
+    session folder). `check_access` executes this same predicate for one row, so
+    the SQL filter and the boolean can never disagree."""
+    share_target = _share_target_condition(object_type, object_alias, "content_share")
+    parts = [
+        f"{object_alias}.owner_user_id = ${user_arg}",
+        f"EXISTS (SELECT 1 FROM shares content_share "
+        f"WHERE content_share.principal_type = 'user' "
+        f"AND content_share.principal_id = ${user_arg} "
+        f"AND (content_share.expires_at IS NULL OR content_share.expires_at > now()) "
+        f"AND {share_target}{_LEVEL_SHARE_FILTER[require]})",
+    ]
+    if require == "read":
+        parts.append(_skill_grant_condition(object_type, object_alias, user_arg))
+        public_container = _public_read_container_condition(object_type, object_alias, user_arg)
+        if public_container:
+            parts.append(public_container)
+    return "(" + " OR ".join(parts) + ")"
 
 
 def accessible_scope_ids_sql(user_arg: int) -> str:
@@ -328,27 +357,21 @@ async def check_access(
     if object_type not in _CONTENT_TYPES:
         return False
 
-    # Direct or inherited user share.
-    if user_id is not None and await _user_share_grants(object_type, object_id, user_id, require):
-        return True
-
-    # Read-only access via a public / shared session folder that contains it.
-    if object_type == "session" and require == "read":
-        pool = get_pool()
-        frow = await pool.fetchrow(
-            "SELECT sf.id, sf.owner_user_id, sf.public_permission "
-            "FROM sessions s JOIN session_folders sf ON sf.id = s.session_folder_id "
-            "WHERE s.id = $1",
+    # A sufficient share, or a public container — the one predicate, executed for
+    # this single row. (The owner case already returned above.) user_id may be
+    # None (anonymous): the owner/share branches simply never match, leaving only
+    # the public read grants. check_access and the list queries now share one
+    # definition of access, so they can't drift.
+    table = _OWNER_LOOKUP[object_type][0]
+    pool = get_pool()
+    predicate = readable_content_condition(object_type, "obj", 1, require)
+    return bool(
+        await pool.fetchval(
+            f"SELECT EXISTS (SELECT 1 FROM {table} obj WHERE obj.id = $2 AND {predicate})",
+            user_id,
             object_id,
         )
-        if frow and await _session_folder_open(dict(frow), frow["id"], user_id, "read"):
-            return True
-
-    # Read-only access via a published skill that contains the object.
-    if require == "read" and await _containing_skills(object_type, object_id):
-        return True
-
-    return False
+    )
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:

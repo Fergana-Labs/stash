@@ -250,10 +250,13 @@ async def _upsert_sessions_for_events(
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """SQL predicate: may user ${user_arg} read the session this history_events
-    row belongs to? Mirrors `permission_service.check_access` for 'session'
-    reads — the owner sees their own sessions, everyone else needs a live share
-    on the session (or its session folder) or a public/shared session folder.
-    Events with no session_id are bookkeeping rows visible to their owner."""
+    row belongs to? Resolves the row to its session and delegates to the one
+    access predicate for 'session' (owner / a live session or session-folder
+    share / a public session folder) — no duplicated share logic. Events with no
+    session_id are bookkeeping rows scoped to their owner by the outer query."""
+    session_access = permission_service.readable_content_condition(
+        "session", "readable_session", user_arg
+    )
     return f"""
         (
           {event_alias}.session_id IS NULL
@@ -263,27 +266,7 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
             WHERE readable_session.owner_user_id = {event_alias}.owner_user_id
               AND readable_session.session_id = {event_alias}.session_id
               AND readable_session.deleted_at IS NULL
-              AND (
-                readable_session.owner_user_id = ${user_arg}::uuid
-                OR EXISTS (
-                  SELECT 1 FROM shares session_share
-                  WHERE session_share.principal_type = 'user'
-                    AND session_share.principal_id = ${user_arg}::uuid
-                    AND (session_share.expires_at IS NULL OR session_share.expires_at > now())
-                    AND (
-                      (session_share.object_type = 'session'
-                       AND session_share.object_id = readable_session.id)
-                      OR (session_share.object_type = 'session_folder'
-                          AND readable_session.session_folder_id IS NOT NULL
-                          AND session_share.object_id = readable_session.session_folder_id)
-                    )
-                )
-                OR EXISTS (
-                  SELECT 1 FROM session_folders readable_folder
-                  WHERE readable_folder.id = readable_session.session_folder_id
-                    AND readable_folder.public_permission <> 'none'
-                )
-              )
+              AND {session_access}
           )
         )
     """
