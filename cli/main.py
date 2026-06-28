@@ -4113,7 +4113,7 @@ def vfs_command(
     ctx: typer.Context,
     cwd: str = typer.Option("/", "--cwd", help="Virtual working directory."),
 ):
-    """Run bash-shaped commands against Stash without mounting a filesystem."""
+    """Run bash-shaped commands against Stash sources."""
     from .app_vfs import SkillAppVfsShell
     from .mount import MountError, StashVfsModel
 
