@@ -255,6 +255,12 @@ class Settings:
         "ASANA_OAUTH_REDIRECT_URI", AUTH0_ENABLED
     )
 
+    GONG_OAUTH_CLIENT_ID: str | None = os.getenv("GONG_OAUTH_CLIENT_ID")
+    GONG_OAUTH_CLIENT_SECRET: str | None = os.getenv("GONG_OAUTH_CLIENT_SECRET")
+    GONG_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "GONG_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
+
     SLACK_OAUTH_CLIENT_ID: str | None = os.getenv("SLACK_OAUTH_CLIENT_ID")
     SLACK_OAUTH_CLIENT_SECRET: str | None = os.getenv("SLACK_OAUTH_CLIENT_SECRET")
     SLACK_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(

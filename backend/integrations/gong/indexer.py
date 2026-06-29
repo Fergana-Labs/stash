@@ -18,7 +18,6 @@ import httpx
 
 from ...services import source_service
 from ..storage import get_valid_token
-from .provider import API_BASE, basic_auth_header
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ async def _fetch_call_meta(client: httpx.AsyncClient, from_dt: str, to_dt: str) 
         params = {"fromDateTime": from_dt, "toDateTime": to_dt}
         if cursor:
             params["cursor"] = cursor
-        resp = await client.get(f"{API_BASE}/v2/calls", params=params)
+        resp = await client.get("/v2/calls", params=params)
         if resp.status_code == 404:
             break  # no calls in window
         resp.raise_for_status()
@@ -75,7 +74,7 @@ async def _fetch_transcripts(
         body: dict = {"filter": {"fromDateTime": from_dt, "toDateTime": to_dt}}
         if cursor:
             body["cursor"] = cursor
-        resp = await client.post(f"{API_BASE}/v2/calls/transcript", json=body)
+        resp = await client.post("/v2/calls/transcript", json=body)
         if resp.status_code == 404:
             break
         resp.raise_for_status()
@@ -100,11 +99,13 @@ async def index_gong(source: dict) -> str | None:
         raise RuntimeError("no allowed gong accounts configured")
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
-    headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
+    headers = {"Authorization": f"Bearer {creds['access_token']}"}
     to_dt = datetime.now(UTC).isoformat()
     from_dt = (datetime.now(UTC) - timedelta(days=LOOKBACK_DAYS)).isoformat()
 
-    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+    async with httpx.AsyncClient(
+        timeout=120.0, headers=headers, base_url=creds["api_base_url"]
+    ) as client:
         meta_by_id = await _fetch_call_meta(client, from_dt, to_dt)
         transcript_by_id = await _fetch_transcripts(client, from_dt, to_dt)
 
@@ -148,11 +149,13 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
         }
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
-    headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
+    headers = {"Authorization": f"Bearer {creds['access_token']}"}
     from_dt = since.isoformat()
     to_dt = (until or datetime.now(UTC)).isoformat()
 
-    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+    async with httpx.AsyncClient(
+        timeout=120.0, headers=headers, base_url=creds["api_base_url"]
+    ) as client:
         meta_by_id = await _fetch_call_meta(client, from_dt, to_dt)
         transcript_by_id = await _fetch_transcripts(client, from_dt, to_dt)
 

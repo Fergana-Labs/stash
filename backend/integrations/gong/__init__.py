@@ -1,4 +1,4 @@
-"""Gong integration: api_key provider.
+"""Gong integration: OAuth provider (Gong Collective marketplace app).
 
 Connected Gong calls are indexed into gong_documents by
 backend/integrations/gong/indexer.py (dispatched from backend/tasks/sources) —
