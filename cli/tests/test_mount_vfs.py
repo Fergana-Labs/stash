@@ -79,6 +79,9 @@ class FakeClient:
             {"path": "threads/msg-2", "name": "Nested note", "kind": "message"},
         ]
 
+    def list_source_entries_page(self, source, path=""):
+        return self.list_source_entries(source, path), False
+
     def read_source_doc(self, source, ref):
         assert source == "src-gmail-1"
         return {"content": f"BODY of {ref}"}

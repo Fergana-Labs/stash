@@ -671,7 +671,10 @@ async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) ->
     return int(result.split()[-1]) if result.startswith("DELETE") else 0
 
 
-async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> list[dict]:
+ENTRIES_LIMIT = 200
+
+
+async def list_documents(source: dict, prefix: str = "", limit: int = ENTRIES_LIMIT) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
     is the registry row (from get_owned_source / get_source_for_sync)."""
     table = _table_for(source["source_type"])
@@ -1193,7 +1196,7 @@ async def _audit_source_read(
 
 
 async def source_entries(
-    owner_user_id: UUID, user_id: UUID, source: str, prefix: str = ""
+    owner_user_id: UUID, user_id: UUID, source: str, prefix: str = "", limit: int = ENTRIES_LIMIT
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
@@ -1233,9 +1236,11 @@ async def source_entries(
         elif connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
-            entries = twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
+            entries = twitter_live_entries(prefix) + await list_documents(
+                connected, prefix=prefix, limit=limit
+            )
         else:
-            entries = await list_documents(connected, prefix=prefix)
+            entries = await list_documents(connected, prefix=prefix, limit=limit)
 
     await _audit_source_read(
         action="source.entries_listed",

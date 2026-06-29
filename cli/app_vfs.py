@@ -241,6 +241,12 @@ class SkillAppVfsShell:
             if name_pattern and not _name_matches(node_path, name_pattern, ignore_name_case):
                 continue
             rows.append(node_path)
+        for source_root, shown in self.model.truncated_roots_under(root):
+            self._warn(
+                f"find: '{source_root}' has more than {shown} entries; only the first "
+                f"{shown} were listed. This result is INCOMPLETE — do not treat it as the "
+                "full set."
+            )
         return "\n".join(rows) + ("\n" if rows else "")
 
     def _tree(self, args: list[str]) -> str:

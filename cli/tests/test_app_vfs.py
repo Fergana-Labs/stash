@@ -309,3 +309,34 @@ def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     assert result.exit_code == 2
     assert result.stdout == ""
     assert "Transcript not found" in result.stderr
+
+
+class TruncatedSourceClient(FakeClient):
+    """The server caps a source's listing. The VFS must announce that the tree
+    is partial — silently returning the first page reads as "this is everything"
+    and produces confident-wrong conclusions about what a source contains."""
+
+    def list_source_entries_page(self, source, path=""):
+        return self.list_source_entries(source, path), True
+
+
+def test_find_warns_loudly_when_a_source_listing_is_truncated():
+    shell, _client = _shell(TruncatedSourceClient())
+
+    result = shell.run("find /sources/gmail -type f")
+
+    # The rows it did get still come back on stdout, uncorrupted by the warning.
+    assert "/sources/gmail/Welcome email" in result.stdout
+    # The incompleteness is surfaced on stderr — not hidden, not mixed into the
+    # file list where a pipe to `wc -l` would silently count it.
+    assert "INCOMPLETE" in result.stderr
+    assert "/sources/gmail" in result.stderr
+
+
+def test_find_is_silent_when_a_source_listing_is_complete():
+    shell, _client = _shell()  # base FakeClient reports not-truncated
+
+    result = shell.run("find /sources/gmail -type f")
+
+    assert "/sources/gmail/Welcome email" in result.stdout
+    assert "INCOMPLETE" not in result.stderr

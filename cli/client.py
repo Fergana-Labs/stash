@@ -17,6 +17,11 @@ class StashError(Exception):
         super().__init__(f"[{status_code}] {detail}")
 
 
+# How many entries the VFS materializes per source. The server caps listings;
+# matching that here lets us request one extra row to detect truncation.
+SOURCE_ENTRIES_PAGE = 200
+
+
 class StashClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
@@ -528,6 +533,20 @@ class StashClient:
 
     def list_source_entries(self, source: str, path: str = "") -> list:
         return self._list(f"/api/v1/me/sources/{source}/entries", "entries", path=path)
+
+    def list_source_entries_page(self, source: str, path: str = "") -> tuple[list, bool]:
+        """List a source's entries, reporting whether the server truncated them.
+
+        We ask for one row beyond the page size; if it comes back, more rows
+        exist than were returned, so the listing is incomplete."""
+        data = self._get(
+            f"/api/v1/me/sources/{source}/entries",
+            path=path,
+            limit=SOURCE_ENTRIES_PAGE + 1,
+        )
+        entries = data.get("entries", []) if isinstance(data, dict) else data
+        truncated = len(entries) > SOURCE_ENTRIES_PAGE
+        return entries[:SOURCE_ENTRIES_PAGE], truncated
 
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._get(f"/api/v1/me/sources/{source}/doc", ref=ref)

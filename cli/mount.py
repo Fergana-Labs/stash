@@ -51,10 +51,14 @@ class StashVfsModel:
         # contents are materialized only when something first descends into it, so
         # listing source names stays cheap no matter how large the source is.
         self._expanders: dict[str, Callable[[], None]] = {}
+        # Source-root path -> entries shown, for sources the server truncated.
+        # Lets listing commands warn that the tree is incomplete.
+        self._truncated: dict[str, int] = {}
 
     def refresh(self) -> None:
         self.nodes = {}
         self._expanders = {}
+        self._truncated = {}
         self._add_dir("/")
         self._add_root()
         self._add_static_file(
@@ -312,10 +316,21 @@ class StashVfsModel:
 
     def _expand_source(self, source_root: str, handle: str) -> None:
         try:
-            entries = self.client.list_source_entries(handle, "")
+            entries, truncated = self.client.list_source_entries_page(handle, "")
         except StashError:
             return
+        if truncated:
+            self._truncated[source_root] = len(entries)
         self._add_source_entries(source_root, handle, entries)
+
+    def truncated_roots_under(self, root: str) -> list[tuple[str, int]]:
+        """Truncated source roots overlapping `root` (root contains the source,
+        or sits inside it). Returns (source_root, entries_shown) pairs."""
+        return sorted(
+            (s, shown)
+            for s, shown in self._truncated.items()
+            if s == root or s.startswith(root.rstrip("/") + "/") or root.startswith(s + "/")
+        )
 
     def _add_source_entries(self, source_root: str, handle: str, entries: list[dict]) -> None:
         parent_refs = _ancestor_refs(entries)
