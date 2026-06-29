@@ -128,48 +128,50 @@ export function HeroFunnel() {
 function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-border-subtle">
-      <Texture className="h-[820px]" fade="top" />
+      <Texture className="h-[760px]" fade="top" />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[720px]"
+        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[680px]"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 4%, rgba(249,115,22,0.12), transparent 62%)",
+            "radial-gradient(ellipse 80% 60% at 18% 8%, rgba(249,115,22,0.10), transparent 60%)",
         }}
       />
-      <div className="relative z-10 mx-auto max-w-[1000px] px-7 pb-16 pt-20 text-center lg:pb-24 lg:pt-28">
-        <h1 className="mx-auto max-w-[880px] text-balance font-display text-[clamp(42px,6vw,78px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
-          Company Brain for agents{" "}
-          <span className="text-brand">and humans.</span>
-        </h1>
+      <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-16 pt-20 lg:pb-24 lg:pt-28">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:items-center lg:gap-16">
+          <div>
+            <h1 className="text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
+              Company Brain for agents{" "}
+              <span className="text-brand">and humans.</span>
+            </h1>
 
-        <p className="mx-auto mt-7 max-w-[680px] text-[18px] leading-[1.55] text-foreground">
-          Stash connects all your tools and captures every agent session, builds
-          them into one context graph, and serves it to your agents as a virtual
-          filesystem (VFS) they can read, search, and write back into.
-        </p>
+            <p className="mt-7 max-w-[560px] text-[18px] leading-[1.55] text-foreground">
+              Stash connects all your tools and captures every agent session,
+              builds them into one context graph, and serves it to your agents as
+              a virtual filesystem (VFS) they can read, search, and write back
+              into.
+            </p>
 
-        <div className="mt-9 flex justify-center">
-          <CtaPair align="center" />
-        </div>
+            <div className="mt-9">
+              <CtaPair />
+            </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-[12px] text-dim">
-          <Link
-            href="https://github.com/Fergana-Labs/stash"
-            className="inline-flex items-center gap-2 transition hover:text-ink"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
-            </svg>
-            Open source
-          </Link>
-          <span className="text-border">·</span>
-          <span>MIT licensed</span>
-          <span className="text-border">·</span>
-          <span>Self-hostable</span>
-        </div>
-
-        <div className="mx-auto mt-14 max-w-[900px]">
+            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[12px] text-dim">
+              <Link
+                href="https://github.com/Fergana-Labs/stash"
+                className="inline-flex items-center gap-2 transition hover:text-ink"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+                </svg>
+                Open source
+              </Link>
+              <span className="text-border">·</span>
+              <span>MIT licensed</span>
+              <span className="text-border">·</span>
+              <span>Self-hostable</span>
+            </div>
+          </div>
           <HeroTerminal />
         </div>
       </div>
