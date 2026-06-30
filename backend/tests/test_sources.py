@@ -2725,6 +2725,54 @@ async def test_shared_source_is_searchable_by_recipient(client: AsyncClient, poo
 
 
 @pytest.mark.asyncio
+async def test_delegated_read_is_audited_to_the_source_owner(client: AsyncClient, pool):
+    """When a recipient reads a shared source, the audit trail lands in the
+    OWNER's log (owner_user_id = source owner) with the recipient as the actor —
+    so the owner can see who read what they shared, not just their own reads."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-audit",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_id,
+        path="#eng/1.ts",
+        name="msg",
+        kind="message",
+        content="the postgres migration is blocked on review",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # The recipient reads the shared source (routers pass current_user as both
+    # the owner and viewer arg — the recipient is acting in their own request).
+    await source_service.source_entries(friend_id, friend_id, str(source_id))
+
+    row = await pool.fetchrow(
+        "SELECT owner_user_id, actor_user_id, target_id FROM security_audit_events "
+        "WHERE action = 'source.entries_listed' AND target_id = $1",
+        str(source_id),
+    )
+    assert row is not None
+    # Attributed to the data owner, actioned by the recipient.
+    assert str(row["owner_user_id"]) == str(owner_id)
+    assert str(row["actor_user_id"]) == str(friend_id)
+
+
+@pytest.mark.asyncio
 async def test_folder_share_does_not_grant_source_access(client: AsyncClient, pool):
     """Sources have no container: a folder share must NOT cascade into read
     access to a source. Only a direct source share grants it."""

@@ -1195,6 +1195,11 @@ async def _audit_source_read(
         target_id = connected["id"]
         source_type = connected["source_type"]
         provider = SOURCE_TYPE_PROVIDER.get(source_type)
+        # Delegated read: a recipient reads a shared source through Stash, but the
+        # data belongs to the source owner. Attribute the trail to the owner so it
+        # lands in the OWNER's audit log — that's how they see who read what they
+        # shared. The reader is still recorded as the actor.
+        owner_user_id = UUID(connected["owner_user_id"])
 
     await security_audit_service.record_event(
         action=action,
