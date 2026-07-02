@@ -1235,3 +1235,119 @@ async def test_overview_counts_span_shared_not_unshared(pool):
     assert owner_counts["pages"] >= 2
     assert friend_counts["pages"] == 1
     assert stranger_counts["pages"] == 0
+
+
+_PREDICATE_TABLE = {
+    "folder": "folders",
+    "page": "pages",
+    "file": "files",
+    "table": "tables",
+    "session": "sessions",
+}
+
+
+async def _predicate_says(pool, object_type, object_id, user_id, require):
+    """Run readable_content_condition as a WHERE against the single row — the SQL
+    shape of the same question check_access answers as a boolean."""
+    predicate = permission_service.readable_content_condition(object_type, "obj", 2, require)
+    table = _PREDICATE_TABLE[object_type]
+    return bool(
+        await pool.fetchval(
+            f"SELECT EXISTS (SELECT 1 FROM {table} obj WHERE obj.id = $1 AND {predicate})",
+            object_id,
+            user_id,
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_predicate_and_check_access_agree(pool):
+    """Keystone anti-drift guard: the SQL predicate (run as a WHERE) and the
+    check_access boolean must return the SAME verdict for every resource type,
+    grant, viewer, and level. They are two shapes of one rule; if they ever
+    disagree, the rule has been forked — which is exactly the bug this refactor
+    removes."""
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    stranger = await _make_user(pool)
+    scope = await _make_scope(pool, owner)
+
+    folder = await _make_folder(pool, scope, owner)
+    page = await _make_page(pool, scope, owner, folder_id=folder)
+    fil = await _make_file(pool, scope, owner, folder_id=folder)
+    tbl = await _make_table(pool, scope, owner, folder_id=folder)
+    sess = await _make_session(pool, scope, owner, session_id="equiv-sess")
+
+    # A read-share of the folder cascades to its page/file/table; the session is
+    # shared directly. Exercises owner, share-via-ancestor, direct share, denial.
+    await _share(pool, scope, "folder", folder, friend, "read", by=owner)
+    await _share(pool, scope, "session", sess, friend, "read", by=owner)
+
+    objects = [
+        ("folder", folder),
+        ("page", page),
+        ("file", fil),
+        ("table", tbl),
+        ("session", sess),
+    ]
+    for object_type, object_id in objects:
+        for viewer in (owner, friend, stranger, None):
+            for require in ("read", "comment", "write"):
+                boolean = await permission_service.check_access(
+                    object_type, object_id, viewer, require=require
+                )
+                predicate = await _predicate_says(pool, object_type, object_id, viewer, require)
+                assert boolean == predicate, (
+                    f"DRIFT {object_type} viewer={viewer} require={require}: "
+                    f"boolean={boolean} predicate={predicate}"
+                )
+
+    # Published-skill folder: stranger and anonymous get READ (never write), and
+    # the predicate must agree. This is the public-read branch the refactor folded
+    # into the one predicate, so it gets an explicit equivalence check.
+    pub_folder = await _make_folder(pool, scope, owner, name="pub-skill")
+    pub_page = await _make_page(pool, scope, owner, folder_id=pub_folder)
+    await shared_skill_service.publish_folder(scope, owner, pub_folder, title="Pub")
+    for viewer in (stranger, None):
+        for require in ("read", "write"):
+            boolean = await permission_service.check_access(
+                "page", pub_page, viewer, require=require
+            )
+            predicate = await _predicate_says(pool, "page", pub_page, viewer, require)
+            assert boolean == predicate
+            assert boolean is (require == "read")
+
+
+@pytest.mark.asyncio
+async def test_session_folder_owner_reads_sessions_they_do_not_own(pool):
+    """A session-folder owner can READ every session filed under their folder —
+    even sessions owned by someone else — and only at read level. Regression
+    guard: the unified predicate must keep the folder-owner grant that the old
+    _session_folder_open provided. (Equivalence alone can't catch this: predicate
+    and boolean now agree by construction, so this asserts the actual decision.)"""
+    folder_owner = await _make_user(pool)
+    session_owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    folder = await pool.fetchval(
+        "INSERT INTO session_folders (owner_user_id, name, slug) "
+        "VALUES ($1, 'shared', 'shared-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
+        "RETURNING id",
+        folder_owner,
+    )
+    session_row = await _make_session(pool, session_owner, session_owner, session_id="sf-owner-1")
+    await pool.execute(
+        "UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, folder
+    )
+
+    # Folder owner reads a session they don't own; stranger cannot.
+    assert await permission_service.check_access("session", session_row, folder_owner)
+    assert not await permission_service.check_access("session", session_row, stranger)
+    # The grant is read-only — folder ownership confers no write.
+    assert not await permission_service.check_access(
+        "session", session_row, folder_owner, require="write"
+    )
+    # Predicate and boolean agree on every viewer for this scenario.
+    for viewer in (folder_owner, session_owner, stranger):
+        boolean = await permission_service.check_access("session", session_row, viewer)
+        predicate = await _predicate_says(pool, "session", session_row, viewer, "read")
+        assert boolean == predicate

@@ -417,7 +417,7 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
 async def test_connected_source_is_user_scoped(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     other_key, other_id = await _register(client, "other")
-    ws = await _user_scope(client, owner_key)
+    await _user_scope(client, owner_key)
 
     src = await source_service.create_source(
         owner_user_id=owner_id,
@@ -429,10 +429,8 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
     source_id = UUID(src["id"])
 
     # Owner sees it; the other user does not.
-    assert any(
-        s["id"] == src["id"] for s in await source_service.list_connected_sources(ws, owner_id)
-    )
-    assert await source_service.list_connected_sources(ws, other_id) == []
+    assert any(s["id"] == src["id"] for s in await source_service.list_connected_sources(owner_id))
+    assert await source_service.list_connected_sources(other_id) == []
     assert await source_service.get_owned_source(source_id, owner_id) is not None
     assert await source_service.get_owned_source(source_id, other_id) is None
 
@@ -534,13 +532,9 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
 
-    owner_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="postgres migration"
-    )
+    owner_hits = await source_service.search_documents(user_id=owner_id, query="postgres migration")
     assert len(owner_hits) == 1
-    other_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=other_id, query="postgres migration"
-    )
+    other_hits = await source_service.search_documents(user_id=other_id, query="postgres migration")
     assert other_hits == []
 
 
@@ -1160,12 +1154,7 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert await source_service.list_documents(unconfigured) == []
     assert await source_service.read_document(unconfigured, "general/1") is None
     assert await source_service.source_item_count(unconfigured) == 0
-    assert (
-        await source_service.search_documents(
-            owner_user_id=ws, user_id=owner_id, query="secret launch"
-        )
-        == []
-    )
+    assert await source_service.search_documents(user_id=owner_id, query="secret launch") == []
 
     configured = await source_service.create_source(
         owner_user_id=owner_id,
@@ -1201,12 +1190,8 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert [doc["path"] for doc in docs] == ["general/1"]
     assert await source_service.read_document(configured, "exec/1") is None
     assert await source_service.source_item_count(configured) == 1
-    allowed_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="allowed roadmap"
-    )
-    blocked_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="blocked board"
-    )
+    allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed roadmap")
+    blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked board")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
 
@@ -1236,12 +1221,7 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     assert await source_service.list_documents(unconfigured) == []
     assert await source_service.read_document(unconfigured, "call-1") is None
     assert await source_service.source_item_count(unconfigured) == 0
-    assert (
-        await source_service.search_documents(
-            owner_user_id=ws, user_id=owner_id, query="secret revenue"
-        )
-        == []
-    )
+    assert await source_service.search_documents(user_id=owner_id, query="secret revenue") == []
 
     configured = await source_service.create_source(
         owner_user_id=owner_id,
@@ -1277,12 +1257,8 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     assert [doc["path"] for doc in docs] == ["call-1"]
     assert await source_service.read_document(configured, "call-2") is None
     assert await source_service.source_item_count(configured) == 1
-    allowed_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="allowed revenue"
-    )
-    blocked_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="blocked revenue"
-    )
+    allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed revenue")
+    blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked revenue")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
 
@@ -1507,7 +1483,7 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
     owner_b_key, owner_b = await _register(client, "b")
-    ws = await _user_scope(client, owner_a_key)
+    await _user_scope(client, owner_a_key)
     src_a = await source_service.create_source(
         owner_user_id=owner_a,
         source_type="slack",
@@ -1530,14 +1506,10 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     assert n == 1
 
     # Each owner sees only their own source and only if that source allowed the channel.
-    a_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_a, query="ship sources"
-    )
+    a_hits = await source_service.search_documents(user_id=owner_a, query="ship sources")
     assert any(h["source_id"] == src_a["id"] for h in a_hits)
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
-    b_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_b, query="ship sources"
-    )
+    b_hits = await source_service.search_documents(user_id=owner_b, query="ship sources")
     assert b_hits == []
 
 
@@ -2608,3 +2580,257 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
     hit = next(r for r in results if r["ref"] == "FER-199")
     assert hit["source"] == src["id"]
     assert hit["name"] == "FER-199 Make Linear a real source"
+
+
+@pytest.mark.asyncio
+async def test_connected_source_is_shareable_read_only(client: AsyncClient, pool):
+    """A connected source can be shared (read). The recipient reads its content
+    through Stash (delegated to the OWNER's token, never the token itself) and
+    sees it listed; management/sync stay owner-only; unsharing revokes access."""
+    from backend.services import share_service
+
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-share",
+        display_name="Shared Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+
+    # 'source' is a permitted share target now (would raise 400 before).
+    await share_service.share_with_user_by_email(
+        object_type="source",
+        object_id=source_id,
+        email="invitee@example.com",
+        permission="read",
+        owner_id=owner_id,
+    )
+    # Only the owner may share it.
+    with pytest.raises(Exception):
+        await share_service.share_with_user_by_email(
+            object_type="source",
+            object_id=source_id,
+            email="invitee@example.com",
+            permission="read",
+            owner_id=friend_id,
+        )
+
+    # Before a share lands: friend can't read, list, or manage.
+    assert await source_service.get_readable_source(source_id, friend_id) is None
+    assert await source_service.list_connected_sources(friend_id) == []
+    assert await source_service.get_owned_source(source_id, friend_id) is None
+
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # Now friend reads the source and sees it listed.
+    shared = await source_service.get_readable_source(source_id, friend_id)
+    assert shared is not None
+    # Row keeps the real owner, so reads delegate to the OWNER's token...
+    assert shared["owner_user_id"] == str(owner_id)
+    # ...and the token is never part of the row handed to the recipient.
+    assert not any("token" in key for key in shared)
+    assert any(s["id"] == src["id"] for s in await source_service.list_connected_sources(friend_id))
+
+    # Management and sync remain owner-only.
+    assert await source_service.get_owned_source(source_id, friend_id) is None
+
+    # Unshare → access revoked immediately.
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type='source' AND object_id=$1 AND principal_id=$2",
+        source_id,
+        friend_id,
+    )
+    assert await source_service.get_readable_source(source_id, friend_id) is None
+    assert await source_service.list_connected_sources(friend_id) == []
+
+
+@pytest.mark.asyncio
+async def test_shared_source_is_searchable_by_recipient(client: AsyncClient, pool):
+    """A read-share lets the recipient FTS-search the source's copied content;
+    a non-sharee gets nothing."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    _, stranger_id = await _register(client, "stranger")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-search",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_id,
+        path="#eng/1.ts",
+        name="msg",
+        kind="message",
+        content="the postgres migration is blocked on review",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+
+    # Before the share: recipient can't search it.
+    assert (
+        await source_service.search_documents(user_id=friend_id, query="postgres migration") == []
+    )
+
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # Now the recipient's search finds the shared source's content.
+    assert (
+        len(await source_service.search_documents(user_id=friend_id, query="postgres migration"))
+        == 1
+    )
+    # An unrelated user still finds nothing.
+    assert (
+        await source_service.search_documents(user_id=stranger_id, query="postgres migration") == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_delegated_read_is_audited_to_the_source_owner(client: AsyncClient, pool):
+    """When a recipient reads a shared source, the audit trail lands in the
+    OWNER's log (owner_user_id = source owner) with the recipient as the actor —
+    so the owner can see who read what they shared, not just their own reads."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-audit",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_id,
+        path="#eng/1.ts",
+        name="msg",
+        kind="message",
+        content="the postgres migration is blocked on review",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # The recipient reads the shared source (routers pass current_user as both
+    # the owner and viewer arg — the recipient is acting in their own request).
+    await source_service.source_entries(friend_id, friend_id, str(source_id))
+
+    row = await pool.fetchrow(
+        "SELECT owner_user_id, actor_user_id, target_id FROM security_audit_events "
+        "WHERE action = 'source.entries_listed' AND target_id = $1",
+        str(source_id),
+    )
+    assert row is not None
+    # Attributed to the data owner, actioned by the recipient.
+    assert str(row["owner_user_id"]) == str(owner_id)
+    assert str(row["actor_user_id"]) == str(friend_id)
+
+
+@pytest.mark.asyncio
+async def test_folder_share_does_not_grant_source_access(client: AsyncClient, pool):
+    """Sources have no container: a folder share must NOT cascade into read
+    access to a source. Only a direct source share grants it."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    folder = await pool.fetchval(
+        "INSERT INTO folders (owner_user_id, name, created_by) VALUES ($1, 'docs', $1) RETURNING id",
+        owner_id,
+    )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'folder',$2,'user',$3,'read',$1)",
+        owner_id,
+        folder,
+        friend_id,
+    )
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-nocascade",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    # Folder share grants the friend nothing on the source.
+    assert await source_service.get_readable_source(source_id, friend_id) is None
+    assert await source_service.list_connected_sources(friend_id) == []
+
+    # A direct source share does grant it.
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+    assert await source_service.get_readable_source(source_id, friend_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_source_recipient_cannot_reshare_or_share_write(client: AsyncClient, pool):
+    """A read-sharee cannot re-share the source (only the owner can), and a
+    source can never be shared above read."""
+    from backend.services import share_service
+
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-reshare",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # The recipient can read it but cannot re-share it onward.
+    assert await source_service.get_readable_source(source_id, friend_id) is not None
+    with pytest.raises(Exception):
+        await share_service.share_with_user_by_email(
+            object_type="source",
+            object_id=source_id,
+            email="third@example.com",
+            permission="read",
+            owner_id=friend_id,
+        )
+    # Even the owner cannot grant above read on a source.
+    with pytest.raises(Exception):
+        await share_service.share_with_user_by_email(
+            object_type="source",
+            object_id=source_id,
+            email="third@example.com",
+            permission="write",
+            owner_id=owner_id,
+        )
