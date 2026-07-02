@@ -121,7 +121,9 @@ _LEVEL_SHARE_FILTER = {
 }
 
 
-def _public_read_container_condition(object_type: str, object_alias: str, user_arg: int) -> str | None:
+def _public_read_container_condition(
+    object_type: str, object_alias: str, user_arg: int
+) -> str | None:
     """Read-only access a session inherits from its session folder: the folder is
     public, OR the viewer owns the folder — a folder owner reads every session
     filed under it, even sessions they don't own. Content rows use the published-

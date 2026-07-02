@@ -429,9 +429,7 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
     source_id = UUID(src["id"])
 
     # Owner sees it; the other user does not.
-    assert any(
-        s["id"] == src["id"] for s in await source_service.list_connected_sources(owner_id)
-    )
+    assert any(s["id"] == src["id"] for s in await source_service.list_connected_sources(owner_id))
     assert await source_service.list_connected_sources(other_id) == []
     assert await source_service.get_owned_source(source_id, owner_id) is not None
     assert await source_service.get_owned_source(source_id, other_id) is None
@@ -534,13 +532,9 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
 
-    owner_hits = await source_service.search_documents(
-        user_id=owner_id, query="postgres migration"
-    )
+    owner_hits = await source_service.search_documents(user_id=owner_id, query="postgres migration")
     assert len(owner_hits) == 1
-    other_hits = await source_service.search_documents(
-        user_id=other_id, query="postgres migration"
-    )
+    other_hits = await source_service.search_documents(user_id=other_id, query="postgres migration")
     assert other_hits == []
 
 
@@ -1160,12 +1154,7 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert await source_service.list_documents(unconfigured) == []
     assert await source_service.read_document(unconfigured, "general/1") is None
     assert await source_service.source_item_count(unconfigured) == 0
-    assert (
-        await source_service.search_documents(
-            user_id=owner_id, query="secret launch"
-        )
-        == []
-    )
+    assert await source_service.search_documents(user_id=owner_id, query="secret launch") == []
 
     configured = await source_service.create_source(
         owner_user_id=owner_id,
@@ -1201,12 +1190,8 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert [doc["path"] for doc in docs] == ["general/1"]
     assert await source_service.read_document(configured, "exec/1") is None
     assert await source_service.source_item_count(configured) == 1
-    allowed_hits = await source_service.search_documents(
-        user_id=owner_id, query="allowed roadmap"
-    )
-    blocked_hits = await source_service.search_documents(
-        user_id=owner_id, query="blocked board"
-    )
+    allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed roadmap")
+    blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked board")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
 
@@ -1236,12 +1221,7 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     assert await source_service.list_documents(unconfigured) == []
     assert await source_service.read_document(unconfigured, "call-1") is None
     assert await source_service.source_item_count(unconfigured) == 0
-    assert (
-        await source_service.search_documents(
-            user_id=owner_id, query="secret revenue"
-        )
-        == []
-    )
+    assert await source_service.search_documents(user_id=owner_id, query="secret revenue") == []
 
     configured = await source_service.create_source(
         owner_user_id=owner_id,
@@ -1277,12 +1257,8 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     assert [doc["path"] for doc in docs] == ["call-1"]
     assert await source_service.read_document(configured, "call-2") is None
     assert await source_service.source_item_count(configured) == 1
-    allowed_hits = await source_service.search_documents(
-        user_id=owner_id, query="allowed revenue"
-    )
-    blocked_hits = await source_service.search_documents(
-        user_id=owner_id, query="blocked revenue"
-    )
+    allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed revenue")
+    blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked revenue")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
 
@@ -1530,14 +1506,10 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     assert n == 1
 
     # Each owner sees only their own source and only if that source allowed the channel.
-    a_hits = await source_service.search_documents(
-        user_id=owner_a, query="ship sources"
-    )
+    a_hits = await source_service.search_documents(user_id=owner_a, query="ship sources")
     assert any(h["source_id"] == src_a["id"] for h in a_hits)
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
-    b_hits = await source_service.search_documents(
-        user_id=owner_b, query="ship sources"
-    )
+    b_hits = await source_service.search_documents(user_id=owner_b, query="ship sources")
     assert b_hits == []
 
 
@@ -2708,7 +2680,9 @@ async def test_shared_source_is_searchable_by_recipient(client: AsyncClient, poo
     )
 
     # Before the share: recipient can't search it.
-    assert await source_service.search_documents(user_id=friend_id, query="postgres migration") == []
+    assert (
+        await source_service.search_documents(user_id=friend_id, query="postgres migration") == []
+    )
 
     await pool.execute(
         "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
@@ -2719,9 +2693,14 @@ async def test_shared_source_is_searchable_by_recipient(client: AsyncClient, poo
     )
 
     # Now the recipient's search finds the shared source's content.
-    assert len(await source_service.search_documents(user_id=friend_id, query="postgres migration")) == 1
+    assert (
+        len(await source_service.search_documents(user_id=friend_id, query="postgres migration"))
+        == 1
+    )
     # An unrelated user still finds nothing.
-    assert await source_service.search_documents(user_id=stranger_id, query="postgres migration") == []
+    assert (
+        await source_service.search_documents(user_id=stranger_id, query="postgres migration") == []
+    )
 
 
 @pytest.mark.asyncio
