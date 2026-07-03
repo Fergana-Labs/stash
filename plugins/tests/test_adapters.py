@@ -193,6 +193,7 @@ def test_push_event_stamps_client_into_metadata():
         agent_name="henry",
         event_type="tool_use",
         content="...",
+        session_id="s1",
         tool_name="edit",
         metadata={"cwd": "/tmp"},
         client="cursor",
@@ -205,6 +206,7 @@ def test_push_event_stamps_client_into_metadata():
         agent_name="henry",
         event_type="user_message",
         content="hi",
+        session_id="s1",
         client="claude_code",
     )
     body = calls[-1][1]["json"]
@@ -214,6 +216,7 @@ def test_push_event_stamps_client_into_metadata():
         agent_name="henry",
         event_type="user_message",
         content="hi",
+        session_id="s1",
     )
     body = calls[-1][1]["json"]
     assert "metadata" not in body
