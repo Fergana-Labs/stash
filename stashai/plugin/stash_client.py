@@ -96,13 +96,14 @@ class StashClient:
     def push_event(
         self,
         agent_name: str, event_type: str, content: str,
-        session_id: str | None = None, tool_name: str | None = None,
+        session_id: str, tool_name: str | None = None,
         metadata: dict | None = None, client: str | None = None,
         session_folder_id: str | None = None,
     ) -> dict:
-        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
-        if session_id:
-            body["session_id"] = session_id
+        body: dict = {
+            "agent_name": agent_name, "event_type": event_type,
+            "content": content, "session_id": session_id,
+        }
         # Pin streamed on every event so the session lands in the right folder
         # no matter which event creates the row (agents without a session-start
         # hook create it from the first event, not from create_session).

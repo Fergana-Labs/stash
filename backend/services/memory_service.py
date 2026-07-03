@@ -96,7 +96,7 @@ async def push_event(
     event_type: str,
     content: str,
     created_by: UUID,
-    session_id: str | None = None,
+    session_id: str,
     session_folder_id: UUID | None = None,
     tool_name: str | None = None,
     metadata: dict | None = None,
@@ -252,15 +252,13 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """SQL predicate: may user ${user_arg} read the session this history_events
     row belongs to? Resolves the row to its session and delegates to the one
     access predicate for 'session' (owner / a live session or session-folder
-    share / a public session folder) — no duplicated share logic. Events with no
-    session_id are bookkeeping rows scoped to their owner by the outer query."""
+    share / a public session folder) — no duplicated share logic."""
     session_access = permission_service.readable_content_condition(
         "session", "readable_session", user_arg
     )
     return f"""
         (
-          {event_alias}.session_id IS NULL
-          OR EXISTS (
+          EXISTS (
             SELECT 1
             FROM sessions readable_session
             WHERE readable_session.owner_user_id = {event_alias}.owner_user_id

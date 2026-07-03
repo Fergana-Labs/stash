@@ -336,15 +336,18 @@ class StashClient:
         agent_name: str,
         event_type: str,
         content: str,
-        session_id: str | None = None,
+        session_id: str,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
         created_at: str | None = None,
     ) -> dict:
-        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
-        if session_id:
-            body["session_id"] = session_id
+        body: dict = {
+            "agent_name": agent_name,
+            "event_type": event_type,
+            "content": content,
+            "session_id": session_id,
+        }
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
