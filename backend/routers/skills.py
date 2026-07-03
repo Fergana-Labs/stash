@@ -350,7 +350,9 @@ async def fork_skill(
     # Forking writes new pages/files/sessions into the scope — same bar as
     # creating a Skill.
     if not await user_scope_service.can_write(req.owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="You have read-only access and cannot create Skills")
+        raise HTTPException(
+            status_code=403, detail="You have read-only access and cannot create Skills"
+        )
     forked = await shared_skill_service.fork_skill(req.owner_user_id, slug, current_user["id"])
     if not forked:
         raise HTTPException(status_code=404, detail="Skill not found")

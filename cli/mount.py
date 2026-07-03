@@ -256,7 +256,9 @@ class StashVfsModel:
         self._add_dir(tables_path)
         tables = self.client.list_tables()
         self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
-        ambiguous = _ambiguous_basenames([_safe_name(table.get("name") or "table") for table in tables])
+        ambiguous = _ambiguous_basenames(
+            [_safe_name(table.get("name") or "table") for table in tables]
+        )
         for table in tables:
             table_id = str(table["id"])
             created_at = table.get("created_at")

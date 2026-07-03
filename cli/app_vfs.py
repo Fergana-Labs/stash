@@ -381,8 +381,13 @@ class SkillAppVfsShell:
 
         if stdin is not None and not paths:
             output = _grep_text(
-                regex, stdin, "", show_line_numbers=False, prefix_path=False,
-                before=before, after=after,
+                regex,
+                stdin,
+                "",
+                show_line_numbers=False,
+                prefix_path=False,
+                before=before,
+                after=after,
             )
             if not output:
                 raise VfsShellExit(1)

@@ -1382,9 +1382,7 @@ async def _member_tree(source: dict, depth: int, per_dir: int) -> list[dict]:
     return build_entry_tree(entries, depth, per_dir)
 
 
-async def _provider_tree_node(
-    provider: str, members: list[dict], depth: int, per_dir: int
-) -> dict:
+async def _provider_tree_node(provider: str, members: list[dict], depth: int, per_dir: int) -> dict:
     """One provider folder for the sources filesystem. A single connection
     collapses — its documents sit directly in the provider folder. Multiple
     connections each become a subfolder named after the connection."""

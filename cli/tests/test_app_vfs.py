@@ -80,9 +80,7 @@ def _page_path(shell: SkillAppVfsShell) -> str:
         name for name in shell.model.list_dir(files_path) if name.startswith("Notes")
     )
     folder_path = f"{files_path}/{folder_name}"
-    page_name = next(
-        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan")
-    )
+    page_name = next(name for name in shell.model.list_dir(folder_path) if name.startswith("Plan"))
     return f"{folder_path}/{page_name}"
 
 
@@ -121,9 +119,7 @@ def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
     assert _ls_time(page_node.updated_at) in shell.run(f"ls -l {page_path}").stdout
 
     # An uploaded file is immutable, so its modified-time is its creation time.
-    file_name = next(
-        name for name in shell.model.list_dir("/files") if name.startswith("diagram")
-    )
+    file_name = next(name for name in shell.model.list_dir("/files") if name.startswith("diagram"))
     file_node = shell.model._get_node(f"/files/{file_name}")
     assert file_node.updated_at == file_node.created_at is not None
 
