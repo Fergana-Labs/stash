@@ -170,6 +170,11 @@ export default function ThreeDimensionsPage() {
             First, I&rsquo;ll claim that you shouldn&rsquo;t use a knowledge graph
             as your <em>primary</em> way of representing memory.
           </p>
+          <img
+            src="/blog/joy-breakup.png"
+            alt="iMessage from Joy reading “I broke up with Dylan…”"
+            className="mx-auto w-full max-w-[360px] rounded-xl border border-border-subtle"
+          />
           <p className="text-[14px] italic text-muted">
             Any similarity to actual persons living or dead is purely coincidental
           </p>
@@ -236,6 +241,11 @@ export default function ThreeDimensionsPage() {
               the agent. Eg most 2023-era RAG systems
             </li>
           </ul>
+          <img
+            src="/blog/memgpt-architecture.png"
+            alt="MemGPT architecture diagram from the Letta paper, showing the LLM context window split into system instructions, working context, and a FIFO queue, backed by archival and recall storage."
+            className="mx-auto w-full rounded-xl border border-border-subtle"
+          />
           <p className="text-[14px] italic text-muted">
             In Letta&rsquo;s original MemGPT paper, the LLM decides when to pull
             memory into its context.
