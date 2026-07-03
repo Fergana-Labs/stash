@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "How to Build a Company Brain · Stash",
+  title:
+    "Giving yourself superpowers: Advice on building a simple company brain · Stash",
   description:
     "An opinionated take on the right way to build a company brain so your AI agents can do real knowledge work: integrations, retrieval, memory, and privacy.",
 };
@@ -18,7 +19,7 @@ export default function HowToBuildACompanyBrainPage() {
           Blog
         </p>
         <h1 className="mt-5 text-balance font-display text-[clamp(32px,4.4vw,52px)] font-black leading-[1.04] tracking-[-0.035em] text-ink">
-          How to Build a Company Brain
+          Giving yourself superpowers: Advice on building a simple company brain
         </h1>
         <p className="mt-5 text-[14px] text-muted">By Henry Dowling · June 2026</p>
 
@@ -108,6 +109,11 @@ export default function HowToBuildACompanyBrainPage() {
             </a>{" "}
             of a guy using a company brain.
           </p>
+          <img
+            src="/blog/dflieb-company-brain.png"
+            alt="Tweet from David Lieb (@dflieb): “It's so nice having our YC company brain have access to slack, so I can use my agent to….search slack.”"
+            className="mx-auto w-full max-w-[540px] rounded-xl border border-border-subtle"
+          />
 
           <h2>How to actually build a company brain</h2>
           <p>
@@ -143,45 +149,11 @@ export default function HowToBuildACompanyBrainPage() {
             more and more integrations. Encrypt these fields in this DB at rest
             unless you want your CISO to get mad at you.
           </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Integration name</th>
-                <th>client_id (encrypted)</th>
-                <th>client_secret</th>
-                <th>Bearer auth token (encrypted)</th>
-                <th>Refresh token (encrypted)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Jira</td>
-                <td>
-                  <code>peorjaerp</code>
-                </td>
-                <td>
-                  <code>qewtwqep</code>
-                </td>
-                <td>
-                  <code>qweiojraso</code>
-                </td>
-                <td>
-                  <code>asdfkljh</code>
-                </td>
-              </tr>
-              <tr>
-                <td>Granola</td>
-                <td>
-                  <code>epjaewr</code>
-                </td>
-                <td>
-                  <code>iflguhdig</code>
-                </td>
-                <td>&mdash;</td>
-                <td>&mdash;</td>
-              </tr>
-            </tbody>
-          </table>
+          <img
+            src="/blog/integrations-auth-table.png"
+            alt="A central integrations table storing encrypted client_id, client_secret, bearer auth token, and refresh token per integration (Jira and Granola shown)."
+            className="w-full rounded-xl border border-border-subtle"
+          />
 
           <h3>Give your AI great retrieval and memory</h3>
           <p>
@@ -242,6 +214,11 @@ export default function HowToBuildACompanyBrainPage() {
             your business. We built a Claude Code plugin that automatically
             uploads these artifacts to the company brain after every conversation.
           </p>
+          <img
+            src="/blog/gong-data-retention-report.png"
+            alt="An HTML report an agent produced from Gong sales-call data: “How often is data retention coming up in sales calls?” with summary stats and a weekly-mentions chart."
+            className="w-full rounded-xl border border-border-subtle"
+          />
 
           <h3>Upload your session transcripts</h3>
           <p>
@@ -254,6 +231,11 @@ export default function HowToBuildACompanyBrainPage() {
             agents access to their past session transcripts can reduce the amount
             of time they waste on coding tasks by nearly half!
           </p>
+          <img
+            src="/blog/transcript-sharing-benchmark.png"
+            alt="Bar chart, “Claude Code arrives at the fix faster with transcript sharing”: tool calls 272 → ~137, agent turns 123 → ~71, and wasted actions 192 → ~5 when transcripts are shared."
+            className="mx-auto w-full max-w-[560px] rounded-xl border border-border-subtle"
+          />
           <p>
             You can store session transcripts in a table, where each line from the{" "}
             <code>.jsonl</code> session transcript is a row.
