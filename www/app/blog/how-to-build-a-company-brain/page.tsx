@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "How to Build a Company Brain · Stash",
+  title:
+    "Giving yourself superpowers: Advice on building a simple company brain · Stash",
   description:
     "An opinionated take on the right way to build a company brain so your AI agents can do real knowledge work: integrations, retrieval, memory, and privacy.",
 };
@@ -18,7 +19,7 @@ export default function HowToBuildACompanyBrainPage() {
           Blog
         </p>
         <h1 className="mt-5 text-balance font-display text-[clamp(32px,4.4vw,52px)] font-black leading-[1.04] tracking-[-0.035em] text-ink">
-          How to Build a Company Brain
+          Giving yourself superpowers: Advice on building a simple company brain
         </h1>
         <p className="mt-5 text-[14px] text-muted">By Henry Dowling · June 2026</p>
 
@@ -27,7 +28,7 @@ export default function HowToBuildACompanyBrainPage() {
             If you do skilled knowledge work at a company (for example,
             you&rsquo;re the CPO of a startup, or you&rsquo;re leading AI
             transformation at a consulting company), it&rsquo;s a really good
-            idea to build a company brain.
+            idea to build a <strong>company brain</strong>.
           </p>
           <p>
             In this article, I&rsquo;ll give my opinionated take on the correct
@@ -39,8 +40,9 @@ export default function HowToBuildACompanyBrainPage() {
           <p>
             Company brains exist because recently, smart knowledge workers (e.g.
             consultants, investment bankers, product managers) have started using
-            AI agents (e.g. Claude Code) to do general knowledge work besides
-            coding. This means making excel sheets and powerpoints, writing audit
+            AI agents (e.g. Claude Code) to do <em>general knowledge work</em>{" "}
+            besides coding. This means making excel sheets and powerpoints,
+            writing audit
             reports, etc.
           </p>
           <p>
@@ -50,8 +52,11 @@ export default function HowToBuildACompanyBrainPage() {
             Slack/Microsoft Teams, Jira, SharePoint, etc.
           </p>
           <p>
-            A company brain solves this problem: it helps your agents find the
-            information they need in order to do knowledge work tasks. E.g. if you
+            <strong>
+              <em>A company brain solves this problem</em>
+            </strong>
+            : it helps your agents find the information they need in order to do
+            knowledge work tasks. E.g. if you
             need revenue numbers from a sheet in Google Sheets and details about a
             customer from Gong in order to make a sales deck, a company brain
             allows your agent to seamlessly find this info.
@@ -65,8 +70,9 @@ export default function HowToBuildACompanyBrainPage() {
           <h2>How are you supposed to use a company brain?</h2>
           <p>
             The way that I like to think about it is that if you are doing a
-            company brain &ldquo;right&rdquo;, you are giving yourself a bunch of
-            superpowers as an IC. This is especially important now given the trend
+            company brain &ldquo;right&rdquo;, you are giving yourself a bunch of{" "}
+            <strong>superpowers</strong> as an IC. This is especially important now
+            given the trend
             that &ldquo;everyone is an IC&rdquo;, even (especially) execs.
           </p>
           <p>
@@ -77,36 +83,43 @@ export default function HowToBuildACompanyBrainPage() {
           </p>
           <ul>
             <li>
-              Back up your prioritization decisions with exact numbers from sales
-              calls. Check in on Gong sales calls to see how many mentions of
-              upcoming candidates for your roadmap there are.
+              <strong>
+                Support your roadmap decisions with exact numbers from sales
+                calls.
+              </strong>{" "}
+              Check in on Gong sales calls to see how many mentions of upcoming
+              candidate projects for your roadmap there are.
             </li>
             <li>
-              Be insanely well-prepared for meeting with your direct reports.
+              <strong>
+                Be insanely well-prepared for meeting with your direct reports.
+              </strong>{" "}
               Prepare for a 1:1 with a direct report by asking for a rundown of
               every public artifact that your direct report has created&mdash;this
               includes Slack messages, meeting transcripts that you have access
               to, etc.
             </li>
             <li>
-              Be the best user of AI in your organization. Audit all of your past
-              conversations with your AI agent to learn what you could be doing
-              better (this is the general idea of recursive self-improvement in
-              the context of a company&mdash;use AI to help you improve your
-              organization more efficiently with AI).
+              <strong>Be the best user of AI in your organization.</strong> Audit
+              all of your past conversations with your AI agent to learn what you
+              could be doing better (this is the general idea of recursive
+              self-improvement in the context of a company&mdash;use AI to help you
+              improve your organization more efficiently with AI).
             </li>
           </ul>
-          <p>
-            Here&rsquo;s{" "}
-            <a
-              href="https://x.com/dflieb/status/2066202214625165577"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-brand underline underline-offset-4"
-            >
-              one example
-            </a>{" "}
-            of a guy using a company brain.
+          <a
+            href="https://x.com/dflieb/status/2066202214625165577"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img
+              src="/blog/dflieb-company-brain.png"
+              alt="Tweet from David Lieb (@dflieb): “It's so nice having our YC company brain have access to slack, so I can use my agent to….search slack.”"
+              className="mx-auto w-full max-w-[540px] rounded-xl border border-border-subtle"
+            />
+          </a>
+          <p className="text-[14px] italic text-muted">
+            One example of a guy using a company brain
           </p>
 
           <h2>How to actually build a company brain</h2>
@@ -128,8 +141,11 @@ export default function HowToBuildACompanyBrainPage() {
             <code>client_id</code>s for integrations in environment variables is
             fine until you have 50 of them. This gets even more complicated when
             you start to incorporate integrations with different auth strategies;
-            for example, MCP integrations such as Granola commonly use Dynamic
-            Client Registration, in which a client needs to be programmatically
+            for example, MCP integrations such as Granola commonly use{" "}
+            <Lnk href="https://datatracker.ietf.org/doc/html/rfc7591">
+              Dynamic Client Registration
+            </Lnk>
+            , in which a client needs to be programmatically
             created at connection time per-user and therefore can&rsquo;t reliably
             be stored in an environment variable at all!
           </p>
@@ -143,45 +159,14 @@ export default function HowToBuildACompanyBrainPage() {
             more and more integrations. Encrypt these fields in this DB at rest
             unless you want your CISO to get mad at you.
           </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Integration name</th>
-                <th>client_id (encrypted)</th>
-                <th>client_secret</th>
-                <th>Bearer auth token (encrypted)</th>
-                <th>Refresh token (encrypted)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Jira</td>
-                <td>
-                  <code>peorjaerp</code>
-                </td>
-                <td>
-                  <code>qewtwqep</code>
-                </td>
-                <td>
-                  <code>qweiojraso</code>
-                </td>
-                <td>
-                  <code>asdfkljh</code>
-                </td>
-              </tr>
-              <tr>
-                <td>Granola</td>
-                <td>
-                  <code>epjaewr</code>
-                </td>
-                <td>
-                  <code>iflguhdig</code>
-                </td>
-                <td>&mdash;</td>
-                <td>&mdash;</td>
-              </tr>
-            </tbody>
-          </table>
+          <img
+            src="/blog/integrations-auth-table.png"
+            alt="A central integrations table storing encrypted client_id, client_secret, bearer auth token, and refresh token per integration (Jira and Granola shown)."
+            className="w-full rounded-xl border border-border-subtle"
+          />
+          <p className="text-[14px] italic text-muted">
+            Example of what your integrations table might look like
+          </p>
 
           <h3>Give your AI great retrieval and memory</h3>
           <p>
@@ -190,14 +175,22 @@ export default function HowToBuildACompanyBrainPage() {
             easy for agents to find information in company resources: (1) we
             regularly sync the information from integrations to your own database
             so that we aren&rsquo;t bottlenecked on API rate limits for querying,
-            and (2) we build sleep-time compute indexes on top of the data in
-            order to facilitate faster and more relevant AI retrieval. I&rsquo;ll
+            and (2) we build{" "}
+            <Lnk href="https://www.letta.com/blog/sleep-time-compute/">
+              sleep-time compute
+            </Lnk>{" "}
+            indexes on top of the data in order to facilitate faster and more
+            relevant AI retrieval. I&rsquo;ll
             talk about both of these systems in a bit more detail below.
           </p>
 
           <h3>Syncing information</h3>
           <p>
-            We use Celery to sync all integrations every hour. We&rsquo;ll also
+            We use{" "}
+            <Lnk href="https://docs.celeryq.dev/en/stable/getting-started/introduction.html">
+              Celery
+            </Lnk>{" "}
+            to sync all integrations every hour. We&rsquo;ll also
             manually re-sync integrations whenever an AI agent writes a query that
             needs up-to-date information from a given source. There are some
             sources, like Slack and GitHub, which thankfully have great webhooks,
@@ -206,15 +199,23 @@ export default function HowToBuildACompanyBrainPage() {
 
           <h3>Build indexes on top of information</h3>
           <p>
-            There was this great paper that Letta put out last year that showed
-            the usefulness of asking LLMs to precompute answers to questions that
-            they anticipate the user will ask. We adapt this technique to improve
+            There was this{" "}
+            <Lnk href="https://www.letta.com/blog/sleep-time-compute/">
+              great paper
+            </Lnk>{" "}
+            that Letta put out last year that showed the usefulness of asking LLMs
+            to precompute answers to questions that they anticipate the user will
+            ask
+            <Fnref id="1" />. We adapt this technique to improve
             the quality of information that AI agents are able to get out of our
             company brain.
           </p>
           <p>
-            A great canonical spec of this is Andrej Karpathy&rsquo;s LLM wiki.
-            The essential idea is that you write a bunch of markdown documents
+            A great canonical spec of this is Andrej Karpathy&rsquo;s{" "}
+            <Lnk href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">
+              LLM wiki
+            </Lnk>
+            . The essential idea is that you write a bunch of markdown documents
             summarizing the contents of the resources in your company brain. Be
             advised, though, that if you follow this implementation exactly, the
             LLM wiki will probably become &ldquo;slopified&rdquo; over time, as
@@ -230,16 +231,39 @@ export default function HowToBuildACompanyBrainPage() {
             benchmark in the coming weeks to encourage creative solutions to the
             &ldquo;wiki slopification&rdquo; problem from the community.
           </p>
+          <p>
+            <em>
+              If you&rsquo;re curious, I write about our indexing strategy in much
+              more detail{" "}
+              <Lnk href="https://x.com/henrytdowling/status/2054246434506199529">
+                here
+              </Lnk>
+              .
+            </em>
+          </p>
 
           <h3>Store HTML data that your agents create</h3>
           <p>
             AI agents can give you much more expressive responses when they
             respond to your questions with an HTML document rather than a plain
-            text response. In most company brain setups, after an agent creates
-            one of these HTML documents, it is promptly thrown away. We think you
-            should store these documents in your company brain, since they
-            typically provide useful analysis on questions that are important to
-            your business. We built a Claude Code plugin that automatically
+            text response.{" "}
+            <Lnk href="https://x.com/trq212/status/2052809885763747935">
+              Here&rsquo;s
+            </Lnk>{" "}
+            a good article explaining the many reasons why. Below is a screenshot
+            of such a document:
+          </p>
+          <img
+            src="/blog/gong-data-retention-report.png"
+            alt="An HTML report an agent produced from Gong sales-call data: “How often is data retention coming up in sales calls?” with summary stats and a weekly-mentions chart."
+            className="w-full rounded-xl border border-border-subtle"
+          />
+          <p>
+            In most company brain setups, after an agent creates one of these HTML
+            documents, it is promptly thrown away. We think you should{" "}
+            <strong>store these documents in your company brain,</strong> since
+            they typically provide useful analysis on questions that are important
+            to your business. We built a Claude Code plugin that automatically
             uploads these artifacts to the company brain after every conversation.
           </p>
 
@@ -249,10 +273,25 @@ export default function HowToBuildACompanyBrainPage() {
             transcripts to your company brain! AI agent transcripts are a gold
             mine of learnings, decisions, and synthesis, and they will only
             increase in their information contents as agents become capable of
-            running on increasingly long time horizons. I&rsquo;ve written about
-            the importance of doing this previously&mdash;we found that giving
+            running on{" "}
+            <Lnk href="https://metr.org/time-horizons/">
+              increasingly long time horizons
+            </Lnk>
+            . I&rsquo;ve written about the importance of doing this{" "}
+            <Lnk href="https://henrydowling.com/agent-velocity.html">previously</Lnk>
+            &mdash;we found that giving
             agents access to their past session transcripts can reduce the amount
             of time they waste on coding tasks by nearly half!
+          </p>
+          <img
+            src="/blog/transcript-sharing-benchmark.png"
+            alt="Bar chart, “Claude Code arrives at the fix faster with transcript sharing”: tool calls 272 → ~137, agent turns 123 → ~71, and wasted actions 192 → ~5 when transcripts are shared."
+            className="mx-auto w-full max-w-[560px] rounded-xl border border-border-subtle"
+          />
+          <p className="text-[14px] italic text-muted">
+            Coding agents write higher quality code faster when they&rsquo;re able
+            to read past transcripts. So you should make them accessible via your
+            company brain!
           </p>
           <p>
             You can store session transcripts in a table, where each line from the{" "}
@@ -270,9 +309,13 @@ export default function HowToBuildACompanyBrainPage() {
           <p>
             The simplest and most straightforward way to solve this is to simply
             user-scope all integrations&mdash;everyone in your organization has to
-            individually connect all their company resources to the company brain,
-            so that each person&rsquo;s AI agent is only able to see the resources
-            that they have direct OAuth access to view.
+            individually connect all their company resources to the company brain.
+            The general principle should be that{" "}
+            <strong>
+              each person&rsquo;s AI agent is only able to see the resources that
+              they have direct OAuth access to view
+            </strong>
+            .
           </p>
           <p>
             This allows you to take advantage of the existing privacy controls
@@ -289,8 +332,7 @@ export default function HowToBuildACompanyBrainPage() {
             2026. If you do these things, then you will be ahead of 95% of your
             competitors in terms of the AI adoption of your company, and you will
             find that you&rsquo;re able to get much higher quality work done, much
-            faster than before (especially meeting preparedness&mdash;AI agents
-            really really crush it at this right now. Seriously try it!).
+            faster than before. Happy building!
           </p>
           <p>
             Also, if you&rsquo;re interested in trying a service that provides the
@@ -305,6 +347,17 @@ export default function HowToBuildACompanyBrainPage() {
             the annoying parts of getting their company brain up and running so
             they can skip right to the incredible benefits that they provide.
           </p>
+
+          <hr />
+
+          <ol className="text-[14px] text-dim">
+            <li id="fn-1">
+              This is basically the LLM version of caching; instead of
+              deterministically precomputing and storing answers to compute-heavy
+              questions, we just nondeterministically write up a summary distilling
+              an answer to a question that we expect the user to likely ask.
+            </li>
+          </ol>
         </div>
 
         <div className="mt-12">
@@ -317,6 +370,36 @@ export default function HowToBuildACompanyBrainPage() {
         </div>
       </article>
     </main>
+  );
+}
+
+function Fnref({ id }: { id: string }) {
+  return (
+    <a
+      href={`#fn-${id}`}
+      className="font-medium text-brand no-underline align-super text-[12px]"
+    >
+      [{id}]
+    </a>
+  );
+}
+
+function Lnk({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-brand underline underline-offset-4 transition hover:text-ink"
+    >
+      {children}
+    </a>
   );
 }
 

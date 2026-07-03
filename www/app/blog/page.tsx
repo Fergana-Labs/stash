@@ -16,7 +16,7 @@ type Post = {
 
 const POSTS: Post[] = [
   {
-    title: "How to Build a Company Brain",
+    title: "Giving yourself superpowers: Advice on building a simple company brain",
     blurb:
       "An opinionated take on the right way to build a company brain — integrations, retrieval, memory, and privacy — so your AI agents can do real knowledge work.",
     href: "/blog/how-to-build-a-company-brain",
