@@ -242,7 +242,7 @@ def _extract_composer_ids(ws_db_path: Path) -> list[str]:
     try:
         # composerChatViewPane entries contain inner aichat.view.<composer-uuid> refs
         cur = db.execute(
-            "SELECT value FROM ItemTable " "WHERE key LIKE 'workbench.panel.composerChatViewPane.%'"
+            "SELECT value FROM ItemTable WHERE key LIKE 'workbench.panel.composerChatViewPane.%'"
         )
         for (val,) in cur:
             try:

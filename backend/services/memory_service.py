@@ -410,8 +410,7 @@ async def get_scope_event(event_id: UUID, owner_user_id: UUID, user_id: UUID) ->
 async def get_personal_event(event_id: UUID, user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT * FROM history_events "
-        "WHERE id = $1 AND owner_user_id IS NULL AND created_by = $2",
+        "SELECT * FROM history_events WHERE id = $1 AND owner_user_id IS NULL AND created_by = $2",
         event_id,
         user_id,
     )

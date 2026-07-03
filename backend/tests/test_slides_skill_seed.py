@@ -82,12 +82,12 @@ async def test_slides_skill_body_covers_canvas(client: AsyncClient, enable_seed)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     combined = body.get("combined", "") or body.get("body", "")
-    assert (
-        "1920" in combined and "1080" in combined
-    ), "slides skill must spell out the canvas dimensions so agents stop overflowing"
-    assert (
-        '<section class="slide">' in combined or "section.slide" in combined
-    ), "slides skill must spell out the slide element format"
+    assert "1920" in combined and "1080" in combined, (
+        "slides skill must spell out the canvas dimensions so agents stop overflowing"
+    )
+    assert '<section class="slide">' in combined or "section.slide" in combined, (
+        "slides skill must spell out the slide element format"
+    )
 
 
 @pytest.mark.asyncio

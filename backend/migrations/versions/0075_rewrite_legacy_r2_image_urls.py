@@ -57,12 +57,14 @@ def _rewrite_body(body: str, lookup_file_id) -> str:
 def upgrade() -> None:
     bind = op.get_bind()
 
-    rows = bind.execute(text("""
+    rows = bind.execute(
+        text("""
             SELECT id, content_markdown, content_html
             FROM pages
             WHERE content_markdown LIKE '%r2.cloudflarestorage.com%'
                OR content_html LIKE '%r2.cloudflarestorage.com%'
-            """)).fetchall()
+            """)
+    ).fetchall()
 
     if not rows:
         return

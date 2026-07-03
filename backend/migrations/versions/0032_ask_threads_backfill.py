@@ -43,8 +43,7 @@ def upgrade() -> None:
         ")"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_ask_messages_thread "
-        "ON ask_messages(thread_id, created_at)"
+        "CREATE INDEX IF NOT EXISTS idx_ask_messages_thread ON ask_messages(thread_id, created_at)"
     )
 
 

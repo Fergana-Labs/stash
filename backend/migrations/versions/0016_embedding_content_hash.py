@@ -36,8 +36,7 @@ def upgrade() -> None:
         "ON notebook_pages(id) WHERE embed_stale"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_table_rows_embed_stale "
-        "ON table_rows(id) WHERE embed_stale"
+        "CREATE INDEX IF NOT EXISTS idx_table_rows_embed_stale ON table_rows(id) WHERE embed_stale"
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_history_events_embed_stale "

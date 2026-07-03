@@ -164,7 +164,6 @@ async def main_async(args: argparse.Namespace) -> None:
         slug = args.page_id
 
     try:
-
         log.info("rendering original screenshots…")
         screenshot_pngs = await _render_slides(html)
 
@@ -216,12 +215,12 @@ def _render_diff_html(
         aspose = _b64(asposes[i]) if i < len(asposes) else ""
         cells = [
             f"<td><div style='width:540px;height:304px;overflow:hidden;border:1px solid #ccc;'><iframe srcdoc='{_iframe_doc(html, i)}' style='width:1920px;height:1080px;border:0;transform:scale(0.28125);transform-origin:top left;'></iframe></div></td>",
-            f"<td>{f'<img src=\"{shot}\" style=\"width:540px;height:auto;\">' if shot else '(missing)'}</td>",
-            f"<td>{f'<img src=\"{native}\" style=\"width:540px;height:auto;\">' if native else '(install libreoffice + poppler)'}</td>",
+            f"<td>{f'<img src="{shot}" style="width:540px;height:auto;">' if shot else '(missing)'}</td>",
+            f"<td>{f'<img src="{native}" style="width:540px;height:auto;">' if native else '(install libreoffice + poppler)'}</td>",
         ]
         if show_aspose:
             cells.append(
-                f"<td>{f'<img src=\"{aspose}\" style=\"width:540px;height:auto;\">' if aspose else '(missing)'}</td>"
+                f"<td>{f'<img src="{aspose}" style="width:540px;height:auto;">' if aspose else '(missing)'}</td>"
             )
         rows.append(f"<tr>{''.join(cells)}</tr>")
 
@@ -245,7 +244,7 @@ def _render_diff_html(
 <table>
 <thead><tr>{header_row}</tr></thead>
 <tbody>
-{''.join(rows)}
+{"".join(rows)}
 </tbody></table>
 </body></html>"""
 

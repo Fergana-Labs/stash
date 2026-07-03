@@ -190,9 +190,7 @@ def _adopt_folder(bind, skill) -> str:
         elif item.object_type in ("page", "file", "table"):
             table = {"page": "pages", "file": "files", "table": "tables"}[item.object_type]
             bind.execute(
-                text(
-                    f"UPDATE {table} SET folder_id = :fid " "WHERE id = :oid AND workspace_id = :ws"
-                ),
+                text(f"UPDATE {table} SET folder_id = :fid WHERE id = :oid AND workspace_id = :ws"),
                 {"fid": folder_id, "oid": item.object_id, "ws": skill.workspace_id},
             )
         elif item.object_type == "session":

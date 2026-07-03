@@ -1063,7 +1063,8 @@ async def search_documents(
         return ""
 
     source_readable = permission_service.readable_content_condition("source", "s", 1)
-    parts = [f"""
+    parts = [
+        f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
                        websearch_to_tsquery('english', $2)) AS rank
@@ -1074,7 +1075,9 @@ async def search_documents(
           AND to_tsvector('english', coalesce(d.content, ''))
               @@ websearch_to_tsquery('english', $2)
           {visibility_clause(t)}
-        """ for t in tables]
+        """
+        for t in tables
+    ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "

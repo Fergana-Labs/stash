@@ -311,8 +311,8 @@ class StashVfsModel:
                 # Sole connection collapses — its documents sit directly in the
                 # provider folder (e.g. /sources/granola/<call>).
                 handle = str(members[0].get("source") or "")
-                self._expanders[provider_root] = (
-                    lambda root=provider_root, h=handle: self._expand_source(root, h)
+                self._expanders[provider_root] = lambda root=provider_root, h=handle: (
+                    self._expand_source(root, h)
                 )
                 continue
             for member in members:
@@ -320,8 +320,8 @@ class StashVfsModel:
                 member_root = self._add_dir_child(
                     provider_root, _source_slug(member.get("display_name") or handle)
                 )
-                self._expanders[member_root] = (
-                    lambda root=member_root, h=handle: self._expand_source(root, h)
+                self._expanders[member_root] = lambda root=member_root, h=handle: (
+                    self._expand_source(root, h)
                 )
 
     def _expand_source(self, source_root: str, handle: str) -> None:

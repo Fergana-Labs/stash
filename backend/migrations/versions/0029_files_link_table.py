@@ -18,8 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "ALTER TABLE files ADD COLUMN linked_table_id UUID "
-        "REFERENCES tables(id) ON DELETE SET NULL"
+        "ALTER TABLE files ADD COLUMN linked_table_id UUID REFERENCES tables(id) ON DELETE SET NULL"
     )
     op.execute(
         "CREATE INDEX idx_files_linked_table ON files(linked_table_id) "
