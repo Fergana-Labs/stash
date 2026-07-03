@@ -627,6 +627,70 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
     assert await source_service.list_documents(src) == []
 
 
+@pytest.mark.asyncio
+async def test_list_documents_pages_with_after_cursor(client: AsyncClient):
+    """A source bigger than one page must be fully reachable by walking the
+    `after` keyset cursor — before this, everything past the first page was
+    invisible to the VFS (a 6k-message Gmail showed 200 messages)."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="drive-root",
+        display_name="Drive",
+    )
+    sid = UUID(src["id"])
+    for i in range(5):
+        await source_service.upsert_index_row(
+            table="drive_index",
+            source_id=sid,
+            owner_user_id=ws,
+            path=f"doc-{i}",
+            name=f"Doc {i}",
+            external_ref=f"file-id-{i}",
+        )
+
+    page_one = await source_service.list_documents(src, limit=2)
+    page_two = await source_service.list_documents(src, limit=2, after=page_one[-1]["path"])
+    page_three = await source_service.list_documents(src, limit=2, after=page_two[-1]["path"])
+
+    assert [d["path"] for d in page_one] == ["doc-0", "doc-1"]
+    assert [d["path"] for d in page_two] == ["doc-2", "doc-3"]
+    assert [d["path"] for d in page_three] == ["doc-4"]
+    # The provider id rides along so callers can tie a path to the provider object.
+    assert page_one[0]["external_ref"] == "file-id-0"
+
+
+@pytest.mark.asyncio
+async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncClient):
+    """An agent holding only a provider URL (a Drive link, a GitHub blob) must
+    be able to resolve the id inside it to the document's Stash path — the
+    external_ref is the only join key between the provider's world and ours."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="docs/status.md",
+        name="status.md",
+        content="quarterly integration status",
+        external_ref="gh-blob-1a2b3c",
+    )
+
+    results = await source_service.search_all(ws, owner_id, "gh-blob-1a2b3c", source=src["id"])
+
+    assert [(r["ref"], r["name"]) for r in results] == [("docs/status.md", "status.md")]
+    assert await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"]) == []
+
+
 # --- search-driven sources (twitter) -----------------------------------------
 
 

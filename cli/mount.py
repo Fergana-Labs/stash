@@ -18,6 +18,11 @@ from .client import StashClient, StashError
 
 BytesLoader = Callable[[], bytes]
 
+# Hard ceiling on entries materialized per source. A source bigger than this
+# gets a truncation warning from the listing commands rather than an
+# ever-growing tree walk.
+SOURCE_ENTRIES_MAX = 10_000
+
 
 class MountError(Exception):
     pass
@@ -33,6 +38,9 @@ class VfsNode:
     children: dict[str, str] = field(default_factory=dict)
     created_at: float | None = None
     updated_at: float | None = None
+    # Provider-side id of a connected-source document (a Drive file id, a Gmail
+    # message id, …), so `stat` can tie a VFS path back to the provider object.
+    external_ref: str | None = None
 
     @property
     def is_dir(self) -> bool:
@@ -315,12 +323,22 @@ class StashVfsModel:
                 )
 
     def _expand_source(self, source_root: str, handle: str) -> None:
-        try:
-            entries, truncated = self.client.list_source_entries_page(handle, "")
-        except StashError:
-            return
-        if truncated:
-            self._truncated[source_root] = len(entries)
+        entries: list[dict] = []
+        after = ""
+        while True:
+            try:
+                page, truncated = self.client.list_source_entries_page(handle, "", after=after)
+            except StashError:
+                break
+            entries.extend(page)
+            if not truncated:
+                break
+            after = str(page[-1].get("path") or "")
+            if not after or len(entries) >= SOURCE_ENTRIES_MAX:
+                # No cursor to continue from (a listing that isn't path-keyed),
+                # or the source is beyond what we'll materialize in one tree.
+                self._truncated[source_root] = len(entries)
+                break
         self._add_source_entries(source_root, handle, entries)
 
     def truncated_roots_under(self, root: str) -> list[tuple[str, int]]:
@@ -349,18 +367,22 @@ class StashVfsModel:
             # A page that also has child pages becomes a directory holding its own
             # body in a same-named index file, so the children nest under it
             # instead of being dropped on the file/dir name collision.
+            external_ref = entry.get("external_ref") or None
             if ref in parent_refs:
                 page_dir = self._add_dir(f"{parent}/{display}")
-                self._add_source_doc_file(f"{page_dir}/{display}", handle, ref)
+                self._add_source_doc_file(f"{page_dir}/{display}", handle, ref, external_ref)
                 continue
-            self._add_source_doc_file(f"{parent}/{display}", handle, ref)
+            self._add_source_doc_file(f"{parent}/{display}", handle, ref, external_ref)
 
-    def _add_source_doc_file(self, path: str, handle: str, ref: str) -> str:
+    def _add_source_doc_file(
+        self, path: str, handle: str, ref: str, external_ref: str | None = None
+    ) -> str:
         return self._add_file(
             path,
             loader=lambda h=handle, r=ref: _text_bytes(
                 _source_doc_text(self.client.read_source_doc(h, r))
             ),
+            external_ref=external_ref,
         )
 
     def _load_page(self, page_id: str) -> bytes:
@@ -425,6 +447,7 @@ class StashVfsModel:
         size_hint: int | None = None,
         created_at: str | None = None,
         updated_at: str | None = None,
+        external_ref: str | None = None,
     ) -> str:
         path = self._clean_path(path)
         parent, requested_name = self._split_parent(path)
@@ -442,6 +465,7 @@ class StashVfsModel:
             ),
             created_at=_parse_iso(created_at),
             updated_at=_parse_iso(updated_at),
+            external_ref=external_ref,
         )
         self.nodes[parent].children[name] = path
         return path

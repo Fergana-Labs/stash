@@ -75,11 +75,11 @@ class FakeClient:
         assert source == "src-gmail-1"
         self.source_entry_calls += 1
         return [
-            {"path": "msg-1", "name": "Welcome email", "kind": "message"},
+            {"path": "msg-1", "name": "Welcome email", "kind": "message", "external_ref": "gm-1"},
             {"path": "threads/msg-2", "name": "Nested note", "kind": "message"},
         ]
 
-    def list_source_entries_page(self, source, path=""):
+    def list_source_entries_page(self, source, path="", after=""):
         return self.list_source_entries(source, path), False
 
     def read_source_doc(self, source, ref):

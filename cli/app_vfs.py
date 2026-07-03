@@ -673,13 +673,16 @@ class SkillAppVfsShell:
         attrs = self.model.getattr(path)
         node = self.model._get_node(path)
         kind = "directory" if node.is_dir else "file"
-        return (
+        out = (
             f"{path}\n"
             f"  type: {kind}\n"
             f"  size: {attrs.get('st_size', 0)}\n"
             f"  modified: {_iso_time(node.updated_at)}\n"
             f"  created: {_iso_time(node.created_at)}\n"
         )
+        if node.external_ref:
+            out += f"  external_ref: {node.external_ref}\n"
+        return out
 
     def _read_text(self, path: str) -> str:
         return self.model.read_file(path).decode("utf-8", errors="replace")

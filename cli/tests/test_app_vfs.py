@@ -311,22 +311,40 @@ def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     assert "Transcript not found" in result.stderr
 
 
-class TruncatedSourceClient(FakeClient):
-    """The server caps a source's listing. The VFS must announce that the tree
-    is partial — silently returning the first page reads as "this is everything"
-    and produces confident-wrong conclusions about what a source contains."""
+class PagedSourceClient(FakeClient):
+    """A source whose listing spans several server pages. The VFS must keep
+    following the `after` cursor until the listing is complete — stopping at
+    one page silently hides most of a big source (a 6k-message Gmail, an
+    800-file Drive)."""
 
-    def list_source_entries_page(self, source, path=""):
-        return self.list_source_entries(source, path), True
+    ENTRIES = [
+        {"path": f"msg-{i:02d}", "name": f"Message {i}", "kind": "message"} for i in range(5)
+    ]
+
+    def list_source_entries_page(self, source, path="", after=""):
+        assert source == "src-gmail-1"
+        remaining = [e for e in self.ENTRIES if e["path"] > after]
+        return remaining[:2], len(remaining) > 2
 
 
-def test_find_warns_loudly_when_a_source_listing_is_truncated():
-    shell, _client = _shell(TruncatedSourceClient())
+def test_source_listing_follows_pages_to_completion():
+    shell, _client = _shell(PagedSourceClient())
+
+    result = shell.run("find /sources/gmail -type f")
+
+    for i in range(5):
+        assert f"/sources/gmail/Message {i}" in result.stdout
+    assert "INCOMPLETE" not in result.stderr
+
+
+def test_find_warns_loudly_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
+    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    shell, _client = _shell(PagedSourceClient())
 
     result = shell.run("find /sources/gmail -type f")
 
     # The rows it did get still come back on stdout, uncorrupted by the warning.
-    assert "/sources/gmail/Welcome email" in result.stdout
+    assert "/sources/gmail/Message 0" in result.stdout
     # The incompleteness is surfaced on stderr — not hidden, not mixed into the
     # file list where a pipe to `wc -l` would silently count it.
     assert "INCOMPLETE" in result.stderr
@@ -340,3 +358,19 @@ def test_find_is_silent_when_a_source_listing_is_complete():
 
     assert "/sources/gmail/Welcome email" in result.stdout
     assert "INCOMPLETE" not in result.stderr
+
+
+def test_stat_shows_external_ref_for_source_documents():
+    shell, _client = _shell()
+
+    result = shell.run("stat '/sources/gmail/Welcome email'")
+
+    assert "external_ref: gm-1" in result.stdout
+
+
+def test_stat_omits_external_ref_when_the_entry_has_none():
+    shell, _client = _shell()
+
+    result = shell.run("stat '/sources/gmail/threads/Nested note'")
+
+    assert "external_ref" not in result.stdout

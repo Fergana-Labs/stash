@@ -691,51 +691,68 @@ async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) ->
 ENTRIES_LIMIT = 200
 
 
-async def list_documents(source: dict, prefix: str = "", limit: int = ENTRIES_LIMIT) -> list[dict]:
+async def list_documents(
+    source: dict, prefix: str = "", limit: int = ENTRIES_LIMIT, after: str = ""
+) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
-    is the registry row (from get_owned_source / get_source_for_sync)."""
+    is the registry row (from get_owned_source / get_source_for_sync). `after`
+    is a keyset cursor: only paths strictly greater (in the ORDER BY path
+    ordering) are returned, so callers page through big sources by passing the
+    last path of the previous page."""
     table = _table_for(source["source_type"])
     if table == "slack_messages":
         allowed_channel_ids = slack_allowed_channel_ids(source)
         if not allowed_channel_ids:
             return []
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND channel_id = ANY($4::text[]) "
+            f"SELECT path, name, kind, external_ref FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
+            f"AND channel_id = ANY($5::text[]) "
             f"ORDER BY path LIMIT $3",
             UUID(source["id"]),
             f"{prefix}%",
             limit,
+            after,
             allowed_channel_ids,
         )
-        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+        return [_entry_row(r) for r in rows]
 
     if table == "gong_documents":
         allowed_workspace_ids = gong_allowed_workspace_ids(source)
         if not allowed_workspace_ids:
             return []
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND gong_account_id = ANY($4::text[]) "
+            f"SELECT path, name, kind, external_ref FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
+            f"AND gong_account_id = ANY($5::text[]) "
             f"ORDER BY path LIMIT $3",
             UUID(source["id"]),
             f"{prefix}%",
             limit,
+            after,
             allowed_workspace_ids,
         )
-        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+        return [_entry_row(r) for r in rows]
 
     rows = await get_pool().fetch(
-        f"SELECT path, name, kind FROM {table} "
-        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+        f"SELECT path, name, kind, external_ref FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
         f"ORDER BY path LIMIT $3",
         UUID(source["id"]),
         f"{prefix}%",
         limit,
+        after,
     )
-    return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+    return [_entry_row(r) for r in rows]
+
+
+def _entry_row(r) -> dict:
+    return {
+        "path": r["path"],
+        "name": r["name"],
+        "kind": r["kind"],
+        "external_ref": r["external_ref"],
+    }
 
 
 async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
@@ -1217,21 +1234,30 @@ async def _audit_source_read(
 
 
 async def source_entries(
-    owner_user_id: UUID, user_id: UUID, source: str, prefix: str = "", limit: int = ENTRIES_LIMIT
+    owner_user_id: UUID,
+    user_id: UUID,
+    source: str,
+    prefix: str = "",
+    limit: int = ENTRIES_LIMIT,
+    after: str = "",
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
-    scopes connected sources to a path. Returns None for an unknown source."""
+    scopes connected sources to a path. `after` pages through path-ordered
+    document listings (see list_documents); listings that aren't path-ordered
+    (native files/sessions, queryable tables, twitter's live refs) return
+    everything on the first page, so any later page is empty for them.
+    Returns None for an unknown source."""
     connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import list_scope_pages
 
-        pages = await list_scope_pages(owner_user_id, user_id)
+        pages = [] if after else await list_scope_pages(owner_user_id, user_id)
         entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
     elif source == NATIVE_SESSIONS:
         from .memory_service import list_scope_sessions
 
-        sessions = await list_scope_sessions(owner_user_id, user_id)
+        sessions = [] if after else await list_scope_sessions(owner_user_id, user_id)
         entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
@@ -1245,7 +1271,7 @@ async def source_entries(
             from ..integrations.snowflake.client import SnowflakeMetadataError, list_tables
 
             try:
-                entries = await list_tables(connected)
+                entries = [] if after else await list_tables(connected)
             except SnowflakeMetadataError as e:
                 logger.warning(
                     "source entries failed source=%s source_type=%s exception_type=%s",
@@ -1257,11 +1283,12 @@ async def source_entries(
         elif connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
-            entries = twitter_live_entries(prefix) + await list_documents(
-                connected, prefix=prefix, limit=limit
+            live = [] if after else twitter_live_entries(prefix)
+            entries = live + await list_documents(
+                connected, prefix=prefix, limit=limit, after=after
             )
         else:
-            entries = await list_documents(connected, prefix=prefix, limit=limit)
+            entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 
     await _audit_source_read(
         action="source.entries_listed",
@@ -1698,6 +1725,37 @@ async def fetch_history(
     return result
 
 
+async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
+    """Documents whose provider id (`external_ref`) exactly equals the query,
+    across the given sources' document tables."""
+    query = query.strip()
+    if not query:
+        return []
+    hits: list[dict] = []
+    for s in sources:
+        table = SOURCE_TABLE.get(s["source_type"])
+        if table is None:
+            continue
+        rows = await get_pool().fetch(
+            f"SELECT path, name FROM {table} "
+            f"WHERE source_id = $1 AND external_ref = $2 AND deleted_at IS NULL LIMIT $3",
+            UUID(s["id"]),
+            query,
+            limit,
+        )
+        hits += [
+            {
+                "source": s["id"],
+                "source_name": s["display_name"],
+                "ref": r["path"],
+                "name": r["name"],
+                "snippet": "",
+            }
+            for r in rows
+        ]
+    return hits
+
+
 async def search_all(
     owner_user_id: UUID,
     user_id: UUID,
@@ -1744,6 +1802,15 @@ async def search_all(
         if connected is None:
             return None
     if source is None or connected is not None:
+        searched_sources = (
+            [connected] if connected is not None else await list_connected_sources(user_id)
+        )
+
+        # A query that IS a provider id (a Drive file id, a Gmail message id, …)
+        # resolves to the indexed document directly. This is how an agent holding
+        # only a provider URL finds the document's Stash path.
+        results += await _external_ref_matches(searched_sources, query, limit)
+
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match).
         docs = await search_documents(
@@ -1774,7 +1841,7 @@ async def search_all(
         else:
             federated = [
                 s
-                for s in await list_connected_sources(user_id)
+                for s in searched_sources
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
                 and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]
