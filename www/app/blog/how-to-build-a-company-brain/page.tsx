@@ -84,11 +84,11 @@ export default function HowToBuildACompanyBrainPage() {
           <ul>
             <li>
               <strong>
-                Back up your prioritization decisions with exact numbers from
-                sales calls.
+                Support your roadmap decisions with exact numbers from sales
+                calls.
               </strong>{" "}
               Check in on Gong sales calls to see how many mentions of upcoming
-              candidates for your roadmap there are.
+              candidate projects for your roadmap there are.
             </li>
             <li>
               <strong>
@@ -204,8 +204,9 @@ export default function HowToBuildACompanyBrainPage() {
               great paper
             </Lnk>{" "}
             that Letta put out last year that showed the usefulness of asking LLMs
-            to precompute answers to questions that
-            they anticipate the user will ask. We adapt this technique to improve
+            to precompute answers to questions that they anticipate the user will
+            ask
+            <Fnref id="1" />. We adapt this technique to improve
             the quality of information that AI agents are able to get out of our
             company brain.
           </p>
@@ -331,8 +332,7 @@ export default function HowToBuildACompanyBrainPage() {
             2026. If you do these things, then you will be ahead of 95% of your
             competitors in terms of the AI adoption of your company, and you will
             find that you&rsquo;re able to get much higher quality work done, much
-            faster than before (especially meeting preparedness&mdash;AI agents
-            really really crush it at this right now. Seriously try it!).
+            faster than before. Happy building!
           </p>
           <p>
             Also, if you&rsquo;re interested in trying a service that provides the
@@ -347,6 +347,17 @@ export default function HowToBuildACompanyBrainPage() {
             the annoying parts of getting their company brain up and running so
             they can skip right to the incredible benefits that they provide.
           </p>
+
+          <hr />
+
+          <ol className="text-[14px] text-dim">
+            <li id="fn-1">
+              This is basically the LLM version of caching; instead of
+              deterministically precomputing and storing answers to compute-heavy
+              questions, we just nondeterministically write up a summary distilling
+              an answer to a question that we expect the user to likely ask.
+            </li>
+          </ol>
         </div>
 
         <div className="mt-12">
@@ -359,6 +370,17 @@ export default function HowToBuildACompanyBrainPage() {
         </div>
       </article>
     </main>
+  );
+}
+
+function Fnref({ id }: { id: string }) {
+  return (
+    <a
+      href={`#fn-${id}`}
+      className="font-medium text-brand no-underline align-super text-[12px]"
+    >
+      [{id}]
+    </a>
   );
 }
 
