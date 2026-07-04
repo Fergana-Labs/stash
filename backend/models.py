@@ -548,6 +548,7 @@ class FileResponse(BaseModel):
     id: UUID
     owner_user_id: UUID | None
     folder_id: UUID | None = None
+    parent_page_id: UUID | None = None
     name: str
     content_type: str
     size_bytes: int
@@ -567,6 +568,7 @@ class FileListResponse(BaseModel):
 class FileUpdateRequest(BaseModel):
     folder_id: UUID | None = None
     move_to_root: bool = False
+    parent_page_id: UUID | None = None
     name: str | None = None
 
 
@@ -582,6 +584,7 @@ class UploadResponse(BaseModel):
     id: UUID
     owner_user_id: UUID
     folder_id: UUID | None = None
+    parent_page_id: UUID | None = None
     name: str
     content_type: str
     app_url: str

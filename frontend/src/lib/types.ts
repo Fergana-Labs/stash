@@ -139,6 +139,7 @@ export interface FileInfo {
   id: string;
   owner_user_id: string | null;
   folder_id?: string | null;
+  parent_page_id?: string | null;
   name: string;
   content_type: string;
   size_bytes: number;

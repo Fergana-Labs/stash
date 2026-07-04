@@ -11,6 +11,9 @@ interface EditorToolbarProps {
    *  user's files. Off by default — inline description editors don't
    *  want it. */
   enableUploads?: boolean;
+  /** Page the editor is bound to. Uploads attach to it so they nest
+   *  under the document in the files tree. */
+  pageId?: string;
   /** When set, the bubble menu shows a "Comment" button that asks the
    *  parent to open a comment composer anchored to the current
    *  selection. The parent owns the composer + the server call. */
@@ -26,6 +29,7 @@ interface EditorToolbarProps {
 export default function EditorToolbar({
   editor,
   enableUploads,
+  pageId,
   onStartComment,
   visibility = "always",
 }: EditorToolbarProps) {
@@ -105,7 +109,7 @@ export default function EditorToolbar({
     if (!file || !editor) return;
     setUploading(true);
     try {
-      const result = await uploadFile(file);
+      const result = await uploadFile(file, null, pageId);
       const href = fileDownloadUrl(result.id);
       if (result.content_type.startsWith("image/")) {
         editor.chain().focus().setImage({ src: href, alt: result.name }).run();

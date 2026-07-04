@@ -245,3 +245,55 @@ def test_vfs_suffixes_only_colliding_names():
     assert "Untitled table--aaaaaaaa" in entries
     assert "Untitled table--bbbbbbbb" in entries
     assert "Untitled table" not in entries
+
+
+class AttachmentClient(FakeClient):
+    """A page owning an attached file renders as a directory: the page file
+    inside, the attachment beside it."""
+
+    def get_overview(self):
+        overview = super().get_overview()
+        overview["files"]["pages"].append(
+            {
+                "id": "page-report99",
+                "name": "Report",
+                "content_type": "markdown",
+                "folder_id": None,
+                "created_at": "2026-06-01T09:00:00Z",
+                "updated_at": "2026-06-02T10:30:00Z",
+            }
+        )
+        overview["files"]["files"].append(
+            {
+                "id": "file-shot9999",
+                "name": "shot.png",
+                "folder_id": None,
+                "parent_page_id": "page-report99",
+                "size_bytes": 3,
+                "created_at": "2026-06-01T09:05:00Z",
+            }
+        )
+        return overview
+
+    def get_page(self, page_id):
+        if page_id == "page-report99":
+            return {"content_type": "markdown", "content_markdown": "# Report\n"}
+        return super().get_page(page_id)
+
+    def download_file(self, file_id):
+        if file_id == "file-shot9999":
+            return b"png"
+        return super().download_file(file_id)
+
+
+def test_vfs_nests_attachments_under_their_page():
+    model = StashVfsModel(AttachmentClient())
+    model.refresh()
+
+    assert "Report" in model.list_dir("/files")
+    assert sorted(model.list_dir("/files/Report")) == ["Report.md", "shot.png"]
+    assert model.read_file("/files/Report/Report.md") == b"# Report\n"
+    assert model.read_file("/files/Report/shot.png") == b"png"
+    # A page with no attachments stays a plain file, not a directory.
+    folder_name = next(name for name in model.list_dir("/files") if name.startswith("Notes"))
+    assert "Plan.md" in model.list_dir(f"/files/{folder_name}")

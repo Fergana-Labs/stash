@@ -1164,11 +1164,12 @@ def upload(
                 continue
 
             uploaded = c.upload_file(str(file_path))
-            c.create_page(
+            stub = c.create_page(
                 file_path.name,
                 content=_markdown_snippet(uploaded),
                 folder_id=folder_id,
             )
+            c.update_file(uploaded["id"], parent_page_id=stub["id"])
             console.print(f"  [dim]File: {relative_path}[/dim]")
 
         folder_url = f"{_web_app_url()}/folders/{root_folder['id']}"
@@ -1780,21 +1781,33 @@ def files_edit_folder(
 
 
 def _markdown_snippet(file_resp: dict) -> str:
-    """Build an image or link markdown snippet from an uploaded FileResponse."""
+    """Build an image or link markdown snippet from an uploaded FileResponse.
+    Uses the stable download route — presigned storage URLs expire within
+    the hour and would leave the page with dead links."""
     name = file_resp["name"]
-    url = file_resp["url"]
+    url = f"/api/v1/me/files/{file_resp['id']}/download"
     ct = file_resp.get("content_type", "") or ""
     if ct.startswith("image/"):
         return f"![{name}]({url})"
     return f"[{name}]({url})"
 
 
-def _prepend_attachments(c: StashClient, content: str, attach: list[str] | None) -> str:
-    if not attach:
+def _upload_attachments(c: StashClient, attach: list[str] | None) -> list[dict]:
+    return [c.upload_file(p) for p in (attach or [])]
+
+
+def _prepend_attachments(content: str, uploaded: list[dict]) -> str:
+    if not uploaded:
         return content
-    snippets = [_markdown_snippet(c.upload_file(p)) for p in attach]
-    block = "\n\n".join(snippets)
+    block = "\n\n".join(_markdown_snippet(f) for f in uploaded)
     return f"{block}\n\n{content}" if content else block
+
+
+def _attach_files_to_page(c: StashClient, page_id: str, uploaded: list[dict]) -> None:
+    """Reparent uploaded files under the page that embeds them, so they nest
+    under the document in the files tree instead of piling up at the root."""
+    for f in uploaded:
+        c.update_file(f["id"], parent_page_id=page_id)
 
 
 @files_app.command("add-page")
@@ -1854,8 +1867,10 @@ def files_add_page(
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
             if page_type == "markdown":
-                body = _prepend_attachments(c, content, attach)
+                attached = _upload_attachments(c, attach)
+                body = _prepend_attachments(content, attached)
             else:
+                attached = []
                 body = ""
                 if attach:
                     console.print("[yellow]--attach is ignored for html pages[/yellow]")
@@ -1867,6 +1882,7 @@ def files_add_page(
                 content_html=html_body,
                 html_layout=layout,
             )
+            _attach_files_to_page(c, data["id"], attached)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1941,7 +1957,9 @@ def files_edit_page(
                     if content is not None
                     else c.get_page(page_id).get("content_markdown", "")
                 )
-                content = _prepend_attachments(c, base, attach)
+                attached = _upload_attachments(c, attach)
+                content = _prepend_attachments(base, attached)
+                _attach_files_to_page(c, page_id, attached)
             elif attach:
                 console.print("[yellow]--attach is ignored for html pages[/yellow]")
             kwargs: dict = {}

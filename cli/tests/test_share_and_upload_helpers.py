@@ -43,13 +43,19 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
             assert parent_folder_id is None
             return {"id": "folder-1", "name": name}
 
-        def upload_file(self, path, folder_id=None):
+        def upload_file(self, path, folder_id=None, parent_page_id=None):
             assert path == str(uploaded)
             return {"id": "file-1", "name": uploaded.name, "url": "https://files.test/shot.png"}
 
         def create_page(self, name, content="", folder_id=None, content_type=None):
             created_pages.append(name)
             return {"id": f"page-{len(created_pages)}"}
+
+        def update_file(self, file_id, **kwargs):
+            # The uploaded binary is attached to its stub page.
+            assert file_id == "file-1"
+            assert kwargs == {"parent_page_id": "page-1"}
+            return {"id": file_id, **kwargs}
 
         def publish_skill_folder(self, folder_id, **kwargs):
             published["folder_id"] = folder_id

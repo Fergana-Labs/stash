@@ -88,12 +88,17 @@ async def purge_file(file_id: UUID, owner_user_id: UUID) -> bool:
 
 
 async def list_trashed_files(owner_user_id: UUID) -> list[dict]:
+    """Attachments whose page is also in trash are hidden — they ride with
+    the page (restoring/purging the page carries them along). An attachment
+    trashed on its own, page still live, lists normally."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, owner_user_id, folder_id, name, content_type, size_bytes, "
-        "deleted_at, deleted_by "
-        "FROM files WHERE owner_user_id = $1 AND deleted_at IS NOT NULL "
-        "ORDER BY deleted_at DESC",
+        "SELECT f.id, f.owner_user_id, f.folder_id, f.name, f.content_type, f.size_bytes, "
+        "f.deleted_at, f.deleted_by "
+        "FROM files f WHERE f.owner_user_id = $1 AND f.deleted_at IS NOT NULL "
+        "AND NOT EXISTS (SELECT 1 FROM pages p "
+        "                WHERE p.id = f.parent_page_id AND p.deleted_at IS NOT NULL) "
+        "ORDER BY f.deleted_at DESC",
         owner_user_id,
     )
     return [dict(r) for r in rows]

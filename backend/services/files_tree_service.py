@@ -691,7 +691,11 @@ async def edit_page(
 
 
 async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> bool:
-    """Soft delete: stamps deleted_at + deleted_by. Restore via restore_page."""
+    """Soft delete: stamps deleted_at + deleted_by. Restore via restore_page.
+
+    Attached files (parent_page_id) are part of the document, so they trash
+    with it — stamped with the page's exact deleted_at so restore_page can
+    tell them apart from files the user trashed individually beforehand."""
     pool = get_pool()
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NOW(), deleted_by = $3 "
@@ -703,6 +707,14 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
     )
     if result != "UPDATE 1":
         return False
+    await pool.execute(
+        "UPDATE files SET deleted_at = (SELECT deleted_at FROM pages WHERE id = $1), "
+        "deleted_by = $3 "
+        "WHERE parent_page_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+        page_id,
+        owner_user_id,
+        deleted_by,
+    )
     # Audited here so every front door (REST, batch, agent tools) leaves a trail.
     await security_audit_service.record_content_lifecycle_event(
         operation="deleted",
@@ -716,6 +728,16 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
 
 async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
+    # Grab the trash timestamp before clearing it — only attachments stamped
+    # by this page's delete come back; individually-trashed ones stay trashed.
+    page_deleted_at = await pool.fetchval(
+        "SELECT deleted_at FROM pages "
+        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NOT NULL",
+        page_id,
+        owner_user_id,
+    )
+    if page_deleted_at is None:
+        return False
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
         "WHERE id = $1 AND owner_user_id = $2  "
@@ -725,6 +747,13 @@ async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) ->
     )
     if result != "UPDATE 1":
         return False
+    await pool.execute(
+        "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
+        "WHERE parent_page_id = $1 AND owner_user_id = $2 AND deleted_at = $3",
+        page_id,
+        owner_user_id,
+        page_deleted_at,
+    )
     await security_audit_service.record_content_lifecycle_event(
         operation="restored",
         actor_user_id=restored_by,
@@ -736,8 +765,37 @@ async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) ->
 
 
 async def purge_page(page_id: UUID, owner_user_id: UUID) -> bool:
-    """Permanent delete — only callable on a page already in trash."""
+    """Permanent delete — only callable on a page already in trash.
+
+    Attached files are destroyed with the document: rows deleted and blobs
+    dropped unless another row still points at the same storage key."""
+    from . import files_service, storage_service
+
     pool = get_pool()
+    in_trash = await pool.fetchval(
+        "SELECT 1 FROM pages WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NOT NULL",
+        page_id,
+        owner_user_id,
+    )
+    if not in_trash:
+        return False
+    attachments = await pool.fetch(
+        "SELECT id, storage_key FROM files WHERE parent_page_id = $1 AND owner_user_id = $2",
+        page_id,
+        owner_user_id,
+    )
+    for attachment in attachments:
+        keep_blob = await files_service.storage_key_referenced_elsewhere(
+            attachment["id"],
+            attachment["storage_key"],
+        )
+        if not keep_blob:
+            await storage_service.delete_file(attachment["storage_key"])
+        await pool.execute(
+            "DELETE FROM files WHERE id = $1 AND owner_user_id = $2",
+            attachment["id"],
+            owner_user_id,
+        )
     result = await pool.execute(
         "DELETE FROM pages WHERE id = $1 AND owner_user_id = $2  AND deleted_at IS NOT NULL",
         page_id,
