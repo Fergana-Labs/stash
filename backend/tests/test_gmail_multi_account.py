@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -63,6 +64,34 @@ async def test_gmail_tokens_are_keyed_by_mailbox(client: AsyncClient):
         await storage.get_valid_token(user_id, "gmail", "htdowling@gmail.com") == "token-personal"
     )
     assert await storage.get_valid_token(user_id, "gmail", "henry@joinstash.ai") == "token-work"
+
+
+@pytest.mark.asyncio
+async def test_gmail_status_flags_dead_account_for_reconnect(client: AsyncClient):
+    """A connection row outlives its OAuth grant. Status must actively check
+    each token so a dead mailbox reports needs_reconnect instead of a bare
+    connected=true that hides why its search silently returns nothing."""
+    _, user_id = await _register(client)
+
+    await _store_gmail(user_id, "htdowling@gmail.com", "token-live")
+    # Expired long ago with no refresh token — get_valid_token can't revive it.
+    await storage.store_token(
+        user_id,
+        "gmail",
+        TokenSet(
+            access_token="token-dead",
+            refresh_token=None,
+            expires_at=datetime(2020, 1, 1, tzinfo=UTC),
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        ),
+        AccountInfo(email="henry@ferganalabs.com", display_name="Henry"),
+    )
+
+    status = await storage.status(user_id, "gmail")
+
+    by_key = {a["account_key"]: a for a in status["accounts"]}
+    assert by_key["htdowling@gmail.com"]["needs_reconnect"] is False
+    assert by_key["henry@ferganalabs.com"]["needs_reconnect"] is True
 
 
 @pytest.mark.asyncio
