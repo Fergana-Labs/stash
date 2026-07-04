@@ -95,6 +95,7 @@ class IntegrationAccountItem(BaseModel):
     scopes: list[str]
     expires_at: str | None = None
     connected_at: str | None = None
+    needs_reconnect: bool = False
 
 
 class ProviderListItem(BaseModel):
