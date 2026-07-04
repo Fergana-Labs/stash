@@ -75,9 +75,6 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "gong_calls": "searchable",
     "twitter": "searchable",
-    # Queryable sources run live read-only SQL; they have no document table or
-    # indexer (see source_entries / query_source).
-    "snowflake": "queryable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -91,7 +88,6 @@ PROVIDER_SOURCE_TYPES = {
     "asana": ("asana_project",),
     "linear": ("linear",),
     "gong": ("gong_calls",),
-    "snowflake": ("snowflake",),
     "twitter": ("twitter",),
 }
 
@@ -247,8 +243,8 @@ async def create_source(
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
-    now(). Types without a scheduled-sync interval (search-driven / queryable)
-    have no indexer and must NOT enroll in the sync queue: the reconciler skips
+    now(). Types without a scheduled-sync interval (search-driven) have no
+    indexer and must NOT enroll in the sync queue: the reconciler skips
     them without advancing next_sync_at, so an enabled row would sit "due"
     forever at the front of the due_sources window and starve real syncs."""
     validate_source_external_ref(source_type, external_ref)
@@ -1106,8 +1102,8 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
 
 
 async def source_item_count(source: dict) -> int | None:
-    """How many live documents a source has indexed. None for queryable sources
-    (Snowflake) — they have no document table."""
+    """How many live documents a source has indexed. None for a source type with
+    no document table."""
     table = SOURCE_TABLE.get(source["source_type"])
     if table is None:
         return None
@@ -1216,21 +1212,7 @@ async def source_entries(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
-        if connected["capability"] == "queryable":
-            # A queryable source (Snowflake) has no document table — list its tables.
-            from ..integrations.snowflake.client import SnowflakeMetadataError, list_tables
-
-            try:
-                entries = await list_tables(connected)
-            except SnowflakeMetadataError as e:
-                logger.warning(
-                    "source entries failed source=%s source_type=%s exception_type=%s",
-                    connected["id"],
-                    connected["source_type"],
-                    type(e).__name__,
-                )
-                entries = []
-        elif connected["source_type"] == "twitter":
+        if connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
             entries = twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
@@ -1322,9 +1304,6 @@ def _session_title(session: dict) -> str:
 
 async def _member_tree(source: dict, depth: int, per_dir: int) -> list[dict]:
     """The document tree for one connected source (one repo, one account)."""
-    if source["capability"] == "queryable":
-        # Live-query source (Snowflake): no document table to walk.
-        return []
     entries = await list_documents(source, limit=TREE_DOC_LIMIT)
     return build_entry_tree(entries, depth, per_dir)
 
@@ -1497,26 +1476,9 @@ async def source_document(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return False, None
-        if connected["capability"] == "queryable":
-            # Reading a "document" from a queryable source means describing a table.
-            from ..integrations.snowflake.client import SnowflakeMetadataError, describe_table
-
-            try:
-                doc = await describe_table(connected, ref)
-            except ValueError as e:
-                doc = {"error": str(e)}
-            except SnowflakeMetadataError as e:
-                logger.warning(
-                    "source document failed source=%s source_type=%s exception_type=%s",
-                    connected["id"],
-                    connected["source_type"],
-                    type(e).__name__,
-                )
-                doc = {"error": "Snowflake metadata fetch failed"}
-        else:
-            doc = await read_document(connected, ref)
-            if doc is not None and "error" not in doc:
-                doc["url"] = await _deep_link(connected, doc)
+        doc = await read_document(connected, ref)
+        if doc is not None and "error" not in doc:
+            doc["url"] = await _deep_link(connected, doc)
 
     if doc is not None:
         await _audit_source_read(
@@ -1562,47 +1524,6 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
             return None
         return f"{base}/browse/{doc['path']}"
     return source_document_url(source_type, source.get("external_ref"), doc["path"])
-
-
-async def query_source(
-    owner_user_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
-) -> dict | None:
-    """Run a read-only SQL query against a queryable source (Snowflake). Returns
-    None when the handle is unknown / not owned, or an error dict when the source
-    isn't queryable or the SQL is rejected."""
-    connected = await _resolve_connected(source, owner_user_id, user_id)
-    if connected is None:
-        return None
-    if connected["capability"] != "queryable":
-        return {"error": "source is not queryable"}
-    from ..integrations.snowflake.client import SnowflakeQueryError, run_query
-
-    try:
-        result = await run_query(connected, sql, limit)
-    except ValueError as e:
-        result = {"error": str(e)}
-    except SnowflakeQueryError as e:
-        logger.warning(
-            "query source failed source=%s source_type=%s exception_type=%s",
-            connected["id"],
-            connected["source_type"],
-            type(e).__name__,
-        )
-        result = {"error": "Snowflake query failed"}
-    await _audit_source_read(
-        action="source.queried",
-        owner_user_id=owner_user_id,
-        user_id=user_id,
-        source=source,
-        connected=connected,
-        metadata={
-            "sql_hash": security_audit_service.hash_value(sql),
-            "limit": limit,
-            "row_count": result.get("row_count"),
-            "error": bool(result.get("error")),
-        },
-    )
-    return result
 
 
 def _parse_dt(value: str | None):

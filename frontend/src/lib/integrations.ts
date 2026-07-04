@@ -19,7 +19,6 @@ export type IntegrationProvider =
   | "linear"
   | "asana"
   | "gong"
-  | "snowflake"
   | "twitter";
 
 export type CredentialField = {

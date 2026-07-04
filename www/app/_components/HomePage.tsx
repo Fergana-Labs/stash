@@ -510,7 +510,7 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
     n: "01",
     pill: "Connect",
     title: "Connect any data source.",
-    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong, Snowflake and more — one easy connection per source, through any integration, and every agent you run can read all of them.",
+    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong and more — one easy connection per source, through any integration, and every agent you run can read all of them.",
     viz: <SourcesViz />,
   },
   {

@@ -101,32 +101,6 @@ export function NotionIcon({ className, size = defaultSize }: Props) {
   );
 }
 
-export function SnowflakeIcon({ className, size = defaultSize }: Props) {
-  // Snowflake mark — a six-spoke flake in Snowflake blue.
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      stroke="#29B5E8"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      fill="none"
-      aria-hidden
-    >
-      <g>
-        <line x1="12" y1="3" x2="12" y2="21" />
-        <line x1="4.2" y1="7.5" x2="19.8" y2="16.5" />
-        <line x1="4.2" y1="16.5" x2="19.8" y2="7.5" />
-        <path d="M12 6.4l-1.8-1.8M12 6.4l1.8-1.8M12 17.6l-1.8 1.8M12 17.6l1.8 1.8" />
-        <path d="M6.6 9.5l-2.5.1M6.6 9.5l-.7-2.4M17.4 14.5l2.5-.1M17.4 14.5l.7 2.4" />
-        <path d="M6.6 14.5l-.7 2.4M6.6 14.5l-2.5-.1M17.4 9.5l.7-2.4M17.4 9.5l2.5.1" />
-      </g>
-    </svg>
-  );
-}
-
 export function GongIcon({ className, size = defaultSize }: Props) {
   // Gong mark — a purple ring with a centered dot.
   return (

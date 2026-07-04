@@ -61,7 +61,6 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "asana_project": "asana-project-1",
         "linear": "me",
         "gong_calls": "gong-source",
-        "snowflake": "account/database/schema",
         "twitter": "111",
     }
     return refs[source_type]
@@ -2088,8 +2087,7 @@ async def test_fetch_history_provider_failures_are_redacted(client, monkeypatch)
 @pytest.mark.asyncio
 async def test_list_sources_carries_status_and_status_endpoint_counts(client: AsyncClient):
     """The per-integration page needs sync status + item counts: list_sources now
-    carries the status fields, and /status reports the indexed-doc count (None for
-    queryable sources with no table)."""
+    carries the status fields, and /status reports the indexed-doc count."""
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
@@ -2114,16 +2112,6 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
     status = await client.get(f"/api/v1/me/sources/{src['id']}/status", headers=_auth(api_key))
     assert status.status_code == 200
     assert status.json()["item_count"] == 1
-
-    # A queryable source (snowflake) has no document table → count is None.
-    sf = await source_service.create_source(
-        owner_user_id=owner_id,
-        source_type="snowflake",
-        external_ref="acct",
-        display_name="Snowflake",
-    )
-    sf_status = await client.get(f"/api/v1/me/sources/{sf['id']}/status", headers=_auth(api_key))
-    assert sf_status.json()["item_count"] is None
 
 
 @pytest.mark.asyncio

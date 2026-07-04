@@ -14,7 +14,6 @@ import {
   getSourceEntries,
   getSourceStatus,
   listSources,
-  querySource,
   readSourceDoc,
   searchSource,
   syncSource as syncSourceApi,
@@ -437,8 +436,8 @@ function SourceRow({
   }, [source.source]);
 
   const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project" || source.type === "twitter";
-  // Search-driven / queryable sources (twitter, snowflake) have no indexer;
-  // the backend rejects sync for them, so don't offer it.
+  // Search-driven sources (twitter) have no indexer; the backend rejects sync
+  // for them, so don't offer it.
   const syncs = source.sync_enabled !== false;
   const ref = shortRef(source);
 
@@ -500,9 +499,6 @@ function BrowsePanel({
   providerLabel: string;
   onRefresh: () => void;
 }) {
-  if (source.capability === "queryable") {
-    return <QueryablePanel source={source} />;
-  }
   if (source.capability === "searchable") {
     return (
       <SearchablePanel
@@ -591,106 +587,6 @@ function DocViewer({
         <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
           {content}
         </pre>
-      )}
-    </div>
-  );
-}
-
-function QueryablePanel({ source }: { source: Source }) {
-  const [tables, setTables] = useState<SourceEntry[] | null>(null);
-  const [sql, setSql] = useState("");
-  const [result, setResult] = useState<{ columns?: string[]; rows?: unknown[][]; error?: string } | null>(null);
-  const [running, setRunning] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getSourceEntries(source.source)
-      .then((entries) => {
-        if (!cancelled) setTables(entries);
-      })
-      .catch(() => {
-        if (!cancelled) setTables([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [source.source]);
-
-  async function run() {
-    if (!sql.trim()) return;
-    setRunning(true);
-    try {
-      setResult(await querySource(source.source, sql));
-    } catch (e) {
-      setResult({ error: e instanceof Error ? e.message : "Query failed" });
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Tables</div>
-      {tables === null ? (
-        <div className="text-[12px] text-muted">Loading…</div>
-      ) : tables.length === 0 ? (
-        <div className="text-[12px] text-muted">No tables found.</div>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {tables.map((t) => (
-            <button
-              key={t.name}
-              type="button"
-              onClick={() => setSql(`SELECT * FROM ${t.name} LIMIT 100`)}
-              className="cursor-pointer rounded-md border border-border bg-base px-2 py-1 text-[11.5px] text-foreground hover:bg-raised"
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <textarea
-        value={sql}
-        onChange={(e) => setSql(e.target.value)}
-        placeholder="SELECT * FROM ... LIMIT 100"
-        rows={4}
-        className="mt-3 w-full rounded-md border border-border bg-base px-2 py-1.5 font-mono text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
-      />
-      <button type="button" onClick={() => void run()} disabled={running || !sql.trim()} className={primaryButton() + " mt-2"}>
-        {running ? "Running..." : "Run"}
-      </button>
-
-      {result?.error && (
-        <div className="mt-3 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
-          {result.error}
-        </div>
-      )}
-      {result && !result.error && result.columns && (
-        <div className="scroll-thin mt-3 overflow-auto rounded-md border border-border">
-          <table className="w-full text-left text-[12px]">
-            <thead className="bg-base/70">
-              <tr>
-                {result.columns.map((col) => (
-                  <th key={col} className="whitespace-nowrap px-2 py-1.5 font-medium text-muted">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(result.rows ?? []).map((row, i) => (
-                <tr key={i} className="border-t border-border">
-                  {row.map((cell, j) => (
-                    <td key={j} className="whitespace-nowrap px-2 py-1.5 text-foreground">
-                      {cell === null ? "" : String(cell)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       )}
     </div>
   );
