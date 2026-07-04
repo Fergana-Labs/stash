@@ -1909,11 +1909,18 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     monkeypatch.setattr(indexer, "search_jira", fail_search)
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
-    # Unscoped fan-out swallows provider errors and logs them; a scoped search
-    # raises instead, so only the fan-out path exercises the redacted log line.
+    # Unscoped fan-out surfaces a redacted error marker (never raising) and logs
+    # only failure metadata; a scoped search raises instead.
     hits = await source_service.search_all(ws, owner_id, "customer transcript")
 
-    assert hits == []
+    assert hits == [
+        {
+            "source": src["id"],
+            "source_name": "PROJ",
+            "error": "PROJ search failed",
+            "needs_reconnect": False,
+        }
+    ]
     assert captured_logs == [
         (
             "federated search failed source=%s source_type=%s exception_type=%s",
@@ -1922,6 +1929,48 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     ]
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)
+    # An unmapped exception's raw text (token, query) must not leak into the
+    # surfaced marker either.
+    assert "secret-token" not in str(hits)
+    assert "customer transcript" not in str(hits)
+
+
+@pytest.mark.asyncio
+async def test_unscoped_search_surfaces_dead_federated_source(
+    client: AsyncClient, monkeypatch
+):
+    """A dead connection (expired/revoked token) must not vanish from unscoped
+    search as if it had no matches — it surfaces a needs_reconnect marker so the
+    caller can tell "reconnect me" apart from "nothing found"."""
+    from fastapi import HTTPException
+
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def dead_search(source, query, limit):
+        raise HTTPException(status_code=401, detail="gmail token expired; reconnect required")
+
+    monkeypatch.setattr(indexer, "search_gmail", dead_search)
+
+    results = await source_service.search_all(ws, owner_id, "anything")
+
+    markers = [r for r in results if r.get("source") == src["id"]]
+    assert markers == [
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "error": "gmail token expired; reconnect required",
+            "needs_reconnect": True,
+        }
+    ]
 
 
 @pytest.mark.asyncio

@@ -982,10 +982,11 @@ async def _federated_search(
 ) -> list[dict]:
     """Run a federated source's native provider search. Returns unified hits
     ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
-    provider error (e.g. Asana on a free tier) logs and yields no hits so
-    search stays alive; a SCOPED search raises instead — when the user asked
-    for this one source, an empty result must mean "no matches", never a
-    silently dead connection (revoked token, rate limit, bad query)."""
+    provider error (revoked token, rate limit) is logged and returned as a
+    single error marker ({source, source_name, error, needs_reconnect}) so the
+    rest of the search stays alive while the dead source is still surfaced —
+    dropping it silently would read as "no matches" for that source. A SCOPED
+    search raises instead, so the API serves an explicit HTTP error."""
     source_type = source["source_type"]
     try:
         if source_type == "google_drive":
@@ -1012,7 +1013,23 @@ async def _federated_search(
             source_type,
             type(exc).__name__,
         )
-        return []
+        # Only the classified message is safe to surface — an unmapped exception
+        # may carry the token or query in its text, so it gets a generic label.
+        mapped = _scoped_search_error(source, exc)
+        if isinstance(mapped, HTTPException):
+            detail = mapped.detail
+            needs_reconnect = mapped.status_code == 409
+        else:
+            detail = f"{source['display_name'] or source_type} search failed"
+            needs_reconnect = False
+        return [
+            {
+                "source": source["id"],
+                "source_name": source["display_name"],
+                "error": detail,
+                "needs_reconnect": needs_reconnect,
+            }
+        ]
     return [
         {
             "source": source["id"],
@@ -1834,8 +1851,9 @@ async def search_all(
         # Federated sources search the provider's native API live. Scoped → the
         # one source, raising on provider errors so a dead connection is never
         # mistaken for "no matches"; unscoped → fan out across the user's
-        # federated sources (each call swallows its own errors, and scoped-only
-        # types are skipped — see SCOPED_ONLY_SEARCH_TYPES).
+        # federated sources (each call keeps search alive by returning its own
+        # error as a marker instead of raising, and scoped-only types are
+        # skipped — see SCOPED_ONLY_SEARCH_TYPES).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
                 results += await _federated_search(connected, query, limit, swallow_errors=False)
