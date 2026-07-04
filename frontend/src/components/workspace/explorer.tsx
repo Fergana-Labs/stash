@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
 import { ChevronRight, Loader2, MessagesSquare, GraduationCap, Plus, FolderTree, Brain, Plug } from "lucide-react";
 import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, type SessionSummary, type Source } from "@/lib/api";
@@ -78,9 +78,30 @@ function ToolsSection() {
 
 function RootSection() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const open = useOpenTab();
+  const setRailSection = useWorkspace((s) => s.setRailSection);
+
+  function selectSection(section: ExplorerSection) {
+    const params = new URLSearchParams(searchParams);
+    params.set("section", section);
+    setRailSection(section);
+    router.replace(`${pathname}?${params.toString()}`);
+  }
+
   return (
     <div className="py-1">
-      {SECTIONS.map((s) => <LeafRow key={s.key} icon={s.icon} label={s.label} onClick={() => router.push(s.route)} trailing={<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />} />)}
+      {SECTIONS.map((s) => (
+        <LeafRow
+          key={s.key}
+          icon={s.icon}
+          label={s.label}
+          onClick={() => selectSection(s.key)}
+          onOpen={s.key === "sessions" ? () => open("sessions-home", "sessions", "Sessions") : undefined}
+          trailing={<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+        />
+      ))}
     </div>
   );
 }
@@ -119,6 +140,7 @@ function useMemoryFolder(): string | null {
  *  Memory is a dedicated reserved folder, hidden from Files. */
 export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
+  const open = useOpenTab();
   const [atRoot, setAtRoot] = useState(false);
   const memoryFolderId = useMemoryFolder();
   // A rail-section change means we're back to viewing that section, not Home.
@@ -178,6 +200,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
             section === "skills" ? { label: "New skill", run: createSkill } :
             isSessions ? { label: "New folder", run: createSessionFolderItem } : undefined
           }
+          openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
           showImport={!isSessions}
           vfsWritable={!isSessions}
         />

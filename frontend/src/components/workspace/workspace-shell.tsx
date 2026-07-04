@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
@@ -13,6 +13,7 @@ import Workbench from "./workbench";
 const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
+const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "memory", "tools"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -87,8 +88,12 @@ export default function WorkspaceShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const section = sectionForPath(pathname);
-  const renderRouteContent = pathname === "/sessions";
+  const searchParams = useSearchParams();
+  const routeSection = sectionForPath(pathname);
+  const requestedSection = searchParams.get("section");
+  const selectedSection = EXPLORER_SECTIONS.find((s) => s === requestedSection) ?? null;
+  const section = selectedSection ?? routeSection;
+  const renderRouteContent = pathname === "/sessions" && !selectedSection && searchParams.get("workspace") !== "1";
 
   return (
     // Chrome surface — the content panel floats on top of it.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
 import { X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -22,7 +22,7 @@ function TabIcon({ kind }: { kind: WorkbenchTab["kind"] }) {
   if (kind === "file") return <FileIcon className={cls} />;
   if (kind === "table") return <TableIcon className={cls} />;
   if (kind === "folder") return <FolderIcon className={cls} />;
-  if (kind === "session") return <SessionsIcon className={cls} />;
+  if (kind === "session" || kind === "sessions-home") return <SessionsIcon className={cls} />;
   if (kind === "agent") return <Bot className="h-[13px] w-[13px]" />;
   if (kind === "tool") return <Plug className="h-[13px] w-[13px]" />;
   return <SkillIcon className={cls} />;
@@ -192,6 +192,7 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
  */
 export default function Workbench() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const split = useWorkspace((s) => s.split);
   const openTab = useWorkspace((s) => s.openTab);
   const setActiveTab = useWorkspace((s) => s.setActiveTab);
@@ -199,13 +200,15 @@ export default function Workbench() {
   // URL → tab: opening/focusing happens off the pathname only (never off `tabs`),
   // so this can't loop with the imperative router.replace on tab clicks.
   useEffect(() => {
-    const match = tabFromPath(pathname);
+    const match = pathname === "/sessions" && searchParams.get("workspace") === "1"
+      ? { kind: "sessions-home" as const, refId: "sessions" }
+      : tabFromPath(pathname);
     if (!match) return;
     const existing = useWorkspace.getState().tabs.find((t) => t.kind === match.kind && t.refId === match.refId);
     if (existing) setActiveTab(existing.id);
-    else openTab(match.kind, match.refId, match.refId);
+    else openTab(match.kind, match.refId, match.kind === "sessions-home" ? "Sessions" : match.refId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [pathname, searchParams]);
 
   if (!split) return <TabPane pane={0} />;
   return (

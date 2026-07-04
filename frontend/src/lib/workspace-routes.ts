@@ -11,6 +11,8 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
       return `/tables/${tab.refId}`;
     case "session":
       return `/sessions/${tab.refId}`;
+    case "sessions-home":
+      return "/sessions?workspace=1";
     case "skill":
       return `/skills/folder/${tab.refId}`;
     case "folder":

@@ -40,6 +40,7 @@ export default function FilesExplorer({
   loadRoot,
   loadFolder,
   newRootItem,
+  openRootTab,
   showImport = true,
   vfsWritable = true,
 }: {
@@ -57,6 +58,8 @@ export default function FilesExplorer({
   /** At a virtual root (loadRoot), the "create" action for that root's native item
    *  (e.g. New skill) — replaces new-file/folder/upload, which need a real folder. */
   newRootItem?: { label: string; run: () => Promise<void> };
+  /** Double-clicking the root crumb can open a native overview tab. */
+  openRootTab?: () => void;
   /** Show the GitHub import button. Default true. */
   showImport?: boolean;
   /** This section can create VFS items (new file/folder/upload). Default true;
@@ -227,7 +230,13 @@ export default function FilesExplorer({
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-[var(--divider-color)] px-2 text-[12px]">
         <button onClick={onRoot} className="shrink-0 text-muted-foreground hover:text-foreground">Home</button>
         <span className="text-muted-foreground/50">/</span>
-        <button onClick={() => setFolderId(rootFolderId)} className={cn("shrink-0 hover:text-foreground", folderId === rootFolderId ? "font-medium text-foreground" : "text-muted-foreground")}>{rootLabel}</button>
+        <button
+          onClick={() => setFolderId(rootFolderId)}
+          onDoubleClick={openRootTab}
+          className={cn("shrink-0 hover:text-foreground", folderId === rootFolderId ? "font-medium text-foreground" : "text-muted-foreground")}
+        >
+          {rootLabel}
+        </button>
         {(rootFolderId ? crumbs.slice(crumbs.findIndex((c) => c.id === rootFolderId) + 1) : crumbs).map((c, i, arr) => (
           <span key={c.id} className="flex min-w-0 items-center gap-1">
             <span className="text-muted-foreground/50">/</span>

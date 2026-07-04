@@ -4,6 +4,7 @@ import { useState } from "react";
 import PageClient from "@/app/(app)/p/[pageId]/PageClient";
 import FileClient from "@/app/(app)/f/[fileId]/FileClient";
 import TableClient from "@/app/tables/[tableId]/TableClient";
+import SessionsPage from "@/app/(app)/sessions/page";
 import SessionClient from "@/app/(app)/sessions/[sessionId]/SessionClient";
 import SkillFolderClient from "@/app/(app)/skills/folder/[folderId]/SkillFolderClient";
 import FolderClient from "@/app/(app)/folders/[folderId]/FolderClient";
@@ -31,6 +32,7 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "page") return <PageClient pageId={tab.refId} />;
   if (tab.kind === "file") return <FileClient fileId={tab.refId} />;
   if (tab.kind === "table") return <TableClient tableId={tab.refId} embedded />;
+  if (tab.kind === "sessions-home") return <SessionsPage />;
   if (tab.kind === "session") return <SessionClient sessionId={tab.refId} />;
   if (tab.kind === "skill") return <SkillFolderClient folderId={tab.refId} />;
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;

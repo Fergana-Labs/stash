@@ -13,7 +13,7 @@ import { nanoid } from "nanoid";
 
 export type RailSection = "files" | "agents" | "sessions" | "skills" | "memory" | "tools";
 
-export type TabKind = "page" | "file" | "table" | "session" | "skill" | "folder" | "agent" | "tool";
+export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "tool";
 
 export interface WorkbenchTab {
   id: string;
