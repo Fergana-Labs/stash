@@ -3,7 +3,7 @@
 Pins are an explicit per-kind set the user curates (skills / sessions /
 files); recents are stamped automatically as the user opens things. Both are
 private to the user. Pins require access to the owner scope; recents can also
-be stamped by non-members for objects shared with them.
+be stamped by other users for objects shared with them.
 """
 
 import json

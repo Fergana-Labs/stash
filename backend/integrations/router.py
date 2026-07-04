@@ -157,6 +157,11 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "SLACK_OAUTH_CLIENT_SECRET",
             "SLACK_OAUTH_REDIRECT_URI",
         ],
+        "gong": [
+            "GONG_OAUTH_CLIENT_ID",
+            "GONG_OAUTH_CLIENT_SECRET",
+            "GONG_OAUTH_REDIRECT_URI",
+        ],
         "twitter": [
             "TWITTER_OAUTH_CLIENT_ID",
             "TWITTER_OAUTH_REDIRECT_URI",
@@ -186,6 +191,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "gmail": "Gmail",
             "notion": "Notion",
             "slack": "Slack",
+            "gong": "Gong",
             "twitter": "Twitter / X",
             "granola": "Granola",
             "jira": "Jira",
@@ -417,7 +423,7 @@ async def integration_connect_with_credentials(
     values: dict[str, str],
     current_user: dict = Depends(get_current_user),
 ):
-    """Connect an api_key provider (Gong) from pasted credentials.
+    """Connect an api_key provider from pasted credentials.
     The provider validates them against the upstream and returns the bundle as
     the stored token; we never echo the secrets back."""
     p = get_provider(provider)

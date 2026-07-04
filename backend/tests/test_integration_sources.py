@@ -11,6 +11,7 @@ Two things worth pinning that don't need a DB or live OAuth:
    them — the exact bug that makes a source silently un-syncable.
 """
 
+import json
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -236,11 +237,15 @@ def test_render_call_labels_speakers_and_keeps_transcript():
     assert "[Speaker 1]: likewise" in text
 
 
-def test_gong_is_api_key_searchable_source():
+def test_gong_is_oauth_searchable_source():
     gong = GongIntegration()
-    assert gong.auth_kind == "api_key"
-    assert [f.name for f in gong.credential_fields] == ["access_key", "access_key_secret"]
-    assert all(f.secret for f in gong.credential_fields)
+    assert getattr(gong, "auth_kind", "oauth") == "oauth"
+    assert gong.supports_refresh is True
+    assert {
+        "api:calls:read:basic",
+        "api:calls:read:transcript",
+        "api:workspaces:read",
+    } <= set(gong.scopes)
     assert source_service.normalize_source_settings(
         "gong_calls",
         {"allowed_workspace_ids": ["W1", " W2 ", "W1"]},
@@ -250,12 +255,70 @@ def test_gong_is_api_key_searchable_source():
     assert source_service.SOURCE_CAPABILITY["gong_calls"] == "searchable"
 
 
+def test_gong_authorize_url_carries_scopes_and_redirect(monkeypatch):
+    monkeypatch.setattr(settings, "GONG_OAUTH_CLIENT_ID", "client-1")
+    monkeypatch.setattr(settings, "GONG_OAUTH_CLIENT_SECRET", "secret-1")
+    monkeypatch.setattr(
+        settings,
+        "GONG_OAUTH_REDIRECT_URI",
+        "https://app.example.com/api/v1/integrations/gong/callback",
+    )
+
+    parsed = urlparse(GongIntegration().authorize_url("state-1"))
+    assert parsed.netloc == "app.gong.io"
+    assert parsed.path == "/oauth2/authorize"
+    query = parse_qs(parsed.query)
+    assert query["client_id"] == ["client-1"]
+    assert query["state"] == ["state-1"]
+    assert query["response_type"] == ["code"]
+    assert "api:calls:read:transcript" in query["scope"][0].split()
+
+
 @pytest.mark.asyncio
-async def test_gong_rejects_missing_credentials():
-    with pytest.raises(ValueError):
-        await GongIntegration().connect_with_credentials(
-            {"access_key": "", "access_key_secret": ""}
-        )
+async def test_gong_exchange_refresh_and_fetch_account(monkeypatch):
+    from backend.integrations.gong import provider as gong_provider
+
+    monkeypatch.setattr(settings, "GONG_OAUTH_CLIENT_ID", "client-1")
+    monkeypatch.setattr(settings, "GONG_OAUTH_CLIENT_SECRET", "secret-1")
+    monkeypatch.setattr(settings, "GONG_OAUTH_REDIRECT_URI", "https://app.example.com/callback")
+
+    # The per-customer base URL must be bundled into the stored access token so
+    # later calls hit the customer's data-center subdomain, not api.gong.io.
+    exchange_client = _FakeClient(
+        {
+            "access_token": "tok",
+            "refresh_token": "refresh",
+            "expires_in": 86400,
+            "scope": "api:calls:read:basic api:calls:read:transcript",
+            "api_base_url_for_customer": "https://company-17.api.gong.io",
+        }
+    )
+    monkeypatch.setattr(gong_provider.httpx, "AsyncClient", exchange_client)
+    token = await GongIntegration().exchange_code("code-1")
+    bundle = json.loads(token.access_token)
+    assert bundle == {"access_token": "tok", "api_base_url": "https://company-17.api.gong.io"}
+    assert token.refresh_token == "refresh"
+    assert exchange_client.posts[0][1]["grant_type"] == "authorization_code"
+
+    # Gong omits a new refresh token on refresh — the old one must survive.
+    refresh_client = _FakeClient(
+        {
+            "access_token": "tok2",
+            "expires_in": 86400,
+            "api_base_url_for_customer": "https://company-17.api.gong.io",
+        }
+    )
+    monkeypatch.setattr(gong_provider.httpx, "AsyncClient", refresh_client)
+    refreshed = await GongIntegration().refresh("old-refresh")
+    assert json.loads(refreshed.access_token)["access_token"] == "tok2"
+    assert refreshed.refresh_token == "old-refresh"
+    assert refresh_client.posts[0][1]["grant_type"] == "refresh_token"
+
+    account_client = _FakeClient({"workspaces": [{"id": "W1", "name": "Acme"}]})
+    monkeypatch.setattr(gong_provider.httpx, "AsyncClient", account_client)
+    account = await GongIntegration().fetch_account(refreshed.access_token)
+    assert account.email is None
+    assert account.display_name == "Acme"
 
 
 @pytest.mark.asyncio
@@ -299,7 +362,7 @@ async def test_gong_indexer_filters_to_allowed_accounts(monkeypatch):
     soft_deleted: list[str] = []
 
     async def fake_get_valid_token(user_id, provider):
-        return '{"access_key": "ak", "access_key_secret": "secret"}'
+        return '{"access_token": "tok", "api_base_url": "https://company-17.api.gong.io"}'
 
     async def fake_fetch_call_meta(client, from_dt, to_dt):
         return {

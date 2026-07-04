@@ -61,7 +61,7 @@ def _activity_bucket_step(bucket: str) -> timedelta:
 
 # Shared CTE for scope access filtering on history_events.
 #   scope_idx -> narrow to a single scope's events (caller has already
-#                authorized membership).
+#                authorized access).
 #   None      -> every event the user can see across all their scopes.
 def _accessible_events_cte(
     scope_idx: int | None = None,
@@ -188,7 +188,8 @@ async def get_activity_timeline(
         scope_idx = 5
 
     rows = await pool.fetch(
-        _accessible_events_cte(scope_idx=scope_idx) + """
+        _accessible_events_cte(scope_idx=scope_idx)
+        + """
         , timeline_events AS (
             SELECT
                 me.owner_user_id,
@@ -460,7 +461,7 @@ async def _get_source_counts(user_id: UUID, owner_user_id: UUID | None = None) -
 async def get_overview_counts(user_id: UUID) -> dict:
     """Counts for the 'Your brain' vitals, spanning the user's own content plus
     everything shared with them. Pages/files run through readable_content_condition
-    so a share only surfaces the specific shared rows. Sessions stay member-scoped —
+    so a share only surfaces the specific shared rows. Sessions stay owner-scoped —
     session sharing isn't reflected in these counts yet."""
     pool = get_pool()
     accessible_scopes = permission_service.accessible_scope_ids_sql(1)
@@ -539,7 +540,8 @@ async def compute_knowledge_density(
 
     # One scan per source: stem → doc_count + newest_at.
     page_rows = await pool.fetch(
-        _accessible_pages_cte(scope_idx=content_scope_idx) + """
+        _accessible_pages_cte(scope_idx=content_scope_idx)
+        + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, np.id AS doc_id, np.updated_at AS ts
@@ -557,7 +559,8 @@ async def compute_knowledge_density(
         *content_args,
     )
     table_rows_res = await pool.fetch(
-        _accessible_tables_cte(scope_idx=content_scope_idx) + """
+        _accessible_tables_cte(scope_idx=content_scope_idx)
+        + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, tr.id AS doc_id, tr.updated_at AS ts
@@ -575,7 +578,8 @@ async def compute_knowledge_density(
         *content_args,
     )
     event_rows = await pool.fetch(
-        _accessible_events_cte(scope_idx=event_scope_idx) + """
+        _accessible_events_cte(scope_idx=event_scope_idx)
+        + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, he.id AS doc_id, he.created_at AS ts
@@ -619,7 +623,8 @@ async def compute_knowledge_density(
     # source) maps top stems → their most frequent original word. ts_lexize
     # returns the same stems Postgres tsvector produced, so the join is exact.
     word_rows = await pool.fetch(
-        _accessible_pages_cte(scope_idx=content_scope_idx) + """
+        _accessible_pages_cte(scope_idx=content_scope_idx)
+        + """
         SELECT w AS word, ts_lexize('english_stem', w) AS stems, COUNT(*) AS freq
         FROM pages np,
              LATERAL regexp_split_to_table(lower(COALESCE(np.content_markdown, '')), '[^a-z]+') AS w
@@ -665,9 +670,9 @@ async def get_knowledge_density(
     """Topic clusters for the key topics treemap.
 
     Reads from knowledge_density_cache (migration 0017/0018) only for explicit
-    scopes. User-wide results depend on the user's current scope memberships,
+    scopes. User-wide results depend on which scopes the user can currently access,
     so they are recomputed to avoid serving stale customer data after
-    offboarding."""
+    access is revoked."""
     pool = get_pool()
     max_clusters = min(max_clusters, 50)
 
@@ -717,7 +722,7 @@ async def get_embedding_projection(
     Pass ``owner_user_id`` to scope to one user.
 
     Only explicit scope-scoped requests use the embedding_projections cache.
-    User-wide results depend on current scope memberships."""
+    User-wide results depend on current scope access."""
     pool = get_pool()
     max_points = min(max_points, 2000)
 
@@ -735,8 +740,8 @@ async def get_embedding_projection(
         event_scope_idx = 2
 
     # Cache row keyed by (user_id, source_type, owner_user_id), explicit
-    # scopes only: user-wide results depend on the user's current memberships
-    # and must be recomputed (offboarding).
+    # scopes only: user-wide results depend on the user's current scope access
+    # and must be recomputed when access changes.
     cache = None
     use_cache = owner_user_id is not None
     if use_cache:
@@ -753,7 +758,8 @@ async def get_embedding_projection(
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_pages_cte(scope_idx=content_count_scope_idx) + """
+            _accessible_pages_cte(scope_idx=content_count_scope_idx)
+            + """
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
@@ -764,7 +770,8 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         row = await pool.fetchval(
-            _accessible_tables_cte(scope_idx=content_count_scope_idx) + """
+            _accessible_tables_cte(scope_idx=content_count_scope_idx)
+            + """
             SELECT COUNT(*) FROM table_rows tr
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
               AND tr.embedding IS NOT NULL
@@ -775,7 +782,8 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _accessible_events_cte(scope_idx=event_scope_idx) + """
+            _accessible_events_cte(scope_idx=event_scope_idx)
+            + """
             SELECT COUNT(*) FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
@@ -786,7 +794,8 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         row = await pool.fetchval(
-            _accessible_files_cte(scope_idx=content_count_scope_idx) + """
+            _accessible_files_cte(scope_idx=content_count_scope_idx)
+            + """
             SELECT COUNT(*) FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)
               AND f.embedding IS NOT NULL
@@ -826,7 +835,8 @@ async def get_embedding_projection(
 
     if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_pages_cte(scope_idx=content_fetch_scope_idx) + """
+            _accessible_pages_cte(scope_idx=content_fetch_scope_idx)
+            + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
@@ -849,7 +859,8 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
-            _accessible_tables_cte(scope_idx=content_fetch_scope_idx) + """
+            _accessible_tables_cte(scope_idx=content_fetch_scope_idx)
+            + """
             SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
             FROM table_rows tr
             JOIN tables t ON t.id = tr.table_id
@@ -873,7 +884,8 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(scope_idx=event_fetch_scope_idx) + """
+            _accessible_events_cte(scope_idx=event_fetch_scope_idx)
+            + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -896,7 +908,8 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         rows = await pool.fetch(
-            _accessible_files_cte(scope_idx=content_fetch_scope_idx) + """
+            _accessible_files_cte(scope_idx=content_fetch_scope_idx)
+            + """
             SELECT f.id, f.name AS label, f.embedding, f.created_at
             FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)

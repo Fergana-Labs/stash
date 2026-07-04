@@ -134,7 +134,7 @@ async def list_my_sessions(
             he_title.session_id,
             LEFT(he_title.content, 240) AS title_source
           FROM history_events he_title
-          WHERE {' AND '.join(title_where)}
+          WHERE {" AND ".join(title_where)}
           ORDER BY
             he_title.owner_user_id,
             he_title.session_id,
@@ -153,7 +153,7 @@ async def list_my_sessions(
           sf.name AS session_folder_name,
           he.owner_user_id,
           owner.display_name AS owner_name,
-          {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,
+          {linear_ticket_service.sql_json_agg("s")} AS linear_tickets,
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
@@ -170,7 +170,7 @@ async def list_my_sessions(
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
         LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
-        WHERE {' AND '.join(where)}
+        WHERE {" AND ".join(where)}
         GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
           sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
@@ -206,7 +206,7 @@ async def upsert_session(
 ):
     owner_user_id = current_user["id"]
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not create sessions")
+        raise HTTPException(status_code=403, detail="Only the owner can create sessions")
 
     # A session always lands in a folder: the one it was pushed to, or the
     # scope's Default folder (resolved by upsert_session when unset).
@@ -237,8 +237,8 @@ async def _session_detail_payload(
 ) -> dict | None:
     """Full session detail if the user may read it, else None.
 
-    No scope-membership pre-gate: a session may be shared with a
-    non-member. can_read_session enforces check_access (owner OR share OR
+    No ownership pre-gate: a session may be shared with a
+    user who does not own the scope. can_read_session enforces check_access (owner OR share OR
     open skill).
     """
     if not await memory_service.can_read_session(owner_user_id, session_id, user_id):
@@ -493,7 +493,7 @@ async def materialize_session(
     on it. Re-materializing the same session updates the existing page rather
     than spawning duplicates."""
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not materialize sessions")
+        raise HTTPException(status_code=403, detail="Only the owner can materialize sessions")
     if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="No events for that session in this scope")
 

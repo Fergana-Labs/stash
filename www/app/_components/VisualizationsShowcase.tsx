@@ -245,31 +245,32 @@ export default function VisualizationsShowcase() {
             <br />
             <span className="font-medium text-dim">actually retrievable.</span>
           </h2>
-          <p className="max-w-[620px] text-[17px] leading-[1.55] text-dim">
-            Every retrieval method has blind spots, so Stash runs three:
-            a curated wiki, vector search, and grep. Your agents get the
-            best of all worlds.
+          <p className="max-w-[640px] text-[17px] leading-[1.55] text-dim">
+            Stash compiles your sessions and sources into a context graph, then
+            makes it retrievable three ways: a curated wiki, vector search, and
+            grep. It&apos;s portable memory you own: open source, self-hostable,
+            no vendor lock-in.
           </p>
         </div>
         <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div>
             <PageGraphMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              While you sleep, an agent curates your history into linked
-              pages — a virtual file system your agents navigate directly.
+              While you sleep, an agent curates your history into a context graph
+              of linked pages your agents navigate directly.
             </p>
           </div>
           <div>
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              Every session, page, and table embedded, so agents find
-              knowledge by meaning — not filename.
+              Every session, page, and table is embedded, so agents find
+              knowledge by meaning, not filename.
             </p>
           </div>
           <div>
             <GrepSearchMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              Agents search your Stash like a repo — for the exact lookups
+              Agents search your Stash like a repo, for the exact lookups
               embeddings miss.
             </p>
           </div>

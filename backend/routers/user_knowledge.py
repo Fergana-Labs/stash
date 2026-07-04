@@ -376,24 +376,24 @@ async def _sidebar_etag(owner_user_id: UUID, user_id: UUID) -> str:
              ))                                                                   AS s,
           (SELECT MAX(he.created_at) FROM history_events he
             WHERE he.owner_user_id = $1 AND he.session_id IS NOT NULL
-            AND {memory_service.readable_session_event_condition('he', 2)})        AS he,
+            AND {memory_service.readable_session_event_condition("he", 2)})        AS he,
           (SELECT COUNT(*) FROM history_events he
             WHERE he.owner_user_id = $1 AND he.session_id IS NOT NULL
-            AND {memory_service.readable_session_event_condition('he', 2)})        AS hc,
+            AND {memory_service.readable_session_event_condition("he", 2)})        AS hc,
           (SELECT MAX(stt.updated_at) FROM session_titles stt
            JOIN sessions stt_session
              ON stt_session.owner_user_id = stt.owner_user_id
             AND stt_session.session_id = stt.session_id
            WHERE stt.owner_user_id = $1
              AND stt_session.deleted_at IS NULL
-             AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tt,
+             AND {memory_service.readable_session_event_condition("stt_session", 2)}) AS tt,
           (SELECT COUNT(*) FROM session_titles stt
            JOIN sessions stt_session
              ON stt_session.owner_user_id = stt.owner_user_id
             AND stt_session.session_id = stt.session_id
            WHERE stt.owner_user_id = $1
              AND stt_session.deleted_at IS NULL
-             AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
+             AND {memory_service.readable_session_event_condition("stt_session", 2)}) AS tc,
           (SELECT MAX(updated_at) FROM skills WHERE owner_user_id = $1)            AS st,
           (SELECT MAX(sh.created_at) FROM shares sh
            WHERE sh.owner_user_id = $1 AND sh.principal_type = 'user'

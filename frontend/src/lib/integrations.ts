@@ -52,7 +52,7 @@ export type IntegrationStatus = {
   connected_at: string | null;
   accounts: IntegrationAccount[];
   // "oauth" (redirect flow), "mcp_oauth" (DCR+PKCE via an MCP server, e.g.
-  // Granola), or "api_key" (pasted credentials, e.g. Gong).
+  // Granola), or "api_key" (pasted credentials).
   auth_kind: "oauth" | "mcp_oauth" | "api_key";
   // Present only for api_key providers — the fields to render in the connect form.
   credential_fields: CredentialField[] | null;
@@ -91,8 +91,8 @@ export async function disconnectIntegration(provider: IntegrationProvider): Prom
 }
 
 /**
- * Connect an api_key provider (e.g. Gong) by POSTing the pasted credential
- * values. The backend validates them upstream and stores them encrypted.
+ * Connect an api_key provider by POSTing the pasted credential values. The
+ * backend validates them upstream and stores them encrypted.
  */
 export async function submitCredentials(
   provider: IntegrationProvider,

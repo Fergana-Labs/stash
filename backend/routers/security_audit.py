@@ -22,7 +22,7 @@ async def list_security_events(
     owner_user_id = current_user["id"]
     if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
         # Match the sibling scope routers: never confirm a scope's
-        # existence to non-members.
+        # existence to non-owners.
         raise HTTPException(status_code=404, detail="Scope not found")
     metadata = {
         "action_filter_hash": security_audit_service.hash_value(action),

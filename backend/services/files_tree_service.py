@@ -739,7 +739,7 @@ async def purge_page(page_id: UUID, owner_user_id: UUID) -> bool:
     """Permanent delete — only callable on a page already in trash."""
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM pages WHERE id = $1 AND owner_user_id = $2  " "AND deleted_at IS NOT NULL",
+        "DELETE FROM pages WHERE id = $1 AND owner_user_id = $2  AND deleted_at IS NOT NULL",
         page_id,
         owner_user_id,
     )

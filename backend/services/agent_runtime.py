@@ -395,7 +395,7 @@ async def _create_skill(args: dict) -> dict:
 
 @tool(
     "publish_skill",
-    "Publish a skill folder: make it publicly readable at /skills/<slug> and " "return the URL.",
+    "Publish a skill folder: make it publicly readable at /skills/<slug> and return the URL.",
     {
         "type": "object",
         "properties": {
@@ -424,7 +424,7 @@ async def _publish_skill(args: dict) -> dict:
 
 @tool(
     "update_skill",
-    "Update a published skill's share settings (title, description, access, " "Discover listing).",
+    "Update a published skill's share settings (title, description, access, Discover listing).",
     {
         "type": "object",
         "properties": {

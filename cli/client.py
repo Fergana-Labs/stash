@@ -17,6 +17,11 @@ class StashError(Exception):
         super().__init__(f"[{status_code}] {detail}")
 
 
+# Page size when the VFS walks a source's entries. Callers page with the
+# `after` cursor until a page comes back non-full.
+SOURCE_ENTRIES_PAGE = 1000
+
+
 class StashClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
@@ -331,15 +336,18 @@ class StashClient:
         agent_name: str,
         event_type: str,
         content: str,
-        session_id: str | None = None,
+        session_id: str,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
         created_at: str | None = None,
     ) -> dict:
-        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
-        if session_id:
-            body["session_id"] = session_id
+        body: dict = {
+            "agent_name": agent_name,
+            "event_type": event_type,
+            "content": content,
+            "session_id": session_id,
+        }
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -528,6 +536,24 @@ class StashClient:
 
     def list_source_entries(self, source: str, path: str = "") -> list:
         return self._list(f"/api/v1/me/sources/{source}/entries", "entries", path=path)
+
+    def list_source_entries_page(
+        self, source: str, path: str = "", after: str = ""
+    ) -> tuple[list, bool]:
+        """One page of a source's entries, reporting whether more pages exist.
+
+        We ask for one row beyond the page size; if it comes back, more rows
+        exist. `after` is the keyset cursor: pass the last path of the previous
+        page to fetch the next one."""
+        data = self._get(
+            f"/api/v1/me/sources/{source}/entries",
+            path=path,
+            limit=SOURCE_ENTRIES_PAGE + 1,
+            after=after,
+        )
+        entries = data.get("entries", []) if isinstance(data, dict) else data
+        truncated = len(entries) > SOURCE_ENTRIES_PAGE
+        return entries[:SOURCE_ENTRIES_PAGE], truncated
 
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._get(f"/api/v1/me/sources/{source}/doc", ref=ref)

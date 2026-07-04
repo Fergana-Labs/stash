@@ -29,7 +29,7 @@ _TRASHABLE = {"page", "file"}
 async def _authorize(object_type: str, object_id: UUID, owner_user_id: UUID, user_id: UUID) -> None:
     """Raise ValueError unless the object lives in this scope and the user
     may write it. Resolving the real scope closes the cross-scope hole
-    where membership in the request's scope would otherwise pass."""
+    where having write access in the request's scope would otherwise pass."""
     obj_owner = await permission_service.resolve_owner_user_id(object_type, object_id)
     if obj_owner != owner_user_id:
         raise ValueError("not found")
@@ -155,7 +155,7 @@ async def batch_restore(owner_user_id: UUID, user_id: UUID, items: list[dict]) -
         if object_type not in _TRASHABLE:
             raise ValueError(f"batch restore supports pages and files, not {object_type}")
         # Trashed rows can't be permission-checked the normal way (live-only
-        # queries skip them); scope membership + write is the gate.
+        # queries skip them); scope write access (owner-only) is the gate.
         if not await user_scope_service.is_owner(owner_user_id, user_id):
             raise ValueError("no write access")
         return await _restore_one(object_type, object_id, owner_user_id, user_id)

@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
 @router.get("/pages", response_model=UserPageListResponse)
 async def list_all_pages(current_user: dict = Depends(get_current_user)):
-    """Every page across every scope the user is a member of."""
+    """Every page across every scope the user can access."""
     rows = await files_tree_service.list_user_pages(current_user["id"])
     return UserPageListResponse(pages=[UserPageEntry(**r) for r in rows])
 
@@ -53,7 +53,7 @@ async def list_all_session_events(
 async def list_my_recents(current_user: dict = Depends(get_current_user)):
     """Recently-viewed objects across all scopes, most recent first.
 
-    Includes objects in scopes the user isn't a member of (shared items),
+    Includes objects in other users' scopes (shared items),
     which the Shared-with-me Recent strip resolves against the share list.
     """
     pool = get_pool()
@@ -208,13 +208,13 @@ async def overview_counts(current_user: dict = Depends(get_current_user)):
 
 
 async def _verify_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
-    """Raise 403 if the user isn't a member of the scope."""
+    """Raise 403 if the user doesn't own the scope."""
     from fastapi import HTTPException
 
     from ..services import user_scope_service
 
     if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a member of this scope")
+        raise HTTPException(status_code=403, detail="Not the owner of this scope")
 
 
 @router.get("/activity-timeline")

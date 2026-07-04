@@ -275,12 +275,15 @@ def stream_user_message(
         return
     if not prompt_text or not prompt_text.strip():
         return
+    sid = (event.session_id if event is not None else "") or state.get("session_id", "")
+    if not sid:
+        return
     try:
         client.push_event(
             agent_name=cfg["agent_name"],
             event_type="user_message",
             content=prompt_text,
-            session_id=state.get("session_id", ""),
+            session_id=sid,
             session_folder_id=cfg.get("session_folder_id") or None,
             metadata=_event_metadata(event),
             client=cfg.get("client") or None,
@@ -299,6 +302,9 @@ def stream_tool_use(
         return
     if not event.tool_name:
         return
+    sid = event.session_id or state.get("session_id", "")
+    if not sid:
+        return
 
     content, metadata = summarize_tool_use(
         event.tool_name, event.tool_input, event.tool_response,
@@ -314,7 +320,7 @@ def stream_tool_use(
             agent_name=cfg["agent_name"],
             event_type="tool_use",
             content=content,
-            session_id=state.get("session_id", ""),
+            session_id=sid,
             session_folder_id=cfg.get("session_folder_id") or None,
             tool_name=event.tool_name,
             metadata=metadata,
@@ -336,12 +342,15 @@ def stream_assistant_message(
         return
     if not event.last_assistant_message:
         return
+    sid = event.session_id or state.get("session_id", "")
+    if not sid:
+        return
     try:
         client.push_event(
             agent_name=cfg["agent_name"],
             event_type="assistant_message",
             content=event.last_assistant_message,
-            session_id=state.get("session_id", ""),
+            session_id=sid,
             session_folder_id=cfg.get("session_folder_id") or None,
             metadata=_event_metadata(event),
             client=cfg.get("client") or None,

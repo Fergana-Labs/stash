@@ -69,6 +69,7 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         "sync_status": "idle",
         "last_synced_at": None,
     }
+
     async def fake_pages(owner_user_id, user_id):
         return [{"id": "p1", "name": "Welcome"}]
 
@@ -82,7 +83,7 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
             {"session_id": "s2", "agent_name": "claude", "title_source": None},
         ]
 
-    async def fake_connected(owner_user_id, user_id):
+    async def fake_connected(user_id):
         return [github]
 
     async def fake_documents(source, prefix="", limit=200):
@@ -144,7 +145,7 @@ async def test_sources_tree_nests_multiple_connections_under_one_provider(monkey
     async def fake_empty(owner_user_id, user_id):
         return []
 
-    async def fake_connected(owner_user_id, user_id):
+    async def fake_connected(user_id):
         return repos
 
     async def fake_documents(source, prefix="", limit=200):

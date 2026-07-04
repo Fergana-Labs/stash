@@ -109,7 +109,7 @@ async def ensure_default_folder(owner_user_id: UUID) -> dict:
     pushed to a specific folder land here (chat-UI + un-targeted CLI sessions).
 
     The folder is owned by the scope owner — not whoever happened to push the
-    first session — so its access never leaks to a member who later leaves.
+    first session — so its access never leaks to a user who later loses access.
     """
     pool = get_pool()
     existing = await pool.fetchrow(
@@ -149,8 +149,8 @@ async def get_folder(folder_id: UUID) -> dict | None:
 
 
 async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
-    """Folder management (rename/delete/visibility) is for the folder owner and
-    scope owners/editors — never public-link or explicit-share writers."""
+    """Folder management (rename/delete/visibility) is for the folder owner —
+    never public-link or explicit-share writers."""
     row = await get_pool().fetchrow(
         "SELECT owner_user_id FROM session_folders WHERE id = $1",
         folder_id,
@@ -167,8 +167,7 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT owner_user_id, public_permission, discoverable "
-        "FROM session_folders WHERE id = $1",
+        "SELECT owner_user_id, public_permission, discoverable FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or not await user_can_manage(folder_id, user_id):

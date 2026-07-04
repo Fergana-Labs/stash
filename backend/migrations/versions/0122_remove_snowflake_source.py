@@ -6,14 +6,14 @@ to a provider. Drop the connected sources and their stored credentials in one
 shot. Their per-source documents cascade — queryable sources never had a
 document table, so there is nothing else to clean up.
 
-Revision ID: 0121
-Revises: 0120
+Revision ID: 0122
+Revises: 0121
 """
 
 from alembic import op
 
-revision = "0121"
-down_revision = "0120"
+revision = "0122"
+down_revision = "0121"
 branch_labels = None
 depends_on = None
 

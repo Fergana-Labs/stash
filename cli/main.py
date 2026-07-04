@@ -2095,7 +2095,7 @@ def hist_push(
     content: str = typer.Argument(...),
     agent_name: str = typer.Option("cli", "--agent"),
     event_type: str = typer.Option("message", "--type"),
-    session_id: str = typer.Option(None, "--session"),
+    session_id: str = typer.Option(..., "--session"),
     tool_name: str = typer.Option(None, "--tool"),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and attach (repeatable)."

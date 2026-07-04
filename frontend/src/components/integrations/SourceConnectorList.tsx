@@ -228,7 +228,7 @@ function ConnectorAction({
     );
   }
   if (!connected) {
-    // api_key providers (Gong) reveal an inline credential form instead of
+    // api_key providers reveal an inline credential form instead of
     // redirecting to an OAuth consent screen.
     if (authKind === "api_key") {
       return (

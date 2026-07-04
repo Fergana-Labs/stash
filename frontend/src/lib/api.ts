@@ -297,6 +297,7 @@ export interface SourceEntry {
   id?: string;
   name: string;
   kind: string;
+  external_ref?: string | null;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);

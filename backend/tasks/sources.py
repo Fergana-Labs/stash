@@ -67,6 +67,7 @@ async def _sync_source(source_id: UUID) -> dict:
             source_id,
             source["source_type"],
             type(exc).__name__,
+            exc_info=True,
         )
         await source_service.mark_sync_failed(source_id, SYNC_FAILED_MESSAGE)
         return {"status": "failed"}

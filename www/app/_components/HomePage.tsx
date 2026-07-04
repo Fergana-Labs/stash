@@ -140,17 +140,16 @@ function Hero() {
       <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-16 pt-20 lg:pb-24 lg:pt-28">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:items-center lg:gap-16">
           <div>
-            <p className="kicker rise-in mb-6">Memory.for.agents</p>
-            <h1 className="text-balance font-display text-[clamp(42px,6vw,76px)] font-bold leading-[0.98] tracking-[-0.035em] text-ink">
-              Give your agents a
-              <br />
-              memory that <span className="text-brand">compounds.</span>
+            <h1 className="text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
+              Company Brain for agents{" "}
+              <span className="text-brand">and humans.</span>
             </h1>
 
-            <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-              Stash connects your tools and captures every agent session into one
-              context graph your agents — and your team — can read. They pick up
-              where they left off instead of starting from scratch.
+            <p className="mt-7 max-w-[560px] text-[18px] leading-[1.55] text-foreground">
+              Stash connects all your tools and captures every agent session,
+              builds them into one context graph, and serves it to your agents as
+              a virtual filesystem (VFS) they can read, search, and write back
+              into.
             </p>
 
             <div className="mt-9">
@@ -275,14 +274,14 @@ function Problem() {
         </h2>
         <div className="mt-12 grid grid-cols-1 gap-8 text-[17px] leading-[1.6] text-foreground md:grid-cols-2 md:gap-14">
           <p>
-            Every Claude, Cursor, or Codex run generates pages of work —
+            Every Claude, Cursor, or Codex run generates pages of work:
             transcripts, plans, the decisions it reasoned through, the files it
             wrote. Most of it evaporates the moment the session closes, so the
             next run starts cold and re-derives what you already solved.
           </p>
           <p>
-            Stash fixes that. It connects to all your data — GitHub, Drive,
-            Gmail, Notion, Slack — and captures every session into one
+            Stash fixes that. It connects to all your data, from GitHub and Drive
+            to Gmail, Notion, and Slack, and captures every session into one
             agent-native Drive your agents can read, search, and write back into.
             Memory that builds itself, shared across every agent and teammate.
           </p>
@@ -510,21 +509,21 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
     n: "01",
     pill: "Connect",
     title: "Connect any data source.",
-    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong and more — one easy connection per source, through any integration, and every agent you run can read all of them.",
+    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong and more. One easy connection per source, through any integration, and every agent you run can read all of them.",
     viz: <SourcesViz />,
   },
   {
     n: "02",
     pill: "Remember",
     title: "Memory that builds itself.",
-    body: "Every agent session — prompts, tool calls, artifacts — streams in automatically and becomes shared, retrievable memory. Your agents remember what they did instead of starting from zero each run.",
+    body: "Every agent session, including prompts, tool calls, and artifacts, streams in automatically and becomes shared, retrievable memory. Your agents remember what they did instead of starting from zero each run.",
     viz: <StreamViz />,
   },
   {
     n: "03",
-    pill: "Drive",
-    title: "An agent-native Drive.",
-    body: "HTML docs, Markdown, dashboards, decks — your agents' work lands as real files. Edit HTML visually in a WYSIWYG editor, and share any slice as a link.",
+    pill: "VFS",
+    title: "A virtual filesystem agents speak.",
+    body: "Your whole Stash mounts as a virtual filesystem (VFS) agents ls, find, and rg through the CLI and MCP. Humans and agents edit the same files at the same time, synced live, so everyone works from one copy.",
     viz: <FilesViz />,
   },
 ];

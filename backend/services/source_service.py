@@ -1,10 +1,12 @@
 """Sources: the unified source layer.
 
-A *source* is anything the agent can read. Two are native and always present
-per scope — the **file system** and **session transcripts** (scope-wide,
-visible to all members). The rest are **connected sources** (GitHub / Drive /
-Gmail / Notion / Slack / Granola) — rows in `user_sources`, USER-SCOPED so
-only the owner sees them.
+A *source* is anything the agent can read. Two are native — the **file system**
+and **session transcripts** — readable by the owner and anyone they're shared
+with. The rest are **connected sources** (GitHub / Drive / Gmail / Notion /
+Slack / Granola) — rows in `user_sources`, owned by the connecting user and
+read-shareable: a recipient reads the source's content through Stash using the
+OWNER's token (delegated), but never sees the token, and management/sync stay
+owner-only.
 
 This module owns:
 - the `user_sources` registry (CRUD + sync bookkeeping),
@@ -19,7 +21,7 @@ This module also owns the unified VFS surface (`source_entries`, `source_documen
 `search_all`) over BOTH native and connected sources — the single codepath the
 agent tools and the REST endpoints both call. Native reads delegate to
 files_tree_service / memory_service (imported lazily to avoid an import cycle).
-Connected-source handles are scoped to both owner and scope.
+Connected-source reads resolve through get_readable_source (owner or a share).
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import security_audit_service
+from . import permission_service, security_audit_service
 
 logger = logging.getLogger(__name__)
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
@@ -321,24 +323,39 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """The user's own connected sources in this scope. User-scoped: a
-    member never sees another member's connected sources."""
+async def list_connected_sources(user_id: UUID) -> list[dict]:
+    """Connected sources `user_id` can read: the ones they own, plus any shared
+    with them. Each row keeps its real owner_user_id, so reads of a shared source
+    delegate to the source owner's token."""
+    predicate = permission_service.readable_content_condition("source", "obj", 1)
     rows = await get_pool().fetch(
-        "SELECT * FROM user_sources "
-        "WHERE owner_user_id = $1 AND owner_user_id = $2 "
-        "ORDER BY source_type, display_name",
-        owner_user_id,
+        f"SELECT obj.* FROM user_sources obj WHERE {predicate} "
+        "ORDER BY obj.source_type, obj.display_name",
         user_id,
     )
     return [_source_row(r) for r in rows]
 
 
 async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
-    """Fetch a connected source only if `user_id` owns it — the single
-    enforcement point for user-scoping on every read."""
+    """Fetch a connected source only if `user_id` OWNS it — the gate for
+    management and sync (reconfigure, delete, trigger re-index). Reads go through
+    get_readable_source, which also honours shares."""
     row = await get_pool().fetchrow(
         "SELECT * FROM user_sources WHERE id = $1 AND owner_user_id = $2",
+        source_id,
+        user_id,
+    )
+    return _source_row(row) if row else None
+
+
+async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
+    """Fetch a connected source `user_id` may READ — they own it, or it was
+    shared with them. The row keeps its real owner_user_id, so downstream reads
+    fetch content with the OWNER's token (delegated access — the sharee never
+    sees the token). Management/sync stay owner-only via get_owned_source."""
+    predicate = permission_service.readable_content_condition("source", "obj", 2)
+    row = await get_pool().fetchrow(
+        f"SELECT obj.* FROM user_sources obj WHERE obj.id = $1 AND {predicate}",
         source_id,
         user_id,
     )
@@ -667,51 +684,71 @@ async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) ->
     return int(result.split()[-1]) if result.startswith("DELETE") else 0
 
 
-async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> list[dict]:
+ENTRIES_LIMIT = 200
+
+
+async def list_documents(
+    source: dict, prefix: str = "", limit: int = ENTRIES_LIMIT, after: str = ""
+) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
-    is the registry row (from get_owned_source / get_source_for_sync)."""
+    is the registry row (from get_owned_source / get_source_for_sync). `after`
+    is a keyset cursor: only paths strictly greater (in the ORDER BY path
+    ordering) are returned, so callers page through big sources by passing the
+    last path of the previous page."""
     table = _table_for(source["source_type"])
     if table == "slack_messages":
         allowed_channel_ids = slack_allowed_channel_ids(source)
         if not allowed_channel_ids:
             return []
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND channel_id = ANY($4::text[]) "
+            f"SELECT path, name, kind, external_ref FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
+            f"AND channel_id = ANY($5::text[]) "
             f"ORDER BY path LIMIT $3",
             UUID(source["id"]),
             f"{prefix}%",
             limit,
+            after,
             allowed_channel_ids,
         )
-        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+        return [_entry_row(r) for r in rows]
 
     if table == "gong_documents":
         allowed_workspace_ids = gong_allowed_workspace_ids(source)
         if not allowed_workspace_ids:
             return []
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND gong_account_id = ANY($4::text[]) "
+            f"SELECT path, name, kind, external_ref FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
+            f"AND gong_account_id = ANY($5::text[]) "
             f"ORDER BY path LIMIT $3",
             UUID(source["id"]),
             f"{prefix}%",
             limit,
+            after,
             allowed_workspace_ids,
         )
-        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+        return [_entry_row(r) for r in rows]
 
     rows = await get_pool().fetch(
-        f"SELECT path, name, kind FROM {table} "
-        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+        f"SELECT path, name, kind, external_ref FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
         f"ORDER BY path LIMIT $3",
         UUID(source["id"]),
         f"{prefix}%",
         limit,
+        after,
     )
-    return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+    return [_entry_row(r) for r in rows]
+
+
+def _entry_row(r) -> dict:
+    return {
+        "path": r["path"],
+        "name": r["name"],
+        "kind": r["kind"],
+        "external_ref": r["external_ref"],
+    }
 
 
 async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
@@ -986,16 +1023,14 @@ async def _federated_search(
 
 async def search_documents(
     *,
-    owner_user_id: UUID,
     user_id: UUID,
     query: str,
     source: dict | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """FTS over the user's own copied-content sources (github/slack/granola),
-    UNIONed across their tables. The owner join is the user-scoping guard. Pass
-    `source` to scope to one; an index-only source has nothing to FTS, so it
-    returns []."""
+    """FTS over copied-content sources the user can read — their own or shared
+    with them (github/slack/granola), UNIONed across their tables. Pass `source`
+    to scope to one; an index-only source has nothing to FTS, so it returns []."""
     limit = min(limit, 100)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
@@ -1023,24 +1058,27 @@ async def search_documents(
             )
         return ""
 
-    parts = [f"""
+    source_readable = permission_service.readable_content_condition("source", "s", 1)
+    parts = [
+        f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
-                       websearch_to_tsquery('english', $3)) AS rank
+                       websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
         JOIN user_sources s ON s.id = d.source_id
-        WHERE d.owner_user_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
-          AND ($4::uuid IS NULL OR d.source_id = $4)
+        WHERE {source_readable} AND d.deleted_at IS NULL
+          AND ($3::uuid IS NULL OR d.source_id = $3)
           AND to_tsvector('english', coalesce(d.content, ''))
-              @@ websearch_to_tsquery('english', $3)
+              @@ websearch_to_tsquery('english', $2)
           {visibility_clause(t)}
-        """ for t in tables]
+        """
+        for t in tables
+    ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
-        f"ORDER BY u.rank DESC LIMIT $5",
-        owner_user_id,
+        f"ORDER BY u.rank DESC LIMIT $4",
         user_id,
         query,
         source_id,
@@ -1062,8 +1100,8 @@ async def search_documents(
 
 
 async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every source visible to this user: the two native sources (scope-
-    wide) plus the user's own connected sources."""
+    """Every source visible to this user: the two native sources plus the
+    connected sources they own or have been shared with."""
     sources = [
         {
             "source": NATIVE_FILES,
@@ -1078,7 +1116,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "display_name": "Session transcripts",
         },
     ]
-    for s in await list_connected_sources(owner_user_id, user_id):
+    for s in await list_connected_sources(user_id):
         item = {
             "source": s["id"],
             "provider": SOURCE_TYPE_PROVIDER[s["source_type"]],
@@ -1143,12 +1181,13 @@ async def source_item_count(source: dict) -> int | None:
 
 
 async def _resolve_connected(source: str, owner_user_id: UUID, user_id: UUID) -> dict | None:
-    """Resolve a connected-source handle inside the current scope boundary."""
+    """Resolve a connected-source handle for READING — the owner or anyone the
+    source was shared with. Reads delegate to the source owner's token."""
     try:
         source_id = UUID(source)
     except ValueError:
         return None
-    return await get_owned_source(source_id, user_id)
+    return await get_readable_source(source_id, user_id)
 
 
 async def _audit_source_read(
@@ -1175,6 +1214,11 @@ async def _audit_source_read(
         target_id = connected["id"]
         source_type = connected["source_type"]
         provider = SOURCE_TYPE_PROVIDER.get(source_type)
+        # Delegated read: a recipient reads a shared source through Stash, but the
+        # data belongs to the source owner. Attribute the trail to the owner so it
+        # lands in the OWNER's audit log — that's how they see who read what they
+        # shared. The reader is still recorded as the actor.
+        owner_user_id = UUID(connected["owner_user_id"])
 
     await security_audit_service.record_event(
         action=action,
@@ -1189,21 +1233,30 @@ async def _audit_source_read(
 
 
 async def source_entries(
-    owner_user_id: UUID, user_id: UUID, source: str, prefix: str = ""
+    owner_user_id: UUID,
+    user_id: UUID,
+    source: str,
+    prefix: str = "",
+    limit: int = ENTRIES_LIMIT,
+    after: str = "",
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
-    scopes connected sources to a path. Returns None for an unknown source."""
+    scopes connected sources to a path. `after` pages through path-ordered
+    document listings (see list_documents); listings that aren't path-ordered
+    (native files/sessions, twitter's live refs) return everything on the first
+    page, so any later page is empty for them.
+    Returns None for an unknown source."""
     connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import list_scope_pages
 
-        pages = await list_scope_pages(owner_user_id, user_id)
+        pages = [] if after else await list_scope_pages(owner_user_id, user_id)
         entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
     elif source == NATIVE_SESSIONS:
         from .memory_service import list_scope_sessions
 
-        sessions = await list_scope_sessions(owner_user_id, user_id)
+        sessions = [] if after else await list_scope_sessions(owner_user_id, user_id)
         entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
@@ -1215,9 +1268,12 @@ async def source_entries(
         if connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
-            entries = twitter_live_entries(prefix) + await list_documents(connected, prefix=prefix)
+            live = [] if after else twitter_live_entries(prefix)
+            entries = live + await list_documents(
+                connected, prefix=prefix, limit=limit, after=after
+            )
         else:
-            entries = await list_documents(connected, prefix=prefix)
+            entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 
     await _audit_source_read(
         action="source.entries_listed",
@@ -1308,9 +1364,7 @@ async def _member_tree(source: dict, depth: int, per_dir: int) -> list[dict]:
     return build_entry_tree(entries, depth, per_dir)
 
 
-async def _provider_tree_node(
-    provider: str, members: list[dict], depth: int, per_dir: int
-) -> dict:
+async def _provider_tree_node(provider: str, members: list[dict], depth: int, per_dir: int) -> dict:
     """One provider folder for the sources filesystem. A single connection
     collapses — its documents sit directly in the provider folder. Multiple
     connections each become a subfolder named after the connection."""
@@ -1388,7 +1442,7 @@ async def sources_tree(
     # filesystem. The provider folder is the unit ("github", "granola"); the
     # individual connections (repos, accounts) live inside it.
     by_provider: dict[str, list[dict]] = {}
-    for source in await list_connected_sources(owner_user_id, user_id):
+    for source in await list_connected_sources(user_id):
         provider = SOURCE_TYPE_PROVIDER[source["source_type"]]
         by_provider.setdefault(provider, []).append(source)
 
@@ -1593,6 +1647,37 @@ async def fetch_history(
     return result
 
 
+async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
+    """Documents whose provider id (`external_ref`) exactly equals the query,
+    across the given sources' document tables."""
+    query = query.strip()
+    if not query:
+        return []
+    hits: list[dict] = []
+    for s in sources:
+        table = SOURCE_TABLE.get(s["source_type"])
+        if table is None:
+            continue
+        rows = await get_pool().fetch(
+            f"SELECT path, name FROM {table} "
+            f"WHERE source_id = $1 AND external_ref = $2 AND deleted_at IS NULL LIMIT $3",
+            UUID(s["id"]),
+            query,
+            limit,
+        )
+        hits += [
+            {
+                "source": s["id"],
+                "source_name": s["display_name"],
+                "ref": r["path"],
+                "name": r["name"],
+                "snippet": "",
+            }
+            for r in rows
+        ]
+    return hits
+
+
 async def search_all(
     owner_user_id: UUID,
     user_id: UUID,
@@ -1639,10 +1724,18 @@ async def search_all(
         if connected is None:
             return None
     if source is None or connected is not None:
+        searched_sources = (
+            [connected] if connected is not None else await list_connected_sources(user_id)
+        )
+
+        # A query that IS a provider id (a Drive file id, a Gmail message id, …)
+        # resolves to the indexed document directly. This is how an agent holding
+        # only a provider URL finds the document's Stash path.
+        results += await _external_ref_matches(searched_sources, query, limit)
+
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match).
         docs = await search_documents(
-            owner_user_id=owner_user_id,
             user_id=user_id,
             query=query,
             source=connected,
@@ -1670,7 +1763,7 @@ async def search_all(
         else:
             federated = [
                 s
-                for s in await list_connected_sources(owner_user_id, user_id)
+                for s in searched_sources
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
                 and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]

@@ -22,10 +22,7 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
           stash
         </Link>
         <nav className="flex items-center gap-2 text-[14px] text-dim">
-          <NavLink href="/company-brain" useCase>Company Brain</NavLink>
-          <NavLink href="/agent-drive" useCase>Agent Drive</NavLink>
-          <NavLink href="/token-monitoring" useCase>Token Monitoring</NavLink>
-          <NavLink href="/memory" useCase>Memory</NavLink>
+          <UseCasesMenu />
           <NavLink href="/docs">Docs</NavLink>
           <NavLink href="/blog">Blog</NavLink>
           <NavLink href="/contact-sales">Book a call</NavLink>
@@ -50,23 +47,69 @@ export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) 
   );
 }
 
-// Use-case links collapse below the lg breakpoint so the nav doesn't crowd;
-// Docs and Blog stay visible everywhere.
 function NavLink({
   href,
-  useCase = false,
   children,
 }: {
   href: string;
-  useCase?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
-      className={`${useCase ? "hidden lg:inline-flex" : ""} rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink`}
+      className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
     >
       {children}
     </Link>
+  );
+}
+
+const USE_CASES = [
+  ["Company Brain", "/company-brain", "All your tools as one source of truth"],
+  ["Agent Drive", "/agent-drive", "An agent-native VFS for files and Skills"],
+  ["Token Monitoring", "/token-monitoring", "See every agent session, like Gong"],
+  ["Memory", "/memory", "Three-way retrieval that doesn't miss"],
+];
+
+// CSS-only dropdown (no client JS): opens on hover and on keyboard focus of
+// any child via group-focus-within. Collapses below lg so the nav stays tidy.
+function UseCasesMenu() {
+  return (
+    <div className="group relative hidden lg:block">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink group-hover:bg-raised group-hover:text-ink"
+      >
+        Use-cases
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="mt-px transition-transform group-hover:rotate-180"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      <div className="invisible absolute left-0 top-full z-50 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        <div className="w-64 rounded-xl border border-border bg-background p-1.5 shadow-[var(--shadow-card)]">
+          {USE_CASES.map(([name, href, blurb]) => (
+            <Link
+              key={href}
+              href={href}
+              className="block rounded-lg px-3 py-2 transition hover:bg-raised"
+            >
+              <span className="block text-[14px] font-medium text-ink">{name}</span>
+              <span className="mt-0.5 block text-[12.5px] leading-snug text-dim">{blurb}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

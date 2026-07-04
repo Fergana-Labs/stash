@@ -88,12 +88,12 @@ async def test_collab_authorizes_read_share_as_read_only(
 
 
 @pytest.mark.asyncio
-async def test_collab_authorizes_non_member_with_page_share(
+async def test_collab_authorizes_non_owner_with_page_share(
     client: AsyncClient,
     pool,
 ):
-    """A page shared directly with a non-member grants live-edit access:
-    membership is not required, the share decides read/write."""
+    """A page shared directly with another user grants live-edit access:
+    the share alone decides read/write."""
     owner_key, _owner = await _register(client)
     editor_key, editor = await _register(client)
     owner_scope_id = await _scope_id(client, owner_key)
@@ -130,7 +130,7 @@ async def test_collab_authorizes_non_member_with_page_share(
 async def test_collab_rejects_user_without_access(
     client: AsyncClient,
 ):
-    """A user who is neither a member nor a sharee is rejected outright."""
+    """A user who is neither the owner nor a sharee is rejected outright."""
     owner_key, _owner = await _register(client)
     outsider_key, _outsider = await _register(client)
     owner_scope_id = await _scope_id(client, owner_key)

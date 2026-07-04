@@ -111,7 +111,7 @@ async def test_rename_session_rejects_unknown_session(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_rename_session_blocks_non_member(client: AsyncClient):
+async def test_rename_session_blocks_non_owner(client: AsyncClient):
     owner_key, _owner = await _register(client)
     _scope, _session = await _make_scope_with_session(client, owner_key, "sess-rename-5")
 

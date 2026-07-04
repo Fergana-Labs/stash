@@ -1,6 +1,6 @@
 """Connected-source registry endpoints.
 
-A source is added per scope and per user. It belongs to the member who
+A source is added per scope and per user. It belongs to the user who
 connects it (`owner_user_id = current_user`) inside that scope, and only they
 can list, read, or remove it there. The agent reaches a source's indexed content
 through the source tools; these endpoints just manage the registry. Indexing
@@ -173,14 +173,19 @@ async def sources_tree(
 async def list_source_entries(
     source: str,
     path: str = "",
+    limit: int = source_service.ENTRIES_LIMIT,
+    after: str = "",
     current_user: dict = Depends(get_current_user),
 ):
     """List a source's entries like a file system. `source` is 'files',
-    'sessions', or a connected-source id; `path` scopes connected sources."""
+    'sessions', or a connected-source id; `path` scopes connected sources.
+    `limit` caps the rows returned; callers detect truncation by requesting one
+    extra row and checking whether it comes back. `after` is a keyset cursor
+    (the last path of the previous page) for paging through big sources."""
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     entries = await source_service.source_entries(
-        owner_user_id, current_user["id"], source, prefix=path
+        owner_user_id, current_user["id"], source, prefix=path, limit=limit, after=after
     )
     if entries is None:
         raise HTTPException(status_code=404, detail="Source not found")
