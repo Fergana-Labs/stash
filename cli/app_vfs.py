@@ -173,6 +173,13 @@ class SkillAppVfsShell:
             names = self.model.list_dir(path)
             lines = [self._format_ls_entry(posixpath.join(path, name), long) for name in names]
             blocks.append("\n".join(lines))
+            hit = self.model.truncated_root_containing(path)
+            if hit:
+                source_root, shown = hit
+                self._warn(
+                    f"ls: '{source_root}' was truncated at {shown} entries; this listing "
+                    "may be INCOMPLETE."
+                )
         return "\n".join(block for block in blocks if block) + ("\n" if blocks else "")
 
     def _format_ls_entry(self, path: str, long: bool) -> str:
@@ -274,6 +281,11 @@ class SkillAppVfsShell:
         self.model._get_node(root)
         lines = [root]
         lines.extend(self._tree_lines(root, prefix="", depth=1, max_depth=max_depth))
+        for source_root, shown in self.model.truncated_roots_under(root):
+            self._warn(
+                f"tree: '{source_root}' has more than {shown} entries; only the first "
+                f"{shown} were listed. This tree is INCOMPLETE."
+            )
         return "\n".join(lines) + "\n"
 
     def _tree_lines(

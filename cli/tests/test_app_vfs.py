@@ -370,3 +370,37 @@ def test_stat_omits_external_ref_when_the_entry_has_none():
     result = shell.run("stat '/sources/gmail/threads/Nested note'")
 
     assert "external_ref" not in result.stdout
+
+
+def test_tree_warns_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
+    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    shell, _client = _shell(PagedSourceClient())
+
+    result = shell.run("tree /sources/gmail")
+
+    assert "Message 0" in result.stdout
+    assert "INCOMPLETE" in result.stderr
+
+
+def test_ls_warns_inside_a_truncated_source_but_not_above_it(monkeypatch):
+    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    shell, _client = _shell(PagedSourceClient())
+
+    # Listing the source root — children come from the capped materialization.
+    inside = shell.run("ls /sources/gmail")
+    assert "INCOMPLETE" in inside.stderr
+
+    # Listing /sources — children are the complete provider list, not the capped
+    # entries — must NOT warn, even though a truncated source sits below it.
+    above = shell.run("ls /sources")
+    assert "gmail" in above.stdout
+    assert "INCOMPLETE" not in above.stderr
+
+
+def test_ls_is_silent_when_a_source_listing_is_complete():
+    shell, _client = _shell()  # base FakeClient reports not-truncated
+
+    result = shell.run("ls /sources/gmail")
+
+    assert "Welcome email" in result.stdout
+    assert "INCOMPLETE" not in result.stderr
