@@ -37,6 +37,9 @@ export type IntegrationAccount = {
   scopes: string[];
   expires_at: string | null;
   connected_at: string | null;
+  // True when the stored token no longer works (revoked access or an expired
+  // refresh token) — the account is listed as connected but must be reconnected.
+  needs_reconnect: boolean;
 };
 
 export type IntegrationStatus = {

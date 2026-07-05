@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException
 
 from ..database import get_pool
@@ -199,6 +200,18 @@ async def revoke_stored(
             pass
 
 
+async def _account_needs_reconnect(user_id: UUID, provider: str, account_key: str) -> bool:
+    """Actively verify the stored token still works, refreshing if needed. A
+    connection row survives long after its OAuth grant dies (revoked access, an
+    expired refresh token), so only attempting to obtain a valid token tells a
+    live account apart from a silently dead one."""
+    try:
+        await get_valid_token(user_id, provider, account_key)
+        return False
+    except (HTTPException, httpx.HTTPError):
+        return True
+
+
 async def status(user_id: UUID, provider: str) -> dict:
     pool = get_pool()
     rows = await pool.fetch(
@@ -212,7 +225,13 @@ async def status(user_id: UUID, provider: str) -> dict:
     )
     if not rows:
         return {"connected": False, "accounts": []}
-    accounts = [_account_row(row) for row in rows]
+    accounts = []
+    for row in rows:
+        account = _account_row(row)
+        account["needs_reconnect"] = await _account_needs_reconnect(
+            user_id, provider, row["account_key"]
+        )
+        accounts.append(account)
     first = accounts[0]
     return {
         "connected": True,
@@ -240,6 +259,9 @@ async def list_connections(user_id: UUID) -> list[dict]:
     for row in rows:
         provider = row["provider"]
         account = _account_row(row)
+        account["needs_reconnect"] = await _account_needs_reconnect(
+            user_id, provider, row["account_key"]
+        )
         if provider not in connections:
             connections[provider] = {
                 "provider": provider,

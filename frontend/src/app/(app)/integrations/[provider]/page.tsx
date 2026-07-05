@@ -105,6 +105,7 @@ export default function IntegrationPage() {
   const connected = !!status?.connected;
   const account = connectedAccountLabel(status);
   const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
+  const staleAccounts = status?.accounts.filter((a) => a.needs_reconnect) ?? [];
 
   async function connect() {
     setBusy("connect");
@@ -258,6 +259,19 @@ export default function IntegrationPage() {
             Manage in Settings
           </Link>
         </div>
+
+        {staleAccounts.length > 0 && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
+            <span>
+              {staleAccounts.length === 1
+                ? `${staleAccounts[0].account_email ?? staleAccounts[0].account_key} is connected but its access expired — search returns nothing until you reconnect.`
+                : `${staleAccounts.length} accounts are connected but their access expired — search returns nothing until you reconnect.`}
+            </span>
+            <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={secondaryButton()}>
+              {busy === "connect" ? "Connecting..." : "Reconnect"}
+            </button>
+          </div>
+        )}
 
         {showCreds && !connected && status?.auth_kind === "api_key" && status.credential_fields && (
           <CredentialForm
