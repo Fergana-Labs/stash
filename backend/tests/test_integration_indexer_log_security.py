@@ -181,7 +181,7 @@ async def test_gmail_index_success_logs_internal_source_id_only(monkeypatch):
         return "provider-token"
 
     async def list_refs(client, query, limit):
-        return [{"id": "msg-webflow-secret"}]
+        return [{"id": "msg-webflow-secret"}], None, 1
 
     async def get_metadata(client, message_id):
         return {

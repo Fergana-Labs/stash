@@ -360,9 +360,15 @@ export async function readSourceDoc(
 export interface SourceSearchHit {
   source: string;
   source_name?: string;
-  ref: string;
+  // A real hit carries a ref; marker entries (see below) omit it.
+  ref?: string;
   name?: string;
   snippet?: string;
+  // Marker: a federated source hit its result cap — `returned` of ~`estimated_total`
+  // matches are shown. `truncated` distinguishes it from a real hit.
+  truncated?: boolean;
+  returned?: number;
+  estimated_total?: number | null;
 }
 
 export async function searchSource(

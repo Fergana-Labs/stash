@@ -783,23 +783,34 @@ function SearchablePanel({
         <div className="mb-2 px-1.5 py-1 text-[12.5px] text-error">{searchError}</div>
       )}
 
-      {hits !== null && (
-        <div className="mb-2">
-          {hits.length === 0 ? (
-            <div className="px-1.5 py-1 text-[12.5px] text-muted">No matches.</div>
-          ) : (
-            hits.map((hit) => (
-              <HitRow
-                key={hit.ref}
-                hitKey={hit.ref}
-                label={hit.name}
-                snippet={hit.snippet}
-                onOpen={() => setOpenDoc({ ref: hit.ref, name: hit.name })}
-              />
-            ))
-          )}
-        </div>
-      )}
+      {hits !== null && (() => {
+        const realHits = hits.filter((hit) => hit.ref);
+        const truncation = hits.find((hit) => hit.truncated);
+        return (
+          <div className="mb-2">
+            {realHits.length === 0 ? (
+              <div className="px-1.5 py-1 text-[12.5px] text-muted">No matches.</div>
+            ) : (
+              realHits.map((hit) => (
+                <HitRow
+                  key={hit.ref}
+                  hitKey={hit.ref!}
+                  label={hit.name}
+                  snippet={hit.snippet}
+                  onOpen={() => setOpenDoc({ ref: hit.ref!, name: hit.name })}
+                />
+              ))
+            )}
+            {truncation && (
+              <div className="px-1.5 py-1 text-[12px] text-muted">
+                Showing the first {truncation.returned}
+                {truncation.estimated_total ? ` of ~${truncation.estimated_total}` : ""} matches —
+                narrow your search to see more.
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {hits === null && recent && recent.length > 0 && (
         <div className="mb-2">

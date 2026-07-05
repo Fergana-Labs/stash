@@ -1936,9 +1936,7 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
-async def test_unscoped_search_surfaces_dead_federated_source(
-    client: AsyncClient, monkeypatch
-):
+async def test_unscoped_search_surfaces_dead_federated_source(client: AsyncClient, monkeypatch):
     """A dead connection (expired/revoked token) must not vanish from unscoped
     search as if it had no matches — it surfaces a needs_reconnect marker so the
     caller can tell "reconnect me" apart from "nothing found"."""
@@ -1971,6 +1969,132 @@ async def test_unscoped_search_surfaces_dead_federated_source(
             "needs_reconnect": True,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_search_appends_truncation_marker_when_provider_caps(
+    client: AsyncClient, monkeypatch
+):
+    """A capped federated result must disclose the cut: search appends a
+    truncation marker so callers don't present the top slice as the whole set."""
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def capped_search(source, query, limit):
+        return {
+            "hits": [{"ref": f"m{i}", "name": f"msg {i}", "snippet": ""} for i in range(2)],
+            "truncated": True,
+            "estimated_total": 213,
+        }
+
+    monkeypatch.setattr(indexer, "search_gmail", capped_search)
+    results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
+
+    assert [r for r in results if r.get("ref")] == [
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "ref": "m0",
+            "name": "msg 0",
+            "snippet": "",
+        },
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "ref": "m1",
+            "name": "msg 1",
+            "snippet": "",
+        },
+    ]
+    assert [r for r in results if r.get("truncated")] == [
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "truncated": True,
+            "returned": 2,
+            "estimated_total": 213,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_omits_truncation_marker_when_not_capped(client: AsyncClient, monkeypatch):
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def complete_search(source, query, limit):
+        return {
+            "hits": [{"ref": "m0", "name": "only", "snippet": ""}],
+            "truncated": False,
+            "estimated_total": 1,
+        }
+
+    monkeypatch.setattr(indexer, "search_gmail", complete_search)
+    results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
+
+    assert not any(r.get("truncated") for r in results)
+
+
+@pytest.mark.asyncio
+async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch):
+    """search_gmail maps Gmail's nextPageToken to truncated and surfaces the
+    resultSizeEstimate — the authoritative "there is more" signal, not a
+    len(hits) == limit guess."""
+    from backend.integrations.gmail import indexer
+
+    class GmailClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def token(*args, **kwargs):
+        return "tok"
+
+    async def get_metadata(client, message_id):
+        return {"id": message_id, "payload": {"headers": [{"name": "Subject", "value": "hi"}]}}
+
+    async def upsert(source, message):
+        return message["id"]
+
+    monkeypatch.setattr(indexer, "get_valid_token", token)
+    monkeypatch.setattr(indexer.httpx, "AsyncClient", lambda *a, **k: GmailClient())
+    monkeypatch.setattr(indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(indexer, "_upsert_message_metadata", upsert)
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "e@x.com"}
+
+    async def more_pages(client, query, limit):
+        return [{"id": "m1"}, {"id": "m2"}], "PAGE_2", 213
+
+    monkeypatch.setattr(indexer, "_list_message_refs", more_pages)
+    result = await indexer.search_gmail(source, "q", 25)
+    assert result["truncated"] is True
+    assert result["estimated_total"] == 213
+    assert len(result["hits"]) == 2
+
+    async def last_page(client, query, limit):
+        return [{"id": "m1"}], None, 1
+
+    monkeypatch.setattr(indexer, "_list_message_refs", last_page)
+    result = await indexer.search_gmail(source, "q", 25)
+    assert result["truncated"] is False
 
 
 @pytest.mark.asyncio

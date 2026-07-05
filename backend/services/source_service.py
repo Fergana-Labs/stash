@@ -986,7 +986,12 @@ async def _federated_search(
     single error marker ({source, source_name, error, needs_reconnect}) so the
     rest of the search stays alive while the dead source is still surfaced —
     dropping it silently would read as "no matches" for that source. A SCOPED
-    search raises instead, so the API serves an explicit HTTP error."""
+    search raises instead, so the API serves an explicit HTTP error.
+
+    Providers cap results (SEARCH_LIMIT); when a provider reports it matched
+    more than it returned, a trailing truncation marker ({source, source_name,
+    truncated, returned, estimated_total}) is appended so callers disclose the
+    cut instead of presenting the top slice as the whole result."""
     source_type = source["source_type"]
     try:
         if source_type == "google_drive":
@@ -1003,7 +1008,7 @@ async def _federated_search(
             from ..integrations.twitter.indexer import search_twitter as fn
         else:
             return []
-        hits = await fn(source, query, limit)
+        result = await fn(source, query, limit)
     except Exception as exc:
         if not swallow_errors:
             raise _scoped_search_error(source, exc) from exc
@@ -1030,7 +1035,17 @@ async def _federated_search(
                 "needs_reconnect": needs_reconnect,
             }
         ]
-    return [
+    # Gmail reports truncation as {hits, truncated, estimated_total}; the other
+    # providers still return a plain hit list (no truncation signal yet).
+    if isinstance(result, dict):
+        hits = result["hits"]
+        truncated = result["truncated"]
+        estimated_total = result.get("estimated_total")
+    else:
+        hits = result
+        truncated = False
+        estimated_total = None
+    output = [
         {
             "source": source["id"],
             "source_name": source["display_name"],
@@ -1040,6 +1055,17 @@ async def _federated_search(
         }
         for h in hits
     ]
+    if truncated:
+        output.append(
+            {
+                "source": source["id"],
+                "source_name": source["display_name"],
+                "truncated": True,
+                "returned": len(hits),
+                "estimated_total": estimated_total,
+            }
+        )
+    return output
 
 
 async def search_documents(
