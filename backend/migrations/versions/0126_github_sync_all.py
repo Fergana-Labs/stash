@@ -4,14 +4,14 @@ When set on a github connection, every repo the account can see gets a
 github_repo source, and the hourly reconcile picks up repos the user gains
 access to later.
 
-Revision ID: 0125
-Revises: 0124
+Revision ID: 0126
+Revises: 0125
 """
 
 from alembic import op
 
-revision = "0125"
-down_revision = "0124"
+revision = "0126"
+down_revision = "0125"
 branch_labels = None
 depends_on = None
 
