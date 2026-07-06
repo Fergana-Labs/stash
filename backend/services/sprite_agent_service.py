@@ -158,8 +158,11 @@ def _map_line(line: str, state: _TurnState) -> list[dict]:
     try:
         obj = json.loads(line)
     except json.JSONDecodeError:
-        # Not stream-json (e.g. a stray CLI warning on stdout) — surface it in
-        # the error check via state rather than corrupting the event stream.
+        # Sprites merges stderr into the stdout stream, so CLI warnings land
+        # here. Skip them, but still catch the "resume points at a transcript
+        # this box never had" signal so the turn can reseed from history.
+        if _RESUME_MISSING_RE.search(line):
+            state.resume_missing = True
         logger.warning("cloud agent: non-JSON stdout line: %.200s", line)
         return []
 
@@ -227,23 +230,24 @@ async def _run_claude(
     buffer = ""
     exit_code: int | None = None
 
-    async with sprite_service.hold_awake(sprite):
-        async for event in sprite_service.exec_stream(
-            sprite, argv, env=_turn_env(), cwd=sprite_service.SPRITE_WORKDIR
-        ):
-            if "exit_code" in event:
-                exit_code = event["exit_code"]
-                break
-            if event["stream"] == "stderr":
-                stderr_tail.append(event["data"].decode("utf-8", "replace"))
-                stderr_tail = stderr_tail[-50:]
-                continue
-            buffer += stdout_decoder.decode(event["data"])
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                if line.strip():
-                    for mapped in _map_line(line, state):
-                        yield mapped
+    # The open exec stream itself keeps the sprite awake — Sprites only sleeps
+    # after activity stops, and a live connection is activity.
+    async for event in sprite_service.exec_stream(
+        sprite, argv, env=_turn_env(), cwd=sprite_service.SPRITE_WORKDIR
+    ):
+        if "exit_code" in event:
+            exit_code = event["exit_code"]
+            break
+        if event["stream"] == "stderr":
+            stderr_tail.append(event["data"].decode("utf-8", "replace"))
+            stderr_tail = stderr_tail[-50:]
+            continue
+        buffer += stdout_decoder.decode(event["data"])
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            if line.strip():
+                for mapped in _map_line(line, state):
+                    yield mapped
     if buffer.strip():
         for mapped in _map_line(buffer, state):
             yield mapped

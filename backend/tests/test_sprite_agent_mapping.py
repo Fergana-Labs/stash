@@ -122,9 +122,17 @@ def test_box_path_rejects_escapes(monkeypatch):
     from backend.services import sprite_service
 
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
-    assert sprite_service._box_path("") == "/root"
-    assert sprite_service._box_path("work/notes.md") == "/root/work/notes.md"
-    assert sprite_service._box_path("/work") == "/root/work"
+    assert sprite_service._box_path("") == "/home/sprite"
+    assert sprite_service._box_path("work/notes.md") == "/home/sprite/work/notes.md"
+    assert sprite_service._box_path("/work") == "/home/sprite/work"
     for bad in ("../etc/passwd", "work/../../etc", "..", "a/../../.."):
         with pytest.raises(sprite_service.FsPathError):
             sprite_service._box_path(bad)
+
+
+def test_resume_missing_detected_from_merged_stderr():
+    # Sprites merges stderr into stdout, so the "no conversation found" signal
+    # arrives as a non-JSON stdout line, not a separate stderr stream.
+    state = svc._TurnState()
+    svc._map_line("Error: No conversation found with session ID: abc", state)
+    assert state.resume_missing is True

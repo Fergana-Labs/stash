@@ -34,10 +34,15 @@ from ..config import settings
 from ..database import get_pool
 from . import prompts
 
-# The sprite runs as root (Sprites boxes are single-user, root-access VMs).
-SPRITE_HOME = "/root"
+# Sprites run as the (sudo-capable) `sprite` user. The harness CLIs live in
+# ~/.local/bin and the runtime's python/node in /.sprite/bin; env params REPLACE
+# the environment, so execs must carry the full PATH the box normally has.
+SPRITE_HOME = "/home/sprite"
 SPRITE_WORKDIR = f"{SPRITE_HOME}/work"
-SPRITE_PATH = f"{SPRITE_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+SPRITE_PATH = (
+    f"{SPRITE_HOME}/.local/bin:/.sprite/bin:"
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+)
 
 # A first-ever provision creates the VM and seeds it (~10-30s).
 PROVISION_TIMEOUT_S = 180
@@ -125,7 +130,6 @@ async def _provision(user_id: UUID) -> Sprite:
         )
         if code != 0:
             raise SpriteError(f"sprite seed script exited {code}: {output[-2000:]}")
-        await _register_skills_sync_service(sprite)
     except BaseException:
         # Fail loud and leave nothing half-made: the sprite (if created) and
         # the row both go, so the next attempt starts clean.
@@ -159,14 +163,19 @@ async def _wait_until_ready(user_id: UUID) -> Sprite:
 
 def _seed_script(stash_key: str) -> str:
     """Idempotent first-boot setup: stash CLI, headless auth, the Claude Code
-    plugin (session upload), skills, and the workspace."""
+    plugin (session upload), skills, and the workspace.
+
+    Skills are synced here (not via a polling service) on purpose: a periodic
+    daemon would count as activity and keep the box awake 24/7, defeating the
+    sleep-to-zero cost model. Live skill re-sync is a fast-follow (sync at
+    turn start), not a background loop."""
     config = json.dumps(
         {"base_url": settings.SPRITES_STASH_API_URL, "api_key": stash_key, "username": ""}
     )
     claude_md = prompts.render_sprite_workspace_claude_md()
     return f"""
 set -euo pipefail
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="{SPRITE_PATH}"
 command -v stash > /dev/null || python3 -m pip install --user --break-system-packages stashai
 mkdir -p ~/.stash
 cat > ~/.stash/config.json << 'STASH_CONFIG'
@@ -181,20 +190,6 @@ cat > {SPRITE_WORKDIR}/CLAUDE.md << 'WORKSPACE_CLAUDE_MD'
 WORKSPACE_CLAUDE_MD
 stash skills sync
 """
-
-
-async def _register_skills_sync_service(sprite: Sprite) -> None:
-    """Keep Stash skills materialized on the box via a runtime-managed Service
-    (restarts on cold wake). Endpoint shape verified in the staging pass."""
-    await _sprites_api(
-        "POST",
-        f"/v1/sprites/{sprite.name}/services",
-        json={
-            "name": "stash-skills-sync",
-            "cmd": f"bash -c 'export PATH=\"{SPRITE_PATH}\"; "
-            "while true; do stash skills sync || true; sleep 300; done'",
-        },
-    )
 
 
 async def touch(user_id: UUID) -> None:
@@ -283,7 +278,8 @@ async def _sprites_exec_stream(
             elif tag == _FRAME_STDERR:
                 yield {"stream": "stderr", "data": payload}
             elif tag == _FRAME_EXIT:
-                yield {"exit_code": int(payload.decode())}
+                # The exit code is a single raw byte, not an ASCII string.
+                yield {"exit_code": payload[0] if payload else 0}
                 return
     raise SpriteError("sprite exec stream closed without an exit frame")
 
@@ -338,39 +334,6 @@ async def _local_exec_stream(
             proc.kill()
         with contextlib.suppress(asyncio.CancelledError):
             await pumps
-
-
-# ---------------------------------------------------------------------------
-# Keep-awake (Sprites pause severs TCP; a paused box would kill a mid-turn
-# exec stream. A Task holds the sprite up; we refresh it for long turns.)
-# ---------------------------------------------------------------------------
-
-_TASK_TTL_S = 300
-_TASK_REFRESH_S = 60
-
-
-@contextlib.asynccontextmanager
-async def hold_awake(sprite: Sprite) -> AsyncIterator[None]:
-    if settings.AGENT_EXEC_MODE == "local":
-        yield
-        return
-
-    async def _refresh_forever() -> None:
-        while True:
-            await _sprites_api(
-                "POST",
-                f"/v1/sprites/{sprite.name}/tasks",
-                json={"name": "agent-turn", "ttl": _TASK_TTL_S},
-            )
-            await asyncio.sleep(_TASK_REFRESH_S)
-
-    refresher = asyncio.create_task(_refresh_forever())
-    try:
-        yield
-    finally:
-        refresher.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await refresher
 
 
 # ---------------------------------------------------------------------------
