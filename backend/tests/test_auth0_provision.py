@@ -156,21 +156,31 @@ async def test_managed_auth0_disables_profile_password_updates(client, pool, mon
 
 
 @pytest.mark.asyncio
-async def test_managed_auth0_disables_manual_api_key_creation(client, monkeypatch):
-    _user, headers = await _managed_auth0_headers(monkeypatch, name="Managed Key User")
+async def test_managed_auth0_allows_manual_api_key_creation(client, monkeypatch):
+    """Manual keys are how headless/production agents authenticate, so managed
+    auth must let users mint them and accept them as bearer tokens."""
+    user, headers = await _managed_auth0_headers(monkeypatch, name="Managed Key User")
 
     created = await client.post(
         "/api/v1/users/me/keys",
-        json={"name": "browser-visible key"},
+        json={"name": "production-agent"},
         headers=headers,
     )
 
-    assert created.status_code == 403
-    assert created.json()["detail"] == "Manual API key creation is disabled; use CLI sign-in"
+    assert created.status_code == 201
+    api_key = created.json()["api_key"]
+    assert api_key.startswith("mc_")
+
+    me = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["id"] == str(user["id"])
 
 
 @pytest.mark.asyncio
-async def test_managed_auth0_rejects_non_cli_api_keys(client, monkeypatch):
+async def test_managed_auth0_rejects_password_api_keys(client, monkeypatch):
     registered = await client.post(
         "/api/v1/users/register",
         json={
