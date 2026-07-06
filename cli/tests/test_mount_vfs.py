@@ -248,8 +248,9 @@ def test_vfs_suffixes_only_colliding_names():
 
 
 class AttachmentClient(FakeClient):
-    """A page owning an attached file renders as a directory: the page file
-    inside, the attachment beside it."""
+    """A file attached to a page (parent_page_id) is an internal of that
+    document: the page stays a plain file with a stable path, and the
+    attachment is reachable only through the download link in its body."""
 
     def get_overview(self):
         overview = super().get_overview()
@@ -280,20 +281,15 @@ class AttachmentClient(FakeClient):
             return {"content_type": "markdown", "content_markdown": "# Report\n"}
         return super().get_page(page_id)
 
-    def download_file(self, file_id):
-        if file_id == "file-shot9999":
-            return b"png"
-        return super().download_file(file_id)
 
-
-def test_vfs_nests_attachments_under_their_page():
+def test_vfs_hides_page_attachments():
     model = StashVfsModel(AttachmentClient())
     model.refresh()
 
-    assert "Report" in model.list_dir("/files")
-    assert sorted(model.list_dir("/files/Report")) == ["Report.md", "shot.png"]
-    assert model.read_file("/files/Report/Report.md") == b"# Report\n"
-    assert model.read_file("/files/Report/shot.png") == b"png"
-    # A page with no attachments stays a plain file, not a directory.
-    folder_name = next(name for name in model.list_dir("/files") if name.startswith("Notes"))
-    assert "Plan.md" in model.list_dir(f"/files/{folder_name}")
+    entries = model.list_dir("/files")
+    # The page keeps its plain-file path even though it owns an attachment.
+    assert "Report.md" in entries
+    assert "Report" not in entries
+    assert model.read_file("/files/Report.md") == b"# Report\n"
+    # The attachment is not a tree entry anywhere.
+    assert "shot.png" not in entries

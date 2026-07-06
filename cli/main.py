@@ -3253,6 +3253,38 @@ def files_text(file_id: str = typer.Argument(...)):
     raise typer.Exit(1)
 
 
+def _parse_file_ref(ref: str) -> str:
+    """A file id, or the embed link a page carries (/api/v1/me/files/<id>/download)."""
+    match = re.fullmatch(r".*/files/([^/]+)/download", ref)
+    return match.group(1) if match else ref
+
+
+@files_app.command("download")
+def files_download(
+    file_ref: str = typer.Argument(
+        ..., help="File id, or the embed link from a page (/api/v1/me/files/<id>/download)."
+    ),
+    output: str = typer.Option(
+        None, "--output", "-o", help="Destination path. Defaults to the file's name in cwd."
+    ),
+):
+    """Download a file's bytes to a local path.
+
+    Files a page embeds don't appear in the files tree — the page's
+    markdown links them. Read the page, then download a linked file
+    only when you need its contents."""
+    file_id = _parse_file_ref(file_ref)
+    with _client() as c:
+        try:
+            meta = c.get_file(file_id)
+            data = c.download_file(file_id)
+        except StashError as e:
+            _err(e)
+    dest = Path(output) if output else Path(meta["name"])
+    dest.write_bytes(data)
+    console.print(f"[green]Downloaded[/green] {meta['name']} → {dest} [dim]{len(data)} bytes[/dim]")
+
+
 # ===========================================================================
 # Connect wizard
 # ===========================================================================

@@ -142,18 +142,13 @@ class StashVfsModel:
         self._add_dir(root_path)
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         pages = tree.get("pages", [])
-        files = tree.get("files", [])
-        # Files attached to a page (parent_page_id) nest under the page, which
-        # renders as a directory; only loose files sit directly in folders.
-        attachments: dict[str, list[dict]] = {}
-        loose_files: list[dict] = []
-        for file in files:
-            parent_page_id = file.get("parent_page_id")
-            if parent_page_id:
-                attachments.setdefault(str(parent_page_id), []).append(file)
-            else:
-                loose_files.append(file)
-        ambiguous = _files_ambiguity(folders.values(), pages, loose_files, set(attachments))
+        # Files attached to a page (parent_page_id) are internals of that
+        # document, not tree entries: the page's markdown links them by
+        # download URL and `stash files download` fetches the bytes. Keeping
+        # them out of the tree keeps paths stable — a page is always a plain
+        # file and never turns into a directory when an image is pasted in.
+        files = [file for file in tree.get("files", []) if not file.get("parent_page_id")]
+        ambiguous = _files_ambiguity(folders.values(), pages, files)
         folder_paths: dict[str, str] = {}
 
         def siblings(parent_id) -> set[str]:
@@ -182,10 +177,6 @@ class StashVfsModel:
             page_id = str(page["id"])
             parent_id = page.get("folder_id")
             parent_path = folder_path(str(parent_id)) if parent_id else root_path
-            attached = attachments.get(page_id)
-            if attached:
-                self._add_page_with_attachments(parent_path, page, attached, siblings(parent_id))
-                continue
             name = _file_display_name(
                 page.get("name") or "page", page_id, _page_extension(page), siblings(parent_id)
             )
@@ -196,7 +187,7 @@ class StashVfsModel:
                 updated_at=page.get("updated_at"),
             )
 
-        for file in loose_files:
+        for file in files:
             file_id = str(file["id"])
             parent_id = file.get("folder_id")
             parent_path = folder_path(str(parent_id)) if parent_id else root_path
@@ -206,45 +197,6 @@ class StashVfsModel:
             created_at = file.get("created_at")
             self._add_file(
                 f"{parent_path}/{name}",
-                loader=lambda fid=file_id: self.client.download_file(fid),
-                size_hint=file.get("size_bytes"),
-                created_at=created_at,
-                updated_at=created_at,
-            )
-
-    def _add_page_with_attachments(
-        self, parent_path: str, page: dict, attached: list[dict], siblings: set[str]
-    ) -> None:
-        """A page that owns files renders as a directory: the page file inside,
-        its attachments beside it — `Report/Report.md` + `Report/chart.png`."""
-        page_id = str(page["id"])
-        dir_name = _dir_display_name(page.get("name") or "page", page_id, siblings)
-        page_dir = self._add_dir_child(
-            parent_path,
-            dir_name,
-            created_at=page.get("created_at"),
-            updated_at=page.get("updated_at"),
-        )
-        page_stem, page_ext = _split_filename(page.get("name") or "page", _page_extension(page))
-        attachment_names = [
-            "".join(_split_filename(file.get("name") or "file", "")) for file in attached
-        ]
-        inner_ambiguous = _ambiguous_basenames([f"{page_stem}{page_ext}"] + attachment_names)
-        page_name = _file_display_name(
-            page.get("name") or "page", page_id, _page_extension(page), inner_ambiguous
-        )
-        self._add_file(
-            f"{page_dir}/{page_name}",
-            loader=lambda pid=page_id: self._load_page(pid),
-            created_at=page.get("created_at"),
-            updated_at=page.get("updated_at"),
-        )
-        for file in attached:
-            file_id = str(file["id"])
-            name = _file_display_name(file.get("name") or "file", file_id, "", inner_ambiguous)
-            created_at = file.get("created_at")
-            self._add_file(
-                f"{page_dir}/{name}",
                 loader=lambda fid=file_id: self.client.download_file(fid),
                 size_hint=file.get("size_bytes"),
                 created_at=created_at,
@@ -653,14 +605,10 @@ def _page_extension(page: dict) -> str:
     return ".html" if (page.get("content_type") or "markdown") == "html" else ".md"
 
 
-def _files_ambiguity(
-    folders, pages: list[dict], files: list[dict], page_dir_ids: set[str]
-) -> dict[str, set[str]]:
+def _files_ambiguity(folders, pages: list[dict], files: list[dict]) -> dict[str, set[str]]:
     """Map each parent folder (keyed by id, "" for root) to the set of colliding
     display names among its folders, pages, and uploaded files combined — paths
-    in one directory must be unique across all three kinds. Pages in
-    `page_dir_ids` render as directories (they own attachments), so they
-    collide on their directory name, not their file name."""
+    in one directory must be unique across all three kinds."""
     by_parent: dict[str, list[str]] = {}
 
     def record(parent_id, base: str) -> None:
@@ -669,9 +617,6 @@ def _files_ambiguity(
     for folder in folders:
         record(folder.get("parent_folder_id"), _safe_name(folder.get("name") or "folder"))
     for page in pages:
-        if str(page["id"]) in page_dir_ids:
-            record(page.get("folder_id"), _safe_name(page.get("name") or "page"))
-            continue
         stem, extension = _split_filename(page.get("name") or "page", _page_extension(page))
         record(page.get("folder_id"), f"{stem}{extension}")
     for file in files:
