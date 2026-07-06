@@ -152,15 +152,6 @@ def test_get_unknown_harness_raises():
 # --- turn env + redaction (sprite_agent_service) ---
 
 
-def test_turn_env_merges_provider_env_and_model(monkeypatch):
-    monkeypatch.setattr(settings, "ANTHROPIC_MODEL", "claude-x")
-    assert svc._turn_env({}) == {"ANTHROPIC_MODEL": "claude-x"}
-    assert svc._turn_env({"ANTHROPIC_API_KEY": "k"}) == {
-        "ANTHROPIC_MODEL": "claude-x",
-        "ANTHROPIC_API_KEY": "k",
-    }
-
-
 def test_redaction_strips_injected_key_and_sk_ant():
     env = {"ANTHROPIC_API_KEY": "sk-ant-api03-secret123"}
     assert "secret123" not in svc._redact("leaked sk-ant-api03-secret123 here", env)

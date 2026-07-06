@@ -94,10 +94,12 @@ async def respond_to_message(message: dict) -> None:
     reply_to = message.get("message_id") if not is_private else None
     try:
         answer = await sprite_agent_service.run_chat(user_id, owner_name, user_id, session_id, body)
-    except sprite_agent_service.NeedsPro:
+    except sprite_agent_service.NeedsAuth:
         url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
         await client.send_message(
-            chat_id, f"The cloud agent is a Pro feature. Upgrade here: {url}", reply_to=reply_to
+            chat_id,
+            f"Connect your Claude, Codex, or OpenRouter key — or upgrade to Pro — here: {url}",
+            reply_to=reply_to,
         )
         return
     except sprite_agent_service.TurnInProgress:

@@ -26,8 +26,8 @@ from uuid import UUID
 import redis.asyncio as aioredis
 
 from ..config import settings
+from . import agent_auth, memory_service, prompts, sprite_service
 from . import harness as harness_mod
-from . import memory_service, model_provider, prompts, sprite_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +37,6 @@ AGENT_NAME = "Stash Agent"
 # Reseeded turns replay at most this many stored turns into the fresh prompt.
 _RESEED_MAX_TURNS = 40
 _RESEED_MAX_CHARS = 24_000
-
-# Web chat and Slack both run Claude Code today; other harnesses are wired in
-# harness.py and become selectable per user as a fast-follow.
-DEFAULT_HARNESS = harness_mod.CLAUDE
 
 _redis: aioredis.Redis | None = None
 
@@ -114,7 +110,7 @@ async def _run_harness(
     # after activity stops, and a live connection is activity. stderr merges
     # into stdout on Sprites, so we parse everything from the stdout stream.
     async for event in sprite_service.exec_stream(
-        sprite, argv, env=_turn_env(provider_env), cwd=sprite_service.SPRITE_WORKDIR
+        sprite, argv, env=provider_env, cwd=sprite_service.SPRITE_WORKDIR
     ):
         if "exit_code" in event:
             exit_code = event["exit_code"]
@@ -135,12 +131,6 @@ async def _run_harness(
         state.resume_missing = True
 
 
-def _turn_env(provider_env: dict[str, str]) -> dict[str, str]:
-    # provider_env is the resolved model key(s) for this run (managed on paid
-    # tiers, empty in local dev where the machine's own login applies).
-    return {"ANTHROPIC_MODEL": settings.ANTHROPIC_MODEL, **provider_env}
-
-
 def _redact_event(event: dict, provider_env: dict[str, str]) -> dict:
     if event.get("type") == "text":
         event["delta"] = _redact(event["delta"], provider_env)
@@ -148,17 +138,22 @@ def _redact_event(event: dict, provider_env: dict[str, str]) -> dict:
 
 
 async def _turn_events(
-    harness: harness_mod.Harness,
+    auth: agent_auth.RunAuth,
     sprite: sprite_service.Sprite,
     history: list[dict],
     message: str,
     session_id: str,
     system_prompt: str,
-    provider_env: dict[str, str],
     disallowed_tools: list[str] | None = None,
 ) -> AsyncIterator[dict]:
     """One full agent turn: resume the harness session, reseeding from stored
     history if the box has lost it. Ends with exactly one end/error event."""
+    harness = auth.harness
+    provider_env = auth.env
+    # OAuth harnesses read a credential file, not an env var — write it first.
+    for path, contents in auth.files.items():
+        await sprite_service.write_file(sprite, path, contents)
+
     native_id = await harness_mod.get_native_id(session_id, harness.id)
     key = harness_mod.session_key(harness, session_id, native_id)
     # Claude resumes when the conversation has prior turns (its id is
@@ -225,11 +220,11 @@ async def stream_chat(
     user_id: UUID,
     session_id: str,
     message: str,
-    provider_env: dict[str, str],
+    auth: agent_auth.RunAuth,
 ) -> AsyncIterator[str]:
     """Multi-turn agent chat over a stored session, streamed as SSE.
 
-    provider_env is the model key(s) resolved (and Pro-gated) by the router
+    `auth` is the harness + credentials resolved (and gated) by the router
     before the stream started, so a 402 is a clean HTTP error, not an SSE one.
     """
     try:
@@ -251,8 +246,8 @@ async def stream_chat(
 
             final = ""
             async for event in _turn_events(
-                DEFAULT_HARNESS, sprite, history, message, session_id,
-                prompts.render_sprite_system(owner_name), provider_env,
+                auth, sprite, history, message, session_id,
+                prompts.render_sprite_system(owner_name),
             ):
                 if event["type"] == "end":
                     final = event.pop("_result_text")
@@ -280,9 +275,9 @@ async def stream_chat(
 SLACK_DISALLOWED_TOOLS = ["Write", "Edit", "NotebookEdit", "Bash(rm:*)"]
 
 
-class NeedsPro(Exception):
-    """Surfaced to a channel (Slack/Telegram) so it can post an upgrade prompt
-    instead of failing silently."""
+class NeedsAuth(Exception):
+    """Surfaced to a channel (Slack/Telegram) so it can prompt the user to
+    connect a key or upgrade, instead of failing silently."""
 
 
 async def run_chat(
@@ -293,12 +288,12 @@ async def run_chat(
     message: str,
 ) -> str:
     """Non-streaming turn for Slack/Telegram: returns the final answer text.
-    Raises NeedsPro for a free account so the channel can prompt an upgrade."""
+    Raises NeedsAuth for an unconnected free account so the channel can prompt."""
     try:
-        provider_env = await model_provider.turn_env(user_id, DEFAULT_HARNESS.provider)
-    except model_provider.NeedsProError:
-        raise NeedsPro
-    except model_provider.ProviderNotConfigured:
+        auth = await agent_auth.resolve(user_id)
+    except agent_auth.NeedsAuth:
+        raise NeedsAuth
+    except agent_auth.ProviderNotConfigured:
         raise RuntimeError("cloud agent is not configured")
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
@@ -311,8 +306,8 @@ async def run_chat(
         final = ""
         error: str | None = None
         async for event in _turn_events(
-            DEFAULT_HARNESS, sprite, history, message, session_id,
-            prompts.render_sprite_system(owner_name), provider_env,
+            auth, sprite, history, message, session_id,
+            prompts.render_sprite_system(owner_name),
             disallowed_tools=SLACK_DISALLOWED_TOOLS,
         ):
             if event["type"] == "end":

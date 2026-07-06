@@ -377,6 +377,23 @@ def _box_path(rel_path: str) -> str:
     return joined
 
 
+async def write_file(sprite: Sprite, abs_path: str, contents: str) -> None:
+    """Write a file on the box (absolute path). Used to materialize OAuth
+    credential files before a turn. base64 avoids any quoting of the payload."""
+    import base64
+
+    b64 = base64.b64encode(contents.encode()).decode()
+    script = (
+        'import base64,os,sys;p=sys.argv[1];os.makedirs(os.path.dirname(p),exist_ok=True);'
+        'open(p,"wb").write(base64.b64decode(sys.argv[2]));os.chmod(p,0o600)'
+    )
+    _, code = await exec_collect(
+        sprite, ["python3", "-c", script, abs_path, b64], env={}, timeout_s=30
+    )
+    if code != 0:
+        raise SpriteError(f"write_file failed for {abs_path}")
+
+
 async def fs_list(sprite: Sprite, rel_path: str) -> list[dict]:
     """Directory entries at a home-relative path on the box."""
     output, code = await exec_collect(

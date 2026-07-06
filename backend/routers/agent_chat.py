@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import model_provider, sprite_agent_service
+from ..services import agent_auth, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agent-chat", tags=["agent-chat"])
 
@@ -33,22 +33,23 @@ async def chat(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # Resolve the model key + Pro-gate up front so a free user gets a clean 402
-    # instead of a stream that dies mid-flight.
+    # Resolve the harness + credentials up front so an unconnected free user
+    # gets a clean 402 instead of a stream that dies mid-flight.
     try:
-        provider_env = await model_provider.turn_env(current_user["id"], model_provider.ANTHROPIC)
-    except model_provider.NeedsProError:
+        auth = await agent_auth.resolve(current_user["id"])
+    except agent_auth.NeedsAuth:
         raise HTTPException(
             status_code=402,
-            detail="The cloud agent is a Pro feature. Upgrade to run it on managed models.",
+            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
+            "or upgrade to Pro to use the managed agent.",
         )
-    except model_provider.ProviderNotConfigured:
+    except agent_auth.ProviderNotConfigured:
         raise HTTPException(status_code=503, detail="The agent is not configured.")
     scope_name = current_user["display_name"] or current_user["name"]
     session_id = req.session_id or f"agent-{uuid4().hex}"
     return StreamingResponse(
         sprite_agent_service.stream_chat(
-            owner_user_id, scope_name, current_user["id"], session_id, req.message, provider_env
+            owner_user_id, scope_name, current_user["id"], session_id, req.message, auth
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

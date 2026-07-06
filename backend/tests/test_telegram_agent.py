@@ -112,12 +112,12 @@ async def test_free_user_gets_upgrade_prompt(monkeypatch):
     async def get_user(_uid):
         return {"display_name": "Sam", "name": "sam"}
 
-    async def needs_pro(*a, **k):
-        raise agent.sprite_agent_service.NeedsPro
+    async def needs_auth(*a, **k):
+        raise agent.sprite_agent_service.NeedsAuth
 
     monkeypatch.setattr(agent.client, "send_message", fake_send)
     monkeypatch.setattr(agent.links, "get_linked_user_id", linked)
     monkeypatch.setattr(agent.user_service, "get_user_by_id", get_user)
-    monkeypatch.setattr(agent.sprite_agent_service, "run_chat", needs_pro)
+    monkeypatch.setattr(agent.sprite_agent_service, "run_chat", needs_auth)
     await agent.respond_to_message(_msg("do something"))
-    assert sent and "Pro feature" in sent[0]
+    assert sent and "upgrade to Pro" in sent[0]

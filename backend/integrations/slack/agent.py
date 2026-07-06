@@ -83,7 +83,7 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
         answer = await sprite_agent_service.run_chat(
             owner_user_id, owner_name, user["id"], session_id, text
         )
-    except sprite_agent_service.NeedsPro:
+    except sprite_agent_service.NeedsAuth:
         await client.post_message(bot_token, channel, _upgrade_prompt(), thread_ts)
         return
     except sprite_agent_service.TurnInProgress:
@@ -104,7 +104,10 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
 
 def _upgrade_prompt() -> str:
     url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
-    return f"The cloud agent is a Pro feature. Upgrade to chat with it here: {url}"
+    return (
+        "Connect your Claude, Codex, or OpenRouter key — or upgrade to Pro for "
+        f"the managed agent — in Stash settings: {url}"
+    )
 
 
 def _session_id(user_id, event: dict) -> str:
