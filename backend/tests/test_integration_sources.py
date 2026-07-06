@@ -1020,7 +1020,6 @@ def test_query_source_tool_is_registered_and_in_tool_sets():
     # The catalog and the advertised tool sets must agree, or the agent would
     # be offered a tool that doesn't exist (or vice-versa).
     assert "query_source" in agent_runtime._TOOLS_BY_NAME
-    assert "query_source" in prompts.STASH_TOOL_SET
     assert "query_source" in prompts.ASK_TOOL_SET
 
 
@@ -1031,7 +1030,6 @@ def test_fetch_history_wiring():
     assert source_service.SOURCE_TABLE["slack"] in source_service.CONTENT_TABLES
     assert source_service.SOURCE_TABLE["gong_calls"] in source_service.CONTENT_TABLES
     assert "fetch_history" in agent_runtime._TOOLS_BY_NAME
-    assert "fetch_history" in prompts.STASH_TOOL_SET
     assert "fetch_history" in prompts.ASK_TOOL_SET
 
 

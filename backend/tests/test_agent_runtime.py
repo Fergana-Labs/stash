@@ -1,12 +1,8 @@
-"""Tests for the Claude Agent SDK wrapper.
+"""Tests for the in-process Stash tool library (ask-the-stash loop).
 
-We don't spawn the SDK subprocess in tests (Claude Code CLI is a heavy,
-external dependency). Instead we verify:
-
-- Each in-process tool reads scope context correctly and shapes the
-  expected MCP response.
-- The tool catalog matches prompts.STASH_TOOL_SET so a misnamed tool
-  fails fast at runtime.
+We verify each tool reads scope context correctly and shapes the expected
+response, and that the ASK_TOOL_SET catalog resolves so a misnamed tool
+fails fast at runtime.
 """
 
 from __future__ import annotations
@@ -21,9 +17,9 @@ from backend.services import agent_runtime, prompts, shared_skill_service
 
 
 def test_tool_catalog_matches_prompts_set():
-    """`prompts.STASH_TOOL_SET` is the source of truth for what tools the
-    ask-the-stash agent can use; agent_runtime must implement every name."""
-    missing = [name for name in prompts.STASH_TOOL_SET if name not in agent_runtime._TOOLS_BY_NAME]
+    """`prompts.ASK_TOOL_SET` is the source of truth for what tools the
+    ask-the-stash loop can use; agent_runtime must implement every name."""
+    missing = [name for name in prompts.ASK_TOOL_SET if name not in agent_runtime._TOOLS_BY_NAME]
     assert missing == [], f"agent_runtime missing tool impls: {missing}"
 
 
@@ -144,14 +140,12 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
     assert skill_md == 1
 
 
-def test_page_tools_are_writable_surfaces_only():
-    """create_page/update_page are mutations: offered to the agent + Slack
-    surfaces (STASH_TOOL_SET), but withheld from the read-only ask surface so a
-    prompt-injected ask can't author pages."""
+def test_page_tools_withheld_from_ask_surface():
+    """create_page/update_page are mutations: implemented in the tool library,
+    but withheld from the read-only ask surface so a prompt-injected ask can't
+    author pages."""
     for name in ("create_page", "update_page"):
         assert name in agent_runtime._TOOLS_BY_NAME
-        assert name in prompts.STASH_TOOL_SET
-        assert name in prompts.SLACK_TOOL_SET
         assert name not in prompts.ASK_TOOL_SET
 
 
@@ -192,12 +186,9 @@ async def test_create_and_update_page_round_trip(scope: UUID, _db_pool):
     assert "Hello again" in json.loads(read_back["content"][0]["text"])["content"]
 
 
-def test_destructive_tools_withheld_from_untrusted_surfaces():
-    """The Slack surface is untrusted (prompt-injectable), so destructive tools
-    must never reach it; the ask surface must stay read-only."""
-    for name in prompts.SLACK_DESTRUCTIVE_TOOLS:
-        assert name in prompts.STASH_TOOL_SET
-        assert name not in prompts.SLACK_TOOL_SET
+def test_ask_surface_is_read_only():
+    """The onboarding ask surface is prompt-injectable, so no write tool may
+    ever appear in its tool set."""
     write_tools = (
         "create_page",
         "update_page",

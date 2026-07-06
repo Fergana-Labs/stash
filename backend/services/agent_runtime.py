@@ -1,12 +1,10 @@
-"""Claude Agent SDK runtime for ask-the-stash.
+"""The in-process Stash tool library for the ask-the-stash loop.
 
-Replaces the old hand-rolled agent harness (`backend/services/llm.py`).
-The Stash tools are exposed as an in-process MCP server attached to
-every call. Scoping is handled through a ContextVar so each tool
-implementation can find the active owner scope without threading the id
-through the SDK.
-
-`stream_agent(...)` yields SSE-encoded chunks for the ask endpoint.
+Tools are declared with the SDK `@tool` decorator (for its
+name/description/schema/handler shape) and executed directly by
+tool_loop.py — there is no SDK runner. Scoping is handled through a
+ContextVar so each tool implementation can find the active owner scope
+without threading the id through every call.
 """
 
 from __future__ import annotations
@@ -14,27 +12,15 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
-from collections.abc import AsyncIterator
 from uuid import UUID
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    ToolUseBlock,
-    create_sdk_mcp_server,
-    query,
-    tool,
-)
+from claude_agent_sdk import tool
 
 from ..config import settings
 from . import (
     files_tree_service,
     memory_service,
     permission_service,
-    prompts,
     shared_skill_service,
     skill_service,
     source_service,
@@ -1169,79 +1155,3 @@ _TOOLS_BY_NAME = {
     "query_source": _query_source,
     "fetch_history": _fetch_history,
 }
-
-
-def _build_options(*, system: str) -> ClaudeAgentOptions:
-    tools = [_TOOLS_BY_NAME[name] for name in prompts.STASH_TOOL_SET]
-    mcp_server = create_sdk_mcp_server(name="stash", version="1.0.0", tools=tools)
-    # The SDK exposes MCP tools as `mcp__{server}__{tool_name}` in allowed_tools.
-    allowed = [f"mcp__stash__{name}" for name in prompts.STASH_TOOL_SET]
-    return ClaudeAgentOptions(
-        system_prompt=system,
-        model=settings.ANTHROPIC_MODEL,
-        max_turns=8,
-        mcp_servers={"stash": mcp_server},
-        allowed_tools=allowed,
-        # No filesystem/Bash tools — purely the in-process MCP toolset.
-        disallowed_tools=["Bash", "Edit", "Write", "Read", "Glob", "Grep"],
-        # We pass full prompt as the user turn; no continuation needed.
-        permission_mode="bypassPermissions",
-        env={"ANTHROPIC_API_KEY": settings.ANTHROPIC_API_KEY or ""},
-    )
-
-
-# --- Public API ------------------------------------------------------------
-
-
-def _sse(event: dict) -> str:
-    return f"data: {json.dumps(event)}\n\n"
-
-
-async def stream_agent(
-    *,
-    system: str,
-    prompt: str,
-    owner_user_id: UUID,
-    user_id: UUID | None = None,
-) -> AsyncIterator[str]:
-    """SSE generator for ask-the-stash. Caller must verify
-    `settings.ANTHROPIC_API_KEY` is set before invoking."""
-    options = _build_options(system=system)
-
-    scope_token = _scope_ctx.set(owner_user_id)
-    user_token = _user_ctx.set(user_id)
-    try:
-        async for msg in query(prompt=prompt, options=options):
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if isinstance(block, TextBlock):
-                        yield _sse({"type": "text", "delta": block.text})
-                    elif isinstance(block, ToolUseBlock):
-                        # Strip the SDK's MCP prefix so the wire format
-                        # stays readable in the UI.
-                        name = block.name
-                        if name.startswith("mcp__stash__"):
-                            name = name[len("mcp__stash__") :]
-                        yield _sse(
-                            {
-                                "type": "tool",
-                                "name": name,
-                                "args": dict(block.input or {}),
-                            }
-                        )
-            elif isinstance(msg, ResultMessage):
-                if msg.is_error and not msg.result:
-                    yield _sse(
-                        {
-                            "type": "text",
-                            "delta": f"\n\n(stream ended: {msg.subtype})",
-                        }
-                    )
-            elif isinstance(msg, SystemMessage):
-                # SDK init/system noise — drop.
-                continue
-    finally:
-        _user_ctx.reset(user_token)
-        _scope_ctx.reset(scope_token)
-
-    yield _sse({"type": "end"})

@@ -1,9 +1,9 @@
 """Slack agent (talk-to-Stash bot) — turn a Slack mention/DM into an agent run.
 
 This is the seam where the Slack surface meets the existing agent: it resolves
-the Slack user to a Stash account, runs the scope agent in that user's
-single continuous Slack session, and posts the reply back. Everything agent-
-side (tool_loop, tools, memory, scoping) is reused unchanged.
+the Slack user to a Stash account, runs the cloud agent (Claude Code on the
+user's sprite — see sprite_agent_service) in that user's single continuous
+Slack session, and posts the reply back.
 
 REMOVAL: this module + installs.py + client.py + links.py + the provider
 bot-token capture + the router link capture + the webhook agent branch + the
@@ -17,7 +17,7 @@ import logging
 import re
 
 from ...config import settings
-from ...services import ask_service, user_service
+from ...services import sprite_agent_service, user_service
 from . import client, installs, links
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,9 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     owner_name = user["display_name"] or user["name"]
     # One continuous session per user → memory accumulates across DMs/channels/time.
     session_id = f"slack-agent-{user['id']}"
-    answer = await ask_service.run_chat(owner_user_id, owner_name, user["id"], session_id, text)
+    answer = await sprite_agent_service.run_chat(
+        owner_user_id, owner_name, user["id"], session_id, text
+    )
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts
     )

@@ -37,54 +37,6 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
 
 # Tool set names — schemas + executors live in agent_runtime.
 
-# Full tool set including mutators. Use for surfaces where the agent is
-# allowed to create / update / delete skills on the user's behalf.
-STASH_TOOL_SET = (
-    "search_history",
-    "read_page",
-    "create_page",
-    "update_page",
-    "edit_page",
-    "create_folder",
-    "move_page",
-    "rename_page",
-    "delete_page",
-    "create_table",
-    "insert_row",
-    "update_row",
-    "add_column",
-    "delete_row",
-    "copy_page",
-    "copy_folder",
-    "batch_move",
-    "batch_delete",
-    "batch_restore",
-    "grep_pages",
-    "list_files",
-    "read_file",
-    "query_table",
-    "list_skills",
-    "read_skill",
-    "create_skill",
-    "publish_skill",
-    "update_skill",
-    "unpublish_skill",
-    "list_sources",
-    "list_source",
-    "read_source",
-    "search",
-    "query_source",
-    "fetch_history",
-)
-
-# Slack agent (talk-to-Stash bot): can create + update artifacts, but NOT
-# destroy them. Slack is an untrusted surface, so destructive tools are held
-# back to limit what a prompt-injected message can do.
-SLACK_DESTRUCTIVE_TOOLS = frozenset(
-    {"unpublish_skill", "delete_page", "delete_row", "batch_delete", "batch_restore"}
-)
-SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t not in SLACK_DESTRUCTIVE_TOOLS)
-
 # Read-only subset for ask-the-scope and other Q&A surfaces. Drops
 # the write tools so a prompt-injected request can't trigger mutations
 # even if the model decides to play along. Service-layer permission
