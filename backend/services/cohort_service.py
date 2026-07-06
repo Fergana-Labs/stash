@@ -157,8 +157,7 @@ def compute_engagement_cohorts(
 # metadata.source = "history_import". "Active" events are the rest —
 # CLI commands and any custom-typed events.
 _ACTIVE_EVENTS_PREDICATE = (
-    "(he.metadata->>'client') IS NULL "
-    "AND COALESCE(he.metadata->>'source', '') <> 'history_import'"
+    "(he.metadata->>'client') IS NULL AND COALESCE(he.metadata->>'source', '') <> 'history_import'"
 )
 
 

@@ -38,6 +38,4 @@ def downgrade() -> None:
     )
     op.execute("ALTER TABLE users ADD COLUMN history_id UUID")
     op.execute("ALTER TABLE users ADD COLUMN notebook_id UUID")
-    op.execute(
-        "ALTER TABLE users ADD COLUMN owner_id UUID " "REFERENCES users(id) ON DELETE CASCADE"
-    )
+    op.execute("ALTER TABLE users ADD COLUMN owner_id UUID REFERENCES users(id) ON DELETE CASCADE")

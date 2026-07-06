@@ -13,6 +13,13 @@ def test_upload_text_file_detection() -> None:
     assert not _is_upload_text_file(Path("diagram.png"))
 
 
+def test_parse_file_ref_accepts_id_and_embed_link() -> None:
+    # Pages embed attachments as /api/v1/me/files/<id>/download; agents can
+    # paste that link straight into `stash files download`.
+    assert main._parse_file_ref("abc-123") == "abc-123"
+    assert main._parse_file_ref("/api/v1/me/files/abc-123/download") == "abc-123"
+
+
 def test_skill_url_uses_web_app_url(monkeypatch) -> None:
     monkeypatch.setattr(main, "_web_app_url", lambda: "https://app.example")
 

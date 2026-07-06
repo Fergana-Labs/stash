@@ -302,7 +302,7 @@ async def remove_repo_skills(repo_url: str) -> int:
     base = f"https://github.com/{owner}/{repo}"
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT folder_id FROM skills " "WHERE source_github_url = $1 OR source_github_url LIKE $2",
+        "SELECT folder_id FROM skills WHERE source_github_url = $1 OR source_github_url LIKE $2",
         base,
         f"{base}/tree/%",
     )

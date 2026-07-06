@@ -96,8 +96,7 @@ def upgrade() -> None:
     )
     # Semantic search hot path, mirroring pages/files.
     op.execute(
-        "CREATE INDEX source_documents_embed_stale_idx "
-        "ON source_documents (id) WHERE embed_stale"
+        "CREATE INDEX source_documents_embed_stale_idx ON source_documents (id) WHERE embed_stale"
     )
 
 

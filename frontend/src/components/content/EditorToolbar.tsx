@@ -132,6 +132,8 @@ export default function EditorToolbar({
     if (!file || !editor) return;
     setUploading(true);
     try {
+      // Inserting the download link embeds the file: the server claims it
+      // when the page body saves.
       const result = await uploadFile(file);
       const href = fileDownloadUrl(result.id);
       if (result.content_type.startsWith("image/")) {

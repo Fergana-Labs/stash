@@ -173,6 +173,13 @@ class SkillAppVfsShell:
             names = self.model.list_dir(path)
             lines = [self._format_ls_entry(posixpath.join(path, name), long) for name in names]
             blocks.append("\n".join(lines))
+            hit = self.model.truncated_root_containing(path)
+            if hit:
+                source_root, shown = hit
+                self._warn(
+                    f"ls: '{source_root}' was truncated at {shown} entries; this listing "
+                    "may be INCOMPLETE."
+                )
         return "\n".join(block for block in blocks if block) + ("\n" if blocks else "")
 
     def _format_ls_entry(self, path: str, long: bool) -> str:
@@ -274,6 +281,11 @@ class SkillAppVfsShell:
         self.model._get_node(root)
         lines = [root]
         lines.extend(self._tree_lines(root, prefix="", depth=1, max_depth=max_depth))
+        for source_root, shown in self.model.truncated_roots_under(root):
+            self._warn(
+                f"tree: '{source_root}' has more than {shown} entries; only the first "
+                f"{shown} were listed. This tree is INCOMPLETE."
+            )
         return "\n".join(lines) + "\n"
 
     def _tree_lines(
@@ -381,8 +393,13 @@ class SkillAppVfsShell:
 
         if stdin is not None and not paths:
             output = _grep_text(
-                regex, stdin, "", show_line_numbers=False, prefix_path=False,
-                before=before, after=after,
+                regex,
+                stdin,
+                "",
+                show_line_numbers=False,
+                prefix_path=False,
+                before=before,
+                after=after,
             )
             if not output:
                 raise VfsShellExit(1)
@@ -673,13 +690,16 @@ class SkillAppVfsShell:
         attrs = self.model.getattr(path)
         node = self.model._get_node(path)
         kind = "directory" if node.is_dir else "file"
-        return (
+        out = (
             f"{path}\n"
             f"  type: {kind}\n"
             f"  size: {attrs.get('st_size', 0)}\n"
             f"  modified: {_iso_time(node.updated_at)}\n"
             f"  created: {_iso_time(node.created_at)}\n"
         )
+        if node.external_ref:
+            out += f"  external_ref: {node.external_ref}\n"
+        return out
 
     def _read_text(self, path: str) -> str:
         return self.model.read_file(path).decode("utf-8", errors="replace")

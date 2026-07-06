@@ -117,8 +117,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE session_artifacts DROP COLUMN IF EXISTS stash_id")
     step("2e. idx_session_artifacts_session")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_session_artifacts_session "
-        "ON session_artifacts(session_id)"
+        "CREATE INDEX IF NOT EXISTS idx_session_artifacts_session ON session_artifacts(session_id)"
     )
 
     # ──────────────────────────────────────────────────────────────────
@@ -160,8 +159,7 @@ def upgrade() -> None:
         "ON share_links(slug) WHERE slug IS NOT NULL"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_share_links_target "
-        "ON share_links(target_type, target_id)"
+        "CREATE INDEX IF NOT EXISTS idx_share_links_target ON share_links(target_type, target_id)"
     )
 
     # ──────────────────────────────────────────────────────────────────

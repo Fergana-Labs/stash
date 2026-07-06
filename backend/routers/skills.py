@@ -85,15 +85,11 @@ async def import_github_skill(
     """Import every SKILL.md folder in a public GitHub repo as private skills in
     the caller's own scope (folders with SKILL.md)."""
     try:
-        result = await github_skill_import.import_repo_for_user(
-            current_user["id"], req.repo_url
-        )
+        result = await github_skill_import.import_repo_for_user(current_user["id"], req.repo_url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if result["skills"] == 0:
-        raise HTTPException(
-            status_code=404, detail="No SKILL.md folders found in that repo"
-        )
+        raise HTTPException(status_code=404, detail="No SKILL.md folders found in that repo")
     return result
 
 
@@ -196,7 +192,7 @@ async def snapshot_source(
     skill = await shared_skill_service.get_skill(skill_id)
     if not skill or skill["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Skill not found")
-    source = await source_service.get_owned_source(
+    source = await source_service.get_readable_source(
         req.source_id,
         current_user["id"],
     )
@@ -375,7 +371,9 @@ async def fork_skill(
     # Forking writes new pages/files/sessions into the scope — same bar as
     # creating a Skill.
     if not await user_scope_service.can_write(req.owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="You have read-only access and cannot create Skills")
+        raise HTTPException(
+            status_code=403, detail="You have read-only access and cannot create Skills"
+        )
     forked = await shared_skill_service.fork_skill(req.owner_user_id, slug, current_user["id"])
     if not forked:
         raise HTTPException(status_code=404, detail="Skill not found")

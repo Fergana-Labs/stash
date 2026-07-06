@@ -75,13 +75,21 @@ async def _list_message_refs(
     client: httpx.AsyncClient,
     query: str,
     limit: int,
-) -> list[dict]:
+) -> tuple[list[dict], str | None, int | None]:
+    """Returns (message refs, nextPageToken, resultSizeEstimate). A nextPageToken
+    means Gmail matched more than we fetched — the authoritative "there is more"
+    signal; resultSizeEstimate is Gmail's rough total-match count."""
     resp = await client.get(
         MESSAGES_URL,
         params={"q": query, "maxResults": min(limit, 100)},
     )
     resp.raise_for_status()
-    return resp.json().get("messages", []) or []
+    body = resp.json()
+    return (
+        body.get("messages", []) or [],
+        body.get("nextPageToken"),
+        body.get("resultSizeEstimate"),
+    )
 
 
 async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> dict:
@@ -117,7 +125,7 @@ async def index_gmail(source: dict) -> str | None:
 
     present: list[str] = []
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
-        refs = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
+        refs, _, _ = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
         messages = await asyncio.gather(
             *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
         )
@@ -131,12 +139,18 @@ async def index_gmail(source: dict) -> str | None:
     return None
 
 
-async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
+async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> dict:
+    """Live-search the mailbox, capped at SEARCH_LIMIT. Returns
+    {hits, truncated, estimated_total}: `truncated` is true when Gmail matched
+    more than the cap, so callers can disclose the cut instead of passing the
+    top slice off as the whole result."""
     owner_user_id = UUID(source["owner_user_id"])
     token = await get_valid_token(owner_user_id, "gmail", source["external_ref"])
 
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
-        refs = await _list_message_refs(client, query, min(limit, SEARCH_LIMIT))
+        refs, next_page_token, estimated_total = await _list_message_refs(
+            client, query, min(limit, SEARCH_LIMIT)
+        )
         messages = await asyncio.gather(
             *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
         )
@@ -153,7 +167,11 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> l
                 "snippet": message.get("snippet") or "",
             }
         )
-    return hits
+    return {
+        "hits": hits,
+        "truncated": bool(next_page_token),
+        "estimated_total": estimated_total,
+    }
 
 
 def _decode_body_data(data: str) -> str:

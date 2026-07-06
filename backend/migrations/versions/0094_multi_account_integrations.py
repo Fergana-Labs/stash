@@ -40,8 +40,7 @@ def upgrade() -> None:
         ADD PRIMARY KEY (user_id, provider, account_key)
         """)
     op.execute(
-        "CREATE INDEX user_integrations_user_provider_idx "
-        "ON user_integrations (user_id, provider)"
+        "CREATE INDEX user_integrations_user_provider_idx ON user_integrations (user_id, provider)"
     )
 
 

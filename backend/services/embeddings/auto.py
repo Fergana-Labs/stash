@@ -55,8 +55,7 @@ def get_embedder() -> BaseEmbedder:
 
     else:
         raise ValueError(
-            f"Unknown EMBEDDING_PROVIDER={provider!r}. "
-            "Choose: openai, huggingface, local, or auto."
+            f"Unknown EMBEDDING_PROVIDER={provider!r}. Choose: openai, huggingface, local, or auto."
         )
 
     logger.info("Embedding provider: %s", _embedder.name)

@@ -188,7 +188,8 @@ async def get_activity_timeline(
         scope_idx = 5
 
     rows = await pool.fetch(
-        _accessible_events_cte(scope_idx=scope_idx) + """
+        _accessible_events_cte(scope_idx=scope_idx)
+        + """
         , timeline_events AS (
             SELECT
                 me.owner_user_id,
@@ -539,7 +540,8 @@ async def compute_knowledge_density(
 
     # One scan per source: stem → doc_count + newest_at.
     page_rows = await pool.fetch(
-        _accessible_pages_cte(scope_idx=content_scope_idx) + """
+        _accessible_pages_cte(scope_idx=content_scope_idx)
+        + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, np.id AS doc_id, np.updated_at AS ts
@@ -557,7 +559,8 @@ async def compute_knowledge_density(
         *content_args,
     )
     table_rows_res = await pool.fetch(
-        _accessible_tables_cte(scope_idx=content_scope_idx) + """
+        _accessible_tables_cte(scope_idx=content_scope_idx)
+        + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, tr.id AS doc_id, tr.updated_at AS ts
@@ -575,7 +578,8 @@ async def compute_knowledge_density(
         *content_args,
     )
     event_rows = await pool.fetch(
-        _accessible_events_cte(scope_idx=event_scope_idx) + """
+        _accessible_events_cte(scope_idx=event_scope_idx)
+        + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, he.id AS doc_id, he.created_at AS ts
@@ -619,7 +623,8 @@ async def compute_knowledge_density(
     # source) maps top stems → their most frequent original word. ts_lexize
     # returns the same stems Postgres tsvector produced, so the join is exact.
     word_rows = await pool.fetch(
-        _accessible_pages_cte(scope_idx=content_scope_idx) + """
+        _accessible_pages_cte(scope_idx=content_scope_idx)
+        + """
         SELECT w AS word, ts_lexize('english_stem', w) AS stems, COUNT(*) AS freq
         FROM pages np,
              LATERAL regexp_split_to_table(lower(COALESCE(np.content_markdown, '')), '[^a-z]+') AS w
@@ -753,7 +758,8 @@ async def get_embedding_projection(
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_pages_cte(scope_idx=content_count_scope_idx) + """
+            _accessible_pages_cte(scope_idx=content_count_scope_idx)
+            + """
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
@@ -764,7 +770,8 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         row = await pool.fetchval(
-            _accessible_tables_cte(scope_idx=content_count_scope_idx) + """
+            _accessible_tables_cte(scope_idx=content_count_scope_idx)
+            + """
             SELECT COUNT(*) FROM table_rows tr
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
               AND tr.embedding IS NOT NULL
@@ -775,7 +782,8 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _accessible_events_cte(scope_idx=event_scope_idx) + """
+            _accessible_events_cte(scope_idx=event_scope_idx)
+            + """
             SELECT COUNT(*) FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
@@ -786,7 +794,8 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         row = await pool.fetchval(
-            _accessible_files_cte(scope_idx=content_count_scope_idx) + """
+            _accessible_files_cte(scope_idx=content_count_scope_idx)
+            + """
             SELECT COUNT(*) FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)
               AND f.embedding IS NOT NULL
@@ -826,7 +835,8 @@ async def get_embedding_projection(
 
     if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_pages_cte(scope_idx=content_fetch_scope_idx) + """
+            _accessible_pages_cte(scope_idx=content_fetch_scope_idx)
+            + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
@@ -849,7 +859,8 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
-            _accessible_tables_cte(scope_idx=content_fetch_scope_idx) + """
+            _accessible_tables_cte(scope_idx=content_fetch_scope_idx)
+            + """
             SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
             FROM table_rows tr
             JOIN tables t ON t.id = tr.table_id
@@ -873,7 +884,8 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(scope_idx=event_fetch_scope_idx) + """
+            _accessible_events_cte(scope_idx=event_fetch_scope_idx)
+            + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -896,7 +908,8 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         rows = await pool.fetch(
-            _accessible_files_cte(scope_idx=content_fetch_scope_idx) + """
+            _accessible_files_cte(scope_idx=content_fetch_scope_idx)
+            + """
             SELECT f.id, f.name AS label, f.embedding, f.created_at
             FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)

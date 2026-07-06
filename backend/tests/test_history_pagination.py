@@ -113,3 +113,25 @@ async def test_all_history_events_before_cursor(client: AsyncClient):
     older_body = older.json()
     assert [e["content"] for e in older_body["events"]] == ["event-1"]
     assert older_body["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_event_without_session_id_is_rejected(client: AsyncClient):
+    """Every history event belongs to a session — access control resolves an
+    event to its session, so a session-less event would be unreachable by the
+    permission predicate. The API must reject it loudly, not store an orphan
+    (a plugin bug once produced thousands of these; see migration 0121)."""
+    api_key = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/sessions/events",
+        json={"agent_name": "tester", "event_type": "note", "content": "orphan"},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 422
+
+    resp = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={"events": [{"agent_name": "tester", "event_type": "note", "content": "orphan"}]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 422

@@ -2,5 +2,6 @@
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
 pytest-cov>=6.0.0
-ruff>=0.4.0
-black>=24.0.0
+# Exact pin: ruff is also the formatter, and formatting style drifts across
+# releases. CI installs this same pin.
+ruff==0.15.6

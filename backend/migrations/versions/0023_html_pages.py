@@ -23,8 +23,7 @@ def upgrade() -> None:
         "CHECK (content_type IN ('markdown', 'html'))"
     )
     op.execute(
-        "ALTER TABLE notebook_pages ADD COLUMN IF NOT EXISTS content_html "
-        "TEXT NOT NULL DEFAULT ''"
+        "ALTER TABLE notebook_pages ADD COLUMN IF NOT EXISTS content_html TEXT NOT NULL DEFAULT ''"
     )
 
 

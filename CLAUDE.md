@@ -86,7 +86,8 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Migrate DB: `alembic upgrade head`
 - Run server: `uvicorn backend.main:app --host 0.0.0.0 --port 3456 --proxy-headers --forwarded-allow-ips '*'`
 - Tests: `pytest`
-- Lint: `ruff check .`
+- Lint (matches CI exactly): `ruff check backend/ cli/ && ruff format --check backend/ cli/`
+  - Fix formatting with `ruff format backend/ cli/`. There is no black; ruff is the only linter *and* formatter.
 
 ### Frontend (`frontend/`)
 - Install: `cd frontend && npm ci`
