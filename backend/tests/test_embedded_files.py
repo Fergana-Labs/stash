@@ -185,30 +185,25 @@ async def test_restoring_a_trashed_file_files_it_at_root(client: AsyncClient, st
 
 
 @pytest.mark.asyncio
-async def test_embedded_files_follow_page_through_trash_and_restore(
+async def test_page_trash_and_restore_leave_embedded_files_untouched(
     client: AsyncClient, stub_storage, _db_pool
 ):
     api_key, _ = await _register(client, "embed_trash")
-    riding = await _upload_image(client, api_key)
-    solo = await _upload_image(client, api_key, name="solo.png")
-    page_id = await _page(client, api_key, content=f"{_embed(riding)}\n{_embed(solo)}\n")
-
-    # Trash one embedded file individually first; it must NOT ride the restore.
-    assert (
-        await client.delete(f"/api/v1/me/files/{solo}", headers=_auth(api_key))
-    ).status_code == 204
+    file_id = await _upload_image(client, api_key)
+    page_id = await _page(client, api_key, content=_embed(file_id))
 
     assert (
         await client.delete(f"/api/v1/me/pages/{page_id}", headers=_auth(api_key))
     ).status_code == 204
-    deleted_at = await _db_pool.fetchval(
-        "SELECT deleted_at FROM files WHERE id = CAST($1 AS uuid)", riding
-    )
-    assert deleted_at is not None
 
-    # The riding file is hidden from trash (it restores with the page); the
-    # individually-trashed one listed while its page was live — but the page
-    # is now trashed too, so both hide. The page itself lists.
+    # An embedded file has no lifecycle of its own: nothing displays it but
+    # its page, so trashing the page needs no file bookkeeping. The file row
+    # stays live and owned, and the trash lists only the page.
+    row = await _db_pool.fetchrow(
+        "SELECT deleted_at, owner_page_id FROM files WHERE id = CAST($1 AS uuid)", file_id
+    )
+    assert row["deleted_at"] is None
+    assert str(row["owner_page_id"]) == page_id
     trash = await client.get("/api/v1/me/trash", headers=_auth(api_key))
     assert [p["id"] for p in trash.json()["pages"]] == [page_id]
     assert trash.json()["files"] == []
@@ -216,15 +211,7 @@ async def test_embedded_files_follow_page_through_trash_and_restore(
     assert (
         await client.post(f"/api/v1/me/pages/{page_id}/restore", headers=_auth(api_key))
     ).status_code == 204
-    restored = await _db_pool.fetchrow(
-        "SELECT "
-        "  (SELECT deleted_at FROM files WHERE id = CAST($1 AS uuid)) AS riding, "
-        "  (SELECT deleted_at FROM files WHERE id = CAST($2 AS uuid)) AS solo",
-        riding,
-        solo,
-    )
-    assert restored["riding"] is None
-    assert restored["solo"] is not None
+    assert await _owner_page_id(client, api_key, file_id) == page_id
 
 
 @pytest.mark.asyncio

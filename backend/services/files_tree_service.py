@@ -748,9 +748,10 @@ async def _reconcile_embedded_files(
 async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> bool:
     """Soft delete: stamps deleted_at + deleted_by. Restore via restore_page.
 
-    Embedded files (owner_page_id) are part of the document, so they trash
-    with it — stamped with the page's exact deleted_at so restore_page can
-    tell them apart from files the user trashed individually beforehand."""
+    Embedded files are untouched: they have no lifecycle of their own while
+    their page exists. A file owned by a trashed page is exactly as invisible
+    as a trashed one (nothing displays it but the page), restore has nothing
+    to undo, and purge_page is the destructor either way."""
     pool = get_pool()
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NOW(), deleted_by = $3 "
@@ -762,14 +763,6 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
     )
     if result != "UPDATE 1":
         return False
-    await pool.execute(
-        "UPDATE files SET deleted_at = (SELECT deleted_at FROM pages WHERE id = $1), "
-        "deleted_by = $3 "
-        "WHERE owner_page_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
-        page_id,
-        owner_user_id,
-        deleted_by,
-    )
     # Audited here so every front door (REST, batch, agent tools) leaves a trail.
     await security_audit_service.record_content_lifecycle_event(
         operation="deleted",
@@ -783,16 +776,6 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
 
 async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
-    # Grab the trash timestamp before clearing it — only embedded files stamped
-    # by this page's delete come back; individually-trashed ones stay trashed.
-    page_deleted_at = await pool.fetchval(
-        "SELECT deleted_at FROM pages "
-        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NOT NULL",
-        page_id,
-        owner_user_id,
-    )
-    if page_deleted_at is None:
-        return False
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
         "WHERE id = $1 AND owner_user_id = $2  "
@@ -802,13 +785,6 @@ async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) ->
     )
     if result != "UPDATE 1":
         return False
-    await pool.execute(
-        "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
-        "WHERE owner_page_id = $1 AND owner_user_id = $2 AND deleted_at = $3",
-        page_id,
-        owner_user_id,
-        page_deleted_at,
-    )
     await security_audit_service.record_content_lifecycle_event(
         operation="restored",
         actor_user_id=restored_by,
