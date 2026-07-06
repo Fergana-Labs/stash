@@ -83,6 +83,10 @@ celery.conf.update(
             "task": "backend.tasks.sources.reconcile_due",
             "schedule": 120.0,
         },
+        "sources-reconcile-github-sync-all": {
+            "task": "backend.tasks.sources.reconcile_github_sync_all",
+            "schedule": 3600.0,
+        },
         "cli-auth-cleanup-expired": {
             "task": "backend.tasks.cli_auth.cleanup_expired_sessions",
             "schedule": 300.0,

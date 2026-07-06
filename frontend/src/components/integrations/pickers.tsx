@@ -6,13 +6,16 @@ import type { ReactNode } from "react";
 import { addSource } from "@/lib/api";
 import {
   type IntegrationAccount,
+  getGitHubRepoAccess,
   listAsanaProjects,
   listGitHubRepos,
   listJiraProjects,
   listNotionPages,
   listSlackChannels,
+  setGitHubRepoAccess,
   type AsanaProjectSummary,
   type CredentialField,
+  type GitHubRepoAccess,
   type GitHubRepoSummary,
   type JiraProjectSummary,
   type NotionPageSummary,
@@ -80,9 +83,10 @@ export function AddSourceControls({
   if (connector.kind === "github") {
     return (
       <div className="space-y-2">
-        <GitHubRepoPicker
+        <GitHubAccessControls
           busy={busy}
-          onAdd={(repo) => add({ external_ref: repo.full_name, display_name: repo.full_name })}
+          onAddRepo={(repo) => add({ external_ref: repo.full_name, display_name: repo.full_name })}
+          onChanged={onAdded}
         />
         {errorRow}
       </div>
@@ -336,19 +340,37 @@ export function SlackChannelPicker({
   );
 }
 
-export function GitHubRepoPicker({
+// The "Repository access" block: all-repos mode vs. hand-picked repos, in the
+// style of GitHub's own App-install screen. Enabling all-repos registers a
+// source per visible repo server-side and keeps the set current hourly;
+// switching back to select stops auto-registration but keeps existing sources.
+export function GitHubAccessControls({
   busy,
-  onAdd,
+  onAddRepo,
+  onChanged,
 }: {
   busy: boolean;
-  onAdd: (repo: GitHubRepoSummary) => Promise<boolean>;
+  onAddRepo: (repo: GitHubRepoSummary) => Promise<boolean>;
+  onChanged: () => void;
 }) {
+  const [view, setView] = useState<"all" | "select" | null>(null);
+  const [enabled, setEnabled] = useState(false);
   const [repos, setRepos] = useState<GitHubRepoSummary[] | null>(null);
-  const [query, setQuery] = useState("");
+  const [syncResult, setSyncResult] = useState<GitHubRepoAccess | null>(null);
+  const [busyAll, setBusyAll] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+    getGitHubRepoAccess()
+      .then((access) => {
+        if (cancelled) return;
+        setEnabled(access.all_repos);
+        setView(access.all_repos ? "all" : "select");
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load repo access");
+      });
     listGitHubRepos()
       .then((next) => {
         if (!cancelled) setRepos(next);
@@ -360,6 +382,132 @@ export function GitHubRepoPicker({
       cancelled = true;
     };
   }, []);
+
+  async function chooseSelect() {
+    setView("select");
+    if (!enabled) return;
+    setError("");
+    try {
+      await setGitHubRepoAccess(false);
+      setEnabled(false);
+      setSyncResult(null);
+    } catch (e) {
+      setView("all");
+      setError(e instanceof Error ? e.message : "Could not update repo access");
+    }
+  }
+
+  async function syncAll() {
+    setBusyAll(true);
+    setError("");
+    try {
+      const result = await setGitHubRepoAccess(true);
+      setEnabled(true);
+      setSyncResult(result);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not sync repositories");
+    } finally {
+      setBusyAll(false);
+    }
+  }
+
+  if (view === null && !error) {
+    return <div className="py-2 text-[12px] text-muted">Loading…</div>;
+  }
+
+  const count = repos?.length ?? null;
+  return (
+    <div className="space-y-2">
+      <div role="radiogroup" aria-label="Repository access" className="space-y-2">
+        <AccessChoice
+          checked={view === "all"}
+          onClick={() => setView("all")}
+          title={<>All repositories{count !== null && <span className="font-medium text-dim"> · {count}</span>}</>}
+          description="Everything you can see — your own repos, collaborations, and org repos. Repos you gain access to later sync automatically."
+        />
+        <AccessChoice
+          checked={view === "select"}
+          onClick={() => void chooseSelect()}
+          title="Only select repositories"
+          description="Pick individual repos to sync. You can add more anytime."
+        />
+      </div>
+
+      {view === "all" &&
+        (enabled ? (
+          <div className="flex items-center gap-2 rounded-md bg-surface px-3 py-2.5 text-[12.5px] text-dim">
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden />
+            <span>
+              {syncResult?.created != null && `${syncResult.created} added · `}
+              All repositories sync automatically — new repos you gain access to are added within
+              an hour.
+            </span>
+          </div>
+        ) : (
+          <button type="button" disabled={busyAll} onClick={() => void syncAll()} className={primaryButton()}>
+            {busyAll ? "Syncing..." : `Sync all${count !== null ? ` ${count}` : ""} repositories`}
+          </button>
+        ))}
+
+      {view === "select" && <GitHubRepoPicker repos={repos} busy={busy} onAdd={onAddRepo} />}
+
+      {error && (
+        <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
+      )}
+    </div>
+  );
+}
+
+function AccessChoice({
+  checked,
+  onClick,
+  title,
+  description,
+}: {
+  checked: boolean;
+  onClick: () => void;
+  title: ReactNode;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onClick}
+      className={
+        "flex w-full cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-left transition-colors " +
+        (checked ? "border-brand bg-[var(--color-brand-50)]" : "border-border hover:bg-surface")
+      }
+    >
+      <span
+        aria-hidden
+        className={
+          "mt-0.5 grid h-[15px] w-[15px] shrink-0 place-items-center rounded-full border-[1.5px] " +
+          (checked ? "border-brand" : "border-muted")
+        }
+      >
+        {checked && <span className="h-[7px] w-[7px] rounded-full bg-brand" />}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-[12px] text-dim">{description}</span>
+      </span>
+    </button>
+  );
+}
+
+export function GitHubRepoPicker({
+  repos,
+  busy,
+  onAdd,
+}: {
+  repos: GitHubRepoSummary[] | null;
+  busy: boolean;
+  onAdd: (repo: GitHubRepoSummary) => Promise<boolean>;
+}) {
+  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -373,8 +521,8 @@ export function GitHubRepoPicker({
 
   return (
     <PickerShell
-      error={error}
-      loading={repos === null && !error}
+      error=""
+      loading={repos === null}
       query={query}
       placeholder="Search repositories..."
       onQuery={setQuery}

@@ -244,6 +244,36 @@ async def status(user_id: UUID, provider: str) -> dict:
     }
 
 
+async def get_sync_all(user_id: UUID, provider: str) -> bool:
+    row = await get_pool().fetchrow(
+        "SELECT bool_or(sync_all) AS sync_all FROM user_integrations "
+        "WHERE user_id = $1 AND provider = $2",
+        user_id,
+        provider,
+    )
+    return bool(row and row["sync_all"])
+
+
+async def set_sync_all(user_id: UUID, provider: str, enabled: bool) -> bool:
+    """Returns False when the provider has no stored connection to flag."""
+    result = await get_pool().execute(
+        "UPDATE user_integrations SET sync_all = $3, updated_at = now() "
+        "WHERE user_id = $1 AND provider = $2",
+        user_id,
+        provider,
+        enabled,
+    )
+    return result != "UPDATE 0"
+
+
+async def sync_all_user_ids(provider: str) -> list[UUID]:
+    rows = await get_pool().fetch(
+        "SELECT DISTINCT user_id FROM user_integrations WHERE provider = $1 AND sync_all",
+        provider,
+    )
+    return [row["user_id"] for row in rows]
+
+
 async def list_connections(user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(

@@ -32,7 +32,7 @@ export const CONNECTORS: Connector[] = [
     label: "GitHub",
     sourceType: "github_repo",
     kind: "github",
-    blurb: "Pick repos your agent can navigate.",
+    blurb: "Sync every repo you can see, or pick specific ones.",
   },
   {
     provider: "google",

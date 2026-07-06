@@ -32,6 +32,7 @@ from ..services import billing_service, security_audit_service, source_service
 from . import storage
 from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
+from .github import account_sync as github_account_sync
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -539,26 +540,10 @@ async def github_list_repos(
     current_user: dict = Depends(get_current_user),
     q: str = Query("", description="Substring filter on repo full_name"),
 ):
-    """List the user's GitHub repos (most-recently-updated first) so the
-    frontend can render a picker instead of asking the user to paste a URL."""
-    import httpx
-
+    """List every GitHub repo the user can see (most-recently-updated first)
+    so the frontend can render a picker instead of asking for a URL."""
     access_token = await storage.get_valid_token(current_user["id"], "github")
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Accept": "application/vnd.github+json",
-    }
-    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        resp = await client.get(
-            "https://api.github.com/user/repos",
-            params={
-                "per_page": 100,
-                "sort": "updated",
-                "affiliation": "owner,collaborator,organization_member",
-            },
-        )
-        resp.raise_for_status()
-        repos = resp.json()
+    repos = await github_account_sync.list_visible_repos(access_token)
 
     q_lower = q.lower().strip()
     out: list[GitHubRepoSummary] = []
@@ -575,6 +560,50 @@ async def github_list_repos(
             )
         )
     return out
+
+
+class GitHubRepoAccess(BaseModel):
+    # "All repositories" mode: every visible repo is kept registered as a
+    # github_repo source. total/created are only present right after a PUT
+    # that enabled the mode.
+    all_repos: bool
+    total: int | None = None
+    created: int | None = None
+
+
+class GitHubRepoAccessUpdate(BaseModel):
+    all_repos: bool
+
+
+@router.get("/github/repo-access", response_model=GitHubRepoAccess)
+async def github_get_repo_access(current_user: dict = Depends(get_current_user)):
+    return GitHubRepoAccess(all_repos=await storage.get_sync_all(current_user["id"], "github"))
+
+
+@router.put("/github/repo-access", response_model=GitHubRepoAccess)
+async def github_set_repo_access(
+    body: GitHubRepoAccessUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Switch between all-repos and select-repos mode. Enabling registers a
+    source for every visible repo right away; the hourly reconcile keeps the
+    set current after that. Disabling stops auto-registration but keeps the
+    sources already created."""
+    updated = await storage.set_sync_all(current_user["id"], "github", body.all_repos)
+    if not updated:
+        raise HTTPException(status_code=404, detail="GitHub is not connected")
+    await security_audit_service.record_user_event(
+        action="integration.repo_access_changed",
+        actor_user_id=current_user["id"],
+        target_type="integration",
+        target_id="github",
+        provider="github",
+        metadata={"all_repos": body.all_repos},
+    )
+    if not body.all_repos:
+        return GitHubRepoAccess(all_repos=False)
+    result = await github_account_sync.sync_all_repos(current_user["id"])
+    return GitHubRepoAccess(all_repos=True, total=result["total"], created=result["created"])
 
 
 class NotionPageSummary(BaseModel):

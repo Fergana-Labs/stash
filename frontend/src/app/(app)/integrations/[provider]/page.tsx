@@ -289,10 +289,12 @@ export default function IntegrationPage() {
 
         {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
 
-        {/* Add a <thing> */}
+        {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser) */}
         {connected && (
           <section className="mt-6">
-            <SectionLabel>Add a {itemNoun}</SectionLabel>
+            <SectionLabel>
+              {connector.kind === "github" ? "Repository access" : `Add a ${itemNoun}`}
+            </SectionLabel>
             <AddSourceControls
               connector={connector}
               connected={connected}

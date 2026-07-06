@@ -120,6 +120,24 @@ export async function listGitHubRepos(q: string = ""): Promise<GitHubRepoSummary
   return apiFetch<GitHubRepoSummary[]>(`/api/v1/integrations/github/repos${query}`);
 }
 
+export type GitHubRepoAccess = {
+  all_repos: boolean;
+  // Only present right after a PUT that enabled all-repos mode.
+  total: number | null;
+  created: number | null;
+};
+
+export async function getGitHubRepoAccess(): Promise<GitHubRepoAccess> {
+  return apiFetch<GitHubRepoAccess>("/api/v1/integrations/github/repo-access");
+}
+
+export async function setGitHubRepoAccess(allRepos: boolean): Promise<GitHubRepoAccess> {
+  return apiFetch<GitHubRepoAccess>("/api/v1/integrations/github/repo-access", {
+    method: "PUT",
+    body: JSON.stringify({ all_repos: allRepos }),
+  });
+}
+
 export type NotionPageSummary = {
   id: string;
   title: string;
