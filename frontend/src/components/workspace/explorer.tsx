@@ -194,11 +194,26 @@ function AgentsExplorer() {
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {(agents ?? []).map((a) => (
           <div key={a.id} className="group flex items-center gap-1 rounded px-2 py-1.5 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent">
-            <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{a.name}</span>
-            <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
-              <Plus className="h-3.5 w-3.5" />
+            <button
+              // The curator isn't a chat agent — open its config (Run now lives
+              // there). Everyone else opens their persistent chat session: a
+              // stable per-agent session id so the row resumes one conversation.
+              onClick={() =>
+                a.is_curator
+                  ? open("agent-config", a.id, a.name)
+                  : open("agent", `agent-${a.id}`, a.name)
+              }
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left"
+              title={a.is_curator ? "Open curator settings" : "Open chat"}
+            >
+              <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{a.name}</span>
             </button>
+            {!a.is_curator && (
+              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button onClick={() => open("agent-config", a.id, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
               <Settings className="h-3.5 w-3.5" />
             </button>

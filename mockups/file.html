@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash · File</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shell.css" />
+<style>
+  .fhead{padding:18px 0 14px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:flex-start;gap:13px;}
+  .fhead .ic{width:38px;height:38px;border-radius:10px;background:var(--brand-50);color:var(--brand-600);display:grid;place-items:center;flex:none;}
+  .fhead .ic svg{width:20px;height:20px;}
+  .fhead h1{font-family:var(--font-display);font-size:23px;font-weight:700;margin:0;letter-spacing:-.015em;}
+  .fhead .meta{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:12.5px;color:var(--muted);flex-wrap:wrap;}
+  .fhead .meta .tag{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--brand-50);color:var(--brand-700);}
+  .fhead .meta a{color:var(--dim);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;}
+  .fhead .acts{margin-left:auto;display:flex;gap:8px;}
+
+  .doc{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:34px;margin-top:26px;}
+  .prose{font-size:15px;line-height:1.7;color:var(--text);min-width:0;}
+  .prose h2{font-family:var(--font-display);font-size:18px;font-weight:600;margin:26px 0 10px;}
+  .prose h2:first-child{margin-top:0;}
+  .prose p{margin:0 0 14px;color:#33312B;}
+  .prose ul{margin:0 0 14px;padding-left:20px;}.prose li{margin:6px 0;}
+  .prose .hl{background:rgba(254,240,138,.55);border-radius:2px;padding:0 1px;cursor:pointer;}
+  .prose code{font-family:var(--font-mono);font-size:13px;background:var(--bg-raised);padding:1px 5px;border-radius:4px;color:var(--brand-700);}
+  .prose pre{background:#1E1E1E;color:#E6E6E6;border-radius:10px;padding:14px 16px;overflow:auto;font-family:var(--font-mono);font-size:12.5px;line-height:1.55;margin:0 0 16px;}
+  .prose pre .k{color:#C586C0;}.prose pre .s{color:#CE9178;}.prose pre .f{color:#DCDCAA;}.prose pre .c{color:#6A9955;}
+  .callout{display:flex;gap:10px;background:var(--brand-50);border:1px solid var(--brand-100);border-left:4px solid var(--brand-500);border-radius:8px;padding:12px 14px;margin:0 0 16px;font-size:14px;color:var(--brand-700);}
+  .callout svg{width:17px;height:17px;flex:none;margin-top:1px;}
+
+  .comments h3{font-family:var(--font-display);font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:4px 0 12px;font-weight:600;}
+  .thread{border:1px solid var(--border);border-radius:11px;background:var(--bg-base);padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.03);}
+  .thread .q{font-size:11.5px;color:var(--muted);border-left:2px solid var(--brand-300,#FDBA74);padding-left:8px;margin-bottom:9px;line-height:1.4;}
+  .cmt{display:flex;gap:9px;margin-bottom:9px;}
+  .cmt:last-child{margin-bottom:0;}
+  .cmt .av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700;font-family:var(--font-display);flex:none;}
+  .cmt .nm{font-size:12.5px;font-weight:600;}
+  .cmt .tm{font-size:11px;color:var(--muted);margin-left:6px;font-weight:400;}
+  .cmt .bd{font-size:13px;color:var(--dim);line-height:1.45;margin-top:2px;}
+  .replybox{font-size:12.5px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 10px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <span data-shell="rail"></span>
+  <span data-shell="side"></span>
+  <section class="main">
+    <span data-shell="topbar"></span>
+    <div class="body"><div class="wrap">
+
+      <div class="fhead">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span>
+        <div style="min-width:0">
+          <h1>Billing Runbook</h1>
+          <div class="meta">
+            <span class="tag">markdown</span>
+            <span>Last edited 2h ago</span><span>·</span>
+            <a href="#">Edited by Claude Code</a>
+          </div>
+        </div>
+        <div class="acts">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New page</button>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> Edit</button>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg> Export</button>
+        </div>
+      </div>
+
+      <div class="doc">
+        <article class="prose">
+          <h2>Stripe webhook handling</h2>
+          <p>Every billing state change flows through the <code>/webhooks/stripe</code> endpoint. We verify the signature, then dispatch on <code>event.type</code>. <span class="hl">A 400 (bad signature) response is healthy</span> — it means an unsigned probe hit the endpoint.</p>
+          <div class="callout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg> <span><b>STRIPE_SECRET_KEY is the on/off switch.</b> With no key set, the connect-time 402 gate is bypassed and billing is effectively off.</span></div>
+          <h2>The 402 connect gate</h2>
+          <p>Per-user Pro is enforced at connect time. The flow is upsert-aware, so reconnecting an existing user never double-charges:</p>
+          <pre><span class="c"># verify, then gate</span>
+<span class="k">if</span> <span class="f">stripe_enabled</span>() <span class="k">and not</span> user.is_pro:
+    <span class="k">raise</span> <span class="f">HTTPException</span>(<span class="s">402</span>, <span class="s">"upgrade required"</span>)</pre>
+          <h2>Renewal failures</h2>
+          <ul>
+            <li>Invoice <code>payment_failed</code> → retry schedule kicks in (3 attempts over 7 days)</li>
+            <li>After final failure → workspace flips to read-only, owner is emailed</li>
+            <li>Manual recovery → re-run the connect flow once the card is updated</li>
+          </ul>
+        </article>
+
+        <aside class="comments">
+          <h3>Comments · 2</h3>
+          <div class="thread">
+            <div class="q">"A 400 (bad signature) response is healthy"</div>
+            <div class="cmt"><span class="av" style="background:#0F172A">SL</span><div><div class="nm">Sam Liu<span class="tm">1h ago</span></div><div class="bd">Worth adding the exact dashboard alert we mute for this so on-call doesn't page on it.</div></div></div>
+            <div class="cmt"><span class="av" style="background:#EA580C">CC</span><div><div class="nm">Claude Code<span class="tm">52m ago</span></div><div class="bd">Added — muted <code>stripe.webhook.4xx</code> below the threshold. See updated section.</div></div></div>
+          </div>
+          <div class="thread">
+            <div class="q">"workspace flips to read-only"</div>
+            <div class="cmt"><span class="av" style="background:#0D9488">PR</span><div><div class="nm">Priya R.<span class="tm">30m ago</span></div><div class="bd">Do we keep API keys working in read-only? Need this for the Acme renewal.</div></div></div>
+            <div class="replybox">Reply…</div>
+          </div>
+        </aside>
+      </div>
+
+    </div></div>
+  </section>
+</div>
+<script>window.STASH={rail:"home",side:"files",crumb:["Acme","Files","Billing Runbook"],search:"Search this page"};</script>
+<script src="shell.js"></script>
+</body>
+</html>

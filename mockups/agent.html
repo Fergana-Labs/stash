@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash · Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shell.css" />
+<style>
+  .body{display:grid;grid-template-columns:minmax(0,1fr) 290px;}
+  .convo{overflow:auto;}
+  .thread{max-width:760px;margin:0 auto;padding:28px 28px 140px;}
+  .msg{display:flex;gap:12px;margin-bottom:24px;}
+  .msg .av{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;font-family:var(--font-display);flex:none;}
+  .msg .who{font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+  .msg .tag{font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;text-transform:lowercase;}
+  .t-agent{background:var(--brand-50);color:var(--brand-700);}
+  .t-you{background:var(--bg-raised);color:var(--dim);}
+  .ubub{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:11px 15px;font-size:14.5px;line-height:1.5;}
+  .atext{font-size:14.5px;line-height:1.66;color:var(--text);}
+  .atext p{margin:0 0 12px;}
+  .atext ul{margin:6px 0 12px;padding-left:18px;}
+  .atext li{margin:5px 0;color:var(--dim);}
+  .cite{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;background:var(--bg-base);border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:var(--dim);vertical-align:middle;}
+  .cite .d{width:6px;height:6px;border-radius:3px;}
+  .tools{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+  .tool{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;font-size:12.5px;color:var(--dim);background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:8px;padding:5px 10px;}
+  .tool .ic{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:8px;font-weight:700;flex:none;}
+  .tool .mono{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);}
+  .tool .ok{margin-left:2px;color:var(--green-fg);}
+  .tool .ok svg{width:13px;height:13px;}
+
+  .composer{position:absolute;bottom:0;left:0;right:290px;padding:16px 28px 22px;background:linear-gradient(to top,var(--bg-base) 72%,transparent);}
+  .composer .ask{max-width:760px;margin:0 auto;}
+
+  .ctx{border-left:1px solid var(--border);background:var(--bg-surface);overflow:auto;padding:20px 18px;}
+  .ctx h3{font-family:var(--font-display);font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:600;}
+  .ctx h3:not(:first-child){margin-top:24px;}
+  .srcitem{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-subtle);}
+  .srcitem .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700;flex:none;}
+  .srcitem .ti{font-size:13px;font-weight:500;color:var(--text);line-height:1.3;}
+  .srcitem .mt{font-size:11.5px;color:var(--muted);margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <span data-shell="rail"></span>
+  <span data-shell="side"></span>
+  <section class="main">
+    <span data-shell="topbar"></span>
+    <div class="body" style="position:relative">
+      <div class="convo">
+        <div class="thread">
+
+          <div class="msg">
+            <span class="av" style="background:#0F172A">SL</span>
+            <div style="min-width:0">
+              <div class="who">Sam Liu <span class="tag t-you">you</span></div>
+              <div class="ubub">Why did the Acme renewal slip to Q3? Pull from the Gong calls and the Linear ticket.</div>
+            </div>
+          </div>
+
+          <div class="msg">
+            <span class="av" style="background:linear-gradient(135deg,var(--brand-500),var(--brand-700))">St</span>
+            <div style="min-width:0">
+              <div class="who">Stash Agent <span class="tag t-agent">agent</span> · Claude Opus 4.8</div>
+              <div class="tools">
+                <span class="tool"><span class="ic" style="background:#6F2CFF">Gg</span> Searched <b style="font-weight:600">Gong</b> <span class="mono">renewal · acme</span> <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg></span> 3 calls</span>
+                <span class="tool"><span class="ic" style="background:#4A154B">Sl</span> Searched <b style="font-weight:600">Slack</b> <span class="mono">#acme-account</span> <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg></span> 18 msgs</span>
+                <span class="tool"><span class="ic" style="background:#5B57D1">Li</span> Read <b style="font-weight:600">Linear</b> <span class="mono">KAN-412</span> <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg></span></span>
+              </div>
+              <div class="atext">
+                <p>The renewal slipped because a security review blocked the rollout, not because of pricing. Three things lined up:</p>
+                <ul>
+                  <li><b>SOC 2 evidence request</b> — Acme's infosec team asked for updated subprocessor docs on the Jun 2 call <span class="cite"><span class="d" style="background:#6F2CFF"></span> Gong · Jun 2</span></li>
+                  <li><b>SSO bug</b> — SAML group mapping broke for their admins, tracked in <span class="cite"><span class="d" style="background:#5B57D1"></span> KAN-412</span>, fixed Jun 11</li>
+                  <li><b>Champion was out</b> — their VP Eng was on leave through end of Q2 <span class="cite"><span class="d" style="background:#4A154B"></span> #acme-account</span></li>
+                </ul>
+                <p>Net: it's a timing slip, not a churn risk. The deal is verbally committed for early Q3 once the SOC 2 packet lands.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="ask">
+          <div class="ph">Ask a follow-up…</div>
+          <div class="row">
+            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>
+            <span class="chipx">Claude Opus 4.8 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+            <span class="chipx"><span class="d"></span> All sources <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+            <span class="grow"></span>
+            <button class="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="ctx">
+        <h3>Sources used</h3>
+        <div class="srcitem"><span class="ic" style="background:#6F2CFF">Gg</span><div><div class="ti">Acme renewal — discovery</div><div class="mt">Gong call · Jun 2 · 42 min</div></div></div>
+        <div class="srcitem"><span class="ic" style="background:#5B57D1">Li</span><div><div class="ti">SAML group mapping broken</div><div class="mt">KAN-412 · Done · Jun 11</div></div></div>
+        <div class="srcitem"><span class="ic" style="background:#4A154B">Sl</span><div><div class="ti">#acme-account</div><div class="mt">18 messages · last Jun 9</div></div></div>
+        <h3>Artifacts</h3>
+        <div class="srcitem"><span class="ic" style="background:#EA580C"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/></svg></span><div><div class="ti">acme-renewal-summary.md</div><div class="mt">Saved to Skill · Q3 Planning</div></div></div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script>window.STASH={rail:"agents",side:"sessions",crumb:["Acme","Agent"],search:"Search this session"};</script>
+<script src="shell.js"></script>
+</body>
+</html>

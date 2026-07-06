@@ -63,36 +63,17 @@ type StreamHandlers = {
   onError?: (message: string) => void;
 };
 
-// POST a message and dispatch streamed events. Resolves when the stream ends.
-export async function streamAgentChat(
-  opts: {
-    sessionId: string | null;
-    message: string;
-    agentId?: string | null;
-    signal?: AbortSignal;
-  } & StreamHandlers,
-): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      message: opts.message,
-      session_id: opts.sessionId,
-      agent_id: opts.agentId ?? null,
-    }),
-    signal: opts.signal,
-  });
+// Read an SSE agent stream and dispatch its events. Shared by chat turns and
+// on-demand scheduled runs — both speak the same {session,status,text,tool,
+// tool_result,error} contract.
+async function consumeAgentStream(res: Response, handlers: StreamHandlers): Promise<void> {
   if (!res.ok || !res.body) {
     // Surface the server's own message (e.g. the Pro-upgrade prompt on 402).
     const detail = await res
       .json()
       .then((b) => b?.detail as string | undefined)
       .catch(() => undefined);
-    throw new Error(detail || `Chat failed: ${res.status}`);
+    throw new Error(detail || `Agent run failed: ${res.status}`);
   }
 
   const reader = res.body.getReader();
@@ -116,24 +97,68 @@ export async function streamAgentChat(
         continue; // partial frame — resume next read
       }
       if (evt.type === "session" && typeof evt.session_id === "string") {
-        opts.onSession?.(evt.session_id);
+        handlers.onSession?.(evt.session_id);
       } else if (evt.type === "status" && typeof evt.stage === "string") {
-        opts.onStatus?.(evt.stage);
+        handlers.onStatus?.(evt.stage);
       } else if (evt.type === "text" && typeof evt.delta === "string") {
-        opts.onText?.(evt.delta);
+        handlers.onText?.(evt.delta);
       } else if (evt.type === "tool") {
         const label = citationFor(
           evt.name as string,
           evt.args as Record<string, unknown> | undefined,
         );
         if (label) {
-          opts.onTool?.({ id: String(evt.id ?? label), tool: evt.name as string, label });
+          handlers.onTool?.({ id: String(evt.id ?? label), tool: evt.name as string, label });
         }
       } else if (evt.type === "tool_result" && evt.ok === false) {
-        opts.onToolError?.(String(evt.id));
+        handlers.onToolError?.(String(evt.id));
       } else if (evt.type === "error" && typeof evt.message === "string") {
-        opts.onError?.(evt.message);
+        handlers.onError?.(evt.message);
       }
     }
   }
+}
+
+// POST a message and dispatch streamed events. Resolves when the stream ends.
+export async function streamAgentChat(
+  opts: {
+    sessionId: string | null;
+    message: string;
+    agentId?: string | null;
+    signal?: AbortSignal;
+  } & StreamHandlers,
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      message: opts.message,
+      session_id: opts.sessionId,
+      agent_id: opts.agentId ?? null,
+    }),
+    signal: opts.signal,
+  });
+  await consumeAgentStream(res, opts);
+}
+
+// Trigger a scheduled agent (e.g. the Memory curator) on demand and stream the
+// run live. The server builds the prompt, so no message is sent.
+export async function streamAgentRun(
+  opts: { agentId: string; signal?: AbortSignal } & StreamHandlers,
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ agent_id: opts.agentId }),
+    signal: opts.signal,
+  });
+  await consumeAgentStream(res, opts);
 }

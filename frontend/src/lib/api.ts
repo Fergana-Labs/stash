@@ -2020,3 +2020,9 @@ export async function updateAgent(id: string, fields: Partial<Agent>): Promise<A
 export async function deleteAgent(id: string): Promise<void> {
   await apiFetch(`/api/v1/me/agents/${id}`, { method: "DELETE" });
 }
+
+export type AgentPrompt = { system_prompt: string; run_prompt: string };
+
+export async function getAgentPrompt(id: string): Promise<AgentPrompt> {
+  return apiFetch(`/api/v1/me/agents/${id}/prompt`);
+}

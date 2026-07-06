@@ -229,32 +229,36 @@ def _system_prompt(owner_name: str, persona: str | None) -> str:
     return f"{base}\n\n{persona}" if persona else base
 
 
-async def run_scheduled(agent: dict, run_stamp: str) -> str:
-    """Run a scheduled agent headless — one turn into a fresh per-run session —
-    and return the result text. Each run is its own session so history (and the
-    CLI transcript it replays) can't grow unbounded across a long-lived schedule.
+async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
+    """(session_id, message) for one run of a scheduled agent.
 
     The reserved Memory curator (is_curator) runs the curation prompt built
-    server-side from its watermark; other scheduled agents run schedule_prompt."""
-    from uuid import UUID as _UUID
+    server-side from its watermark; other scheduled agents run schedule_prompt.
+    Each run gets its own per-run session id so history (and the CLI transcript
+    it replays) can't grow unbounded across a long-lived schedule."""
+    from . import files_tree_service, prompts
 
-    from . import files_tree_service, prompts, user_service
+    user_id = UUID(str(agent["user_id"]))
+    if agent.get("is_curator"):
+        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
+        since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
+        message = prompts.render_curator_prompt(memory["id"], since)
+        return f"agent-curate-{agent['id']}-{run_stamp}", message
+    return f"agent-sched-{agent['id']}-{run_stamp}", agent["schedule_prompt"]
 
-    user_id = _UUID(str(agent["user_id"]))
+
+async def run_scheduled(agent: dict, run_stamp: str) -> str:
+    """Run a scheduled agent headless — one turn into a fresh per-run session —
+    and return the result text."""
+    from . import user_service
+
+    user_id = UUID(str(agent["user_id"]))
     user = await user_service.get_user_by_id(user_id)
     if user is None:
         return ""
     owner_name = user["display_name"] or user["name"]
 
-    if agent.get("is_curator"):
-        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
-        since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
-        message = prompts.render_curator_prompt(memory["id"], since)
-        session_id = f"agent-curate-{agent['id']}-{run_stamp}"
-    else:
-        message = agent["schedule_prompt"]
-        session_id = f"agent-sched-{agent['id']}-{run_stamp}"
-
+    session_id, message = await build_scheduled_turn(agent, run_stamp)
     return await run_chat(
         user_id,
         owner_name,

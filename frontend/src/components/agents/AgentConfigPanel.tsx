@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { type Agent, deleteAgent, listAgents, updateAgent } from "@/lib/api";
+import { type Citation, streamAgentRun } from "@/lib/agentChat";
+import {
+  type Agent,
+  type AgentPrompt,
+  deleteAgent,
+  getAgentPrompt,
+  listAgents,
+  updateAgent,
+} from "@/lib/api";
 
 const MODELS = [
   { value: "", label: "Auto (your connected model)" },
@@ -22,12 +30,26 @@ export default function AgentConfigPanel({
   const [agent, setAgent] = useState<Agent | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [run, setRun] = useState<RunState | null>(null);
+  const [prompt, setPrompt] = useState<AgentPrompt | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     listAgents()
       .then((all) => setAgent(all.find((a) => a.id === agentId) ?? null))
       .catch(() => setAgent(null));
   }, [agentId]);
+
+  // The curator's prompt is server-built, not a user field — fetch it to show
+  // read-only so you can see exactly what it runs.
+  useEffect(() => {
+    if (!agent?.is_curator) return;
+    getAgentPrompt(agent.id)
+      .then(setPrompt)
+      .catch(() => setPrompt(null));
+  }, [agent?.is_curator, agent?.id]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   if (!agent) return <div className="p-6 text-[13px] text-muted-foreground">Loading agent…</div>;
 
@@ -68,11 +90,78 @@ export default function AgentConfigPanel({
     onChanged?.();
   }
 
+  async function runNow() {
+    if (!agent || run?.streaming) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setRun({ streaming: true, status: "Starting…", text: "", tools: [], error: null });
+    try {
+      await streamAgentRun({
+        agentId: agent.id,
+        signal: controller.signal,
+        onStatus: (stage) =>
+          setRun((r) => (r ? { ...r, status: stage === "waking" ? "Starting your computer…" : stage } : r)),
+        onText: (delta) => setRun((r) => (r ? { ...r, status: null, text: r.text + delta } : r)),
+        onTool: (c: Citation) =>
+          setRun((r) =>
+            r && !r.tools.some((x) => x.id === c.id) ? { ...r, tools: [...r.tools, c] } : r,
+          ),
+        onError: (message) => setRun((r) => (r ? { ...r, error: message } : r)),
+      });
+      window.dispatchEvent(new Event("agents-changed"));
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        setRun((r) => (r ? { ...r, error: e instanceof Error ? e.message : String(e) } : r));
+      }
+    } finally {
+      setRun((r) => (r ? { ...r, streaming: false, status: null } : r));
+      abortRef.current = null;
+    }
+  }
+
+  // The curator is a reserved system agent, not a user-configurable one — it
+  // gets a dedicated read-only view (identity, schedule, run-on-demand, prompt)
+  // rather than the name/model/persona/channel controls of a normal agent.
+  if (agent.is_curator) {
+    return (
+      <div className="mx-auto w-full max-w-2xl space-y-5 px-6 py-6">
+        <div>
+          <h1 className="text-[18px] font-semibold text-foreground">Memory curator</h1>
+          <p className="mt-1.5 text-[13px] leading-5 text-dim">
+            A reserved system agent. Once a day it reads what changed in your stash and
+            curates it into an organized wiki in your Memory folder. It isn&apos;t a normal
+            agent — there&apos;s no name, model, persona, or channel to set. Run it on demand
+            and read exactly what it does below.
+          </p>
+        </div>
+
+        <Field label="Schedule">
+          <div className="text-[13px] text-foreground">Daily · automatic</div>
+        </Field>
+
+        <RunOnDemand isCurator run={run} onRun={runNow} />
+
+        <Field
+          label="System prompt"
+          hint="Appended to the coding agent's own system prompt on every run."
+        >
+          <ReadOnlyPrompt text={prompt?.system_prompt ?? null} />
+        </Field>
+        <Field
+          label="Curation instruction"
+          hint="Built automatically from your Memory folder and the changes since its last run."
+        >
+          <ReadOnlyPrompt text={prompt?.run_prompt ?? null} />
+        </Field>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5 px-6 py-6">
       <div className="flex items-center justify-between">
         <h1 className="text-[18px] font-semibold text-foreground">Agent settings</h1>
-        {!agent.is_default && !agent.is_curator && (
+        {!agent.is_default && (
           <button
             type="button"
             onClick={remove}
@@ -152,6 +241,8 @@ export default function AgentConfigPanel({
         </div>
       )}
 
+      {agent.run_mode === "scheduled" && <RunOnDemand isCurator={false} run={run} onRun={runNow} />}
+
       <Field label="Channels" hint="Which channels this agent answers.">
         <div className="flex gap-4 text-[13px] text-foreground">
           <label className="flex items-center gap-1.5">
@@ -184,6 +275,101 @@ export default function AgentConfigPanel({
         </button>
         {msg && <span className="text-[12.5px] text-muted-foreground">{msg}</span>}
       </div>
+    </div>
+  );
+}
+
+// Shared "Run now" control + live output for scheduled agents (curator included).
+function RunOnDemand({
+  isCurator,
+  run,
+  onRun,
+}: {
+  isCurator: boolean;
+  run: RunState | null;
+  onRun: () => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-[12.5px] font-medium text-foreground">Run on demand</div>
+          <div className="text-[11.5px] text-muted-foreground">
+            {isCurator
+              ? "Trigger a curation pass now instead of waiting for the daily schedule. Your watermark is untouched, so it's safe to repeat."
+              : "Run this scheduled agent now to test it."}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={run?.streaming}
+          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised disabled:opacity-60"
+        >
+          {run?.streaming ? "Running…" : "Run now"}
+        </button>
+      </div>
+      {run && <RunOutput run={run} />}
+    </div>
+  );
+}
+
+// A server-built prompt shown read-only (the curator's, which isn't editable).
+function ReadOnlyPrompt({ text }: { text: string | null }) {
+  if (text === null) {
+    return <div className="text-[12px] text-muted-foreground">Loading…</div>;
+  }
+  return (
+    <pre className="scroll-thin max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-base px-3 py-2.5 text-[12px] leading-relaxed text-foreground">
+      {text}
+    </pre>
+  );
+}
+
+type RunState = {
+  streaming: boolean;
+  status: string | null;
+  text: string;
+  tools: Citation[];
+  error: string | null;
+};
+
+// Live view of an on-demand run: a status line, the tool calls it made (e.g.
+// the curator's stash CLI commands), and its streamed final report.
+function RunOutput({ run }: { run: RunState }) {
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-base p-3">
+      {run.status && (
+        <div className="flex items-center gap-2 text-[12px] text-dim">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+          {run.status}
+        </div>
+      )}
+      {run.tools.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {run.tools.map((c) => (
+            <span
+              key={c.id}
+              className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+            >
+              {c.label}
+            </span>
+          ))}
+        </div>
+      )}
+      {run.text && (
+        <pre className="scroll-thin max-h-64 overflow-auto whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-foreground">
+          {run.text}
+        </pre>
+      )}
+      {run.error && (
+        <div className="rounded border border-error/30 bg-error/10 px-2.5 py-1.5 text-[12px] text-error">
+          {run.error}
+        </div>
+      )}
+      {!run.streaming && !run.error && !run.text && (
+        <div className="text-[12px] text-muted-foreground">Run finished with no output.</div>
+      )}
     </div>
   );
 }

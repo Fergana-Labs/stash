@@ -9,6 +9,7 @@ cloud computer (sprite_service).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -64,6 +65,54 @@ async def chat(
             current_user["id"],
             session_id,
             req.message,
+            auth,
+            agent["system_prompt"],
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+class RunRequest(BaseModel):
+    agent_id: str
+
+
+@router.post("/run")
+async def run_now(
+    req: RunRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Run a scheduled agent on demand (e.g. to test the Memory curator without
+    waiting for its cron), streamed live like a chat turn. The server builds the
+    prompt — the curator's from its watermark, others' from schedule_prompt — so
+    the run is identical to what the beat task fires. The watermark is untouched,
+    so a manual run is safe to repeat while testing."""
+    agent = await agent_service.get_agent(current_user["id"], UUID(req.agent_id))
+    if agent["run_mode"] != "scheduled":
+        raise HTTPException(status_code=400, detail="Only scheduled agents can be run on demand.")
+    if not agent["is_curator"] and not agent["schedule_prompt"]:
+        raise HTTPException(status_code=400, detail="This agent has no scheduled prompt to run.")
+    try:
+        auth = await agent_auth.resolve(current_user["id"], agent["model_provider"])
+    except agent_auth.NeedsAuth:
+        raise HTTPException(
+            status_code=402,
+            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
+            "or upgrade to Pro to use the managed agent.",
+        )
+    except agent_auth.ProviderNotConfigured:
+        raise HTTPException(status_code=503, detail="The agent is not configured.")
+
+    stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    session_id, message = await sprite_agent_service.build_scheduled_turn(agent, stamp)
+    scope_name = current_user["display_name"] or current_user["name"]
+    return StreamingResponse(
+        sprite_agent_service.stream_chat(
+            current_user["id"],
+            scope_name,
+            current_user["id"],
+            session_id,
+            message,
             auth,
             agent["system_prompt"],
         ),
