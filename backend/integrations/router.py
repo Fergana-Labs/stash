@@ -95,6 +95,7 @@ class IntegrationAccountItem(BaseModel):
     scopes: list[str]
     expires_at: str | None = None
     connected_at: str | None = None
+    needs_reconnect: bool = False
 
 
 class ProviderListItem(BaseModel):
@@ -423,7 +424,7 @@ async def integration_connect_with_credentials(
     values: dict[str, str],
     current_user: dict = Depends(get_current_user),
 ):
-    """Connect an api_key provider (Gong, Snowflake) from pasted credentials.
+    """Connect an api_key provider from pasted credentials.
     The provider validates them against the upstream and returns the bundle as
     the stored token; we never echo the secrets back."""
     p = get_provider(provider)

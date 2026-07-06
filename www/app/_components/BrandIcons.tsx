@@ -21,7 +21,6 @@ export const INTEGRATIONS: Integration[] = [
   { provider: "jira", name: "Jira", blurb: "Search issues across a project." },
   { provider: "asana", name: "Asana", blurb: "Navigate tasks from a project." },
   { provider: "gong", name: "Gong", blurb: "Call transcripts, kept in sync." },
-  { provider: "snowflake", name: "Snowflake", blurb: "Run read-only SQL against your warehouse." },
 ];
 
 export function integrationIcon(provider: string, size = defaultSize): ReactNode {
@@ -44,8 +43,6 @@ export function integrationIcon(provider: string, size = defaultSize): ReactNode
       return <AsanaIcon size={size} />;
     case "gong":
       return <GongIcon size={size} />;
-    case "snowflake":
-      return <SnowflakeIcon size={size} />;
     default:
       return null;
   }
@@ -137,15 +134,3 @@ function GongIcon({ size = defaultSize }: Props) {
   );
 }
 
-function SnowflakeIcon({ size = defaultSize }: Props) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" stroke="#29B5E8" strokeWidth="1.6" strokeLinecap="round" fill="none" aria-hidden>
-      <line x1="12" y1="3" x2="12" y2="21" />
-      <line x1="4.2" y1="7.5" x2="19.8" y2="16.5" />
-      <line x1="4.2" y1="16.5" x2="19.8" y2="7.5" />
-      <path d="M12 6.4l-1.8-1.8M12 6.4l1.8-1.8M12 17.6l-1.8 1.8M12 17.6l1.8 1.8" />
-      <path d="M6.6 9.5l-2.5.1M6.6 9.5l-.7-2.4M17.4 14.5l2.5-.1M17.4 14.5l.7 2.4" />
-      <path d="M6.6 14.5l-.7 2.4M6.6 14.5l-2.5-.1M17.4 9.5l.7-2.4M17.4 9.5l2.5.1" />
-    </svg>
-  );
-}

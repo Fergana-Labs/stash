@@ -1,6 +1,6 @@
 {
   "name": "stash",
-  "version": "0.1.220",
+  "version": "0.1.224",
   "description": "Connect Claude Code to Stash \u2014 stream activity to your Stash and collaborate with your other agents.",
   "author": {
     "name": "Fergana Labs"

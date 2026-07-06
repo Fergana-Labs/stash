@@ -1,7 +1,7 @@
 """The sources tree is the agent's answer to "what do you have access to"
 (`stash ls`). Two properties matter beyond plain rendering:
 
-1. EVERY visible source appears — even empty, still-syncing, or queryable ones.
+1. EVERY visible source appears — even empty or still-syncing ones.
    A missing source reads as "Stash can't see it", which is the exact
    impression the feature exists to kill.
 2. Truncation is marked, never silent. A capped directory must say how much it
@@ -69,14 +69,6 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         "sync_status": "idle",
         "last_synced_at": None,
     }
-    snowflake = {
-        "id": "22222222-2222-2222-2222-222222222222",
-        "source_type": "snowflake",
-        "display_name": "warehouse",
-        "capability": "queryable",
-        "sync_status": "idle",
-        "last_synced_at": None,
-    }
 
     async def fake_pages(owner_user_id, user_id):
         return [{"id": "p1", "name": "Welcome"}]
@@ -92,7 +84,7 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         ]
 
     async def fake_connected(user_id):
-        return [github, snowflake]
+        return [github]
 
     async def fake_documents(source, prefix="", limit=200):
         # The registry row itself must pass through — list_documents applies
@@ -120,13 +112,11 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
         "Files",
         "Session transcripts",
         "github",
-        "snowflake",
     ]
     session_names = [n["name"] for n in sources[1]["tree"]]
     assert session_names == ["Fix the onboarding wizard", "claude"]
     assert sources[2]["type"] == "provider"
     assert sources[2]["tree"][0]["name"] == "docs"
-    assert sources[3]["tree"] == []
     assert audits[0]["action"] == "source.tree_listed"
 
 

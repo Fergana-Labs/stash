@@ -276,11 +276,11 @@ export async function openBillingPortal(): Promise<{ url: string }> {
 export interface Source {
   source: string; // native handle ("files"/"sessions") or connected-source id
   type: string; // 'native_files' | 'native_sessions' | 'github_repo' | ...
-  capability: string; // 'navigable' | 'searchable' | 'queryable'
+  capability: string; // 'navigable' | 'searchable'
   display_name: string;
   // Present for connected sources (the integration page uses these).
   external_ref?: string | null;
-  sync_enabled?: boolean; // false for search-driven/queryable types (no indexer)
+  sync_enabled?: boolean; // false for search-driven types (no indexer)
   sync_status?: string | null; // 'idle' | 'syncing' | 'failed'
   sync_error?: string | null;
   last_synced_at?: string | null;
@@ -289,7 +289,7 @@ export interface Source {
 }
 
 export interface SourceStatus extends Source {
-  item_count: number | null; // null for queryable sources (no document table)
+  item_count: number | null; // null for a source type with no document table
 }
 
 export interface SourceEntry {
@@ -360,9 +360,15 @@ export async function readSourceDoc(
 export interface SourceSearchHit {
   source: string;
   source_name?: string;
-  ref: string;
+  // A real hit carries a ref; marker entries (see below) omit it.
+  ref?: string;
   name?: string;
   snippet?: string;
+  // Marker: a federated source hit its result cap — `returned` of ~`estimated_total`
+  // matches are shown. `truncated` distinguishes it from a real hit.
+  truncated?: boolean;
+  returned?: number;
+  estimated_total?: number | null;
 }
 
 export async function searchSource(
@@ -375,16 +381,6 @@ export async function searchSource(
     `${ME}/sources/search?${params.toString()}`,
   );
   return data.results;
-}
-
-export async function querySource(
-  source: string,
-  sql: string,
-): Promise<{ columns?: string[]; rows?: unknown[][]; error?: string }> {
-  return apiFetch(`${ME}/sources/${source}/query`, {
-    method: "POST",
-    body: JSON.stringify({ sql }),
-  });
 }
 
 export async function fetchSourceHistory(

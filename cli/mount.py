@@ -350,12 +350,23 @@ class StashVfsModel:
 
     def truncated_roots_under(self, root: str) -> list[tuple[str, int]]:
         """Truncated source roots overlapping `root` (root contains the source,
-        or sits inside it). Returns (source_root, entries_shown) pairs."""
+        or sits inside it). For subtree enumeration (find/tree): any overlap
+        means the enumeration is incomplete. Returns (source_root, shown) pairs."""
         return sorted(
             (s, shown)
             for s, shown in self._truncated.items()
             if s == root or s.startswith(root.rstrip("/") + "/") or root.startswith(s + "/")
         )
+
+    def truncated_root_containing(self, path: str) -> tuple[str, int] | None:
+        """The truncated source root that CONTAINS `path` (path is at or below
+        it), or None. For single-directory listing (ls): an ancestor like
+        /sources — whose own children are complete — must not match, so this is
+        narrower than truncated_roots_under."""
+        for s, shown in self._truncated.items():
+            if path == s or path.startswith(s + "/"):
+                return s, shown
+        return None
 
     def _add_source_entries(self, source_root: str, handle: str, entries: list[dict]) -> None:
         parent_refs = _ancestor_refs(entries)

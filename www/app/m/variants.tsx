@@ -94,7 +94,7 @@ export const VARIANTS: Record<string, VariantCopy> = {
           n: "01",
           pill: "Sources",
           title: "Connect your sources once.",
-          body: "GitHub, Drive, Gmail, Notion, Slack, Gong, Jira, Snowflake and more — one easy connection per source, and every agent you run can read them.",
+          body: "GitHub, Drive, Gmail, Notion, Slack, Gong, Jira and more — one easy connection per source, and every agent you run can read them.",
           viz: <SourcesViz />,
         },
         {
@@ -133,7 +133,7 @@ export const VARIANTS: Record<string, VariantCopy> = {
           n: "02",
           pill: "Act",
           title: "It does the work.",
-          body: "It sends emails, updates docs, and pulls data from Jira and Snowflake — taking action across your tools, not just answering questions about them.",
+          body: "It sends emails, updates docs, and pulls data from Jira — taking action across your tools, not just answering questions about them.",
           viz: <FilesViz />,
         },
         {

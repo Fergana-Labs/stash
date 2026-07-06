@@ -101,16 +101,6 @@ async def _resolve_gong_source(user_id) -> tuple[str, str]:
     return "calls", "Gong"
 
 
-async def _resolve_snowflake_source(user_id) -> tuple[str, str]:
-    """Snowflake is one connection per user; external_ref is the account.
-    Confirm the credentials exist (raises 401 if not connected)."""
-    import json
-
-    creds = json.loads(await integration_storage.get_valid_token(user_id, "snowflake"))
-    account = creds.get("account", "snowflake")
-    return account, f"Snowflake ({account})"
-
-
 async def _resolve_twitter_source(user_id) -> tuple[str, str]:
     """Twitter source external_ref is the connected X account's numeric user
     id, resolved once here so reads never depend on /users/me (X's most
@@ -240,28 +230,6 @@ async def source_status(
     return {**source, "item_count": await source_service.source_item_count(source)}
 
 
-class QuerySourceRequest(BaseModel):
-    sql: str
-    limit: int = 200
-
-
-@router.post("/{source}/query")
-async def query_source(
-    source: str,
-    body: QuerySourceRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """Run a read-only SQL query against a queryable source (Snowflake)."""
-    owner_user_id = current_user["id"]
-    await _require_member(owner_user_id, current_user["id"])
-    result = await source_service.query_source(
-        owner_user_id, current_user["id"], source, body.sql, limit=body.limit
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="Source not found")
-    return result
-
-
 class FetchHistoryRequest(BaseModel):
     since: str  # ISO-8601 date/datetime
     until: str | None = None
@@ -314,9 +282,6 @@ async def add_source(
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
         display_name = display_name or resolved_name
-    elif body.source_type == "snowflake" and not external_ref:
-        external_ref, resolved_name = await _resolve_snowflake_source(current_user["id"])
-        display_name = display_name or resolved_name
     elif body.source_type == "twitter":
         external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
         display_name = resolved_name
@@ -364,8 +329,8 @@ async def sync_source_now(
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
     if source["source_type"] not in source_service.DEFAULT_SYNC_INTERVAL_S:
-        # Search-driven / queryable sources have no indexer; the queued task
-        # would no-op, so a 200 here would be a lie.
+        # Search-driven sources have no indexer; the queued task would no-op,
+        # so a 200 here would be a lie.
         raise HTTPException(status_code=400, detail="This source type does not sync")
     task_id = str(uuid4())
     await task_service.register_task(

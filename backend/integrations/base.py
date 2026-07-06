@@ -79,8 +79,8 @@ class Integration(Protocol):
 
 # --- api_key providers -------------------------------------------------------
 #
-# Some services (Gong, Snowflake) authenticate with pasted credentials, not an
-# OAuth redirect. Such a provider sets `auth_kind = "api_key"`, declares its
+# Some services authenticate with pasted credentials, not an OAuth redirect.
+# Such a provider sets `auth_kind = "api_key"`, declares its
 # `credential_fields`, and implements `connect_with_credentials` instead of the
 # OAuth methods. The router renders a form from the fields and POSTs the values
 # to /credentials. The provider validates them against the upstream and returns

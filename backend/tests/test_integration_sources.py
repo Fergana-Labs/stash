@@ -13,7 +13,6 @@ Two things worth pinning that don't need a DB or live OAuth:
 
 import json
 from urllib.parse import parse_qs, urlparse
-from uuid import uuid4
 
 import httpx
 import pytest
@@ -28,14 +27,6 @@ from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.integrations.registry import list_providers
-from backend.integrations.snowflake import client as snowflake_client
-from backend.integrations.snowflake.client import (
-    ROW_CAP,
-    _assert_read_only,
-    _query_limit,
-    _validate_identifier,
-)
-from backend.integrations.snowflake.provider import SnowflakeIntegration
 from backend.integrations.twitter import indexer as twitter_indexer
 from backend.integrations.twitter import provider as twitter_provider
 from backend.integrations.twitter.indexer import _render_tweet
@@ -129,15 +120,9 @@ SEARCH_DRIVEN_TYPES = {"twitter"}
 
 def test_connected_source_types_are_fully_wired():
     """Document sources must appear in every map that makes them syncable +
-    readable. Queryable sources (Snowflake) are the exception: they run live SQL
-    and deliberately have no document table or indexer. Search-driven sources
-    (Twitter) have a table but no indexer — search fills the cache."""
-    for source_type, capability in source_service.SOURCE_CAPABILITY.items():
-        if capability == "queryable":
-            # No table / indexer; reached via query_source, not list_documents.
-            assert source_type not in source_service.SOURCE_TABLE, source_type
-            assert source_type not in source_tasks.INDEXERS, source_type
-            continue
+    readable. Search-driven sources (Twitter) are the exception: they have a
+    table but no indexer — search fills the cache."""
+    for source_type in source_service.SOURCE_CAPABILITY:
         assert source_type in source_service.SOURCE_TABLE, source_type
         if source_type in SEARCH_DRIVEN_TYPES:
             assert source_type not in source_tasks.INDEXERS, source_type
@@ -429,75 +414,6 @@ async def test_gong_indexer_filters_to_allowed_accounts(monkeypatch):
     assert stored_paths == ["allowed-call"]
     assert stored_account_ids == ["W_ALLOWED"]
     assert soft_deleted == ["allowed-call"]
-
-
-# --- Snowflake (queryable source) -------------------------------------------
-
-
-def test_read_only_guard_allows_selects():
-    # Allowed leading keywords pass; a trailing semicolon is stripped.
-    for sql in (
-        "SELECT 1",
-        "SHOW TABLES;",
-        "DESCRIBE TABLE t",
-    ):
-        assert _assert_read_only(sql)
-
-
-def test_read_only_guard_blocks_writes_and_multi_statements():
-    for sql in (
-        "DELETE FROM t",
-        "UPDATE t SET x = 1",
-        "INSERT INTO t VALUES (1)",
-        "DROP TABLE t",
-        "CREATE TABLE t (id int)",
-        "GRANT SELECT ON t TO r",
-        "SELECT 1; DROP TABLE t",  # piggybacked statement
-        "WITH x AS (SELECT 1) SELECT * FROM x",
-        "WITH x AS (SELECT 1) DELETE FROM t",
-        "",
-    ):
-        with pytest.raises(ValueError):
-            _assert_read_only(sql)
-
-
-def test_validate_identifier_rejects_injection():
-    assert _validate_identifier("DB.SCHEMA.TABLE") == "DB.SCHEMA.TABLE"
-    for bad in ("t; drop table u", "t where 1=1", "t--", "t)"):
-        with pytest.raises(ValueError) as exc:
-            _validate_identifier(bad)
-        assert str(exc.value) == "invalid table identifier"
-        assert bad not in str(exc.value)
-
-
-def test_snowflake_query_limit_rejects_non_positive_values():
-    assert _query_limit(1) == 1
-    assert _query_limit(ROW_CAP + 1) == ROW_CAP
-    for bad in (0, -1):
-        with pytest.raises(ValueError, match="limit must be at least 1"):
-            _query_limit(bad)
-
-
-def test_snowflake_is_queryable_api_key_source():
-    sf = SnowflakeIntegration()
-    assert sf.auth_kind == "api_key"
-    assert sf.credential_fields[0].name == "account"
-    assert source_service.SOURCE_CAPABILITY["snowflake"] == "queryable"
-    # Queryable sources intentionally have no document table or indexer.
-    assert "snowflake" not in source_service.SOURCE_TABLE
-    assert "snowflake" not in source_tasks.INDEXERS
-
-
-def test_snowflake_offers_pat_token_with_optional_alternatives():
-    # PAT (a single token) is the easy auth path; key-pair is the optional
-    # alternative. Only account + user are required so the form doesn't force
-    # users to fill the optional warehouse/role/database/passphrase.
-    fields = {f.name: f for f in SnowflakeIntegration().credential_fields}
-    assert fields["token"].optional and fields["token"].secret
-    assert fields["private_key"].optional
-    assert not fields["account"].optional and not fields["user"].optional
-    for opt in ("warehouse", "role", "database", "private_key_passphrase"):
-        assert fields[opt].optional, opt
 
 
 class _FakeResponse:
@@ -937,91 +853,6 @@ async def test_search_twitter_clamps_limit_and_names_dateless_posts(monkeypatch)
     assert client.requests[0][1]["max_results"] == 100
     # A post X returns without created_at still gets a usable name.
     assert hits[0]["name"] == "@stash"
-
-
-@pytest.mark.asyncio
-async def test_snowflake_rejects_incomplete_credentials():
-    with pytest.raises(ValueError):
-        await SnowflakeIntegration().connect_with_credentials({"account": "a"})  # no user/key
-    # account + user but no auth method (token/key/password) is also rejected.
-    with pytest.raises(ValueError):
-        await SnowflakeIntegration().connect_with_credentials({"account": "a", "user": "u"})
-
-
-@pytest.mark.asyncio
-async def test_snowflake_connection_errors_are_redacted(monkeypatch):
-    from backend.integrations.snowflake import provider as snowflake_provider
-
-    async def fail_connection(creds):
-        raise RuntimeError(f"account={creds['account']} token={creds['token']}")
-
-    monkeypatch.setattr(snowflake_provider, "test_connection", fail_connection)
-
-    with pytest.raises(ValueError) as exc:
-        await SnowflakeIntegration().connect_with_credentials(
-            {"account": "acme", "user": "svc", "token": "secret-token"}
-        )
-
-    assert str(exc.value) == "Could not connect to Snowflake; check credentials"
-    assert "secret-token" not in str(exc.value)
-
-
-@pytest.mark.asyncio
-async def test_snowflake_query_runtime_errors_are_redacted(monkeypatch):
-    async def fake_creds(owner_user_id):
-        return {"account": "webflow", "user": "svc", "token": "secret-token"}
-
-    def fail_query(creds, sql, limit):
-        raise ValueError(f"account={creds['account']} token={creds['token']} sql={sql}")
-
-    monkeypatch.setattr(snowflake_client, "_creds", fake_creds)
-    monkeypatch.setattr(snowflake_client, "_run_sync", fail_query)
-
-    with pytest.raises(snowflake_client.SnowflakeQueryError) as exc:
-        await snowflake_client.run_query(
-            {"owner_user_id": str(uuid4())},
-            "SELECT * FROM confidential_customer_data",
-            10,
-        )
-
-    assert str(exc.value) == "Snowflake query failed"
-    assert "secret-token" not in str(exc.value)
-    assert "confidential_customer_data" not in str(exc.value)
-
-
-@pytest.mark.asyncio
-async def test_snowflake_metadata_runtime_errors_are_redacted(monkeypatch):
-    async def fake_creds(owner_user_id):
-        return {"account": "webflow", "user": "svc", "token": "secret-token"}
-
-    def fail_metadata(creds, sql, limit):
-        raise ValueError(f"account={creds['account']} token={creds['token']} sql={sql}")
-
-    monkeypatch.setattr(snowflake_client, "_creds", fake_creds)
-    monkeypatch.setattr(snowflake_client, "_run_sync", fail_metadata)
-
-    with pytest.raises(snowflake_client.SnowflakeMetadataError) as list_exc:
-        await snowflake_client.list_tables({"owner_user_id": str(uuid4())})
-
-    with pytest.raises(snowflake_client.SnowflakeMetadataError) as describe_exc:
-        await snowflake_client.describe_table(
-            {"owner_user_id": str(uuid4())},
-            "DB.SCHEMA.confidential_customer_data",
-        )
-
-    assert str(list_exc.value) == "Snowflake metadata fetch failed"
-    assert str(describe_exc.value) == "Snowflake metadata fetch failed"
-    assert "secret-token" not in str(list_exc.value)
-    assert "secret-token" not in str(describe_exc.value)
-    assert "confidential_customer_data" not in str(describe_exc.value)
-
-
-def test_query_source_tool_is_registered_and_in_tool_sets():
-    # The catalog and the advertised tool sets must agree, or the agent would
-    # be offered a tool that doesn't exist (or vice-versa).
-    assert "query_source" in agent_runtime._TOOLS_BY_NAME
-    assert "query_source" in prompts.STASH_TOOL_SET
-    assert "query_source" in prompts.ASK_TOOL_SET
 
 
 def test_fetch_history_wiring():

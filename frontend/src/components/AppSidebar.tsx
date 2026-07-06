@@ -48,7 +48,6 @@ const SOURCE_DOT: Record<string, string> = {
   jira_project: "#2563eb",
   asana_project: "#f06a6a",
   gong_calls: "#7c3aed",
-  snowflake: "#29b5e8",
   twitter: "#0f1419",
 };
 

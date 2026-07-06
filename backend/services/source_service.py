@@ -77,9 +77,6 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "gong_calls": "searchable",
     "twitter": "searchable",
-    # Queryable sources run live read-only SQL; they have no document table or
-    # indexer (see source_entries / query_source).
-    "snowflake": "queryable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -93,7 +90,6 @@ PROVIDER_SOURCE_TYPES = {
     "asana": ("asana_project",),
     "linear": ("linear",),
     "gong": ("gong_calls",),
-    "snowflake": ("snowflake",),
     "twitter": ("twitter",),
 }
 
@@ -249,8 +245,8 @@ async def create_source(
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
-    now(). Types without a scheduled-sync interval (search-driven / queryable)
-    have no indexer and must NOT enroll in the sync queue: the reconciler skips
+    now(). Types without a scheduled-sync interval (search-driven) have no
+    indexer and must NOT enroll in the sync queue: the reconciler skips
     them without advancing next_sync_at, so an enabled row would sit "due"
     forever at the front of the due_sources window and starve real syncs."""
     validate_source_external_ref(source_type, external_ref)
@@ -982,10 +978,16 @@ async def _federated_search(
 ) -> list[dict]:
     """Run a federated source's native provider search. Returns unified hits
     ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
-    provider error (e.g. Asana on a free tier) logs and yields no hits so
-    search stays alive; a SCOPED search raises instead — when the user asked
-    for this one source, an empty result must mean "no matches", never a
-    silently dead connection (revoked token, rate limit, bad query)."""
+    provider error (revoked token, rate limit) is logged and returned as a
+    single error marker ({source, source_name, error, needs_reconnect}) so the
+    rest of the search stays alive while the dead source is still surfaced —
+    dropping it silently would read as "no matches" for that source. A SCOPED
+    search raises instead, so the API serves an explicit HTTP error.
+
+    Providers cap results (SEARCH_LIMIT); when a provider reports it matched
+    more than it returned, a trailing truncation marker ({source, source_name,
+    truncated, returned, estimated_total}) is appended so callers disclose the
+    cut instead of presenting the top slice as the whole result."""
     source_type = source["source_type"]
     try:
         if source_type == "google_drive":
@@ -1002,7 +1004,7 @@ async def _federated_search(
             from ..integrations.twitter.indexer import search_twitter as fn
         else:
             return []
-        hits = await fn(source, query, limit)
+        result = await fn(source, query, limit)
     except Exception as exc:
         if not swallow_errors:
             raise _scoped_search_error(source, exc) from exc
@@ -1012,8 +1014,34 @@ async def _federated_search(
             source_type,
             type(exc).__name__,
         )
-        return []
-    return [
+        # Only the classified message is safe to surface — an unmapped exception
+        # may carry the token or query in its text, so it gets a generic label.
+        mapped = _scoped_search_error(source, exc)
+        if isinstance(mapped, HTTPException):
+            detail = mapped.detail
+            needs_reconnect = mapped.status_code == 409
+        else:
+            detail = f"{source['display_name'] or source_type} search failed"
+            needs_reconnect = False
+        return [
+            {
+                "source": source["id"],
+                "source_name": source["display_name"],
+                "error": detail,
+                "needs_reconnect": needs_reconnect,
+            }
+        ]
+    # Gmail reports truncation as {hits, truncated, estimated_total}; the other
+    # providers still return a plain hit list (no truncation signal yet).
+    if isinstance(result, dict):
+        hits = result["hits"]
+        truncated = result["truncated"]
+        estimated_total = result.get("estimated_total")
+    else:
+        hits = result
+        truncated = False
+        estimated_total = None
+    output = [
         {
             "source": source["id"],
             "source_name": source["display_name"],
@@ -1023,6 +1051,17 @@ async def _federated_search(
         }
         for h in hits
     ]
+    if truncated:
+        output.append(
+            {
+                "source": source["id"],
+                "source_name": source["display_name"],
+                "truncated": True,
+                "returned": len(hits),
+                "estimated_total": estimated_total,
+            }
+        )
+    return output
 
 
 async def search_documents(
@@ -1144,8 +1183,8 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
 
 
 async def source_item_count(source: dict) -> int | None:
-    """How many live documents a source has indexed. None for queryable sources
-    (Snowflake) — they have no document table."""
+    """How many live documents a source has indexed. None for a source type with
+    no document table."""
     table = SOURCE_TABLE.get(source["source_type"])
     if table is None:
         return None
@@ -1248,8 +1287,8 @@ async def source_entries(
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
     scopes connected sources to a path. `after` pages through path-ordered
     document listings (see list_documents); listings that aren't path-ordered
-    (native files/sessions, queryable tables, twitter's live refs) return
-    everything on the first page, so any later page is empty for them.
+    (native files/sessions, twitter's live refs) return everything on the first
+    page, so any later page is empty for them.
     Returns None for an unknown source."""
     connected = None
     if source == NATIVE_FILES:
@@ -1269,21 +1308,7 @@ async def source_entries(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
-        if connected["capability"] == "queryable":
-            # A queryable source (Snowflake) has no document table — list its tables.
-            from ..integrations.snowflake.client import SnowflakeMetadataError, list_tables
-
-            try:
-                entries = [] if after else await list_tables(connected)
-            except SnowflakeMetadataError as e:
-                logger.warning(
-                    "source entries failed source=%s source_type=%s exception_type=%s",
-                    connected["id"],
-                    connected["source_type"],
-                    type(e).__name__,
-                )
-                entries = []
-        elif connected["source_type"] == "twitter":
+        if connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
             live = [] if after else twitter_live_entries(prefix)
@@ -1378,9 +1403,6 @@ def _session_title(session: dict) -> str:
 
 async def _member_tree(source: dict, depth: int, per_dir: int) -> list[dict]:
     """The document tree for one connected source (one repo, one account)."""
-    if source["capability"] == "queryable":
-        # Live-query source (Snowflake): no document table to walk.
-        return []
     entries = await list_documents(source, limit=TREE_DOC_LIMIT)
     return build_entry_tree(entries, depth, per_dir)
 
@@ -1551,26 +1573,9 @@ async def source_document(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return False, None
-        if connected["capability"] == "queryable":
-            # Reading a "document" from a queryable source means describing a table.
-            from ..integrations.snowflake.client import SnowflakeMetadataError, describe_table
-
-            try:
-                doc = await describe_table(connected, ref)
-            except ValueError as e:
-                doc = {"error": str(e)}
-            except SnowflakeMetadataError as e:
-                logger.warning(
-                    "source document failed source=%s source_type=%s exception_type=%s",
-                    connected["id"],
-                    connected["source_type"],
-                    type(e).__name__,
-                )
-                doc = {"error": "Snowflake metadata fetch failed"}
-        else:
-            doc = await read_document(connected, ref)
-            if doc is not None and "error" not in doc:
-                doc["url"] = await _deep_link(connected, doc)
+        doc = await read_document(connected, ref)
+        if doc is not None and "error" not in doc:
+            doc["url"] = await _deep_link(connected, doc)
 
     if doc is not None:
         await _audit_source_read(
@@ -1616,47 +1621,6 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
             return None
         return f"{base}/browse/{doc['path']}"
     return source_document_url(source_type, source.get("external_ref"), doc["path"])
-
-
-async def query_source(
-    owner_user_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
-) -> dict | None:
-    """Run a read-only SQL query against a queryable source (Snowflake). Returns
-    None when the handle is unknown / not owned, or an error dict when the source
-    isn't queryable or the SQL is rejected."""
-    connected = await _resolve_connected(source, owner_user_id, user_id)
-    if connected is None:
-        return None
-    if connected["capability"] != "queryable":
-        return {"error": "source is not queryable"}
-    from ..integrations.snowflake.client import SnowflakeQueryError, run_query
-
-    try:
-        result = await run_query(connected, sql, limit)
-    except ValueError as e:
-        result = {"error": str(e)}
-    except SnowflakeQueryError as e:
-        logger.warning(
-            "query source failed source=%s source_type=%s exception_type=%s",
-            connected["id"],
-            connected["source_type"],
-            type(e).__name__,
-        )
-        result = {"error": "Snowflake query failed"}
-    await _audit_source_read(
-        action="source.queried",
-        owner_user_id=owner_user_id,
-        user_id=user_id,
-        source=source,
-        connected=connected,
-        metadata={
-            "sql_hash": security_audit_service.hash_value(sql),
-            "limit": limit,
-            "row_count": result.get("row_count"),
-            "error": bool(result.get("error")),
-        },
-    )
-    return result
 
 
 def _parse_dt(value: str | None):
@@ -1834,8 +1798,9 @@ async def search_all(
         # Federated sources search the provider's native API live. Scoped → the
         # one source, raising on provider errors so a dead connection is never
         # mistaken for "no matches"; unscoped → fan out across the user's
-        # federated sources (each call swallows its own errors, and scoped-only
-        # types are skipped — see SCOPED_ONLY_SEARCH_TYPES).
+        # federated sources (each call keeps search alive by returning its own
+        # error as a marker instead of raising, and scoped-only types are
+        # skipped — see SCOPED_ONLY_SEARCH_TYPES).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
                 results += await _federated_search(connected, query, limit, swallow_errors=False)

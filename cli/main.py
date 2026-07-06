@@ -2326,6 +2326,17 @@ def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
         return
     for hit in data:
         label = hit.get("source_name") or hit.get("source")
+        if hit.get("error"):
+            console.print(f"  [yellow]⚠ {label}: {hit['error']}[/yellow]")
+            continue
+        if hit.get("truncated"):
+            estimate = hit.get("estimated_total")
+            of_total = f" of ~{estimate}" if estimate else ""
+            console.print(
+                f"  [dim]… {label}: showing first {hit.get('returned')}{of_total} matches — "
+                f"narrow the query to see more.[/dim]"
+            )
+            continue
         name = hit.get("name") or hit.get("ref") or ""
         console.print(f"  [bold]{name}[/bold]  [dim]({label}: {hit.get('ref')})[/dim]")
         snippet = (hit.get("snippet") or "").replace("\n", " ").strip()
