@@ -86,9 +86,26 @@ async def acquire(user_id: UUID) -> Sprite:
     row = await pool.fetchrow(
         "SELECT sprite_name, status FROM user_sprites WHERE user_id = $1", user_id
     )
-    if row and row["status"] == "ready":
+    # A 'ready' row can outlive its box — Sprites reaps idle VMs, leaving the
+    # row pointing at a sprite that 404s on exec. Confirm the box still exists
+    # before handing it back; if it's gone, fall through to re-provision.
+    if row and row["status"] == "ready" and await _sprite_exists(row["sprite_name"]):
         return Sprite(name=row["sprite_name"])
     return await _provision(user_id)
+
+
+async def _sprite_exists(name: str) -> bool:
+    async with httpx.AsyncClient(
+        base_url=settings.SPRITES_API_URL,
+        headers={"Authorization": f"Bearer {settings.SPRITES_TOKEN}"},
+        timeout=15,
+    ) as client:
+        resp = await client.get(f"/v1/sprites/{name}")
+    if resp.status_code == 404:
+        return False
+    if resp.status_code >= 400:
+        raise SpriteError(f"sprites API GET /v1/sprites/{name} -> {resp.status_code}: {resp.text}")
+    return True
 
 
 async def _provision(user_id: UUID) -> Sprite:
@@ -97,6 +114,8 @@ async def _provision(user_id: UUID) -> Sprite:
     The 'provisioning' row is the concurrency lock: whoever inserts it does
     the work; everyone else polls until it flips to 'ready'. Rows stuck in
     'provisioning' past STALE_PROVISION_S are presumed crashed and retaken.
+    A 'ready' row is retaken too — acquire only reaches here once it has
+    confirmed the box is gone, so re-provisioning it is the fix, not a race.
     """
     pool = get_pool()
     name = _sprite_name(user_id)
@@ -107,8 +126,9 @@ async def _provision(user_id: UUID) -> Sprite:
         VALUES ($1, $2, 'provisioning')
         ON CONFLICT (user_id) DO UPDATE
             SET status = 'provisioning', created_at = now()
-            WHERE user_sprites.status = 'provisioning'
-              AND user_sprites.created_at < now() - make_interval(secs => $3)
+            WHERE user_sprites.status = 'ready'
+               OR (user_sprites.status = 'provisioning'
+                   AND user_sprites.created_at < now() - make_interval(secs => $3))
         RETURNING user_id
         """,
         user_id,
