@@ -1163,6 +1163,8 @@ def upload(
                 console.print(f"  [dim]Page: {relative_path}[/dim]")
                 continue
 
+            # Creating the stub page embeds the binary: the server claims any
+            # root file whose download link appears in a saved page body.
             uploaded = c.upload_file(str(file_path))
             c.create_page(
                 file_path.name,
@@ -1780,9 +1782,11 @@ def files_edit_folder(
 
 
 def _markdown_snippet(file_resp: dict) -> str:
-    """Build an image or link markdown snippet from an uploaded FileResponse."""
+    """Build an image or link markdown snippet from an uploaded FileResponse.
+    Uses the stable download route — presigned storage URLs expire within
+    the hour and would leave the page with dead links."""
     name = file_resp["name"]
-    url = file_resp["url"]
+    url = f"/api/v1/me/files/{file_resp['id']}/download"
     ct = file_resp.get("content_type", "") or ""
     if ct.startswith("image/"):
         return f"![{name}]({url})"
@@ -1790,10 +1794,11 @@ def _markdown_snippet(file_resp: dict) -> str:
 
 
 def _prepend_attachments(c: StashClient, content: str, attach: list[str] | None) -> str:
+    """Upload each file and prepend its embed snippet. Saving the page body
+    embeds the files server-side — no explicit attach step exists."""
     if not attach:
         return content
-    snippets = [_markdown_snippet(c.upload_file(p)) for p in attach]
-    block = "\n\n".join(snippets)
+    block = "\n\n".join(_markdown_snippet(c.upload_file(p)) for p in attach)
     return f"{block}\n\n{content}" if content else block
 
 
@@ -3244,6 +3249,38 @@ def files_text(file_id: str = typer.Argument(...)):
         raise typer.Exit(1)
     console.print("[dim]No extracted text available for this file.[/dim]")
     raise typer.Exit(1)
+
+
+def _parse_file_ref(ref: str) -> str:
+    """A file id, or the embed link a page carries (/api/v1/me/files/<id>/download)."""
+    match = re.fullmatch(r".*/files/([^/]+)/download", ref)
+    return match.group(1) if match else ref
+
+
+@files_app.command("download")
+def files_download(
+    file_ref: str = typer.Argument(
+        ..., help="File id, or the embed link from a page (/api/v1/me/files/<id>/download)."
+    ),
+    output: str = typer.Option(
+        None, "--output", "-o", help="Destination path. Defaults to the file's name in cwd."
+    ),
+):
+    """Download a file's bytes to a local path.
+
+    Files a page embeds don't appear in the files tree — the page's
+    markdown links them. Read the page, then download a linked file
+    only when you need its contents."""
+    file_id = _parse_file_ref(file_ref)
+    with _client() as c:
+        try:
+            meta = c.get_file(file_id)
+            data = c.download_file(file_id)
+        except StashError as e:
+            _err(e)
+    dest = Path(output) if output else Path(meta["name"])
+    dest.write_bytes(data)
+    console.print(f"[green]Downloaded[/green] {meta['name']} → {dest} [dim]{len(data)} bytes[/dim]")
 
 
 # ===========================================================================

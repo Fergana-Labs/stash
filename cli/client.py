@@ -80,12 +80,13 @@ class StashClient:
     def _upload(self, path: str, file_path: str, folder_id: str | None = None) -> dict:
         filename = os.path.basename(file_path)
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        data = {"folder_id": folder_id} if folder_id else None
         with open(file_path, "rb") as f:
             resp = self._request(
                 "POST",
                 path,
                 files={"file": (filename, f, content_type)},
-                data={"folder_id": folder_id} if folder_id else None,
+                data=data or None,
                 timeout=300,
             )
         return resp.json()

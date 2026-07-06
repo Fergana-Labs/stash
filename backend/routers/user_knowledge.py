@@ -89,10 +89,12 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
             user_id,
         ),
         pool.fetch(
-            "SELECT fi.id, fi.name, fi.folder_id, fi.size_bytes, fi.content_type, "
-            "       fi.created_at, fi.linked_table_id "
+            # Embedded files (owner_page_id) are internals of their page, not
+            # tree entries — the overview only carries filed files.
+            "SELECT fi.id, fi.name, fi.folder_id, fi.size_bytes, "
+            "       fi.content_type, fi.created_at, fi.linked_table_id "
             f"FROM files fi WHERE fi.owner_user_id = $1 AND fi.deleted_at IS NULL "
-            f"AND {readable_file} ORDER BY fi.created_at DESC",
+            f"AND fi.owner_page_id IS NULL AND {readable_file} ORDER BY fi.created_at DESC",
             owner_user_id,
             user_id,
         ),

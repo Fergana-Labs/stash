@@ -358,6 +358,8 @@ export default function MarkdownEditor({
     async (files: FileList | File[]) => {
       if (!editor) return;
       for (const fileToUpload of Array.from(files)) {
+        // Inserting the download link embeds the file: the server claims it
+        // when the page body saves.
         const result = await uploadFile(fileToUpload);
         // Build each insertion from the current editor state. Uploads can
         // overlap with remote Yjs updates, so old transactions may no longer

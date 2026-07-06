@@ -64,16 +64,18 @@ async def _move_one(
         return table is not None
     if object_type == "file":
         pool = get_pool()
+        # Moving a file *files* it: an embedded file loses its owner page
+        # (and the files_filed_or_embedded CHECK forbids keeping both).
         if move_to_root:
             res = await pool.execute(
-                "UPDATE files SET folder_id = NULL "
+                "UPDATE files SET folder_id = NULL, owner_page_id = NULL "
                 "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
                 object_id,
                 owner_user_id,
             )
         else:
             res = await pool.execute(
-                "UPDATE files SET folder_id = $3 "
+                "UPDATE files SET folder_id = $3, owner_page_id = NULL "
                 "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
                 object_id,
                 owner_user_id,

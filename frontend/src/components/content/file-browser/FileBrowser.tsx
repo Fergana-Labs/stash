@@ -171,8 +171,11 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         setTree(t);
         setContents(null);
         setAllFiles(allFiles.map((f) => fileToGridItem(f)));
+        // Embedded files render inside their page, not in the root grid.
         setRootFiles(
-          allFiles.filter((f) => !f.folder_id).map((f) => fileToGridItem(f)),
+          allFiles
+            .filter((f) => !f.folder_id && !f.owner_page_id)
+            .map((f) => fileToGridItem(f)),
         );
         const linkedTableIds = new Set(
           allFiles

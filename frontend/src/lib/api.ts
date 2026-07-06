@@ -837,6 +837,7 @@ type UploadApiResponse = {
   id: string;
   owner_user_id: string;
   folder_id: string | null;
+  owner_page_id: string | null;
   name: string;
   content_type: string;
   app_url: string;
@@ -894,6 +895,7 @@ export async function uploadFile(
     id: result.id,
     owner_user_id: result.owner_user_id,
     folder_id: result.folder_id,
+    owner_page_id: result.owner_page_id,
     name: result.name,
     content_type: result.content_type,
     size_bytes: result.size_bytes ?? 0,
@@ -948,6 +950,7 @@ export async function uploadFileOrPage(
     id: result.id,
     owner_user_id: result.owner_user_id,
     folder_id: result.folder_id,
+    owner_page_id: result.owner_page_id,
     name: result.name,
     content_type: result.content_type,
     size_bytes: result.size_bytes ?? 0,
