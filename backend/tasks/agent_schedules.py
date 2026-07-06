@@ -37,6 +37,8 @@ def run_due() -> int:
 
 
 async def _run_due() -> int:
+    from ..config import settings
+    from ..database import get_pool
     from ..services import agent_auth, agent_service, curation_service, sprite_agent_service
 
     now = datetime.now(UTC)
@@ -50,7 +52,16 @@ async def _run_due() -> int:
         # re-fired by the next beat. The curator's delta watermark is separate
         # (curated_through) and only advances after a successful run, so a
         # skipped or failed run never discards un-curated changes.
-        await agent_service.mark_run(agent["id"])
+        month_runs = await agent_service.mark_run(agent["id"])
+        # Sleep-time compute is metered: free accounts get a monthly curator
+        # allowance; the enterprise plan is unlimited.
+        if agent["is_curator"] and month_runs > settings.FREE_CURATOR_RUNS_PER_MONTH:
+            plan = await get_pool().fetchval("SELECT plan FROM users WHERE id = $1", user_id)
+            if plan != "enterprise":
+                logger.info(
+                    "agent schedule: curator credits exhausted for user %s — skipping", user_id
+                )
+                continue
         # No runnable credential (unconnected free user) → nothing can run.
         try:
             await agent_auth.resolve(user_id, agent["model_provider"])

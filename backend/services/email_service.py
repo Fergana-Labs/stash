@@ -37,6 +37,24 @@ def _send(payload: dict) -> None:
         logger.error("Postmark send failed status_code=%s", res.status_code)
 
 
+def send_enterprise_lead_email(user_name: str, user_email: str | None) -> None:
+    """Notify sales when a signup picks the enterprise plan during onboarding."""
+    _send(
+        {
+            "From": DEFAULT_FROM,
+            "To": settings.SALES_NOTIFY_EMAIL,
+            "Subject": f"Enterprise-intent signup: {user_name}",
+            "HtmlBody": (
+                f"<p><strong>{user_name}</strong> ({user_email or 'no email'}) picked the "
+                "enterprise plan during onboarding — production-agent use case.</p>"
+                "<p>Their API key is self-serve; unlimited sleep-time curation is gated "
+                "on the enterprise plan, which you grant via the admin plan endpoint "
+                "after the contract conversation.</p>"
+            ),
+        }
+    )
+
+
 def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     if not user_email:
         return

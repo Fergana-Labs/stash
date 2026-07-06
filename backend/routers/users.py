@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -17,6 +18,9 @@ from ..models import (
     UserUpdateRequest,
 )
 from ..services import user_service
+from ..services.email_service import send_enterprise_lead_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -110,9 +114,15 @@ async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_cur
             role=req.role,
             referral_source=req.referral_source,
             use_case=req.use_case,
+            plan_intent=req.plan_intent,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if req.plan_intent and "enterprise" in req.plan_intent.lower():
+        try:
+            send_enterprise_lead_email(updated["name"], updated.get("email"))
+        except Exception as exc:
+            logger.warning("enterprise lead email failed exception_type=%s", type(exc).__name__)
     return UserProfile(**updated)
 
 

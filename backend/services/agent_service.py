@@ -17,7 +17,8 @@ from ..database import get_pool
 _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
-    "telegram_bound, last_run_at, curated_through, created_at"
+    "telegram_bound, last_run_at, curated_through, month_run_count, "
+    "month_run_anchor, created_at"
 )
 
 
@@ -219,8 +220,23 @@ async def list_scheduled() -> list[dict]:
     return [_row(r) for r in rows]
 
 
-async def mark_run(agent_id: UUID) -> None:
-    await get_pool().execute("UPDATE agents SET last_run_at = now() WHERE id = $1", agent_id)
+async def mark_run(agent_id: UUID) -> int:
+    """Consume the cron tick and meter the run against the calendar month.
+    Returns the run count within the current month (including this one) —
+    the free-tier curator credit gate reads it."""
+    return await get_pool().fetchval(
+        """
+        UPDATE agents SET
+            last_run_at = now(),
+            month_run_count = CASE
+                WHEN month_run_anchor = date_trunc('month', now())::date
+                THEN month_run_count + 1 ELSE 1 END,
+            month_run_anchor = date_trunc('month', now())::date
+        WHERE id = $1
+        RETURNING month_run_count
+        """,
+        agent_id,
+    )
 
 
 async def mark_curated(agent_id: UUID, through) -> None:

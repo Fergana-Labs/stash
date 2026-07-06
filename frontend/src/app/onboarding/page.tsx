@@ -7,10 +7,12 @@ import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import {
+  createMyKey,
   createPage,
   getAgentApiKey,
   updateMe,
   updatePage,
+  type ApiKeyCreated,
 } from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
@@ -42,6 +44,12 @@ const REFERRAL_OPTIONS = [
   "Other",
 ];
 
+const PLAN_OPTIONS = [
+  "Personal — Free",
+  "Team — Pro",
+  "Production agent — Enterprise",
+];
+
 export default function OnboardingPage() {
   return (
     <Suspense
@@ -64,6 +72,7 @@ function OnboardingInner() {
   const [referralSource, setReferralSource] = useState("");
   const [referralOther, setReferralOther] = useState("");
   const [useCase, setUseCase] = useState("");
+  const [planIntent, setPlanIntent] = useState("");
 
   const stepIdx = useMemo(() => {
     const raw = searchParams.get("step");
@@ -149,7 +158,9 @@ function OnboardingInner() {
   // (use-case is optional). Try it out: Continue lives inside the Connect
   // option and is gated on a connected source. Ask: only let them launch once
   // the agent has actually replied.
-  const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : !isAsk || answered;
+  const canContinue = isAbout
+    ? Boolean(roleAnswer && referralAnswer && planIntent)
+    : !isAsk || answered;
   const onContinue = async () => {
     if (isAbout) {
       try {
@@ -157,11 +168,16 @@ function OnboardingInner() {
           role: roleAnswer,
           referral_source: referralAnswer,
           use_case: useCase || undefined,
+          plan_intent: planIntent || undefined,
         });
       } catch {
         // Best-effort — don't block onboarding on a profile write.
       }
-      track("onboarding.about_submitted", { role: roleAnswer, referral_source: referralAnswer });
+      track("onboarding.about_submitted", {
+        role: roleAnswer,
+        referral_source: referralAnswer,
+        plan_intent: planIntent,
+      });
       return goToStep(stepIdx + 1);
     }
     if (isAsk) return void finishAndExit();
@@ -181,11 +197,13 @@ function OnboardingInner() {
               referralSource={referralSource}
               referralOther={referralOther}
               useCase={useCase}
+              planIntent={planIntent}
               onRole={setRole}
               onRoleOther={setRoleOther}
               onReferral={setReferralSource}
               onReferralOther={setReferralOther}
               onUseCase={setUseCase}
+              onPlanIntent={setPlanIntent}
             />
           )}
           {isIntro && <IntroStep />}
@@ -215,22 +233,26 @@ function AboutStep({
   referralSource,
   referralOther,
   useCase,
+  planIntent,
   onRole,
   onRoleOther,
   onReferral,
   onReferralOther,
   onUseCase,
+  onPlanIntent,
 }: {
   role: string;
   roleOther: string;
   referralSource: string;
   referralOther: string;
   useCase: string;
+  planIntent: string;
   onRole: (v: string) => void;
   onRoleOther: (v: string) => void;
   onReferral: (v: string) => void;
   onReferralOther: (v: string) => void;
   onUseCase: (v: string) => void;
+  onPlanIntent: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -239,7 +261,7 @@ function AboutStep({
           First, tell us about you
         </h1>
         <p className="text-sm text-dim max-w-lg">
-          Three quick questions so we can tailor Stash to how you&rsquo;ll use it.
+          A few quick questions so we can tailor Stash to how you&rsquo;ll use it.
         </p>
       </div>
       <Field label="What's your role?">
@@ -256,6 +278,15 @@ function AboutStep({
             onChange={onReferralOther}
             placeholder="Where did you hear about us?"
           />
+        )}
+      </Field>
+      <Field label="Which plan fits you?">
+        <PillGroup options={PLAN_OPTIONS} value={planIntent} onChange={onPlanIntent} />
+        {planIntent === "Production agent — Enterprise" && (
+          <p className="text-[12px] text-dim">
+            Your API key is free and instant. Unlimited sleep-time memory curation is part
+            of Enterprise — we&rsquo;ll reach out to get you set up.
+          </p>
         )}
       </Field>
       <Field label="What do you want to use Stash for?" optional>
@@ -404,9 +435,15 @@ function TryItOutStep({
           Try it out
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Three ways to start — pick whichever fits.
+          Four ways to start — pick whichever fits.
         </p>
       </div>
+      <TryOption
+        badge="Build"
+        lead="Using Stash as the memory store for your agent? Mint an API key."
+      >
+        <BuildOption />
+      </TryOption>
       <TryOption
         badge="Create"
         lead="Just want a place to write with your agent?"
@@ -475,6 +512,56 @@ function TryOption({
         <span className="text-[13px] text-dim">{lead}</span>
       </div>
       {children}
+    </div>
+  );
+}
+
+function BuildOption() {
+  const [minted, setMinted] = useState<ApiKeyCreated | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleCreate() {
+    setCreating(true);
+    setError("");
+    try {
+      setMinted(await createMyKey("onboarding"));
+      track("onboarding.api_key_minted", {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create key");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (!minted) {
+    return (
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={creating}
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60 transition-colors"
+        >
+          {creating ? "Creating…" : "Create API key"}
+        </button>
+        {error && <p className="text-[12px] text-error">{error}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] text-dim">
+        Copy it now — this is the only time the full key will be shown. Manage keys in
+        Settings.
+      </p>
+      <CommandBlock command={minted.api_key} />
+      <p className="text-[12px] text-dim">Write your agent&rsquo;s first memory:</p>
+      <CommandBlock
+        command={`curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events \\
+  -H "Authorization: Bearer ${minted.api_key}" -H "Content-Type: application/json" \\
+  -d '{"agent_name":"my-agent","session_id":"run-1","event_type":"learning","content":"hello memory"}'`}
+      />
     </div>
   );
 }
