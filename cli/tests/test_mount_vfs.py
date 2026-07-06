@@ -1,7 +1,5 @@
-from cli.mount import StashVfsModel
-
-
 from cli.client import StashError
+from cli.mount import StashVfsModel
 
 
 class FakeClient:
