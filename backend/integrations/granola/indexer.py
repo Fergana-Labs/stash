@@ -97,7 +97,8 @@ def _parse_meetings_text(text: str) -> list[dict]:
 def _extract_transcript(td) -> str | list:
     """get_meeting_transcript returns JSON text — {"id", "title", "transcript":
     "<the whole transcript as one string>"} — which call_tool_data parses to a
-    dict. Unwrap it; a bare string or segment list is already usable."""
+    dict, so unwrap the inner string. A bare string (non-JSON tool output) or a
+    segment list needs no unwrapping: _render_meeting renders both directly."""
     if isinstance(td, dict):
         td = td.get("transcript")
     if isinstance(td, str | list):
