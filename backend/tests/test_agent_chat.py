@@ -11,9 +11,7 @@ import json
 import pytest
 from httpx import AsyncClient
 
-from backend.services import sprite_agent_service, sprite_service
-
-from .conftest import unique_name
+from .conftest import stream_json_reply, unique_name
 
 
 async def _register(client: AsyncClient) -> tuple[str, str]:
@@ -36,81 +34,6 @@ def _events(sse_text: str) -> list[dict]:
         if line.startswith("data:"):
             out.append(json.loads(line[5:].strip()))
     return out
-
-
-class FakeRedis:
-    """Just enough of redis.asyncio for the per-session turn lock."""
-
-    def __init__(self) -> None:
-        self.data: dict[str, bytes] = {}
-
-    async def set(self, key, value, nx=False, ex=None):
-        if nx and key in self.data:
-            return None
-        self.data[key] = value.encode() if isinstance(value, str) else value
-        return True
-
-    async def get(self, key):
-        return self.data.get(key)
-
-    async def delete(self, key):
-        self.data.pop(key, None)
-
-
-def _stream_json_reply(text: str) -> list[str]:
-    """A minimal well-formed claude stream-json transcript replying `text`."""
-    return [
-        json.dumps({"type": "system", "subtype": "init"}),
-        json.dumps(
-            {
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_delta",
-                    "delta": {"type": "text_delta", "text": text},
-                },
-            }
-        ),
-        json.dumps({"type": "result", "subtype": "success", "result": text}),
-    ]
-
-
-@pytest.fixture
-def sprite_exec(monkeypatch):
-    """Mock the substrate seam: capture exec argv, reply via a queue of canned
-    transcripts (default: echo the prompt back)."""
-    calls: list[list[str]] = []
-    replies: list[tuple[list[str], int]] = []
-
-    async def fake_acquire(user_id):
-        return sprite_service.Sprite(name="test-sprite")
-
-    async def fake_exec_stream(sprite, argv, *, env, cwd=None):
-        calls.append(argv)
-        if replies:
-            lines, exit_code = replies.pop(0)
-        else:
-            lines, exit_code = _stream_json_reply("Reply to: " + argv[2]), 0
-        for line in lines:
-            yield {"stream": "stdout", "data": (line + "\n").encode()}
-        yield {"exit_code": exit_code}
-
-    monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
-    monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
-    fake_redis = FakeRedis()
-    monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
-
-    from backend.config import settings
-
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
-
-    class Seam:
-        pass
-
-    seam = Seam()
-    seam.calls = calls
-    seam.replies = replies
-    seam.redis = fake_redis
-    return seam
 
 
 @pytest.mark.asyncio
@@ -171,7 +94,7 @@ async def test_lost_transcript_reseeds_from_history(client: AsyncClient, sprite_
                      "result": "No conversation found with session ID: xyz"})],
         1,
     )
-    sprite_exec.replies.append((_stream_json_reply("recovered"), 0))
+    sprite_exec.replies.append((stream_json_reply("recovered"), 0))
 
     r2 = await client.post(
         "/api/v1/me/agent-chat",

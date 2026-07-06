@@ -41,6 +41,8 @@ async def chat(
         if req.agent_id
         else await agent_service.get_or_create_default(current_user["id"])
     )
+    # This user is active → ensure their daily Memory curator exists (idempotent).
+    await agent_service.get_or_create_curator(current_user["id"])
     # Resolve the harness + credentials up front so an unconnected free user
     # gets a clean 402 instead of a stream that dies mid-flight.
     try:

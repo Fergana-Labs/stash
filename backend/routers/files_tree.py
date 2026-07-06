@@ -164,6 +164,23 @@ async def get_memory_folder(
     return FolderResponse(**folder)
 
 
+@router.get("/changes")
+async def get_changes(
+    since: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """The incremental change feed the Memory curator reads: history, changed
+    pages (excl. Memory), new files, and connected sources since `since`."""
+    from datetime import datetime
+
+    from ..services import curation_service
+
+    since_dt = datetime.fromisoformat(since) if since else None
+    return await curation_service.changes_since(
+        current_user["id"], current_user["id"], since_dt
+    )
+
+
 # --- Folders ---
 
 

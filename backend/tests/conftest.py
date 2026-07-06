@@ -15,6 +15,7 @@ import os
 import uuid
 
 import asyncpg
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -113,3 +114,70 @@ async def _cleanup(_db_pool):
 def unique_name(prefix: str = "user") -> str:
     """Generate a unique username safe for use in tests."""
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+# --- Shared cloud-agent fixture (mocks the sprite substrate seam) ---
+import json as _json  # noqa: E402
+
+from backend.config import settings  # noqa: E402
+from backend.services import sprite_agent_service, sprite_service  # noqa: E402
+
+
+class FakeRedis:
+    """Just enough of redis.asyncio for the per-session turn lock."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, bytes] = {}
+
+    async def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.data:
+            return None
+        self.data[key] = value.encode() if isinstance(value, str) else value
+        return True
+
+    async def get(self, key):
+        return self.data.get(key)
+
+    async def delete(self, key):
+        self.data.pop(key, None)
+
+
+def stream_json_reply(text: str) -> list[str]:
+    """A minimal well-formed claude stream-json transcript replying `text`."""
+    return [
+        _json.dumps({"type": "system", "subtype": "init"}),
+        _json.dumps({"type": "stream_event", "event": {"type": "content_block_delta",
+                     "delta": {"type": "text_delta", "text": text}}}),
+        _json.dumps({"type": "result", "subtype": "success", "result": text}),
+    ]
+
+
+@pytest.fixture
+def sprite_exec(monkeypatch):
+    """Mock the sprite seam: capture exec argv, reply via a queue of canned
+    transcripts (default: echo the prompt back)."""
+    calls: list[list[str]] = []
+    replies: list = []
+
+    async def fake_acquire(user_id):
+        return sprite_service.Sprite(name="test-sprite")
+
+    async def fake_exec_stream(sprite, argv, *, env, cwd=None):
+        calls.append(argv)
+        lines, exit_code = replies.pop(0) if replies else (stream_json_reply("Reply to: " + argv[2]), 0)
+        for line in lines:
+            yield {"stream": "stdout", "data": (line + "\n").encode()}
+        yield {"exit_code": exit_code}
+
+    monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
+    monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
+
+    class Seam:
+        pass
+
+    seam = Seam()
+    seam.calls, seam.replies, seam.redis = calls, replies, fake_redis
+    return seam

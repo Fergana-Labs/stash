@@ -280,6 +280,13 @@ class StashClient:
     def get_overview(self) -> dict:
         return self._get("/api/v1/me/overview")
 
+    def get_memory_folder(self) -> dict:
+        return self._get("/api/v1/me/memory-folder")
+
+    def get_changes(self, since: str | None = None) -> dict:
+        params = {"since": since} if since else {}
+        return self._get("/api/v1/me/changes", **params)
+
     # --- Pages (user-scoped) ---
 
     def create_page(

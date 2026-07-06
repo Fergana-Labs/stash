@@ -100,3 +100,79 @@ def render_sprite_workspace_claude_md() -> str:
         "files on this disk are not shared or visible in the Stash app.\n\n"
         "Never print API keys, tokens, or credential file contents.\n"
     )
+
+
+# ---------------------------------------------------------------------------
+# Sleep-time Memory curator (daily wiki curation of the user's Memory)
+# ---------------------------------------------------------------------------
+
+
+def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
+    """The curation instruction the scheduled Memory-curator agent runs headless.
+
+    Adapted from the Stash sleep-time curation prompt to the current Memory
+    folder + `stash files` model. It curates the incremental change delta into
+    an organized wiki of category + topic pages under the Memory folder."""
+    window = (
+        f"the changes since {since}"
+        if since
+        else "the full history (this is the first run — bootstrap the wiki)"
+    )
+    return f"""# Sleep Time Compute — Memory Wiki Curation
+
+Curate the user's recent activity into an organized, categorized wiki inside
+their **Memory** folder (id `{memory_folder_id}`). Read {window}, analyze it
+against the existing wiki, and write structured knowledge as markdown pages
+with categories, [[wiki links]], and confidence tags.
+
+Use the `stash` CLI for everything — every subcommand supports `--json`.
+
+## Read the inputs
+- `stash changes --since {since or ''} --json` — the delta to curate: recent
+  history/chats, changed pages, new files, and connected sources. This IS your
+  work set; do not re-scan the whole corpus.
+- `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
+- `stash ls /files --json` under the Memory folder and `stash read <page_id>`
+  to inspect existing wiki pages. `stash search "<topic>" --json` to pull
+  related source/file context on demand.
+
+## Operating principles
+- **Bootstrap vs. maintain — know which mode you're in.** If the Memory folder
+  has no pages, you are bootstrapping: cluster the history into 3-7 coherent
+  categories and seed pages in one pass. If pages exist, you are maintaining:
+  fold the delta into the existing structure.
+- **Maintain, don't regenerate.** Once the wiki exists, fold in new information;
+  don't rewrite what's there.
+- **Scope by diff, not by corpus.** Only touch pages whose topic appears in this
+  delta. Leave untouched pages alone.
+- **Category-first, pages-second.** Every page belongs to a category (a subfolder
+  under Memory). A concept gets its own page only when it appears in >=2 distinct
+  events. One-shot mentions stay as bullets on the category index page.
+- **Tag confidence.** Mark facts `(extracted)` when stated directly, `(inferred)`
+  when derived, `(ambiguous)` when uncertain. Never create a page from
+  ambiguous-only material.
+- **Prefer updating to creating.** Before writing a new page, search existing
+  pages for overlap; if one covers the topic, update it instead.
+- **Resolve contradictions explicitly.** When new events contradict a page, don't
+  silently overwrite — add a dated `## Updates` entry noting old claim, new
+  claim, and which supersedes, with a one-line reason.
+
+## Write the wiki (under the Memory folder)
+- Category subfolder: `stash files create-folder "<Category>" --parent {memory_folder_id} --json`.
+- New page: `stash files add-page "<Title>" --folder <category_folder_id> --content "<markdown>" --json`.
+- Update page: `stash files edit-page <page_id> --content "<markdown>" --json`.
+- Every page: a one-sentence summary; link up `[[Category: X]]`; sideways
+  `[[Other Page]]`; tag facts; date new content `<!-- added YYYY-MM-DD -->`.
+
+## Hard rules
+- Summaries, not transcripts. A page is scannable in 30 seconds.
+- Merge aggressively — two pages on one topic is always wrong.
+- Never delete. Deprecate by rewriting into a redirect stub.
+- Everything you write goes under the Memory folder (id `{memory_folder_id}`) —
+  never write curation output anywhere else.
+
+## Report
+One line per action: created / updated / merged / skipped, with page titles.
+
+Begin now.
+"""

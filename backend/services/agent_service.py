@@ -16,9 +16,15 @@ from ..database import get_pool
 
 _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
-    "schedule_cron, schedule_prompt, is_default, slack_bound, telegram_bound, "
-    "last_run_at, created_at"
+    "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
+    "telegram_bound, last_run_at, created_at"
 )
+
+# The daily curator's cron is staggered per user so sprite wakes spread across
+# the day rather than all firing at once.
+def _staggered_daily_cron(user_id: UUID) -> str:
+    n = int.from_bytes(user_id.bytes, "big")
+    return f"{n % 60} {n % 24} * * *"
 
 _VALID_PROVIDERS = {"anthropic", "openai", "openrouter"}
 _VALID_RUN_MODES = {"chat", "scheduled"}
@@ -67,6 +73,42 @@ async def get_or_create_default(user_id: UUID) -> dict:
     if row is None:  # lost the race — read the winner.
         row = await pool.fetchrow(
             f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_default", user_id
+        )
+    return _row(row)
+
+
+# How far back the first curation looks (the wiki bootstraps from this window).
+CURATOR_BACKFILL_DAYS = 90
+
+
+async def get_or_create_curator(user_id: UUID) -> dict:
+    """The user's reserved Memory-curator agent, created on first use.
+
+    Scheduled daily (staggered), with last_run_at seeded to a bounded backfill
+    point so the first run bootstraps from real history AND the cron becomes due
+    (a NULL watermark never fires)."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator", user_id
+    )
+    if row is not None:
+        return _row(row)
+    row = await pool.fetchrow(
+        f"""
+        INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator, last_run_at)
+        VALUES ($1, 'Memory curator', 'scheduled', $2, true,
+                greatest((SELECT created_at FROM users WHERE id = $1),
+                         now() - make_interval(days => $3)))
+        ON CONFLICT (user_id) WHERE is_curator DO NOTHING
+        RETURNING {_COLUMNS}
+        """,
+        user_id,
+        _staggered_daily_cron(user_id),
+        CURATOR_BACKFILL_DAYS,
+    )
+    if row is None:  # lost the race — read the winner.
+        row = await pool.fetchrow(
+            f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator", user_id
         )
     return _row(row)
 
@@ -152,16 +194,22 @@ async def delete_agent(user_id: UUID, agent_id: UUID) -> None:
     agent = await get_agent(user_id, agent_id)
     if agent["is_default"]:
         raise HTTPException(status_code=400, detail="cannot delete the default agent")
+    if agent["is_curator"]:
+        raise HTTPException(
+            status_code=400, detail="cannot delete the Memory curator (turn it off instead)"
+        )
     await get_pool().execute(
         "DELETE FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id
     )
 
 
 async def list_scheduled() -> list[dict]:
-    """All scheduled agents across users (for the beat task's due check)."""
+    """All scheduled agents due for the beat task's check. The curator runs the
+    curation prompt (no schedule_prompt); other scheduled agents need one."""
     rows = await get_pool().fetch(
         f"SELECT {_COLUMNS} FROM agents "
-        "WHERE run_mode = 'scheduled' AND schedule_cron IS NOT NULL AND schedule_prompt IS NOT NULL"
+        "WHERE run_mode = 'scheduled' AND schedule_cron IS NOT NULL "
+        "AND (is_curator OR schedule_prompt IS NOT NULL)"
     )
     return [_row(r) for r in rows]
 

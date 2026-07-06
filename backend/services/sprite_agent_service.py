@@ -220,22 +220,33 @@ def _system_prompt(owner_name: str, persona: str | None) -> str:
 
 
 async def run_scheduled(agent: dict, run_stamp: str) -> str:
-    """Run a scheduled agent headless — its schedule_prompt as one turn into a
-    fresh per-run session — and return the result text. Each run is its own
-    session so history (and the CLI transcript it replays) can't grow unbounded
-    across a long-lived schedule; scheduled runs are stateless digests."""
+    """Run a scheduled agent headless — one turn into a fresh per-run session —
+    and return the result text. Each run is its own session so history (and the
+    CLI transcript it replays) can't grow unbounded across a long-lived schedule.
+
+    The reserved Memory curator (is_curator) runs the curation prompt built
+    server-side from its watermark; other scheduled agents run schedule_prompt."""
     from uuid import UUID as _UUID
 
-    from . import user_service
+    from . import files_tree_service, prompts, user_service
 
     user_id = _UUID(str(agent["user_id"]))
     user = await user_service.get_user_by_id(user_id)
     if user is None:
         return ""
     owner_name = user["display_name"] or user["name"]
-    session_id = f"agent-sched-{agent['id']}-{run_stamp}"
+
+    if agent.get("is_curator"):
+        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
+        since = agent["last_run_at"].isoformat() if agent.get("last_run_at") else None
+        message = prompts.render_curator_prompt(memory["id"], since)
+        session_id = f"agent-curate-{agent['id']}-{run_stamp}"
+    else:
+        message = agent["schedule_prompt"]
+        session_id = f"agent-sched-{agent['id']}-{run_stamp}"
+
     return await run_chat(
-        user_id, owner_name, user_id, session_id, agent["schedule_prompt"],
+        user_id, owner_name, user_id, session_id, message,
         model_provider=agent["model_provider"], persona=agent["system_prompt"],
     )
 
@@ -326,6 +337,8 @@ async def run_chat(
         agent = await agent_service.channel_agent(user_id, channel)
         model_provider = agent["model_provider"]
         persona = agent["system_prompt"]
+        # A channel message is user activity → ensure the daily curator exists.
+        await agent_service.get_or_create_curator(user_id)
     try:
         auth = await agent_auth.resolve(user_id, model_provider)
     except agent_auth.NeedsAuth:

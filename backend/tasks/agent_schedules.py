@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from uuid import UUID
 
 from croniter import croniter
 
@@ -36,7 +37,7 @@ def run_due() -> int:
 
 
 async def _run_due() -> int:
-    from ..services import agent_service, sprite_agent_service
+    from ..services import agent_service, curation_service, sprite_agent_service
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
@@ -44,6 +45,15 @@ async def _run_due() -> int:
     for agent in await agent_service.list_scheduled():
         if not _is_due(agent["schedule_cron"], agent["last_run_at"], now):
             continue
+        # Cost gate: skip the curator (and the sprite wake) when nothing changed
+        # since its watermark — and DON'T advance the watermark, so a change
+        # later today is still caught. Idle users cost one EXISTS per day.
+        if agent["is_curator"]:
+            user_id = UUID(str(agent["user_id"]))
+            if not await curation_service.has_changes_since(
+                user_id, user_id, agent["last_run_at"]
+            ):
+                continue
         # Mark before running so a slow/failing run can't be re-fired by the
         # next beat; a lost tick on failure is acceptable (the next tick runs).
         await agent_service.mark_run(agent["id"])

@@ -2328,6 +2328,37 @@ def search(
     _print_search(query, source, limit, as_json)
 
 
+@app.command("memory")
+def memory(as_json: bool = typer.Option(False, "--json")):
+    """Show your reserved Memory folder (its id is where the wiki lives)."""
+    with _client() as c:
+        folder = c.get_memory_folder()
+    if _use_json(as_json):
+        output_json(folder)
+        return
+    console.print(f"Memory folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
+
+
+@app.command("changes")
+def changes(
+    since: str = typer.Option(None, "--since", help="ISO timestamp; omit for everything."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """What changed since a timestamp — history, pages, files, sources. Feeds
+    the Memory curator's incremental pass."""
+    with _client() as c:
+        data = c.get_changes(since or None)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    counts = data.get("counts", {})
+    console.print(
+        f"Changes since {data.get('since') or 'the beginning'}: "
+        f"{counts.get('history',0)} events, {counts.get('pages',0)} pages, "
+        f"{counts.get('files',0)} files, {counts.get('sources',0)} sources"
+    )
+
+
 @sources_app.command("add")
 def sources_add(
     source_type: str = typer.Argument(
