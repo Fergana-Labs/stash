@@ -64,7 +64,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
               {options.title}
             </div>
             {options.body && (
-              <div className="mt-1.5 text-[12.5px] text-muted">{options.body}</div>
+              <div className="mt-1.5 text-[12.5px] text-muted-foreground">{options.body}</div>
             )}
             <div className="mt-4 flex justify-end gap-1.5">
               <button

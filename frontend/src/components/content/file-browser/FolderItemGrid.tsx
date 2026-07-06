@@ -34,7 +34,7 @@ export default function FolderItemGrid({
   if (items.length === 0) {
     return (
       <div className="flex items-center justify-center bg-base p-12">
-        <div className="rounded-lg border border-dashed border-border bg-surface/30 px-6 py-10 text-center text-[12.5px] text-muted">
+        <div className="rounded-lg border border-dashed border-border bg-surface/30 px-6 py-10 text-center text-[12.5px] text-muted-foreground">
           Empty folder. Add a page, upload a file, or create a subfolder.
         </div>
       </div>
@@ -142,7 +142,7 @@ function Tile({
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13.5px] font-semibold text-foreground">{item.name}</div>
-        <div className="mt-0.5 truncate text-[11.5px] text-muted">{item.subtitle}</div>
+        <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{item.subtitle}</div>
       </div>
       {onDelete && (
         <button
@@ -151,7 +151,7 @@ function Tile({
             e.stopPropagation();
             void onDelete(item);
           }}
-          className="cursor-pointer rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          className="cursor-pointer rounded p-1 text-muted-foreground opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
           title="Delete"
           aria-label="Delete"
         >

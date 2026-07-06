@@ -3,7 +3,10 @@
 A Linear source covers every issue the connected user can read. We don't copy
 issue bodies — Linear's own search is used live (see `search_linear`) and the
 description is fetched lazily on read (`fetch_linear_content`). The sync only
-builds the navigable index: one row per issue keyed by its identifier (FER-199).
+builds the navigable index: one row per issue, filed under its team with a
+zero-padded number ("FER/FER-00199") so each team folder lists in issue order
+(path order is the VFS listing order; bare "FER-199" would put FER-1000 before
+FER-2). The display name keeps the real identifier.
 """
 
 from __future__ import annotations
@@ -18,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 MAX_ISSUES = 5000
 SEARCH_LIMIT = 25
+
+
+def _issue_path(identifier: str) -> str:
+    """ "FER-199" → "FER/FER-00199": one folder per team, numerically ordered."""
+    team_key, _, number = identifier.rpartition("-")
+    return f"{team_key}/{team_key}-{int(number):05d}"
 
 
 def _render_issue(issue: linear_api_service.LinearIssue) -> str:
@@ -49,17 +58,18 @@ async def index_linear(source: dict) -> str | None:
         issues, cursor = await linear_api_service.list_issues(token, cursor)
         for issue in issues:
             identifier = issue["identifier"]
+            path = _issue_path(identifier)
             await source_service.upsert_index_row(
                 table="linear_index",
                 source_id=source_id,
                 owner_user_id=owner_user_id,
-                path=identifier,
+                path=path,
                 name=f"{identifier} {issue['title']}",
                 kind="issue",
                 external_ref=identifier,
                 external_updated_at=issue["updated_at"],
             )
-            present.append(identifier)
+            present.append(path)
         if not cursor:
             break
 
@@ -70,13 +80,13 @@ async def index_linear(source: dict) -> str | None:
 
 async def search_linear(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     """Federated search via Linear's native issue search. Returns hits keyed by
-    issue identifier (the index path)."""
+    the index path so read_source resolves them."""
     owner_user_id = UUID(source["owner_user_id"])
     token = await get_valid_token(owner_user_id, "linear")
     issues = await linear_api_service.search_issues(token, query, min(limit, 50))
     return [
         {
-            "ref": issue["identifier"],
+            "ref": _issue_path(issue["identifier"]),
             "name": f"{issue['identifier']} {issue['title']}",
             "snippet": issue["title"],
         }

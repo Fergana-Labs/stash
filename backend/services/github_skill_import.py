@@ -226,6 +226,29 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
 # ===== Whole-repo operations (script + admin dashboard) =====
 
 
+async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
+    """Import every SKILL.md folder in a repo into a user's OWN scope as private
+    skills: create the folder, write the repo files, and mint the skill record
+    that classifies it (no public share). Returns {skills, imported}. A user is
+    their own scope (owner_user_id == created_by)."""
+    skills = await fetch_repo_skills(repo_url)
+    imported = 0
+    for skill in skills:
+        files = skill["files"]
+        skill_md = next((blob for path, blob in files if path == "SKILL.md"), None)
+        if skill_md is None:
+            continue
+        meta, _body = skill_service.parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+        title = str(meta.get("name") or skill["fallback_title"])
+        folder_id = await _create_root_folder(owner_user_id, owner_user_id, title)
+        await files_tree_service.write_folder_files(owner_user_id, owner_user_id, folder_id, files)
+        await shared_skill_service.create_skill_record(
+            owner_user_id, owner_user_id, folder_id, title=title
+        )
+        imported += 1
+    return {"skills": len(skills), "imported": imported}
+
+
 async def import_repo(repo_url: str) -> dict:
     """Import every SKILL.md folder in a repo into the curator scope.
 

@@ -3,8 +3,11 @@
 A Jira source's external_ref is "{cloudId}:{projectKey}". We don't copy issue
 bodies — Jira's own search (JQL `text ~`) is strong, so search is federated live
 (see `search_jira`) and the body is fetched lazily on read (`fetch_jira_content`).
-The sync only builds the navigable index: one row per issue keyed by its key
-(PROJ-123), storing the cloudId:key in external_ref for lazy fetch.
+The sync only builds the navigable index: one row per issue, keyed by its key
+with a zero-padded number ("PROJ-00123") so the project lists in issue order
+(path order is the VFS listing order; bare "PROJ-123" would put PROJ-1000 before
+PROJ-2). The display name keeps the real key; external_ref stores cloudId:key
+for lazy fetch.
 """
 
 from __future__ import annotations
@@ -72,6 +75,12 @@ SEARCH_LIMIT = 25
 
 def _jql_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _issue_path(key: str) -> str:
+    """ "PROJ-123" → "PROJ-00123": zero-padded so the project lists numerically."""
+    project, _, number = key.rpartition("-")
+    return f"{project}-{int(number):05d}"
 
 
 def _adf_to_text(node: dict | None) -> str:
@@ -226,17 +235,18 @@ async def index_jira(source: dict) -> str | None:
                     continue
                 fields = issue.get("fields") or {}
                 summary = fields.get("summary") or key
+                path = _issue_path(key)
                 await source_service.upsert_index_row(
                     table="jira_documents",
                     source_id=source_id,
                     owner_user_id=owner_user_id,
-                    path=key,
+                    path=path,
                     name=f"{key}: {summary}",
                     kind="issue",
                     external_ref=f"{cloud_id}:{key}",
                     external_updated_at=_parse_time(fields.get("updated")),
                 )
-                present.append(key)
+                present.append(path)
             if payload.get("isLast") or not payload.get("nextPageToken"):
                 break
             next_page_token = payload["nextPageToken"]
@@ -248,7 +258,7 @@ async def index_jira(source: dict) -> str | None:
 
 async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     """Federated search: run JQL `text ~` against the project, live. Returns hits
-    keyed by issue key (which is the index path, so read_source resolves them)."""
+    keyed by the index path so read_source resolves them."""
     owner_user_id = UUID(source["owner_user_id"])
     cloud_id, project_key = source_service.parse_jira_project_ref(source["external_ref"])
     token = await get_valid_token(owner_user_id, "jira")
@@ -270,7 +280,7 @@ async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> li
         if not key:
             continue
         summary = (issue.get("fields") or {}).get("summary") or ""
-        hits.append({"ref": key, "name": f"{key}: {summary}", "snippet": summary})
+        hits.append({"ref": _issue_path(key), "name": f"{key}: {summary}", "snippet": summary})
     return hits
 
 

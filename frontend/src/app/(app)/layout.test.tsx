@@ -27,7 +27,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(route.search),
 }));
 
-vi.mock("../../components/AppShell", () => ({
+vi.mock("../../components/workspace/workspace-shell", () => ({
   default: ({ children }: { children: ReactNode }) => (
     <div data-testid="app-shell">{children}</div>
   ),

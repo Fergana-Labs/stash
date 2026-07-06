@@ -230,6 +230,56 @@ async def list_folders(owner_user_id: UUID, user_id: UUID | None = None) -> list
     return [dict(r) for r in rows]
 
 
+async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> dict:
+    """The reserved per-user Memory folder — its own space, not a Files folder.
+    One per owner (partial unique index); created on first access."""
+    pool = get_pool()
+    select = (
+        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "FROM folders WHERE owner_user_id = $1 AND is_memory LIMIT 1"
+    )
+    row = await pool.fetchrow(select, owner_user_id)
+    if row:
+        return dict(row)
+    try:
+        row = await pool.fetchrow(
+            "INSERT INTO folders (owner_user_id, name, created_by, is_memory) "
+            "VALUES ($1, 'Memory', $2, true) "
+            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            owner_user_id,
+            created_by,
+        )
+        return dict(row)
+    except asyncpg.UniqueViolationError:
+        # Lost a race — the folder now exists.
+        return dict(await pool.fetchrow(select, owner_user_id))
+
+
+async def memory_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
+    """The Memory folder and all its descendants — kept out of Files surfaces."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE mtree AS ("
+        "  SELECT f.id FROM folders f WHERE f.owner_user_id = $1 AND f.is_memory"
+        "  UNION"
+        "  SELECT f.id FROM folders f JOIN mtree m ON f.parent_folder_id = m.id"
+        ") SELECT id FROM mtree",
+        owner_user_id,
+    )
+    return {r["id"] for r in rows}
+
+
+async def _assert_not_memory(folder_id: UUID, owner_user_id: UUID) -> None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT is_memory FROM folders WHERE id = $1 AND owner_user_id = $2",
+        folder_id,
+        owner_user_id,
+    )
+    if row and row["is_memory"]:
+        raise ValueError("the Memory folder can't be renamed, moved, or deleted")
+
+
 async def update_folder(
     folder_id: UUID,
     owner_user_id: UUID,
@@ -239,6 +289,7 @@ async def update_folder(
 ) -> dict | None:
     """Rename and/or reparent a folder. Cycle-checks before moving."""
     pool = get_pool()
+    await _assert_not_memory(folder_id, owner_user_id)
     if (parent_folder_id is not None or move_to_root) and not move_to_root:
         await _assert_no_cycle(folder_id, parent_folder_id)
 
@@ -269,6 +320,7 @@ async def update_folder(
 
 async def delete_folder(folder_id: UUID, owner_user_id: UUID) -> bool:
     pool = get_pool()
+    await _assert_not_memory(folder_id, owner_user_id)
     result = await pool.execute(
         "DELETE FROM folders WHERE id = $1 AND owner_user_id = $2",
         folder_id,
@@ -1167,6 +1219,7 @@ async def list_scope_tree(owner_user_id: UUID, user_id: UUID | None = None) -> d
     pages = [dict(row) for row in page_rows]
 
     hidden = await skill_service.skill_subtree_folder_ids(owner_user_id)
+    hidden |= await memory_subtree_folder_ids(owner_user_id)
     folders = [f for f in folders if f["id"] not in hidden]
     pages = [p for p in pages if p["folder_id"] is None or p["folder_id"] not in hidden]
 

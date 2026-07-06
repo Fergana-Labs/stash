@@ -68,6 +68,13 @@ def parse_optional_secret(name: str, min_length: int = MIN_ADMIN_SECRET_LENGTH) 
     return value
 
 
+def parse_agent_exec_mode() -> str:
+    value = os.getenv("AGENT_EXEC_MODE", "local")
+    if value not in ("sprites", "local"):
+        raise RuntimeError("AGENT_EXEC_MODE must be 'sprites' or 'local'")
+    return value
+
+
 def parse_required_when_enabled(name: str, enabled: bool, enabled_name: str) -> str | None:
     value = os.getenv(name)
     if not enabled:
@@ -269,6 +276,12 @@ class Settings:
     # Verifies inbound Events API webhook signatures (X-Slack-Signature).
     SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET")
 
+    # --- Telegram agent (single platform bot; talk-to-Stash over Telegram) ---
+    TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_BOT_USERNAME: str | None = os.getenv("TELEGRAM_BOT_USERNAME")
+    # Echoed back in X-Telegram-Bot-Api-Secret-Token; verifies inbound webhooks.
+    TELEGRAM_WEBHOOK_SECRET: str | None = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+
     TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
     TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
     TWITTER_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
@@ -310,6 +323,27 @@ class Settings:
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
+
+    # --- Managed model keys (server-owned, for the cloud agent on paid tiers) ---
+    # Each harness's default provider reads its key from here. A run on a paid
+    # account is billed to us via these keys; free accounts are gated (until
+    # bring-your-own-key ships). OpenRouter is the one-key-many-models option.
+    OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
+    MANAGED_GEMINI_API_KEY: str | None = os.getenv("MANAGED_GEMINI_API_KEY")
+
+    # --- Cloud agent (per-user sprite VM) ---
+    # "sprites" runs each user's agent on their Fly Sprite; "local" execs on
+    # this machine's own claude install (dev mode — no Sprites credentials).
+    AGENT_EXEC_MODE: str = parse_agent_exec_mode()
+    SPRITES_TOKEN: str | None = parse_required_when_enabled(
+        "SPRITES_TOKEN", AGENT_EXEC_MODE == "sprites", "AGENT_EXEC_MODE=sprites"
+    )
+    SPRITES_API_URL: str = os.getenv("SPRITES_API_URL", "https://api.sprites.dev")
+    # What the sprite's stash CLI calls back to; must be reachable from Fly.
+    SPRITES_STASH_API_URL: str | None = parse_required_when_enabled(
+        "SPRITES_STASH_API_URL", AGENT_EXEC_MODE == "sprites", "AGENT_EXEC_MODE=sprites"
+    )
+    AGENT_TURN_TIMEOUT_SECONDS: int = int(os.getenv("AGENT_TURN_TIMEOUT_SECONDS", "600"))
 
 
 settings = Settings()

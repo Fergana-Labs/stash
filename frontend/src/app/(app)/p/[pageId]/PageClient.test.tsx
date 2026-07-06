@@ -166,7 +166,7 @@ describe("SkillPageView HTML page width", () => {
   it("keeps the 1200px reading-column cap for responsive HTML pages", async () => {
     api.getPage.mockResolvedValue(htmlPage("responsive"));
 
-    const { container } = render(<SkillPageView />);
+    const { container } = render(<SkillPageView pageId="page-1" />);
     await screen.findByText("HTML page view");
 
     expect(layoutWrapper(container).className).toContain("max-w-[1200px]");
@@ -175,7 +175,7 @@ describe("SkillPageView HTML page width", () => {
   it("drops the width cap for full-width HTML pages so they fill the window", async () => {
     api.getPage.mockResolvedValue(htmlPage("full-width"));
 
-    const { container } = render(<SkillPageView />);
+    const { container } = render(<SkillPageView pageId="page-1" />);
     await screen.findByText("HTML page view");
 
     const wrapper = layoutWrapper(container);
@@ -199,7 +199,7 @@ describe("SkillPageView access fallback", () => {
   });
 
   it("shows a full-screen access denied page when the linked Skill is not readable", async () => {
-    render(<SkillPageView />);
+    render(<SkillPageView pageId="page-1" />);
 
     expect(
       await screen.findByRole("heading", {
@@ -236,7 +236,7 @@ describe("SkillPageView access fallback", () => {
       can_write: false,
     });
 
-    render(<SkillPageView />);
+    render(<SkillPageView pageId="page-1" />);
 
     expect(await screen.findByText("Skill page body")).toBeInTheDocument();
     expect(screen.getByText("page · read-only via Skill")).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe("SkillPageView access fallback", () => {
       can_write: false,
     });
 
-    render(<SkillPageView />);
+    render(<SkillPageView pageId="page-1" />);
 
     expect(
       await screen.findByRole("heading", {

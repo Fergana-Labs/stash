@@ -207,7 +207,7 @@ export default function SkillsPage() {
           yoursCount={skills.length}
           sharedCount={sharedSkills.length}
         />
-        <p className="mt-2 text-[12.5px] text-muted">{TAB_COPY[tab]}</p>
+        <p className="mt-2 text-[12.5px] text-muted-foreground">{TAB_COPY[tab]}</p>
 
         {/* Quick-access + the view toolbar belong to your held Skills, so
             they sit under Yours, not Discover. */}
@@ -332,7 +332,7 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder="https://.../skills/product-plan"
-            className="mt-1 w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+            className="mt-1 w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
           />
         </div>
         <button
@@ -344,7 +344,7 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
         </button>
       </div>
       {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}
-      {message ? <p className="mt-2 text-[12px] text-muted">{message}</p> : null}
+      {message ? <p className="mt-2 text-[12px] text-muted-foreground">{message}</p> : null}
     </form>
   );
 }
@@ -388,12 +388,12 @@ function SkillTabs({
               "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] transition-colors " +
               (active
                 ? "border-[var(--color-brand-600)] font-semibold text-foreground"
-                : "border-transparent text-muted hover:text-foreground")
+                : "border-transparent text-muted-foreground hover:text-foreground")
             }
           >
             {t.label}
             {t.count !== undefined && (
-              <span className="ml-1.5 text-[11px] text-muted">{t.count}</span>
+              <span className="ml-1.5 text-[11px] text-muted-foreground">{t.count}</span>
             )}
           </button>
         );
@@ -404,7 +404,7 @@ function SkillTabs({
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
+    <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
       {children}
     </p>
   );
@@ -429,12 +429,12 @@ function SharedSkillRow({ shared }: { shared: SharedSkill }) {
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{shared.name}</span>
         {shared.description && (
-          <span className="min-w-0 truncate text-[12px] text-muted">
+          <span className="min-w-0 truncate text-[12px] text-muted-foreground">
             {shared.description}
           </span>
         )}
       </div>
-      <span className="truncate text-[12px] text-muted">
+      <span className="truncate text-[12px] text-muted-foreground">
         shared by {shared.shared_by ?? "someone"}
       </span>
       <div className="flex items-center justify-end">
@@ -517,7 +517,7 @@ function DiscoverSection() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search public Skills…"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
           </div>
           <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
@@ -530,7 +530,7 @@ function DiscoverSection() {
                   "cursor-pointer rounded-md px-2.5 py-[3px] text-[12px] " +
                   (sort === option
                     ? "bg-raised font-semibold text-foreground"
-                    : "text-muted hover:text-foreground")
+                    : "text-muted-foreground hover:text-foreground")
                 }
               >
                 {discoverSortLabel(option)}
@@ -543,7 +543,7 @@ function DiscoverSection() {
       {fetching ? (
         <CardGridSkeleton />
       ) : skills.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted">
+        <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted-foreground">
           No public Skills match.
         </p>
       ) : (
@@ -591,7 +591,7 @@ function DiscoverSection() {
 
 function SearchGlyph() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.3-4.3" />
     </svg>
@@ -710,7 +710,7 @@ function SkillListRow({
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{skill.name}</span>
       </div>
-      <span className="truncate text-[12px] text-muted">
+      <span className="truncate text-[12px] text-muted-foreground">
         {skill.description && `${skill.description} · `}
         {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
@@ -760,7 +760,7 @@ function SkillPinButton({
           ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
           : onCover
             ? "text-foreground/70 hover:text-foreground"
-            : "text-muted/50 hover:text-foreground")
+            : "text-muted-foreground/50 hover:text-foreground")
       }
     >
       <PinIcon className="text-[15px]" />
@@ -812,7 +812,7 @@ function SkillQuickAccess({
 function QuickAccessRow({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </h2>
       <div className="flex flex-wrap gap-2.5">{children}</div>
@@ -848,7 +848,7 @@ function SkillQuickCard({
         <span className="block truncate text-[12.5px] font-medium text-foreground">
           {skill.name}
         </span>
-        <span className="block truncate text-[10.5px] text-muted">
+        <span className="block truncate text-[10.5px] text-muted-foreground">
           {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         </span>
       </span>
@@ -883,7 +883,7 @@ function SkillViewToggle({
               "cursor-pointer rounded px-2 py-[3px] " +
               (active
                 ? "bg-raised font-semibold text-foreground"
-                : "text-muted hover:text-foreground")
+                : "text-muted-foreground hover:text-foreground")
             }
           >
             {opt.label}

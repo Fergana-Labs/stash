@@ -538,7 +538,7 @@ export default function MarkdownEditor({
         </div>
       )}
       {readOnly && !collabError && (
-        <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted">
+        <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted-foreground">
           Read-only live view
         </div>
       )}

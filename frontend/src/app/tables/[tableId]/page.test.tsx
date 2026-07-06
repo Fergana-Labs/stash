@@ -72,7 +72,7 @@ vi.mock("../../../hooks/useAuth", () => ({
   }),
 }));
 
-vi.mock("../../../components/AppShell", () => ({
+vi.mock("@/components/workspace/workspace-shell", () => ({
   default: ({ children }: { children: ReactNode }) => (
     <div data-testid="app-shell">{children}</div>
   ),
@@ -176,7 +176,7 @@ describe("TableEditorPage row creation", () => {
   });
 
   it("loads the table by ID alone and scopes rows to the current user", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     expect(await screen.findByText("Alice")).toBeInTheDocument();
     // The scope is the current user; calls take only the table ID.
@@ -193,7 +193,7 @@ describe("TableEditorPage row creation", () => {
       columns: [{ ...table.columns[0], width: 260 }],
     });
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     const handle = await screen.findByLabelText("Resize Name column");
     await act(async () => {
@@ -211,7 +211,7 @@ describe("TableEditorPage row creation", () => {
   });
 
   it("keeps pagination in sync when appending a newly-created row", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     expect(await screen.findByText("Alice")).toBeInTheDocument();
 
@@ -256,7 +256,7 @@ describe("TableEditorPage row creation", () => {
       can_write: false,
     });
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     expect(await screen.findByText("Alice")).toBeInTheDocument();
     expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
@@ -270,7 +270,7 @@ describe("TableEditorPage row creation", () => {
     };
     api.updateTableRow.mockResolvedValueOnce(editedRow).mockResolvedValueOnce(existingRows[0]);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -305,7 +305,7 @@ describe("TableEditorPage row creation", () => {
     });
     api.updateTableRow.mockReturnValueOnce(updatePromise);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -336,7 +336,7 @@ describe("TableEditorPage row creation", () => {
     });
     api.updateTableRow.mockResolvedValueOnce(editedRow);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     await screen.findByText("Alice");
     api.listTableRows.mockReturnValueOnce(staleReload);
@@ -365,7 +365,7 @@ describe("TableEditorPage row creation", () => {
     };
     api.updateTableRow.mockResolvedValueOnce(editedRow);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -389,7 +389,7 @@ describe("TableEditorPage row creation", () => {
   });
 
   it("leaves native cell input undo alone when there is no table undo history", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -408,7 +408,7 @@ describe("TableEditorPage row creation", () => {
     const prompt = vi.fn();
     vi.stubGlobal("prompt", prompt);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -443,7 +443,7 @@ describe("TableEditorPage row creation", () => {
       has_more: false,
     });
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     const link = await screen.findByRole("link", { name: "Alice" });
     expect(link).toHaveAttribute("href", "https://example.com");
@@ -457,7 +457,7 @@ describe("TableEditorPage row creation", () => {
     };
     api.createTableRow.mockResolvedValue(typedRow);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
     expect(screen.queryByText("\\u2014")).not.toBeInTheDocument();
@@ -483,7 +483,7 @@ describe("TableEditorPage row creation", () => {
     };
     api.createTableRow.mockResolvedValue(typedRow);
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
     fireEvent.click(emptyCell);
@@ -503,7 +503,7 @@ describe("TableEditorPage row creation", () => {
   });
 
   it("does not create a row when an empty tail row is left blank", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
     fireEvent.click(emptyCell);
@@ -569,7 +569,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
   });
 
   it("overwrites cells right and down from the focused cell, dropping extra columns", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -592,7 +592,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
   });
 
   it("fills a single pasted column downward from a non-first anchor column", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Dev"));
     const input = await screen.findByLabelText("Edit row 1 Role");
@@ -615,7 +615,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
     };
     api.createTableRowsBatch.mockResolvedValue({ rows: [appendedRow] });
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Bob"));
     const input = await screen.findByLabelText("Edit row 2 Name");
@@ -641,7 +641,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
       ],
     });
 
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
     fireEvent.click(emptyCell);
@@ -659,7 +659,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
   });
 
   it("undoes a block paste one row at a time with command-z", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");
@@ -678,7 +678,7 @@ describe("TableEditorPage block paste from spreadsheets", () => {
   });
 
   it("leaves single-value pastes to the native cell input", async () => {
-    render(<TableEditorPage />);
+    render(<TableEditorPage tableId="table-1" />);
 
     fireEvent.click(await screen.findByText("Alice"));
     const input = await screen.findByLabelText("Edit row 1 Name");

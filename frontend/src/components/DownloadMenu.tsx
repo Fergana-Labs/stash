@@ -36,7 +36,7 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-border bg-base text-muted hover:bg-raised hover:text-foreground"
+        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-border bg-base text-muted-foreground hover:bg-raised hover:text-foreground"
         aria-label="More actions"
         title="More actions"
       >
@@ -47,7 +47,10 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+        <div className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+          {safe.length > 0 && (
+            <div className="px-3 pb-0.5 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Download as</div>
+          )}
           {safe.map((o) => (
             <button
               key={o.label}
@@ -55,8 +58,11 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
                 setOpen(false);
                 o.onSelect();
               }}
-              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
             >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted-foreground" aria-hidden>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" />
+              </svg>
               {o.label}
             </button>
           ))}

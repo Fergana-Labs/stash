@@ -29,10 +29,11 @@ export async function generateMetadata({
   });
 }
 
-export default function PageRoute() {
+export default async function PageRoute({ params }: PageProps) {
+  const { pageId } = await params;
   return (
     <Suspense fallback={<DocumentPageSkeleton />}>
-      <PageClient />
+      <PageClient pageId={pageId} />
     </Suspense>
   );
 }

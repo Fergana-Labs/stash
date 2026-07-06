@@ -173,7 +173,7 @@ function LoginPageInner() {
         {error && <ErrorLine message={error} />}
         <BrandButton submitting={submitting} label={ctaLabel} />
       </form>
-      <p className="text-[11px] text-muted text-center pt-1">
+      <p className="text-[11px] text-muted-foreground text-center pt-1">
         {mode === "login" ? (
           <>
             New here?{" "}
@@ -197,7 +197,7 @@ function LoginPageInner() {
     return (
       <CliShell user={user} logout={logout} cliSession={cliSession}>
         <FormCard>{formBody}</FormCard>
-        <p className="text-center text-[11px] text-muted leading-relaxed max-w-[340px] mx-auto">
+        <p className="text-center text-[11px] text-muted-foreground leading-relaxed max-w-[340px] mx-auto">
           By authorizing, you grant this terminal session a personal API key on your behalf.
           You can revoke it any time from your account settings.
         </p>
@@ -215,7 +215,7 @@ function LoginPageInner() {
       }
     >
       <FormCard>{formBody}</FormCard>
-      <p className="text-center text-[11px] text-muted">
+      <p className="text-center text-[11px] text-muted-foreground">
         You&apos;re seeing this because you&apos;re running in self-hosted/dev mode.
       </p>
     </AuthShell>
@@ -275,7 +275,7 @@ function AuthorizeCliPanel({
         <p className="text-sm text-foreground">
           Authorize CLI as <span className="font-semibold">{username}</span>?
         </p>
-        <p className="text-[11px] text-muted">
+        <p className="text-[11px] text-muted-foreground">
           A new API key scoped to this terminal will be created. You can revoke it anytime from account settings.
         </p>
         {error && <ErrorLine message={error} />}
@@ -290,7 +290,7 @@ function AuthorizeCliPanel({
         <button
           type="button"
           onClick={onUseDifferentAccount}
-          className="cursor-pointer text-[11px] text-muted hover:text-foreground"
+          className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground"
         >
           Use a different account
         </button>
@@ -347,7 +347,7 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
     return (
       <CliShell user={user} logout={logout} cliSession={cliSession}>
         <FormCard>{body}</FormCard>
-        <p className="text-center text-[11px] text-muted leading-relaxed max-w-[340px] mx-auto">
+        <p className="text-center text-[11px] text-muted-foreground leading-relaxed max-w-[340px] mx-auto">
           By authorizing, you grant this terminal session a personal API key on your behalf.
           You can revoke it any time from your account settings.
         </p>
@@ -449,7 +449,7 @@ function CliShell({
       <main className="flex-1 flex items-center justify-center px-4 py-10 relative">
         <div className="w-full max-w-[420px] space-y-7 animate-in fade-in slide-in-from-bottom-3 duration-500">
           <div className="space-y-3 text-center">
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface/80 backdrop-blur border border-border text-[10px] font-mono uppercase tracking-[0.18em] text-muted">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface/80 backdrop-blur border border-border text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
               <span className="w-1 h-1 rounded-full bg-brand animate-pulse" />
               Secure handshake
             </div>
@@ -494,7 +494,7 @@ function CliSuccess({
               Your terminal is now signed in. You can close this tab and head back.
             </p>
           </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-border text-[11px] font-mono text-muted">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-border text-[11px] font-mono text-muted-foreground">
             <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
             session {shortCode(cliSession)} verified
           </div>
@@ -531,7 +531,7 @@ function FormField({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="block text-[10px] font-mono uppercase tracking-[0.14em] text-muted">
+      <span className="block text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </span>
       <input
@@ -540,7 +540,7 @@ function FormField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoFocus={autoFocus}
-        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
         required
       />
     </label>
@@ -579,7 +579,7 @@ function SessionCodePanel({ code }: { code: string }) {
   return (
     <div className="rounded-xl border border-border bg-background/80 backdrop-blur p-4 flex items-center justify-between gap-3">
       <div className="space-y-1">
-        <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted">CLI session</div>
+        <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground">CLI session</div>
         <div className="font-mono text-base font-semibold text-foreground tracking-wide">{formatCode(code)}</div>
       </div>
       <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-dim shrink-0">

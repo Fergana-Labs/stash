@@ -257,26 +257,26 @@ function SkillPageBody({
               <h1 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
                 {skill.title}
               </h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
                 <span>by {author}</span>
-                <span className="text-muted/60">·</span>
+                <span className="text-muted-foreground/60">·</span>
                 <span>
                   {rows.length} file{rows.length === 1 ? "" : "s"}
                 </span>
                 {skill.updated_at && (
                   <>
-                    <span className="text-muted/60">·</span>
+                    <span className="text-muted-foreground/60">·</span>
                     <span>updated {relativeTime(skill.updated_at)}</span>
                   </>
                 )}
                 {skill.source_github_url && (
                   <>
-                    <span className="text-muted/60">·</span>
+                    <span className="text-muted-foreground/60">·</span>
                     <a
                       href={skill.source_github_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-muted underline-offset-2 hover:text-foreground hover:underline"
+                      className="inline-flex items-center gap-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
                       <GitHubIcon size={13} />
                       GitHub
@@ -292,7 +292,7 @@ function SkillPageBody({
                 href={`/skills/${skill.slug}/settings`}
                 title="Skill settings"
                 aria-label="Skill settings"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-raised hover:text-foreground"
               >
                 <SettingsIcon />
               </Link>
@@ -341,7 +341,7 @@ function SkillPageBody({
             </section>
           ))}
           {rows.length === 0 && !intro && (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
+            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted-foreground">
               Nothing here yet.
             </div>
           )}
@@ -360,7 +360,7 @@ function ContentRowLink({ row }: { row: ContentRow }) {
       <span
         className={
           "flex h-5 w-5 flex-shrink-0 items-center justify-center " +
-          (row.kind === "table" ? "text-emerald-600" : "text-muted")
+          (row.kind === "table" ? "text-emerald-600" : "text-muted-foreground")
         }
       >
         <KindGlyph kind={row.kind} />
@@ -369,9 +369,9 @@ function ContentRowLink({ row }: { row: ContentRow }) {
         <span className="block truncate text-[13.5px] font-medium text-foreground">
           {row.name || "(untitled)"}
         </span>
-        <span className="block truncate text-[11.5px] text-muted">{row.sub}</span>
+        <span className="block truncate text-[11.5px] text-muted-foreground">{row.sub}</span>
       </span>
-      <span className="hidden text-[11.5px] text-muted sm:inline">Open →</span>
+      <span className="hidden text-[11.5px] text-muted-foreground sm:inline">Open →</span>
     </Link>
   );
 }

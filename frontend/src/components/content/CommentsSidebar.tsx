@@ -301,7 +301,7 @@ function Group({
       </button>
       {expanded && (
         <div className="mt-2 flex flex-col gap-2">
-          {hint && <div className="text-[11.5px] text-muted">{hint}</div>}
+          {hint && <div className="text-[11.5px] text-muted-foreground">{hint}</div>}
           {threads.map((t) => (
             <ThreadCard
               key={t.id}
@@ -374,7 +374,7 @@ function ThreadCard({
           : "border-border-subtle bg-raised/40"
       } cursor-pointer`}
     >
-      <div className="mb-1 text-[11.5px] italic text-muted truncate">
+      <div className="mb-1 text-[11.5px] italic text-muted-foreground truncate">
         “{thread.quoted_text}”
       </div>
       <div className="flex flex-col gap-1.5">
@@ -386,8 +386,8 @@ function ThreadCard({
                 <span className="font-medium text-foreground">
                   {own ? "You" : m.author_name || "Someone"}
                 </span>
-                <span className="text-muted">·</span>
-                <span className="text-muted text-[11px]">{relTime(m.created_at)}</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground text-[11px]">{relTime(m.created_at)}</span>
                 {own && (
                   <button
                     type="button"
@@ -396,7 +396,7 @@ function ThreadCard({
                       onDeleteMessage(thread.id, m.id);
                     }}
                     title="Delete comment"
-                    className="ml-auto cursor-pointer px-1 text-[11px] leading-none text-muted opacity-0 transition-opacity hover:text-red-500 group-hover/msg:opacity-100"
+                    className="ml-auto cursor-pointer px-1 text-[11px] leading-none text-muted-foreground opacity-0 transition-opacity hover:text-red-500 group-hover/msg:opacity-100"
                   >
                     ×
                   </button>
@@ -432,7 +432,7 @@ function ThreadCard({
                   e.stopPropagation();
                   onDeleteThread(thread.id);
                 }}
-                className="cursor-pointer text-[11px] text-muted underline hover:text-red-500"
+                className="cursor-pointer text-[11px] text-muted-foreground underline hover:text-red-500"
               >
                 Delete
               </button>
@@ -443,7 +443,7 @@ function ThreadCard({
                 e.stopPropagation();
                 toggleResolved();
               }}
-              className="cursor-pointer rounded-sm border border-border-subtle bg-background px-2 py-0.5 text-[11px] text-muted hover:bg-raised hover:text-foreground"
+              className="cursor-pointer rounded-sm border border-border-subtle bg-background px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-raised hover:text-foreground"
             >
               Resolve
             </button>
@@ -458,7 +458,7 @@ function ThreadCard({
               e.stopPropagation();
               toggleResolved();
             }}
-            className="cursor-pointer text-[11.5px] text-muted underline hover:text-foreground"
+            className="cursor-pointer text-[11.5px] text-muted-foreground underline hover:text-foreground"
           >
             Reopen
           </button>
@@ -469,7 +469,7 @@ function ThreadCard({
                 e.stopPropagation();
                 onDeleteThread(thread.id);
               }}
-              className="cursor-pointer text-[11.5px] text-muted underline hover:text-red-500"
+              className="cursor-pointer text-[11.5px] text-muted-foreground underline hover:text-red-500"
             >
               Delete
             </button>

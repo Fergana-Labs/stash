@@ -155,13 +155,13 @@ export function AddSourceControls({
     return (
       <div className="space-y-2">
         {!connected && (
-          <div className="text-[11.5px] text-muted">Connect Gong first to add it.</div>
+          <div className="text-[11.5px] text-muted-foreground">Connect Gong first to add it.</div>
         )}
         <input
           value={gongscopeIds}
           onChange={(event) => setGongscopeIds(event.target.value)}
           placeholder="Gong workspace IDs"
-          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted"
+          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground"
           disabled={busy || !connected}
         />
         <button
@@ -185,7 +185,7 @@ export function AddSourceControls({
     return (
       <div className="space-y-2">
         {accounts.length === 0 ? (
-          <div className="text-[11.5px] text-muted">Connect Gmail first to add a mailbox.</div>
+          <div className="text-[11.5px] text-muted-foreground">Connect Gmail first to add a mailbox.</div>
         ) : (
           accounts.map((account) => {
             const label = account.account_email || account.account_display_name || account.account_key;
@@ -194,7 +194,7 @@ export function AddSourceControls({
               <div key={account.account_key} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium text-foreground">{label}</div>
-                  <div className="text-[11.5px] text-muted">Mailbox</div>
+                  <div className="text-[11.5px] text-muted-foreground">Mailbox</div>
                 </div>
                 <button
                   type="button"
@@ -226,7 +226,7 @@ export function AddSourceControls({
             }
           />
         ) : (
-          <div className="text-[11.5px] text-muted">Connect Slack first to add it.</div>
+          <div className="text-[11.5px] text-muted-foreground">Connect Slack first to add it.</div>
         )}
         {errorRow}
       </div>
@@ -237,7 +237,7 @@ export function AddSourceControls({
   return (
     <div className="space-y-2">
       {!connected && (
-        <div className="text-[11.5px] text-muted">Connect {connector.label} first to add it.</div>
+        <div className="text-[11.5px] text-muted-foreground">Connect {connector.label} first to add it.</div>
       )}
       <button type="button" onClick={() => void add()} disabled={busy || !connected} className={secondaryButton()}>
         {busy ? "Adding..." : "Add"}
@@ -318,7 +318,7 @@ export function SlackChannelPicker({
               <span className="block truncate text-[12.5px] font-medium text-foreground">
                 {channel.name}
               </span>
-              <span className="block truncate text-[11.5px] text-muted">
+              <span className="block truncate text-[11.5px] text-muted-foreground">
                 {channel.is_private ? "Private" : "Channel"} · {channel.id}
               </span>
             </span>
@@ -326,7 +326,7 @@ export function SlackChannelPicker({
         ))}
       </PickerShell>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <div className="text-[11.5px] text-muted">{selectedIds.length} selected</div>
+        <div className="text-[11.5px] text-muted-foreground">{selectedIds.length} selected</div>
         <button
           type="button"
           disabled={busy || selectedIds.length === 0}
@@ -536,13 +536,13 @@ export function GitHubRepoPicker({
           onClick={() => void onAdd(repo)}
           className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
         >
-          <GitHubIcon className="mt-0.5 text-muted" size={14} />
+          <GitHubIcon className="mt-0.5 text-muted-foreground" size={14} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[12.5px] font-medium text-foreground">
               {repo.full_name}
             </span>
             {repo.description && (
-              <span className="block truncate text-[11.5px] text-muted">{repo.description}</span>
+              <span className="block truncate text-[11.5px] text-muted-foreground">{repo.description}</span>
             )}
           </span>
         </button>
@@ -599,12 +599,12 @@ export function NotionPagePicker({
           onClick={() => void onAdd(page)}
           className="flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
         >
-          <NotionIcon className="mt-0.5 text-muted" size={14} />
+          <NotionIcon className="mt-0.5 text-muted-foreground" size={14} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[12.5px] font-medium text-foreground">
               {page.title || "Untitled"}
             </span>
-            <span className="block truncate text-[11.5px] text-muted">{page.url}</span>
+            <span className="block truncate text-[11.5px] text-muted-foreground">{page.url}</span>
           </span>
         </button>
       ))}
@@ -665,9 +665,9 @@ export function JiraProjectPicker({
           <JiraIcon className="mt-0.5" size={14} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[12.5px] font-medium text-foreground">
-              {project.name} <span className="text-muted">({project.key})</span>
+              {project.name} <span className="text-muted-foreground">({project.key})</span>
             </span>
-            <span className="block truncate text-[11.5px] text-muted">{project.site_name}</span>
+            <span className="block truncate text-[11.5px] text-muted-foreground">{project.site_name}</span>
           </span>
         </button>
       ))}
@@ -728,7 +728,7 @@ export function AsanaProjectPicker({
             <span className="block truncate text-[12.5px] font-medium text-foreground">
               {project.name}
             </span>
-            <span className="block truncate text-[11.5px] text-muted">{project.workspace_name}</span>
+            <span className="block truncate text-[11.5px] text-muted-foreground">{project.workspace_name}</span>
           </span>
         </button>
       ))}
@@ -762,7 +762,7 @@ export function CredentialForm({
     >
       {fields.map((field) => (
         <label key={field.name} className="block">
-          <span className="mb-1 block text-[11.5px] text-muted">
+          <span className="mb-1 block text-[11.5px] text-muted-foreground">
             {field.label}
             {field.optional && <span className="ml-1 text-dim">(optional)</span>}
           </span>
@@ -772,7 +772,7 @@ export function CredentialForm({
             placeholder={field.placeholder}
             autoComplete="off"
             onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))}
-            className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+            className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
           />
           {field.help && <span className="mt-1 block text-[11px] text-dim">{field.help}</span>}
         </label>
@@ -809,16 +809,16 @@ export function PickerShell({
         value={query}
         onChange={(e) => onQuery(e.target.value)}
         placeholder={placeholder}
-        className="mb-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+        className="mb-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
       />
       {error ? (
         <div className="rounded-md bg-error/10 px-2 py-1.5 text-[11.5px] text-error">{error}</div>
       ) : loading ? (
-        <div className="px-2 py-3 text-[12px] text-muted">Loading...</div>
+        <div className="px-2 py-3 text-[12px] text-muted-foreground">Loading...</div>
       ) : hasChildren ? (
         <div className="max-h-48 overflow-y-auto">{children}</div>
       ) : (
-        <div className="px-2 py-3 text-[12px] text-muted">{empty}</div>
+        <div className="px-2 py-3 text-[12px] text-muted-foreground">{empty}</div>
       )}
     </div>
   );

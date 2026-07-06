@@ -29,13 +29,13 @@ export function KindIcon({ kind }: { kind: ItemKind }) {
 }
 
 export function tintFor(item: GridItem): string {
-  if (item.kind === "folder") return "text-muted";
+  if (item.kind === "folder") return "text-muted-foreground";
   if (item.kind === "html") return "text-[#D97706]";
   if (item.kind === "table" || item.kind === "datatable") return "text-emerald-600";
   if (item.contentType?.includes("pdf")) return "text-rose-500";
   if (item.contentType?.startsWith("image/")) return "text-[var(--color-brand-600)]";
   if (item.kind === "page") return "text-[var(--color-brand-600)]";
-  return "text-muted";
+  return "text-muted-foreground";
 }
 
 export function typeFor(item: GridItem): string {

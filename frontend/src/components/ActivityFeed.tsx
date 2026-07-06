@@ -78,7 +78,7 @@ export default function ActivityFeed({ events }: { events: ActivityEvent[] }) {
             </span>
             <div className="min-w-0 flex-1 text-[13px]">
               <span className="font-medium text-foreground">{name}</span>{" "}
-              <span className="text-muted">{VERB[event.kind] || event.kind}</span>
+              <span className="text-muted-foreground">{VERB[event.kind] || event.kind}</span>
               {event.target_label && href && (
                 <>
                   {" "}
@@ -87,7 +87,7 @@ export default function ActivityFeed({ events }: { events: ActivityEvent[] }) {
                     className="font-medium text-foreground hover:text-[var(--color-brand-700)]"
                   >
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-flex text-[15px] text-muted">
+                      <span className="inline-flex text-[15px] text-muted-foreground">
                         <EventIcon kind={event.kind} />
                       </span>
                       {event.target_label}
@@ -98,7 +98,7 @@ export default function ActivityFeed({ events }: { events: ActivityEvent[] }) {
               {event.target_label && !href && (
                 <> <span className="text-foreground">{event.target_label}</span></>
               )}
-              <div className="mt-0.5 text-[11px] text-muted">{relative(event.ts)}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">{relative(event.ts)}</div>
             </div>
           </div>
         );

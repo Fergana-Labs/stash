@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import AppShell from "../../components/AppShell";
+import WorkspaceShell from "@/components/workspace/workspace-shell";
 import {
   ActivitySkeleton,
   BasicPageSkeleton,
@@ -164,20 +164,20 @@ export default function ActivityPage() {
   if (!user) return null;
   if (fetching) {
     return (
-      <AppShell user={user} onLogout={logout}>
+      <WorkspaceShell user={user} onLogout={logout}>
         <ActivitySkeleton />
-      </AppShell>
+      </WorkspaceShell>
     );
   }
 
   return (
-    <AppShell user={user} onLogout={logout}>
+    <WorkspaceShell user={user} onLogout={logout}>
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
         {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
           Your brain
         </h1>
-        <p className="mt-1 text-[13.5px] text-muted">
+        <p className="mt-1 text-[13.5px] text-muted-foreground">
           {`${knowledgePoints.toLocaleString()} things learned across your own and shared knowledge · ${recent24h} new in the last 24 hours.`}
         </p>
 
@@ -189,7 +189,7 @@ export default function ActivityPage() {
           ) : projection && projection.points.length > 0 ? (
             <EmbeddingSpaceExplorer data={projection} />
           ) : (
-            <div className="px-2 py-12 text-center text-[12.5px] text-muted">
+            <div className="px-2 py-12 text-center text-[12.5px] text-muted-foreground">
               No embeddings indexed yet. Pages, table rows, and session events get
               embedded as they&apos;re added.
             </div>
@@ -212,7 +212,7 @@ export default function ActivityPage() {
           ) : timeline && timeline.contributors.length > 0 ? (
             <ContributorActivityTimeline data={timeline} />
           ) : (
-            <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+            <div className="px-2 py-6 text-center text-[12.5px] text-muted-foreground">
               No agent session commits yet. Push a transcript to populate this view.
             </div>
           )}
@@ -225,7 +225,7 @@ export default function ActivityPage() {
 
         <div className="mt-3.5 flex flex-col gap-2.5">
           {events.length === 0 ? (
-            <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted">
+            <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
               Nothing learned yet. Push a transcript, edit a page, or upload a
               file.
             </div>
@@ -238,14 +238,14 @@ export default function ActivityPage() {
             ))
           )}
           {loadingMore && (
-            <div className="py-2 text-center text-[12.5px] text-muted">
+            <div className="py-2 text-center text-[12.5px] text-muted-foreground">
               Loading more…
             </div>
           )}
           {hasMore && <div ref={sentinelRef} />}
         </div>
       </div>
-    </AppShell>
+    </WorkspaceShell>
   );
 }
 
@@ -290,7 +290,7 @@ function VitalCard({
         {value}
       </div>
       <div className="sys-label mt-0.5">{label}</div>
-      {hint && <div className="mt-0.5 text-[10.5px] text-muted">{hint}</div>}
+      {hint && <div className="mt-0.5 text-[10.5px] text-muted-foreground">{hint}</div>}
     </div>
   );
 }
@@ -322,12 +322,12 @@ function FeedCard({ event }: { event: ActivityEvent }) {
           {tag && <span className={`tag tag-${tag.kind}`}>{tag.label}</span>}
         </div>
         <h3 className="my-1.5 font-display text-[17px] font-bold leading-tight tracking-[-0.01em]">
-          <span className="mr-1.5 inline-flex align-middle text-muted">
+          <span className="mr-1.5 inline-flex align-middle text-muted-foreground">
             <EventGlyph kind={event.kind} />
           </span>
           {event.target_label || event.target_id}
         </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[11.5px] text-muted">
+        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[11.5px] text-muted-foreground">
           <span className="flex-1" />
           {href && (
             <Link
@@ -377,13 +377,13 @@ function EventGlyph({ kind }: { kind: string }) {
     );
   if (kind === "page.updated")
     return (
-      <span className="text-muted">
+      <span className="text-muted-foreground">
         <PageIcon />
       </span>
     );
   if (kind === "file.uploaded")
     return (
-      <span className="text-muted">
+      <span className="text-muted-foreground">
         <FileIcon />
       </span>
     );

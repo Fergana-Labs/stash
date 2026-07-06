@@ -4,6 +4,10 @@ Sync stores recent message metadata only. Search runs Gmail's native query live,
 upserts returned metadata so the result can be opened, and lazy reads fetch the
 full message body with the owner's token. Stash never copies message bodies
 during scheduled sync.
+
+Messages are keyed by a date-foldered path — "YYYY/MM/DD HHMM subject (id)" —
+so the mailbox lists chronologically instead of as a flat pile of opaque ids
+(path order is the VFS listing order).
 """
 
 from __future__ import annotations
@@ -71,6 +75,26 @@ def _message_time(message: dict) -> datetime | None:
         return None
 
 
+def _path_segment(text: str, max_len: int = 60) -> str:
+    """A string safe to embed in an index path: no slashes (they'd read as
+    folders), whitespace collapsed, capped so paths stay listable."""
+    cleaned = " ".join(text.replace("/", "-").split())
+    return cleaned[:max_len].strip()
+
+
+def _message_path(message: dict) -> str | None:
+    """Index path for a message: "YYYY/MM/DD HHMM subject (id)". Year/month
+    folders group the mailbox by date and the day+time leaf prefix keeps each
+    month chronological; the id suffix guarantees uniqueness. None when Gmail
+    returned no id or timestamp — such a payload isn't a real message."""
+    message_id = message.get("id")
+    sent_at = _message_time(message)
+    if not message_id or sent_at is None:
+        return None
+    subject = _path_segment(_message_headers(message).get("subject") or "(no subject)")
+    return f"{sent_at:%Y/%m/%d %H%M} {subject} ({message_id})"
+
+
 async def _list_message_refs(
     client: httpx.AsyncClient,
     query: str,
@@ -102,20 +126,21 @@ async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> d
 
 
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
-    message_id = message.get("id")
-    if not message_id:
+    """Upsert one message's metadata; returns its index path (the VFS ref)."""
+    path = _message_path(message)
+    if path is None:
         return None
     await source_service.upsert_index_row(
         table="gmail_index",
         source_id=UUID(source["id"]),
         owner_user_id=UUID(source["owner_user_id"]),
-        path=message_id,
+        path=path,
         name=_message_name(message),
         kind="message",
-        external_ref=message_id,
+        external_ref=message["id"],
         external_updated_at=_message_time(message),
     )
-    return message_id
+    return path
 
 
 async def index_gmail(source: dict) -> str | None:
@@ -130,9 +155,9 @@ async def index_gmail(source: dict) -> str | None:
             *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
         )
         for message in messages:
-            message_id = await _upsert_message_metadata(source, message)
-            if message_id:
-                present.append(message_id)
+            path = await _upsert_message_metadata(source, message)
+            if path:
+                present.append(path)
 
     await source_service.remove_missing_documents("gmail_index", source_id, present)
     logger.info("gmail source %s: indexed %d message(s)", source_id, len(present))
@@ -157,12 +182,12 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
 
     hits: list[dict] = []
     for message in messages:
-        message_id = await _upsert_message_metadata(source, message)
-        if not message_id:
+        path = await _upsert_message_metadata(source, message)
+        if not path:
             continue
         hits.append(
             {
-                "ref": message_id,
+                "ref": path,
                 "name": _message_name(message),
                 "snippet": message.get("snippet") or "",
             }

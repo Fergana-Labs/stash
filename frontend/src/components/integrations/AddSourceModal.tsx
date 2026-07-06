@@ -31,7 +31,7 @@ export default function AddSourceModal({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="font-display text-[18px] font-bold text-foreground">Connect a source</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted">
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
               Connect an account; add specific projects from its page.
             </p>
           </div>
@@ -39,7 +39,7 @@ export default function AddSourceModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="cursor-pointer rounded-md px-2 py-1 text-[18px] leading-none text-muted hover:bg-raised hover:text-foreground"
+            className="cursor-pointer rounded-md px-2 py-1 text-[18px] leading-none text-muted-foreground hover:bg-raised hover:text-foreground"
           >
             ×
           </button>

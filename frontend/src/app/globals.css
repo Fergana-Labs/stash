@@ -1,19 +1,57 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+
+/* shadcn/ui components emit `dark:` utilities. moltchat toggles dark mode with a
+   `[data-theme="dark"]` attribute (not next-themes' `.dark` class), so point the
+   dark variant at that attribute — single source of truth for dark mode. */
+@custom-variant dark (&:is([data-theme="dark"] *));
 
 /* === Design System Tokens (DESIGN.md) === */
 
 :root {
   /* Notion-tan palette (matches skill-share-mockup) */
   --bg-base: #FFFFFF;
-  --bg-surface: #F7F7F5;
-  --bg-raised: #EFEFEE;
-  --border-color: #ECECEA;
-  --border-subtle-color: #F1F1EE;
-  --text-primary: #37352F;
-  --text-dim: #5C5A53;
-  --text-muted: #9B9A97;
-  --divider-color: #DBDAD6;
+  --bg-surface: #F6F5F2;
+  --bg-raised: #ECEAE4;
+  --border-color: #E9E7E1;
+  --border-subtle-color: #F0EEE9;
+  --text-primary: #322F29;
+  --text-dim: #5A574F;
+  --text-muted: #97948D;
+  --divider-color: #DDDBD4;
+
+  /* shadcn/ui semantic vars, sourced from the moltchat tokens above so the two
+     systems share one palette. Brand stays orange (no indigo). `--muted` follows
+     shadcn semantics: a subtle SURFACE (not gray text); gray text is
+     `--muted-foreground`. See the muted migration note in @theme inline. */
+  --radius: 0.625rem;
+  --primary: var(--color-brand-500);
+  --primary-foreground: #ffffff;
+  --card: var(--bg-base);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-base);
+  --popover-foreground: var(--text-primary);
+  --secondary: var(--bg-raised);
+  --secondary-foreground: var(--text-primary);
+  --accent: var(--bg-raised);
+  --accent-foreground: var(--text-primary);
+  --muted: var(--bg-raised);
+  --muted-foreground: var(--text-muted);
+  --input: var(--border-color);
+  --ring: var(--color-brand-400);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  /* Layering: rail (deepest) → explorer/sidebar (mid) → content (white). */
+  --rail: #E5E1D8;
+  --sidebar: #ECE9E2;
+  --sidebar-foreground: var(--text-dim);
+  --sidebar-primary: var(--color-brand-500);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--bg-raised);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-color);
+  --sidebar-ring: var(--color-brand-400);
 }
 
 [data-theme="dark"] {
@@ -26,6 +64,9 @@
   --text-dim: #94A3B8;
   --text-muted: #64748B;
   --divider-color: #4C5C73;
+  /* Chrome layering in dark mode: rail (deepest) → sidebar → content. */
+  --rail: #141C2A;
+  --sidebar: #1B2536;
 }
 
 @theme inline {
@@ -38,11 +79,53 @@
 
   /* Semantic text colors */
   --color-dim: var(--text-dim);
-  --color-muted: var(--text-muted);
+  /* `--color-muted` follows shadcn semantics now: a subtle SURFACE (`bg-muted`),
+     not gray text. Gray text moved to `--color-muted-foreground` — the
+     `text-muted` → `text-muted-foreground` rename across the app is the migration
+     that makes this one variable have one meaning. */
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
 
   /* Semantic border colors */
   --color-border: var(--border-color);
   --color-border-subtle: var(--border-subtle-color);
+
+  /* shadcn/ui semantic color + radius scale, so `bg-card`, `bg-popover`,
+     `bg-primary`, `bg-secondary`, `bg-accent`, `ring`, `bg-sidebar*`, and
+     `rounded-*` resolve. All source from the vars defined in :root above. */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-rail: var(--rail);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--color-brand-500);
+  --color-chart-2: var(--color-human);
+  --color-chart-3: var(--color-success);
+  --color-chart-4: var(--color-brand-400);
+  --color-chart-5: var(--color-warning);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
   /* Brand (orange — DESIGN.md: #F97316 primary) */
   --color-brand-50: #FFF7ED;

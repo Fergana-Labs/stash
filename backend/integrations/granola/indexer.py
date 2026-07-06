@@ -3,8 +3,10 @@
 Opens an MCP session to Granola (bearer token, refreshed on demand) and pulls
 meetings with `list_meetings`, then each meeting's transcript with
 `get_meeting_transcript`. Each meeting's rendered markdown lands in granola_notes
-(FTS + embeddings), keyed by meeting id. Idempotent re-sync is handled upstream
-(content-hash dedupe + soft-delete of vanished meetings).
+(FTS + embeddings), filed under a month/day path ("2026-07/06 Standup (id8)") so
+the notes list chronologically instead of by opaque meeting id. Idempotent
+re-sync is handled upstream (content-hash dedupe + soft-delete of vanished
+meetings).
 
 Note: the exact JSON field names returned by Granola's MCP tools are only
 visible from an authenticated `tools/list`, so the small parse helpers below
@@ -108,16 +110,33 @@ def _extract_transcript(td) -> str | list:
 
 
 def _meeting_time(meeting: dict) -> datetime | None:
-    """The meeting's timestamp, if its date field parses as ISO-8601. Granola's
-    MCP tool returns free-form text, so an unparseable date yields None (the
-    document shows no timestamp) rather than failing the sync."""
+    """The meeting's timestamp. Granola's MCP tool returns dates in two shapes —
+    ISO-8601 and the list blob's "Jun 5, 2026" — so both parse; anything else
+    yields None (the document shows no timestamp) rather than failing the sync."""
     when = meeting.get("date") or meeting.get("created_at") or meeting.get("start_time")
     if not when or not isinstance(when, str):
         return None
     try:
         return datetime.fromisoformat(when.replace("Z", "+00:00"))
     except ValueError:
+        pass
+    try:
+        return datetime.strptime(when, "%b %d, %Y")
+    except ValueError:
         return None
+
+
+def _meeting_path(meeting: dict, meeting_id: str) -> str:
+    """Index path for a meeting: "YYYY-MM/DD title (id8)". Month folders group
+    the calendar and the day prefix keeps each month chronological (path order
+    is the VFS listing order); the id suffix disambiguates same-titled meetings.
+    A meeting whose date didn't parse files under "undated/"."""
+    title = " ".join((meeting.get("title") or "Untitled meeting").replace("/", "-").split())[:60]
+    leaf = f"{title.strip()} ({meeting_id[:8]})"
+    when = _meeting_time(meeting)
+    if when is None:
+        return f"undated/{leaf}"
+    return f"{when:%Y-%m}/{when:%d} {leaf}"
 
 
 def _render_meeting(meeting: dict, transcript) -> str:
@@ -173,11 +192,14 @@ async def index_granola(source: dict) -> str | None:
     # transcript fetches hard — so only fetch for meetings whose stored doc
     # doesn't already carry one. Meetings that get rate-limited land with just
     # title + participants and pick up their transcript on a later sync.
+    # Keyed by meeting id, not path: a title or date change moves the path,
+    # and the stored transcript must move with it instead of being refetched.
     rows = await get_pool().fetch(
-        "SELECT path FROM granola_notes WHERE source_id = $1 AND content LIKE '%## Transcript%'",
+        "SELECT external_ref, path, content FROM granola_notes "
+        "WHERE source_id = $1 AND content LIKE '%## Transcript%'",
         source_id,
     )
-    have_transcript = {r["path"] for r in rows}
+    stored_with_transcript = {r["external_ref"]: r for r in rows}
 
     async with granola_session(access_token) as session:
         tools = (await session.list_tools()).tools
@@ -212,8 +234,24 @@ async def index_granola(source: dict) -> str | None:
             meeting_id = _meeting_id(meeting)
             if not meeting_id:
                 continue
-            if meeting_id in have_transcript:
-                present.append(meeting_id)
+            path = _meeting_path(meeting, meeting_id)
+            existing = stored_with_transcript.get(meeting_id)
+            if existing is not None:
+                if existing["path"] != path:
+                    # The path moved (title/date change or path-scheme change):
+                    # re-file the stored document instead of refetching it.
+                    await source_service.upsert_content_document(
+                        table="granola_notes",
+                        source_id=source_id,
+                        owner_user_id=owner_user_id,
+                        path=path,
+                        name=meeting.get("title") or "Untitled meeting",
+                        kind="note",
+                        content=existing["content"],
+                        external_ref=meeting_id,
+                        external_updated_at=_meeting_time(meeting),
+                    )
+                present.append(path)
                 continue
             transcript = ""
             if transcript_tool:
@@ -230,14 +268,14 @@ async def index_granola(source: dict) -> str | None:
                 table="granola_notes",
                 source_id=source_id,
                 owner_user_id=owner_user_id,
-                path=meeting_id,
+                path=path,
                 name=meeting.get("title") or "Untitled meeting",
                 kind="note",
                 content=_render_meeting(meeting, transcript),
                 external_ref=meeting_id,
                 external_updated_at=_meeting_time(meeting),
             )
-            present.append(meeting_id)
+            present.append(path)
 
     await source_service.remove_missing_documents("granola_notes", source_id, present)
     logger.info("granola source %s: indexed %d meeting(s)", source_id, len(present))

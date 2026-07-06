@@ -1,5 +1,7 @@
 // Client for the multi-turn agent chat (/agent-chat). Owns the SSE parsing and
-// the citation labelling so the ChatPanel stays a thin view.
+// the citation labelling so the ChatPanel stays a thin view. The agent runs as
+// Claude Code on the user's cloud computer, so tool names are the harness's
+// (Read, Grep, Bash, …) rather than bespoke API tools.
 
 import { API_BASE, apiFetch, getAuthToken } from "@/lib/api";
 
@@ -7,40 +9,42 @@ export type Citation = { id: string; tool: string; label: string };
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string; citations?: Citation[] };
 
-// Tools whose calls are worth showing in the "Grounded on" strip.
-export const READ_TOOLS = new Set([
-  "read_page",
-  "grep_pages",
-  "read_file",
-  "search_history",
-  "search",
-  "read_source",
-  "list_source",
-]);
-
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+function basename(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
 }
 
-export function describeToolCall(
+function host(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.slice(0, 40);
+  }
+}
+
+// The "Grounded on" strip shows the reads that grounded the answer: file and
+// Stash reads, searches, and web lookups. Plain shell commands and file
+// edits are work, not grounding — they stay out of the strip.
+export function citationFor(
   name: string,
   args: Record<string, unknown> | undefined,
-): string {
-  if (!args) return name;
-  if (name === "read_page" && typeof args.page_id === "string") return `page ${shortId(args.page_id)}`;
-  if (name === "read_file" && typeof args.file_id === "string") return `file ${shortId(args.file_id)}`;
-  if (
-    (name === "grep_pages" || name === "search_history" || name === "search") &&
-    typeof args.query === "string"
-  ) {
-    return `search "${args.query.slice(0, 40)}"`;
+): string | null {
+  const a = args ?? {};
+  if (name === "Read" && typeof a.file_path === "string") return basename(a.file_path);
+  if ((name === "Grep" || name === "Glob") && typeof a.pattern === "string") {
+    return `search "${a.pattern.slice(0, 40)}"`;
   }
-  if (name === "read_source" && typeof args.ref === "string") return `read ${args.ref.slice(0, 48)}`;
-  if (name === "list_source" && typeof args.source === "string") {
-    const path = typeof args.path === "string" && args.path ? `/${args.path}` : "";
-    return `browse ${args.source}${path}`;
+  if (name === "WebSearch" && typeof a.query === "string") {
+    return `web "${a.query.slice(0, 40)}"`;
   }
-  return name;
+  if (name === "WebFetch" && typeof a.url === "string") return host(a.url);
+  if (name === "Task" && typeof a.description === "string") {
+    return `agent: ${a.description.slice(0, 40)}`;
+  }
+  if (name === "Bash" && typeof a.command === "string" && a.command.startsWith("stash ")) {
+    return a.command.slice(0, 48);
+  }
+  return null;
 }
 
 export async function getAgentChat(sessionId: string): Promise<ChatMessage[]> {
@@ -52,30 +56,25 @@ export async function getAgentChat(sessionId: string): Promise<ChatMessage[]> {
 
 type StreamHandlers = {
   onSession?: (sessionId: string) => void;
+  onStatus?: (stage: string) => void;
   onText?: (delta: string) => void;
   onTool?: (citation: Citation) => void;
   onToolError?: (id: string) => void;
+  onError?: (message: string) => void;
 };
 
-// POST a message and dispatch streamed events. Resolves when the stream ends.
-export async function streamAgentChat(
-  opts: {
-    sessionId: string | null;
-    message: string;
-    signal?: AbortSignal;
-  } & StreamHandlers,
-): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ message: opts.message, session_id: opts.sessionId }),
-    signal: opts.signal,
-  });
-  if (!res.ok || !res.body) throw new Error(`Chat failed: ${res.status}`);
+// Read an SSE agent stream and dispatch its events. Shared by chat turns and
+// on-demand scheduled runs — both speak the same {session,status,text,tool,
+// tool_result,error} contract.
+async function consumeAgentStream(res: Response, handlers: StreamHandlers): Promise<void> {
+  if (!res.ok || !res.body) {
+    // Surface the server's own message (e.g. the Pro-upgrade prompt on 402).
+    const detail = await res
+      .json()
+      .then((b) => b?.detail as string | undefined)
+      .catch(() => undefined);
+    throw new Error(detail || `Agent run failed: ${res.status}`);
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -98,19 +97,68 @@ export async function streamAgentChat(
         continue; // partial frame — resume next read
       }
       if (evt.type === "session" && typeof evt.session_id === "string") {
-        opts.onSession?.(evt.session_id);
+        handlers.onSession?.(evt.session_id);
+      } else if (evt.type === "status" && typeof evt.stage === "string") {
+        handlers.onStatus?.(evt.stage);
       } else if (evt.type === "text" && typeof evt.delta === "string") {
-        opts.onText?.(evt.delta);
-      } else if (evt.type === "tool" && READ_TOOLS.has(evt.name as string)) {
-        const id = String(evt.id ?? describeToolCall(evt.name as string, evt.args as Record<string, unknown>));
-        opts.onTool?.({
-          id,
-          tool: evt.name as string,
-          label: describeToolCall(evt.name as string, evt.args as Record<string, unknown>),
-        });
+        handlers.onText?.(evt.delta);
+      } else if (evt.type === "tool") {
+        const label = citationFor(
+          evt.name as string,
+          evt.args as Record<string, unknown> | undefined,
+        );
+        if (label) {
+          handlers.onTool?.({ id: String(evt.id ?? label), tool: evt.name as string, label });
+        }
       } else if (evt.type === "tool_result" && evt.ok === false) {
-        opts.onToolError?.(String(evt.id));
+        handlers.onToolError?.(String(evt.id));
+      } else if (evt.type === "error" && typeof evt.message === "string") {
+        handlers.onError?.(evt.message);
       }
     }
   }
+}
+
+// POST a message and dispatch streamed events. Resolves when the stream ends.
+export async function streamAgentChat(
+  opts: {
+    sessionId: string | null;
+    message: string;
+    agentId?: string | null;
+    signal?: AbortSignal;
+  } & StreamHandlers,
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      message: opts.message,
+      session_id: opts.sessionId,
+      agent_id: opts.agentId ?? null,
+    }),
+    signal: opts.signal,
+  });
+  await consumeAgentStream(res, opts);
+}
+
+// Trigger a scheduled agent (e.g. the Memory curator) on demand and stream the
+// run live. The server builds the prompt, so no message is sent.
+export async function streamAgentRun(
+  opts: { agentId: string; signal?: AbortSignal } & StreamHandlers,
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}/api/v1/me/agent-chat/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ agent_id: opts.agentId }),
+    signal: opts.signal,
+  });
+  await consumeAgentStream(res, opts);
 }

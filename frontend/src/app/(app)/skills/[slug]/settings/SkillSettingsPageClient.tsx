@@ -82,7 +82,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
 
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted">
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
         Loading...
       </div>
     );
@@ -90,7 +90,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-muted">
+      <div className="flex min-h-[50vh] items-center justify-center text-muted-foreground">
         Loading settings...
       </div>
     );
@@ -102,7 +102,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
         <h1 className="font-display text-[26px] font-bold text-foreground">
           Skill settings
         </h1>
-        <p className="mt-2 text-[13px] text-muted">
+        <p className="mt-2 text-[13px] text-muted-foreground">
           {error || "This skill is unavailable."}
         </p>
         <Link
@@ -121,7 +121,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
         <h1 className="font-display text-[26px] font-bold text-foreground">
           Skill settings
         </h1>
-        <p className="mt-2 text-[13px] text-muted">
+        <p className="mt-2 text-[13px] text-muted-foreground">
           You do not have edit access to this skill.
         </p>
         <Link
@@ -240,7 +240,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
               <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
                 Settings
               </h1>
-              <p className="mt-1 truncate text-[13px] text-muted">{skill.title}</p>
+              <p className="mt-1 truncate text-[13px] text-muted-foreground">{skill.title}</p>
             </div>
             <Link
               href={`/skills/${skill.slug}`}
@@ -266,7 +266,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
               onSubmit={saveGeneral}
               className="rounded-lg border border-border bg-base px-3 py-3"
             >
-              <label className="block text-[12px] font-medium text-muted" htmlFor="skill-title">
+              <label className="block text-[12px] font-medium text-muted-foreground" htmlFor="skill-title">
                 Title
               </label>
               <input
@@ -291,11 +291,11 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
           <Section title="Sharing">
             <div className="rounded-lg border border-border bg-base px-3 py-3 text-[13px] text-foreground">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted">URL</span>
+                <span className="text-muted-foreground">URL</span>
                 <span className="truncate font-mono text-[12px]">/skills/{skill.slug}</span>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-muted">Views</span>
+                <span className="text-muted-foreground">Views</span>
                 <span>{skill.view_count}</span>
               </div>
               <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
@@ -347,7 +347,7 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-8">
-      <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted">
+      <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
         {title}
       </h2>
       <div className="mt-3 flex flex-col gap-2">{children}</div>
@@ -383,7 +383,7 @@ function ImageField({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[13.5px] font-medium text-foreground">{label}</div>
-          <div className="text-[11.5px] text-muted">{sub}</div>
+          <div className="text-[11.5px] text-muted-foreground">{sub}</div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           <label
@@ -403,7 +403,7 @@ function ImageField({
             <button
               type="button"
               onClick={() => void onClear()}
-              className="cursor-pointer text-[11.5px] text-muted hover:text-foreground"
+              className="cursor-pointer text-[11.5px] text-muted-foreground hover:text-foreground"
             >
               Clear
             </button>

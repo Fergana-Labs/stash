@@ -189,7 +189,7 @@ export default function SkillShareButton({
         Public link
       </button>
       {(handoffMessage || (message && !open)) && (
-        <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
+        <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted-foreground shadow-lg">
           {handoffMessage || message}
         </div>
       )}
@@ -241,16 +241,16 @@ export default function SkillShareButton({
             <span className="text-[12px] text-foreground">List on Discover</span>
           </label>
           {!isPublic && (
-            <p className="mt-1.5 text-[11.5px] text-muted">
+            <p className="mt-1.5 text-[11.5px] text-muted-foreground">
               Make the skill public to list it on Discover.
             </p>
           )}
 
-          <div className="mt-3 text-[11.5px] text-muted">
+          <div className="mt-3 text-[11.5px] text-muted-foreground">
             {skill.view_count} view{skill.view_count === 1 ? "" : "s"}
           </div>
 
-          {message && <div className="mt-2 text-[12px] text-muted">{message}</div>}
+          {message && <div className="mt-2 text-[12px] text-muted-foreground">{message}</div>}
         </div>
       )}
     </div>

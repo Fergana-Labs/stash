@@ -27,6 +27,7 @@ export async function generateMetadata({
   });
 }
 
-export default function FileRoute() {
-  return <FileClient />;
+export default async function FileRoute({ params }: PageProps) {
+  const { fileId } = await params;
+  return <FileClient fileId={fileId} />;
 }

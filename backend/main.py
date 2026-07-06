@@ -17,7 +17,9 @@ from .middleware import limiter
 from .routers import (
     admin,
     agent_chat,
+    agent_credentials,
     agent_docs,
+    agents,
     aggregate,
     analytics,
     batch,
@@ -28,6 +30,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    machine,
     marketing,
     memory,
     pastes,
@@ -41,6 +44,7 @@ from .routers import (
     sources,
     tables,
     tasks,
+    telegram,
     transcripts,
     trash,
     user_knowledge,
@@ -135,6 +139,10 @@ app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(agent_chat.router)
+app.include_router(agent_credentials.router)
+app.include_router(agents.router)
+app.include_router(machine.router)
+app.include_router(telegram.router)
 app.include_router(session_folders.me_router)
 app.include_router(session_folders.public_router)
 app.include_router(shares.router)

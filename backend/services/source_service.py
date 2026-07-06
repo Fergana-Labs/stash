@@ -1451,8 +1451,9 @@ def build_entry_tree(entries: list[dict], depth: int, per_dir: int) -> list[dict
             if is_entry:
                 node["kind"] = entry["kind"]
                 node["path"] = entry["path"]
-                # Display the document's name, not the raw path segment —
-                # Gmail paths are opaque message ids; the name is the subject.
+                # Display the document's name, not the raw path segment — path
+                # leaves carry sort keys and id suffixes (Gmail's "06 1430 …"),
+                # while the name is the human label (the subject).
                 node["name"] = entry["name"] or part
             children = node["children"]
     return _finalize_tree(root, per_dir)
@@ -1690,12 +1691,14 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
     if source_type == "github_repo":
         return source_document_url("github_repo", source["external_ref"], doc["path"])
     if source_type == "asana_project":
-        return source_document_url("asana_project", None, doc["path"])
+        # The task gid lives in external_ref; the path is "Section/Name (gid)".
+        return source_document_url("asana_project", None, doc_ref)
     if source_type in ("notion", "google_drive"):
         # The page/file id lives on the document row, not the source row.
         return source_document_url(source_type, None, doc_ref or doc["path"])
     if source_type == "gmail":
-        return source_document_url(source_type, source["external_ref"], doc_ref or doc["path"])
+        # The message id lives in external_ref; the path is date-foldered.
+        return source_document_url(source_type, source["external_ref"], doc_ref)
     if source_type == "jira_project":
         from ..integrations.jira.indexer import site_url
 
@@ -1710,7 +1713,10 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
             return None
         if not base:
             return None
-        return f"{base}/browse/{doc['path']}"
+        # The real issue key lives in external_ref ("{cloudId}:{key}"); the path
+        # is the zero-padded listing key, which Jira wouldn't resolve.
+        _, _, key = (doc_ref or "").partition(":")
+        return f"{base}/browse/{key}"
     return source_document_url(source_type, source.get("external_ref"), doc["path"])
 
 

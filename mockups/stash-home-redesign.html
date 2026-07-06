@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash · Your brain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-base:#FFFFFF; --bg-surface:#F7F7F5; --bg-raised:#EFEFEE;
+    --border:#ECECEA; --border-subtle:#F1F1EE; --divider:#DBDAD6;
+    --text:#37352F; --dim:#5C5A53; --muted:#9B9A97;
+    --brand-50:#FFF7ED; --brand-100:#FFEDD5; --brand-500:#F97316; --brand-600:#EA580C; --brand-700:#C2410C;
+    --green-bg:#ECFDF3; --green-fg:#067647; --green-bd:#ABEFC6;
+    --blue-bg:#EFF6FF; --blue-fg:#1D4ED8; --blue-bd:#BFDBFE;
+    --violet-bg:#F5F3FF; --violet-fg:#6D28D9; --violet-bd:#DDD6FE;
+    --font-sans:"Instrument Sans",system-ui,sans-serif;
+    --font-display:"Space Grotesk","Instrument Sans",sans-serif;
+    --font-mono:"JetBrains Mono",monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:var(--font-sans);color:var(--text);background:var(--bg-base);-webkit-font-smoothing:antialiased;}
+  .app{display:grid;grid-template-columns:56px 248px minmax(0,1fr);height:100vh;}
+  svg{display:block;}
+
+  /* ---------- icon rail ---------- */
+  .rail{border-right:1px solid var(--border);background:var(--bg-base);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:4px;}
+  .rail .logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;margin-bottom:16px;
+    background:linear-gradient(135deg,var(--brand-500),var(--brand-700));box-shadow:0 4px 10px -3px rgba(234,88,12,.5);}
+  .rail .logo svg{width:17px;height:17px;color:#fff;}
+  .rail button{width:34px;height:34px;border:0;background:transparent;border-radius:8px;color:var(--muted);display:grid;place-items:center;cursor:pointer;position:relative;}
+  .rail button:hover{background:var(--bg-raised);color:var(--dim);}
+  .rail button.active{background:var(--brand-50);color:var(--brand-600);}
+  .rail button.active::before{content:"";position:absolute;left:-14px;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--brand-600);}
+  .rail button svg{width:19px;height:19px;}
+  .rail .spacer{flex:1;}
+  .rail .me{width:28px;height:28px;border-radius:50%;background:#0F172A;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:600;font-family:var(--font-display);margin-top:6px;}
+
+  /* ---------- sidebar ---------- */
+  .side{border-right:1px solid var(--border);background:var(--bg-surface);display:flex;flex-direction:column;min-width:0;}
+  .ws{display:flex;align-items:center;gap:9px;padding:13px 14px;cursor:pointer;}
+  .ws .ico{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#34D399,#0EA5E9);display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;font-family:var(--font-display);}
+  .ws .nm{font-family:var(--font-display);font-weight:600;font-size:14px;}
+  .ws .ch{margin-left:auto;color:var(--muted);}
+  .side .scroll{flex:1;overflow:auto;padding:4px 8px 14px;}
+  .grp{margin-top:14px;}
+  .grp .hd{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:4px 8px;display:flex;align-items:center;}
+  .grp .hd .ch{margin-left:auto;}
+  .nav{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;color:var(--dim);font-size:13.5px;cursor:pointer;}
+  .nav:hover{background:var(--bg-raised);}
+  .nav.on{background:var(--brand-50);color:var(--brand-700);font-weight:600;}
+  .nav .i{color:var(--muted);display:grid;place-items:center;}
+  .nav.on .i{color:var(--brand-600);}
+  .nav .i svg{width:16px;height:16px;}
+  .nav .ct{margin-left:auto;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .nav .dot{margin-left:auto;width:7px;height:7px;border-radius:50%;}
+  .src{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:7px;color:var(--dim);font-size:13px;cursor:pointer;}
+  .src:hover{background:var(--bg-raised);}
+  .src .av{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700;}
+  .src .dot{margin-left:auto;width:7px;height:7px;border-radius:50%;}
+  .addsrc{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-top:2px;color:var(--muted);font-size:13px;cursor:pointer;border-radius:7px;}
+  .addsrc:hover{background:var(--bg-raised);color:var(--dim);}
+  .side .foot{border-top:1px solid var(--border);padding:8px;}
+
+  /* ---------- main ---------- */
+  .main{display:flex;flex-direction:column;min-width:0;background:var(--bg-base);}
+  .topbar{height:54px;display:flex;align-items:center;gap:14px;padding:0 22px;border-bottom:1px solid var(--border-subtle);flex:none;}
+  .crumb{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--muted);}
+  .crumb b{color:var(--text);font-weight:600;font-family:var(--font-display);}
+  .search{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--bg-surface);border:1px solid var(--border);border-radius:9px;padding:7px 11px;color:var(--muted);font-size:13px;width:320px;}
+  .search svg{width:15px;height:15px;}
+  .search .kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;border:1px solid var(--border);border-radius:5px;padding:1px 5px;background:var(--bg-base);}
+  .share{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;font-weight:500;color:var(--dim);cursor:pointer;background:var(--bg-base);}
+  .share svg{width:14px;height:14px;}
+
+  .body{flex:1;overflow:auto;}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 28px 60px;}
+
+  .hero h1{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.015em;margin:0;}
+  .hero p{margin:6px 0 0;color:var(--dim);font-size:14px;}
+  .hero p b{color:var(--brand-600);font-weight:600;}
+
+  /* ask composer */
+  .ask{margin-top:18px;border:1px solid var(--border);border-radius:14px;background:var(--bg-base);box-shadow:0 2px 8px -3px rgba(0,0,0,.07);}
+  .ask .ph{padding:15px 18px 9px;color:var(--muted);font-size:15px;}
+  .ask .row{display:flex;align-items:center;gap:10px;padding:6px 12px 11px 14px;}
+  .ask .ico{color:var(--brand-500);}.ask .ico svg{width:18px;height:18px;}
+  .ask .always{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);border:1px solid var(--border);border-radius:999px;padding:4px 10px;}
+  .ask .always svg{width:13px;height:13px;}
+  .ask .scope{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);border:1px solid var(--border);border-radius:999px;padding:4px 10px;}
+  .ask .scope .d{width:6px;height:6px;border-radius:50%;background:#34D399;}
+  .ask .grow{flex:1;}
+  .ask .send{width:32px;height:32px;border-radius:9px;border:0;cursor:pointer;background:linear-gradient(135deg,var(--brand-500),var(--brand-600));color:#fff;display:grid;place-items:center;box-shadow:0 3px 8px -2px rgba(234,88,12,.55);}
+  .ask .send svg{width:16px;height:16px;}
+
+  /* vitals */
+  .vitals{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:20px;}
+  .vital{border:1px solid var(--border);border-radius:12px;padding:13px 15px;background:var(--bg-base);}
+  .vital .lbl{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+  .vital .lbl svg{width:13px;height:13px;}
+  .vital .num{font-family:var(--font-display);font-size:23px;font-weight:700;margin-top:7px;letter-spacing:-.01em;}
+  .vital .delta{font-size:11.5px;color:var(--green-fg);margin-top:2px;}
+
+  .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;margin-top:22px;align-items:start;}
+  .sec-h{display:flex;align-items:center;margin:0 0 11px;}
+  .sec-h h2{font-family:var(--font-display);font-size:15px;font-weight:600;margin:0;}
+  .sec-h .more{margin-left:auto;font-size:12.5px;color:var(--brand-600);cursor:pointer;}
+
+  .card{border:1px solid var(--border);border-radius:13px;background:var(--bg-base);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.03);}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{text-align:left;font-weight:500;color:var(--dim);font-size:12px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--bg-base);}
+  thead th .h{display:inline-flex;align-items:center;gap:6px;}thead th svg{width:12px;height:12px;color:var(--muted);}
+  tbody td{padding:0 14px;height:46px;border-bottom:1px solid var(--border-subtle);}
+  tbody tr:last-child td{border-bottom:0;}
+  tbody tr:hover td{background:#FCFCFB;}
+  .sess{display:flex;align-items:center;gap:10px;min-width:0;}
+  .sess .badge{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#fff;flex:none;}
+  .sess .badge svg{width:13px;height:13px;}
+  .sess .t{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sess .s{font-size:11.5px;color:var(--muted);}
+  .agent{display:inline-flex;align-items:center;gap:7px;color:var(--dim);}
+  .agent .av{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700;font-family:var(--font-display);}
+  .ev{display:inline-flex;align-items:center;gap:5px;color:var(--dim);font-variant-numeric:tabular-nums;}
+  .ev svg{width:13px;height:13px;color:var(--muted);}
+  .upd{color:var(--muted);font-size:12.5px;}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:3px 9px;border-radius:999px;}
+  .pill svg{width:12px;height:12px;}
+  .p-idx{background:var(--green-bg);color:var(--green-fg);border:1px solid var(--green-bd);}
+  .p-ing{background:var(--blue-bg);color:var(--blue-fg);border:1px solid var(--blue-bd);}
+
+  /* skills grid */
+  .skills{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .skill{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg-base);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.03);}
+  .skill .cv{height:58px;}
+  .skill .bd{padding:10px 12px;}
+  .skill .nm{font-family:var(--font-display);font-weight:600;font-size:13.5px;}
+  .skill .mt{display:flex;align-items:center;gap:7px;margin-top:5px;font-size:11.5px;color:var(--muted);}
+  .skill .mt .b{display:inline-flex;align-items:center;gap:4px;}
+  .skill .mt .b .d{width:6px;height:6px;border-radius:50%;}
+
+  /* feed */
+  .feed .it{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid var(--border-subtle);}
+  .feed .it:last-child{border-bottom:0;}
+  .feed .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;font-family:var(--font-display);flex:none;}
+  .feed .tx{font-size:13px;color:var(--dim);line-height:1.45;}
+  .feed .tx b{color:var(--text);font-weight:600;}
+  .feed .mt{display:flex;align-items:center;gap:7px;margin-top:3px;font-size:11.5px;color:var(--muted);}
+  .feed .tag{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px;text-transform:lowercase;}
+  .t-agent{background:var(--brand-50);color:var(--brand-700);}
+  .t-human{background:var(--bg-raised);color:var(--dim);}
+  .t-skill{background:var(--violet-bg);color:var(--violet-fg);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- icon rail -->
+  <nav class="rail">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg></div>
+    <button class="active" title="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></button>
+    <button title="Index"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+    <button title="Agents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg></button>
+    <button title="Discover"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg></button>
+    <div class="spacer"></div>
+    <button title="Docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h9a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z"/><path d="M20 4h-2a3 3 0 0 0-3 3v11a2 2 0 0 1 2-2h3z"/></svg></button>
+    <button title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 7 2.6h.1A1.6 1.6 0 0 0 8.7 1.1V1a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 15 2.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.2a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.4 1.1z"/></svg></button>
+    <div class="me">SL</div>
+  </nav>
+
+  <!-- sidebar -->
+  <aside class="side">
+    <div class="ws"><span class="ico">A</span><span class="nm">Acme</span><span class="ch"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></span></div>
+    <div class="scroll">
+      <div class="grp">
+        <div class="nav on"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span> Home</div>
+        <div class="nav"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span> Index</div>
+        <div class="nav"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg></span> Discover</div>
+      </div>
+
+      <div class="grp">
+        <div class="hd">Your brain</div>
+        <div class="nav"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg></span> Agent Sessions <span class="ct">312</span></div>
+        <div class="nav"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span> Files <span class="ct">196</span></div>
+        <div class="nav"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span> Skills <span class="ct">24</span></div>
+      </div>
+
+      <div class="grp">
+        <div class="hd">External sources <span class="ch"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div>
+        <div class="src"><span class="av" style="background:#111">GH</span> GitHub <span class="dot" style="background:#34D399"></span></div>
+        <div class="src"><span class="av" style="background:#4A154B">Sl</span> Slack <span class="dot" style="background:#34D399"></span></div>
+        <div class="src"><span class="av" style="background:#5B57D1">Li</span> Linear <span class="dot" style="background:#34D399"></span></div>
+        <div class="src"><span class="av" style="background:#6F2CFF">Gg</span> Gong <span class="dot" style="background:#60A5FA"></span></div>
+        <div class="src"><span class="av" style="background:#000">No</span> Notion <span class="dot" style="background:#34D399"></span></div>
+        <div class="src"><span class="av" style="background:#29B5E8">Sn</span> Snowflake <span class="dot" style="background:#34D399"></span></div>
+        <div class="addsrc"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Add a new source</div>
+      </div>
+    </div>
+    <div class="foot">
+      <div class="nav"><span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span> Trash</div>
+    </div>
+  </aside>
+
+  <!-- main -->
+  <section class="main">
+    <div class="topbar">
+      <div class="crumb"><b>Acme</b><span>/</span><span style="color:var(--text)">Home</span></div>
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> Search your brain <span class="kbd">⌘K</span></div>
+      <button class="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg> Share</button>
+    </div>
+
+    <div class="body">
+      <div class="wrap">
+
+        <div class="hero">
+          <h1>Your brain</h1>
+          <p><b>1,284</b> things learned across your own and shared knowledge · <b>37</b> new in the last 24 hours</p>
+        </div>
+
+        <!-- ask your brain -->
+        <div class="ask">
+          <div class="ph">Ask anything about your workspace…</div>
+          <div class="row">
+            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>
+            <span class="scope"><span class="d"></span> All sources <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+            <span class="always"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg> Cite sources</span>
+            <span class="grow"></span>
+            <button class="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg></button>
+          </div>
+        </div>
+
+        <!-- vitals -->
+        <div class="vitals">
+          <div class="vital"><div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M7 7l3 3M17 7l-3 3M8 17l2-3M16 17l-2-3"/></svg> Knowledge points</div><div class="num" style="color:var(--brand-600)">1,284</div><div class="delta">+37 today</div></div>
+          <div class="vital"><div class="lbl">Sessions</div><div class="num">312</div><div class="delta">+8 today</div></div>
+          <div class="vital"><div class="lbl">Files</div><div class="num">196</div><div class="delta">+3 today</div></div>
+          <div class="vital"><div class="lbl">Skills</div><div class="num">24</div><div class="delta">+1 today</div></div>
+          <div class="vital"><div class="lbl">Sources synced</div><div class="num">6</div><div class="delta" style="color:var(--blue-fg)">1 syncing</div></div>
+        </div>
+
+        <!-- two columns -->
+        <div class="cols">
+
+          <!-- recent sessions -->
+          <div>
+            <div class="sec-h"><h2>Recent agent sessions</h2><span class="more">View all →</span></div>
+            <div class="card">
+              <table>
+                <thead><tr>
+                  <th><span class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5h16v2M9 20h6M12 5v15"/></svg> Session</span></th>
+                  <th><span class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3"/><path d="M5 20c0-3.5 3-5 7-5s7 1.5 7 5"/></svg> Agent</span></th>
+                  <th><span class="h">Events</span></th>
+                  <th><span class="h">Updated</span></th>
+                  <th><span class="h">Index</span></th>
+                </tr></thead>
+                <tbody id="sessions"></tbody>
+              </table>
+            </div>
+
+            <!-- learnings feed -->
+            <div class="sec-h" style="margin-top:24px"><h2>Recent learnings</h2></div>
+            <div class="card" style="padding:4px 16px">
+              <div class="feed" id="feed"></div>
+            </div>
+          </div>
+
+          <!-- right column: skills + sources -->
+          <div>
+            <div class="sec-h"><h2>Skills</h2><span class="more">New Skill</span></div>
+            <div class="skills" id="skills"></div>
+
+            <div class="sec-h" style="margin-top:24px"><h2>Sources</h2><span class="more">Manage</span></div>
+            <div class="card" style="padding:6px 4px" id="sources"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const idx = '<span class="pill p-idx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg> Indexed</span>';
+  const ing = '<span class="pill p-ing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 1.5"/></svg> Indexing</span>';
+
+  const agents = {
+    'Claude Code':['#EA580C','CC'], 'Codex':['#111827','Cx'], 'Cursor':['#2563EB','Cu'], 'Stash Agent':['#7C3AED','St']
+  };
+  const sessions = [
+    ['Refactor billing webhooks','#EA580C','Claude Code',142,'12m ago',idx],
+    ['Q3 planning sync — notes','#7C3AED','Stash Agent',38,'1h ago',idx],
+    ['Debug Snowflake sync lag','#111827','Codex',96,'2h ago',ing],
+    ['Onboarding flow rewrite','#2563EB','Cursor',211,'4h ago',idx],
+    ['Gong call → deal summary','#7C3AED','Stash Agent',24,'Yesterday',idx],
+    ['Linear triage automation','#EA580C','Claude Code',173,'Yesterday',idx],
+  ];
+  const chatGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg>';
+  document.getElementById('sessions').innerHTML = sessions.map(([t,c,ag,ev,up,st])=>{
+    const [ac,ai]=agents[ag];
+    return `<tr>
+      <td><div class="sess"><span class="badge" style="background:${c}">${chatGlyph}</span><span class="t">${t}</span></div></td>
+      <td><span class="agent"><span class="av" style="background:${ac}">${ai}</span>${ag}</span></td>
+      <td><span class="ev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg>${ev}</span></td>
+      <td class="upd">${up}</td>
+      <td>${st}</td>
+    </tr>`;
+  }).join('');
+
+  const skills = [
+    ['Onboarding','linear-gradient(135deg,#FDBA74,#EA580C)','12 files','Public','#34D399'],
+    ['Q3 Planning','linear-gradient(135deg,#A78BFA,#6D28D9)','8 files','Shared','#60A5FA'],
+    ['Billing Runbook','linear-gradient(135deg,#34D399,#0D9488)','21 files','Private','#9B9A97'],
+    ['Brand Kit','linear-gradient(135deg,#F472B6,#DB2777)','15 files','Public','#34D399'],
+  ];
+  document.getElementById('skills').innerHTML = skills.map(([n,cv,f,b,d])=>`
+    <div class="skill"><div class="cv" style="background:${cv}"></div>
+      <div class="bd"><div class="nm">${n}</div>
+        <div class="mt"><span>${f}</span>·<span class="b"><span class="d" style="background:${d}"></span>${b}</span></div>
+      </div></div>`).join('');
+
+  const sources = [
+    ['GitHub','#111','GH','24 repos','synced 12m ago','#34D399'],
+    ['Slack','#4A154B','Sl','9 channels','live','#34D399'],
+    ['Linear','#5B57D1','Li','KAN · ENG','synced 1h ago','#34D399'],
+    ['Gong','#6F2CFF','Gg','calls','syncing…','#60A5FA'],
+    ['Snowflake','#29B5E8','Sn','3 schemas','live','#34D399'],
+  ];
+  document.getElementById('sources').innerHTML = sources.map(([n,c,a,sub,st,d])=>`
+    <div class="src" style="padding:9px 12px">
+      <span class="av" style="background:${c};width:22px;height:22px;border-radius:6px;font-size:10px">${a}</span>
+      <span style="display:flex;flex-direction:column;line-height:1.25"><span style="color:var(--text);font-weight:500;font-size:13px">${n}</span><span style="font-size:11px;color:var(--muted)">${sub}</span></span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)">${st}<span class="dot" style="background:${d};position:static"></span></span>
+    </div>`).join('');
+
+  const feed = [
+    ['#EA580C','CC','Claude Code','pushed a session','Refactor billing webhooks','12m ago','agent'],
+    ['#2563EB','SL','Sam Liu','edited a page','Billing Runbook › Webhooks','38m ago','human'],
+    ['#7C3AED','St','Stash Agent','published a Skill','Q3 Planning','1h ago','skill'],
+    ['#0D9488','PR','Priya R.','uploaded a file','gong-acme-renewal.txt','2h ago','human'],
+    ['#111827','Cx','Codex','pushed a session','Debug Snowflake sync lag','2h ago','agent'],
+  ];
+  const tagClass = {agent:'t-agent',human:'t-human',skill:'t-skill'};
+  document.getElementById('feed').innerHTML = feed.map(([c,ai,who,verb,tgt,when,tag])=>`
+    <div class="it"><span class="av" style="background:${c}">${ai}</span>
+      <div><div class="tx"><b>${who}</b> ${verb} <b>${tgt}</b></div>
+        <div class="mt"><span class="tag ${tagClass[tag]}">${tag}</span><span>${when}</span><span>·</span><span style="color:var(--brand-600)">Open →</span></div>
+      </div></div>`).join('');
+</script>
+</body>
+</html>

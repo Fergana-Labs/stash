@@ -238,7 +238,7 @@ export default function CustomSelect({
 
           <div id={listboxId} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {visibleOptions.length === 0 ? (
-              <div className="px-3 py-1.5 text-muted">No matches</div>
+              <div className="px-3 py-1.5 text-muted-foreground">No matches</div>
             ) : (
               visibleOptions.map((option, index) => {
                 const selectedOption = option.value === value;

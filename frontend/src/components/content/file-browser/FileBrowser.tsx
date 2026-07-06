@@ -759,7 +759,7 @@ function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) 
               "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] transition-colors " +
               (active
                 ? "border-[var(--color-brand-600)] font-semibold text-foreground"
-                : "border-transparent text-muted hover:text-foreground")
+                : "border-transparent text-muted-foreground hover:text-foreground")
             }
           >
             {t.label}
@@ -850,7 +850,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => 
             onClick={() => onChange(opt.key)}
             className={
               "cursor-pointer rounded px-2 py-[3px] " +
-              (active ? "bg-raised font-semibold text-foreground" : "text-muted hover:text-foreground")
+              (active ? "bg-raised font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")
             }
           >
             {opt.label}

@@ -121,7 +121,7 @@ export default function SourceConnectorList({
   return (
     <div className="space-y-2">
       {disabledReasons.length > 0 && (
-        <div className="rounded-md border border-border bg-base px-3 py-2 text-[12px] text-muted">
+        <div className="rounded-md border border-border bg-base px-3 py-2 text-[12px] text-muted-foreground">
           {disabledReasons.length === 1
             ? disabledReasons[0]
             : "Some integrations need server configuration before they can be connected."}
@@ -140,7 +140,7 @@ export default function SourceConnectorList({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] font-medium text-foreground">{connector.label}</div>
-                <div className="truncate text-[11.5px] text-muted">
+                <div className="truncate text-[11.5px] text-muted-foreground">
                   {connected ? connectedLabel(status) : connector.blurb}
                 </div>
               </div>
@@ -269,7 +269,7 @@ function ObsidianSourceCard({ onUploaded }: { onUploaded?: () => void }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-medium text-foreground">Obsidian vault</div>
-          <div className="truncate text-[11.5px] text-muted">Upload a vault into Files.</div>
+          <div className="truncate text-[11.5px] text-muted-foreground">Upload a vault into Files.</div>
         </div>
         <button type="button" onClick={() => setOpen((value) => !value)} className={secondaryButton()}>
           {open ? "Hide" : "Upload vault"}

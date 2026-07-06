@@ -46,7 +46,13 @@ interface FileViewerHeaderProps {
   downloadOptions?: DownloadOption[];
   /** Anything that should sit between the save-status and the download menu. */
   rightExtras?: ReactNode;
+  /** Render a compact single-row bar (for the tabbed workbench) instead of the
+   *  banner + big-icon document header. */
+  compact?: boolean;
 }
+
+const SAVE_LABEL = { saving: "Saving…", dirty: "Unsaved", saved: "Saved" } as const;
+const SAVE_TONE = { saving: "text-amber-500", dirty: "text-amber-600", saved: "text-emerald-600" } as const;
 
 /**
  * Standard header for the file/page/table viewers. Renders a thin brand
@@ -71,10 +77,39 @@ export default function FileViewerHeader({
   saveStatus,
   downloadOptions,
   rightExtras,
+  compact,
 }: FileViewerHeaderProps) {
   const iconStyle: CSSProperties = {
     color: iconColor ?? "var(--text-muted)",
   };
+
+  // Compact bar: a persistent document toolbar for the tabbed workbench —
+  // name, date modified, save status, actions, download — no banner.
+  if (compact) {
+    return (
+      <div className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-base px-4">
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-base text-[14px]" style={iconStyle}>
+          {icon}
+        </span>
+        <span className="min-w-0 shrink truncate text-[13.5px] font-semibold text-foreground">
+          {readOnly || !onRenameTitle ? title : <EditableTitle value={title} onSave={onRenameTitle} />}
+        </span>
+        {tags?.map((tag, i) => (
+          <span key={`${tag.label}-${i}`} className={"tag shrink-0 " + (tag.tone === "brand" ? "tag-brand" : "tag-muted")}>{tag.label}</span>
+        ))}
+        <span className="flex min-w-0 items-center gap-2 truncate text-[12px] text-muted-foreground">
+          {meta?.map((item, i) => <span key={i} className="shrink-0">{item}</span>)}
+          {!readOnly && saveStatus && <span className={SAVE_TONE[saveStatus]}>{SAVE_LABEL[saveStatus]}</span>}
+          {readOnly && <span className="rounded-md bg-surface px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide">{readOnlyLabel}</span>}
+        </span>
+        <span className="flex-1" />
+        <div className="flex shrink-0 items-center gap-2">
+          {rightExtras}
+          {downloadOptions && downloadOptions.length > 0 && <DownloadMenu options={downloadOptions} />}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -90,7 +125,7 @@ export default function FileViewerHeader({
         {backLink && (
           <Link
             href={backLink.href}
-            className="mb-2 inline-flex items-center gap-1 text-[12px] text-muted hover:text-foreground"
+            className="mb-2 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground"
           >
             &larr; {backLink.label}
           </Link>
@@ -109,7 +144,7 @@ export default function FileViewerHeader({
           )}
         </h1>
 
-        <div className="flex flex-wrap items-center gap-2.5 text-[12px] text-muted">
+        <div className="flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
           {tags?.map((tag, i) => (
             <span
               key={`${tag.label}-${i}`}
@@ -142,7 +177,7 @@ export default function FileViewerHeader({
             </>
           )}
           {readOnly && (
-            <span className="rounded-md bg-surface px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-muted">
+            <span className="rounded-md bg-surface px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
               {readOnlyLabel}
             </span>
           )}

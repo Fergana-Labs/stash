@@ -72,7 +72,7 @@ export default function CommentComposerPopover({
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="cursor-pointer rounded-sm px-2 py-1 text-[12px] text-muted hover:bg-background"
+          className="cursor-pointer rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-background"
         >
           Cancel
         </button>

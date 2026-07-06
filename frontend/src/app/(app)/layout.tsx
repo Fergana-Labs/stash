@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, useEffect } from "react";
 
-import AppShell from "@/components/AppShell";
+import WorkspaceShell from "@/components/workspace/workspace-shell";
 import {
   AppShellSkeleton,
   PublicSkillSkeleton,
@@ -55,8 +55,8 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppShell user={user} onLogout={logout}>
+    <WorkspaceShell user={user} onLogout={logout}>
       {children}
-    </AppShell>
+    </WorkspaceShell>
   );
 }

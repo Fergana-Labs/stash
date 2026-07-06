@@ -39,7 +39,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
         <div className="text-[14px] font-semibold text-foreground">
           Upgrade to Pro
         </div>
-        <div className="mt-1.5 text-[12.5px] leading-[1.55] text-muted">
+        <div className="mt-1.5 text-[12.5px] leading-[1.55] text-muted-foreground">
           The free plan includes 1 connected account. Pro unlocks unlimited
           integrations — GitHub, Slack, Gmail, Drive, Notion, and more —
           for $20/month.
@@ -67,7 +67,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
           type="button"
           disabled={busy}
           onClick={() => upgrade("year")}
-          className="mt-2 block w-full cursor-pointer text-right text-[11.5px] text-muted underline hover:text-foreground disabled:opacity-60"
+          className="mt-2 block w-full cursor-pointer text-right text-[11.5px] text-muted-foreground underline hover:text-foreground disabled:opacity-60"
         >
           or $200/year — 2 months free
         </button>

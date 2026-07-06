@@ -90,7 +90,7 @@ export default function IntegrationPage() {
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-12 py-8">
           <h1 className="font-display text-[20px] font-semibold text-foreground">Unknown integration</h1>
-          <p className="mt-2 text-[13px] text-muted">
+          <p className="mt-2 text-[13px] text-muted-foreground">
             No integration matches “{provider}”.{" "}
             <Link href="/settings" className="text-brand hover:underline">
               Manage in Settings
@@ -211,7 +211,7 @@ export default function IntegrationPage() {
           </h1>
           <div className="ml-auto flex items-center gap-3.5">
             {connected && account && (
-              <span className="text-[12.5px] text-muted">
+              <span className="text-[12.5px] text-muted-foreground">
                 {account}
               </span>
             )}
@@ -226,7 +226,7 @@ export default function IntegrationPage() {
                   type="button"
                   onClick={() => void disconnect()}
                   disabled={busy === "disconnect"}
-                  className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+                  className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-foreground disabled:opacity-60"
                 >
                   {busy === "disconnect"
                     ? "Disconnecting..."
@@ -253,7 +253,7 @@ export default function IntegrationPage() {
         </div>
 
         {/* Subtitle: what this integration does + a quiet Settings link. */}
-        <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted">
+        <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted-foreground">
           {connector.blurb}{" "}·{" "}
           <Link href="/settings" className="font-semibold text-brand hover:underline">
             Manage in Settings
@@ -309,7 +309,7 @@ export default function IntegrationPage() {
         <section className="mt-7">
           <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
           {sources.length === 0 ? (
-            <div className="py-3 text-[12.5px] text-muted">
+            <div className="py-3 text-[12.5px] text-muted-foreground">
               {connected ? "Nothing added yet." : "Connect to add sources."}
             </div>
           ) : (
@@ -467,9 +467,9 @@ function SourceRow({
       <button type="button" onClick={onOpen} className="min-w-0 flex-1 cursor-pointer text-left">
         <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
           {source.display_name}
-          {ref && <span className="font-mono text-[12px] font-normal text-muted">{ref}</span>}
+          {ref && <span className="font-mono text-[12px] font-normal text-muted-foreground">{ref}</span>}
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
           {syncs && <SyncStatusMark syncStatus={source.sync_status} />}
           <span>
             {syncs ? relativeTime(source.last_synced_at) : "live"}
@@ -503,7 +503,7 @@ function rowButton(): string {
   return "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
 }
 function rowButtonGhost(): string {
-  return "cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-error disabled:opacity-60";
+  return "cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-error disabled:opacity-60";
 }
 
 function BrowsePanel({
@@ -590,7 +590,7 @@ function DocViewer({
               Open in {providerLabel} ↗
             </a>
           )}
-          <button type="button" onClick={onClose} className="cursor-pointer text-[12px] text-muted hover:text-foreground">
+          <button type="button" onClick={onClose} className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground">
             Close
           </button>
         </div>
@@ -598,7 +598,7 @@ function DocViewer({
       {error ? (
         <div className="bg-base px-3 py-3 text-[12px] text-error">{error}</div>
       ) : content === null ? (
-        <div className="bg-base px-3 py-3 text-[12px] text-muted">Loading…</div>
+        <div className="bg-base px-3 py-3 text-[12px] text-muted-foreground">Loading…</div>
       ) : (
         <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
           {content}
@@ -670,7 +670,7 @@ function SearchablePanel({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={`Search ${source.display_name}…`}
-          className="flex-1 rounded-lg border border-[var(--color-border)] bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          className="flex-1 rounded-lg border border-[var(--color-border)] bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
         />
         <button type="submit" disabled={searching || !query.trim()} className={primaryButton()}>
           {searching ? "Searching..." : "Search"}
@@ -687,7 +687,7 @@ function SearchablePanel({
         return (
           <div className="mb-2">
             {realHits.length === 0 ? (
-              <div className="px-1.5 py-1 text-[12.5px] text-muted">No matches.</div>
+              <div className="px-1.5 py-1 text-[12.5px] text-muted-foreground">No matches.</div>
             ) : (
               realHits.map((hit) => (
                 <HitRow
@@ -700,7 +700,7 @@ function SearchablePanel({
               ))
             )}
             {truncation && (
-              <div className="px-1.5 py-1 text-[12px] text-muted">
+              <div className="px-1.5 py-1 text-[12px] text-muted-foreground">
                 Showing the first {truncation.returned}
                 {truncation.estimated_total ? ` of ~${truncation.estimated_total}` : ""} matches —
                 narrow your search to see more.
@@ -764,10 +764,10 @@ function HitRow({
       className="block w-full cursor-pointer rounded-md px-1.5 py-1.5 text-left hover:bg-raised"
     >
       <div className="flex items-baseline gap-2.5">
-        {showKey && <span className="font-mono text-[12px] text-muted">{hitKey}</span>}
+        {showKey && <span className="font-mono text-[12px] text-muted-foreground">{hitKey}</span>}
         <span className="min-w-0 truncate text-[13px] text-foreground">{label || hitKey}</span>
       </div>
-      {snippet && <div className="mt-0.5 truncate text-[11.5px] text-muted">{snippet}</div>}
+      {snippet && <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{snippet}</div>}
     </button>
   );
 }
@@ -831,10 +831,10 @@ function NavigablePanel({
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-muted">
+      <div className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-muted-foreground">
         {crumbs.map((c, i) => (
           <span key={c.path + i} className="flex items-center gap-1">
-            {i > 0 && <span className="text-muted/60">/</span>}
+            {i > 0 && <span className="text-muted-foreground/60">/</span>}
             <button
               type="button"
               onClick={() => goCrumb(i)}
@@ -849,9 +849,9 @@ function NavigablePanel({
       {error && <div className="mb-2 text-[12px] text-error">{error}</div>}
 
       {entries === null ? (
-        <div className="text-[12px] text-muted">Loading…</div>
+        <div className="text-[12px] text-muted-foreground">Loading…</div>
       ) : entries.length === 0 ? (
-        <div className="text-[12px] text-muted">Empty.</div>
+        <div className="text-[12px] text-muted-foreground">Empty.</div>
       ) : (
         <div className="space-y-0.5">
           {entries.map((entry) => {
@@ -920,9 +920,9 @@ function HistoryControl({
 
   return (
     <div className="mt-3 rounded-md border border-border bg-base p-2.5">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Fetch older history</div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fetch older history</div>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-[11.5px] text-muted">
+        <label className="text-[11.5px] text-muted-foreground">
           Since
           <input
             type="date"
@@ -931,7 +931,7 @@ function HistoryControl({
             className="ml-1 rounded-md border border-border bg-surface px-2 py-1 text-[12px] text-foreground focus:border-brand focus:outline-none"
           />
         </label>
-        <label className="text-[11.5px] text-muted">
+        <label className="text-[11.5px] text-muted-foreground">
           Until
           <input
             type="date"
@@ -943,7 +943,7 @@ function HistoryControl({
         <button type="button" onClick={() => void run()} disabled={busy || !since} className={secondaryButton()}>
           {busy ? "Fetching..." : "Fetch"}
         </button>
-        {message && <span className="text-[11.5px] text-muted">{message}</span>}
+        {message && <span className="text-[11.5px] text-muted-foreground">{message}</span>}
       </div>
     </div>
   );

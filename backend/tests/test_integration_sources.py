@@ -907,7 +907,6 @@ def test_fetch_history_wiring():
     assert source_service.SOURCE_TABLE["slack"] in source_service.CONTENT_TABLES
     assert source_service.SOURCE_TABLE["gong_calls"] in source_service.CONTENT_TABLES
     assert "fetch_history" in agent_runtime._TOOLS_BY_NAME
-    assert "fetch_history" in prompts.STASH_TOOL_SET
     assert "fetch_history" in prompts.ASK_TOOL_SET
 
 

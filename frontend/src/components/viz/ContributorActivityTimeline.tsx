@@ -205,10 +205,10 @@ export default function ContributorActivityTimeline({
         >
           <div className="text-xs font-medium text-foreground">
             <span className="text-[var(--color-brand-600)]">{tooltip.contributor}</span>
-            <span className="text-muted mx-1">&middot;</span>
-            <span className="text-muted font-mono">{tooltip.date}</span>
+            <span className="text-muted-foreground mx-1">&middot;</span>
+            <span className="text-muted-foreground font-mono">{tooltip.date}</span>
           </div>
-          <div className="text-[11px] text-muted mt-1">
+          <div className="text-[11px] text-muted-foreground mt-1">
             {tooltip.total} session commit{tooltip.total === 1 ? "" : "s"}
           </div>
           <div className="mt-1 space-y-0.5">
@@ -217,7 +217,7 @@ export default function ContributorActivityTimeline({
                 key={type}
                 className="flex justify-between gap-4 text-[10px]"
               >
-                <span className="text-muted font-mono">{type}</span>
+                <span className="text-muted-foreground font-mono">{type}</span>
                 <span className="text-foreground">{count}</span>
               </div>
             ))}

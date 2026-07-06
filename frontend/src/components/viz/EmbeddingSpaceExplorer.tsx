@@ -309,12 +309,12 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
               className="w-2 h-2 rounded-full"
               style={{ backgroundColor: SOURCE_COLORS[tooltip.point.source] }}
             />
-            <span className="text-[10px] text-muted">
+            <span className="text-[10px] text-muted-foreground">
               {SOURCE_LABELS[tooltip.point.source] || tooltip.point.source}
             </span>
           </div>
           {tooltip.point.created_at && (
-            <div className="text-[10px] text-muted mt-0.5">
+            <div className="text-[10px] text-muted-foreground mt-0.5">
               {new Date(tooltip.point.created_at).toLocaleDateString()}
             </div>
           )}

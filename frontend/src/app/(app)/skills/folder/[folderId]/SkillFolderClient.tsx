@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -22,10 +22,8 @@ import { refreshSidebar } from "@/lib/skillNavigationCache";
 // Browse a skill folder (or a subfolder inside one). Same file browser as
 // the Files routes, but folder links stay on the skill browse route and the
 // action bar carries skill-specific actions (Share, Convert to folder).
-export default function SkillFolderClient() {
-  const params = useParams();
+export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const router = useRouter();
-  const folderId = params.folderId as string;
   const { user, loading } = useAuth();
   const confirm = useConfirm();
 

@@ -396,6 +396,21 @@ export async function fetchSourceHistory(
 
 // --- Discover (public catalog, no auth required) ---
 
+// A public page from the pastebin (joinstash.ai/pages) — community docs/pages.
+export interface PublicPageCard {
+  slug: string;
+  title: string;
+  content_type: "markdown" | "html";
+  view_count: number;
+  created_at: string;
+}
+
+export async function listPublicPages(): Promise<PublicPageCard[]> {
+  const res = await fetch(`${API_BASE}/api/v1/pastes`);
+  if (!res.ok) return [];
+  return (await res.json()).pastes ?? [];
+}
+
 export interface PublicSkillCard {
   id: string;
   slug: string;
@@ -427,6 +442,11 @@ export async function getTree(): Promise<Tree> {
 
 export async function listFolders(): Promise<{ folders: Folder[] }> {
   return apiFetch(`${ME}/folders`);
+}
+
+// The reserved per-user Memory folder (created on first access) — Memory's root.
+export async function getMemoryFolder(): Promise<Folder> {
+  return apiFetch(`${ME}/memory-folder`);
 }
 
 export async function createFolder(
@@ -620,7 +640,7 @@ export interface MeOverview {
 // Counts for the "Your brain" vitals, spanning the user's own content plus
 // everything shared with them.
 export async function getMeOverview(): Promise<MeOverview> {
-  return apiFetch(`${ME}/overview`);
+  return apiFetch(`${ME}/vitals`);
 }
 
 export async function getActivityTimeline(
@@ -1269,6 +1289,16 @@ export async function listSkills(): Promise<Skill[]> {
   return data.skills;
 }
 
+// Import a public GitHub repo's SKILL.md folders as private skills in your scope.
+export async function importGithubSkill(
+  repoUrl: string,
+): Promise<{ skills: number; imported: number }> {
+  return apiFetch(`${ME}/skills/import-github`, {
+    method: "POST",
+    body: JSON.stringify({ repo_url: repoUrl }),
+  });
+}
+
 // The full skill record, as returned by create/update.
 export interface SkillRecord {
   id: string;
@@ -1896,4 +1926,129 @@ export async function purgeItem(kind: TrashKind, id: string): Promise<void> {
 
 export async function getTrash(): Promise<TrashListing> {
   return apiFetch(`${ME}/trash`);
+}
+
+// ── The user's cloud computer (read-through projection; see routers/machine.py) ──
+
+export type MachineEntry = { name: string; dir: boolean; size: number; mtime: number };
+
+export async function machineFsList(path: string): Promise<MachineEntry[]> {
+  const data = await apiFetch<{ entries: MachineEntry[] }>(
+    `/api/v1/me/machine/fs?path=${encodeURIComponent(path)}`,
+  );
+  return data.entries;
+}
+
+export type MachineFile = { path: string; size: number; text?: string; content_base64?: string };
+
+export async function machineFsRead(path: string): Promise<MachineFile> {
+  return apiFetch<MachineFile>(`/api/v1/me/machine/fs/file?path=${encodeURIComponent(path)}`);
+}
+
+export async function machineSaveToStash(
+  path: string,
+  folderId?: string | null,
+): Promise<{ kind: string; id: string; name: string; app_url: string }> {
+  return apiFetch(`/api/v1/me/machine/fs/save-to-stash`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, folder_id: folderId ?? null }),
+  });
+}
+
+// ── Cloud-agent model credentials (BYO key / OAuth; see routers/agent_credentials) ──
+
+export async function listAgentCredentials(): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials");
+  return data.connected;
+}
+
+export async function connectAgentKey(provider: string, apiKey: string): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, api_key: apiKey }),
+  });
+  return data.connected;
+}
+
+export async function disconnectAgentCredential(provider: string): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>(
+    `/api/v1/me/agent-credentials/${provider}`,
+    { method: "DELETE" },
+  );
+  return data.connected;
+}
+
+export async function startAgentOAuth(
+  provider: string,
+): Promise<{ authorize_url: string; state: string }> {
+  return apiFetch("/api/v1/me/agent-credentials/oauth/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export async function finishAgentOAuth(
+  provider: string,
+  code: string,
+  state: string,
+): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>(
+    "/api/v1/me/agent-credentials/oauth/finish",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, code, state }),
+    },
+  );
+  return data.connected;
+}
+
+// ── Named agents (config: model, persona, schedule, channel binding) ──
+
+export type Agent = {
+  id: string;
+  name: string;
+  model_provider: string | null;
+  system_prompt: string | null;
+  run_mode: string;
+  schedule_cron: string | null;
+  schedule_prompt: string | null;
+  is_default: boolean;
+  is_curator: boolean;
+  slack_bound: boolean;
+  telegram_bound: boolean;
+};
+
+export async function listAgents(): Promise<Agent[]> {
+  const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
+  return data.agents;
+}
+
+export async function createAgent(fields: Partial<Agent>): Promise<Agent> {
+  return apiFetch("/api/v1/me/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function updateAgent(id: string, fields: Partial<Agent>): Promise<Agent> {
+  return apiFetch(`/api/v1/me/agents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function deleteAgent(id: string): Promise<void> {
+  await apiFetch(`/api/v1/me/agents/${id}`, { method: "DELETE" });
+}
+
+export type AgentPrompt = { system_prompt: string; run_prompt: string };
+
+export async function getAgentPrompt(id: string): Promise<AgentPrompt> {
+  return apiFetch(`/api/v1/me/agents/${id}/prompt`);
 }

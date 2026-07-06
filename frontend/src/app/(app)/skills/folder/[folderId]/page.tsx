@@ -6,10 +6,11 @@ import SkillFolderClient from "./SkillFolderClient";
 
 export const metadata: Metadata = { title: "Skill - Stash" };
 
-export default function SkillFolderRoute() {
+export default async function SkillFolderRoute({ params }: { params: Promise<{ folderId: string }> }) {
+  const { folderId } = await params;
   return (
     <Suspense fallback={<FileBrowserSkeleton />}>
-      <SkillFolderClient />
+      <SkillFolderClient folderId={folderId} />
     </Suspense>
   );
 }

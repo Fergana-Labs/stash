@@ -177,7 +177,7 @@ export default function ObsidianVaultDropZone({ onUploaded }: Props) {
             ? "Release to upload your vault"
             : "Drop a vault folder, or click to browse"}
         </div>
-        <div className="text-[11px] text-muted">
+        <div className="text-[11px] text-muted-foreground">
           <code className="text-foreground">.obsidian/</code> and other dot-
           folders are skipped automatically.
         </div>
@@ -202,7 +202,7 @@ export default function ObsidianVaultDropZone({ onUploaded }: Props) {
               ? "text-error"
               : status.kind === "done"
                 ? "text-brand"
-                : "text-muted"
+                : "text-muted-foreground"
           }`}
         >
           {status.message}

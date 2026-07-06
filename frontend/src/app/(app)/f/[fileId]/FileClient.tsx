@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -43,20 +43,18 @@ function isXlsx(ct: string, name: string) {
   return XLSX_CONTENT_TYPES.has(ct) || /\.xlsx?$/i.test(name);
 }
 
-export default function FileViewerPage() {
+export default function FileViewerPage({ fileId }: { fileId: string }) {
   return (
     <Suspense fallback={<FileViewerSkeleton />}>
-      <FileViewerPageInner />
+      <FileViewerPageInner fileId={fileId} />
     </Suspense>
   );
 }
 
-function FileViewerPageInner() {
-  const params = useParams();
+function FileViewerPageInner({ fileId }: { fileId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
-  const fileId = params.fileId as string;
   // ?skill=<slug> is a back-link hint AND a permission fallback. We try the
   // owner's file endpoint first so the owner gets the full editor chrome
   // (rename / move / trash / CSV ingest). Others fall back to the

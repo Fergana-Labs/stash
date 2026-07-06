@@ -78,7 +78,7 @@ export default function SessionUpload({ onUploaded }: SessionUploadProps) {
       ? "text-red-600"
       : status === "done"
         ? "text-[var(--color-brand-700)]"
-        : "text-muted";
+        : "text-muted-foreground";
 
   return (
     <div
@@ -102,7 +102,7 @@ export default function SessionUpload({ onUploaded }: SessionUploadProps) {
         >
           {status === "uploading" ? "Uploading..." : "+ Add session"}
         </button>
-        <span className="text-[12px] text-muted">Drop a .jsonl transcript</span>
+        <span className="text-[12px] text-muted-foreground">Drop a .jsonl transcript</span>
         <input
           ref={inputRef}
           type="file"

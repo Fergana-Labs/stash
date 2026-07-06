@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import AppShell from "../../components/AppShell";
+import WorkspaceShell from "@/components/workspace/workspace-shell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
 import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
 import { GitHubIcon } from "../../components/integrations/BrandIcons";
@@ -58,7 +58,7 @@ export default function DiscoverPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search public Skills…"
-            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted focus:outline-none"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
         <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
@@ -71,7 +71,7 @@ export default function DiscoverPage() {
                 "cursor-pointer rounded-md px-2.5 py-[3px] text-[12px] " +
                 (sort === option
                   ? "bg-raised font-semibold text-foreground"
-                  : "text-muted hover:text-foreground")
+                  : "text-muted-foreground hover:text-foreground")
               }
             >
               {sortLabel(option)}
@@ -100,9 +100,9 @@ export default function DiscoverPage() {
 
   if (user) {
     return (
-      <AppShell user={user} onLogout={logout}>
+      <WorkspaceShell user={user} onLogout={logout}>
         {content}
-      </AppShell>
+      </WorkspaceShell>
     );
   }
 
@@ -197,7 +197,7 @@ function EmptyState() {
       <h2 className="font-display text-[20px] font-bold text-foreground">
         No public Skills yet.
       </h2>
-      <p className="mx-auto mt-2 max-w-[420px] text-[13.5px] leading-[1.6] text-muted">
+      <p className="mx-auto mt-2 max-w-[420px] text-[13.5px] leading-[1.6] text-muted-foreground">
         Public Skills appear here after their contents are readable from a public link.
       </p>
     </section>
@@ -212,7 +212,7 @@ function sortLabel(sort: Sort): string {
 
 function SearchGlyph() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.3-4.3" />
     </svg>

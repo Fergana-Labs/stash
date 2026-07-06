@@ -200,10 +200,12 @@ async def list_all_tables(current_user: dict = Depends(get_current_user)):
     return {"tables": tables}
 
 
-@router.get("/overview")
+@router.get("/vitals")
 async def overview_counts(current_user: dict = Depends(get_current_user)):
     """Page / file / session counts for the 'Your brain' vitals, spanning the
-    user's own content plus everything shared with them."""
+    user's own content plus everything shared with them. Distinct from the scope
+    `/overview` payload in user_knowledge (same prefix — the paths must not
+    collide, or whichever registers first shadows the other)."""
     return await analytics_service.get_overview_counts(current_user["id"])
 
 

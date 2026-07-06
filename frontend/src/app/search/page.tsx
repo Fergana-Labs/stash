@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import AppShell from "../../components/AppShell";
+import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../components/CustomSelect";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
@@ -260,14 +260,14 @@ function SearchPageInner() {
   if (!user) return null;
   if (fetching) {
     return (
-      <AppShell user={user} onLogout={logout}>
+      <WorkspaceShell user={user} onLogout={logout}>
         <SearchSkeleton />
-      </AppShell>
+      </WorkspaceShell>
     );
   }
 
   return (
-    <AppShell user={user} onLogout={logout}>
+    <WorkspaceShell user={user} onLogout={logout}>
       <div className="mx-auto w-full max-w-[1180px] px-6 py-8">
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -338,7 +338,7 @@ function SearchPageInner() {
             {searching && <SearchResultsSkeleton />}
 
             {!searching && searchedQuery && results.length === 0 && !error && (
-              <p className="py-10 text-center text-[13px] text-muted">
+              <p className="py-10 text-center text-[13px] text-muted-foreground">
                 No results found for &ldquo;{searchedQuery}&rdquo;.
               </p>
             )}
@@ -349,7 +349,7 @@ function SearchPageInner() {
                   <h2 className="font-display text-[18px] font-semibold text-foreground">
                     Results
                   </h2>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                     {results.length} ranked by relevance
                   </p>
                 </div>
@@ -363,18 +363,18 @@ function SearchPageInner() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                            <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                               {result.kind}
                             </span>
                             <h3 className="truncate text-[14px] font-semibold text-foreground">
                               {result.title}
                             </h3>
                           </div>
-                          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted">
+                          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
                             {result.detail}
                           </p>
                         </div>
-                        <div className="shrink-0 text-right text-[11px] text-muted">
+                        <div className="shrink-0 text-right text-[11px] text-muted-foreground">
                           <div>{result.sourceName}</div>
                           <div>{relativeTime(result.updatedAt)}</div>
                         </div>
@@ -387,7 +387,7 @@ function SearchPageInner() {
           </main>
         </div>
       </div>
-    </AppShell>
+    </WorkspaceShell>
   );
 }
 

@@ -119,7 +119,7 @@ function AgentsPageInner() {
             <h1 className="truncate text-[20px] font-semibold text-foreground">
               Chat with your agent
             </h1>
-            <p className="mt-1 text-[13px] text-muted">
+            <p className="mt-1 text-[13px] text-muted-foreground">
               Ask across all your stuff from one place.
             </p>
           </div>
@@ -148,7 +148,7 @@ function AgentsPageInner() {
                   type="button"
                   aria-label="Close chat"
                   onClick={() => closeChat(t.id)}
-                  className="ml-1 cursor-pointer text-muted hover:text-error"
+                  className="ml-1 cursor-pointer text-muted-foreground hover:text-error"
                 >
                   ×
                 </button>
@@ -159,7 +159,7 @@ function AgentsPageInner() {
             type="button"
             onClick={newChat}
             aria-label="New chat"
-            className="cursor-pointer px-3 py-2 text-[16px] text-muted hover:text-foreground"
+            className="cursor-pointer px-3 py-2 text-[16px] text-muted-foreground hover:text-foreground"
           >
             ＋
           </button>

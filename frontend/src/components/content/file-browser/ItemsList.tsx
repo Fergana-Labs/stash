@@ -190,7 +190,7 @@ export default function ItemsList({
     // card bottom when the list is short. Rows round their own bottom corners.
     <div className="rounded-xl border border-border bg-surface">
       <div
-        className="grid items-center gap-3 rounded-t-xl border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted"
+        className="grid items-center gap-3 rounded-t-xl border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
         style={{ gridTemplateColumns: LIST_GRID_COLS }}
       >
         <SortHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
@@ -221,7 +221,7 @@ export default function ItemsList({
           />
         ))}
         {sortedItems.length === 0 && (
-          <div className="px-4 py-10 text-center text-[12.5px] text-muted">
+          <div className="px-4 py-10 text-center text-[12.5px] text-muted-foreground">
             {typeFilter && typeFilter !== ALL_TYPES
               ? `No ${typeFilter} items here.`
               : "Empty folder."}
@@ -435,8 +435,8 @@ function Row({
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{item.name}</span>
       </div>
-      <span className="truncate text-[12px] text-muted">{formatRelative(item.updatedAt)}</span>
-      <span className="truncate text-[12px] text-muted">{typeFor(item)}</span>
+      <span className="truncate text-[12px] text-muted-foreground">{formatRelative(item.updatedAt)}</span>
+      <span className="truncate text-[12px] text-muted-foreground">{typeFor(item)}</span>
       <div className="flex items-center justify-end gap-0.5">
         <button
           type="button"
@@ -448,7 +448,7 @@ function Row({
             "cursor-pointer rounded p-1 transition hover:bg-raised " +
             (pinned
               ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
-              : "text-muted opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100")
+              : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100")
           }
           title={pinned ? "Unpin" : "Pin"}
           aria-label={pinned ? "Unpin" : "Pin"}
@@ -462,7 +462,7 @@ function Row({
             e.stopPropagation();
             void onDelete(item);
           }}
-          className="cursor-pointer rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          className="cursor-pointer rounded p-1 text-muted-foreground opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
           title="Delete"
           aria-label="Delete"
         >

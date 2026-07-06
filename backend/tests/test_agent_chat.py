@@ -1,14 +1,17 @@
-"""Multi-turn agent chat: turns persist as a stored session and the whole
-conversation is replayed to the model on each message."""
+"""Multi-turn agent chat: turns execute as Claude Code on the user's cloud
+computer (mocked at the sprite_service seam) and persist as a stored session.
+
+These tests encode the contract the frontend and Slack rely on: the SSE event
+ordering, --session-id vs --resume across turns, the reseed-from-history rule
+when the box has lost its transcript, and the one-turn-per-session lock.
+"""
 
 import json
 
 import pytest
 from httpx import AsyncClient
 
-from backend.services import tool_loop
-
-from .conftest import unique_name
+from .conftest import stream_json_reply, unique_name
 
 
 async def _register(client: AsyncClient) -> tuple[str, str]:
@@ -24,11 +27,6 @@ def _auth(k: str) -> dict:
     return {"Authorization": f"Bearer {k}"}
 
 
-async def _scope(client: AsyncClient, key: str) -> str:
-    r = await client.get("/api/v1/users/me", headers=_auth(key))
-    return r.json()["id"]
-
-
 def _events(sse_text: str) -> list[dict]:
     out = []
     for line in sse_text.splitlines():
@@ -39,23 +37,7 @@ def _events(sse_text: str) -> list[dict]:
 
 
 @pytest.mark.asyncio
-async def test_agent_chat_persists_and_replays_history(client: AsyncClient, monkeypatch):
-    from backend.config import settings
-
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
-
-    # Capture the history the loop is given, and emit a canned reply — no
-    # Anthropic call.
-    seen_histories: list[list[dict]] = []
-
-    async def fake_loop(*, history=None, prompt=None, **kwargs):
-        seen_histories.append([dict(m) for m in (history or [])])
-        reply = "Reply to: " + (history[-1]["content"] if history else (prompt or ""))
-        yield {"type": "text", "delta": reply}
-        yield {"type": "end"}
-
-    monkeypatch.setattr(tool_loop, "stream_tool_loop", fake_loop)
-
+async def test_agent_chat_persists_and_resumes(client: AsyncClient, sprite_exec):
     key, _ = await _register(client)
 
     # First turn — no session_id; server mints one and streams a session event.
@@ -66,27 +48,117 @@ async def test_agent_chat_persists_and_replays_history(client: AsyncClient, monk
     )
     assert r1.status_code == 200
     evts1 = _events(r1.text)
-    session_evt = next(e for e in evts1 if e["type"] == "session")
-    session_id = session_evt["session_id"]
+    types1 = [e["type"] for e in evts1]
+    assert types1[0] == "session"
+    assert types1[1] == "status"
+    assert "text" in types1
+    assert types1[-1] == "end"
+    session_id = evts1[0]["session_id"]
     assert session_id.startswith("agent-")
-    assert any(e["type"] == "text" for e in evts1)
-    assert evts1[-1]["type"] == "end"
 
-    # The first turn's history given to the model is just the user message.
-    assert seen_histories[0] == [{"role": "user", "content": "what did I do yesterday?"}]
+    # First turn starts a fresh CLI session with the raw message as prompt.
+    assert "--session-id" in sprite_exec.calls[0]
+    assert sprite_exec.calls[0][2] == "what did I do yesterday?"
 
-    # Second turn on the same session — the model now sees the full conversation.
+    # Second turn on the same session resumes the same on-box transcript.
     r2 = await client.post(
         "/api/v1/me/agent-chat",
         json={"message": "and the day before?", "session_id": session_id},
         headers=_auth(key),
     )
     assert r2.status_code == 200
-    assert [m["role"] for m in seen_histories[1]] == ["user", "assistant", "user"]
-    assert seen_histories[1][-1]["content"] == "and the day before?"
+    assert "--resume" in sprite_exec.calls[1]
 
     # The chat is a stored session: GET returns both turns' messages.
     got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
     assert got.status_code == 200
     roles = [m["role"] for m in got.json()["messages"]]
     assert roles == ["user", "assistant", "user", "assistant"]
+    assert got.json()["messages"][1]["content"] == "Reply to: what did I do yesterday?"
+
+
+@pytest.mark.asyncio
+async def test_lost_transcript_reseeds_from_history(client: AsyncClient, sprite_exec):
+    key, _ = await _register(client)
+
+    r1 = await client.post("/api/v1/me/agent-chat", json={"message": "hello"}, headers=_auth(key))
+    session_id = _events(r1.text)[0]["session_id"]
+
+    # The box lost the transcript: --resume fails, then the reseeded fresh
+    # session succeeds. The reseed prompt must replay stored history.
+    sprite_exec.replies.append(([], 1))  # stderr-free nonzero exit won't match…
+    sprite_exec.replies[0] = (
+        [
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "error_during_execution",
+                    "result": "No conversation found with session ID: xyz",
+                }
+            )
+        ],
+        1,
+    )
+    sprite_exec.replies.append((stream_json_reply("recovered"), 0))
+
+    r2 = await client.post(
+        "/api/v1/me/agent-chat",
+        json={"message": "still there?", "session_id": session_id},
+        headers=_auth(key),
+    )
+    evts = _events(r2.text)
+    assert not any(e["type"] == "error" for e in evts)
+    assert "".join(e.get("delta", "") for e in evts if e["type"] == "text") == "recovered"
+
+    resume_call, reseed_call = sprite_exec.calls[1], sprite_exec.calls[2]
+    assert "--resume" in resume_call
+    assert "--session-id" in reseed_call
+    assert "hello" in reseed_call[2]  # stored history replayed
+    assert reseed_call[2].endswith("still there?")
+
+
+@pytest.mark.asyncio
+async def test_concurrent_turn_on_same_session_errors(client: AsyncClient, sprite_exec):
+    key, _ = await _register(client)
+    r1 = await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
+    session_id = _events(r1.text)[0]["session_id"]
+
+    # Simulate a turn already holding the lock.
+    await sprite_exec.redis.set(f"agent-turn:{session_id}", "other-turn")
+    r2 = await client.post(
+        "/api/v1/me/agent-chat",
+        json={"message": "again", "session_id": session_id},
+        headers=_auth(key),
+    )
+    evts = _events(r2.text)
+    assert any(e["type"] == "error" for e in evts)
+    assert evts[-1]["type"] == "end"
+
+
+@pytest.mark.asyncio
+async def test_agent_failure_surfaces_error_event(client: AsyncClient, sprite_exec):
+    key, _ = await _register(client)
+    sprite_exec.replies.append(
+        (
+            [
+                json.dumps(
+                    {
+                        "type": "result",
+                        "subtype": "error_during_execution",
+                        "result": "API overloaded",
+                    }
+                )
+            ],
+            1,
+        )
+    )
+    r = await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
+    evts = _events(r.text)
+    errors = [e for e in evts if e["type"] == "error"]
+    assert errors and "API overloaded" in errors[0]["message"]
+    assert evts[-1]["type"] == "end"
+
+    # A failed turn persists the user message but no assistant reply.
+    session_id = evts[0]["session_id"]
+    got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
+    assert [m["role"] for m in got.json()["messages"]] == ["user"]

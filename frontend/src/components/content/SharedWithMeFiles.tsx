@@ -154,7 +154,7 @@ export default function SharedWithMeFiles() {
 
   if (items.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
+      <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
         Nothing shared with you yet. Folders, pages, files, and tables others
         share with you show up here.
       </p>
@@ -170,7 +170,7 @@ export default function SharedWithMeFiles() {
       )}
       {recentItems.length > 0 && (
         <section className="mb-5">
-          <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Recent
           </h2>
           <div className="flex flex-wrap gap-2.5">
@@ -186,7 +186,7 @@ export default function SharedWithMeFiles() {
       )}
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div
-          className="grid items-center gap-3 border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted"
+          className="grid items-center gap-3 border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
           style={{ gridTemplateColumns: GRID_COLS }}
         >
           <span>Name</span>
@@ -236,8 +236,8 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{item.name}</span>
       </div>
-      <span className="truncate text-[12px] text-muted">{item.shared_by || "—"}</span>
-      <span className="flex items-center gap-2 text-[12px] text-muted">
+      <span className="truncate text-[12px] text-muted-foreground">{item.shared_by || "—"}</span>
+      <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
         {LABEL[item.object_type]}
         {item.permission === "write" && (
           <span className="rounded bg-raised px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide">
@@ -277,7 +277,7 @@ function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandle
         <span className="block truncate text-[12.5px] font-medium text-foreground">
           {item.name}
         </span>
-        <span className="block truncate text-[10.5px] text-muted">
+        <span className="block truncate text-[10.5px] text-muted-foreground">
           {LABEL[item.object_type]}
           {item.shared_by ? ` · from ${item.shared_by}` : ""}
         </span>

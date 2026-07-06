@@ -69,7 +69,7 @@ export default function QuickAccess({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </h2>
       <div className="flex flex-wrap gap-2.5">{children}</div>
@@ -134,7 +134,7 @@ function Card({
         <span className="block truncate text-[12.5px] font-medium text-foreground">
           {item.name}
         </span>
-        <span className="block truncate text-[10.5px] text-muted">{typeFor(item)}</span>
+        <span className="block truncate text-[10.5px] text-muted-foreground">{typeFor(item)}</span>
       </span>
       <button
         type="button"
@@ -146,7 +146,7 @@ function Card({
           "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-[14px] transition " +
           (pinned
             ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
-            : "text-muted opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/qa:opacity-100")
+            : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/qa:opacity-100")
         }
         title={pinned ? "Unpin" : "Pin"}
         aria-label={pinned ? "Unpin" : "Pin"}

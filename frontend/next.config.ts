@@ -20,6 +20,10 @@ const agentUserAgent = "^(?!.*[Mm]ozilla).+";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Dev StrictMode double-mounts effects, which makes the collaboration editor
+  // open → close → reopen its WebSocket on every load (slow, flaky first paint).
+  // Production never double-mounts; turning it off keeps dev in parity.
+  reactStrictMode: false,
   async rewrites() {
     return {
       // These run before App Router pages so `.md` and `.json` are content

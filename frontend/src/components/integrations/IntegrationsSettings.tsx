@@ -11,7 +11,7 @@ export default function IntegrationsSettings({ embedded = false }: Props) {
     <>
       <div>
         <h2 className="text-base font-semibold text-foreground">Sources</h2>
-        <p className="mt-0.5 text-xs text-muted">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Connect accounts and choose the sources your agent can read.
         </p>
       </div>

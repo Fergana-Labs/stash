@@ -41,6 +41,33 @@ export default function EditorToolbar({
     setMounted(true);
   }, []);
 
+  // Center the floating pill on the editor column, not the viewport — the
+  // editor lives right of the rail + explorer, so a viewport-centered pill
+  // reads as off-center. Track the editor's DOM box and re-measure on layout
+  // shifts (sidebar resize, split view).
+  const [centerX, setCenterX] = useState<number | null>(null);
+  useEffect(() => {
+    const dom = editor?.view?.dom as HTMLElement | undefined;
+    if (!dom) return;
+    const update = () => {
+      const r = dom.getBoundingClientRect();
+      setCenterX(r.left + r.width / 2);
+    };
+    update();
+    // ResizeObserver isn't present in jsdom (tests); the interval + resize
+    // listener still keep the pill centered on layout changes.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    ro?.observe(dom);
+    ro?.observe(document.body);
+    window.addEventListener("resize", update);
+    const id = window.setInterval(update, 500);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", update);
+      window.clearInterval(id);
+    };
+  }, [editor]);
+
   // Track editor focus for visibility="when-focused" inline use. We keep
   // the pill alive briefly after blur so clicks on the toolbar itself
   // don't dismiss it before the click handler fires.
@@ -135,8 +162,8 @@ export default function EditorToolbar({
 
   const toolbar = (
     <div
-      className="fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
-      style={{ bottom: 40 }}
+      className="fixed z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
+      style={{ bottom: 40, left: centerX ?? "50%" }}
       onMouseDown={(e) => e.preventDefault()}
     >
       <Btn
@@ -295,7 +322,7 @@ export default function EditorToolbar({
             className={
               "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium transition " +
               (selectionEmpty
-                ? "cursor-not-allowed text-muted/40"
+                ? "cursor-not-allowed text-muted-foreground/40"
                 : "cursor-pointer text-foreground hover:bg-raised")
             }
           >
@@ -349,10 +376,10 @@ function Btn({
       className={
         "inline-flex h-7 w-7 items-center justify-center rounded-md text-[13px] transition " +
         (disabled
-          ? "cursor-not-allowed text-muted/40"
+          ? "cursor-not-allowed text-muted-foreground/40"
           : active
             ? "cursor-pointer bg-foreground/5 text-foreground"
-            : "cursor-pointer text-muted hover:bg-raised hover:text-foreground")
+            : "cursor-pointer text-muted-foreground hover:bg-raised hover:text-foreground")
       }
     >
       {children}

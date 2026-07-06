@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -119,10 +119,8 @@ function initials(name: string): string {
     .join("");
 }
 
-export default function SessionViewerPage() {
-  const params = useParams();
+export default function SessionViewerPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading } = useAuth();
   const confirm = useConfirm();
 
@@ -244,7 +242,7 @@ export default function SessionViewerPage() {
                 />
               </h1>
               {totalTurns > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted">
+                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
                   {sessionDate && <span>{sessionDate}</span>}
                   {sessionDate && <span>·</span>}
                   <span>
@@ -346,14 +344,14 @@ export default function SessionViewerPage() {
                   type="button"
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
                 >
                   {loadingMore ? "Loading…" : "Load more"}
                 </button>
               </div>
             )}
             {!error && totalTurns === 0 && (
-              <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+              <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
                 No transcript events yet.
               </div>
             )}
@@ -426,10 +424,10 @@ function SaveToSkillButton({
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
           {skills === null && (
-            <div className="px-3 py-1.5 text-muted">Loading…</div>
+            <div className="px-3 py-1.5 text-muted-foreground">Loading…</div>
           )}
           {skills?.length === 0 && (
-            <div className="px-3 py-1.5 text-muted">No skills yet.</div>
+            <div className="px-3 py-1.5 text-muted-foreground">No skills yet.</div>
           )}
           {skills?.map((skill) => (
             <button
@@ -503,7 +501,7 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
             </div>
           )}
           {filesTouched.length === 0 && artifacts.length === 0 && (
-            <div className="mt-2 text-[12px] leading-relaxed text-muted">
+            <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
               No artifacts recorded.
             </div>
           )}
@@ -527,7 +525,7 @@ function LinearTicketAsideRow({
           {ticket.ticket_title || ticket.ticket_identifier}
         </span>
         {metadata && (
-          <span className="block truncate text-[11px] text-muted">
+          <span className="block truncate text-[11px] text-muted-foreground">
             {metadata}
           </span>
         )}
@@ -578,7 +576,7 @@ function LinearTicketPill({
 
 function FileGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0 text-muted">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0 text-muted-foreground">
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
       <path d="M14 3v5h5" />
     </svg>
@@ -600,7 +598,7 @@ function normalizeStringList(value: string[] | string | null | undefined): strin
 
 function DateDivider({ label }: { label: string }) {
   return (
-    <div className="my-4 flex items-center gap-3 text-[11px] font-medium text-muted">
+    <div className="my-4 flex items-center gap-3 text-[11px] font-medium text-muted-foreground">
       <span className="h-px flex-1 bg-border" />
       <span>{label}</span>
       <span className="h-px flex-1 bg-border" />

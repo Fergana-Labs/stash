@@ -25,13 +25,14 @@ import {
 } from "@/lib/localSkill";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
-export default function FolderDetailPage() {
+export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const folderId = params.folderId as string;
+  // Prop wins (workbench tab); otherwise read the route param (deep link).
+  const folderId = folderIdProp ?? (params.folderId as string);
   const { user, loading } = useAuth();
-  const skillSlug = searchParams.get("skill");
+  const skillSlug = folderIdProp ? null : searchParams.get("skill");
 
   // Small auxiliary breadcrumb fetch so the top bar is correct before the
   // file browser shell finishes its own load. The shell still owns the main
@@ -206,14 +207,14 @@ function SkillFallbackFolderView({
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
           href={`/skills/${skillSlug}`}
-          className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+          className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
         >
           ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
           {folder.name || "(untitled folder)"}
         </h1>
-        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted-foreground">
           folder · read-only via Skill
         </div>
         <div className="mt-6 flex flex-col gap-1">
@@ -237,7 +238,7 @@ function SkillFallbackFolderView({
             />
           ))}
           {pages.length === 0 && files.length === 0 && tables.length === 0 && (
-            <p className="text-[13px] text-muted">Folder is empty.</p>
+            <p className="text-[13px] text-muted-foreground">Folder is empty.</p>
           )}
         </div>
       </div>
@@ -253,9 +254,9 @@ function FallbackRow({ href, name, sub }: { href: string; name: string; sub: str
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-medium text-foreground">{name}</span>
-        <span className="block truncate text-[11.5px] text-muted">{sub}</span>
+        <span className="block truncate text-[11.5px] text-muted-foreground">{sub}</span>
       </span>
-      <span className="hidden text-[11.5px] text-muted sm:inline">Open →</span>
+      <span className="hidden text-[11.5px] text-muted-foreground sm:inline">Open →</span>
     </Link>
   );
 }

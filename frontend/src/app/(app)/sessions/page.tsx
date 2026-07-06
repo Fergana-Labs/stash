@@ -301,7 +301,7 @@ export default function SkillSessionsPage() {
 
         {pinnedSessions.length > 0 && (
           <section className="mb-5">
-            <h2 className="m-0 mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <h2 className="m-0 mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               <PinIcon className="text-[13px]" />
               Pinned
             </h2>
@@ -424,7 +424,7 @@ function SessionsView({
 }) {
   if (sessions.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
         No sessions yet.
       </div>
     );
@@ -524,7 +524,7 @@ function DayGroup({
         <div className="mt-1.5 flex flex-col gap-4">
           {group.users.map((bucket) => (
             <div key={bucket.user}>
-              <div className="mb-1 px-2 text-[11px] font-medium text-muted">{bucket.user}</div>
+              <div className="mb-1 px-2 text-[11px] font-medium text-muted-foreground">{bucket.user}</div>
               <SessionsTable
                 sessions={bucket.sessions}
                 isPinned={isPinned}
@@ -616,7 +616,7 @@ function SegmentedControl<T extends string>({
                 "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
                 (active
                   ? "bg-base font-semibold text-foreground shadow-sm"
-                  : "text-muted hover:bg-raised/70 hover:text-foreground")
+                  : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
               }
             >
               {opt.label}
@@ -631,7 +631,7 @@ function SegmentedControl<T extends string>({
 function Chev({ open }: { open: boolean }) {
   return (
     <svg
-      className={"h-3 w-3 text-muted transition-transform " + (open ? "rotate-90" : "")}
+      className={"h-3 w-3 text-muted-foreground transition-transform " + (open ? "rotate-90" : "")}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -661,7 +661,7 @@ function SessionsTable({
 }) {
   if (sessions.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
         No sessions yet.
       </div>
     );
@@ -669,7 +669,7 @@ function SessionsTable({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="hidden grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted md:grid">
+      <div className="hidden grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid">
         <span>User</span>
         <span>Session</span>
         <span>Ticket</span>
@@ -760,24 +760,24 @@ function SessionTableRow({
             </span>
           )}
         </div>
-        <div className="mt-0.5 truncate text-[11px] text-muted md:hidden">
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:hidden">
           {[user, ticket?.ticket_identifier, agent, formatRelative(session.last_event_at)]
             .filter(Boolean)
             .join(" · ")}
         </div>
       </div>
       <span className="hidden min-w-0 md:block">
-        {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted">None</span>}
+        {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
       </span>
-      <span className="hidden items-center gap-1 text-[12px] text-muted md:flex">
+      <span className="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
         <MessageIcon />
         {session.event_count}
       </span>
-      <span className="hidden truncate text-muted md:block">{agent}</span>
-      <span className="hidden whitespace-nowrap text-[12px] text-muted md:block">
+      <span className="hidden truncate text-muted-foreground md:block">{agent}</span>
+      <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
         {formatDate(session.last_event_at || session.started_at)}
       </span>
-      <span className="justify-self-end whitespace-nowrap text-[12px] text-muted">
+      <span className="justify-self-end whitespace-nowrap text-[12px] text-muted-foreground">
         {formatRelative(session.last_event_at)}
       </span>
       <span
@@ -802,7 +802,7 @@ function SessionTableRow({
           "hidden cursor-pointer justify-self-end rounded p-1 transition hover:bg-raised md:block " +
           (pinned
             ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
-            : "text-muted/40 hover:text-foreground")
+            : "text-muted-foreground/40 hover:text-foreground")
         }
       >
         <PinIcon className="text-[15px]" />
@@ -921,7 +921,7 @@ function FolderAccessBadge({ folder }: { folder: SessionFolder }) {
   const vis = displayVisibility(folder.access, folder.share_count);
   if (vis === "private") return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted">
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
       <span
         className="inline-block h-[7px] w-[7px] rounded-full"
         style={{ background: VIS_DOT[vis] }}
@@ -1027,18 +1027,18 @@ function FolderCard({
             {folder.name}
           </span>
           {folder.is_default && (
-            <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-px text-[9.5px] uppercase tracking-wide text-muted">
+            <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-px text-[9.5px] uppercase tracking-wide text-muted-foreground">
               Default
             </span>
           )}
         </span>
         <span className="mt-1 flex items-center gap-2">
-          <span className="text-[11.5px] text-muted">
+          <span className="text-[11.5px] text-muted-foreground">
             {folder.session_count} session{folder.session_count === 1 ? "" : "s"}
           </span>
           {displayVisibility(folder.access, folder.share_count) !== "private" && (
             <>
-              <span aria-hidden className="text-muted">·</span>
+              <span aria-hidden className="text-muted-foreground">·</span>
               <FolderAccessBadge folder={folder} />
             </>
           )}
@@ -1050,7 +1050,7 @@ function FolderCard({
           e.stopPropagation();
           onShare();
         }}
-        className="shrink-0 cursor-pointer rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
+        className="shrink-0 cursor-pointer rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
       >
         Share
       </button>
@@ -1078,7 +1078,7 @@ function SharedFolderCard({
       </span>
       <span className="min-w-0">
         <span className="block truncate text-[13.5px] font-semibold text-foreground">{name}</span>
-        <span className="block truncate text-[11.5px] text-muted">{subtitle}</span>
+        <span className="block truncate text-[11.5px] text-muted-foreground">{subtitle}</span>
       </span>
     </button>
   );
@@ -1193,7 +1193,7 @@ function FolderDrill({
       <button
         type="button"
         onClick={onBack}
-        className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+        className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
       >
         ← All folders
       </button>
@@ -1216,7 +1216,7 @@ function FolderDrill({
               <button
                 type="button"
                 onClick={() => onDelete(ownFolder)}
-                className="cursor-pointer rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted hover:text-rose-500"
+                className="cursor-pointer rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted-foreground hover:text-rose-500"
               >
                 Delete
               </button>
@@ -1229,7 +1229,7 @@ function FolderDrill({
           flight — the drill view otherwise has no folder list to drop onto. */}
       {dragActive && !folder.shared && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[var(--color-brand-300)] bg-[var(--color-brand-50)]/40 px-3 py-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Move to
           </span>
           {folders
@@ -1258,7 +1258,7 @@ function FolderDrill({
         />
       </div>
       {folderSessions === null ? (
-        <p className="text-[12.5px] text-muted">Loading…</p>
+        <p className="text-[12.5px] text-muted-foreground">Loading…</p>
       ) : (
         <>
           <SessionsView
@@ -1277,7 +1277,7 @@ function FolderDrill({
                 type="button"
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>

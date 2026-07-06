@@ -40,7 +40,7 @@ export default function SubscriptionSection() {
     <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">Subscription</h2>
-        <p className="text-xs text-muted mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           The free plan includes 1 connected account. Pro is $20/month for unlimited integrations.
         </p>
       </div>
@@ -50,7 +50,7 @@ export default function SubscriptionSection() {
           <div className="text-sm font-medium text-foreground">
             {isPro ? "Pro — $20/month" : "Free"}
           </div>
-          <div className="text-xs text-muted mt-0.5">
+          <div className="text-xs text-muted-foreground mt-0.5">
             {isPro
               ? `Subscription ${billing.status}.`
               : `${billing.connection_count} of ${billing.connection_limit} connected account used.`}
@@ -79,7 +79,7 @@ export default function SubscriptionSection() {
               type="button"
               disabled={busy}
               onClick={() => redirectTo(() => startCheckout("year"))}
-              className="cursor-pointer text-xs text-muted hover:text-foreground underline disabled:opacity-60"
+              className="cursor-pointer text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-60"
             >
               or $200/year — 2 months free
             </button>
@@ -88,7 +88,7 @@ export default function SubscriptionSection() {
       </div>
 
       {error && <p className="text-xs text-error">{error}</p>}
-      <p className="text-[11px] text-muted">
+      <p className="text-[11px] text-muted-foreground">
         Plan changes can take a few seconds to apply after checkout.
       </p>
     </section>

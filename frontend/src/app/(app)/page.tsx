@@ -1,125 +1,193 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import DescriptionEditor, {
-  isBlankDescription,
-} from "@/components/DescriptionEditor";
-import { generateWelcomeHtml } from "@/lib/onboarding/welcomeContent";
-import { ScopeHomeSkeleton } from "@/components/SkeletonStates";
+import { useEffect, useState, type ReactNode } from "react";
+import { FileText, Code2 } from "lucide-react";
+import { CardGridSkeleton } from "@/components/SkeletonStates";
+import { GitHubIcon } from "@/components/integrations/BrandIcons";
+import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
+import SkillCard from "@/components/skill/SkillCard";
 import { StashIcon } from "@/components/SkillIcons";
-import { useAuth } from "@/hooks/useAuth";
-import { createPage, updateMe } from "@/lib/api";
-import type { User } from "@/lib/types";
+import { API_BASE, githubOwner, listPublicPages, type PublicSkillCard, type PublicPageCard } from "@/lib/api";
 
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "just now";
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d} d ago`;
-  return new Date(iso).toLocaleDateString();
+const SORTS = ["trending", "newest", "popular"] as const;
+type Sort = (typeof SORTS)[number];
+const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
+
+async function fetchPublicSkills(params: { q?: string; sort: Sort }): Promise<PublicSkillCard[]> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+  const res = await fetch(`${API_BASE}/api/v1/discover/skills${qs.size ? `?${qs}` : ""}`);
+  if (!res.ok) return [];
+  return (await res.json()).skills ?? [];
 }
 
+/** The home / Discover feature — a dressed hero over the public-Skills catalog. */
 export default function HomePage() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
-
-  const [profile, setProfile] = useState<User | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setProfile(user);
-  }, [user]);
+  const [sort, setSort] = useState<Sort>("trending");
+  const [query, setQuery] = useState("");
+  const [skills, setSkills] = useState<PublicSkillCard[]>([]);
+  const [pages, setPages] = useState<PublicPageCard[]>([]);
+  const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+    setFetching(true);
+    fetchPublicSkills({ q: query || undefined, sort }).then(setSkills).finally(() => setFetching(false));
+  }, [query, sort]);
 
-  // A fresh space lands empty; seed the "what to do next" welcome doc as the
-  // default description (idempotent — only writes when still blank). The user
-  // can edit or delete it like any page.
-  useEffect(() => {
-    if (!profile) return;
-    if (!isBlankDescription(profile.description ?? "")) return;
-    const html = generateWelcomeHtml({
-      displayName: profile.display_name || profile.name,
-    });
-    updateMe({ description: html })
-      .then(setProfile)
-      .catch(() => {});
-  }, [profile]);
-
-  async function handleNewPage() {
-    try {
-      const page = await createPage("Untitled");
-      router.push(`/p/${page.id}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create page");
-    }
-  }
-
-  if (loading) return <ScopeHomeSkeleton />;
-  if (!user) return null;
-  if (!profile) return <ScopeHomeSkeleton />;
+  // Public pages (pastebin) are the same across sorts — fetched once, filtered client-side.
+  useEffect(() => { listPublicPages().then(setPages); }, []);
+  const q = query.trim().toLowerCase();
+  const visiblePages = q ? pages.filter((p) => p.title.toLowerCase().includes(q)) : pages;
 
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="h-[72px] w-full bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100" />
-
-      <div className="mx-auto max-w-[920px] px-12 pb-20">
-        {/* Identity strip: icon + name + meta + actions */}
-        <div className="flex items-start justify-between gap-3 pt-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[28px] text-[var(--color-brand-700)] shadow-sm">
-              <StashIcon />
-            </span>
-            <div className="min-w-0">
-              <h2 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-                {profile.display_name || profile.name}
-              </h2>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-                {profile.last_seen && (
-                  <>
-                    <span className="text-muted/60">·</span>
-                    <span>updated {relativeTime(profile.last_seen)}</span>
-                  </>
-                )}
-              </div>
-            </div>
+    <div className="min-h-full">
+      {/* Hero */}
+      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-brand-100 via-brand-50 to-[color:var(--bg-surface)]">
+        <div className="mx-auto max-w-[1180px] px-12 py-14">
+          <div className="flex items-center gap-2 text-brand-600">
+            <StashIcon className="text-[26px]" />
+            <span className="text-[13px] font-semibold uppercase tracking-[0.14em]">Discover</span>
           </div>
-          <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-            <button
-              type="button"
-              onClick={handleNewPage}
-              className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
-            >
-              + New page
-            </button>
+          <h1 className="mt-4 max-w-[680px] font-display text-[40px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
+            Get a head start with the community.
+          </h1>
+          <p className="mt-3 max-w-[580px] text-[15px] leading-[1.6] text-dim">
+            Explore public workflows, pages, and docs shared by the community — fork anything into your workspace and make it your own.
+          </p>
+          <div className="mt-6 flex max-w-[520px] items-center gap-2 rounded-full border border-border bg-base px-4 py-2.5 shadow-sm">
+            <SearchGlyph />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search the community…"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+            />
           </div>
         </div>
+      </div>
 
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-            {error}
+      {/* Catalog */}
+      <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-8">
+        <div className="flex items-center gap-3">
+          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
+            {SORTS.map((o) => (
+              <button
+                key={o}
+                onClick={() => setSort(o)}
+                className={"cursor-pointer rounded-md px-3 py-1 text-[12.5px] " + (sort === o ? "bg-raised font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                {sortLabel(o)}
+              </button>
+            ))}
           </div>
-        )}
+          <span className="flex-1" />
+          <span className="sys-label" style={{ fontSize: 10.5 }}>{skills.length + visiblePages.length} result{skills.length + visiblePages.length === 1 ? "" : "s"}</span>
+        </div>
 
-        <section className="mt-5">
-          <DescriptionEditor
-            value={profile.description ?? ""}
-            canEdit={true}
-            placeholder="Describe your space…"
-            ariaLabel="Description"
-            onSave={async (html) => {
-              setProfile(await updateMe({ description: html }));
-            }}
-          />
-        </section>
+        {fetching ? (
+          <CardGridSkeleton className="mt-6" />
+        ) : skills.length === 0 && visiblePages.length === 0 ? (
+          <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
+            <h2 className="font-display text-[20px] font-bold text-foreground">Nothing here yet.</h2>
+            <p className="mx-auto mt-2 max-w-[440px] text-[13.5px] leading-[1.6] text-muted-foreground">Community workflows, pages, and docs will show up here as people share them publicly.</p>
+          </section>
+        ) : (
+          <>
+            {skills.length > 0 && (
+              <>
+                <SectionHeading>Workflows &amp; skills</SectionHeading>
+                <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {skills.map((skill, i) => (
+                    <SkillCard
+                      key={skill.id}
+                      href={`/skills/${skill.slug}`}
+                      skill={{
+                        title: skill.title,
+                        description: skill.description,
+                        cover_image_url: skill.cover_image_url,
+                        owner_name: skill.owner_name,
+                        owner_display_name: skill.source_github_url ? githubOwner(skill.source_github_url) : skill.owner_display_name,
+                        updated_at: skill.updated_at,
+                      }}
+                      cover={COVERS[i % COVERS.length]}
+                      badge={sort === "trending" && i < 2 ? (
+                        <span className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white">↗ trending</span>
+                      ) : undefined}
+                      cornerAction={
+                        <span className="flex items-center gap-1.5">
+                          {skill.source_github_url && <GitHubSourceGlyph href={skill.source_github_url} />}
+                          <ForkSkillCardButton slug={skill.slug} />
+                        </span>
+                      }
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {visiblePages.length > 0 && (
+              <>
+                <SectionHeading className="mt-12">Community pages</SectionHeading>
+                <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {visiblePages.map((p) => <PageCard key={p.slug} page={p} />)}
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+function SectionHeading({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <h2 className={`text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground ${className}`}>{children}</h2>;
+}
+
+// A community page (pastebin) card — opens the public page in a new tab.
+function PageCard({ page }: { page: PublicPageCard }) {
+  const Icon = page.content_type === "html" ? Code2 : FileText;
+  return (
+    <a
+      href={`/pages/${page.slug}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex flex-col gap-3 rounded-xl border border-border bg-base p-4 transition hover:border-brand-300 hover:shadow-sm"
+    >
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-foreground group-hover:text-brand-600">{page.title || "Untitled"}</span>
+      <span className="mt-auto flex items-center gap-2 text-[11.5px] text-muted-foreground">
+        <span className="rounded bg-surface px-1.5 py-0.5 font-medium uppercase tracking-wide">{page.content_type}</span>
+        <span>{page.view_count} view{page.view_count === 1 ? "" : "s"}</span>
+      </span>
+    </a>
+  );
+}
+
+function GitHubSourceGlyph({ href }: { href: string }) {
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      title="View source on GitHub"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(href, "_blank", "noopener"); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); window.open(href, "_blank", "noopener"); } }}
+      className="inline-flex cursor-pointer items-center rounded-full bg-white/85 p-1 text-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-white"
+    >
+      <GitHubIcon size={13} />
+    </span>
+  );
+}
+
+function sortLabel(sort: Sort): string {
+  return sort === "popular" ? "Most viewed" : sort === "trending" ? "Trending" : "Newest";
+}
+function SearchGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
+      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+    </svg>
   );
 }

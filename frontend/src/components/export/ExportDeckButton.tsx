@@ -177,7 +177,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
               className="block w-full cursor-pointer rounded-md px-2.5 py-2 text-left transition hover:bg-raised"
             >
               <div className="text-[13px] font-medium text-foreground">{f.label}</div>
-              <div className="mt-0.5 text-[12px] text-muted">{f.help}</div>
+              <div className="mt-0.5 text-[12px] text-muted-foreground">{f.help}</div>
             </button>
           ))}
         </div>
@@ -187,7 +187,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
           <Spinner />
           <span>{busyCopyFor(busyFormat)}</span>
           {busyFormat === "gslides" && (
-            <span className="text-muted">this takes ~20s</span>
+            <span className="text-muted-foreground">this takes ~20s</span>
           )}
         </div>
       )}
@@ -219,7 +219,7 @@ export default function ExportDeckButton({ pageId, layout, contentType }: Props)
           <button
             type="button"
             onClick={() => setResult(null)}
-            className="ml-3 cursor-pointer text-muted hover:text-foreground"
+            className="ml-3 cursor-pointer text-muted-foreground hover:text-foreground"
           >
             Dismiss
           </button>

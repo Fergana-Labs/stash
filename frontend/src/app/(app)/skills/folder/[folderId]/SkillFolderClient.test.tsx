@@ -95,7 +95,7 @@ describe("SkillFolderClient", () => {
   });
 
   it("roots breadcrumbs at Skills and trails from the skill folder", async () => {
-    render(<SkillFolderClient />);
+    render(<SkillFolderClient folderId="folder-sub" />);
 
     await screen.findByTestId("file-browser");
 
@@ -110,7 +110,7 @@ describe("SkillFolderClient", () => {
   });
 
   it("keeps folder navigation on the skill browse route", async () => {
-    render(<SkillFolderClient />);
+    render(<SkillFolderClient folderId="folder-sub" />);
 
     const browser = await screen.findByTestId("file-browser");
     expect(browser).toHaveAttribute("data-href-base", "/skills");
@@ -131,7 +131,7 @@ describe("SkillFolderClient", () => {
       tables: [],
     });
 
-    render(<SkillFolderClient />);
+    render(<SkillFolderClient folderId="folder-sub" />);
 
     await waitFor(() =>
       expect(router.replace).toHaveBeenCalledWith("/folders/folder-sub"),

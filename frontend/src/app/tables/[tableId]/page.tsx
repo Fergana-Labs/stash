@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
+import { TableEditorSkeleton } from "@/components/SkeletonStates";
 import {
   firstSearchParam,
   metadataForPublicSkillItem,
 } from "../../../lib/skillMetadata";
-import TableClient from "./TableClient";
+import TableRouteClient from "./TableRouteClient";
 
 type PageProps = {
   params: Promise<{ tableId: string }>;
@@ -27,6 +29,11 @@ export async function generateMetadata({
   });
 }
 
-export default function TableRoute() {
-  return <TableClient />;
+export default async function TableRoute({ params }: PageProps) {
+  const { tableId } = await params;
+  return (
+    <Suspense fallback={<TableEditorSkeleton />}>
+      <TableRouteClient tableId={tableId} />
+    </Suspense>
+  );
 }

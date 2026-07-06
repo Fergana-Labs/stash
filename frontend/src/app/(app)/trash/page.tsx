@@ -192,7 +192,7 @@ export default function TrashPage() {
   }, [data]);
 
   if (loading || !data)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+    return <div className="flex h-screen items-center justify-center text-muted-foreground">Loading…</div>;
   if (!user) return null;
 
   const total = allItems.length;
@@ -211,7 +211,7 @@ export default function TrashPage() {
           </span>
         </div>
 
-        <p className="mt-2 text-[13px] text-muted">
+        <p className="mt-2 text-[13px] text-muted-foreground">
           Items here are recoverable. Permanent delete cannot be undone.
         </p>
 
@@ -234,7 +234,7 @@ export default function TrashPage() {
                 className="h-4 w-4 rounded border-border accent-[var(--color-brand-600)]"
                 aria-label="Select all trashed items"
               />
-              <span className="text-muted">
+              <span className="text-muted-foreground">
                 {selected.size === 0
                   ? "Select all"
                   : `${selected.size} of ${total} selected`}
@@ -277,7 +277,7 @@ export default function TrashPage() {
             />
           ))}
           {total === 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-8 text-center text-[12.5px] text-muted">
+            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-8 text-center text-[12.5px] text-muted-foreground">
               Nothing in trash.
             </div>
           )}
@@ -327,7 +327,7 @@ function TrashSection({
           className="h-4 w-4 rounded border-border accent-[var(--color-brand-600)]"
           aria-label={`Select all ${title.toLowerCase()}`}
         />
-        {title} <span className="text-muted">({entries.length})</span>
+        {title} <span className="text-muted-foreground">({entries.length})</span>
       </h2>
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
         {entries.map((entry) => {
@@ -349,7 +349,7 @@ function TrashSection({
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-foreground">{entry.name}</div>
-                <div className="mt-0.5 truncate text-[11.5px] text-muted">
+                <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
                   Deleted {formatRelative(entry.deleted_at)}
                   {entry.deleted_by_name ? ` by ${entry.deleted_by_name}` : ""}
                 </div>

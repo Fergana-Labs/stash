@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { useShareAction } from "@/components/ShellChromeContext";
 import { recordRecent } from "@/lib/pins";
 import { PageBody } from "../../skills/[slug]/SkillItemBodies";
 import {
@@ -93,12 +92,10 @@ function sameAnchorTops(a: Record<string, number>, b: Record<string, number>): b
   return aKeys.every((key) => a[key] === b[key]);
 }
 
-export default function SkillPageView() {
-  const params = useParams();
+export default function SkillPageView({ pageId }: { pageId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
-  const pageId = params.pageId as string;
   const { user, loading } = useAuth();
   // When ?skill=<slug> is present, the page is viewed through a skill —
   // the viewer might not own the page, so we fall back to the
@@ -213,7 +210,7 @@ export default function SkillPageView() {
       />
     );
   }, [page, skillSlug, user]);
-  useShareAction(shareAction);
+  // Share lives in this page's own header bar (rightExtras), not the global bar.
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -530,17 +527,6 @@ export default function SkillPageView() {
   const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
   const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
 
-  async function handleNewPage() {
-    if (!page) return;
-    try {
-      const created = await createPage("Untitled", page.folder_id);
-      refreshSidebar().catch(() => {});
-      router.push(`/p/${created.id}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create page");
-    }
-  }
-
   // Provenance: when an agent made the last content edit, link the page back to
   // the chat session that produced it.
   const metaItems: ReactNode[] = [];
@@ -559,8 +545,9 @@ export default function SkillPageView() {
     );
   }
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
+    <div className="flex h-full flex-col">
       <FileViewerHeader
+        compact
         icon={isHtml ? <HtmlGlyph /> : <PageGlyph />}
         iconColor={isHtml ? "var(--color-brand-600)" : "var(--text-muted)"}
         title={baseName}
@@ -583,13 +570,7 @@ export default function SkillPageView() {
         rightExtras={
           page ? (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleNewPage}
-                className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
-              >
-                + New page
-              </button>
+              {shareAction}
               {isHtml && (
                 <ExportDeckButton
                   pageId={page.id}
@@ -676,9 +657,10 @@ export default function SkillPageView() {
             : undefined
         }
       />
+      <div className="scroll-thin flex-1 overflow-y-auto">
       <div
         ref={pageLayoutRef}
-        className={`mt-6 grid gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px] ${
+        className={`mt-8 grid gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px] ${
           isFullWidth ? "" : "mx-auto max-w-[1200px]"
         }`}
       >
@@ -800,6 +782,7 @@ export default function SkillPageView() {
           />
         </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -828,7 +811,7 @@ function PageAccessDeniedScreen({ accountLabel }: { accountLabel: string | null 
             account.
           </p>
           {accountLabel ? (
-            <p className="mt-4 text-[13px] leading-5 text-muted">
+            <p className="mt-4 text-[13px] leading-5 text-muted-foreground">
               You&apos;re signed in as <span className="font-medium text-foreground">{accountLabel}</span>.
             </p>
           ) : null}
@@ -905,14 +888,14 @@ function SkillFallbackPageView({
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
           href={`/skills/${skillSlug}`}
-          className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+          className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
         >
           ← {skillTitle}
         </Link>
         <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
           {page.name || "(untitled)"}
         </h1>
-        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted-foreground">
           page · read-only via Skill
         </div>
         <div className="mt-6">

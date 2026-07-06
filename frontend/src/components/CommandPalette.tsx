@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { getSidebar, listAllTables, semanticSearchPages, type Sidebar } from "../lib/api";
 import type { TableWithOwner } from "../lib/types";
-import type { SearchScope } from "./AppShell";
+import type { SearchScope } from "@/lib/searchScope";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface CommandPaletteProps {
@@ -189,7 +189,7 @@ export default function CommandPalette({
   return (
     <div className="fixed inset-0 z-[60] cursor-pointer bg-transparent" onClick={onClose}>
       <div
-        className="absolute flex max-h-[calc(100vh-1rem)] flex-col overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
+        className="absolute flex max-h-[calc(100vh-1rem)] flex-col overflow-hidden rounded-[20px] border border-border bg-base shadow-[0_8px_30px_-8px_rgba(0,0,0,0.18)] ring-1 ring-black/[0.04]"
         style={{
           left: anchorRect?.left,
           top: anchorRect?.top,
@@ -199,8 +199,8 @@ export default function CommandPalette({
         role="dialog"
         aria-label="Search"
       >
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <div className="flex items-center gap-3 px-4 py-2.5">
+          <svg className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
@@ -209,13 +209,13 @@ export default function CommandPalette({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Skill or jump to a page, session, file, or table..."
-            className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
             autoFocus
           />
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground"
             aria-label="Close search"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -237,25 +237,25 @@ export default function CommandPalette({
                   (i === selected ? "bg-[var(--color-brand-50)] text-foreground" : "text-dim hover:bg-raised")
                 }
               >
-                <span className="w-5 text-center text-[14px] text-muted">
+                <span className="w-5 text-center text-[14px] text-muted-foreground">
                   {kindIcon[r.kind] || "·"}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{r.label}</div>
-                  {r.detail && <div className="truncate text-[11px] text-muted">{r.detail}</div>}
+                  {r.detail && <div className="truncate text-[11px] text-muted-foreground">{r.detail}</div>}
                 </div>
-                {r.kind !== "search" && <span className="rounded bg-surface px-1 py-0 text-[9px] uppercase tracking-wide text-muted ring-1 ring-border">
+                {r.kind !== "search" && <span className="rounded bg-surface px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground ring-1 ring-border">
                   {r.kind}
                 </span>}
               </Link>
             ))}
           </div>
         ) : query ? (
-          <div className="px-4 py-6 text-center text-[13px] text-muted">
+          <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">
             No results for &quot;{query}&quot;
           </div>
         ) : (
-          <div className="px-4 py-6 text-center text-[13px] text-muted">
+          <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">
             Start typing to search this skill...
           </div>
         )}

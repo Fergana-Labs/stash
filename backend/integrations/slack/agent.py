@@ -1,9 +1,9 @@
 """Slack agent (talk-to-Stash bot) — turn a Slack mention/DM into an agent run.
 
 This is the seam where the Slack surface meets the existing agent: it resolves
-the Slack user to a Stash account, runs the scope agent in that user's
-single continuous Slack session, and posts the reply back. Everything agent-
-side (tool_loop, tools, memory, scoping) is reused unchanged.
+the Slack user to a Stash account, runs the cloud agent (Claude Code on the
+user's sprite — see sprite_agent_service) in that user's single continuous
+Slack session, and posts the reply back.
 
 REMOVAL: this module + installs.py + client.py + links.py + the provider
 bot-token capture + the router link capture + the webhook agent branch + the
@@ -17,7 +17,7 @@ import logging
 import re
 
 from ...config import settings
-from ...services import ask_service, user_service
+from ...services import sprite_agent_service, user_service
 from . import client, installs, links
 
 logger = logging.getLogger(__name__)
@@ -78,9 +78,42 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     owner_user_id = user["id"]
     # The scope is the user, so its name is the user's display name.
     owner_name = user["display_name"] or user["name"]
-    # One continuous session per user → memory accumulates across DMs/channels/time.
-    session_id = f"slack-agent-{user['id']}"
-    answer = await ask_service.run_chat(owner_user_id, owner_name, user["id"], session_id, text)
+    session_id = _session_id(user["id"], event)
+    try:
+        answer = await sprite_agent_service.run_chat(
+            owner_user_id, owner_name, user["id"], session_id, text, channel="slack"
+        )
+    except sprite_agent_service.NeedsAuth:
+        await client.post_message(bot_token, channel, _upgrade_prompt(), thread_ts)
+        return
+    except sprite_agent_service.TurnInProgress:
+        await client.post_message(
+            bot_token, channel, "I'm still working on your last message — one sec.", thread_ts
+        )
+        return
+    except Exception:
+        logger.exception("slack agent: turn failed for %s", session_id)
+        await client.post_message(
+            bot_token, channel, "Something went wrong on that one. Try again?", thread_ts
+        )
+        return
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts
     )
+
+
+def _upgrade_prompt() -> str:
+    url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
+    return (
+        "Connect your Claude, Codex, or OpenRouter key — or upgrade to Pro for "
+        f"the managed agent — in Stash settings: {url}"
+    )
+
+
+def _session_id(user_id, event: dict) -> str:
+    """DMs are one continuous conversation; each channel @-mention thread is its
+    own session, so a passing mention doesn't drag in the user's DM history."""
+    if event.get("channel_type") == "im":
+        return f"slack-agent-{user_id}-dm"
+    thread = event.get("thread_ts") or event.get("ts")
+    return f"slack-agent-{user_id}-t-{thread}"

@@ -16,13 +16,16 @@ import {
 export default function ChatPanel({
   sessionId,
   onSessionId,
+  agentId,
 }: {
   sessionId: string | null;
   onSessionId: (id: string) => void;
+  agentId?: string | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadedSession, setLoadedSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -80,12 +83,19 @@ export default function ChatPanel({
         await streamAgentChat({
           sessionId,
           message,
+          agentId,
           signal: controller.signal,
           onSession: (id) => {
             if (!sessionId) onSessionId(id);
           },
-          onText: (delta) =>
-            patchAssistant((m) => ({ ...m, content: m.content + delta })),
+          onStatus: (stage) => {
+            if (stage === "waking") setStatus("Starting your computer…");
+          },
+          onText: (delta) => {
+            setStatus(null);
+            patchAssistant((m) => ({ ...m, content: m.content + delta }));
+          },
+          onError: (message) => setError(message),
           onTool: (c: Citation) =>
             patchAssistant((m) =>
               m.citations?.some((x) => x.id === c.id)
@@ -104,10 +114,11 @@ export default function ChatPanel({
         }
       } finally {
         setStreaming(false);
+        setStatus(null);
         abortRef.current = null;
       }
     },
-    [sessionId, streaming, onSessionId],
+    [sessionId, streaming, onSessionId, agentId],
   );
 
   return (
@@ -117,6 +128,12 @@ export default function ChatPanel({
           <EmptyChatState onPrompt={(prompt) => void send(prompt)} />
         ) : (
           messages.map((m, i) => <MessageBubble key={i} message={m} />)
+        )}
+        {status && (
+          <div className="flex items-center gap-2 px-1 text-[12px] text-dim">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+            {status}
+          </div>
         )}
         {error && (
           <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
@@ -256,7 +273,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           <span className="inline-block h-3 w-1.5 animate-pulse bg-brand align-baseline" />
         )}
         {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-2 border-t border-border-subtle pt-2 text-[11px] text-muted">
+          <div className="mt-2 border-t border-border-subtle pt-2 text-[11px] text-muted-foreground">
             <span className="font-medium text-foreground">Grounded on:</span>{" "}
             {message.citations.map((c, i) => (
               <span key={c.id}>
@@ -297,7 +314,7 @@ function Composer({
           }}
           rows={2}
           placeholder="Ask your agent anything..."
-          className="flex-1 resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          className="flex-1 resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
         />
         <button
           type="button"

@@ -17,8 +17,8 @@ Also adds `pages.snapshot_key`: snapshot pages (materialized sessions,
 source-doc snapshots) record their origin so a re-snapshot replaces the page
 in place instead of duplicating it.
 
-Revision ID: 0127
-Revises: 0126
+Revision ID: 0135
+Revises: 0134
 """
 
 import re
@@ -27,8 +27,8 @@ import secrets
 from alembic import op
 from sqlalchemy import text
 
-revision = "0127"
-down_revision = "0126"
+revision = "0135"
+down_revision = "0134"
 branch_labels = None
 depends_on = None
 

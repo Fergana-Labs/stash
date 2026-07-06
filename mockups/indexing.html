@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash · Index</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shell.css" />
+<style>
+  .phead h1{font-family:var(--font-display);font-size:26px;font-weight:700;margin:0;letter-spacing:-.015em;}
+  .phead p{margin:6px 0 0;color:var(--dim);font-size:14px;}
+  .phead p b{color:var(--brand-600);font-weight:600;}
+
+  .banner{display:flex;align-items:center;gap:12px;margin-top:18px;border:1px solid var(--blue-bd);background:var(--blue-bg);border-radius:11px;padding:12px 15px;}
+  .banner .spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--blue-bd);border-top-color:var(--blue-fg);}
+  .banner .tx{font-size:13.5px;color:var(--blue-fg);}.banner .tx b{font-weight:600;}
+  .banner .pct{margin-left:auto;font-family:var(--font-mono);font-size:13px;color:var(--blue-fg);font-weight:500;}
+
+  .cols{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-top:22px;align-items:start;}
+
+  /* decorative knowledge map */
+  .map{height:300px;position:relative;background:radial-gradient(120% 120% at 30% 20%,#FFFDF9,#F7F7F5);overflow:hidden;}
+  .map .dot{position:absolute;border-radius:50%;opacity:.85;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;padding:11px 15px;border-top:1px solid var(--border-subtle);font-size:12px;color:var(--dim);}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  .ingest{padding:6px 16px 10px;}
+  .irow{padding:11px 0;border-bottom:1px solid var(--border-subtle);}
+  .irow:last-child{border-bottom:0;}
+  .irow .top{display:flex;align-items:center;gap:9px;}
+  .irow .av{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700;flex:none;}
+  .irow .nm{font-size:13.5px;font-weight:500;color:var(--text);}
+  .irow .st{margin-left:auto;font-size:11.5px;color:var(--muted);}
+  .bar{height:6px;border-radius:999px;background:var(--bg-raised);margin-top:8px;overflow:hidden;}
+  .bar i{display:block;height:100%;border-radius:999px;}
+  .irow .sub{display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
+
+  .stream .it{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-subtle);}
+  .stream .it:last-child{border-bottom:0;}
+  .stream .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700;flex:none;}
+  .stream .tx{font-size:13px;color:var(--dim);line-height:1.4;}.stream .tx b{color:var(--text);font-weight:600;}
+  .stream .mt{font-size:11px;color:var(--muted);margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <span data-shell="rail"></span>
+  <span data-shell="side"></span>
+  <section class="main">
+    <span data-shell="topbar"></span>
+    <div class="body"><div class="wrap">
+
+      <div class="phead">
+        <h1>Index</h1>
+        <p><b>1,284</b> knowledge points across 6 sources · embeddings rebuilt <b>9m ago</b></p>
+      </div>
+
+      <div class="banner">
+        <div class="spin"></div>
+        <div class="tx">Indexing <b>Gong</b> — chunking & embedding call transcripts</div>
+        <div class="pct">412 / 1,204</div>
+      </div>
+
+      <div class="cols">
+        <div>
+          <div class="sec-h"><h2>Knowledge map</h2><span class="more">2D projection · 1,284 points</span></div>
+          <div class="card">
+            <div class="map" id="map"></div>
+            <div class="legend">
+              <span><i style="background:#EA580C"></i> Sessions</span>
+              <span><i style="background:#2563EB"></i> Files</span>
+              <span><i style="background:#6F2CFF"></i> Gong</span>
+              <span><i style="background:#4A154B"></i> Slack</span>
+              <span><i style="background:#5B57D1"></i> Linear</span>
+              <span><i style="background:#29B5E8"></i> Snowflake</span>
+            </div>
+          </div>
+
+          <div class="sec-h" style="margin-top:24px"><h2>Recently indexed</h2></div>
+          <div class="card stream" style="padding:4px 16px" id="stream"></div>
+        </div>
+
+        <div>
+          <div class="sec-h"><h2>Source ingestion</h2><span class="more">Sync all</span></div>
+          <div class="card ingest" id="ingest"></div>
+        </div>
+      </div>
+
+    </div></div>
+  </section>
+</div>
+<script>window.STASH={rail:"index",side:"index",crumb:["Acme","Index"],search:"Search your brain"};</script>
+<script src="shell.js"></script>
+<script>
+  // decorative clustered scatter — colored by source, a few loose clusters
+  const clusters = [
+    ['#EA580C',26,30,18], ['#2563EB',68,28,16], ['#6F2CFF',46,62,20],
+    ['#4A154B',78,68,12], ['#5B57D1',20,72,12], ['#29B5E8',60,84,9],
+  ];
+  const map = document.getElementById('map');
+  let html='';
+  clusters.forEach(([c,cx,cy,n])=>{
+    for(let i=0;i<n;i++){
+      const a=(i*2.39994); const r=(i/n)*15+2;
+      const x=cx+Math.cos(a)*r*(0.9+(i%3)*0.12);
+      const y=cy+Math.sin(a)*r*(0.7+(i%4)*0.1);
+      const s=3+((i*7)%4);
+      html+=`<span class="dot" style="left:${x}%;top:${y}%;width:${s}px;height:${s}px;background:${c}"></span>`;
+    }
+  });
+  map.innerHTML=html;
+
+  const ingest = [
+    ['GitHub','#111','GH','synced',100,'#34D399','24 repos · 9,210 chunks','12m ago'],
+    ['Slack','#4A154B','Sl','live',100,'#34D399','9 channels','streaming'],
+    ['Linear','#5B57D1','Li','synced',100,'#34D399','KAN · ENG · 612 issues','1h ago'],
+    ['Gong','#6F2CFF','Gg','indexing',34,'#60A5FA','412 / 1,204 items','~6 min left'],
+    ['Notion','#000','No','synced',100,'#34D399','148 pages','3h ago'],
+    ['Snowflake','#29B5E8','Sn','live',100,'#34D399','3 schemas · queryable','live'],
+  ];
+  document.getElementById('ingest').innerHTML = ingest.map(([n,c,a,st,pct,col,sub,when])=>`
+    <div class="irow">
+      <div class="top"><span class="av" style="background:${c}">${a}</span><span class="nm">${n}</span><span class="st">${st}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:${col}"></i></div>
+      <div class="sub"><span>${sub}</span><span>${when}</span></div>
+    </div>`).join('');
+
+  const stream = [
+    ['#6F2CFF','Gg','Embedded <b>Acme renewal — discovery</b>','Gong call · 42 min · 88 chunks','just now'],
+    ['#EA580C','CC','Indexed session <b>Refactor billing webhooks</b>','142 events · Claude Code','12m ago'],
+    ['#2563EB','Fi','Re-indexed <b>Billing Runbook</b>','edited · 21 chunks','38m ago'],
+    ['#5B57D1','Li','Indexed <b>KAN-412 · SAML mapping</b>','Linear · Done','1h ago'],
+    ['#4A154B','Sl','Streamed 18 msgs from <b>#acme-account</b>','Slack','1h ago'],
+  ];
+  document.getElementById('stream').innerHTML = stream.map(([c,a,tx,mt,when])=>`
+    <div class="it"><span class="ic" style="background:${c}">${a}</span>
+      <div style="flex:1"><div class="tx">${tx}</div><div class="mt">${mt}</div></div>
+      <div class="mt" style="white-space:nowrap">${when}</div></div>`).join('');
+</script>
+</body>
+</html>

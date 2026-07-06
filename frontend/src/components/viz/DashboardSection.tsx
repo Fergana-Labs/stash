@@ -21,7 +21,7 @@ export default function DashboardSection({
   return (
     <div className="bg-surface border border-border rounded-lg overflow-visible">
       <div className="px-4 py-2.5 border-b border-border">
-        <span className="text-[11px] font-mono font-medium text-muted uppercase tracking-[0.05em]">
+        <span className="text-[11px] font-mono font-medium text-muted-foreground uppercase tracking-[0.05em]">
           {title}
         </span>
       </div>
@@ -31,7 +31,7 @@ export default function DashboardSection({
         </div>
       ) : empty ? (
         <div className="h-[200px] flex items-center justify-center px-6">
-          <p className="text-xs text-muted text-center">{emptyMessage || "No data yet."}</p>
+          <p className="text-xs text-muted-foreground text-center">{emptyMessage || "No data yet."}</p>
         </div>
       ) : (
         children

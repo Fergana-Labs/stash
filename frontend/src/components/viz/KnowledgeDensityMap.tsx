@@ -246,11 +246,11 @@ export default function KnowledgeDensityMap({ data, onTopicClick }: Props) {
           style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
         >
           <div className="text-xs font-medium text-foreground">{tooltip.label}</div>
-          <div className="text-[11px] text-muted mt-0.5">
+          <div className="text-[11px] text-muted-foreground mt-0.5">
             {tooltip.count} documents
           </div>
           {tooltip.newestAt && (
-            <div className="text-[10px] text-muted mt-0.5">
+            <div className="text-[10px] text-muted-foreground mt-0.5">
               Latest: {new Date(tooltip.newestAt).toLocaleDateString()}
             </div>
           )}

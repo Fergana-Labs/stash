@@ -185,11 +185,32 @@ async def upload_my_file(
 
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
+    return await ingest_bytes(
+        owner_user_id=owner_user_id,
+        user_id=current_user["id"],
+        filename=filename,
+        content=content,
+        content_type=content_type,
+        folder_id=folder_id,
+    )
 
+
+async def ingest_bytes(
+    *,
+    owner_user_id: UUID,
+    user_id: UUID,
+    filename: str,
+    content: bytes,
+    content_type: str,
+    folder_id: UUID | None,
+) -> UploadResponse:
+    """The single ingest path: bytes become a page (markdown/html) or an
+    S3-backed file. Used by the upload endpoint and by save-to-Stash from the
+    user's cloud computer."""
     # Markdown and HTML belong in the pages table — they're editable in-app,
     # support comments, and live in the same VFS tree as binary files.
     # Anything else is a binary upload (S3-backed file row). Frontend, CLI,
-    # and MCP all hit this single endpoint and get the routing for free.
+    # and MCP all hit this single path and get the routing for free.
     page_kind = files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
         if folder_id is not None:
@@ -215,7 +236,7 @@ async def upload_my_file(
             page = await files_tree_service.create_page(
                 owner_user_id=owner_user_id,
                 name=name,
-                created_by=current_user["id"],
+                created_by=user_id,
                 folder_id=folder_id,
                 content=text if page_kind == "markdown" else "",
                 content_html=text if page_kind == "html" else "",
@@ -276,7 +297,7 @@ async def upload_my_file(
         content_type,
         len(content),
         storage_key,
-        current_user["id"],
+        user_id,
         folder_id,
     )
     from ..tasks.extraction import extract_file_text

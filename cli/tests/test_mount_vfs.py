@@ -1,6 +1,9 @@
 from cli.mount import StashVfsModel
 
 
+from cli.client import StashError
+
+
 class FakeClient:
     def __init__(self):
         self.source_entry_calls = 0
@@ -67,6 +70,9 @@ class FakeClient:
     def get_skill_text(self, slug):
         assert slug == "demo-stash"
         return "# Demo Stash\n"
+
+    def machine_fs_list(self, path):
+        raise StashError(404, "no cloud computer in this test")
 
     def read_skill(self, name):
         assert name == "Private Skill"
@@ -150,6 +156,7 @@ def test_vfs_exposes_user_sections():
 
     assert set(model.list_dir("/")) == {
         "README.md",
+        "computer",
         "files",
         "sessions",
         "skills",

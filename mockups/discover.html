@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash · Discover</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shell.css" />
+<style>
+  .phead h1{font-family:var(--font-display);font-size:26px;font-weight:700;margin:0;letter-spacing:-.015em;}
+  .phead p{margin:6px 0 0;color:var(--dim);font-size:14px;}
+
+  .controls{display:flex;align-items:center;gap:12px;margin:20px 0 22px;}
+  .bigsearch{display:flex;align-items:center;gap:9px;background:var(--bg-base);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--muted);font-size:14px;width:420px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .bigsearch svg{width:16px;height:16px;}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden;}
+  .seg button{border:0;background:var(--bg-base);padding:8px 13px;font-size:13px;color:var(--muted);cursor:pointer;}
+  .seg button.on{background:var(--brand-50);color:var(--brand-700);font-weight:600;}
+  .controls .count{margin-left:auto;font-size:13px;color:var(--muted);}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .skill .cv{height:104px;}
+  .gh{position:absolute;bottom:-13px;right:13px;width:30px;height:30px;border-radius:8px;background:var(--bg-base);border:1px solid var(--border);display:grid;place-items:center;color:var(--text);box-shadow:0 2px 6px -2px rgba(0,0,0,.15);}
+  .gh svg{width:16px;height:16px;}
+  .skill .owner{display:flex;align-items:center;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border-subtle);font-size:12px;color:var(--muted);}
+  .skill .owner .av{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:8px;font-weight:700;font-family:var(--font-display);}
+  .skill .owner .open{margin-left:auto;color:var(--brand-600);font-weight:500;}
+  .fork{display:inline-flex;align-items:center;gap:5px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <span data-shell="rail"></span>
+  <span data-shell="side"></span>
+  <section class="main">
+    <span data-shell="topbar"></span>
+    <div class="body"><div class="wrap">
+
+      <div class="phead">
+        <h1>Discover</h1>
+        <p>Public Skills shared by the Stash community. Fork any into your workspace.</p>
+      </div>
+
+      <div class="controls">
+        <div class="bigsearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> Search public Skills…</div>
+        <div class="seg">
+          <button class="on">Trending</button><button>Newest</button><button>Most viewed</button>
+        </div>
+        <span class="count">128 public Skills</span>
+      </div>
+
+      <div class="grid" id="grid"></div>
+
+    </div></div>
+  </section>
+</div>
+<script>window.STASH={rail:"discover",side:"discover",crumb:["Discover"],search:"Search public Skills"};</script>
+<script src="shell.js"></script>
+<script>
+  const ghIcon = '<span class="gh"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.5 2 2 6.6 2 12.3c0 4.5 2.9 8.3 6.8 9.7.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.4-3.4-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.2-4.6-5.1 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9 9 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.8-4.6 5.1.4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5 3.9-1.4 6.8-5.2 6.8-9.7C22 6.6 17.5 2 12 2z"/></svg></span>';
+  const forkCorner = '<span class="corner fork"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M6 8.5v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-3M12 14.5v2"/></svg> Fork</span>';
+  const trend = '<span class="trend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg> trending</span>';
+
+  const data = [
+    ['Cold Outbound Engine','linear-gradient(135deg,#FDBA74,#EA580C)','Multi-touch email + LinkedIn sequences with reply detection.','Ramp','growth',true,true],
+    ['YC Interview Prep','linear-gradient(135deg,#A78BFA,#6D28D9)','The 10-min mock, common questions, and a scoring rubric.','Henry C.','founders',true,false],
+    ['SOC 2 in 30 Days','linear-gradient(135deg,#34D399,#0D9488)','Controls, evidence collection, and auditor-ready policies.','Vanta','security',false,true],
+    ['PR Review Bot','linear-gradient(135deg,#38BDF8,#2563EB)','Diff-aware review prompts for correctness and security.','Stash Labs','engineering',false,true],
+    ['Series A Data Room','linear-gradient(135deg,#F472B6,#DB2777)','Cap table, metrics, and the diligence checklist template.','Mercury','fundraising',false,false],
+    ['Support Macro Pack','linear-gradient(135deg,#FBBF24,#D97706)','Triage flows + 40 ready-to-edit reply macros.','Plain','support',false,false],
+  ];
+  document.getElementById('grid').innerHTML = data.map(([n,cv,ds,who,ws,isTrend,isGh],i)=>{
+    const av=who.split(' ').map(w=>w[0]).slice(0,2).join('');
+    return `<div class="skill">
+      <div class="cv" style="background:${cv};position:relative">${isTrend?trend:''}${forkCorner}${isGh?ghIcon:''}</div>
+      <div class="bd">
+        <div class="nm">${n}</div>
+        <div class="ds">${ds}</div>
+        <div class="owner"><span class="av" style="background:#0F172A">${av}</span>${who} · ${ws}<span class="open">Open →</span></div>
+      </div></div>`;
+  }).join('');
+</script>
+</body>
+</html>

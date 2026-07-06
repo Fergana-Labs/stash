@@ -2937,7 +2937,7 @@ async def test_linear_source_resolves_to_all_issues(monkeypatch):
 @pytest.mark.asyncio
 async def test_linear_index_builds_navigable_issue_rows(client: AsyncClient, monkeypatch):
     """The sync paginates the user's issues into a navigable index — one row per
-    issue keyed by its identifier — without copying the body."""
+    issue filed under its team folder in numeric order — without copying the body."""
     from backend.integrations.linear import indexer as linear_indexer
     from backend.services import linear_api_service
 
@@ -2962,7 +2962,7 @@ async def test_linear_index_builds_navigable_issue_rows(client: AsyncClient, mon
     await linear_indexer.index_linear(src)
 
     live = await source_service.list_documents(src)
-    assert {d["path"] for d in live} == {"FER-1", "FER-2"}
+    assert {d["path"] for d in live} == {"FER/FER-00001", "FER/FER-00002"}
     assert {d["name"] for d in live} == {"FER-1 First", "FER-2 Second"}
 
 
@@ -3011,7 +3011,7 @@ async def test_linear_source_reads_issue_body_lazily(client: AsyncClient, monkey
 @pytest.mark.asyncio
 async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, monkeypatch):
     """Search is federated live to Linear's native search; hits are keyed by the
-    issue identifier (the index path the agent can then read)."""
+    index path (the ref the agent can then read)."""
     from backend.integrations.linear import indexer as linear_indexer
     from backend.services import linear_api_service
 
@@ -3031,8 +3031,8 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
 
     results = await source_service.search_all(ws, owner_id, "real source", source=src["id"])
 
-    assert any(r["ref"] == "FER-199" for r in results)
-    hit = next(r for r in results if r["ref"] == "FER-199")
+    assert any(r["ref"] == "FER/FER-00199" for r in results)
+    hit = next(r for r in results if r["ref"] == "FER/FER-00199")
     assert hit["source"] == src["id"]
     assert hit["name"] == "FER-199 Make Linear a real source"
 

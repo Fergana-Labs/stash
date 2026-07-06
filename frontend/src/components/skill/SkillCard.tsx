@@ -48,7 +48,7 @@ export function AccessBadge({
   access: { discoverable: boolean } | null;
 }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-base px-1.5 py-0.5 text-[10.5px] text-muted">
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-base px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
       <span
         className="inline-block h-[7px] w-[7px] rounded-full"
         style={{
@@ -140,7 +140,7 @@ export default function SkillCard({
         )}
         <div className="flex-1" />
         {footer && (
-          <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-border-subtle pt-2.5 text-[11.5px] text-muted">
+          <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-border-subtle pt-2.5 text-[11.5px] text-muted-foreground">
             {footer}
           </div>
         )}

@@ -6,9 +6,43 @@ import remarkGfm from "remark-gfm";
 
 import { track } from "@/lib/analytics";
 import { API_BASE, getAuthToken, getOverview } from "@/lib/api";
-import { READ_TOOLS, describeToolCall } from "@/lib/agentChat";
 
 type Citation = { id: string; tool: string; label: string };
+
+// The onboarding ask runs the in-process tool loop (not the cloud agent), so
+// its stream carries the API tool names below — distinct from the cloud
+// agent's harness tools labelled in lib/agentChat.ts.
+const READ_TOOLS = new Set([
+  "read_page",
+  "grep_pages",
+  "read_file",
+  "search_history",
+  "search",
+  "read_source",
+  "list_source",
+]);
+
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function describeToolCall(name: string, args: Record<string, unknown> | undefined): string {
+  if (!args) return name;
+  if (name === "read_page" && typeof args.page_id === "string") return `page ${shortId(args.page_id)}`;
+  if (name === "read_file" && typeof args.file_id === "string") return `file ${shortId(args.file_id)}`;
+  if (
+    (name === "grep_pages" || name === "search_history" || name === "search") &&
+    typeof args.query === "string"
+  ) {
+    return `search "${args.query.slice(0, 40)}"`;
+  }
+  if (name === "read_source" && typeof args.ref === "string") return `read ${args.ref.slice(0, 48)}`;
+  if (name === "list_source" && typeof args.source === "string") {
+    const path = typeof args.path === "string" && args.path ? `/${args.path}` : "";
+    return `browse ${args.source}${path}`;
+  }
+  return name;
+}
 
 // Step 3: one live agentic search. Show a few personalized suggestions
 // (or let user type their own), stream the answer with citations, then
@@ -184,7 +218,7 @@ export default function MemoryAskStep({
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Or write your own…"
               rows={2}
-              className="flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none resize-none"
+              className="flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none resize-none"
             />
             <button
               type="submit"
@@ -199,13 +233,13 @@ export default function MemoryAskStep({
 
       {submitted && (
         <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
-          <div className="text-[12px] text-muted italic">{question}</div>
+          <div className="text-[12px] text-muted-foreground italic">{question}</div>
           {error ? (
             <div className="text-[12px] text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
               {error}
             </div>
           ) : streaming && !answer ? (
-            <div className="flex items-center gap-2 py-2 text-[13px] text-muted">
+            <div className="flex items-center gap-2 py-2 text-[13px] text-muted-foreground">
               <span className="flex gap-1" aria-hidden>
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.3s]" />
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.15s]" />
@@ -222,7 +256,7 @@ export default function MemoryAskStep({
                 )}
               </div>
               {citations.length > 0 && (
-                <div className="border-t border-border-subtle pt-3 text-[11.5px] text-muted">
+                <div className="border-t border-border-subtle pt-3 text-[11.5px] text-muted-foreground">
                   <span className="font-medium text-foreground">
                     Grounded on:
                   </span>{" "}

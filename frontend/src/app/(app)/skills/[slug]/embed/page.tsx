@@ -74,13 +74,13 @@ export default async function SkillEmbed({
             className="block rounded-md border border-border-subtle bg-base px-3 py-2 text-[12px] text-foreground"
           >
             <span className="block truncate font-medium">{file.name}</span>
-            <span className="mt-0.5 block text-muted">
+            <span className="mt-0.5 block text-muted-foreground">
               {file.content_type} · {formatSize(file.size_bytes ?? 0)}
             </span>
           </a>
         ))}
       </div>
-      <p className="mt-4 text-right font-mono text-[10px] uppercase tracking-wider text-muted">
+      <p className="mt-4 text-right font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         <a href={`/skills/${slug}`} target="_blank" rel="noreferrer" className="hover:text-ink">
           on Stash ↗
         </a>

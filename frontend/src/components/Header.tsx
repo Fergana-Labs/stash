@@ -70,7 +70,7 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
           role="menu"
           className="absolute right-0 top-full z-40 mt-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
         >
-          <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
+          <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
             <div>
               Signed in as <span className="break-all text-foreground">{accountLabel}</span>
             </div>

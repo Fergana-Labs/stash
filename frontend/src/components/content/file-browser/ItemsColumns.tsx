@@ -246,7 +246,7 @@ function SortMenu({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
+        className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-raised hover:text-foreground"
       >
         Sort: {activeLabel}
         <span className="text-[9px]">{arrow}</span>
@@ -269,7 +269,7 @@ function SortMenu({
                 className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
               >
                 <span className="truncate">{opt.label}</span>
-                {active && <span className="text-[9px] text-muted">{arrow}</span>}
+                {active && <span className="text-[9px] text-muted-foreground">{arrow}</span>}
               </button>
             );
           })}
@@ -330,10 +330,10 @@ function Column({
       }
     >
       {loading && (
-        <div className="px-3 py-2 text-[12px] text-muted">Loading…</div>
+        <div className="px-3 py-2 text-[12px] text-muted-foreground">Loading…</div>
       )}
       {!loading && items.length === 0 && (
-        <div className="px-3 py-2 text-[12px] italic text-muted">Empty</div>
+        <div className="px-3 py-2 text-[12px] italic text-muted-foreground">Empty</div>
       )}
       {items.map((item) => (
         <ColumnRow
@@ -430,7 +430,7 @@ function ColumnRow({
       </span>
       <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
       {isFolder && (
-        <span className={"flex-shrink-0 text-[12px] " + (active ? "text-white/80" : "text-muted")}>›</span>
+        <span className={"flex-shrink-0 text-[12px] " + (active ? "text-white/80" : "text-muted-foreground")}>›</span>
       )}
       {!isFolder && onDelete && (
         <button
@@ -441,7 +441,7 @@ function ColumnRow({
           }}
           className={
             "flex-shrink-0 cursor-pointer rounded p-0.5 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 " +
-            (active ? "text-white hover:bg-white/10" : "text-muted hover:bg-raised hover:text-red-600")
+            (active ? "text-white hover:bg-white/10" : "text-muted-foreground hover:bg-raised hover:text-red-600")
           }
           title="Delete"
           aria-label="Delete"
@@ -467,7 +467,7 @@ function PreviewPanel({
 }) {
   if (!selected || selected.kind === "folder") {
     return (
-      <aside className="hidden w-[280px] flex-shrink-0 flex-col border-l border-border bg-surface/40 p-4 text-[12.5px] text-muted lg:flex">
+      <aside className="hidden w-[280px] flex-shrink-0 flex-col border-l border-border bg-surface/40 p-4 text-[12.5px] text-muted-foreground lg:flex">
         <div className="flex h-full items-center justify-center text-center">
           Select an item to preview its details.
         </div>
@@ -484,20 +484,20 @@ function PreviewPanel({
           <h3 className="break-words font-display text-[16px] font-semibold leading-snug text-foreground">
             {selected.name}
           </h3>
-          <p className="mt-0.5 text-[12px] text-muted">{kindLabel(selected)}</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">{kindLabel(selected)}</p>
         </div>
         <dl className="grid grid-cols-[80px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12px]">
           {selected.sizeBytes != null && (
             <>
-              <dt className="text-muted">Size</dt>
+              <dt className="text-muted-foreground">Size</dt>
               <dd className="text-foreground">{formatBytes(selected.sizeBytes)}</dd>
             </>
           )}
-          <dt className="text-muted">Modified</dt>
+          <dt className="text-muted-foreground">Modified</dt>
           <dd className="text-foreground">{formatAbsolute(selected.updatedAt)}</dd>
           {selected.contentType && (
             <>
-              <dt className="text-muted">Type</dt>
+              <dt className="text-muted-foreground">Type</dt>
               <dd className="break-all text-foreground">{selected.contentType}</dd>
             </>
           )}

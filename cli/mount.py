@@ -81,6 +81,8 @@ class StashVfsModel:
                     "- Sessions, skills, and tables are read-only projections.",
                     "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
+                    "- `computer` is a live, read-only view of your cloud "
+                    "computer's disk (browsing may wake it).",
                     "",
                     "Listings are alphabetical by name; they carry no time meaning.",
                     "For recency use `ls -lt` (sort by modified time), "
@@ -143,6 +145,36 @@ class StashVfsModel:
         self._add_sessions(overview.get("sessions", []))
         self._add_tables()
         self._add_sources()
+        self._add_computer()
+
+    def _add_computer(self) -> None:
+        """The user's cloud computer, projected read-through at /computer.
+
+        Directories expand lazily one level at a time (a workspace can hold a
+        cloned repo — materializing the whole tree would be pathological), and
+        file bodies load on read. Nothing is cached server-side; every descent
+        is a live look at the machine."""
+        root = self._add_dir("/computer")
+        self._expanders[root] = lambda: self._expand_computer_dir(root, "")
+
+    def _expand_computer_dir(self, dir_path: str, rel_path: str) -> None:
+        try:
+            entries = self.client.machine_fs_list(rel_path)
+        except StashError:
+            return
+        for entry in entries:
+            child_rel = f"{rel_path}/{entry['name']}" if rel_path else entry["name"]
+            if entry["dir"]:
+                child = self._add_dir_child(dir_path, entry["name"])
+                self._expanders[child] = lambda c=child, r=child_rel: self._expand_computer_dir(
+                    c, r
+                )
+            else:
+                self._add_file(
+                    f"{dir_path}/{entry['name']}",
+                    loader=lambda r=child_rel: self.client.machine_fs_read(r),
+                    size_hint=entry.get("size"),
+                )
 
     def _add_files_tree(self, tree: dict) -> None:
         root_path = "/files"
@@ -528,12 +560,18 @@ class StashVfsModel:
         return node
 
     def _ensure_expanded(self, path: str) -> None:
-        """Materialize any connected source whose subtree contains `path`. No-op
-        once a source has been expanded, and never triggered by listing the
-        `sources/` directory itself — only by descending into a source."""
-        for root in list(self._expanders):
-            if path == root or path.startswith(f"{root}/"):
-                self._expanders.pop(root)()
+        """Materialize any lazy subtree containing `path`. No-op once expanded,
+        and never triggered by listing the parent directory itself — only by
+        descending. Loops because expanding a level can register deeper lazy
+        levels (the /computer tree expands one directory at a time)."""
+        while True:
+            fired = False
+            for root in list(self._expanders):
+                if path == root or path.startswith(f"{root}/"):
+                    self._expanders.pop(root)()
+                    fired = True
+            if not fired:
+                return
 
     def _unique_child_name(self, parent: str, name: str) -> str:
         existing = self.nodes[parent].children

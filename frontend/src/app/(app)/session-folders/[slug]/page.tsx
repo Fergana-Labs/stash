@@ -28,7 +28,7 @@ export default function PublicSessionFolderPage({
     return (
       <div className="mx-auto max-w-[760px] px-6 py-20 text-center">
         <h1 className="font-display text-[22px] font-bold text-foreground">Folder not found</h1>
-        <p className="mt-2 text-[13.5px] text-muted">
+        <p className="mt-2 text-[13.5px] text-muted-foreground">
           This folder is private or the link is wrong.
         </p>
       </div>
@@ -41,20 +41,20 @@ export default function PublicSessionFolderPage({
 
   return (
     <div className="mx-auto max-w-[820px] px-6 py-10">
-      <div className="flex items-center gap-2 text-[12px] text-muted">
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
         <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
         <span>Shared session folder</span>
       </div>
       <h1 className="mt-2 font-display text-[24px] font-bold tracking-tight text-foreground">
         {folder.name}
       </h1>
-      <p className="mt-1 text-[12.5px] text-muted">
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
         {sessions.length} session{sessions.length === 1 ? "" : "s"}
         {folder.owner_display_name ? ` · by ${folder.owner_display_name}` : ""}
       </p>
 
       {sessions.length === 0 ? (
-        <div className="mt-8 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
+        <div className="mt-8 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
           No sessions in this folder yet.
         </div>
       ) : (
@@ -69,12 +69,12 @@ export default function PublicSessionFolderPage({
                 <span className="block truncate text-[13.5px] font-medium text-foreground group-hover:text-[var(--color-brand-700)]">
                   {s.session_id}
                 </span>
-                <span className="mt-0.5 block truncate text-[11.5px] text-muted">
+                <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
                   {s.user_name ? `${s.user_name} · ` : ""}
                   {s.agent_name || "agent"} · {s.event_count} event{s.event_count === 1 ? "" : "s"}
                 </span>
               </span>
-              <span className="shrink-0 text-[11.5px] text-muted">{relativeTime(s.last_event_at)}</span>
+              <span className="shrink-0 text-[11.5px] text-muted-foreground">{relativeTime(s.last_event_at)}</span>
             </Link>
           ))}
         </div>

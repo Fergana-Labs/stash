@@ -1,20 +1,21 @@
-import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
-import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
-import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
-import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
-import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
-import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
-import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
-import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
-import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
-import SearchOutlinedIcon from "@mui/icons-material/SearchOutlined";
-import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
-import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
-import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
-import type { SvgIconProps } from "@mui/material/SvgIcon";
-import type { ComponentType } from "react";
+import {
+  MessagesSquare,
+  Folder,
+  FileText,
+  File,
+  Table,
+  Clock,
+  Compass,
+  CircleHelp,
+  Settings,
+  Bell,
+  User,
+  Trash2,
+  X,
+  Pin,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
 
 type IconProps = {
   className?: string;
@@ -24,18 +25,12 @@ function iconClass(className?: string) {
   return ["inline-block shrink-0", className].filter(Boolean).join(" ");
 }
 
-function MaterialIcon({
-  icon: Icon,
-  className,
-}: IconProps & {
-  icon: ComponentType<SvgIconProps>;
-}) {
+/** Render a lucide icon sized to the current font-size (1em) by default, so it
+ *  behaves like the outlined MUI icons it replaced. A `className` with an
+ *  explicit size (e.g. `w-4 h-4`) still overrides via CSS. */
+function Icon({ icon: LucideGlyph, className }: IconProps & { icon: LucideIcon }) {
   return (
-    <Icon
-      aria-hidden="true"
-      className={iconClass(className)}
-      fontSize="inherit"
-    />
+    <LucideGlyph aria-hidden="true" className={iconClass(className)} width="1em" height="1em" />
   );
 }
 
@@ -76,61 +71,61 @@ export function StashIcon(props: IconProps) {
 }
 
 export function SessionsIcon(props: IconProps) {
-  return <MaterialIcon icon={ForumOutlinedIcon} {...props} />;
+  return <Icon icon={MessagesSquare} {...props} />;
 }
 
 export function FolderIcon(props: IconProps) {
-  return <MaterialIcon icon={FolderOutlinedIcon} {...props} />;
+  return <Icon icon={Folder} {...props} />;
 }
 
 export function PageIcon(props: IconProps) {
-  return <MaterialIcon icon={DescriptionOutlinedIcon} {...props} />;
+  return <Icon icon={FileText} {...props} />;
 }
 
 export function FileIcon(props: IconProps) {
-  return <MaterialIcon icon={InsertDriveFileOutlinedIcon} {...props} />;
+  return <Icon icon={File} {...props} />;
 }
 
 export function TableIcon(props: IconProps) {
-  return <MaterialIcon icon={TableChartOutlinedIcon} {...props} />;
+  return <Icon icon={Table} {...props} />;
 }
 
 export function ActivityIcon(props: IconProps) {
-  return <MaterialIcon icon={ScheduleOutlinedIcon} {...props} />;
+  return <Icon icon={Clock} {...props} />;
 }
 
 export function DiscoverIcon(props: IconProps) {
-  return <MaterialIcon icon={ExploreOutlinedIcon} {...props} />;
+  return <Icon icon={Compass} {...props} />;
 }
 
 export function HelpIcon(props: IconProps) {
-  return <MaterialIcon icon={HelpOutlineOutlinedIcon} {...props} />;
+  return <Icon icon={CircleHelp} {...props} />;
 }
 
 export function SettingsIcon(props: IconProps) {
-  return <MaterialIcon icon={SettingsOutlinedIcon} {...props} />;
+  return <Icon icon={Settings} {...props} />;
 }
 
 export function NotificationsIcon(props: IconProps) {
-  return <MaterialIcon icon={NotificationsNoneOutlinedIcon} {...props} />;
+  return <Icon icon={Bell} {...props} />;
 }
 
 export function PersonIcon(props: IconProps) {
-  return <MaterialIcon icon={PersonOutlineOutlinedIcon} {...props} />;
+  return <Icon icon={User} {...props} />;
 }
 
 export function TrashIcon(props: IconProps) {
-  return <MaterialIcon icon={DeleteOutlineOutlinedIcon} {...props} />;
+  return <Icon icon={Trash2} {...props} />;
 }
 
 export function CloseIcon(props: IconProps) {
-  return <MaterialIcon icon={CloseOutlinedIcon} {...props} />;
+  return <Icon icon={X} {...props} />;
 }
 
 export function PinIcon(props: IconProps) {
-  return <MaterialIcon icon={PushPinOutlinedIcon} {...props} />;
+  return <Icon icon={Pin} {...props} />;
 }
 
 export function SearchIcon(props: IconProps) {
-  return <MaterialIcon icon={SearchOutlinedIcon} {...props} />;
+  return <Icon icon={Search} {...props} />;
 }

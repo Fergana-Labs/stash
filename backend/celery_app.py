@@ -31,6 +31,7 @@ celery = Celery(
         "backend.tasks.demo_janitor",
         "backend.tasks.cli_auth",
         "backend.tasks.sources",
+        "backend.tasks.agent_schedules",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
         "backend.exports.pptx",
@@ -78,6 +79,10 @@ celery.conf.update(
         "demo-janitor-purge-orphans": {
             "task": "backend.tasks.demo_janitor.purge_orphans",
             "schedule": 3600.0,
+        },
+        "agent-schedules-run-due": {
+            "task": "backend.tasks.agent_schedules.run_due",
+            "schedule": 60.0,
         },
         "sources-reconcile-due": {
             "task": "backend.tasks.sources.reconcile_due",

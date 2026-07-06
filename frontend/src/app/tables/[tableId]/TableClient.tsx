@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
   useCallback,
@@ -17,7 +17,6 @@ import {
   type RefObject,
 } from "react";
 import Markdown from "react-markdown";
-import AppShell from "../../../components/AppShell";
 import CustomSelect from "../../../components/CustomSelect";
 import { downloadBlob } from "../../../components/DownloadMenu";
 import { useShareAction } from "../../../components/ShellChromeContext";
@@ -213,7 +212,7 @@ function CellLinkEditorPopover({
         <button
           type="button"
           onClick={onCancel}
-          className="cursor-pointer rounded-md px-2 py-1.5 text-[12.5px] font-medium text-muted hover:bg-raised hover:text-foreground"
+          className="cursor-pointer rounded-md px-2 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-raised hover:text-foreground"
         >
           Cancel
         </button>
@@ -247,27 +246,37 @@ function isTableCellEditorTarget(target: EventTarget | null) {
   return !!target.closest("[data-table-cell-editor]");
 }
 
-export default function TableEditorPage() {
+export default function TableEditorPage({
+  tableId,
+  embedded = false,
+}: {
+  tableId: string;
+  embedded?: boolean;
+}) {
   return (
     <Suspense fallback={<TableEditorSkeleton />}>
-      <TableEditorPageInner />
+      <TableEditorPageInner tableId={tableId} embedded={embedded} />
     </Suspense>
   );
 }
 
-function TableEditorPageInner() {
-  const params = useParams();
+function TableEditorPageInner({
+  tableId,
+  embedded,
+}: {
+  tableId: string;
+  embedded: boolean;
+}) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const confirm = useConfirm();
-  const tableId = params.tableId as string;
   // Skill mode: `?skill=<slug>` switches the data source to the public
   // skill payload (which the backend gates by skill readability). All
   // mutating UI is hidden in this mode.
   const skillSlug = searchParams.get("skill");
   const readOnly = !!skillSlug;
   const [skillTitle, setSkillTitle] = useState<string | null>(null);
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   // Core state.
   const [table, setTable] = useState<Table | null>(null);
@@ -1161,6 +1170,7 @@ function TableEditorPageInner() {
   if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
   if (!table && !error) {
+    if (embedded) return <TableEditorSkeleton />;
     if (readOnly || !user) {
       return (
         <main className="flex min-h-screen flex-col bg-background">
@@ -1168,11 +1178,7 @@ function TableEditorPageInner() {
         </main>
       );
     }
-    return (
-      <AppShell user={user} onLogout={logout}>
-        <TableEditorSkeleton />
-      </AppShell>
-    );
+    return <main className="flex min-h-screen flex-col bg-background"><TableEditorSkeleton /></main>;
   }
 
   // --- Render row ---
@@ -1218,13 +1224,13 @@ function TableEditorPageInner() {
             onClick={(e) => { e.stopPropagation(); startCellEditing(); }}
             className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} w-full px-2 flex items-center text-left text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text bg-transparent focus:outline-none focus:ring-1 focus:ring-brand`}
           >
-            <span className="text-muted/30">{"\u2014"}</span>
+            <span className="text-muted-foreground/30">{"\u2014"}</span>
           </button>
         ) : (
           <div className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
-            {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted"}>{value ? "\u2713" : "\u2717"}</span>
+            {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted-foreground"}>{value ? "\u2713" : "\u2717"}</span>
             : col.type === "url" && value ? <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline truncate" onClick={(e) => e.stopPropagation()}>{String(value)}</a>
-            : <span className={value != null && value !== "" ? "" : "text-muted/30"}>{value != null && value !== "" ? <TableCellText value={String(value)} /> : "\u2014"}</span>}
+            : <span className={value != null && value !== "" ? "" : "text-muted-foreground/30"}>{value != null && value !== "" ? <TableCellText value={String(value)} /> : "\u2014"}</span>}
           </div>
         )}
       </td>
@@ -1234,7 +1240,7 @@ function TableEditorPageInner() {
   const renderRow = (row: TableRow, idx: number) => (
     <tr key={row.id} className={`border-b border-border/50 hover:bg-raised/50 transition-colors group ${selectedRows.has(row.id) ? "bg-brand/5" : ""}`}>
       <td className="px-1 py-0 text-center border-r border-border sticky left-0 z-[5] bg-surface"><input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleSelectRow(row.id)} className="accent-brand" /></td>
-      <td className="px-2 py-1.5 text-[10px] text-muted text-center border-r border-border font-mono cursor-pointer hover:text-brand sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
+      <td className="px-2 py-1.5 text-[10px] text-muted-foreground text-center border-r border-border font-mono cursor-pointer hover:text-brand sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
       {visibleColumns.map((col) => {
         const value = row.data[col.id];
         const cellBg = showSummary ? getCellBg(col, value) : "";
@@ -1244,7 +1250,7 @@ function TableEditorPageInner() {
       <td className="px-1 py-0 whitespace-nowrap">
         {!readOnly && (
           <>
-            <button onClick={() => handleDuplicateRow(row.id)} className="cursor-pointer text-xs text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
+            <button onClick={() => handleDuplicateRow(row.id)} className="cursor-pointer text-xs text-muted-foreground/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
             <button onClick={() => handleDeleteRow(row.id)} className="cursor-pointer text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Delete">&times;</button>
           </>
         )}
@@ -1258,7 +1264,7 @@ function TableEditorPageInner() {
     return (
       <tr key={rowId} className="border-b border-border/50 hover:bg-raised/30 transition-colors">
         <td className="px-1 py-0 border-r border-border sticky left-0 z-[5] bg-surface" />
-        <td className="px-2 py-1.5 text-[10px] text-muted/60 text-center border-r border-border font-mono sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">{rowNumber}</td>
+        <td className="px-2 py-1.5 text-[10px] text-muted-foreground/60 text-center border-r border-border font-mono sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">{rowNumber}</td>
         {visibleColumns.map((col) => renderEditableCell(rowId, rowNumber, col, null))}
         <td className="px-1 py-0" />
         <td className="px-1 py-0" />
@@ -1330,8 +1336,8 @@ function TableEditorPageInner() {
           </div>
           <div className="flex-1" />
           {table && <>
-            {!readOnly && <button onClick={addFilter} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
-            {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
+            {!readOnly && <button onClick={addFilter} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
+            {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
             {/* Group by */}
             <CustomSelect
               value={groupByCol}
@@ -1345,11 +1351,11 @@ function TableEditorPageInner() {
               className="min-w-[132px] rounded border border-border bg-raised px-2 py-1 text-xs text-foreground"
               menuClassName="text-xs"
             />
-            {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>}
-            {!readOnly && <button onClick={() => setShowEmbeddings((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
-            <button onClick={() => setShowColVisibility((p) => !p)} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
-            <button onClick={() => setWrapCells((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
-            {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
+            {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>Summary</button>}
+            {!readOnly && <button onClick={() => setShowEmbeddings((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
+            <button onClick={() => setShowColVisibility((p) => !p)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
+            <button onClick={() => setWrapCells((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
+            {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
             {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
             {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="cursor-pointer text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
             {!readOnly && <button onClick={handleDelete} className="cursor-pointer text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
@@ -1365,7 +1371,7 @@ function TableEditorPageInner() {
                 {c.name}
               </label>
             ))}
-            <button onClick={() => setShowColVisibility(false)} className="cursor-pointer text-xs text-muted hover:text-foreground ml-2">Done</button>
+            <button onClick={() => setShowColVisibility(false)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground ml-2">Done</button>
           </div>
         )}
 
@@ -1405,13 +1411,13 @@ function TableEditorPageInner() {
                     setTimeout(() => setBackfillStatus(""), 5000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
                 }}
-                className="cursor-pointer text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
+                className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised"
               >
                 Backfill all rows
               </button>
               {backfillStatus && <span className="text-xs text-brand">{backfillStatus}</span>}
             </div>
-            <div className="text-[10px] text-muted mb-2">Select columns to include in embeddings:</div>
+            <div className="text-[10px] text-muted-foreground mb-2">Select columns to include in embeddings:</div>
             <div className="flex flex-wrap gap-2">
               {sortedColumns.filter((c) => c.type === "text" || c.type === "url" || c.type === "email" || c.type === "select").map((c) => (
                 <label key={c.id} className="flex items-center gap-1 text-xs text-foreground cursor-pointer">
@@ -1431,14 +1437,14 @@ function TableEditorPageInner() {
         {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
           <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto overscroll-x-contain">
-            <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`cursor-pointer px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
+            <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`cursor-pointer px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>All rows</button>
             {table.views.map((layout: TableView) => (
               <div key={layout.id} className="flex items-center group">
-                <button onClick={() => handleLoadLayout(layout)} className={`cursor-pointer px-3 py-1 text-xs rounded ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{layout.name}</button>
-                <button onClick={() => handleDeleteLayout(layout.id)} className="cursor-pointer text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
+                <button onClick={() => handleLoadLayout(layout)} className={`cursor-pointer px-3 py-1 text-xs rounded ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>{layout.name}</button>
+                <button onClick={() => handleDeleteLayout(layout.id)} className="cursor-pointer text-[10px] text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
               </div>
             ))}
-            <button onClick={handleSaveLayout} className="cursor-pointer px-2 py-1 text-xs text-muted hover:text-brand">+ Save layout</button>
+            <button onClick={handleSaveLayout} className="cursor-pointer px-2 py-1 text-xs text-muted-foreground hover:text-brand">+ Save layout</button>
           </div>
         )}
 
@@ -1458,15 +1464,15 @@ function TableEditorPageInner() {
                   value={f.op}
                   options={FILTER_OP_OPTIONS}
                   onChange={(next) => updateFilter(idx, "op", next)}
-                  className="min-w-[96px] bg-transparent px-1 py-0.5 text-muted"
+                  className="min-w-[96px] bg-transparent px-1 py-0.5 text-muted-foreground"
                   menuClassName="text-xs"
                 />
                 {f.op !== "is_empty" && f.op !== "is_not_empty" && <input value={f.value} onChange={(e) => updateFilter(idx, "value", e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") loadRows(); }} className="w-24 bg-transparent outline-none text-foreground border-b border-border" placeholder="value" />}
-                <button onClick={() => removeFilter(idx)} className="cursor-pointer text-muted hover:text-red-400 ml-1">&times;</button>
+                <button onClick={() => removeFilter(idx)} className="cursor-pointer text-muted-foreground hover:text-red-400 ml-1">&times;</button>
               </div>
             ))}
             <button onClick={addFilter} className="cursor-pointer text-xs text-brand hover:text-brand-hover">+ Add</button>
-            <button onClick={() => { setFilters([]); setShowFilterBar(false); }} className="cursor-pointer text-xs text-muted hover:text-foreground ml-2">Clear all</button>
+            <button onClick={() => { setFilters([]); setShowFilterBar(false); }} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground ml-2">Clear all</button>
           </div>
         )}
 
@@ -1488,12 +1494,12 @@ function TableEditorPageInner() {
               <thead className="sticky top-0 z-10">
                 <tr className="bg-surface border-b border-border">
                   <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
-                  <th className="w-10 px-2 py-2 text-[10px] font-medium text-muted text-center border-r border-border sticky left-8 z-20 bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">#</th>
+                  <th className="w-10 px-2 py-2 text-[10px] font-medium text-muted-foreground text-center border-r border-border sticky left-8 z-20 bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">#</th>
                   {visibleColumns.map((col) => (
                     <th
                       key={col.id}
                       style={columnWidthStyle(col)}
-                      className={`relative px-3 py-2 text-left text-xs font-medium text-muted border-r border-border select-none hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
+                      className={`relative px-3 py-2 text-left text-xs font-medium text-muted-foreground border-r border-border select-none hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
                       draggable={!readOnly && !columnResize}
                       onDragStart={() => { if (!readOnly) setDragCol(col.id); }}
                       onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
@@ -1502,7 +1508,7 @@ function TableEditorPageInner() {
                       onContextMenu={(e) => { if (readOnly) return; e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}
                     >
                       <span className="flex min-w-0 cursor-pointer items-center gap-1.5 pr-2" onClick={() => handleSort(col.id)}>
-                        <span className="flex-shrink-0 text-[10px] text-muted/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
+                        <span className="flex-shrink-0 text-[10px] text-muted-foreground/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
                         <span className="min-w-0 truncate">{col.name}</span>
                         {sortBy === col.id && <span className="flex-shrink-0 text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
                       </span>
@@ -1519,7 +1525,7 @@ function TableEditorPageInner() {
                     </th>
                   ))}
                   <th className="w-10 px-2 py-2 border-r border-border">
-                    {!readOnly && <button onClick={() => setShowAddCol(true)} className="cursor-pointer w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted hover:text-brand text-sm font-bold">+</button>}
+                    {!readOnly && <button onClick={() => setShowAddCol(true)} className="cursor-pointer w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted-foreground hover:text-brand text-sm font-bold">+</button>}
                   </th>
                   {/* Auto-width spacer: absorbs leftover width so the fixed
                       columns (select, #, add) keep their real widths instead
@@ -1534,7 +1540,7 @@ function TableEditorPageInner() {
                       <tr key={`group-${groupKey}`} className="bg-raised/50 border-b border-border cursor-pointer" onClick={() => toggleGroupCollapse(groupKey)}>
                         <td colSpan={visibleColumns.length + 4} className="px-4 py-2 text-xs font-medium text-foreground">
                           <span className="mr-2">{collapsedGroups.has(groupKey) ? "\u25B6" : "\u25BC"}</span>
-                          {groupKey} <span className="text-muted ml-2">({groupRows.length})</span>
+                          {groupKey} <span className="text-muted-foreground ml-2">({groupRows.length})</span>
                         </td>
                       </tr>
                       {!collapsedGroups.has(groupKey) && groupRows.map((row, idx) => renderRow(row, idx))}
@@ -1552,11 +1558,11 @@ function TableEditorPageInner() {
                 <tfoot className="sticky bottom-0 z-10">
                   <tr className="bg-surface border-t-2 border-border">
                     <td className="px-1 py-2 text-center border-r border-border sticky left-0 bg-surface" />
-                    <td className="px-2 py-2 text-[10px] text-muted text-center border-r border-border font-mono sticky left-8 bg-surface">\u03A3</td>
+                    <td className="px-2 py-2 text-[10px] text-muted-foreground text-center border-r border-border font-mono sticky left-8 bg-surface">\u03A3</td>
                     {visibleColumns.map((col) => {
                       const s = summary.columns[col.id];
                       return (
-                        <td key={col.id} style={columnWidthStyle(col)} className="px-2 py-1.5 border-r border-border text-[10px] font-mono text-muted">
+                        <td key={col.id} style={columnWidthStyle(col)} className="px-2 py-1.5 border-r border-border text-[10px] font-mono text-muted-foreground">
                           {s ? (
                             s.sum != null ? (
                               <div className="space-y-0.5">
@@ -1578,9 +1584,9 @@ function TableEditorPageInner() {
             </table>
 
             {/* Add row + infinite scroll sentinel */}
-            {!readOnly && <button onClick={handleAddRow} className="cursor-pointer w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
+            {!readOnly && <button onClick={handleAddRow} className="cursor-pointer w-full py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
             {hasMore && (
-              <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">
+              <div ref={sentinelRef} className="py-4 text-center text-xs text-muted-foreground">
                 {loadingMore ? (
                   <SkeletonBlock className="mx-auto h-4 w-32" />
                 ) : (
@@ -1613,14 +1619,14 @@ function TableEditorPageInner() {
                 <button onClick={() => handleRenameColumn(colMenu.colId)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Rename</button>
                 <button onClick={() => setColMenuTypeOpen(true)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised flex items-center justify-between">
                   <span>Change type</span>
-                  <span className="text-[10px] text-muted font-mono">{sortedColumns.find((c) => c.id === colMenu.colId)?.type ?? ""} ›</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">{sortedColumns.find((c) => c.id === colMenu.colId)?.type ?? ""} ›</span>
                 </button>
                 <button onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Hide column</button>
                 <button onClick={() => handleDeleteColumn(colMenu.colId)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised">Delete column</button>
               </>
             ) : (
               <>
-                <button onClick={() => setColMenuTypeOpen(false)} className="cursor-pointer w-full text-left px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-raised">‹ Back</button>
+                <button onClick={() => setColMenuTypeOpen(false)} className="cursor-pointer w-full text-left px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-raised">‹ Back</button>
                 {COLUMN_TYPES.map((t) => {
                   const current = sortedColumns.find((c) => c.id === colMenu.colId)?.type;
                   return (
@@ -1629,7 +1635,7 @@ function TableEditorPageInner() {
                       onClick={() => { void handleChangeColumnType(colMenu.colId, t); setColMenuTypeOpen(false); }}
                       className={`cursor-pointer w-full text-left px-3 py-1.5 text-sm hover:bg-raised flex items-center gap-2 ${current === t ? "text-brand" : "text-foreground"}`}
                     >
-                      <span className="text-[10px] text-muted font-mono w-4 text-center">{TYPE_ICONS[t] ?? "?"}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono w-4 text-center">{TYPE_ICONS[t] ?? "?"}</span>
                       <span>{t}</span>
                       {current === t && <span className="ml-auto text-brand">✓</span>}
                     </button>
@@ -1646,9 +1652,9 @@ function TableEditorPageInner() {
             <div className="bg-surface border border-border rounded-xl p-6 w-[360px] shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-base font-bold font-display text-foreground mb-4">Add Column</h2>
               <div className="space-y-3">
-                <div><label className="text-xs text-muted mb-1 block">Name</label><input value={newColName} onChange={(e) => setNewColName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddColumn(); }} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" autoFocus placeholder="Column name" /></div>
+                <div><label className="text-xs text-muted-foreground mb-1 block">Name</label><input value={newColName} onChange={(e) => setNewColName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddColumn(); }} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" autoFocus placeholder="Column name" /></div>
                 <div>
-                  <label className="text-xs text-muted mb-1 block">Type</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">Type</label>
                   <CustomSelect
                     value={newColType}
                     options={COLUMN_TYPE_OPTIONS}
@@ -1657,10 +1663,10 @@ function TableEditorPageInner() {
                     menuClassName="text-sm"
                   />
                 </div>
-                {(newColType === "select" || newColType === "multiselect") && <div><label className="text-xs text-muted mb-1 block">Options (comma-separated)</label><input value={newColOptions} onChange={(e) => setNewColOptions(e.target.value)} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" placeholder="option1, option2" /></div>}
+                {(newColType === "select" || newColType === "multiselect") && <div><label className="text-xs text-muted-foreground mb-1 block">Options (comma-separated)</label><input value={newColOptions} onChange={(e) => setNewColOptions(e.target.value)} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" placeholder="option1, option2" /></div>}
               </div>
               <div className="flex justify-end gap-2 mt-5">
-                <button onClick={() => setShowAddCol(false)} className="cursor-pointer text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
+                <button onClick={() => setShowAddCol(false)} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>
                 <button onClick={handleAddColumn} className="cursor-pointer text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Add</button>
               </div>
             </div>
@@ -1673,13 +1679,13 @@ function TableEditorPageInner() {
             <div className="bg-surface border border-border rounded-xl p-6 w-[480px] max-h-[80vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-base font-bold font-display text-foreground">Row Detail</h2>
-                <span className="text-[10px] font-mono text-muted">{detailRow.id.slice(0, 8)}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{detailRow.id.slice(0, 8)}</span>
               </div>
               <div className="space-y-3">
                 {sortedColumns.map((col) => (
                   <div key={col.id}>
-                    <label className="text-xs text-muted mb-1 block flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono text-muted/60">{TYPE_ICONS[col.type]}</span> {col.name}
+                    <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1.5">
+                      <span className="text-[10px] font-mono text-muted-foreground/60">{TYPE_ICONS[col.type]}</span> {col.name}
                     </label>
                     {col.type === "boolean" ? (
                       <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={detailValues[col.id] === "true" || detailValues[col.id] === "1"} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: String(e.target.checked) }))} className="accent-brand" /> {detailValues[col.id] === "true" ? "Yes" : "No"}</label>
@@ -1703,15 +1709,15 @@ function TableEditorPageInner() {
                 ))}
                 {/* Metadata */}
                 <div className="pt-3 border-t border-border space-y-1">
-                  <div className="text-[10px] text-muted font-mono">Created: {new Date(detailRow.created_at).toLocaleString()}</div>
-                  <div className="text-[10px] text-muted font-mono">Updated: {new Date(detailRow.updated_at).toLocaleString()}</div>
-                  <div className="text-[10px] text-muted font-mono">Created by: {detailRow.created_by.slice(0, 8)}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">Created: {new Date(detailRow.created_at).toLocaleString()}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">Updated: {new Date(detailRow.updated_at).toLocaleString()}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">Created by: {detailRow.created_by.slice(0, 8)}</div>
                 </div>
               </div>
               <div className="flex justify-between mt-5">
-                <button onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="cursor-pointer text-sm text-muted hover:text-foreground px-3 py-1.5">Duplicate</button>
+                <button onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground px-3 py-1.5">Duplicate</button>
                 <div className="flex gap-2">
-                  <button onClick={() => setDetailRow(null)} className="cursor-pointer text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
+                  <button onClick={() => setDetailRow(null)} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>
                   <button onClick={saveDetail} className="cursor-pointer text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Save</button>
                 </div>
               </div>
@@ -1723,14 +1729,13 @@ function TableEditorPageInner() {
 
   // Skill-mode viewers are reading through the skill, so keep the app
   // shell hidden even when they are signed in.
+  if (embedded) {
+    return <div className="flex h-full min-h-0 flex-col">{tableContent}</div>;
+  }
   if (readOnly || !user) {
     return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
   }
-  return (
-    <AppShell user={user} onLogout={logout}>
-      {tableContent}
-    </AppShell>
-  );
+  return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
 }
 
 function TableGlyph() {

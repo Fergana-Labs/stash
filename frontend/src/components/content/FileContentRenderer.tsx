@@ -58,7 +58,7 @@ export default function FileContentRenderer({ url, name, contentType, className 
   }, [url, wantsText]);
 
   if (!url) {
-    return <p className="px-5 py-8 text-muted">No download URL.</p>;
+    return <p className="px-5 py-8 text-muted-foreground">No download URL.</p>;
   }
   if (isPdf(contentType)) {
     return <iframe src={url} className={className ?? "h-[78vh] w-full bg-gray-200"} title={name} />;
@@ -96,7 +96,7 @@ export default function FileContentRenderer({ url, name, contentType, className 
     );
   }
   return (
-    <div className="mx-auto max-w-md px-8 py-12 text-center text-[13px] text-muted">
+    <div className="mx-auto max-w-md px-8 py-12 text-center text-[13px] text-muted-foreground">
       <p className="mb-3">No inline preview for this file type.</p>
       <a
         href={url}

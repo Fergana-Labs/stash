@@ -123,12 +123,12 @@ export default function SessionFolderShareModal({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="m-0 font-display text-[17px] font-bold text-foreground">Share folder</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted">{folder.name}</p>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">{folder.name}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer text-[20px] leading-none text-muted hover:text-foreground"
+            className="cursor-pointer text-[20px] leading-none text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
             ×
@@ -138,7 +138,7 @@ export default function SessionFolderShareModal({
         {error && <p className="mt-3 text-[12px] text-rose-500">{error}</p>}
 
         <div className="mt-4">
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Visibility
           </label>
           <div className="mt-1.5 inline-flex w-full gap-0.5 rounded-lg border border-border bg-surface p-[3px]">
@@ -152,14 +152,14 @@ export default function SessionFolderShareModal({
                   "flex-1 cursor-pointer rounded-md px-2 py-[5px] text-[12.5px] " +
                   (visibility === v.key
                     ? "bg-raised font-semibold text-foreground"
-                    : "text-muted hover:text-foreground")
+                    : "text-muted-foreground hover:text-foreground")
                 }
               >
                 {v.label}
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-[11.5px] text-muted">
+          <p className="mt-1.5 text-[11.5px] text-muted-foreground">
             {VISIBILITIES.find((v) => v.key === visibility)?.hint}
           </p>
         </div>
@@ -178,7 +178,7 @@ export default function SessionFolderShareModal({
         )}
 
         <div className="mt-5">
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Invite people
           </label>
           <form onSubmit={addPerson} className="mt-1.5 flex gap-2">
@@ -187,7 +187,7 @@ export default function SessionFolderShareModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="email@company.com"
-              className="min-w-0 flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
             />
             <select
               value={permission}
@@ -215,10 +215,10 @@ export default function SessionFolderShareModal({
                 >
                   <span className="min-w-0 truncate text-foreground">
                     {s.label || s.email}
-                    {s.pending && <span className="ml-1.5 text-[11px] text-muted">invited</span>}
+                    {s.pending && <span className="ml-1.5 text-[11px] text-muted-foreground">invited</span>}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-[11.5px] text-muted">
+                    <span className="text-[11.5px] text-muted-foreground">
                       {s.permission === "write" ? "Can edit" : "Can view"}
                     </span>
                     <button

@@ -46,7 +46,7 @@ export default function OnboardingPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>
+        <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
       }
     >
       <OnboardingInner />
@@ -129,7 +129,7 @@ function OnboardingInner() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
     );
   }
 
@@ -265,7 +265,7 @@ function AboutStep({
           rows={3}
           maxLength={2000}
           placeholder="e.g. give my coding agents a shared knowledge base across our repos"
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted/70 focus:border-brand focus:outline-none"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
         />
       </Field>
     </div>
@@ -285,7 +285,7 @@ function Field({
     <div className="space-y-2">
       <label className="text-[13px] font-medium text-foreground">
         {label}
-        {optional && <span className="ml-1.5 text-[11px] font-normal text-muted">optional</span>}
+        {optional && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">optional</span>}
       </label>
       {children}
     </div>
@@ -342,7 +342,7 @@ function OtherInput({
       maxLength={200}
       autoFocus
       placeholder={placeholder}
-      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted/70 focus:border-brand focus:outline-none"
+      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
     />
   );
 }
@@ -420,11 +420,11 @@ function TryItOutStep({
             <div className="text-[13.5px] font-medium text-foreground">
               Start a collaborative doc
             </div>
-            <div className="text-[12px] text-muted">
+            <div className="text-[12px] text-muted-foreground">
               You and your agent edit the same page — two cursors at once.
             </div>
           </div>
-          <span className="text-muted transition-colors group-hover:text-brand">&rarr;</span>
+          <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
         </button>
       </TryOption>
       <TryOption
@@ -514,7 +514,7 @@ function ProgressBar({ stepIdx }: { stepIdx: number }) {
           <span
             key={label}
             className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] ${
-              isCurrent ? "text-foreground" : reached ? "text-muted" : "text-muted/50"
+              isCurrent ? "text-foreground" : reached ? "text-muted-foreground" : "text-muted-foreground/50"
             }`}
           >
             <span
@@ -548,7 +548,7 @@ function StepControls({
       <button
         type="button"
         onClick={onSkip}
-        className="cursor-pointer text-[12px] text-muted hover:text-foreground transition-colors"
+        className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground transition-colors"
       >
         Skip onboarding
       </button>
