@@ -13,18 +13,73 @@ import IntegrationsSettings from "@/components/integrations/IntegrationsSettings
 import MachineFileView from "@/components/workspace/machine-file-view";
 import TerminalPanel from "@/components/agents/TerminalPanel";
 import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
+import { takeAgentConfigView } from "@/lib/agent-tab-view";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
-/** A live agent chat tab. The refId is either a stored sessionId, or
- *  `new:<agentId>:<nonce>` for a fresh chat under a specific agent (agentId
- *  may be empty → default agent). The server mints the session on turn 1. */
+/** The agentId an agent tab's refId points at, when it encodes one: a per-agent
+ *  chat (`agent-<id>`) or a fresh chat (`new:<id>:<nonce>`). A raw session id
+ *  from a recent chat doesn't, so those tabs are chat-only. */
+function agentIdFromRef(refId: string): string | null {
+  if (refId.startsWith("new:")) return refId.split(":")[1] || null;
+  if (refId.startsWith("agent-")) return refId.slice("agent-".length) || null;
+  return null;
+}
+
+function AgentViewSelector({
+  view,
+  onChange,
+}: {
+  view: "chat" | "config";
+  onChange: (v: "chat" | "config") => void;
+}) {
+  return (
+    <div className="flex shrink-0 justify-center border-b border-border px-4 py-2">
+      <div className="inline-flex gap-1 rounded-full border border-border bg-surface/60 p-1 shadow-sm">
+        {(["chat", "config"] as const).map((key) => {
+          const active = view === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onChange(key)}
+              className={
+                "cursor-pointer rounded-full px-3 py-1 text-[12px] leading-none transition-colors " +
+                (active
+                  ? "bg-base font-semibold text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
+              }
+            >
+              {key === "config" ? "Config" : "Chat"}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** A live agent tab: chat and config in one tab, switched by a selector. The
+ *  refId is a stored sessionId, `agent-<id>` (the per-agent chat), or
+ *  `new:<id>:<nonce>` for a fresh chat. The server mints the session on turn 1.
+ *  Both panels stay mounted so switching never drops an in-flight stream. */
 function AgentChatTab({ refId }: { refId: string }) {
   const isNew = refId.startsWith("new");
-  const agentId = isNew && refId.startsWith("new:") ? refId.split(":")[1] || null : null;
+  const agentId = agentIdFromRef(refId);
   const [sessionId, setSessionId] = useState<string | null>(isNew ? null : refId);
+  const [view, setView] = useState<"chat" | "config">(() =>
+    agentId && takeAgentConfigView(agentId) ? "config" : "chat",
+  );
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
-      <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
+      {agentId && <AgentViewSelector view={view} onChange={setView} />}
+      <div className={view === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
+      </div>
+      {agentId && (
+        <div className={view === "config" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
+          <AgentConfigPanel agentId={agentId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -37,7 +92,14 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "page") return <PageClient pageId={tab.refId} />;
   if (tab.kind === "file") return <FileClient fileId={tab.refId} />;
   if (tab.kind === "table") return <TableClient tableId={tab.refId} embedded />;
-  if (tab.kind === "sessions-home") return <SessionsPage />;
+  if (tab.kind === "sessions-home")
+    // SessionsPage's root is `flex-1` and needs a bounded flex-column parent to
+    // scroll (the standalone route's <main> is one; the tab host isn't).
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <SessionsPage />
+      </div>
+    );
   if (tab.kind === "session") return <SessionClient sessionId={tab.refId} />;
   if (tab.kind === "skill") return <SkillFolderClient folderId={tab.refId} />;
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;
