@@ -3,15 +3,15 @@
 Images pasted into a page were uploaded with no parent at all, so every
 screenshot landed at the root of the files tree while the page that embeds
 it only held a `/api/v1/me/files/{id}/download` URL string. A file now has
-exactly one parent — a folder OR a page (CHECK constraint) — and tree views
-nest attachments under their page.
+exactly one parent — a folder OR a page (CHECK constraint) — and attachments
+disappear from tree views: the page's embed link is the only reference.
 
 Backfill: for every live page, extract the file ids referenced by its body
 and attach each still-root, still-unattached file to the earliest page that
 references it.
 
-Revision ID: 0122
-Revises: 0121
+Revision ID: 0123
+Revises: 0122
 Create Date: 2026-07-04
 """
 
@@ -21,8 +21,8 @@ import re
 from alembic import op
 from sqlalchemy import text
 
-revision = "0122"
-down_revision = "0121"
+revision = "0123"
+down_revision = "0122"
 branch_labels = None
 depends_on = None
 
@@ -77,7 +77,7 @@ def upgrade() -> None:
         "ALTER TABLE files ADD CONSTRAINT files_single_parent "
         "CHECK (folder_id IS NULL OR parent_page_id IS NULL)"
     )
-    logger.info("0122: attached %d root files to the pages that embed them", attached)
+    logger.info("0123: attached %d root files to the pages that embed them", attached)
 
 
 def downgrade() -> None:
