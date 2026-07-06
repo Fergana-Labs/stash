@@ -287,7 +287,9 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
             return None
 
     async def gong_token(user_id, provider):
-        return '{"access_key":"key","access_key_secret":"secret"}'
+        # The post-OAuth stored shape (#698): a JSON bundle of the bearer token
+        # and the per-customer API base URL.
+        return '{"access_token":"gong-oauth-secret","api_base_url":"https://api.gong.io"}'
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", gong_token)
     monkeypatch.setattr(gong_indexer.httpx, "AsyncClient", lambda *args, **kwargs: GongClient())
@@ -308,6 +310,7 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     ]
     assert "gong-account-secret" not in str(captured_logs)
     assert "call-webflow-secret" not in str(captured_logs)
+    assert "gong-oauth-secret" not in str(captured_logs)
     assert "Webflow acquisition call" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)
 
