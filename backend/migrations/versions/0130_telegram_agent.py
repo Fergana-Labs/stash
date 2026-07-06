@@ -5,14 +5,14 @@ per-team install table like Slack's. Identity is a deep-link connect: the user
 opens t.me/<bot>?start=<code> with a short-lived code minted in settings, and
 the bot's /start handler binds their Telegram id to their account.
 
-Revision ID: 0124
-Revises: 0123
+Revision ID: 0130
+Revises: 0129
 """
 
 from alembic import op
 
-revision = "0124"
-down_revision = "0123"
+revision = "0130"
+down_revision = "0129"
 branch_labels = None
 depends_on = None
 

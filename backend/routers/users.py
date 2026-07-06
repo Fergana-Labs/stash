@@ -31,14 +31,6 @@ def _require_password_auth() -> None:
         )
 
 
-def _require_manual_api_key_creation_enabled() -> None:
-    if settings.AUTH0_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manual API key creation is disabled; use CLI sign-in",
-        )
-
-
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
 @limiter.limit("5/minute")
 async def register(request: Request, req: UserRegisterRequest):
@@ -97,7 +89,7 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
     pool = get_pool()
     await pool.execute(
-        "UPDATE user_api_keys SET revoked_at = now() " "WHERE id = $1 AND revoked_at IS NULL",
+        "UPDATE user_api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
         key_id,
     )
     return None
@@ -153,7 +145,6 @@ async def create_my_key(
 ):
     """Mint a new API key for the current user. The raw key is returned once
     and never shown again; only its hash is stored."""
-    _require_manual_api_key_creation_enabled()
     from ..database import get_pool
 
     api_key = await create_api_key(current_user["id"], name=req.name, key_type="manual")

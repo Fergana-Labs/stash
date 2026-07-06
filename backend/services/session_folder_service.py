@@ -167,8 +167,7 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT owner_user_id, public_permission, discoverable "
-        "FROM session_folders WHERE id = $1",
+        "SELECT owner_user_id, public_permission, discoverable FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or not await user_can_manage(folder_id, user_id):

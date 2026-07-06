@@ -4,6 +4,10 @@ Sync stores recent message metadata only. Search runs Gmail's native query live,
 upserts returned metadata so the result can be opened, and lazy reads fetch the
 full message body with the owner's token. Stash never copies message bodies
 during scheduled sync.
+
+Messages are keyed by a date-foldered path — "YYYY/MM/DD HHMM subject (id)" —
+so the mailbox lists chronologically instead of as a flat pile of opaque ids
+(path order is the VFS listing order).
 """
 
 from __future__ import annotations
@@ -71,17 +75,45 @@ def _message_time(message: dict) -> datetime | None:
         return None
 
 
+def _path_segment(text: str, max_len: int = 60) -> str:
+    """A string safe to embed in an index path: no slashes (they'd read as
+    folders), whitespace collapsed, capped so paths stay listable."""
+    cleaned = " ".join(text.replace("/", "-").split())
+    return cleaned[:max_len].strip()
+
+
+def _message_path(message: dict) -> str | None:
+    """Index path for a message: "YYYY/MM/DD HHMM subject (id)". Year/month
+    folders group the mailbox by date and the day+time leaf prefix keeps each
+    month chronological; the id suffix guarantees uniqueness. None when Gmail
+    returned no id or timestamp — such a payload isn't a real message."""
+    message_id = message.get("id")
+    sent_at = _message_time(message)
+    if not message_id or sent_at is None:
+        return None
+    subject = _path_segment(_message_headers(message).get("subject") or "(no subject)")
+    return f"{sent_at:%Y/%m/%d %H%M} {subject} ({message_id})"
+
+
 async def _list_message_refs(
     client: httpx.AsyncClient,
     query: str,
     limit: int,
-) -> list[dict]:
+) -> tuple[list[dict], str | None, int | None]:
+    """Returns (message refs, nextPageToken, resultSizeEstimate). A nextPageToken
+    means Gmail matched more than we fetched — the authoritative "there is more"
+    signal; resultSizeEstimate is Gmail's rough total-match count."""
     resp = await client.get(
         MESSAGES_URL,
         params={"q": query, "maxResults": min(limit, 100)},
     )
     resp.raise_for_status()
-    return resp.json().get("messages", []) or []
+    body = resp.json()
+    return (
+        body.get("messages", []) or [],
+        body.get("nextPageToken"),
+        body.get("resultSizeEstimate"),
+    )
 
 
 async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> dict:
@@ -94,20 +126,21 @@ async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> d
 
 
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
-    message_id = message.get("id")
-    if not message_id:
+    """Upsert one message's metadata; returns its index path (the VFS ref)."""
+    path = _message_path(message)
+    if path is None:
         return None
     await source_service.upsert_index_row(
         table="gmail_index",
         source_id=UUID(source["id"]),
         owner_user_id=UUID(source["owner_user_id"]),
-        path=message_id,
+        path=path,
         name=_message_name(message),
         kind="message",
-        external_ref=message_id,
+        external_ref=message["id"],
         external_updated_at=_message_time(message),
     )
-    return message_id
+    return path
 
 
 async def index_gmail(source: dict) -> str | None:
@@ -117,43 +150,53 @@ async def index_gmail(source: dict) -> str | None:
 
     present: list[str] = []
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
-        refs = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
+        refs, _, _ = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
         messages = await asyncio.gather(
             *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
         )
         for message in messages:
-            message_id = await _upsert_message_metadata(source, message)
-            if message_id:
-                present.append(message_id)
+            path = await _upsert_message_metadata(source, message)
+            if path:
+                present.append(path)
 
     await source_service.remove_missing_documents("gmail_index", source_id, present)
     logger.info("gmail source %s: indexed %d message(s)", source_id, len(present))
     return None
 
 
-async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
+async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> dict:
+    """Live-search the mailbox, capped at SEARCH_LIMIT. Returns
+    {hits, truncated, estimated_total}: `truncated` is true when Gmail matched
+    more than the cap, so callers can disclose the cut instead of passing the
+    top slice off as the whole result."""
     owner_user_id = UUID(source["owner_user_id"])
     token = await get_valid_token(owner_user_id, "gmail", source["external_ref"])
 
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
-        refs = await _list_message_refs(client, query, min(limit, SEARCH_LIMIT))
+        refs, next_page_token, estimated_total = await _list_message_refs(
+            client, query, min(limit, SEARCH_LIMIT)
+        )
         messages = await asyncio.gather(
             *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
         )
 
     hits: list[dict] = []
     for message in messages:
-        message_id = await _upsert_message_metadata(source, message)
-        if not message_id:
+        path = await _upsert_message_metadata(source, message)
+        if not path:
             continue
         hits.append(
             {
-                "ref": message_id,
+                "ref": path,
                 "name": _message_name(message),
                 "snippet": message.get("snippet") or "",
             }
         )
-    return hits
+    return {
+        "hits": hits,
+        "truncated": bool(next_page_token),
+        "estimated_total": estimated_total,
+    }
 
 
 def _decode_body_data(data: str) -> str:

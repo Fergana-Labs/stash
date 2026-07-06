@@ -381,7 +381,7 @@ async def _create_skill(args: dict) -> dict:
 
 @tool(
     "publish_skill",
-    "Publish a skill folder: make it publicly readable at /skills/<slug> and " "return the URL.",
+    "Publish a skill folder: make it publicly readable at /skills/<slug> and return the URL.",
     {
         "type": "object",
         "properties": {
@@ -410,7 +410,7 @@ async def _publish_skill(args: dict) -> dict:
 
 @tool(
     "update_skill",
-    "Update a published skill's share settings (title, description, access, " "Discover listing).",
+    "Update a published skill's share settings (title, description, access, Discover listing).",
     {
         "type": "object",
         "properties": {
@@ -464,9 +464,8 @@ async def _unpublish_skill(args: dict) -> dict:
     "list_sources",
     "List every source this user can read: native 'files' and 'sessions', plus "
     "their connected sources (GitHub, Drive, Gmail, Notion, Slack, Granola, Jira, Asana, "
-    "Gong, Snowflake, Twitter). Each has a `capability`: 'navigable'/'searchable' sources "
-    "use list_source / read_source / search; a 'queryable' source (Snowflake) uses "
-    "query_source. Use the returned `source` handle with those tools.",
+    "Gong, Twitter). Each has a `capability`: 'navigable'/'searchable' sources use "
+    "list_source / read_source / search. Use the returned `source` handle with those tools.",
     {"type": "object", "properties": {}},
 )
 async def _list_sources(args: dict) -> dict:
@@ -552,36 +551,6 @@ async def _search(args: dict) -> dict:
     if results is None:
         return _text_result(json.dumps({"error": "source not found"}))
     return _text_result(json.dumps(results))
-
-
-@tool(
-    "query_source",
-    "Run a read-only SQL query against a queryable source (e.g. Snowflake). "
-    "`source` is the handle from list_sources; use list_source to see its tables "
-    "and read_source on a table to see its columns first. Only SELECT/SHOW/"
-    "DESCRIBE/EXPLAIN are allowed and rows are capped. WITH (CTEs) is rejected — "
-    "rewrite CTEs as subqueries.",
-    {
-        "type": "object",
-        "properties": {
-            "source": {"type": "string"},
-            "sql": {"type": "string"},
-            "limit": {"type": "integer", "default": 200},
-        },
-        "required": ["source", "sql"],
-    },
-)
-async def _query_source(args: dict) -> dict:
-    result = await source_service.query_source(
-        _current_scope(),
-        _current_user(),
-        args.get("source", ""),
-        args.get("sql", ""),
-        limit=int(args.get("limit", 200)),
-    )
-    if result is None:
-        return _text_result(json.dumps({"error": "source not found"}))
-    return _text_result(json.dumps(result))
 
 
 @tool(
@@ -1152,6 +1121,5 @@ _TOOLS_BY_NAME = {
     "list_source": _list_source,
     "read_source": _read_source,
     "search": _search,
-    "query_source": _query_source,
     "fetch_history": _fetch_history,
 }

@@ -18,6 +18,11 @@ from .client import StashClient, StashError
 
 BytesLoader = Callable[[], bytes]
 
+# Hard ceiling on entries materialized per source. A source bigger than this
+# gets a truncation warning from the listing commands rather than an
+# ever-growing tree walk.
+SOURCE_ENTRIES_MAX = 10_000
+
 
 class MountError(Exception):
     pass
@@ -33,6 +38,9 @@ class VfsNode:
     children: dict[str, str] = field(default_factory=dict)
     created_at: float | None = None
     updated_at: float | None = None
+    # Provider-side id of a connected-source document (a Drive file id, a Gmail
+    # message id, …), so `stat` can tie a VFS path back to the provider object.
+    external_ref: str | None = None
 
     @property
     def is_dir(self) -> bool:
@@ -75,6 +83,13 @@ class StashVfsModel:
                     "GitHub, Slack, Jira, …) as read-only documents.",
                     "- `computer` is a live, read-only view of your cloud "
                     "computer's disk (browsing may wake it).",
+                    "",
+                    "Listings are alphabetical by name; they carry no time meaning.",
+                    "For recency use `ls -lt` (sort by modified time), "
+                    "`find -mtime -N` / `find -newer <path>`, or `stat <path>`.",
+                    "Slack renders as one transcript per channel per UTC day; a "
+                    "`0000-history-cap` entry in a channel means older history "
+                    "exists in Slack but is not indexed here.",
                     "",
                 ]
             ),
@@ -166,6 +181,9 @@ class StashVfsModel:
         self._add_dir(root_path)
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         pages = tree.get("pages", [])
+        # Files embedded in a page are internals of that document, not tree
+        # entries — the overview omits them. The page's markdown links them by
+        # download URL and `stash files download` fetches the bytes.
         files = tree.get("files", [])
         ambiguous = _files_ambiguity(folders.values(), pages, files)
         folder_paths: dict[str, str] = {}
@@ -280,7 +298,9 @@ class StashVfsModel:
         self._add_dir(tables_path)
         tables = self.client.list_tables()
         self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
-        ambiguous = _ambiguous_basenames([_safe_name(table.get("name") or "table") for table in tables])
+        ambiguous = _ambiguous_basenames(
+            [_safe_name(table.get("name") or "table") for table in tables]
+        )
         for table in tables:
             table_id = str(table["id"])
             created_at = table.get("created_at")
@@ -333,8 +353,8 @@ class StashVfsModel:
                 # Sole connection collapses — its documents sit directly in the
                 # provider folder (e.g. /sources/granola/<call>).
                 handle = str(members[0].get("source") or "")
-                self._expanders[provider_root] = (
-                    lambda root=provider_root, h=handle: self._expand_source(root, h)
+                self._expanders[provider_root] = lambda root=provider_root, h=handle: (
+                    self._expand_source(root, h)
                 )
                 continue
             for member in members:
@@ -342,30 +362,52 @@ class StashVfsModel:
                 member_root = self._add_dir_child(
                     provider_root, _source_slug(member.get("display_name") or handle)
                 )
-                self._expanders[member_root] = (
-                    lambda root=member_root, h=handle: self._expand_source(root, h)
+                self._expanders[member_root] = lambda root=member_root, h=handle: (
+                    self._expand_source(root, h)
                 )
 
     def _expand_source(self, source_root: str, handle: str) -> None:
-        try:
-            entries, truncated = self.client.list_source_entries_page(handle, "")
-        except StashError:
-            return
-        if truncated:
-            self._truncated[source_root] = len(entries)
+        entries: list[dict] = []
+        after = ""
+        while True:
+            try:
+                page, truncated = self.client.list_source_entries_page(handle, "", after=after)
+            except StashError:
+                break
+            entries.extend(page)
+            if not truncated:
+                break
+            after = str(page[-1].get("path") or "")
+            if not after or len(entries) >= SOURCE_ENTRIES_MAX:
+                # No cursor to continue from (a listing that isn't path-keyed),
+                # or the source is beyond what we'll materialize in one tree.
+                self._truncated[source_root] = len(entries)
+                break
         self._add_source_entries(source_root, handle, entries)
 
     def truncated_roots_under(self, root: str) -> list[tuple[str, int]]:
         """Truncated source roots overlapping `root` (root contains the source,
-        or sits inside it). Returns (source_root, entries_shown) pairs."""
+        or sits inside it). For subtree enumeration (find/tree): any overlap
+        means the enumeration is incomplete. Returns (source_root, shown) pairs."""
         return sorted(
             (s, shown)
             for s, shown in self._truncated.items()
             if s == root or s.startswith(root.rstrip("/") + "/") or root.startswith(s + "/")
         )
 
+    def truncated_root_containing(self, path: str) -> tuple[str, int] | None:
+        """The truncated source root that CONTAINS `path` (path is at or below
+        it), or None. For single-directory listing (ls): an ancestor like
+        /sources — whose own children are complete — must not match, so this is
+        narrower than truncated_roots_under."""
+        for s, shown in self._truncated.items():
+            if path == s or path.startswith(s + "/"):
+                return s, shown
+        return None
+
     def _add_source_entries(self, source_root: str, handle: str, entries: list[dict]) -> None:
         parent_refs = _ancestor_refs(entries)
+        aliases: list[tuple[str, str]] = []
         for entry in entries:
             ref = str(entry.get("path") or "")
             segments = [_safe_name(seg) for seg in ref.split("/") if seg]
@@ -383,16 +425,28 @@ class StashVfsModel:
             # instead of being dropped on the file/dir name collision.
             if ref in parent_refs:
                 page_dir = self._add_dir(f"{parent}/{display}")
-                self._add_source_doc_file(f"{page_dir}/{display}", handle, ref)
-                continue
-            self._add_source_doc_file(f"{parent}/{display}", handle, ref)
+                added = self._add_source_doc_file(f"{page_dir}/{display}", handle, ref, entry)
+            else:
+                added = self._add_source_doc_file(f"{parent}/{display}", handle, ref, entry)
+            aliases.append((f"{source_root}/{ref}", added))
+        # The backend ref is what search results and history responses hand the
+        # agent — make it resolve too. Registered after all real entries so an
+        # alias can never shadow a real path; a ref that IS the display path
+        # (identical name) is simply already present.
+        for alias, target in aliases:
+            alias = self._clean_path(alias)
+            if alias not in self.nodes:
+                self.nodes[alias] = self.nodes[target]
 
-    def _add_source_doc_file(self, path: str, handle: str, ref: str) -> str:
+    def _add_source_doc_file(self, path: str, handle: str, ref: str, entry: dict) -> str:
         return self._add_file(
             path,
             loader=lambda h=handle, r=ref: _text_bytes(
                 _source_doc_text(self.client.read_source_doc(h, r))
             ),
+            size_hint=entry.get("size"),
+            updated_at=entry.get("external_updated_at"),
+            external_ref=entry.get("external_ref") or None,
         )
 
     def _load_page(self, page_id: str) -> bytes:
@@ -457,6 +511,7 @@ class StashVfsModel:
         size_hint: int | None = None,
         created_at: str | None = None,
         updated_at: str | None = None,
+        external_ref: str | None = None,
     ) -> str:
         path = self._clean_path(path)
         parent, requested_name = self._split_parent(path)
@@ -474,6 +529,7 @@ class StashVfsModel:
             ),
             created_at=_parse_iso(created_at),
             updated_at=_parse_iso(updated_at),
+            external_ref=external_ref,
         )
         self.nodes[parent].children[name] = path
         return path

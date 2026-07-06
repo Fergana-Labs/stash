@@ -112,16 +112,16 @@ def stash_push_event(
     agent_name: str,
     event_type: str,
     content: str,
-    session_id: str = "",
+    session_id: str,
     tool_name: str = "",
 ) -> str:
-    """Push a new event into your sessions."""
+    """Push a new event into a session's stream."""
     return _json(
         _client().push_event(
             agent_name=agent_name,
             event_type=event_type,
             content=content,
-            session_id=session_id or None,
+            session_id=session_id,
             tool_name=tool_name or None,
         )
     )

@@ -37,7 +37,7 @@ def upgrade() -> None:
         "AND deleted_at IS NULL"
     )
     # Partial index matches the reconciler's hot path.
-    op.execute("CREATE INDEX IF NOT EXISTS idx_files_embed_stale " "ON files(id) WHERE embed_stale")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_files_embed_stale ON files(id) WHERE embed_stale")
 
 
 def downgrade() -> None:

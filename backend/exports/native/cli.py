@@ -39,7 +39,7 @@ log = logging.getLogger("native-export")
 async def _load_page(page_id: UUID) -> tuple[str, str]:
     pool = database.get_pool()
     row = await pool.fetchrow(
-        "SELECT name, content_html, content_type, html_layout " "FROM pages WHERE id = $1",
+        "SELECT name, content_html, content_type, html_layout FROM pages WHERE id = $1",
         page_id,
     )
     if not row:
@@ -67,7 +67,6 @@ async def main_async(args: argparse.Namespace) -> None:
         name, html = await _load_page(UUID(args.page_id))
         log.info("loaded %s — %d bytes (from db)", name, len(html))
     try:
-
         specs = await probe(html)
         log.info("probed %d slide(s)", len(specs))
 

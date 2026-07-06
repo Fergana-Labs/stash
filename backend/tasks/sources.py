@@ -99,6 +99,29 @@ def reconcile_due() -> int:
     return run_async(_reconcile_due())
 
 
+async def _reconcile_github_sync_all() -> int:
+    """For every account in all-repos mode, register sources for repos the
+    user gained access to since the last pass. One account's dead token must
+    not starve the rest, so failures are logged per user and the loop goes on."""
+    from ..integrations import storage
+    from ..integrations.github.account_sync import sync_all_repos
+
+    user_ids = await storage.sync_all_user_ids("github")
+    reconciled = 0
+    for user_id in user_ids:
+        try:
+            await sync_all_repos(user_id)
+            reconciled += 1
+        except Exception:
+            logger.error("github sync-all reconcile failed user=%s", user_id, exc_info=True)
+    return reconciled
+
+
+@celery.task(name="backend.tasks.sources.reconcile_github_sync_all")
+def reconcile_github_sync_all() -> int:
+    return run_async(_reconcile_github_sync_all())
+
+
 @celery.task(name="backend.tasks.sources.ingest_slack_event")
 def ingest_slack_event(team_id: str, event: dict) -> int:
     """Upsert a single Slack Events-API message (enqueued by the webhook)."""

@@ -49,8 +49,8 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 # File rows are always read joined to their uploader so responses can show
 # attribution ("Uploaded by Sam") without a second round trip.
 _FILE_COLS = (
-    "f.id, f.owner_user_id, f.folder_id, f.name, f.content_type, f.size_bytes, "
-    "f.storage_key, f.uploaded_by, f.created_at, f.linked_table_id, "
+    "f.id, f.owner_user_id, f.folder_id, f.owner_page_id, f.name, f.content_type, "
+    "f.size_bytes, f.storage_key, f.uploaded_by, f.created_at, f.linked_table_id, "
     "u.name AS uploaded_by_name, u.display_name AS uploaded_by_display_name"
 )
 _FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
@@ -111,6 +111,7 @@ async def _file_to_response(row: dict) -> FileResponse:
         id=row["id"],
         owner_user_id=row["owner_user_id"],
         folder_id=row.get("folder_id"),
+        owner_page_id=row.get("owner_page_id"),
         name=row["name"],
         content_type=row["content_type"],
         size_bytes=row["size_bytes"],
@@ -156,6 +157,11 @@ async def upload_my_file(
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
+    """Upload a page (markdown/html) or a binary file.
+
+    There is no way to upload a file as *embedded* — embedding is derived
+    from page bodies: saving a page whose body carries a file's download
+    link claims that file (see _reconcile_embedded_files)."""
     owner_user_id = current_user["id"]
     # Scope writers can upload anywhere; other users can upload into a
     # specific folder shared with them with write permission.
@@ -285,7 +291,7 @@ async def ingest_bytes(
     row = await pool.fetchrow(
         "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
-        "RETURNING id, owner_user_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
+        "RETURNING id, owner_user_id, folder_id, owner_page_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
         owner_user_id,
         filename,
         content_type,
@@ -304,6 +310,7 @@ async def ingest_bytes(
         id=row_dict["id"],
         owner_user_id=row_dict["owner_user_id"],
         folder_id=row_dict.get("folder_id"),
+        owner_page_id=row_dict.get("owner_page_id"),
         name=row_dict["name"],
         content_type=row_dict["content_type"],
         app_url=_file_app_url(row_dict),
@@ -438,9 +445,11 @@ async def update_my_file(
     req: FileUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Update a file. Supports rename (`name`) and reparent
-    (`folder_id` / `move_to_root`). Any subset can be passed; an empty
-    request returns the file unchanged."""
+    """Update a file. Supports rename (`name`) and move
+    (`folder_id` / `move_to_root`). Moving an embedded file *files* it —
+    owner_page_id clears and it becomes an ordinary tree entry again.
+    Embedding is not writable here; it is derived from page bodies.
+    Any subset can be passed; an empty request returns the file unchanged."""
     owner_user_id = current_user["id"]
     pool = get_pool()
     file_row = await pool.fetchrow(
@@ -468,6 +477,7 @@ async def update_my_file(
     if req.move_to_root:
         params.append(None)
         updates.append(f"folder_id = ${len(params)}")
+        updates.append("owner_page_id = NULL")
     elif req.folder_id is not None:
         # Target folder must belong to the same scope; otherwise files
         # could escape their scope by getting reparented across the
@@ -489,6 +499,7 @@ async def update_my_file(
             raise HTTPException(status_code=404, detail="Folder not found")
         params.append(req.folder_id)
         updates.append(f"folder_id = ${len(params)}")
+        updates.append("owner_page_id = NULL")
 
     if not updates:
         return await _file_to_response(await _fetch_file_row(file_id, owner_user_id))

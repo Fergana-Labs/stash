@@ -4,14 +4,14 @@ Memory is its own space, distinct from Files: one folder per owner flagged
 ``is_memory``. It's created on demand, hidden from the Files tree, and can't be
 renamed, moved, or deleted. A partial unique index enforces one per owner.
 
-Revision ID: 0121
-Revises: 0120
+Revision ID: 0127
+Revises: 0126
 """
 
 from alembic import op
 
-revision = "0121"
-down_revision = "0120"
+revision = "0127"
+down_revision = "0126"
 branch_labels = None
 depends_on = None
 

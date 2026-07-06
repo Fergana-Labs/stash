@@ -5,14 +5,14 @@ an OAuth token. That credential runs as their harness on their sprite. Users
 with no credential fall back to the managed agent (opencode + OpenRouter GLM)
 on the Pro tier.
 
-Revision ID: 0125
-Revises: 0124
+Revision ID: 0131
+Revises: 0130
 """
 
 from alembic import op
 
-revision = "0125"
-down_revision = "0124"
+revision = "0131"
+down_revision = "0130"
 branch_labels = None
 depends_on = None
 

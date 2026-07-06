@@ -13,7 +13,6 @@ import {
   LinearIcon,
   NotionIcon,
   SlackIcon,
-  SnowflakeIcon,
   TwitterIcon,
 } from "./BrandIcons";
 
@@ -33,7 +32,7 @@ export const CONNECTORS: Connector[] = [
     label: "GitHub",
     sourceType: "github_repo",
     kind: "github",
-    blurb: "Pick repos your agent can navigate.",
+    blurb: "Sync every repo you can see, or pick specific ones.",
   },
   {
     provider: "google",
@@ -99,13 +98,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Call transcripts, kept in sync.",
   },
   {
-    provider: "snowflake",
-    label: "Snowflake",
-    sourceType: "snowflake",
-    kind: "auto",
-    blurb: "Run read-only SQL against your warehouse.",
-  },
-  {
     provider: "twitter",
     label: "Twitter / X",
     sourceType: "twitter",
@@ -127,7 +119,6 @@ export const providerForSourceType: Record<string, string> = {
   slack: "slack",
   granola: "granola",
   gong_calls: "gong",
-  snowflake: "snowflake",
   twitter: "twitter",
 };
 
@@ -161,8 +152,6 @@ export function connectorIcon(provider: string): ReactNode {
       return <GranolaIcon />;
     case "gong":
       return <GongIcon />;
-    case "snowflake":
-      return <SnowflakeIcon />;
     case "twitter":
       return <TwitterIcon />;
     default:
@@ -181,7 +170,6 @@ export function labelForSourceType(type: string): string {
   if (type === "asana_project") return "Asana";
   if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
-  if (type === "snowflake") return "Snowflake";
   if (type === "twitter") return "Twitter / X";
   return type;
 }

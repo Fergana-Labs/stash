@@ -17,9 +17,9 @@ class StashError(Exception):
         super().__init__(f"[{status_code}] {detail}")
 
 
-# How many entries the VFS materializes per source. The server caps listings;
-# matching that here lets us request one extra row to detect truncation.
-SOURCE_ENTRIES_PAGE = 200
+# Page size when the VFS walks a source's entries. Callers page with the
+# `after` cursor until a page comes back non-full.
+SOURCE_ENTRIES_PAGE = 1000
 
 
 class StashClient:
@@ -80,12 +80,13 @@ class StashClient:
     def _upload(self, path: str, file_path: str, folder_id: str | None = None) -> dict:
         filename = os.path.basename(file_path)
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        data = {"folder_id": folder_id} if folder_id else None
         with open(file_path, "rb") as f:
             resp = self._request(
                 "POST",
                 path,
                 files={"file": (filename, f, content_type)},
-                data={"folder_id": folder_id} if folder_id else None,
+                data=data or None,
                 timeout=300,
             )
         return resp.json()
@@ -343,15 +344,18 @@ class StashClient:
         agent_name: str,
         event_type: str,
         content: str,
-        session_id: str | None = None,
+        session_id: str,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
         created_at: str | None = None,
     ) -> dict:
-        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
-        if session_id:
-            body["session_id"] = session_id
+        body: dict = {
+            "agent_name": agent_name,
+            "event_type": event_type,
+            "content": content,
+            "session_id": session_id,
+        }
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -555,15 +559,19 @@ class StashClient:
     def list_source_entries(self, source: str, path: str = "") -> list:
         return self._list(f"/api/v1/me/sources/{source}/entries", "entries", path=path)
 
-    def list_source_entries_page(self, source: str, path: str = "") -> tuple[list, bool]:
-        """List a source's entries, reporting whether the server truncated them.
+    def list_source_entries_page(
+        self, source: str, path: str = "", after: str = ""
+    ) -> tuple[list, bool]:
+        """One page of a source's entries, reporting whether more pages exist.
 
         We ask for one row beyond the page size; if it comes back, more rows
-        exist than were returned, so the listing is incomplete."""
+        exist. `after` is the keyset cursor: pass the last path of the previous
+        page to fetch the next one."""
         data = self._get(
             f"/api/v1/me/sources/{source}/entries",
             path=path,
             limit=SOURCE_ENTRIES_PAGE + 1,
+            after=after,
         )
         entries = data.get("entries", []) if isinstance(data, dict) else data
         truncated = len(entries) > SOURCE_ENTRIES_PAGE

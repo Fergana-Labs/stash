@@ -1,10 +1,12 @@
 """Sources: the unified source layer.
 
-A *source* is anything the agent can read. Two are native and always present
-per scope — the **file system** and **session transcripts** (scope-wide,
-visible to the user). The rest are **connected sources** (GitHub / Drive /
-Gmail / Notion / Slack / Granola) — rows in `user_sources`, USER-SCOPED so
-only the owner sees them.
+A *source* is anything the agent can read. Two are native — the **file system**
+and **session transcripts** — readable by the owner and anyone they're shared
+with. The rest are **connected sources** (GitHub / Drive / Gmail / Notion /
+Slack / Granola) — rows in `user_sources`, owned by the connecting user and
+read-shareable: a recipient reads the source's content through Stash using the
+OWNER's token (delegated), but never sees the token, and management/sync stay
+owner-only.
 
 This module owns:
 - the `user_sources` registry (CRUD + sync bookkeeping),
@@ -19,7 +21,7 @@ This module also owns the unified VFS surface (`source_entries`, `source_documen
 `search_all`) over BOTH native and connected sources — the single codepath the
 agent tools and the REST endpoints both call. Native reads delegate to
 files_tree_service / memory_service (imported lazily to avoid an import cycle).
-Connected-source handles are scoped to both owner and scope.
+Connected-source reads resolve through get_readable_source (owner or a share).
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ import asyncio
 import hashlib
 import logging
 import re
+from datetime import UTC, datetime
 from urllib.parse import quote
 from uuid import UUID
 
@@ -35,7 +38,7 @@ import httpx
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import security_audit_service
+from . import permission_service, security_audit_service
 
 logger = logging.getLogger(__name__)
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
@@ -75,9 +78,6 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "gong_calls": "searchable",
     "twitter": "searchable",
-    # Queryable sources run live read-only SQL; they have no document table or
-    # indexer (see source_entries / query_source).
-    "snowflake": "queryable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -91,7 +91,6 @@ PROVIDER_SOURCE_TYPES = {
     "asana": ("asana_project",),
     "linear": ("linear",),
     "gong": ("gong_calls",),
-    "snowflake": ("snowflake",),
     "twitter": ("twitter",),
 }
 
@@ -247,8 +246,8 @@ async def create_source(
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
-    now(). Types without a scheduled-sync interval (search-driven / queryable)
-    have no indexer and must NOT enroll in the sync queue: the reconciler skips
+    now(). Types without a scheduled-sync interval (search-driven) have no
+    indexer and must NOT enroll in the sync queue: the reconciler skips
     them without advancing next_sync_at, so an enabled row would sit "due"
     forever at the front of the due_sources window and starve real syncs."""
     validate_source_external_ref(source_type, external_ref)
@@ -325,24 +324,39 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """The user's own connected sources in this scope. User-scoped: a
-    user never sees another user's connected sources."""
+async def list_connected_sources(user_id: UUID) -> list[dict]:
+    """Connected sources `user_id` can read: the ones they own, plus any shared
+    with them. Each row keeps its real owner_user_id, so reads of a shared source
+    delegate to the source owner's token."""
+    predicate = permission_service.readable_content_condition("source", "obj", 1)
     rows = await get_pool().fetch(
-        "SELECT * FROM user_sources "
-        "WHERE owner_user_id = $1 AND owner_user_id = $2 "
-        "ORDER BY source_type, display_name",
-        owner_user_id,
+        f"SELECT obj.* FROM user_sources obj WHERE {predicate} "
+        "ORDER BY obj.source_type, obj.display_name",
         user_id,
     )
     return [_source_row(r) for r in rows]
 
 
 async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
-    """Fetch a connected source only if `user_id` owns it — the single
-    enforcement point for user-scoping on every read."""
+    """Fetch a connected source only if `user_id` OWNS it — the gate for
+    management and sync (reconfigure, delete, trigger re-index). Reads go through
+    get_readable_source, which also honours shares."""
     row = await get_pool().fetchrow(
         "SELECT * FROM user_sources WHERE id = $1 AND owner_user_id = $2",
+        source_id,
+        user_id,
+    )
+    return _source_row(row) if row else None
+
+
+async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
+    """Fetch a connected source `user_id` may READ — they own it, or it was
+    shared with them. The row keeps its real owner_user_id, so downstream reads
+    fetch content with the OWNER's token (delegated access — the sharee never
+    sees the token). Management/sync stay owner-only via get_owned_source."""
+    predicate = permission_service.readable_content_condition("source", "obj", 2)
+    row = await get_pool().fetchrow(
+        f"SELECT obj.* FROM user_sources obj WHERE obj.id = $1 AND {predicate}",
         source_id,
         user_id,
     )
@@ -674,51 +688,173 @@ async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) ->
 ENTRIES_LIMIT = 200
 
 
-async def list_documents(source: dict, prefix: str = "", limit: int = ENTRIES_LIMIT) -> list[dict]:
+async def list_documents(
+    source: dict, prefix: str = "", limit: int = ENTRIES_LIMIT, after: str = ""
+) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
-    is the registry row (from get_owned_source / get_source_for_sync)."""
+    is the registry row (from get_owned_source / get_source_for_sync). `after`
+    is a keyset cursor: only paths strictly greater (in the ORDER BY path
+    ordering) are returned, so callers page through big sources by passing the
+    last path of the previous page."""
     table = _table_for(source["source_type"])
     if table == "slack_messages":
         allowed_channel_ids = slack_allowed_channel_ids(source)
         if not allowed_channel_ids:
             return []
+        # Slack's document projection is one transcript per channel per UTC day
+        # (rows stay per-message). Cap-disclosure notices pass through as their
+        # own documents; their 0000- leaf sorts them first in the channel.
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND channel_id = ANY($4::text[]) "
-            f"ORDER BY path LIMIT $3",
+            """
+            SELECT * FROM (
+                SELECT channel_name || '/' || day AS path,
+                       '#' || channel_name || ' ' || day AS name,
+                       'transcript' AS kind,
+                       NULL AS external_ref,
+                       to_timestamp(last_ts) AS external_updated_at,
+                       size
+                FROM (
+                    SELECT channel_name,
+                           to_char(to_timestamp(ts::float8) AT TIME ZONE 'UTC',
+                                   'YYYY-MM-DD') AS day,
+                           max(ts::float8) AS last_ts,
+                           sum(length(coalesce(content, ''))) AS size
+                    FROM slack_messages
+                    WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'message'
+                      AND channel_id = ANY($5::text[])
+                    GROUP BY channel_name, day
+                ) days
+                UNION ALL
+                SELECT path, name, kind, external_ref,
+                       external_updated_at,
+                       length(coalesce(content, '')) AS size
+                FROM slack_messages
+                WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'notice'
+                  AND channel_id = ANY($5::text[])
+            ) docs
+            WHERE path LIKE $2 AND path > $4
+            ORDER BY path LIMIT $3
+            """,
             UUID(source["id"]),
             f"{prefix}%",
             limit,
+            after,
             allowed_channel_ids,
         )
-        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+        return [_entry_row(r) for r in rows]
 
     if table == "gong_documents":
         allowed_workspace_ids = gong_allowed_workspace_ids(source)
         if not allowed_workspace_ids:
             return []
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-            f"AND gong_account_id = ANY($4::text[]) "
+            f"SELECT path, name, kind, external_ref, external_updated_at, "
+            f"length(coalesce(content, '')) AS size FROM {table} "
+            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
+            f"AND gong_account_id = ANY($5::text[]) "
             f"ORDER BY path LIMIT $3",
             UUID(source["id"]),
             f"{prefix}%",
             limit,
+            after,
             allowed_workspace_ids,
         )
-        return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+        return [_entry_row(r) for r in rows]
 
+    size_column = "length(coalesce(content, ''))" if table in CONTENT_TABLES else "NULL::bigint"
     rows = await get_pool().fetch(
-        f"SELECT path, name, kind FROM {table} "
-        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+        f"SELECT path, name, kind, external_ref, external_updated_at, "
+        f"{size_column} AS size FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
         f"ORDER BY path LIMIT $3",
         UUID(source["id"]),
         f"{prefix}%",
         limit,
+        after,
     )
-    return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
+    return [_entry_row(r) for r in rows]
+
+
+def _entry_row(r) -> dict:
+    external_updated_at = r["external_updated_at"]
+    return {
+        "path": r["path"],
+        "name": r["name"],
+        "kind": r["kind"],
+        "external_ref": r["external_ref"],
+        "external_updated_at": (external_updated_at.isoformat() if external_updated_at else None),
+        "size": r["size"],
+    }
+
+
+_SLACK_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SLACK_TS_RE = re.compile(r"^\d+\.\d+$")
+
+
+async def _read_slack_document(
+    source: dict, path: str, allowed_channel_ids: list[str]
+) -> dict | None:
+    """Read one Slack document. `{channel}/{YYYY-MM-DD}` returns that day's
+    transcript; a per-message ref `{channel}/{ts}` (what search and
+    fetch-history return) resolves to the transcript of the day it belongs to;
+    anything else (cap-disclosure notices) reads its row directly."""
+    channel, _, leaf = path.rpartition("/")
+    if channel and _SLACK_TS_RE.match(leaf):
+        day = datetime.fromtimestamp(float(leaf), UTC).strftime("%Y-%m-%d")
+        return await _render_slack_day(source, channel, day, allowed_channel_ids)
+    if channel and _SLACK_DAY_RE.match(leaf):
+        return await _render_slack_day(source, channel, leaf, allowed_channel_ids)
+
+    row = await get_pool().fetchrow(
+        "SELECT path, name, kind, content FROM slack_messages "
+        "WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
+        "AND channel_id = ANY($3::text[])",
+        UUID(source["id"]),
+        path,
+        allowed_channel_ids,
+    )
+    if not row:
+        return None
+    return {
+        "path": row["path"],
+        "name": row["name"],
+        "kind": row["kind"],
+        "content": row["content"] or "",
+    }
+
+
+async def _render_slack_day(
+    source: dict, channel: str, day: str, allowed_channel_ids: list[str]
+) -> dict | None:
+    rows = await get_pool().fetch(
+        """
+        SELECT ts, author, content FROM slack_messages
+        WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'message'
+          AND channel_id = ANY($2::text[]) AND channel_name = $3
+          AND to_char(to_timestamp(ts::float8) AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $4
+        ORDER BY ts::float8
+        """,
+        UUID(source["id"]),
+        allowed_channel_ids,
+        channel,
+        day,
+    )
+    if not rows:
+        return None
+    lines = [f"# #{channel} — {day} (UTC)", ""]
+    for row in rows:
+        clock = datetime.fromtimestamp(float(row["ts"]), UTC).strftime("%H:%M")
+        # Continuation lines are indented so a line-leading HH:MM always means
+        # a new message.
+        text = (row["content"] or "").replace("\n", "\n    ")
+        author = row["author"] or ""
+        lines.append(f"{clock} {author}: {text}" if author else f"{clock} {text}")
+    return {
+        "path": f"{channel}/{day}",
+        "name": f"#{channel} {day}",
+        "kind": "transcript",
+        "content": "\n".join(lines) + "\n",
+    }
 
 
 async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
@@ -783,22 +919,7 @@ async def read_document(source: dict, path: str) -> dict | None:
             allowed_channel_ids = slack_allowed_channel_ids(source)
             if not allowed_channel_ids:
                 return None
-            row = await get_pool().fetchrow(
-                f"SELECT path, name, kind, content FROM {table} "
-                f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
-                f"AND channel_id = ANY($3::text[])",
-                UUID(source["id"]),
-                path,
-                allowed_channel_ids,
-            )
-            if not row:
-                return None
-            return {
-                "path": row["path"],
-                "name": row["name"],
-                "kind": row["kind"],
-                "content": row["content"] or "",
-            }
+            return await _read_slack_document(source, path, allowed_channel_ids)
 
         if table == "gong_documents":
             allowed_workspace_ids = gong_allowed_workspace_ids(source)
@@ -948,10 +1069,16 @@ async def _federated_search(
 ) -> list[dict]:
     """Run a federated source's native provider search. Returns unified hits
     ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
-    provider error (e.g. Asana on a free tier) logs and yields no hits so
-    search stays alive; a SCOPED search raises instead — when the user asked
-    for this one source, an empty result must mean "no matches", never a
-    silently dead connection (revoked token, rate limit, bad query)."""
+    provider error (revoked token, rate limit) is logged and returned as a
+    single error marker ({source, source_name, error, needs_reconnect}) so the
+    rest of the search stays alive while the dead source is still surfaced —
+    dropping it silently would read as "no matches" for that source. A SCOPED
+    search raises instead, so the API serves an explicit HTTP error.
+
+    Providers cap results (SEARCH_LIMIT); when a provider reports it matched
+    more than it returned, a trailing truncation marker ({source, source_name,
+    truncated, returned, estimated_total}) is appended so callers disclose the
+    cut instead of presenting the top slice as the whole result."""
     source_type = source["source_type"]
     try:
         if source_type == "google_drive":
@@ -968,7 +1095,7 @@ async def _federated_search(
             from ..integrations.twitter.indexer import search_twitter as fn
         else:
             return []
-        hits = await fn(source, query, limit)
+        result = await fn(source, query, limit)
     except Exception as exc:
         if not swallow_errors:
             raise _scoped_search_error(source, exc) from exc
@@ -978,8 +1105,34 @@ async def _federated_search(
             source_type,
             type(exc).__name__,
         )
-        return []
-    return [
+        # Only the classified message is safe to surface — an unmapped exception
+        # may carry the token or query in its text, so it gets a generic label.
+        mapped = _scoped_search_error(source, exc)
+        if isinstance(mapped, HTTPException):
+            detail = mapped.detail
+            needs_reconnect = mapped.status_code == 409
+        else:
+            detail = f"{source['display_name'] or source_type} search failed"
+            needs_reconnect = False
+        return [
+            {
+                "source": source["id"],
+                "source_name": source["display_name"],
+                "error": detail,
+                "needs_reconnect": needs_reconnect,
+            }
+        ]
+    # Gmail reports truncation as {hits, truncated, estimated_total}; the other
+    # providers still return a plain hit list (no truncation signal yet).
+    if isinstance(result, dict):
+        hits = result["hits"]
+        truncated = result["truncated"]
+        estimated_total = result.get("estimated_total")
+    else:
+        hits = result
+        truncated = False
+        estimated_total = None
+    output = [
         {
             "source": source["id"],
             "source_name": source["display_name"],
@@ -989,20 +1142,29 @@ async def _federated_search(
         }
         for h in hits
     ]
+    if truncated:
+        output.append(
+            {
+                "source": source["id"],
+                "source_name": source["display_name"],
+                "truncated": True,
+                "returned": len(hits),
+                "estimated_total": estimated_total,
+            }
+        )
+    return output
 
 
 async def search_documents(
     *,
-    owner_user_id: UUID,
     user_id: UUID,
     query: str,
     source: dict | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """FTS over the user's own copied-content sources (github/slack/granola),
-    UNIONed across their tables. The owner join is the user-scoping guard. Pass
-    `source` to scope to one; an index-only source has nothing to FTS, so it
-    returns []."""
+    """FTS over copied-content sources the user can read — their own or shared
+    with them (github/slack/granola), UNIONed across their tables. Pass `source`
+    to scope to one; an index-only source has nothing to FTS, so it returns []."""
     limit = min(limit, 100)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
@@ -1030,24 +1192,27 @@ async def search_documents(
             )
         return ""
 
-    parts = [f"""
+    source_readable = permission_service.readable_content_condition("source", "s", 1)
+    parts = [
+        f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
-                       websearch_to_tsquery('english', $3)) AS rank
+                       websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
         JOIN user_sources s ON s.id = d.source_id
-        WHERE d.owner_user_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
-          AND ($4::uuid IS NULL OR d.source_id = $4)
+        WHERE {source_readable} AND d.deleted_at IS NULL
+          AND ($3::uuid IS NULL OR d.source_id = $3)
           AND to_tsvector('english', coalesce(d.content, ''))
-              @@ websearch_to_tsquery('english', $3)
+              @@ websearch_to_tsquery('english', $2)
           {visibility_clause(t)}
-        """ for t in tables]
+        """
+        for t in tables
+    ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
-        f"ORDER BY u.rank DESC LIMIT $5",
-        owner_user_id,
+        f"ORDER BY u.rank DESC LIMIT $4",
         user_id,
         query,
         source_id,
@@ -1069,8 +1234,8 @@ async def search_documents(
 
 
 async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every source visible to this user: the two native sources (scope-
-    wide) plus the user's own connected sources."""
+    """Every source visible to this user: the two native sources plus the
+    connected sources they own or have been shared with."""
     sources = [
         {
             "source": NATIVE_FILES,
@@ -1085,7 +1250,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "display_name": "Session transcripts",
         },
     ]
-    for s in await list_connected_sources(owner_user_id, user_id):
+    for s in await list_connected_sources(user_id):
         item = {
             "source": s["id"],
             "provider": SOURCE_TYPE_PROVIDER[s["source_type"]],
@@ -1109,8 +1274,8 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
 
 
 async def source_item_count(source: dict) -> int | None:
-    """How many live documents a source has indexed. None for queryable sources
-    (Snowflake) — they have no document table."""
+    """How many live documents a source has indexed. None for a source type with
+    no document table."""
     table = SOURCE_TABLE.get(source["source_type"])
     if table is None:
         return None
@@ -1150,12 +1315,13 @@ async def source_item_count(source: dict) -> int | None:
 
 
 async def _resolve_connected(source: str, owner_user_id: UUID, user_id: UUID) -> dict | None:
-    """Resolve a connected-source handle inside the current scope boundary."""
+    """Resolve a connected-source handle for READING — the owner or anyone the
+    source was shared with. Reads delegate to the source owner's token."""
     try:
         source_id = UUID(source)
     except ValueError:
         return None
-    return await get_owned_source(source_id, user_id)
+    return await get_readable_source(source_id, user_id)
 
 
 async def _audit_source_read(
@@ -1182,6 +1348,11 @@ async def _audit_source_read(
         target_id = connected["id"]
         source_type = connected["source_type"]
         provider = SOURCE_TYPE_PROVIDER.get(source_type)
+        # Delegated read: a recipient reads a shared source through Stash, but the
+        # data belongs to the source owner. Attribute the trail to the owner so it
+        # lands in the OWNER's audit log — that's how they see who read what they
+        # shared. The reader is still recorded as the actor.
+        owner_user_id = UUID(connected["owner_user_id"])
 
     await security_audit_service.record_event(
         action=action,
@@ -1196,21 +1367,30 @@ async def _audit_source_read(
 
 
 async def source_entries(
-    owner_user_id: UUID, user_id: UUID, source: str, prefix: str = "", limit: int = ENTRIES_LIMIT
+    owner_user_id: UUID,
+    user_id: UUID,
+    source: str,
+    prefix: str = "",
+    limit: int = ENTRIES_LIMIT,
+    after: str = "",
 ) -> list[dict] | None:
     """List a source's entries like a file system. `source` is a handle from
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
-    scopes connected sources to a path. Returns None for an unknown source."""
+    scopes connected sources to a path. `after` pages through path-ordered
+    document listings (see list_documents); listings that aren't path-ordered
+    (native files/sessions, twitter's live refs) return everything on the first
+    page, so any later page is empty for them.
+    Returns None for an unknown source."""
     connected = None
     if source == NATIVE_FILES:
         from .files_tree_service import list_scope_pages
 
-        pages = await list_scope_pages(owner_user_id, user_id)
+        pages = [] if after else await list_scope_pages(owner_user_id, user_id)
         entries = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
     elif source == NATIVE_SESSIONS:
         from .memory_service import list_scope_sessions
 
-        sessions = await list_scope_sessions(owner_user_id, user_id)
+        sessions = [] if after else await list_scope_sessions(owner_user_id, user_id)
         entries = [
             {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
             for s in sessions
@@ -1219,28 +1399,15 @@ async def source_entries(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
-        if connected["capability"] == "queryable":
-            # A queryable source (Snowflake) has no document table — list its tables.
-            from ..integrations.snowflake.client import SnowflakeMetadataError, list_tables
-
-            try:
-                entries = await list_tables(connected)
-            except SnowflakeMetadataError as e:
-                logger.warning(
-                    "source entries failed source=%s source_type=%s exception_type=%s",
-                    connected["id"],
-                    connected["source_type"],
-                    type(e).__name__,
-                )
-                entries = []
-        elif connected["source_type"] == "twitter":
+        if connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
-            entries = twitter_live_entries(prefix) + await list_documents(
-                connected, prefix=prefix, limit=limit
+            live = [] if after else twitter_live_entries(prefix)
+            entries = live + await list_documents(
+                connected, prefix=prefix, limit=limit, after=after
             )
         else:
-            entries = await list_documents(connected, prefix=prefix, limit=limit)
+            entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 
     await _audit_source_read(
         action="source.entries_listed",
@@ -1284,8 +1451,9 @@ def build_entry_tree(entries: list[dict], depth: int, per_dir: int) -> list[dict
             if is_entry:
                 node["kind"] = entry["kind"]
                 node["path"] = entry["path"]
-                # Display the document's name, not the raw path segment —
-                # Gmail paths are opaque message ids; the name is the subject.
+                # Display the document's name, not the raw path segment — path
+                # leaves carry sort keys and id suffixes (Gmail's "06 1430 …"),
+                # while the name is the human label (the subject).
                 node["name"] = entry["name"] or part
             children = node["children"]
     return _finalize_tree(root, per_dir)
@@ -1327,16 +1495,11 @@ def _session_title(session: dict) -> str:
 
 async def _member_tree(source: dict, depth: int, per_dir: int) -> list[dict]:
     """The document tree for one connected source (one repo, one account)."""
-    if source["capability"] == "queryable":
-        # Live-query source (Snowflake): no document table to walk.
-        return []
     entries = await list_documents(source, limit=TREE_DOC_LIMIT)
     return build_entry_tree(entries, depth, per_dir)
 
 
-async def _provider_tree_node(
-    provider: str, members: list[dict], depth: int, per_dir: int
-) -> dict:
+async def _provider_tree_node(provider: str, members: list[dict], depth: int, per_dir: int) -> dict:
     """One provider folder for the sources filesystem. A single connection
     collapses — its documents sit directly in the provider folder. Multiple
     connections each become a subfolder named after the connection."""
@@ -1414,7 +1577,7 @@ async def sources_tree(
     # filesystem. The provider folder is the unit ("github", "granola"); the
     # individual connections (repos, accounts) live inside it.
     by_provider: dict[str, list[dict]] = {}
-    for source in await list_connected_sources(owner_user_id, user_id):
+    for source in await list_connected_sources(user_id):
         provider = SOURCE_TYPE_PROVIDER[source["source_type"]]
         by_provider.setdefault(provider, []).append(source)
 
@@ -1502,26 +1665,9 @@ async def source_document(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return False, None
-        if connected["capability"] == "queryable":
-            # Reading a "document" from a queryable source means describing a table.
-            from ..integrations.snowflake.client import SnowflakeMetadataError, describe_table
-
-            try:
-                doc = await describe_table(connected, ref)
-            except ValueError as e:
-                doc = {"error": str(e)}
-            except SnowflakeMetadataError as e:
-                logger.warning(
-                    "source document failed source=%s source_type=%s exception_type=%s",
-                    connected["id"],
-                    connected["source_type"],
-                    type(e).__name__,
-                )
-                doc = {"error": "Snowflake metadata fetch failed"}
-        else:
-            doc = await read_document(connected, ref)
-            if doc is not None and "error" not in doc:
-                doc["url"] = await _deep_link(connected, doc)
+        doc = await read_document(connected, ref)
+        if doc is not None and "error" not in doc:
+            doc["url"] = await _deep_link(connected, doc)
 
     if doc is not None:
         await _audit_source_read(
@@ -1545,12 +1691,14 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
     if source_type == "github_repo":
         return source_document_url("github_repo", source["external_ref"], doc["path"])
     if source_type == "asana_project":
-        return source_document_url("asana_project", None, doc["path"])
+        # The task gid lives in external_ref; the path is "Section/Name (gid)".
+        return source_document_url("asana_project", None, doc_ref)
     if source_type in ("notion", "google_drive"):
         # The page/file id lives on the document row, not the source row.
         return source_document_url(source_type, None, doc_ref or doc["path"])
     if source_type == "gmail":
-        return source_document_url(source_type, source["external_ref"], doc_ref or doc["path"])
+        # The message id lives in external_ref; the path is date-foldered.
+        return source_document_url(source_type, source["external_ref"], doc_ref)
     if source_type == "jira_project":
         from ..integrations.jira.indexer import site_url
 
@@ -1565,49 +1713,11 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
             return None
         if not base:
             return None
-        return f"{base}/browse/{doc['path']}"
+        # The real issue key lives in external_ref ("{cloudId}:{key}"); the path
+        # is the zero-padded listing key, which Jira wouldn't resolve.
+        _, _, key = (doc_ref or "").partition(":")
+        return f"{base}/browse/{key}"
     return source_document_url(source_type, source.get("external_ref"), doc["path"])
-
-
-async def query_source(
-    owner_user_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
-) -> dict | None:
-    """Run a read-only SQL query against a queryable source (Snowflake). Returns
-    None when the handle is unknown / not owned, or an error dict when the source
-    isn't queryable or the SQL is rejected."""
-    connected = await _resolve_connected(source, owner_user_id, user_id)
-    if connected is None:
-        return None
-    if connected["capability"] != "queryable":
-        return {"error": "source is not queryable"}
-    from ..integrations.snowflake.client import SnowflakeQueryError, run_query
-
-    try:
-        result = await run_query(connected, sql, limit)
-    except ValueError as e:
-        result = {"error": str(e)}
-    except SnowflakeQueryError as e:
-        logger.warning(
-            "query source failed source=%s source_type=%s exception_type=%s",
-            connected["id"],
-            connected["source_type"],
-            type(e).__name__,
-        )
-        result = {"error": "Snowflake query failed"}
-    await _audit_source_read(
-        action="source.queried",
-        owner_user_id=owner_user_id,
-        user_id=user_id,
-        source=source,
-        connected=connected,
-        metadata={
-            "sql_hash": security_audit_service.hash_value(sql),
-            "limit": limit,
-            "row_count": result.get("row_count"),
-            "error": bool(result.get("error")),
-        },
-    )
-    return result
 
 
 def _parse_dt(value: str | None):
@@ -1677,6 +1787,37 @@ async def fetch_history(
     return result
 
 
+async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
+    """Documents whose provider id (`external_ref`) exactly equals the query,
+    across the given sources' document tables."""
+    query = query.strip()
+    if not query:
+        return []
+    hits: list[dict] = []
+    for s in sources:
+        table = SOURCE_TABLE.get(s["source_type"])
+        if table is None:
+            continue
+        rows = await get_pool().fetch(
+            f"SELECT path, name FROM {table} "
+            f"WHERE source_id = $1 AND external_ref = $2 AND deleted_at IS NULL LIMIT $3",
+            UUID(s["id"]),
+            query,
+            limit,
+        )
+        hits += [
+            {
+                "source": s["id"],
+                "source_name": s["display_name"],
+                "ref": r["path"],
+                "name": r["name"],
+                "snippet": "",
+            }
+            for r in rows
+        ]
+    return hits
+
+
 async def search_all(
     owner_user_id: UUID,
     user_id: UUID,
@@ -1723,10 +1864,18 @@ async def search_all(
         if connected is None:
             return None
     if source is None or connected is not None:
+        searched_sources = (
+            [connected] if connected is not None else await list_connected_sources(user_id)
+        )
+
+        # A query that IS a provider id (a Drive file id, a Gmail message id, …)
+        # resolves to the indexed document directly. This is how an agent holding
+        # only a provider URL finds the document's Stash path.
+        results += await _external_ref_matches(searched_sources, query, limit)
+
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match).
         docs = await search_documents(
-            owner_user_id=owner_user_id,
             user_id=user_id,
             query=query,
             source=connected,
@@ -1746,15 +1895,16 @@ async def search_all(
         # Federated sources search the provider's native API live. Scoped → the
         # one source, raising on provider errors so a dead connection is never
         # mistaken for "no matches"; unscoped → fan out across the user's
-        # federated sources (each call swallows its own errors, and scoped-only
-        # types are skipped — see SCOPED_ONLY_SEARCH_TYPES).
+        # federated sources (each call keeps search alive by returning its own
+        # error as a marker instead of raising, and scoped-only types are
+        # skipped — see SCOPED_ONLY_SEARCH_TYPES).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
                 results += await _federated_search(connected, query, limit, swallow_errors=False)
         else:
             federated = [
                 s
-                for s in await list_connected_sources(owner_user_id, user_id)
+                for s in searched_sources
                 if s["source_type"] in FEDERATED_SEARCH_TYPES
                 and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
             ]

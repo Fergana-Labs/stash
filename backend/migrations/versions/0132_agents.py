@@ -5,14 +5,14 @@ override), persona (system prompt), run mode (interactive chat or a scheduled
 headless run), and optional channel binding (which agent answers Slack /
 Telegram). One default agent is created per user on demand.
 
-Revision ID: 0126
-Revises: 0125
+Revision ID: 0132
+Revises: 0131
 """
 
 from alembic import op
 
-revision = "0126"
-down_revision = "0125"
+revision = "0132"
+down_revision = "0131"
 branch_labels = None
 depends_on = None
 

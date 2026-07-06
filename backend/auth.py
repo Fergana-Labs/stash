@@ -60,7 +60,7 @@ async def create_api_key(user_id, name: str = "default", key_type: str = "manual
     pool = get_pool()
     api_key = generate_api_key()
     await pool.execute(
-        "INSERT INTO user_api_keys (user_id, key_hash, name, key_type) " "VALUES ($1, $2, $3, $4)",
+        "INSERT INTO user_api_keys (user_id, key_hash, name, key_type) VALUES ($1, $2, $3, $4)",
         user_id,
         hash_api_key(api_key),
         name[:128],
@@ -96,7 +96,7 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     user = dict(row)
-    if managed_auth_enabled and user["key_type"] != "cli":
+    if managed_auth_enabled and user["key_type"] not in ("cli", "manual"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key is not allowed for managed auth",

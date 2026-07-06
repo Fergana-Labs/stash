@@ -134,7 +134,7 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
     )
     assert record is None
     skill_md = await _db_pool.fetchval(
-        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' " "AND deleted_at IS NULL",
+        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' AND deleted_at IS NULL",
         UUID(created["folder_id"]),
     )
     assert skill_md == 1

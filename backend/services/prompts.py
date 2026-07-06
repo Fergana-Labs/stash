@@ -54,7 +54,6 @@ ASK_TOOL_SET = (
     "list_source",
     "read_source",
     "search",
-    "query_source",
     "fetch_history",
 )
 

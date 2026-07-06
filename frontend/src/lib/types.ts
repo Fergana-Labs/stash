@@ -139,6 +139,10 @@ export interface FileInfo {
   id: string;
   owner_user_id: string | null;
   folder_id?: string | null;
+  // Set when the file is embedded in a page (derived from the page body's
+  // download link on save; read-only). Embedded files render inside their
+  // page, never as tree/grid entries.
+  owner_page_id?: string | null;
   name: string;
   content_type: string;
   size_bytes: number;

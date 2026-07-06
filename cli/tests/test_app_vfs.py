@@ -1,3 +1,4 @@
+import re
 import shlex
 from datetime import datetime
 
@@ -80,9 +81,7 @@ def _page_path(shell: SkillAppVfsShell) -> str:
         name for name in shell.model.list_dir(files_path) if name.startswith("Notes")
     )
     folder_path = f"{files_path}/{folder_name}"
-    page_name = next(
-        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan")
-    )
+    page_name = next(name for name in shell.model.list_dir(folder_path) if name.startswith("Plan"))
     return f"{folder_path}/{page_name}"
 
 
@@ -121,9 +120,7 @@ def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
     assert _ls_time(page_node.updated_at) in shell.run(f"ls -l {page_path}").stdout
 
     # An uploaded file is immutable, so its modified-time is its creation time.
-    file_name = next(
-        name for name in shell.model.list_dir("/files") if name.startswith("diagram")
-    )
+    file_name = next(name for name in shell.model.list_dir("/files") if name.startswith("diagram"))
     file_node = shell.model._get_node(f"/files/{file_name}")
     assert file_node.updated_at == file_node.created_at is not None
 
@@ -311,22 +308,40 @@ def test_app_vfs_cat_unreadable_transcript_reports_error_without_traceback():
     assert "Transcript not found" in result.stderr
 
 
-class TruncatedSourceClient(FakeClient):
-    """The server caps a source's listing. The VFS must announce that the tree
-    is partial — silently returning the first page reads as "this is everything"
-    and produces confident-wrong conclusions about what a source contains."""
+class PagedSourceClient(FakeClient):
+    """A source whose listing spans several server pages. The VFS must keep
+    following the `after` cursor until the listing is complete — stopping at
+    one page silently hides most of a big source (a 6k-message Gmail, an
+    800-file Drive)."""
 
-    def list_source_entries_page(self, source, path=""):
-        return self.list_source_entries(source, path), True
+    ENTRIES = [
+        {"path": f"msg-{i:02d}", "name": f"Message {i}", "kind": "message"} for i in range(5)
+    ]
+
+    def list_source_entries_page(self, source, path="", after=""):
+        assert source == "src-gmail-1"
+        remaining = [e for e in self.ENTRIES if e["path"] > after]
+        return remaining[:2], len(remaining) > 2
 
 
-def test_find_warns_loudly_when_a_source_listing_is_truncated():
-    shell, _client = _shell(TruncatedSourceClient())
+def test_source_listing_follows_pages_to_completion():
+    shell, _client = _shell(PagedSourceClient())
+
+    result = shell.run("find /sources/gmail -type f")
+
+    for i in range(5):
+        assert f"/sources/gmail/Message {i}" in result.stdout
+    assert "INCOMPLETE" not in result.stderr
+
+
+def test_find_warns_loudly_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
+    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    shell, _client = _shell(PagedSourceClient())
 
     result = shell.run("find /sources/gmail -type f")
 
     # The rows it did get still come back on stdout, uncorrupted by the warning.
-    assert "/sources/gmail/Welcome email" in result.stdout
+    assert "/sources/gmail/Message 0" in result.stdout
     # The incompleteness is surfaced on stderr — not hidden, not mixed into the
     # file list where a pipe to `wc -l` would silently count it.
     assert "INCOMPLETE" in result.stderr
@@ -340,3 +355,113 @@ def test_find_is_silent_when_a_source_listing_is_complete():
 
     assert "/sources/gmail/Welcome email" in result.stdout
     assert "INCOMPLETE" not in result.stderr
+
+
+def test_stat_shows_external_ref_for_source_documents():
+    shell, _client = _shell()
+
+    result = shell.run("stat '/sources/gmail/Welcome email'")
+
+    assert "external_ref: gm-1" in result.stdout
+
+
+def test_stat_omits_external_ref_when_the_entry_has_none():
+    shell, _client = _shell()
+
+    result = shell.run("stat '/sources/gmail/threads/Nested note'")
+
+    assert "external_ref" not in result.stdout
+
+
+def test_tree_warns_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
+    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    shell, _client = _shell(PagedSourceClient())
+
+    result = shell.run("tree /sources/gmail")
+
+    assert "Message 0" in result.stdout
+    assert "INCOMPLETE" in result.stderr
+
+
+def test_ls_warns_inside_a_truncated_source_but_not_above_it(monkeypatch):
+    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    shell, _client = _shell(PagedSourceClient())
+
+    # Listing the source root — children come from the capped materialization.
+    inside = shell.run("ls /sources/gmail")
+    assert "INCOMPLETE" in inside.stderr
+
+    # Listing /sources — children are the complete provider list, not the capped
+    # entries — must NOT warn, even though a truncated source sits below it.
+    above = shell.run("ls /sources")
+    assert "gmail" in above.stdout
+    assert "INCOMPLETE" not in above.stderr
+
+
+def test_ls_is_silent_when_a_source_listing_is_complete():
+    shell, _client = _shell()  # base FakeClient reports not-truncated
+
+    result = shell.run("ls /sources/gmail")
+
+    assert "Welcome email" in result.stdout
+    assert "INCOMPLETE" not in result.stderr
+
+
+def test_source_docs_carry_backend_timestamps_and_sizes():
+    """Connected-source entries ship external_updated_at + size, so an agent
+    can judge recency and weight from `ls -la`/`stat` without reading bodies.
+    An entry the backend has no timestamp for stays `-` — never fabricated."""
+    shell, _client = _shell()
+
+    listing = shell.run("ls -la /sources/gmail").stdout
+    dated = next(line for line in listing.splitlines() if "Welcome email" in line)
+    assert "      13 " in dated  # size known before the body is ever read
+    assert " - " not in dated
+
+    stat_out = shell.run("stat '/sources/gmail/Welcome email'").stdout
+    assert "size: 13" in stat_out
+    assert "modified: 2026-05-04T" in stat_out
+
+    undated = shell.run("ls -la /sources/gmail/threads").stdout
+    assert re.search(r"-\s+0\s+-\s+Nested note", undated)
+
+
+def test_ls_t_sorts_by_modified_time_newest_first():
+    shell, _client = _shell()
+
+    names = shell.run("ls -t /sources/gmail").stdout.splitlines()
+
+    # "Welcome email" has a 2026 mtime; "threads" (dir) has none and sorts last.
+    assert names.index("Welcome email") < names.index("threads")
+
+
+def test_find_mtime_and_newer_filter_by_modified_time():
+    shell, _client = _shell()
+
+    recent = shell.run("find /sources/gmail -mtime -100000").stdout
+    assert "/sources/gmail/Welcome email" in recent
+    # A node with no known mtime can never satisfy a time predicate.
+    assert "Nested note" not in recent
+
+    ancient = shell.run("find /sources/gmail -mtime +100000").stdout
+    assert "Welcome email" not in ancient
+
+    newer = shell.run("find /files -newer '/sources/gmail/Welcome email'")
+    assert newer.exit_code == 0
+    assert "Welcome email" not in newer.stdout
+
+    no_reference_time = shell.run("find /files -newer /sources/gmail/threads")
+    assert no_reference_time.exit_code == 2
+    assert "no modification time" in no_reference_time.stderr
+
+
+def test_cat_resolves_raw_backend_refs_as_aliases():
+    """search/history/ask-the-stash hand the agent backend refs, not display
+    names — those refs must be readable directly."""
+    shell, _client = _shell()
+
+    by_ref = shell.run("cat /sources/gmail/threads/msg-2")
+    by_display = shell.run("cat '/sources/gmail/threads/Nested note'")
+
+    assert by_ref.exit_code == 0
+    assert by_ref.stdout == by_display.stdout == "BODY of threads/msg-2"

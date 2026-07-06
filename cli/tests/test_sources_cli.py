@@ -79,3 +79,41 @@ def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
     entries = client.list_source_entries("src-9", path="specs/")
     assert entries == [{"path": "a.md"}]
     assert requests == [("GET", "/api/v1/me/sources/src-9/entries", {"path": "specs/"})]
+
+
+def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> None:
+    """Non-JSON `stash search` must render marker entries as disclosures — a
+    dead source as a warning, a capped result as a "showing first N" note — not
+    as blank hit rows."""
+
+    class _MarkerClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def search_sources(self, query, source=None, limit=20):
+            return [
+                {"source_name": "Gmail (a@b.com)", "ref": "m1", "name": "Hello", "snippet": "hi"},
+                {
+                    "source_name": "Gmail (a@b.com)",
+                    "truncated": True,
+                    "returned": 25,
+                    "estimated_total": 213,
+                },
+                {
+                    "source_name": "Jira (PROJ)",
+                    "error": "reconnect it in Settings",
+                    "needs_reconnect": True,
+                },
+            ]
+
+    monkeypatch.setattr(main, "_require_auth", lambda: None)
+    monkeypatch.setattr(main, "_client", lambda: _MarkerClient())
+    main.search("q", source="", limit=30, as_json=False)
+
+    out = capsys.readouterr().out
+    assert "Hello" in out
+    assert "213" in out
+    assert "reconnect it in Settings" in out

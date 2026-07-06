@@ -19,7 +19,6 @@ export type IntegrationProvider =
   | "linear"
   | "asana"
   | "gong"
-  | "snowflake"
   | "twitter";
 
 export type CredentialField = {
@@ -38,6 +37,9 @@ export type IntegrationAccount = {
   scopes: string[];
   expires_at: string | null;
   connected_at: string | null;
+  // True when the stored token no longer works (revoked access or an expired
+  // refresh token) — the account is listed as connected but must be reconnected.
+  needs_reconnect: boolean;
 };
 
 export type IntegrationStatus = {
@@ -53,7 +55,7 @@ export type IntegrationStatus = {
   connected_at: string | null;
   accounts: IntegrationAccount[];
   // "oauth" (redirect flow), "mcp_oauth" (DCR+PKCE via an MCP server, e.g.
-  // Granola), or "api_key" (pasted credentials, e.g. Snowflake).
+  // Granola), or "api_key" (pasted credentials).
   auth_kind: "oauth" | "mcp_oauth" | "api_key";
   // Present only for api_key providers — the fields to render in the connect form.
   credential_fields: CredentialField[] | null;
@@ -92,8 +94,8 @@ export async function disconnectIntegration(provider: IntegrationProvider): Prom
 }
 
 /**
- * Connect an api_key provider (e.g. Snowflake) by POSTing the pasted credential
- * values. The backend validates them upstream and stores them encrypted.
+ * Connect an api_key provider by POSTing the pasted credential values. The
+ * backend validates them upstream and stores them encrypted.
  */
 export async function submitCredentials(
   provider: IntegrationProvider,
@@ -116,6 +118,24 @@ export type GitHubRepoSummary = {
 export async function listGitHubRepos(q: string = ""): Promise<GitHubRepoSummary[]> {
   const query = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
   return apiFetch<GitHubRepoSummary[]>(`/api/v1/integrations/github/repos${query}`);
+}
+
+export type GitHubRepoAccess = {
+  all_repos: boolean;
+  // Only present right after a PUT that enabled all-repos mode.
+  total: number | null;
+  created: number | null;
+};
+
+export async function getGitHubRepoAccess(): Promise<GitHubRepoAccess> {
+  return apiFetch<GitHubRepoAccess>("/api/v1/integrations/github/repo-access");
+}
+
+export async function setGitHubRepoAccess(allRepos: boolean): Promise<GitHubRepoAccess> {
+  return apiFetch<GitHubRepoAccess>("/api/v1/integrations/github/repo-access", {
+    method: "PUT",
+    body: JSON.stringify({ all_repos: allRepos }),
+  });
 }
 
 export type NotionPageSummary = {

@@ -16,10 +16,24 @@ type Post = {
 
 const POSTS: Post[] = [
   {
+    title: "Giving yourself superpowers: Advice on building a simple company brain",
+    blurb:
+      "An opinionated take on the right way to build a company brain — integrations, retrieval, memory, and privacy — so your AI agents can do real knowledge work.",
+    href: "/blog/how-to-build-a-company-brain",
+    author: "Henry Dowling",
+  },
+  {
+    title: "Why hasn't there been any great consumer AI (still)",
+    blurb:
+      "When models stop getting smarter, context engineering becomes the battleground — and the case for an inevitable AI memory infrastructure buildout.",
+    href: "/blog/why-no-great-consumer-ai",
+    author: "Henry Dowling",
+  },
+  {
     title: "Three Dimensions That Matter To An Agent Memory Store",
     blurb:
       "An opinionated take on three key decisions memory builders need to make: retrieval, structure, and knowledge graphs.",
-    href: "https://x.com/henrytdowling/status/2054246434506199529",
+    href: "/blog/three-dimensions-agent-memory-store",
     author: "Henry Dowling",
   },
   {
@@ -113,11 +127,12 @@ export default function BlogPage() {
 }
 
 function PostCard({ post }: { post: Post }) {
+  const isExternal = post.href.startsWith("http");
   return (
     <Link
       href={post.href}
-      target="_blank"
-      rel="noopener noreferrer"
+      target={isExternal ? "_blank" : undefined}
+      rel={isExternal ? "noopener noreferrer" : undefined}
       className="group flex flex-col rounded-xl border border-border-subtle bg-raised/40 p-6 transition hover:border-ink hover:bg-raised"
     >
       <h2 className="font-display text-[20px] font-bold leading-[1.2] tracking-[-0.02em] text-ink">

@@ -212,9 +212,8 @@ function ActiveSessions() {
         <div>
           <h2 className="text-base font-semibold text-foreground">API keys & sessions</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {AUTH0_ENABLED
-              ? "CLI installs have their own revocable keys. Revoke anything you don't recognize."
-              : "Each browser tab and CLI install holds its own key. Create a personal key to use the Skill API or CLI directly, and revoke anything you don't recognize."}
+            Each CLI install holds its own revocable key. Create a key to use the API directly
+            (e.g. from a production agent), and revoke anything you don&apos;t recognize.
           </p>
         </div>
         <button
@@ -226,27 +225,25 @@ function ActiveSessions() {
         </button>
       </div>
 
-      {!AUTH0_ENABLED && minted && <MintedKey minted={minted} onDismiss={() => setMinted(null)} />}
+      {minted && <MintedKey minted={minted} onDismiss={() => setMinted(null)} />}
 
-      {!AUTH0_ENABLED && (
-        <form onSubmit={handleCreate} className="flex gap-2">
-          <input
-            type="text"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            placeholder="Key name (e.g. laptop, ci-runner)"
-            maxLength={128}
-            className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
-          />
-          <button
-            type="submit"
-            disabled={creating}
-            className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-          >
-            {creating ? "Creating…" : "Create key"}
-          </button>
-        </form>
-      )}
+      <form onSubmit={handleCreate} className="flex gap-2">
+        <input
+          type="text"
+          value={newKeyName}
+          onChange={(e) => setNewKeyName(e.target.value)}
+          placeholder="Key name (e.g. laptop, ci-runner, production-agent)"
+          maxLength={128}
+          className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+        />
+        <button
+          type="submit"
+          disabled={creating}
+          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+        >
+          {creating ? "Creating…" : "Create key"}
+        </button>
+      </form>
 
       {error && <p className="text-xs text-error">{error}</p>}
       {keys === null ? (

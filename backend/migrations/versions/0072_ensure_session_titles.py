@@ -28,8 +28,7 @@ def upgrade() -> None:
         )
     """)
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_session_titles_updated "
-        "ON session_titles(updated_at DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_session_titles_updated ON session_titles(updated_at DESC)"
     )
 
 

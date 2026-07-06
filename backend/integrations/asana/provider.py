@@ -56,8 +56,9 @@ class AsanaIntegration(Integration):
     async def _token_request(self, payload: dict) -> TokenSet:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(TOKEN_URL, data=payload)
-            if resp.status_code >= 400:
-                raise RuntimeError(f"Asana token endpoint returned status_code={resp.status_code}")
+            # httpx.HTTPStatusError so a dead grant is classified as
+            # needs_reconnect by _account_needs_reconnect instead of a 500.
+            resp.raise_for_status()
             data = resp.json()
         expires_in = data.get("expires_in")
         expires_at = datetime.now(UTC) + timedelta(seconds=expires_in) if expires_in else None

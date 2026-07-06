@@ -153,11 +153,14 @@ class SkillAppVfsShell:
 
     def _ls(self, args: list[str]) -> str:
         long = False
+        by_time = False
         paths: list[str] = []
         for arg in args:
             if arg.startswith("-"):
                 if "l" in arg:
                     long = True
+                if "t" in arg:
+                    by_time = True
                 continue
             paths.append(arg)
         if not paths:
@@ -171,8 +174,24 @@ class SkillAppVfsShell:
                 blocks.append(self._format_ls_entry(path, long))
                 continue
             names = self.model.list_dir(path)
+            if by_time:
+                # Newest first, like `ls -t`; entries with no known mtime sort
+                # last so real timestamps are never buried under unknowns.
+                names.sort(
+                    key=lambda name: (
+                        self.model._get_node(posixpath.join(path, name)).updated_at or 0.0
+                    ),
+                    reverse=True,
+                )
             lines = [self._format_ls_entry(posixpath.join(path, name), long) for name in names]
             blocks.append("\n".join(lines))
+            hit = self.model.truncated_root_containing(path)
+            if hit:
+                source_root, shown = hit
+                self._warn(
+                    f"ls: '{source_root}' was truncated at {shown} entries; this listing "
+                    "may be INCOMPLETE."
+                )
         return "\n".join(block for block in blocks if block) + ("\n" if blocks else "")
 
     def _format_ls_entry(self, path: str, long: bool) -> str:
@@ -196,6 +215,8 @@ class SkillAppVfsShell:
         name_pattern = ""
         ignore_name_case = False
         type_filter = ""
+        mtime_spec = ""
+        newer_than: float | None = None
         index = 0
         if args and not args[0].startswith("-"):
             path = args[0]
@@ -223,6 +244,24 @@ class SkillAppVfsShell:
                 index += 1
                 name_pattern = args[index]
                 ignore_name_case = option == "-iname"
+            elif option == "-mtime":
+                if index + 1 >= len(args):
+                    raise VfsShellError("-mtime requires a value", exit_code=2)
+                index += 1
+                mtime_spec = args[index]
+                if not re.fullmatch(r"[+-]?\d+", mtime_spec):
+                    raise VfsShellError("-mtime value must be [+-]N days", exit_code=2)
+            elif option == "-newer":
+                if index + 1 >= len(args):
+                    raise VfsShellError("-newer requires a path", exit_code=2)
+                index += 1
+                reference = self.model._get_node(self._resolve_path(args[index]))
+                if not reference.updated_at:
+                    raise VfsShellError(
+                        f"-newer reference has no modification time: {args[index]}",
+                        exit_code=2,
+                    )
+                newer_than = reference.updated_at
             else:
                 raise VfsShellError(f"unsupported find option: {option}")
             index += 1
@@ -239,6 +278,14 @@ class SkillAppVfsShell:
             if type_filter == "d" and not node.is_dir:
                 continue
             if name_pattern and not _name_matches(node_path, name_pattern, ignore_name_case):
+                continue
+            # A time predicate can only match a node whose mtime is known —
+            # sources that don't report one are excluded, never guessed at.
+            if (mtime_spec or newer_than is not None) and not node.updated_at:
+                continue
+            if mtime_spec and not _mtime_matches(node.updated_at, mtime_spec):
+                continue
+            if newer_than is not None and node.updated_at <= newer_than:
                 continue
             rows.append(node_path)
         for source_root, shown in self.model.truncated_roots_under(root):
@@ -274,6 +321,11 @@ class SkillAppVfsShell:
         self.model._get_node(root)
         lines = [root]
         lines.extend(self._tree_lines(root, prefix="", depth=1, max_depth=max_depth))
+        for source_root, shown in self.model.truncated_roots_under(root):
+            self._warn(
+                f"tree: '{source_root}' has more than {shown} entries; only the first "
+                f"{shown} were listed. This tree is INCOMPLETE."
+            )
         return "\n".join(lines) + "\n"
 
     def _tree_lines(
@@ -381,8 +433,13 @@ class SkillAppVfsShell:
 
         if stdin is not None and not paths:
             output = _grep_text(
-                regex, stdin, "", show_line_numbers=False, prefix_path=False,
-                before=before, after=after,
+                regex,
+                stdin,
+                "",
+                show_line_numbers=False,
+                prefix_path=False,
+                before=before,
+                after=after,
             )
             if not output:
                 raise VfsShellExit(1)
@@ -673,13 +730,16 @@ class SkillAppVfsShell:
         attrs = self.model.getattr(path)
         node = self.model._get_node(path)
         kind = "directory" if node.is_dir else "file"
-        return (
+        out = (
             f"{path}\n"
             f"  type: {kind}\n"
             f"  size: {attrs.get('st_size', 0)}\n"
             f"  modified: {_iso_time(node.updated_at)}\n"
             f"  created: {_iso_time(node.created_at)}\n"
         )
+        if node.external_ref:
+            out += f"  external_ref: {node.external_ref}\n"
+        return out
 
     def _read_text(self, path: str) -> str:
         return self.model.read_file(path).decode("utf-8", errors="replace")
@@ -911,6 +971,17 @@ def _iso_time(epoch: float | None) -> str:
     if not epoch:
         return "-"
     return datetime.fromtimestamp(epoch).isoformat()
+
+
+def _mtime_matches(epoch: float, spec: str) -> bool:
+    """GNU find -mtime semantics in whole 24h units: `-N` = modified within the
+    last N days, `+N` = older than N+1 days, `N` = age rounds to exactly N."""
+    age_days = int((time.time() - epoch) // 86400)
+    if spec.startswith("-"):
+        return age_days < int(spec[1:])
+    if spec.startswith("+"):
+        return age_days > int(spec[1:])
+    return age_days == int(spec)
 
 
 def _name_matches(path: str, pattern: str, ignore_case: bool) -> bool:

@@ -40,8 +40,7 @@ def upgrade() -> None:
     for table in _TABLES:
         op.execute(f"CREATE TABLE {table} ({_BASE_COLUMNS}, UNIQUE (source_id, path))")
         op.execute(
-            f"CREATE INDEX {table}_source_idx ON {table} (source_id, path) "
-            f"WHERE deleted_at IS NULL"
+            f"CREATE INDEX {table}_source_idx ON {table} (source_id, path) WHERE deleted_at IS NULL"
         )
         op.execute(
             f"CREATE INDEX {table}_fts_idx ON {table} "

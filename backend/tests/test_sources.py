@@ -61,7 +61,6 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "asana_project": "asana-project-1",
         "linear": "me",
         "gong_calls": "gong-source",
-        "snowflake": "account/database/schema",
         "twitter": "111",
     }
     return refs[source_type]
@@ -417,7 +416,7 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
 async def test_connected_source_is_user_scoped(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     other_key, other_id = await _register(client, "other")
-    ws = await _user_scope(client, owner_key)
+    await _user_scope(client, owner_key)
 
     src = await source_service.create_source(
         owner_user_id=owner_id,
@@ -429,10 +428,8 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
     source_id = UUID(src["id"])
 
     # Owner sees it; the other user does not.
-    assert any(
-        s["id"] == src["id"] for s in await source_service.list_connected_sources(ws, owner_id)
-    )
-    assert await source_service.list_connected_sources(ws, other_id) == []
+    assert any(s["id"] == src["id"] for s in await source_service.list_connected_sources(owner_id))
+    assert await source_service.list_connected_sources(other_id) == []
     assert await source_service.get_owned_source(source_id, owner_id) is not None
     assert await source_service.get_owned_source(source_id, other_id) is None
 
@@ -534,13 +531,9 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
         extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
     )
 
-    owner_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="postgres migration"
-    )
+    owner_hits = await source_service.search_documents(user_id=owner_id, query="postgres migration")
     assert len(owner_hits) == 1
-    other_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=other_id, query="postgres migration"
-    )
+    other_hits = await source_service.search_documents(user_id=other_id, query="postgres migration")
     assert other_hits == []
 
 
@@ -631,6 +624,70 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
         == 1
     )
     assert await source_service.list_documents(src) == []
+
+
+@pytest.mark.asyncio
+async def test_list_documents_pages_with_after_cursor(client: AsyncClient):
+    """A source bigger than one page must be fully reachable by walking the
+    `after` keyset cursor — before this, everything past the first page was
+    invisible to the VFS (a 6k-message Gmail showed 200 messages)."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="drive-root",
+        display_name="Drive",
+    )
+    sid = UUID(src["id"])
+    for i in range(5):
+        await source_service.upsert_index_row(
+            table="drive_index",
+            source_id=sid,
+            owner_user_id=ws,
+            path=f"doc-{i}",
+            name=f"Doc {i}",
+            external_ref=f"file-id-{i}",
+        )
+
+    page_one = await source_service.list_documents(src, limit=2)
+    page_two = await source_service.list_documents(src, limit=2, after=page_one[-1]["path"])
+    page_three = await source_service.list_documents(src, limit=2, after=page_two[-1]["path"])
+
+    assert [d["path"] for d in page_one] == ["doc-0", "doc-1"]
+    assert [d["path"] for d in page_two] == ["doc-2", "doc-3"]
+    assert [d["path"] for d in page_three] == ["doc-4"]
+    # The provider id rides along so callers can tie a path to the provider object.
+    assert page_one[0]["external_ref"] == "file-id-0"
+
+
+@pytest.mark.asyncio
+async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncClient):
+    """An agent holding only a provider URL (a Drive link, a GitHub blob) must
+    be able to resolve the id inside it to the document's Stash path — the
+    external_ref is the only join key between the provider's world and ours."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="docs/status.md",
+        name="status.md",
+        content="quarterly integration status",
+        external_ref="gh-blob-1a2b3c",
+    )
+
+    results = await source_service.search_all(ws, owner_id, "gh-blob-1a2b3c", source=src["id"])
+
+    assert [(r["ref"], r["name"]) for r in results] == [("docs/status.md", "status.md")]
+    assert await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"]) == []
 
 
 # --- search-driven sources (twitter) -----------------------------------------
@@ -1160,12 +1217,7 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
     assert await source_service.list_documents(unconfigured) == []
     assert await source_service.read_document(unconfigured, "general/1") is None
     assert await source_service.source_item_count(unconfigured) == 0
-    assert (
-        await source_service.search_documents(
-            owner_user_id=ws, user_id=owner_id, query="secret launch"
-        )
-        == []
-    )
+    assert await source_service.search_documents(user_id=owner_id, query="secret launch") == []
 
     configured = await source_service.create_source(
         owner_user_id=owner_id,
@@ -1197,16 +1249,14 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
         extra={"channel_id": "C2", "channel_name": "exec", "ts": "1"},
     )
 
+    # Messages project as one transcript per channel per UTC day; ts=1 epoch
+    # lands on 1970-01-01. The blocked channel contributes no document.
     docs = await source_service.list_documents(configured)
-    assert [doc["path"] for doc in docs] == ["general/1"]
+    assert [doc["path"] for doc in docs] == ["general/1970-01-01"]
     assert await source_service.read_document(configured, "exec/1") is None
     assert await source_service.source_item_count(configured) == 1
-    allowed_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="allowed roadmap"
-    )
-    blocked_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="blocked board"
-    )
+    allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed roadmap")
+    blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked board")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
 
@@ -1236,12 +1286,7 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     assert await source_service.list_documents(unconfigured) == []
     assert await source_service.read_document(unconfigured, "call-1") is None
     assert await source_service.source_item_count(unconfigured) == 0
-    assert (
-        await source_service.search_documents(
-            owner_user_id=ws, user_id=owner_id, query="secret revenue"
-        )
-        == []
-    )
+    assert await source_service.search_documents(user_id=owner_id, query="secret revenue") == []
 
     configured = await source_service.create_source(
         owner_user_id=owner_id,
@@ -1277,12 +1322,8 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     assert [doc["path"] for doc in docs] == ["call-1"]
     assert await source_service.read_document(configured, "call-2") is None
     assert await source_service.source_item_count(configured) == 1
-    allowed_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="allowed revenue"
-    )
-    blocked_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_id, query="blocked revenue"
-    )
+    allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed revenue")
+    blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked revenue")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
 
@@ -1475,7 +1516,7 @@ async def test_slack_indexer_backfills_only_allowed_channels(
         == 0
     )
     docs = await source_service.list_documents(src)
-    assert [doc["path"] for doc in docs] == ["general/1"]
+    assert [doc["path"] for doc in docs] == ["general/1970-01-01"]
 
 
 @pytest.mark.asyncio
@@ -1507,7 +1548,7 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
     owner_b_key, owner_b = await _register(client, "b")
-    ws = await _user_scope(client, owner_a_key)
+    await _user_scope(client, owner_a_key)
     src_a = await source_service.create_source(
         owner_user_id=owner_a,
         source_type="slack",
@@ -1530,14 +1571,10 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     assert n == 1
 
     # Each owner sees only their own source and only if that source allowed the channel.
-    a_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_a, query="ship sources"
-    )
+    a_hits = await source_service.search_documents(user_id=owner_a, query="ship sources")
     assert any(h["source_id"] == src_a["id"] for h in a_hits)
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
-    b_hits = await source_service.search_documents(
-        owner_user_id=ws, user_id=owner_b, query="ship sources"
-    )
+    b_hits = await source_service.search_documents(user_id=owner_b, query="ship sources")
     assert b_hits == []
 
 
@@ -1688,6 +1725,164 @@ async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
     assert rows[0]["path"] == "general/1717.0001"
     assert rows[0]["name"] == "#general"
     assert rows[0]["content"] == "updated confidential Slack message"
+
+
+@pytest.mark.asyncio
+async def test_slack_projects_day_transcripts_with_authors(client: AsyncClient):
+    """The agent-facing projection is one attributed transcript per channel per
+    UTC day — not one file per message. Chronology and authorship must survive
+    into both the listing (external_updated_at/size) and the rendered body,
+    and a per-message ref (what search returns) must resolve to its day."""
+    api_key, owner_id = await _register(client, "slack_days")
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_DAYS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    # 2026-07-05 18:17/18:18 UTC and 2026-07-06 01:24 UTC — two UTC days.
+    messages = [
+        ("1783275420.000100", "henry", "interesting treehacks project"),
+        ("1783275480.000200", "sam", "lol"),
+        ("1783301040.000300", "henry", "I'm gonna try these three"),
+    ]
+    for ts, author, text in messages:
+        await source_service.upsert_content_document(
+            table="slack_messages",
+            source_id=UUID(src["id"]),
+            owner_user_id=ws,
+            path=f"random/{ts}",
+            name="#random",
+            kind="message",
+            content=text,
+            external_ref=f"C1:{ts}",
+            extra={
+                "channel_id": "C1",
+                "channel_name": "random",
+                "ts": ts,
+                "author_id": f"U_{author}",
+                "author": author,
+            },
+        )
+
+    docs = await source_service.list_documents(src)
+    assert [d["path"] for d in docs] == ["random/2026-07-05", "random/2026-07-06"]
+    assert [d["kind"] for d in docs] == ["transcript", "transcript"]
+    day_one = docs[0]
+    assert day_one["name"] == "#random 2026-07-05"
+    assert day_one["external_updated_at"].startswith("2026-07-05")
+    assert day_one["size"] == len("interesting treehacks project") + len("lol")
+
+    doc = await source_service.read_document(src, "random/2026-07-05")
+    assert doc["kind"] == "transcript"
+    lines = doc["content"].splitlines()
+    assert lines[0] == "# #random — 2026-07-05 (UTC)"
+    assert "henry: interesting treehacks project" in lines[2]
+    assert "sam: lol" in lines[3]
+    assert lines[2] < lines[3]  # HH:MM prefixes keep the transcript chronological
+
+    # A search/history ref (channel/ts) reads as the day it belongs to.
+    by_ref = await source_service.read_document(src, "random/1783301040.000300")
+    assert by_ref["path"] == "random/2026-07-06"
+
+
+@pytest.mark.asyncio
+async def test_slack_backfill_resolves_authors_and_caches_lookups(
+    client: AsyncClient, monkeypatch, pool
+):
+    """Backfilled messages must be attributable: msg["user"] resolves to a
+    display name via users.info, one lookup per distinct user per sync."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_authors")
+    await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_AUTHORS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    users_info_calls: list[str] = []
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.USERS_INFO_URL:
+            users_info_calls.append(params["user"])
+            return {"ok": True, "user": {"name": "hdowling", "profile": {"display_name": "henry"}}}
+        return {
+            "messages": [
+                {"type": "message", "ts": "1783362000.1", "text": "one", "user": "U_HENRY"},
+                {"type": "message", "ts": "1783362001.1", "text": "two", "user": "U_HENRY"},
+            ]
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+
+    assert users_info_calls == ["U_HENRY"]  # cached after the first resolution
+    rows = await pool.fetch(
+        "SELECT author_id, author FROM slack_messages WHERE source_id = $1 ORDER BY ts",
+        UUID(src["id"]),
+    )
+    assert [(r["author_id"], r["author"]) for r in rows] == [
+        ("U_HENRY", "henry"),
+        ("U_HENRY", "henry"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slack_backfill_discloses_history_cap(client: AsyncClient, monkeypatch):
+    """A channel whose history exceeds the backfill cap must say so in its
+    listing — an agent must be able to tell "never discussed" apart from
+    "not indexed". The notice lists first and clears when history fits."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_cap")
+    await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_CAP",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    has_more = True
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {"channels": [{"id": "C1", "name": "general"}]}
+        return {
+            "messages": [{"type": "message", "ts": "1783362000.1", "text": "hi"}],
+            "has_more": has_more,
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+    docs = await source_service.list_documents(src)
+    assert [d["kind"] for d in docs] == ["notice", "transcript"]
+    assert docs[0]["path"] == f"general/{indexer.CAP_MARKER_LEAF}"
+    notice = await source_service.read_document(src, docs[0]["path"])
+    assert "not searchable here" in notice["content"]
+
+    # Full history now fits — the stale notice must disappear.
+    has_more = False
+    await indexer.index_slack(src)
+    docs = await source_service.list_documents(src)
+    assert [d["kind"] for d in docs] == ["transcript"]
 
 
 @pytest.mark.asyncio
@@ -1873,11 +2068,18 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     monkeypatch.setattr(indexer, "search_jira", fail_search)
     monkeypatch.setattr(source_service.logger, "warning", capture_warning)
 
-    # Unscoped fan-out swallows provider errors and logs them; a scoped search
-    # raises instead, so only the fan-out path exercises the redacted log line.
+    # Unscoped fan-out surfaces a redacted error marker (never raising) and logs
+    # only failure metadata; a scoped search raises instead.
     hits = await source_service.search_all(ws, owner_id, "customer transcript")
 
-    assert hits == []
+    assert hits == [
+        {
+            "source": src["id"],
+            "source_name": "PROJ",
+            "error": "PROJ search failed",
+            "needs_reconnect": False,
+        }
+    ]
     assert captured_logs == [
         (
             "federated search failed source=%s source_type=%s exception_type=%s",
@@ -1886,6 +2088,172 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     ]
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)
+    # An unmapped exception's raw text (token, query) must not leak into the
+    # surfaced marker either.
+    assert "secret-token" not in str(hits)
+    assert "customer transcript" not in str(hits)
+
+
+@pytest.mark.asyncio
+async def test_unscoped_search_surfaces_dead_federated_source(client: AsyncClient, monkeypatch):
+    """A dead connection (expired/revoked token) must not vanish from unscoped
+    search as if it had no matches — it surfaces a needs_reconnect marker so the
+    caller can tell "reconnect me" apart from "nothing found"."""
+    from fastapi import HTTPException
+
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def dead_search(source, query, limit):
+        raise HTTPException(status_code=401, detail="gmail token expired; reconnect required")
+
+    monkeypatch.setattr(indexer, "search_gmail", dead_search)
+
+    results = await source_service.search_all(ws, owner_id, "anything")
+
+    markers = [r for r in results if r.get("source") == src["id"]]
+    assert markers == [
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "error": "gmail token expired; reconnect required",
+            "needs_reconnect": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_appends_truncation_marker_when_provider_caps(
+    client: AsyncClient, monkeypatch
+):
+    """A capped federated result must disclose the cut: search appends a
+    truncation marker so callers don't present the top slice as the whole set."""
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def capped_search(source, query, limit):
+        return {
+            "hits": [{"ref": f"m{i}", "name": f"msg {i}", "snippet": ""} for i in range(2)],
+            "truncated": True,
+            "estimated_total": 213,
+        }
+
+    monkeypatch.setattr(indexer, "search_gmail", capped_search)
+    results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
+
+    assert [r for r in results if r.get("ref")] == [
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "ref": "m0",
+            "name": "msg 0",
+            "snippet": "",
+        },
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "ref": "m1",
+            "name": "msg 1",
+            "snippet": "",
+        },
+    ]
+    assert [r for r in results if r.get("truncated")] == [
+        {
+            "source": src["id"],
+            "source_name": "Gmail (henry@ferganalabs.com)",
+            "truncated": True,
+            "returned": 2,
+            "estimated_total": 213,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_omits_truncation_marker_when_not_capped(client: AsyncClient, monkeypatch):
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def complete_search(source, query, limit):
+        return {
+            "hits": [{"ref": "m0", "name": "only", "snippet": ""}],
+            "truncated": False,
+            "estimated_total": 1,
+        }
+
+    monkeypatch.setattr(indexer, "search_gmail", complete_search)
+    results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
+
+    assert not any(r.get("truncated") for r in results)
+
+
+@pytest.mark.asyncio
+async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch):
+    """search_gmail maps Gmail's nextPageToken to truncated and surfaces the
+    resultSizeEstimate — the authoritative "there is more" signal, not a
+    len(hits) == limit guess."""
+    from backend.integrations.gmail import indexer
+
+    class GmailClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def token(*args, **kwargs):
+        return "tok"
+
+    async def get_metadata(client, message_id):
+        return {"id": message_id, "payload": {"headers": [{"name": "Subject", "value": "hi"}]}}
+
+    async def upsert(source, message):
+        return message["id"]
+
+    monkeypatch.setattr(indexer, "get_valid_token", token)
+    monkeypatch.setattr(indexer.httpx, "AsyncClient", lambda *a, **k: GmailClient())
+    monkeypatch.setattr(indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(indexer, "_upsert_message_metadata", upsert)
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "e@x.com"}
+
+    async def more_pages(client, query, limit):
+        return [{"id": "m1"}, {"id": "m2"}], "PAGE_2", 213
+
+    monkeypatch.setattr(indexer, "_list_message_refs", more_pages)
+    result = await indexer.search_gmail(source, "q", 25)
+    assert result["truncated"] is True
+    assert result["estimated_total"] == 213
+    assert len(result["hits"]) == 2
+
+    async def last_page(client, query, limit):
+        return [{"id": "m1"}], None, 1
+
+    monkeypatch.setattr(indexer, "_list_message_refs", last_page)
+    result = await indexer.search_gmail(source, "q", 25)
+    assert result["truncated"] is False
 
 
 @pytest.mark.asyncio
@@ -2088,8 +2456,7 @@ async def test_fetch_history_provider_failures_are_redacted(client, monkeypatch)
 @pytest.mark.asyncio
 async def test_list_sources_carries_status_and_status_endpoint_counts(client: AsyncClient):
     """The per-integration page needs sync status + item counts: list_sources now
-    carries the status fields, and /status reports the indexed-doc count (None for
-    queryable sources with no table)."""
+    carries the status fields, and /status reports the indexed-doc count."""
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
@@ -2114,16 +2481,6 @@ async def test_list_sources_carries_status_and_status_endpoint_counts(client: As
     status = await client.get(f"/api/v1/me/sources/{src['id']}/status", headers=_auth(api_key))
     assert status.status_code == 200
     assert status.json()["item_count"] == 1
-
-    # A queryable source (snowflake) has no document table → count is None.
-    sf = await source_service.create_source(
-        owner_user_id=owner_id,
-        source_type="snowflake",
-        external_ref="acct",
-        display_name="Snowflake",
-    )
-    sf_status = await client.get(f"/api/v1/me/sources/{sf['id']}/status", headers=_auth(api_key))
-    assert sf_status.json()["item_count"] is None
 
 
 @pytest.mark.asyncio
@@ -2510,7 +2867,7 @@ async def test_linear_source_resolves_to_all_issues(monkeypatch):
 @pytest.mark.asyncio
 async def test_linear_index_builds_navigable_issue_rows(client: AsyncClient, monkeypatch):
     """The sync paginates the user's issues into a navigable index — one row per
-    issue keyed by its identifier — without copying the body."""
+    issue filed under its team folder in numeric order — without copying the body."""
     from backend.integrations.linear import indexer as linear_indexer
     from backend.services import linear_api_service
 
@@ -2535,7 +2892,7 @@ async def test_linear_index_builds_navigable_issue_rows(client: AsyncClient, mon
     await linear_indexer.index_linear(src)
 
     live = await source_service.list_documents(src)
-    assert {d["path"] for d in live} == {"FER-1", "FER-2"}
+    assert {d["path"] for d in live} == {"FER/FER-00001", "FER/FER-00002"}
     assert {d["name"] for d in live} == {"FER-1 First", "FER-2 Second"}
 
 
@@ -2584,7 +2941,7 @@ async def test_linear_source_reads_issue_body_lazily(client: AsyncClient, monkey
 @pytest.mark.asyncio
 async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, monkeypatch):
     """Search is federated live to Linear's native search; hits are keyed by the
-    issue identifier (the index path the agent can then read)."""
+    index path (the ref the agent can then read)."""
     from backend.integrations.linear import indexer as linear_indexer
     from backend.services import linear_api_service
 
@@ -2604,7 +2961,261 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
 
     results = await source_service.search_all(ws, owner_id, "real source", source=src["id"])
 
-    assert any(r["ref"] == "FER-199" for r in results)
-    hit = next(r for r in results if r["ref"] == "FER-199")
+    assert any(r["ref"] == "FER/FER-00199" for r in results)
+    hit = next(r for r in results if r["ref"] == "FER/FER-00199")
     assert hit["source"] == src["id"]
     assert hit["name"] == "FER-199 Make Linear a real source"
+
+
+@pytest.mark.asyncio
+async def test_connected_source_is_shareable_read_only(client: AsyncClient, pool):
+    """A connected source can be shared (read). The recipient reads its content
+    through Stash (delegated to the OWNER's token, never the token itself) and
+    sees it listed; management/sync stay owner-only; unsharing revokes access."""
+    from backend.services import share_service
+
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-share",
+        display_name="Shared Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+
+    # 'source' is a permitted share target now (would raise 400 before).
+    await share_service.share_with_user_by_email(
+        object_type="source",
+        object_id=source_id,
+        email="invitee@example.com",
+        permission="read",
+        owner_id=owner_id,
+    )
+    # Only the owner may share it.
+    with pytest.raises(Exception):
+        await share_service.share_with_user_by_email(
+            object_type="source",
+            object_id=source_id,
+            email="invitee@example.com",
+            permission="read",
+            owner_id=friend_id,
+        )
+
+    # Before a share lands: friend can't read, list, or manage.
+    assert await source_service.get_readable_source(source_id, friend_id) is None
+    assert await source_service.list_connected_sources(friend_id) == []
+    assert await source_service.get_owned_source(source_id, friend_id) is None
+
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # Now friend reads the source and sees it listed.
+    shared = await source_service.get_readable_source(source_id, friend_id)
+    assert shared is not None
+    # Row keeps the real owner, so reads delegate to the OWNER's token...
+    assert shared["owner_user_id"] == str(owner_id)
+    # ...and the token is never part of the row handed to the recipient.
+    assert not any("token" in key for key in shared)
+    assert any(s["id"] == src["id"] for s in await source_service.list_connected_sources(friend_id))
+
+    # Management and sync remain owner-only.
+    assert await source_service.get_owned_source(source_id, friend_id) is None
+
+    # Unshare → access revoked immediately.
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type='source' AND object_id=$1 AND principal_id=$2",
+        source_id,
+        friend_id,
+    )
+    assert await source_service.get_readable_source(source_id, friend_id) is None
+    assert await source_service.list_connected_sources(friend_id) == []
+
+
+@pytest.mark.asyncio
+async def test_shared_source_is_searchable_by_recipient(client: AsyncClient, pool):
+    """A read-share lets the recipient FTS-search the source's copied content;
+    a non-sharee gets nothing."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    _, stranger_id = await _register(client, "stranger")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-search",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_id,
+        path="#eng/1.ts",
+        name="msg",
+        kind="message",
+        content="the postgres migration is blocked on review",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+
+    # Before the share: recipient can't search it.
+    assert (
+        await source_service.search_documents(user_id=friend_id, query="postgres migration") == []
+    )
+
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # Now the recipient's search finds the shared source's content.
+    assert (
+        len(await source_service.search_documents(user_id=friend_id, query="postgres migration"))
+        == 1
+    )
+    # An unrelated user still finds nothing.
+    assert (
+        await source_service.search_documents(user_id=stranger_id, query="postgres migration") == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_delegated_read_is_audited_to_the_source_owner(client: AsyncClient, pool):
+    """When a recipient reads a shared source, the audit trail lands in the
+    OWNER's log (owner_user_id = source owner) with the recipient as the actor —
+    so the owner can see who read what they shared, not just their own reads."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-audit",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_id,
+        path="#eng/1.ts",
+        name="msg",
+        kind="message",
+        content="the postgres migration is blocked on review",
+        extra={"channel_id": "C1", "channel_name": "eng", "ts": "1"},
+    )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # The recipient reads the shared source (routers pass current_user as both
+    # the owner and viewer arg — the recipient is acting in their own request).
+    await source_service.source_entries(friend_id, friend_id, str(source_id))
+
+    row = await pool.fetchrow(
+        "SELECT owner_user_id, actor_user_id, target_id FROM security_audit_events "
+        "WHERE action = 'source.entries_listed' AND target_id = $1",
+        str(source_id),
+    )
+    assert row is not None
+    # Attributed to the data owner, actioned by the recipient.
+    assert str(row["owner_user_id"]) == str(owner_id)
+    assert str(row["actor_user_id"]) == str(friend_id)
+
+
+@pytest.mark.asyncio
+async def test_folder_share_does_not_grant_source_access(client: AsyncClient, pool):
+    """Sources have no container: a folder share must NOT cascade into read
+    access to a source. Only a direct source share grants it."""
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    folder = await pool.fetchval(
+        "INSERT INTO folders (owner_user_id, name, created_by) VALUES ($1, 'docs', $1) RETURNING id",
+        owner_id,
+    )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'folder',$2,'user',$3,'read',$1)",
+        owner_id,
+        folder,
+        friend_id,
+    )
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-nocascade",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    # Folder share grants the friend nothing on the source.
+    assert await source_service.get_readable_source(source_id, friend_id) is None
+    assert await source_service.list_connected_sources(friend_id) == []
+
+    # A direct source share does grant it.
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+    assert await source_service.get_readable_source(source_id, friend_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_source_recipient_cannot_reshare_or_share_write(client: AsyncClient, pool):
+    """A read-sharee cannot re-share the source (only the owner can), and a
+    source can never be shared above read."""
+    from backend.services import share_service
+
+    _, owner_id = await _register(client, "owner")
+    _, friend_id = await _register(client, "friend")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T-reshare",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(src["id"])
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'source',$2,'user',$3,'read',$1)",
+        owner_id,
+        source_id,
+        friend_id,
+    )
+
+    # The recipient can read it but cannot re-share it onward.
+    assert await source_service.get_readable_source(source_id, friend_id) is not None
+    with pytest.raises(Exception):
+        await share_service.share_with_user_by_email(
+            object_type="source",
+            object_id=source_id,
+            email="third@example.com",
+            permission="read",
+            owner_id=friend_id,
+        )
+    # Even the owner cannot grant above read on a source.
+    with pytest.raises(Exception):
+        await share_service.share_with_user_by_email(
+            object_type="source",
+            object_id=source_id,
+            email="third@example.com",
+            permission="write",
+            owner_id=owner_id,
+        )

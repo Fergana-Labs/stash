@@ -5,14 +5,14 @@ a normal scheduled agent (so the existing beat task runs it) flagged
 is_curator so it's reserved (auto-provisioned, not deletable) and gets the
 curation prompt instead of a user schedule_prompt.
 
-Revision ID: 0127
-Revises: 0126
+Revision ID: 0133
+Revises: 0132
 """
 
 from alembic import op
 
-revision = "0127"
-down_revision = "0126"
+revision = "0133"
+down_revision = "0132"
 branch_labels = None
 depends_on = None
 

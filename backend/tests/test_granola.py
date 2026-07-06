@@ -141,3 +141,31 @@ async def test_integrations_are_unavailable_with_invalid_encryption_key(
 # `call_tool_json` entrypoint, which no longer exists (the indexer now picks
 # tools dynamically and calls `call_tool_data`). The list-blob parsing it
 # covered is exercised in test_integration_sources.
+
+
+def test_transcript_envelope_lands_in_rendered_doc():
+    """get_meeting_transcript returns {"id", "title", "transcript": "<text>"} —
+    the transcript is a string inside a JSON envelope. If the indexer treats it
+    as anything else, every meeting doc silently loses its transcript (which is
+    the whole point of the integration)."""
+    from backend.integrations.granola.indexer import _extract_transcript, _render_meeting
+
+    envelope = {"id": "m1", "title": "Standup", "transcript": " Me: shipped it  Them: nice"}
+    meeting = {"id": "m1", "title": "Standup", "date": "Jul 5, 2026", "participants": "Henry"}
+
+    doc = _render_meeting(meeting, _extract_transcript(envelope))
+
+    assert "## Transcript" in doc
+    assert "Them: nice" in doc
+
+
+def test_extract_transcript_is_empty_when_granola_has_none():
+    """A meeting with no recording still gets indexed (title + participants),
+    just without a transcript section."""
+    from backend.integrations.granola.indexer import _extract_transcript, _render_meeting
+
+    assert _extract_transcript({"id": "m1", "title": "Note only"}) == ""
+    assert _extract_transcript(None) == ""
+
+    meeting = {"id": "m1", "title": "Note only", "date": "Jul 5, 2026", "participants": "Henry"}
+    assert "## Transcript" not in _render_meeting(meeting, "")

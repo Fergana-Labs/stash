@@ -36,7 +36,7 @@ jobs:
         working-directory: frontend
 
   backend-lint:
-    name: Backend lint (ruff + black)
+    name: Backend lint (ruff)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,9 +45,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
-      - run: pip install ruff black
+      # Pinned to requirements-dev.txt so CI and local runs format identically —
+      # an unpinned formatter drifts style across releases and re-reds every PR.
+      - run: pip install "$(grep '^ruff==' backend/requirements-dev.txt)"
       - run: ruff check backend/ cli/
-      - run: black --check backend/ cli/
+      - run: ruff format --check backend/ cli/
 
   plugin-test:
     name: Plugin tests

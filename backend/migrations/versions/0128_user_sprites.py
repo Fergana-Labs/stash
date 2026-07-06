@@ -4,14 +4,14 @@ Each user gets one persistent sprite VM running their agent. This table is the
 registry mapping users to sprite names, deliberately substrate-thin so a later
 port to self-managed VMs only swaps the service layer, not the schema.
 
-Revision ID: 0122
-Revises: 0121
+Revision ID: 0128
+Revises: 0127
 """
 
 from alembic import op
 
-revision = "0122"
-down_revision = "0121"
+revision = "0128"
+down_revision = "0127"
 branch_labels = None
 depends_on = None
 

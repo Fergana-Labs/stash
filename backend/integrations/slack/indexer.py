@@ -3,8 +3,10 @@
 `index_slack` backfills recent history for the source's explicit channel
 allowlist. Live updates arrive via the Events API webhook, which enqueues
 `ingest_slack_message` per message. Each message is a row at `{channel}/{ts}`
-(with native channel_id/channel_name/ts columns) so the agent can navigate by
-channel and search across allowed channels.
+(with native channel_id/channel_name/ts and author columns); the *document
+projection* over these rows is one transcript per channel per UTC day (see
+source_service.list_documents/read_document), so agents read coherent,
+attributed conversations instead of one-line files.
 """
 
 from __future__ import annotations
@@ -22,10 +24,15 @@ logger = logging.getLogger(__name__)
 
 CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
 CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history"
+USERS_INFO_URL = "https://slack.com/api/users.info"
 
 CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
 MAX_CHANNELS = 100
 MAX_MESSAGES_PER_CHANNEL = 200
+
+# Sorts before any real YYYY-MM-DD transcript, so the cap disclosure is the
+# first entry an agent sees when listing a capped channel.
+CAP_MARKER_LEAF = "0000-history-cap"
 
 
 async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
@@ -35,6 +42,38 @@ async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
     if not payload.get("ok"):
         raise RuntimeError("Slack API returned ok=false")
     return payload
+
+
+async def _author_of(
+    client: httpx.AsyncClient, names: dict[str, str], msg: dict
+) -> tuple[str | None, str]:
+    """(author_id, display name) for a message. Human messages resolve the
+    display name via users.info (cached per run); bot messages carry their
+    username inline. A message with neither (rare system subtypes) gets no
+    author and renders unattributed."""
+    user_id = msg.get("user")
+    if user_id:
+        return user_id, await _user_display_name(client, names, user_id)
+    bot_id = msg.get("bot_id")
+    if bot_id:
+        return bot_id, msg.get("username") or bot_id
+    return None, ""
+
+
+async def _user_display_name(client: httpx.AsyncClient, names: dict[str, str], user_id: str) -> str:
+    if user_id in names:
+        return names[user_id]
+    # One unresolvable user (deleted account, transient API error) must not
+    # abort a whole sync — record the raw id so the message stays attributed.
+    try:
+        payload = await _slack_get(client, USERS_INFO_URL, {"user": user_id})
+        profile = payload["user"].get("profile") or {}
+        name = profile.get("display_name") or profile.get("real_name") or payload["user"]["name"]
+    except (RuntimeError, httpx.HTTPError, KeyError) as e:
+        logger.info("slack: users.info failed user=%s exception_type=%s", user_id, type(e).__name__)
+        name = user_id
+    names[user_id] = name
+    return name
 
 
 async def index_slack(source: dict) -> str | None:
@@ -49,6 +88,7 @@ async def index_slack(source: dict) -> str | None:
 
     token = await get_valid_token(owner_user_id, "slack")
     headers = {"Authorization": f"Bearer {token}"}
+    names: dict[str, str] = {}
 
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         channels_payload = await _slack_get(
@@ -80,6 +120,7 @@ async def index_slack(source: dict) -> str | None:
             for msg in history.get("messages", []):
                 if msg.get("type") != "message" or not msg.get("ts"):
                     continue
+                author_id, author = await _author_of(client, names, msg)
                 await _upsert_message(
                     source_id=source_id,
                     owner_user_id=owner_user_id,
@@ -87,7 +128,16 @@ async def index_slack(source: dict) -> str | None:
                     channel_name=channel_name,
                     ts=msg["ts"],
                     text=msg.get("text") or "",
+                    author_id=author_id,
+                    author=author,
                 )
+            await _sync_cap_marker(
+                source_id=source_id,
+                owner_user_id=owner_user_id,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                capped=bool(history.get("has_more")),
+            )
 
     logger.info("slack source %s: backfill complete", source_id)
     return None
@@ -113,6 +163,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     latest = f"{until.timestamp():.6f}" if until else None
 
     refs: list[str] = []
+    names: dict[str, str] = {}
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         channels = (
             await _slack_get(
@@ -141,6 +192,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
             for msg in history.get("messages", []):
                 if msg.get("type") != "message" or not msg.get("ts"):
                     continue
+                author_id, author = await _author_of(client, names, msg)
                 await _upsert_message(
                     source_id=source_id,
                     owner_user_id=owner_user_id,
@@ -148,6 +200,8 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
                     channel_name=channel_name,
                     ts=msg["ts"],
                     text=msg.get("text") or "",
+                    author_id=author_id,
+                    author=author,
                 )
                 refs.append(f"{channel_name}/{msg['ts']}")
                 if len(refs) >= limit:
@@ -169,6 +223,8 @@ async def _upsert_message(
     channel_name: str,
     ts: str,
     text: str,
+    author_id: str | None,
+    author: str,
 ) -> None:
     existing = await get_pool().fetchrow(
         "SELECT path, name FROM slack_messages "
@@ -188,7 +244,51 @@ async def _upsert_message(
         kind="message",
         content=text,
         external_ref=f"{channel_id}:{ts}",
-        extra={"channel_id": channel_id, "channel_name": channel_name, "ts": ts},
+        extra={
+            "channel_id": channel_id,
+            "channel_name": channel_name,
+            "ts": ts,
+            "author_id": author_id,
+            "author": author,
+        },
+    )
+
+
+async def _sync_cap_marker(
+    *,
+    source_id: UUID,
+    owner_user_id: UUID,
+    channel_id: str,
+    channel_name: str,
+    capped: bool,
+) -> None:
+    """Keep the channel's history-cap disclosure in step with reality. A capped
+    channel gets a notice document that lists first in its directory; a channel
+    whose full history fit gets any stale notice removed."""
+    path = f"{channel_name}/{CAP_MARKER_LEAF}"
+    if not capped:
+        await get_pool().execute(
+            "DELETE FROM slack_messages WHERE source_id = $1 AND path = $2",
+            source_id,
+            path,
+        )
+        return
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_user_id,
+        path=path,
+        name=f"#{channel_name} older history is NOT indexed",
+        kind="notice",
+        content=(
+            f"Only the {MAX_MESSAGES_PER_CHANNEL} most recent messages of #{channel_name} "
+            "are indexed. Older messages exist in Slack but are not searchable here — "
+            "an empty search result does not mean the topic was never discussed. "
+            "Pull a specific time range into the index with "
+            "POST /api/v1/me/sources/{source_id}/history {since, until}."
+        ),
+        external_ref=None,
+        extra={"channel_id": channel_id, "channel_name": channel_name, "ts": None},
     )
 
 
@@ -239,6 +339,12 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         "AND ws.sync_enabled",
         team_id,
     )
+    # The webhook has no user token to resolve a display name with, so live
+    # messages carry the raw Slack id as their author. The next sync's
+    # freshness check sees the resolved name differs and rewrites the row.
+    author_id = event.get("user") or event.get("bot_id")
+    author = event.get("username") or author_id or ""
+
     ingested = 0
     for row in rows:
         if channel_id not in source_service.slack_allowed_channel_ids(
@@ -252,6 +358,8 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
             channel_name=channel_id,
             ts=event["ts"],
             text=event.get("text") or "",
+            author_id=author_id,
+            author=author,
         )
         ingested += 1
     return ingested
