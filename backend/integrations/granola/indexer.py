@@ -18,6 +18,7 @@ import logging
 import re
 from uuid import UUID
 
+from ...database import get_pool
 from ...services import source_service
 from .client import call_tool_data, granola_session
 from .oauth import get_valid_access_token
@@ -93,6 +94,17 @@ def _parse_meetings_text(text: str) -> list[dict]:
     return meetings
 
 
+def _extract_transcript(td) -> str | list:
+    """get_meeting_transcript returns JSON text — {"id", "title", "transcript":
+    "<the whole transcript as one string>"} — which call_tool_data parses to a
+    dict. Unwrap it; a bare string or segment list is already usable."""
+    if isinstance(td, dict):
+        td = td.get("transcript")
+    if isinstance(td, str | list):
+        return td
+    return ""
+
+
 def _render_meeting(meeting: dict, transcript) -> str:
     """A meeting's markdown: title + participants + the transcript. `transcript`
     may be a plain string (Granola returns text) or a list of segments."""
@@ -142,6 +154,16 @@ async def index_granola(source: dict) -> str | None:
     access_token = await get_valid_access_token(owner_user_id)
     present: list[str] = []
 
+    # Transcripts are immutable once a meeting ends, and Granola rate-limits
+    # transcript fetches hard — so only fetch for meetings whose stored doc
+    # doesn't already carry one. Meetings that get rate-limited land with just
+    # title + participants and pick up their transcript on a later sync.
+    rows = await get_pool().fetch(
+        "SELECT path FROM granola_notes WHERE source_id = $1 AND content LIKE '%## Transcript%'",
+        source_id,
+    )
+    have_transcript = {r["path"] for r in rows}
+
     async with granola_session(access_token) as session:
         tools = (await session.list_tools()).tools
         names = [t.name for t in tools]
@@ -153,7 +175,14 @@ async def index_granola(source: dict) -> str | None:
             return None
         transcript_tool = _pick_tool([n for n in names if n != list_tool], _TRANSCRIPT_HINTS)
 
-        data = await call_tool_data(session, list_tool, {"limit": MAX_MEETINGS})
+        # list_meetings defaults to last_30_days; anything older would then be
+        # soft-deleted by remove_missing_documents on every sync. Ask for the
+        # full history with an explicit wide range.
+        data = await call_tool_data(
+            session,
+            list_tool,
+            {"time_range": "custom", "custom_start": "2000-01-01", "custom_end": "2100-01-01"},
+        )
         # Granola returns an XML-ish text blob; other shapes (JSON list/dict) are
         # handled too for resilience.
         if isinstance(data, str):
@@ -168,15 +197,14 @@ async def index_granola(source: dict) -> str | None:
             meeting_id = _meeting_id(meeting)
             if not meeting_id:
                 continue
+            if meeting_id in have_transcript:
+                present.append(meeting_id)
+                continue
             transcript = ""
             if transcript_tool:
                 try:
                     td = await call_tool_data(session, transcript_tool, {"meeting_id": meeting_id})
-                    transcript = (
-                        td
-                        if isinstance(td, str)
-                        else _as_list(td, "transcript", "segments", "entries")
-                    )
+                    transcript = _extract_transcript(td)
                 except Exception as exc:
                     logger.info(
                         "granola transcript fetch failed source=%s exception_type=%s",
