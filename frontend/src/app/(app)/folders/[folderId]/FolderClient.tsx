@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
   createPage,
+  createSkillRecord,
   getFolderContents,
   getPublicSkill,
   type PublicSkillContents,
@@ -123,6 +124,7 @@ export default function FolderDetailPage() {
     setConverting(true);
     try {
       await createPage(SKILL_MD, folderId, skillMdTemplate(folderName));
+      await createSkillRecord(folderId, { title: folderName });
       await refreshSidebar().catch(() => {});
       router.push(`/skills/${folderId}`);
     } catch (e) {
