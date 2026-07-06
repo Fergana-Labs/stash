@@ -17,7 +17,7 @@ from ..database import get_pool
 _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
-    "telegram_bound, last_run_at, created_at"
+    "telegram_bound, last_run_at, curated_through, created_at"
 )
 
 # The daily curator's cron is staggered per user so sprite wakes spread across
@@ -84,9 +84,9 @@ CURATOR_BACKFILL_DAYS = 90
 async def get_or_create_curator(user_id: UUID) -> dict:
     """The user's reserved Memory-curator agent, created on first use.
 
-    Scheduled daily (staggered), with last_run_at seeded to a bounded backfill
-    point so the first run bootstraps from real history AND the cron becomes due
-    (a NULL watermark never fires)."""
+    Scheduled daily (staggered). Both the cron baseline (last_run_at) and the
+    delta watermark (curated_through) seed to a bounded backfill point, so the
+    first run is due immediately and bootstraps from real history."""
     pool = get_pool()
     row = await pool.fetchrow(
         f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator", user_id
@@ -95,10 +95,11 @@ async def get_or_create_curator(user_id: UUID) -> dict:
         return _row(row)
     row = await pool.fetchrow(
         f"""
-        INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator, last_run_at)
-        VALUES ($1, 'Memory curator', 'scheduled', $2, true,
-                greatest((SELECT created_at FROM users WHERE id = $1),
-                         now() - make_interval(days => $3)))
+        INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator,
+                            last_run_at, curated_through)
+        SELECT $1, 'Memory curator', 'scheduled', $2, true, backfill, backfill
+        FROM (SELECT greatest((SELECT created_at FROM users WHERE id = $1),
+                              now() - make_interval(days => $3)) AS backfill) seed
         ON CONFLICT (user_id) WHERE is_curator DO NOTHING
         RETURNING {_COLUMNS}
         """,
@@ -216,6 +217,14 @@ async def list_scheduled() -> list[dict]:
 
 async def mark_run(agent_id: UUID) -> None:
     await get_pool().execute("UPDATE agents SET last_run_at = now() WHERE id = $1", agent_id)
+
+
+async def mark_curated(agent_id: UUID, through) -> None:
+    """Advance the curator's delta watermark — only after a successful run, so
+    a failed run's window is re-covered next time."""
+    await get_pool().execute(
+        "UPDATE agents SET curated_through = $2 WHERE id = $1", agent_id, through
+    )
 
 
 async def channel_agent(user_id: UUID, channel: str) -> dict:

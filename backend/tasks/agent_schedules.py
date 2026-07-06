@@ -37,7 +37,7 @@ def run_due() -> int:
 
 
 async def _run_due() -> int:
-    from ..services import agent_service, curation_service, sprite_agent_service
+    from ..services import agent_auth, agent_service, curation_service, sprite_agent_service
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
@@ -45,20 +45,30 @@ async def _run_due() -> int:
     for agent in await agent_service.list_scheduled():
         if not _is_due(agent["schedule_cron"], agent["last_run_at"], now):
             continue
-        # Cost gate: skip the curator (and the sprite wake) when nothing changed
-        # since its watermark — and DON'T advance the watermark, so a change
-        # later today is still caught. Idle users cost one EXISTS per day.
-        if agent["is_curator"]:
-            user_id = UUID(str(agent["user_id"]))
-            if not await curation_service.has_changes_since(
-                user_id, user_id, agent["last_run_at"]
-            ):
-                continue
-        # Mark before running so a slow/failing run can't be re-fired by the
-        # next beat; a lost tick on failure is acceptable (the next tick runs).
+        user_id = UUID(str(agent["user_id"]))
+        # Consume the tick up front so a skipped, slow, or failing run can't be
+        # re-fired by the next beat. The curator's delta watermark is separate
+        # (curated_through) and only advances after a successful run, so a
+        # skipped or failed run never discards un-curated changes.
         await agent_service.mark_run(agent["id"])
+        # No runnable credential (unconnected free user) → nothing can run.
+        try:
+            await agent_auth.resolve(user_id, agent["model_provider"])
+        except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
+            logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
+            continue
+        # Cost gate: skip the curator (and the sprite wake) when nothing changed
+        # since its watermark. Idle users cost one EXISTS per day.
+        if agent["is_curator"] and not await curation_service.has_changes_since(
+            user_id, user_id, agent["curated_through"]
+        ):
+            continue
         try:
             await sprite_agent_service.run_scheduled(agent, stamp)
+            if agent["is_curator"]:
+                # `now` predates the run, so changes made during it stay ahead
+                # of the watermark and are picked up next time.
+                await agent_service.mark_curated(agent["id"], now)
             ran += 1
         except Exception:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])

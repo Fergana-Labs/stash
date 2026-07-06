@@ -72,7 +72,7 @@ export default function AgentConfigPanel({
     <div className="mx-auto w-full max-w-2xl space-y-5 px-6 py-6">
       <div className="flex items-center justify-between">
         <h1 className="text-[18px] font-semibold text-foreground">Agent settings</h1>
-        {!agent.is_default && (
+        {!agent.is_default && !agent.is_curator && (
           <button
             type="button"
             onClick={remove}

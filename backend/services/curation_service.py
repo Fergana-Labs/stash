@@ -1,10 +1,11 @@
 """The change feed the daily Memory curator reads.
 
 `changes_since` is the incremental delta since the curator's watermark: new
-history events, changed pages (excluding the Memory subtree so the curator
-never curates its own output), new files, and the user's connected sources as
-pointers (the agent pulls source specifics with `stash search`). `has_changes_since`
-is the cheap EXISTS the beat task uses to skip idle users without waking a sprite.
+history events (excluding the curator's own run sessions), changed pages
+(excluding the Memory subtree), new files, and the user's connected sources as
+pointers (the agent pulls source specifics with `stash search`) — the curator
+never sees its own output. `has_changes_since` is the cheap EXISTS the beat
+task uses to skip idle users without waking a sprite.
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
         """
         SELECT
           EXISTS (SELECT 1 FROM history_events
-                  WHERE owner_user_id = $1 AND created_at > $2)
+                  WHERE owner_user_id = $1 AND created_at > $2
+                    AND (session_id IS NULL OR session_id NOT LIKE 'agent-curate-%'))
           OR EXISTS (SELECT 1 FROM pages
                      WHERE owner_user_id = $1 AND updated_at > $2
                        AND ($3::uuid[] IS NULL OR folder_id IS NULL
@@ -59,6 +61,12 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
     events, _ = await memory_service.query_scope_events(
         owner_user_id, user_id, after=since, limit=_MAX_EVENTS, order="asc"
     )
+    # The curator's own run transcripts are not user activity — feeding them
+    # back would echo-loop the daily gate and pollute the wiki.
+    events = [
+        e for e in events
+        if not str(e.get("session_id") or "").startswith("agent-curate-")
+    ]
     history = [
         {
             "session_id": e.get("session_id"),

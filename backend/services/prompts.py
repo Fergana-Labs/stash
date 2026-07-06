@@ -118,6 +118,7 @@ def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
         if since
         else "the full history (this is the first run — bootstrap the wiki)"
     )
+    changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
     return f"""# Sleep Time Compute — Memory Wiki Curation
 
 Curate the user's recent activity into an organized, categorized wiki inside
@@ -128,7 +129,7 @@ with categories, [[wiki links]], and confidence tags.
 Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Read the inputs
-- `stash changes --since {since or ''} --json` — the delta to curate: recent
+- `{changes_cmd}` — the delta to curate: recent
   history/chats, changed pages, new files, and connected sources. This IS your
   work set; do not re-scan the whole corpus.
 - `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).

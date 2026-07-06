@@ -238,7 +238,7 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
 
     if agent.get("is_curator"):
         memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
-        since = agent["last_run_at"].isoformat() if agent.get("last_run_at") else None
+        since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
         message = prompts.render_curator_prompt(memory["id"], since)
         session_id = f"agent-curate-{agent['id']}-{run_stamp}"
     else:
@@ -358,7 +358,9 @@ async def run_chat(
         async for event in _turn_events(
             auth, sprite, history, message, session_id,
             _system_prompt(owner_name, persona),
-            disallowed_tools=SLACK_DISALLOWED_TOOLS,
+            # Channel messages are untrusted input; scheduled runs (curator
+            # included) execute a trusted prompt and need their full toolset.
+            disallowed_tools=SLACK_DISALLOWED_TOOLS if channel else None,
         ):
             if event["type"] == "end":
                 final = event.pop("_result_text")

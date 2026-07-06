@@ -1991,6 +1991,7 @@ export type Agent = {
   schedule_cron: string | null;
   schedule_prompt: string | null;
   is_default: boolean;
+  is_curator: boolean;
   slack_bound: boolean;
   telegram_bound: boolean;
 };
