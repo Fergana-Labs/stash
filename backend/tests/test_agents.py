@@ -112,11 +112,78 @@ def test_cron_due_check():
     now = datetime(2026, 7, 6, 9, 0, tzinfo=UTC)
     # A daily 9am job whose last run was yesterday is due.
     assert _is_due("0 9 * * *", now - timedelta(days=1), now) is True
-    # First sight (no last run) baselines at now → not due yet.
-    assert _is_due("0 9 * * *", None, now) is False
     # Last run 08:59; the 09:00 tick hasn't run yet → due now.
     assert _is_due("0 9 * * *", now - timedelta(minutes=1), now) is True
     # Just ran at 09:00; next tick is tomorrow → not due (no double-fire).
     assert _is_due("0 9 * * *", now, now) is False
     # Bad cron → never due, no crash.
     assert _is_due("not a cron", None, now) is False
+
+
+@pytest.mark.asyncio
+async def test_scheduled_agent_seeds_baseline_and_becomes_due(client: AsyncClient, _db_pool):
+    """A freshly-scheduled agent must fire on its next tick — regression for the
+    bug where last_run_at stayed NULL forever and it never ran."""
+    from uuid import UUID
+
+    from backend.services import agent_service
+
+    key = await _register(client)
+    a = (
+        await client.post(
+            "/api/v1/me/agents",
+            json={"name": "Daily", "run_mode": "scheduled", "schedule_cron": "* * * * *",
+                  "schedule_prompt": "go"},
+            headers=_auth(key),
+        )
+    ).json()
+    # Baseline seeded on create (not NULL) so the cron can become due.
+    row = await _db_pool.fetchrow("SELECT last_run_at FROM agents WHERE id = $1", UUID(a["id"]))
+    assert row["last_run_at"] is not None
+
+    # Rewind the baseline; the every-minute cron is now due.
+    await _db_pool.execute(
+        "UPDATE agents SET last_run_at = now() - interval '5 minutes' WHERE id = $1", UUID(a["id"])
+    )
+    due = await agent_service.list_scheduled()
+    from backend.tasks.agent_schedules import _is_due
+
+    target = next(x for x in due if x["id"] == a["id"])
+    assert _is_due(target["schedule_cron"], target["last_run_at"], datetime.now(UTC)) is True
+
+
+@pytest.mark.asyncio
+async def test_switch_to_scheduled_seeds_baseline(client: AsyncClient, _db_pool):
+    from uuid import UUID
+
+    key = await _register(client)
+    a = (await client.post("/api/v1/me/agents", json={"name": "C"}, headers=_auth(key))).json()
+    assert a["run_mode"] == "chat"
+    await client.patch(
+        f"/api/v1/me/agents/{a['id']}",
+        json={"run_mode": "scheduled", "schedule_cron": "* * * * *", "schedule_prompt": "go"},
+        headers=_auth(key),
+    )
+    row = await _db_pool.fetchrow("SELECT last_run_at FROM agents WHERE id = $1", UUID(a["id"]))
+    assert row["last_run_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_partial_patch_preserves_other_fields(client: AsyncClient):
+    """PATCH {name} must not reset model/schedule/bindings to defaults."""
+    key = await _register(client)
+    a = (
+        await client.post(
+            "/api/v1/me/agents",
+            json={"name": "Keep", "model_provider": "openrouter", "system_prompt": "Terse."},
+            headers=_auth(key),
+        )
+    ).json()
+    updated = (
+        await client.patch(
+            f"/api/v1/me/agents/{a['id']}", json={"name": "Renamed"}, headers=_auth(key)
+        )
+    ).json()
+    assert updated["name"] == "Renamed"
+    assert updated["model_provider"] == "openrouter"  # not clobbered to null
+    assert updated["system_prompt"] == "Terse."

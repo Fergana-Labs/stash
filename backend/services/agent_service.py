@@ -81,19 +81,21 @@ def _validate(model_provider, run_mode, schedule_cron) -> None:
 
 
 async def create_agent(user_id: UUID, fields: dict) -> dict:
-    _validate(fields.get("model_provider"), fields.get("run_mode", "chat"), fields.get("schedule_cron"))
+    run_mode = fields.get("run_mode", "chat")
+    _validate(fields.get("model_provider"), run_mode, fields.get("schedule_cron"))
     row = await get_pool().fetchrow(
         f"""
         INSERT INTO agents (user_id, name, model_provider, system_prompt,
-                            run_mode, schedule_cron, schedule_prompt)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                            run_mode, schedule_cron, schedule_prompt, last_run_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7,
+                CASE WHEN $5 = 'scheduled' THEN now() ELSE NULL END)
         RETURNING {_COLUMNS}
         """,
         user_id,
         (fields.get("name") or "Agent").strip()[:80],
         fields.get("model_provider"),
         fields.get("system_prompt"),
-        fields.get("run_mode", "chat"),
+        run_mode,
         fields.get("schedule_cron"),
         fields.get("schedule_prompt"),
     )
@@ -105,36 +107,44 @@ async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
     merged = {**current, **fields}
     _validate(merged.get("model_provider"), merged.get("run_mode", "chat"), merged.get("schedule_cron"))
 
-    # Channel bindings are unique per user; clear any other agent's binding first.
-    pool = get_pool()
-    if fields.get("slack_bound"):
-        await pool.execute(
-            "UPDATE agents SET slack_bound = false WHERE user_id = $1 AND id <> $2", user_id, agent_id
+    async with get_pool().acquire() as conn, conn.transaction():
+        # Channel bindings are unique per user; clear others in the same tx so
+        # the partial unique index can't transiently see two bound agents.
+        if merged.get("slack_bound"):
+            await conn.execute(
+                "UPDATE agents SET slack_bound = false WHERE user_id = $1 AND id <> $2",
+                user_id, agent_id,
+            )
+        if merged.get("telegram_bound"):
+            await conn.execute(
+                "UPDATE agents SET telegram_bound = false WHERE user_id = $1 AND id <> $2",
+                user_id, agent_id,
+            )
+        # Seed last_run_at when the agent first becomes scheduled, so the cron
+        # has a baseline (a NULL baseline never becomes due).
+        row = await conn.fetchrow(
+            f"""
+            UPDATE agents SET
+                name = $3, model_provider = $4, system_prompt = $5, run_mode = $6,
+                schedule_cron = $7, schedule_prompt = $8, slack_bound = $9, telegram_bound = $10,
+                last_run_at = CASE
+                    WHEN $6 = 'scheduled' AND last_run_at IS NULL THEN now()
+                    WHEN $6 <> 'scheduled' THEN NULL
+                    ELSE last_run_at END
+            WHERE id = $1 AND user_id = $2
+            RETURNING {_COLUMNS}
+            """,
+            agent_id,
+            user_id,
+            (merged.get("name") or "Agent").strip()[:80],
+            merged.get("model_provider"),
+            merged.get("system_prompt"),
+            merged.get("run_mode", "chat"),
+            merged.get("schedule_cron"),
+            merged.get("schedule_prompt"),
+            bool(merged.get("slack_bound")),
+            bool(merged.get("telegram_bound")),
         )
-    if fields.get("telegram_bound"):
-        await pool.execute(
-            "UPDATE agents SET telegram_bound = false WHERE user_id = $1 AND id <> $2", user_id, agent_id
-        )
-
-    row = await pool.fetchrow(
-        f"""
-        UPDATE agents SET
-            name = $3, model_provider = $4, system_prompt = $5, run_mode = $6,
-            schedule_cron = $7, schedule_prompt = $8, slack_bound = $9, telegram_bound = $10
-        WHERE id = $1 AND user_id = $2
-        RETURNING {_COLUMNS}
-        """,
-        agent_id,
-        user_id,
-        (merged.get("name") or "Agent").strip()[:80],
-        merged.get("model_provider"),
-        merged.get("system_prompt"),
-        merged.get("run_mode", "chat"),
-        merged.get("schedule_cron"),
-        merged.get("schedule_prompt"),
-        bool(merged.get("slack_bound")),
-        bool(merged.get("telegram_bound")),
-    )
     return _row(row)
 
 

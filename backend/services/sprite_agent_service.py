@@ -219,9 +219,11 @@ def _system_prompt(owner_name: str, persona: str | None) -> str:
     return f"{base}\n\n{persona}" if persona else base
 
 
-async def run_scheduled(agent: dict) -> str:
+async def run_scheduled(agent: dict, run_stamp: str) -> str:
     """Run a scheduled agent headless — its schedule_prompt as one turn into a
-    per-agent session — and return the result text."""
+    fresh per-run session — and return the result text. Each run is its own
+    session so history (and the CLI transcript it replays) can't grow unbounded
+    across a long-lived schedule; scheduled runs are stateless digests."""
     from uuid import UUID as _UUID
 
     from . import user_service
@@ -231,7 +233,7 @@ async def run_scheduled(agent: dict) -> str:
     if user is None:
         return ""
     owner_name = user["display_name"] or user["name"]
-    session_id = f"agent-sched-{agent['id']}"
+    session_id = f"agent-sched-{agent['id']}-{run_stamp}"
     return await run_chat(
         user_id, owner_name, user_id, session_id, agent["schedule_prompt"],
         model_provider=agent["model_provider"], persona=agent["system_prompt"],

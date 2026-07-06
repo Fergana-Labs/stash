@@ -170,6 +170,12 @@ function AgentsExplorer() {
   const [rows, setRows] = useState<SessionSummary[] | null>(null);
   const reloadAgents = useCallback(() => { listAgents().then(setAgents).catch(() => setAgents([])); }, []);
   useEffect(() => { reloadAgents(); listMySessions(50).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
+  // Keep the list fresh when the config panel saves/deletes an agent.
+  useEffect(() => {
+    const onChange = () => reloadAgents();
+    window.addEventListener("agents-changed", onChange);
+    return () => window.removeEventListener("agents-changed", onChange);
+  }, [reloadAgents]);
 
   async function newAgent() {
     const a = await createAgent({ name: "New agent" });

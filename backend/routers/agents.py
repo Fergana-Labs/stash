@@ -40,7 +40,11 @@ async def create_agent(fields: AgentFields, current_user: dict = Depends(get_cur
 async def update_agent(
     agent_id: UUID, fields: AgentFields, current_user: dict = Depends(get_current_user)
 ):
-    return await agent_service.update_agent(current_user["id"], agent_id, fields.model_dump())
+    # exclude_unset so a partial PATCH only touches the fields it sent (the
+    # service merges over current), rather than resetting the rest to defaults.
+    return await agent_service.update_agent(
+        current_user["id"], agent_id, fields.model_dump(exclude_unset=True)
+    )
 
 
 @router.delete("/{agent_id}")

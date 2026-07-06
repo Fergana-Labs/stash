@@ -126,3 +126,19 @@ def test_openrouter_rejects_oauth():
         asyncio.get_event_loop().run_until_complete(
             agent_auth.store_credential(uuid.uuid4(), "openrouter", "oauth", "x")
         )
+
+
+@pytest.mark.asyncio
+async def test_prefer_unconnected_model_fails_loud(monkeypatch):
+    """An agent that picks Claude when only OpenAI is connected must NOT silently
+    run Codex — it fails loud (no-fallback rule)."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def only_openai(user_id, provider=None):
+        if provider == "anthropic":
+            return None
+        return {"provider": "openai", "kind": "api_key", "secret": "sk-openai"}
+
+    monkeypatch.setattr(agent_auth, "_get_credential", only_openai)
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(uuid.uuid4(), "anthropic")

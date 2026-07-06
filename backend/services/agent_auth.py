@@ -134,6 +134,9 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
         # Preferred managed OpenRouter with no BYO key → managed GLM (Pro gate).
         if prefer_provider == "openrouter":
             return await _managed(user_id)
+        # The agent explicitly picked a model the user hasn't connected — fail
+        # loud rather than silently running a different harness.
+        raise NeedsAuth
 
     cred = await _get_credential(user_id)
     if cred is not None:

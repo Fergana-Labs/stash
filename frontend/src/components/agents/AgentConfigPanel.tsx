@@ -51,6 +51,7 @@ export default function AgentConfigPanel({
         telegram_bound: agent.telegram_bound,
       });
       setMsg("Saved.");
+      window.dispatchEvent(new Event("agents-changed"));
       onChanged?.();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Could not save");
@@ -62,6 +63,8 @@ export default function AgentConfigPanel({
   async function remove() {
     if (!agent) return;
     await deleteAgent(agent.id);
+    window.dispatchEvent(new Event("agents-changed"));
+    setMsg("Deleted — you can close this tab.");
     onChanged?.();
   }
 

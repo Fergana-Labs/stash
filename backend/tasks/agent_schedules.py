@@ -39,13 +39,16 @@ async def _run_due() -> int:
     from ..services import agent_service, sprite_agent_service
 
     now = datetime.now(UTC)
+    stamp = now.strftime("%Y%m%d%H%M")
     ran = 0
     for agent in await agent_service.list_scheduled():
         if not _is_due(agent["schedule_cron"], agent["last_run_at"], now):
             continue
+        # Mark before running so a slow/failing run can't be re-fired by the
+        # next beat; a lost tick on failure is acceptable (the next tick runs).
         await agent_service.mark_run(agent["id"])
         try:
-            await sprite_agent_service.run_scheduled(agent)
+            await sprite_agent_service.run_scheduled(agent, stamp)
             ran += 1
         except Exception:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])
