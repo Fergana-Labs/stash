@@ -327,16 +327,11 @@ async def stream_chat(
     except TurnInProgress:
         yield _sse({"type": "error", "message": "A turn is already running in this chat."})
         yield _sse({"type": "end"})
-    except Exception as exc:
+    except Exception:
         # SSE has already started, so an exception can't become an HTTP error —
         # without this the stream just dies and the client sees nothing.
         logger.exception("cloud agent: turn failed for session %s", session_id)
-        yield _sse(
-            {
-                "type": "error",
-                "message": f"The agent turn failed. Try again. [{type(exc).__name__}: {exc}]",
-            }
-        )
+        yield _sse({"type": "error", "message": "The agent turn failed. Try again."})
         yield _sse({"type": "end"})
 
 

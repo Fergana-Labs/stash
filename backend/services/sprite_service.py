@@ -182,8 +182,12 @@ async def _wait_until_ready(user_id: UUID) -> Sprite:
 
 
 def _seed_script(stash_key: str) -> str:
-    """Idempotent first-boot setup: stash CLI, headless auth, the Claude Code
-    plugin (session upload), skills, and the workspace.
+    """Idempotent first-boot setup: stash CLI, the opencode harness, headless
+    auth, the Claude Code plugin (session upload), skills, and the workspace.
+
+    The base image ships claude and codex but not opencode, which the managed
+    agent and BYO-OpenRouter users run — so the seed installs it into
+    ~/.local/bin (on the harness PATH alongside claude/codex).
 
     Skills are synced here (not via a polling service) on purpose: a periodic
     daemon would count as activity and keep the box awake 24/7, defeating the
@@ -197,6 +201,8 @@ def _seed_script(stash_key: str) -> str:
 set -euo pipefail
 export PATH="{SPRITE_PATH}"
 command -v stash > /dev/null || python3 -m pip install --user --break-system-packages stashai
+mkdir -p ~/.local/bin
+command -v opencode > /dev/null || {{ curl -fsSL https://opencode.ai/install | bash; ln -sf ~/.opencode/bin/opencode ~/.local/bin/opencode; }}
 mkdir -p ~/.stash
 cat > ~/.stash/config.json << 'STASH_CONFIG'
 {config}
