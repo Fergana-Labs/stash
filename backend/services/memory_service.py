@@ -270,7 +270,9 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """
 
 
-async def can_read_session(owner_user_id: UUID, session_id: str, user_id: UUID) -> bool:
+async def can_read_session(owner_user_id: UUID, session_id: str, user_id: UUID | None) -> bool:
+    """user_id None is an anonymous viewer: check_access only grants read
+    when a public share covers the session."""
     session = await session_service.get_session(owner_user_id, session_id)
     if not session:
         return False

@@ -123,18 +123,20 @@ class StashClient:
             params["q"] = query
         return self._get("/api/v1/discover/skills", **params)
 
-    # --- Skills (publishable subsets) ---
+    # --- Skills (folders classified by a skills record) ---
 
     def list_skills(self) -> list:
         return self._list("/api/v1/me/skills", "skills")
 
-    def publish_skill_folder(
+    def create_skill_record(
         self,
         folder_id: str,
         title: str | None = None,
         description: str = "",
         discoverable: bool = False,
     ) -> dict:
+        """Classify a folder as a skill (mints slug/title). Grants no access —
+        make it public with set_general_access('folder', folder_id, 'public')."""
         body = {
             "folder_id": folder_id,
             "description": description,
@@ -147,8 +149,14 @@ class StashClient:
     def update_skill(self, skill_id: str, **fields) -> dict:
         return self._patch(f"/api/v1/skills/{skill_id}", json=fields)
 
-    def unpublish_skill(self, skill_id: str) -> None:
+    def delete_skill_record(self, skill_id: str) -> None:
+        """Declassify a skill: delete its record; the folder returns to Files."""
         self._delete(f"/api/v1/skills/{skill_id}")
+
+    def read_skill(self, name: str) -> dict:
+        """Read one of your skills by name: SKILL.md + sibling pages, with a
+        'combined' plain-text rendering."""
+        return self._get(f"/api/v1/me/skills/{name}")
 
     def fork_skill(self, slug: str) -> dict:
         return self._post(f"/api/v1/skills/{slug}/add-to-stash")
@@ -184,7 +192,15 @@ class StashClient:
             json={"source_id": source_id, "path": path},
         )
 
-    # --- Object sharing (grant a person access to a folder/file/session by email) ---
+    # --- Object sharing (person shares by email + link-level general access) ---
+
+    def set_general_access(self, object_type: str, object_id: str, access: str) -> dict:
+        """Set link-level access on any resource: 'public' (anyone with the
+        link can read) or 'restricted'."""
+        return self._put(
+            "/api/v1/share/general-access",
+            json={"object_type": object_type, "object_id": object_id, "access": access},
+        )
 
     def share_object(
         self,
@@ -639,6 +655,15 @@ class StashClient:
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
     # --- Sessions ---
+
+    def materialize_session(self, session_id: str, folder_id: str) -> dict:
+        """Freeze a session transcript into a page inside a folder. session_id
+        is the session's string id, not the row uuid. Re-running replaces the
+        snapshot page in place."""
+        return self._post(
+            f"/api/v1/me/sessions/{session_id}/materialize",
+            json={"folder_id": folder_id},
+        )
 
     def delete_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}")

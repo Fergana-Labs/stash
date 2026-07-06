@@ -11,8 +11,10 @@ import {
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   listObjectShares,
+  setGeneralAccess,
   shareObjectByEmail,
   unshareObject,
+  type GeneralAccess,
   type GeneralPermission,
   type ObjectShare,
   type SharedObjectType,
@@ -42,6 +44,7 @@ export default function ResourceShareButton({
 }) {
   const [open, setOpen] = useState(false);
   const [shares, setShares] = useState<ObjectShare[]>([]);
+  const [access, setAccess] = useState<GeneralAccess | null>(null);
   const [email, setEmail] = useState("");
   const [permission, setPermission] = useState<SharePermission>("read");
   const [busy, setBusy] = useState(false);
@@ -61,7 +64,9 @@ export default function ResourceShareButton({
     setLoadingShares(true);
     setMessage("");
     try {
-      setShares(await listObjectShares(objectType, objectId));
+      const res = await listObjectShares(objectType, objectId);
+      setShares(res.shares);
+      setAccess(res.general_access);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not load access.");
     } finally {
@@ -135,6 +140,20 @@ export default function ResourceShareButton({
       // with a new permission updates the existing share or pending invite.
       await shareObjectByEmail(objectType, objectId, share.email, next);
       await loadShares();
+      setMessage("Access updated.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Could not update access.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeAccess(next: GeneralAccess) {
+    setBusy(true);
+    setMessage("");
+    try {
+      await setGeneralAccess(objectType, objectId, next);
+      setAccess(next);
       setMessage("Access updated.");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not update access.");
@@ -285,24 +304,25 @@ export default function ResourceShareButton({
             </h3>
             <div className="mt-2 flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base text-muted ring-1 ring-border">
-                <svg
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="5" y="11" width="14" height="10" rx="2" />
-                  <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                </svg>
+                {access === "public" ? <GlobeGlyph /> : <LockGlyph />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium text-foreground">
-                  Restricted
-                </span>
-                <span className="block truncate text-[12px] text-muted">
-                  Only people with access can open this link
+                <select
+                  value={access ?? "restricted"}
+                  disabled={busy || access === null}
+                  onChange={(event) =>
+                    void changeAccess(event.target.value as GeneralAccess)
+                  }
+                  aria-label="General access"
+                  className="rounded-md border border-border bg-base px-1.5 py-1 text-[13px] font-medium text-foreground disabled:opacity-45"
+                >
+                  <option value="restricted">Restricted</option>
+                  <option value="public">Anyone with the link</option>
+                </select>
+                <span className="mt-1 block truncate text-[12px] text-muted">
+                  {access === "public"
+                    ? "Anyone on the internet with the link can view"
+                    : "Only people with access can open this link"}
                 </span>
               </span>
             </div>
@@ -392,6 +412,39 @@ function AccessRow({
         </button>
       )}
     </div>
+  );
+}
+
+function LockGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+function GlobeGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a13.5 13.5 0 0 1 0 18a13.5 13.5 0 0 1 0-18" />
+    </svg>
   );
 }
 

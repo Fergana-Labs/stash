@@ -1,23 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
-import { useConfirm } from "../ConfirmDialog";
 import {
-  publishSkillFolder,
-  unpublishSkill,
+  listObjectShares,
+  setGeneralAccess,
   updateSkill,
-  type PublishedSkill,
-  type SkillPublishInfo,
+  type GeneralAccess,
+  type SkillRecord,
+  type SkillRecordInfo,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
+import { ACCESS_COLOR } from "./SkillCard";
 
 type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
-function publishInfoFromRecord(record: PublishedSkill): SkillPublishInfo {
+function recordInfo(record: SkillRecord): SkillRecordInfo {
   return {
     id: record.id,
     slug: record.slug,
+    title: record.title,
     discoverable: record.discoverable,
     cover_image_url: record.cover_image_url,
     icon_url: record.icon_url,
@@ -25,21 +27,22 @@ function publishInfoFromRecord(record: PublishedSkill): SkillPublishInfo {
   };
 }
 
-// Publish button for a skill folder. Published = publicly readable: the
-// popover mints the publish record, then manages the public URL, the
-// Discover listing, and unpublishing. Person-to-person sharing is the
-// folder's generic ResourceShareButton, rendered next to this one.
+// Public-link controls for a skill folder. The skill record (slug) always
+// exists; publicity is a general-access share on the folder. The popover
+// toggles Restricted / Anyone with the link, exposes the public URL, and
+// manages the Discover listing. Person-to-person sharing is the folder's
+// generic ResourceShareButton, rendered next to this one.
 export default function SkillShareButton({
   folderId,
-  publish: publishProp,
-  onPublishChange,
+  skill: skillProp,
+  onSkillChange,
 }: {
   folderId: string;
-  publish: SkillPublishInfo | null;
-  onPublishChange?: (publish: SkillPublishInfo | null) => void;
+  skill: SkillRecordInfo;
+  onSkillChange?: (skill: SkillRecordInfo) => void;
 }) {
-  const confirm = useConfirm();
-  const [publish, setPublish] = useState<SkillPublishInfo | null>(publishProp);
+  const [skill, setSkill] = useState<SkillRecordInfo>(skillProp);
+  const [access, setAccess] = useState<GeneralAccess | null>(null);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,24 +54,32 @@ export default function SkillShareButton({
   useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
-    setPublish(publishProp);
-  }, [publishProp]);
+    setSkill(skillProp);
+  }, [skillProp]);
 
-  function applyPublish(next: SkillPublishInfo | null) {
-    setPublish(next);
-    onPublishChange?.(next);
+  useEffect(() => {
+    let cancelled = false;
+    listObjectShares("folder", folderId)
+      .then((res) => {
+        if (!cancelled) setAccess(res.general_access);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setMessage(e instanceof Error ? e.message : "Could not load access.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderId]);
+
+  const isPublic = access === "public";
+
+  function applySkill(next: SkillRecordInfo) {
+    setSkill(next);
+    onSkillChange?.(next);
     resetSkillNavigationCache();
   }
-
-  const ensurePublished = useCallback(async (): Promise<SkillPublishInfo> => {
-    if (publish) return publish;
-    const record = await publishSkillFolder(folderId);
-    const info = publishInfoFromRecord(record);
-    setPublish(info);
-    onPublishChange?.(info);
-    resetSkillNavigationCache();
-    return info;
-  }, [publish, folderId, onPublishChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,22 +99,23 @@ export default function SkillShareButton({
     setCopied(false);
   }, [open]);
 
-  async function publishNow() {
+  async function changeAccess(next: GeneralAccess) {
     setBusy(true);
     setMessage("");
     try {
-      await ensurePublished();
+      await setGeneralAccess("folder", folderId, next);
+      setAccess(next);
+      resetSkillNavigationCache();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not publish skill.");
+      setMessage(e instanceof Error ? e.message : "Could not update access.");
     } finally {
       setBusy(false);
     }
   }
 
   async function copyLink() {
-    if (!publish) return;
     try {
-      await navigator.clipboard.writeText(absoluteUrl(`/skills/${publish.slug}`));
+      await navigator.clipboard.writeText(absoluteUrl(`/skills/${skill.slug}`));
       setCopied(true);
       setMessage("Link copied.");
       window.setTimeout(() => setCopied(false), 1600);
@@ -117,8 +129,7 @@ export default function SkillShareButton({
     setHandoffStatus("copying");
     setHandoffMessage("");
     try {
-      const current = await ensurePublished();
-      await navigator.clipboard.writeText(agentHandoffUrl(current.slug));
+      await navigator.clipboard.writeText(agentHandoffUrl(skill.slug));
       setHandoffStatus("copied");
       window.setTimeout(() => setHandoffStatus("idle"), 1600);
     } catch (e) {
@@ -132,36 +143,13 @@ export default function SkillShareButton({
   }
 
   async function toggleDiscoverable(nextDiscoverable: boolean) {
-    if (!publish) return;
     setBusy(true);
     setMessage("");
     try {
-      const updated = await updateSkill(publish.id, { discoverable: nextDiscoverable });
-      applyPublish(publishInfoFromRecord(updated));
+      const updated = await updateSkill(skill.id, { discoverable: nextDiscoverable });
+      applySkill(recordInfo(updated));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not update Discover.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unpublish() {
-    if (!publish) return;
-    const ok = await confirm({
-      title: "Unpublish this skill?",
-      body: "Its public link will stop working.",
-      confirmLabel: "Unpublish",
-    });
-    if (!ok) return;
-
-    setBusy(true);
-    setMessage("");
-    try {
-      await unpublishSkill(publish.id);
-      applyPublish(null);
-      setOpen(false);
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not unpublish skill.");
     } finally {
       setBusy(false);
     }
@@ -172,10 +160,14 @@ export default function SkillShareButton({
       <button
         type="button"
         onClick={() => void copyAgentHandoffLink()}
-        disabled={handoffStatus === "copying"}
+        disabled={!isPublic || handoffStatus === "copying"}
         aria-label="Copy agent handoff link"
-        title="Copy an agent-readable public link"
-        className="inline-flex min-w-[72px] cursor-pointer items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
+        title={
+          isPublic
+            ? "Copy an agent-readable public link"
+            : "Make the skill public to copy an agent link"
+        }
+        className="inline-flex min-w-[72px] cursor-pointer items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:cursor-default disabled:opacity-50"
       >
         {handoffStatus === "copying"
           ? "Copying"
@@ -188,9 +180,13 @@ export default function SkillShareButton({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
-        {publish ? "Published" : "Publish"}
+        <span
+          className="inline-block h-[7px] w-[7px] rounded-full"
+          style={{ background: isPublic ? ACCESS_COLOR.public : ACCESS_COLOR.private }}
+        />
+        Public link
       </button>
       {(handoffMessage || (message && !open)) && (
         <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
@@ -200,31 +196,28 @@ export default function SkillShareButton({
       {open && (
         <div
           role="dialog"
-          aria-label="Publish skill"
+          aria-label="Share skill"
           className="absolute right-0 top-full z-40 mt-1.5 w-[360px] rounded-lg border border-border bg-base p-3 shadow-lg"
         >
-          {!publish ? (
+          <div className="sys-label mb-1">General access</div>
+          <select
+            value={access ?? "restricted"}
+            disabled={busy || access === null}
+            onChange={(e) => void changeAccess(e.target.value as GeneralAccess)}
+            aria-label="General access"
+            className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px] text-foreground disabled:opacity-45"
+          >
+            <option value="restricted">Restricted</option>
+            <option value="public">Anyone with the link can view</option>
+          </select>
+
+          {isPublic && (
             <>
-              <p className="m-0 text-[12.5px] leading-relaxed text-muted">
-                Publishing creates a public, read-only page for this skill.
-                Anyone with the link can view it.
-              </p>
-              <button
-                type="button"
-                onClick={() => void publishNow()}
-                disabled={busy}
-                className="mt-3 w-full cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-              >
-                {busy ? "Publishing..." : "Publish"}
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="sys-label mb-1">Public URL</div>
+              <div className="sys-label mb-1 mt-3">Public URL</div>
               <div className="flex gap-1.5">
                 <input
                   readOnly
-                  value={absoluteUrl(`/skills/${publish.slug}`)}
+                  value={absoluteUrl(`/skills/${skill.slug}`)}
                   className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-mono text-foreground"
                 />
                 <button
@@ -235,32 +228,27 @@ export default function SkillShareButton({
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                <input
-                  type="checkbox"
-                  checked={publish.discoverable}
-                  disabled={busy}
-                  onChange={(e) => void toggleDiscoverable(e.target.checked)}
-                />
-                <span className="text-[12px] text-foreground">List on Discover</span>
-              </label>
-
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <span className="text-[11.5px] text-muted">
-                  {publish.view_count} view{publish.view_count === 1 ? "" : "s"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void unpublish()}
-                  disabled={busy}
-                  className="cursor-pointer text-[11.5px] font-medium text-red-500 hover:underline disabled:opacity-40"
-                >
-                  Unpublish
-                </button>
-              </div>
             </>
           )}
+
+          <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
+            <input
+              type="checkbox"
+              checked={skill.discoverable}
+              disabled={busy || !isPublic}
+              onChange={(e) => void toggleDiscoverable(e.target.checked)}
+            />
+            <span className="text-[12px] text-foreground">List on Discover</span>
+          </label>
+          {!isPublic && (
+            <p className="mt-1.5 text-[11.5px] text-muted">
+              Make the skill public to list it on Discover.
+            </p>
+          )}
+
+          <div className="mt-3 text-[11.5px] text-muted">
+            {skill.view_count} view{skill.view_count === 1 ? "" : "s"}
+          </div>
 
           {message && <div className="mt-2 text-[12px] text-muted">{message}</div>}
         </div>

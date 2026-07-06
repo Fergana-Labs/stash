@@ -15,16 +15,16 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getPublicSkill,
-  unpublishSkill,
+  setGeneralAccess,
   updateSkill,
   uploadFile,
   type PublicSkillDetail,
 } from "@/lib/api";
 import { resetSkillNavigationCache } from "@/lib/skillNavigationCache";
 
-// Settings for the publish record of a skill. The skill's contents live in
-// its folder (edited from your own files); this page only manages how the
-// published version presents and whether it stays shared.
+// Settings for the skill record of a skill folder. The skill's contents live
+// in its folder (edited from your own files); this page only manages how the
+// skill presents and whether it stays publicly shared.
 export default function SkillSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -210,19 +210,20 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     }
   }
 
+  // Stops public sharing only — the folder stays a skill.
   async function handleStopSharing() {
     if (!skill) return;
     const ok = await confirm({
       title: `Stop sharing "${skill.title}"?`,
-      body: "The share link stops working; the skill folder and its files stay in your Stash.",
+      body: "The public link stops working; the skill folder and its files stay in your Stash.",
       confirmLabel: "Stop sharing",
     });
     if (!ok) return;
 
-    setSaving("unpublish");
+    setSaving("stop-sharing");
     setError("");
     try {
-      await unpublishSkill(skill.id);
+      await setGeneralAccess("folder", skill.folder_id, "restricted");
       resetSkillNavigationCache();
       router.push(`/skills`);
     } catch (e) {
@@ -332,10 +333,10 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
             <button
               type="button"
               onClick={handleStopSharing}
-              disabled={saving === "unpublish"}
+              disabled={saving === "stop-sharing"}
               className="cursor-pointer rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
             >
-              {saving === "unpublish" ? "Stopping..." : "Stop sharing"}
+              {saving === "stop-sharing" ? "Stopping..." : "Stop sharing"}
             </button>
           </Section>
         </div>

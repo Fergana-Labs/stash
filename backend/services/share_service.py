@@ -1,8 +1,11 @@
-"""Sharing: grant a principal (user or skill) access to an object.
+"""Sharing: grant a principal (a user, or the public) access to an object.
 
-Primary path is sharing a folder/file/session with a person by email. Only the
-object's owner may share it. Folder/session-folder shares
-cascade to contents — that's handled at read time by permission_service, not here.
+Primary path is sharing a folder/file/session with a person by email. The
+other path is general access: a single public, read-only share row
+(principal_type='public') that makes the object readable by anyone — the same
+mechanism for every resource type. Only the object's owner may share it.
+Folder/session-folder shares cascade to contents — that's handled at read time
+by permission_service, not here.
 
 Sharing with an email that isn't a Stash user yet records a pending invite
 (`share_invites`); it converts to a real share when a user with that email signs
@@ -144,6 +147,59 @@ async def share_with_user_by_email(
     return {"ok": True, "email": normalized_email}
 
 
+async def set_general_access(
+    *, object_type: str, object_id: UUID, access: str, owner_id: UUID
+) -> dict:
+    """Set the object's general access: 'public' (anyone can read) or
+    'restricted' (only the owner and explicit shares). Owner-only."""
+    if object_type not in _SHAREABLE:
+        raise HTTPException(status_code=400, detail=f"can't share a {object_type}")
+    if access not in ("public", "restricted"):
+        raise HTTPException(status_code=400, detail="access must be public or restricted")
+    owner_user_id = await _require_owner(object_type, object_id, owner_id)
+    pool = get_pool()
+    if access == "public":
+        await pool.execute(
+            """
+            INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
+                                principal_id, permission, created_by)
+            VALUES ($1, $2, $3, 'public', NULL, 'read', $4)
+            ON CONFLICT (object_type, object_id) WHERE principal_type = 'public'
+            DO NOTHING
+            """,
+            owner_user_id,
+            object_type,
+            object_id,
+            owner_id,
+        )
+    else:
+        await pool.execute(
+            "DELETE FROM shares WHERE object_type = $1 AND object_id = $2 "
+            "AND principal_type = 'public'",
+            object_type,
+            object_id,
+        )
+    await _record_share_event(
+        action="share.general_access_set",
+        actor_user_id=owner_id,
+        owner_user_id=owner_user_id,
+        object_type=object_type,
+        object_id=object_id,
+        metadata={"access": access},
+    )
+    return {"ok": True, "access": access}
+
+
+async def get_general_access(object_type: str, object_id: UUID) -> str:
+    row = await get_pool().fetchrow(
+        "SELECT 1 FROM shares WHERE object_type = $1 AND object_id = $2 "
+        "AND principal_type = 'public'",
+        object_type,
+        object_id,
+    )
+    return "public" if row else "restricted"
+
+
 async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
     """Turn this user's pending share_invites (matched by email) into real
     shares. Idempotent — safe to call on every signup/login. Returns the count
@@ -274,7 +330,7 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         FROM shares s
         LEFT JOIN users u ON s.principal_type = 'user' AND u.id = s.principal_id
         LEFT JOIN skills c ON s.principal_type = 'skill' AND c.id = s.principal_id
-        WHERE s.object_type = $1 AND s.object_id = $2
+        WHERE s.object_type = $1 AND s.object_id = $2 AND s.principal_type <> 'public'
         ORDER BY s.created_at
         """,
         object_type,

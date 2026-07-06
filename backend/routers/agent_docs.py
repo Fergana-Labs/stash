@@ -24,7 +24,7 @@ Use these forms:
 
 - Markdown homepage: https://app.joinstash.ai/skills/example.md
 - Structured JSON: https://app.joinstash.ai/skills/example.json
-- CLI, if installed: stash read https://app.joinstash.ai/skills/example
+- CLI, if installed: curl -sL https://app.joinstash.ai/skills/example.md
 
 The markdown homepage lists the Stash contents and links to item-level markdown
 and JSON views for progressive disclosure.

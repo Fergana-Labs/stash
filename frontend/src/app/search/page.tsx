@@ -119,21 +119,16 @@ function SearchPageInner() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  // Skill-scoped item search reads through the public-skill payload, so the
-  // picker only offers published skills (the ones with a slug).
-  const publishedSkills = useMemo(
-    () => skills.filter((skill) => skill.published !== null),
-    [skills]
-  );
-
+  // Skill-scoped item search reads through the skill payload by slug; every
+  // skill has a record, so any skill can be the scope.
   const selectedProductSkill = useMemo(
     () =>
-      publishedSkills.find(
+      skills.find(
         (skill) =>
-          skill.published!.id === selectedProductSkillId ||
-          (selectedProductSkillSlug && skill.published!.slug === selectedProductSkillSlug)
+          skill.skill.id === selectedProductSkillId ||
+          (selectedProductSkillSlug && skill.skill.slug === selectedProductSkillSlug)
       ) ?? null,
-    [publishedSkills, selectedProductSkillId, selectedProductSkillSlug]
+    [skills, selectedProductSkillId, selectedProductSkillSlug]
   );
 
   useEffect(() => {
@@ -144,7 +139,7 @@ function SearchPageInner() {
 
   useEffect(() => {
     if (!selectedProductSkillSlug || !selectedProductSkill || selectedProductSkillId) return;
-    setSelectedProductSkillId(selectedProductSkill.published!.id);
+    setSelectedProductSkillId(selectedProductSkill.skill.id);
   }, [selectedProductSkill, selectedProductSkillId, selectedProductSkillSlug]);
 
   useEffect(() => {
@@ -185,7 +180,7 @@ function SearchPageInner() {
       }
 
       const selectedSkillSlug =
-        selectedProductSkill?.published?.slug ?? selectedProductSkillSlug;
+        selectedProductSkill?.skill.slug ?? selectedProductSkillSlug;
       if (selectedSkillSlug) {
         const detail = await getPublicSkill(selectedSkillSlug);
         if (includeSkills) {

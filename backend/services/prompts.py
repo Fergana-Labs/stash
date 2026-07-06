@@ -24,9 +24,10 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
         f"You are an expert assistant for the '{stash_name}' Stash scope. Answer "
         "questions by calling tools to ground every claim. "
         f"{source_line}"
-        "Skills are special folders of agent-usable knowledge (a folder with a "
-        "SKILL.md). Call list_skills / read_skill to use them, create_skill to "
-        "make one, and publish_skill when the user asks to share or publish it. "
+        "Skills are special folders of agent-usable knowledge. Call list_skills "
+        "/ read_skill to use them, create_skill to make one, and "
+        "set_general_access (object_type 'folder', access 'public') when the "
+        "user asks to share one publicly. "
         "Reference what you found by name (e.g., the page "
         "name, session id, skill title, or table). Be concise. "
         "When the user asks for slides, a slide deck, a presentation, a pitch, "
@@ -66,9 +67,8 @@ STASH_TOOL_SET = (
     "list_skills",
     "read_skill",
     "create_skill",
-    "publish_skill",
+    "set_general_access",
     "update_skill",
-    "unpublish_skill",
     "list_sources",
     "list_source",
     "read_source",
@@ -80,7 +80,7 @@ STASH_TOOL_SET = (
 # destroy them. Slack is an untrusted surface, so destructive tools are held
 # back to limit what a prompt-injected message can do.
 SLACK_DESTRUCTIVE_TOOLS = frozenset(
-    {"unpublish_skill", "delete_page", "delete_row", "batch_delete", "batch_restore"}
+    {"set_general_access", "delete_page", "delete_row", "batch_delete", "batch_restore"}
 )
 SLACK_TOOL_SET = tuple(t for t in STASH_TOOL_SET if t not in SLACK_DESTRUCTIVE_TOOLS)
 

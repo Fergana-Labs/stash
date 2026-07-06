@@ -11,13 +11,12 @@ import SkillShareButton from "@/components/skill/SkillShareButton";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  deleteSkillRecord,
   getFolderContents,
   listSkills,
-  trashItem,
   type FolderContents,
-  type SkillPublishInfo,
+  type SkillRecordInfo,
 } from "@/lib/api";
-import { SKILL_MD } from "@/lib/localSkill";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 // Browse a skill folder (or a subfolder inside one). Same file browser as
@@ -31,7 +30,7 @@ export default function SkillFolderClient() {
   const confirm = useConfirm();
 
   const [contents, setContents] = useState<FolderContents | null>(null);
-  const [publish, setPublish] = useState<SkillPublishInfo | null>(null);
+  const [skillRecord, setSkillRecord] = useState<SkillRecordInfo | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -60,8 +59,8 @@ export default function SkillFolderClient() {
     };
   }, [user, folderId, router]);
 
-  // The skill root is the first is_skill breadcrumb; the publish record
-  // (when minted) lives on that folder.
+  // The skill root is the first is_skill breadcrumb; the skill record
+  // (always present for a skill folder) lives on that folder.
   const skillRootId = useMemo(
     () => contents?.breadcrumbs.find((b) => b.is_skill)?.id ?? null,
     [contents],
@@ -73,7 +72,7 @@ export default function SkillFolderClient() {
     listSkills()
       .then((skills) => {
         if (cancelled) return;
-        setPublish(skills.find((s) => s.folder_id === skillRootId)?.published ?? null);
+        setSkillRecord(skills.find((s) => s.folder_id === skillRootId)?.skill ?? null);
       })
       .catch(() => {});
     return () => {
@@ -102,30 +101,28 @@ export default function SkillFolderClient() {
     `skills/${folderId}/${crumbs.map((c) => c.label).join("/")}`
   );
 
+  // Declassify: delete the skill record. Files (including SKILL.md) and any
+  // shares on the folder stay untouched.
   const convertToFolder = useCallback(async () => {
     if (!contents || !user) return;
-    const publishedWarning = publish
-      ? " Its share link will stop working."
-      : "";
+    if (!skillRecord) {
+      setError("Skill record not loaded yet.");
+      return;
+    }
     const yes = await confirm({
       title: `Convert "${contents.folder.name}" back to a plain folder?`,
-      body: `This deletes its SKILL.md.${publishedWarning}`,
+      body: "It moves back to your Files. Its files stay untouched.",
       confirmLabel: "Convert",
     });
     if (!yes) return;
-    const skillMd = contents.pages.find((p) => p.name === SKILL_MD);
-    if (!skillMd) {
-      setError("SKILL.md not found in this folder.");
-      return;
-    }
     try {
-      await trashItem("page", skillMd.id);
+      await deleteSkillRecord(skillRecord.id);
       await refreshSidebar().catch(() => {});
       router.push(`/folders/${folderId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Convert failed");
     }
-  }, [contents, publish, user, folderId, router, confirm]);
+  }, [contents, skillRecord, user, folderId, router, confirm]);
 
   // Skill actions live on the skill root; subfolders are plain browsing.
   const isSkillRoot = !!contents?.folder.is_skill;
@@ -149,14 +146,16 @@ export default function SkillFolderClient() {
           resourceUrlPath={`/skills/${folderId}`}
           currentUser={user}
         />
-        <SkillShareButton
-          folderId={folderId}
-          publish={publish}
-          onPublishChange={setPublish}
-        />
+        {skillRecord && (
+          <SkillShareButton
+            folderId={folderId}
+            skill={skillRecord}
+            onSkillChange={setSkillRecord}
+          />
+        )}
       </div>
     );
-  }, [user, isSkillRoot, folderId, folderName, publish, convertToFolder]);
+  }, [user, isSkillRoot, folderId, folderName, skillRecord, convertToFolder]);
   useShareAction(shareAction);
 
   if (loading) return <FileBrowserSkeleton />;

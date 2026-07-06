@@ -87,12 +87,10 @@ class ApiKeyCreateResponse(BaseModel):
     created_at: datetime
 
 
-# --- Skills (special folders + their publish records) ---
-
-SkillGeneralPermission = str  # 'none' | 'read' | 'write'
+# --- Skills (folders classified by a skill record) ---
 
 
-class SkillPublishRequest(BaseModel):
+class SkillCreateRequest(BaseModel):
     folder_id: UUID
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str = Field("", max_length=2000)

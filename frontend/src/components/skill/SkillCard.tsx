@@ -12,8 +12,8 @@ export interface SkillCardData {
   icon_url?: string | null;
   owner_name?: string;
   owner_display_name?: string | null;
-  /** Publish state badge: pass null for Private, undefined to hide the badge. */
-  published?: { discoverable: boolean } | null;
+  /** Access badge: pass null for Private, undefined to hide the badge. */
+  access?: { discoverable: boolean } | null;
   updated_at?: string;
   file_count?: number;
 }
@@ -33,34 +33,34 @@ interface SkillCardProps {
   selected?: boolean;
 }
 
-export const PUBLISH_COLOR = {
-  published: "#22C55E",
+export const ACCESS_COLOR = {
+  public: "#22C55E",
   discover: "var(--color-brand-500)",
   private: "#9CA3AF",
 } as const;
 
-// The one way publish state is shown on a Skill: a dot + label pill. Used on
-// card covers and list rows — every row says Published / Private itself, with
+// The one way access state is shown on a Skill: a dot + label pill. Used on
+// card covers and list rows — every row says Public / Private itself, with
 // a second dot when the skill is also listed on Discover.
-export function PublishBadge({
-  published,
+export function AccessBadge({
+  access,
 }: {
-  published: { discoverable: boolean } | null;
+  access: { discoverable: boolean } | null;
 }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-base px-1.5 py-0.5 text-[10.5px] text-muted">
       <span
         className="inline-block h-[7px] w-[7px] rounded-full"
         style={{
-          background: published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private,
+          background: access ? ACCESS_COLOR.public : ACCESS_COLOR.private,
         }}
       />
-      {published ? "Published" : "Private"}
-      {published?.discoverable && (
+      {access ? "Public" : "Private"}
+      {access?.discoverable && (
         <span
           title="Listed on Discover"
           className="inline-block h-[7px] w-[7px] rounded-full"
-          style={{ background: PUBLISH_COLOR.discover }}
+          style={{ background: ACCESS_COLOR.discover }}
         />
       )}
     </span>
@@ -110,9 +110,9 @@ export default function SkillCard({
         {cornerAction && (
           <div className="absolute right-2.5 top-2 z-10">{cornerAction}</div>
         )}
-        {skill.published !== undefined && (
+        {skill.access !== undefined && (
           <span className="absolute bottom-2 left-2.5">
-            <PublishBadge published={skill.published} />
+            <AccessBadge access={skill.access} />
           </span>
         )}
       </div>

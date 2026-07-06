@@ -2,8 +2,8 @@
 
 A folder groups related sessions (one per project/repo, plus a per-scope
 Default that catches chat-UI and un-targeted CLI sessions). Folders share the
-same access model as skills — owner + shares + a public_permission computed
-into private/public — and access cascades to the sessions inside (see
+same access model as every other resource — owner + user shares + an optional
+public share — and access cascades to the sessions inside (see
 permission_service). Public folders are reachable by slug without login,
 rendered by the same session viewer.
 """
@@ -18,16 +18,16 @@ from ..database import get_pool
 from . import permission_service, user_scope_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
-_GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
 
 DEFAULT_FOLDER_NAME = "Default"
 
 _FOLDER_COLS = (
     "sf.id, sf.owner_user_id, sf.slug, sf.name, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "CASE WHEN sf.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
-    "sf.public_permission, "
-    "sf.discoverable, sf.cover_image_url, sf.view_count, sf.is_default, "
+    "CASE WHEN EXISTS (SELECT 1 FROM shares pub WHERE pub.object_type = 'session_folder' "
+    "  AND pub.object_id = sf.id AND pub.principal_type = 'public') "
+    "  THEN 'public' ELSE 'private' END AS access, "
+    "sf.cover_image_url, sf.view_count, sf.is_default, "
     "sf.created_at, sf.updated_at, "
     "(SELECT COUNT(*) FROM sessions s "
     " WHERE s.session_folder_id = sf.id AND s.deleted_at IS NULL) AS session_count, "
@@ -43,19 +43,6 @@ def _slugify(name: str) -> str:
     return f"{base}-{secrets.token_urlsafe(4)[:6].lower()}"
 
 
-def _is_public(public_permission: str, discoverable: bool) -> bool:
-    return public_permission != "none" or discoverable
-
-
-def _validate_permissions(public_permission: str, discoverable: bool) -> None:
-    if public_permission not in _GENERAL_PERMISSION_VALUES:
-        raise ValueError("Unsupported public folder permission")
-    if public_permission == "write":
-        raise ValueError("Public write folder links are not supported")
-    if discoverable and public_permission == "none":
-        raise ValueError("Discoverable folders must be public")
-
-
 def _row(r) -> dict:
     return {
         "id": str(r["id"]),
@@ -65,8 +52,6 @@ def _row(r) -> dict:
         "owner_name": r["owner_name"],
         "owner_display_name": r["owner_display_name"],
         "access": r["access"],
-        "public_permission": r["public_permission"],
-        "discoverable": r["discoverable"],
         "cover_image_url": r["cover_image_url"],
         "view_count": int(r["view_count"]),
         "is_default": r["is_default"],
@@ -81,24 +66,17 @@ async def create_folder(
     owner_user_id: UUID,
     name: str,
     *,
-    public_permission: str = "none",
-    discoverable: bool = False,
     is_default: bool = False,
 ) -> dict:
-    _validate_permissions(public_permission, discoverable)
     r = await get_pool().fetchrow(
         f"WITH inserted AS ("
-        "  INSERT INTO session_folders "
-        "    (owner_user_id, name, slug, "
-        "     public_permission, discoverable, is_default) "
-        "  VALUES ($1, $2, $3, $4, $5, $6) "
+        "  INSERT INTO session_folders (owner_user_id, name, slug, is_default) "
+        "  VALUES ($1, $2, $3, $4) "
         "  RETURNING *"
         f") {_FOLDER_SELECT.replace('session_folders sf', 'inserted sf')}",
         owner_user_id,
         name,
         _slugify(name),
-        public_permission,
-        discoverable,
         is_default,
     )
     return _row(r)
@@ -130,11 +108,11 @@ async def list_folders(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         f"{_FOLDER_SELECT} "
         "WHERE sf.owner_user_id = $1 "
         "AND (sf.owner_user_id = $2 "
-        "  OR sf.public_permission != 'none' "
         "  OR EXISTS ("
         "    SELECT 1 FROM shares sh "
         "    WHERE sh.object_type = 'session_folder' AND sh.object_id = sf.id "
-        "      AND sh.principal_type = 'user' AND sh.principal_id = $2"
+        "      AND (sh.principal_type = 'public' "
+        "           OR (sh.principal_type = 'user' AND sh.principal_id = $2))"
         "  )) "
         "ORDER BY sf.is_default DESC, sf.name",
         owner_user_id,
@@ -165,44 +143,20 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
 
 
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
+    """Rename / cover art only. Publicity is set through the generic
+    general-access share endpoint, like every other resource."""
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT owner_user_id, public_permission, discoverable FROM session_folders WHERE id = $1",
+        "SELECT owner_user_id FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or not await user_can_manage(folder_id, user_id):
         return None
 
-    next_public_permission = updates.get("public_permission") or folder["public_permission"]
-    next_discoverable = (
-        updates["discoverable"] if "discoverable" in updates else folder["discoverable"]
-    )
-    _validate_permissions(
-        next_public_permission,
-        bool(next_discoverable),
-    )
-    # Owner gate fires only when a folder is being made (or kept) publicly
-    # visible by an edit to its publicity; non-public folders stay manageable
-    # by editors.
-    publicity_changed = (
-        next_public_permission != folder["public_permission"]
-        or bool(next_discoverable) != folder["discoverable"]
-    )
-    if (
-        publicity_changed
-        and _is_public(next_public_permission, bool(next_discoverable))
-        and not await user_scope_service.is_owner(folder["owner_user_id"], user_id)
-    ):
-        raise PermissionError("Only scope owners can make a session folder public")
-    if updates.get("public_permission") == "none" and updates.get("discoverable") is None:
-        updates["discoverable"] = False
-
     sets, args, idx = [], [], 1
     clearable = {"cover_image_url"}
     for col in (
         "name",
-        "public_permission",
-        "discoverable",
         "cover_image_url",
     ):
         if col not in updates:
@@ -243,13 +197,12 @@ async def can_add_session_to_folder(
     """Owner-only for public folders (adding a session there publishes it);
     non-public folders accept sessions from any scope writer."""
     folder = await get_pool().fetchrow(
-        "SELECT id, owner_user_id, public_permission, discoverable, is_default "
-        "FROM session_folders WHERE id = $1",
+        "SELECT id, owner_user_id, is_default FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or folder["owner_user_id"] != owner_user_id:
         return False
-    is_public = _is_public(folder["public_permission"], bool(folder["discoverable"]))
+    is_public = await permission_service.public_share_grants("session_folder", folder_id)
     if is_public and not folder["is_default"]:
         return await user_scope_service.is_owner(owner_user_id, user_id)
     return await user_can_manage(folder_id, user_id)

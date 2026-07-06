@@ -202,15 +202,15 @@ export default function AppSidebar({ user }: AppSidebarProps) {
 
   const activeSkillSlug = pathname.match(/^\/skills\/([^/?#]+)/)?.[1] ?? null;
   const activeSkill = activeSkillSlug
-    ? sidebar?.skills?.find((skill) => skill.published?.slug === activeSkillSlug)
+    ? sidebar?.skills?.find((skill) => skill.skill.slug === activeSkillSlug)
     : null;
-  // User settings live on the unified /settings page; only published Skills
-  // keep their own settings route.
-  const settingsHref = activeSkill?.published
-    ? `/skills/${activeSkill.published.slug}/settings`
+  // User settings live on the unified /settings page; Skills keep their own
+  // settings route (the record, hence the slug, always exists).
+  const settingsHref = activeSkill
+    ? `/skills/${activeSkill.skill.slug}/settings`
     : "/settings";
-  const settingsActive = activeSkill?.published
-    ? pathname === `/skills/${activeSkill.published.slug}/settings`
+  const settingsActive = activeSkill
+    ? pathname === `/skills/${activeSkill.skill.slug}/settings`
     : pathname === "/settings";
 
   return (

@@ -16,7 +16,7 @@ function render(ui: ReactNode) {
 }
 import {
   getPublicSkill,
-  unpublishSkill,
+  setGeneralAccess,
   updateSkill,
   type PublicSkillDetail,
 } from "@/lib/api";
@@ -78,7 +78,7 @@ vi.mock("../../../../../lib/skillNavigationCache", () => ({
 
 vi.mock("../../../../../lib/api", () => ({
   getPublicSkill: vi.fn(),
-  unpublishSkill: vi.fn(),
+  setGeneralAccess: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
 }));
@@ -166,8 +166,8 @@ describe("SkillSettingsPageClient", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
-  it("stops sharing via unpublish and returns to the skills page", async () => {
-    vi.mocked(unpublishSkill).mockResolvedValue(undefined);
+  it("stops sharing by restricting the folder's general access", async () => {
+    vi.mocked(setGeneralAccess).mockResolvedValue(undefined);
 
     render(<SkillSettingsPageClient slug="shared-skill" />);
 
@@ -177,7 +177,10 @@ describe("SkillSettingsPageClient", () => {
     });
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "Stop sharing" }));
 
-    await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
+    // The skill stays a skill; only the public share on its folder is removed.
+    await waitFor(() =>
+      expect(setGeneralAccess).toHaveBeenCalledWith("folder", "folder-1", "restricted"),
+    );
     expect(router.push).toHaveBeenCalledWith("/skills");
   });
 });

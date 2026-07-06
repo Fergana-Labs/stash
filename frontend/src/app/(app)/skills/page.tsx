@@ -10,8 +10,8 @@ import {
 } from "@/components/SkeletonStates";
 import { PinIcon, SkillIcon } from "@/components/SkillIcons";
 import SkillCard, {
-  PUBLISH_COLOR,
-  PublishBadge,
+  ACCESS_COLOR,
+  AccessBadge,
 } from "@/components/skill/SkillCard";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
@@ -21,6 +21,7 @@ import {
   API_BASE,
   createFolder,
   createPage,
+  createSkillRecord,
   deleteFolder,
   listSkills,
   listSkillsSharedWithMe,
@@ -47,7 +48,7 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 
 const TAB_COPY: Record<Tab, string> = {
   yours:
-    "Your Skill folders. Share them with people or publish them to the public library.",
+    "Your Skill folders. Share them with people or make them public.",
   shared: "Skill folders other people shared with you, plus adding a skill by link.",
   discover: "Public skills from the community — fork one into your Skills.",
 };
@@ -119,6 +120,9 @@ export default function SkillsPage() {
     try {
       const folder = await createFolder(name.trim());
       await createPage(SKILL_MD, folder.id, skillMdTemplate(name.trim()));
+      // The skill record is what classifies the folder as a skill — without
+      // it the folder stays in Files.
+      await createSkillRecord(folder.id);
       if (user) await refreshSidebar().catch(() => {});
       router.push(`/skills/folder/${folder.id}`);
     } catch (e) {
@@ -599,10 +603,10 @@ function skillHref(skill: Skill): string {
   return `/skills/folder/${skill.folder_id}`;
 }
 
-// Publish badge state: null = Private, otherwise Published (+ Discover dot).
-function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
-  if (!skill.published) return null;
-  return { discoverable: skill.published.discoverable };
+// Access badge state: null = Private, otherwise Public (+ Discover dot).
+function skillAccessBadge(skill: Skill): { discoverable: boolean } | null {
+  if (!skill.public) return null;
+  return { discoverable: skill.skill.discoverable };
 }
 
 function SkillCollection({
@@ -647,9 +651,9 @@ function SkillCollection({
             skill={{
               title: skill.name,
               description: skill.description,
-              cover_image_url: skill.published?.cover_image_url ?? null,
-              icon_url: skill.published?.icon_url ?? null,
-              published: skillPublishBadge(skill),
+              cover_image_url: skill.skill.cover_image_url,
+              icon_url: skill.skill.icon_url,
+              access: skillAccessBadge(skill),
               updated_at: skill.updated_at,
               file_count: skill.file_count,
             }}
@@ -711,7 +715,7 @@ function SkillListRow({
         {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
       </span>
-      <PublishBadge published={skillPublishBadge(skill)} />
+      <AccessBadge access={skillAccessBadge(skill)} />
       <span
         className={
           pinned
@@ -825,7 +829,7 @@ function SkillQuickCard({
   pinned: boolean;
   onTogglePin: (skill: Skill) => void;
 }) {
-  const dotColor = skill.published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private;
+  const dotColor = skill.public ? ACCESS_COLOR.public : ACCESS_COLOR.private;
   return (
     <Link
       href={skillHref(skill)}

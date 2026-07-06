@@ -33,10 +33,11 @@ def test_file_app_url_is_canonical(monkeypatch) -> None:
     assert _file_app_url({"id": file_id}) == f"https://app.example/f/{file_id}"
 
 
-def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> None:
+def test_upload_with_skill_flag_makes_the_folder_public(monkeypatch, tmp_path) -> None:
     uploaded = tmp_path / "shot.png"
     uploaded.write_bytes(b"png")
-    published: dict = {}
+    records: dict = {}
+    access_calls: list[tuple[str, str, str]] = []
     created_pages: list[str] = []
 
     class FakeClient:
@@ -58,25 +59,32 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
             created_pages.append(name)
             return {"id": f"page-{len(created_pages)}"}
 
-        def publish_skill_folder(self, folder_id, **kwargs):
-            published["folder_id"] = folder_id
-            published["kwargs"] = kwargs
+        def create_skill_record(self, folder_id, **kwargs):
+            records["folder_id"] = folder_id
+            records["kwargs"] = kwargs
             return {"id": "skill-1", "slug": "shot", "title": "shot"}
+
+        def set_general_access(self, object_type, object_id, access):
+            access_calls.append((object_type, object_id, access))
+            return {"ok": True, "access": access}
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
     main.upload(str(uploaded), name="", skill="shot", public=True, as_json=False)
 
-    # --skill makes the folder a skill (SKILL.md) and --public publishes it.
+    # --skill classifies the folder (SKILL.md + record) and --public opens
+    # link access on the folder itself.
     assert "SKILL.md" in created_pages
-    assert published["folder_id"] == "folder-1"
+    assert records["folder_id"] == "folder-1"
+    assert access_calls == [("folder", "folder-1", "public")]
 
 
-def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> None:
+def test_upload_with_skill_flag_private_keeps_access_restricted(monkeypatch, tmp_path) -> None:
     uploaded = tmp_path / "notes.md"
     uploaded.write_text("# Notes")
-    published: dict = {}
+    records: dict = {}
+    access_calls: list[tuple[str, str, str]] = []
     created_pages: list[str] = []
 
     class FakeClient:
@@ -95,15 +103,21 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
             assert folder_id == "folder-1"
             return {"id": f"page-{len(created_pages)}"}
 
-        def publish_skill_folder(self, folder_id, **kwargs):
-            published["folder_id"] = folder_id
+        def create_skill_record(self, folder_id, **kwargs):
+            records["folder_id"] = folder_id
             return {"id": "skill-1", "slug": "notes", "title": "notes"}
+
+        def set_general_access(self, object_type, object_id, access):
+            access_calls.append((object_type, object_id, access))
+            return {"ok": True, "access": access}
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
     main.upload(str(uploaded), name="", skill="notes", public=False, as_json=False)
 
-    # Private: the folder becomes a skill (SKILL.md) but nothing is published.
+    # Private: the skill record is still created (every skill has one), but
+    # no public access is granted.
     assert "SKILL.md" in created_pages
-    assert published == {}
+    assert records["folder_id"] == "folder-1"
+    assert access_calls == []

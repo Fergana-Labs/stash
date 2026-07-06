@@ -17,8 +17,8 @@ import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 import {
   getPublicSkill,
   listObjectShares,
+  setGeneralAccess,
   shareObjectByEmail,
-  unpublishSkill,
   updateSkill,
   type PublicSkillDetail,
 } from "@/lib/api";
@@ -62,9 +62,8 @@ vi.mock("../../../../lib/api", () => ({
   githubOwner: (url: string) =>
     url.replace("https://github.com/", "").split("/")[0],
   listObjectShares: vi.fn(),
-  publishSkillFolder: vi.fn(),
+  setGeneralAccess: vi.fn(),
   shareObjectByEmail: vi.fn(),
-  unpublishSkill: vi.fn(),
   unshareObject: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
@@ -155,7 +154,11 @@ describe("SkillPageClient", () => {
       ...skillDetail(),
       can_write: true,
     });
-    vi.mocked(listObjectShares).mockResolvedValue([]);
+    vi.mocked(listObjectShares).mockResolvedValue({
+      shares: [],
+      general_access: "public",
+    });
+    vi.mocked(setGeneralAccess).mockResolvedValue(undefined);
     vi.mocked(updateSkill).mockImplementation(async (_skillId, updates) => ({
       ...skillDetail().skill,
       ...updates,
@@ -166,16 +169,16 @@ describe("SkillPageClient", () => {
     cleanup();
   });
 
-  it("renders the publish popover in the app header with a copy-link affordance", async () => {
+  it("renders the share popover in the app header with a copy-link affordance", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    const publishButton = await screen.findByRole("button", { name: "Published" });
+    const shareButton = await screen.findByRole("button", { name: "Public link" });
     expect(
       screen.getByRole("button", { name: "Copy agent handoff link" }),
     ).toBeInTheDocument();
-    expect(publishButton.closest("header")).not.toBeNull();
+    expect(shareButton.closest("header")).not.toBeNull();
 
-    fireEvent.click(publishButton);
+    fireEvent.click(shareButton);
     // Popover renders a "Copy" button for the public URL; click it.
     fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
@@ -189,12 +192,14 @@ describe("SkillPageClient", () => {
     );
   });
 
-  it("copies an agent-readable handoff link from the app header", async () => {
+  it("copies an agent-readable handoff link from the app header when public", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     const handoffButton = await screen.findByRole("button", {
       name: "Copy agent handoff link",
     });
+    // The button is enabled only once general access resolves to public.
+    await waitFor(() => expect(handoffButton).toBeEnabled());
     fireEvent.click(handoffButton);
 
     await waitFor(() =>
@@ -209,32 +214,38 @@ describe("SkillPageClient", () => {
     );
   });
 
-  it("toggles the Discover listing from the publish popover", async () => {
+  it("toggles the Discover listing from the share popover", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
-    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
-    fireEvent.click(within(dialog).getByLabelText("List on Discover"));
+    fireEvent.click(await screen.findByRole("button", { name: "Public link" }));
+    const dialog = await screen.findByRole("dialog", { name: "Share skill" });
+    const discoverToggle = within(dialog).getByLabelText("List on Discover");
+    // Discover only makes sense for a public skill; enabled once access loads.
+    await waitFor(() => expect(discoverToggle).toBeEnabled());
+    fireEvent.click(discoverToggle);
 
     await waitFor(() =>
       expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
     );
   });
 
-  it("unpublishes from the publish popover", async () => {
-    vi.mocked(unpublishSkill).mockResolvedValue(undefined);
-
+  it("stops public sharing via the general-access select", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
-    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Unpublish" }));
-    const confirmDialog = await screen.findByRole("alertdialog", {
-      name: "Unpublish this skill?",
-    });
-    fireEvent.click(within(confirmDialog).getByRole("button", { name: "Unpublish" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Public link" }));
+    const dialog = await screen.findByRole("dialog", { name: "Share skill" });
+    const select = within(dialog).getByLabelText("General access");
+    await waitFor(() => expect(select).toHaveValue("public"));
 
-    await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
+    fireEvent.change(select, { target: { value: "restricted" } });
+
+    await waitFor(() =>
+      expect(setGeneralAccess).toHaveBeenCalledWith(
+        "folder",
+        "folder-1",
+        "restricted",
+      ),
+    );
   });
 
   it("shares the skill folder person-to-person via the generic share button", async () => {

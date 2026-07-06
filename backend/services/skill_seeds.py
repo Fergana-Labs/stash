@@ -13,7 +13,7 @@ import os
 from uuid import UUID
 
 from ..database import get_pool
-from . import files_tree_service
+from . import files_tree_service, shared_skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +180,9 @@ async def seed_slides_skill(owner_user_id: UUID, creator_id: UUID) -> bool:
         folder_id=folder_id,
         content=SLIDES_SKILL_MARKDOWN,
         content_type="markdown",
+    )
+    await shared_skill_service.create_skill_record(
+        owner_user_id, creator_id, folder_id, title=SLIDES_SKILL_FOLDER
     )
     logger.info("seeded slides skill for scope %s", owner_user_id)
     return True

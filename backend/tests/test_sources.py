@@ -2602,10 +2602,80 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     # The body was copied in (a point-in-time snapshot), not left as a live ref.
     assert "snapshot body for file-abc" in page["content_markdown"]
 
-    # And the snapshot page landed inside the skill's folder.
-    public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
-    page_ids = {p["id"] for p in public.json()["contents"]["pages"]}
+    # And the snapshot page landed inside the skill's folder. The skill isn't
+    # publicly shared, so the owner reads it by slug.
+    detail = await client.get(f"/api/v1/skills/{skill.json()['slug']}", headers=_auth(api_key))
+    page_ids = {p["id"] for p in detail.json()["contents"]["pages"]}
     assert page["id"] in page_ids
+
+
+@pytest.mark.asyncio
+async def test_resnapshot_source_replaces_page_in_place(client: AsyncClient, monkeypatch, pool):
+    """Re-snapshotting the same source document must refresh the existing
+    snapshot page (same id, new content), never accumulate copies."""
+    from backend.integrations.google import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="root",
+        display_name="My Drive",
+    )
+    await source_service.upsert_index_row(
+        table="drive_index",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="Auth",
+        name="Auth",
+        kind="file",
+        external_ref="file-abc",
+    )
+
+    body = "v1 body"
+
+    async def fake_fetch(owner, file_id):
+        return body
+
+    monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
+
+    folder = await client.post(
+        "/api/v1/me/folders", json={"name": "Bundle"}, headers=_auth(api_key)
+    )
+    skill = await client.post(
+        "/api/v1/me/skills",
+        json={"folder_id": folder.json()["id"], "title": "Bundle"},
+        headers=_auth(api_key),
+    )
+    skill_id = skill.json()["id"]
+
+    first = await client.post(
+        f"/api/v1/me/skills/{skill_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "Auth"},
+        headers=_auth(api_key),
+    )
+    assert first.status_code == 201
+    assert "v1 body" in first.json()["content_markdown"]
+
+    body = "v2 body"
+    second = await client.post(
+        f"/api/v1/me/skills/{skill_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "Auth"},
+        headers=_auth(api_key),
+    )
+    assert second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+    assert "v2 body" in second.json()["content_markdown"]
+
+    live_copies = await pool.fetchval(
+        "SELECT COUNT(*) FROM pages WHERE folder_id = $1 AND snapshot_key = $2 "
+        "AND deleted_at IS NULL",
+        UUID(folder.json()["id"]),
+        f"source:{src['id']}:Auth",
+    )
+    assert live_copies == 1
 
 
 @pytest.mark.asyncio

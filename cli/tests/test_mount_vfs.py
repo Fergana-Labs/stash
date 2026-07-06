@@ -34,8 +34,16 @@ class FakeClient:
                     "folder_id": "skillfolder-12345678",
                     "name": "Demo Skill",
                     "file_count": 1,
-                    "published": {"slug": "demo-stash"},
-                }
+                    "public": True,
+                    "skill": {"slug": "demo-stash"},
+                },
+                {
+                    "folder_id": "skillfolder-87654321",
+                    "name": "Private Skill",
+                    "file_count": 1,
+                    "public": False,
+                    "skill": {"slug": "private-skill"},
+                },
             ],
             "sessions": [
                 {
@@ -59,6 +67,10 @@ class FakeClient:
     def get_skill_text(self, slug):
         assert slug == "demo-stash"
         return "# Demo Stash\n"
+
+    def read_skill(self, name):
+        assert name == "Private Skill"
+        return {"combined": "# Private Skill\n"}
 
     def list_sources(self):
         return [
@@ -144,7 +156,10 @@ def test_vfs_exposes_user_sections():
         "tables",
         "sources",
     }
+    # Public skills read via the public slug endpoint, private ones via the
+    # authenticated read-by-name endpoint — both appear in the VFS.
     assert model.read_file("/skills/Demo Skill.md") == b"# Demo Stash\n"
+    assert model.read_file("/skills/Private Skill.md") == b"# Private Skill\n"
     assert b"hello" in model.read_file("/sessions/Fix login/transcript.md")
     assert b'"Name": "Mount"' in model.read_file("/tables/Ideas/rows.json")
 

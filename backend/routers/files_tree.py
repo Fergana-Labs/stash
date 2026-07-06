@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..models import (
     CommentReconcileRequest,
@@ -74,7 +74,7 @@ async def _check_content_access(
     object_type: str,
     object_id: UUID,
     owner_user_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     require: str = "read",
 ) -> None:
@@ -198,25 +198,38 @@ async def create_folder(
 @router.get("/folders/{folder_id}", response_model=FolderResponse)
 async def get_folder(
     folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    owner_user_id = current_user["id"]
-    folder = await _check_scope_owns_folder(owner_user_id, folder_id)
-    await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
+    """The scope comes from the folder row, not the caller: shared and
+    publicly-shared folders are readable by non-owners, including
+    anonymous viewers. check_access is the only gate."""
+    viewer_id = current_user["id"] if current_user else None
+    folder = await files_tree_service.get_folder(folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    await _check_content_access("folder", folder_id, folder["owner_user_id"], viewer_id)
     return FolderResponse(**folder)
 
 
 @router.get("/folders/{folder_id}/contents")
 async def get_folder_contents(
     folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Immediate children of a folder — subfolders, pages, files — plus
     the breadcrumb chain from scope root down to this folder. Powers
-    the unified Files tree (sidebar lazy-expand + folder detail page)."""
-    owner_user_id = current_user["id"]
-    folder = await _check_scope_owns_folder(owner_user_id, folder_id)
-    await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
+    the unified Files tree (sidebar lazy-expand + folder detail page).
+
+    The scope comes from the folder row: shared and publicly-shared
+    folders are readable by non-owners, including anonymous viewers.
+    The per-child readable predicates below then filter to what the
+    viewer may see."""
+    viewer_id = current_user["id"] if current_user else None
+    folder = await files_tree_service.get_folder(folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    owner_user_id = folder["owner_user_id"]
+    await _check_content_access("folder", folder_id, owner_user_id, viewer_id)
     pool = get_pool()
 
     # Breadcrumb ancestry via recursive CTE
@@ -230,8 +243,7 @@ async def get_folder_contents(
           FROM folders f JOIN chain c ON c.parent_folder_id = f.id
         )
         SELECT id, name,
-               EXISTS(SELECT 1 FROM pages skp WHERE skp.folder_id = chain.id
-                      AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL) AS is_skill
+               EXISTS(SELECT 1 FROM skills sk WHERE sk.folder_id = chain.id) AS is_skill
         FROM chain ORDER BY depth DESC
         """,
         folder_id,
@@ -265,7 +277,7 @@ async def get_folder_contents(
         "ORDER BY name",
         folder_id,
         owner_user_id,
-        current_user["id"],
+        viewer_id,
     )
     pages = await pool.fetch(
         "SELECT id, name, content_type, created_at FROM pages p WHERE p.folder_id = $1 "
@@ -275,7 +287,7 @@ async def get_folder_contents(
         "ORDER BY name",
         folder_id,
         owner_user_id,
-        current_user["id"],
+        viewer_id,
     )
     files = await pool.fetch(
         "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
@@ -285,7 +297,7 @@ async def get_folder_contents(
         "ORDER BY created_at DESC",
         folder_id,
         owner_user_id,
-        current_user["id"],
+        viewer_id,
     )
     tables = await pool.fetch(
         "SELECT id, name, created_at, "
@@ -295,7 +307,7 @@ async def get_folder_contents(
         "ORDER BY name",
         folder_id,
         owner_user_id,
-        current_user["id"],
+        viewer_id,
     )
     subfolders = [dict(r) for r in subfolders]
     pages = [dict(r) for r in pages]
@@ -539,11 +551,13 @@ async def search_pages(
 @canonical_router.get("/pages/{page_id}", response_model=PageResponse)
 async def get_page_by_id(
     page_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Any failure is a 404: an unscoped lookup must not confirm that a
-    page the caller can't read exists."""
-    page = await files_tree_service.get_page_by_id(page_id, current_user["id"])
+    page the caller can't read exists. Anonymous viewers (viewer_id None)
+    can only read publicly-shared pages — check_access enforces that."""
+    viewer_id = current_user["id"] if current_user else None
+    page = await files_tree_service.get_page_by_id(page_id, viewer_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)

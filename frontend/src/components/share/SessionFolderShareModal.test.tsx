@@ -4,18 +4,18 @@ import SessionFolderShareModal from "./SessionFolderShareModal";
 import {
   listObjectShares,
   revokePendingShareInvite,
+  setGeneralAccess,
   shareObjectByEmail,
   unshareObject,
-  updateSessionFolder,
 } from "../../lib/api";
 import type { SessionFolder } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   listObjectShares: vi.fn(),
   revokePendingShareInvite: vi.fn(),
+  setGeneralAccess: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unshareObject: vi.fn(),
-  updateSessionFolder: vi.fn(),
 }));
 
 const folder: SessionFolder = {
@@ -25,8 +25,6 @@ const folder: SessionFolder = {
   name: "Shared Folder",
   owner_display_name: "Henry",
   access: "private",
-  public_permission: "none",
-  discoverable: false,
   is_default: false,
   view_count: 0,
   session_count: 0,
@@ -39,7 +37,7 @@ describe("SessionFolderShareModal", () => {
     vi.mocked(shareObjectByEmail).mockResolvedValue();
     vi.mocked(revokePendingShareInvite).mockResolvedValue();
     vi.mocked(unshareObject).mockResolvedValue();
-    vi.mocked(updateSessionFolder).mockResolvedValue(folder);
+    vi.mocked(setGeneralAccess).mockResolvedValue();
   });
 
   afterEach(() => {
@@ -48,17 +46,20 @@ describe("SessionFolderShareModal", () => {
 
   it("revokes pending email invites instead of treating them as user shares", async () => {
     vi.mocked(listObjectShares)
-      .mockResolvedValueOnce([
-        {
-          principal_type: "user",
-          principal_id: null,
-          label: "pending@example.com",
-          email: "pending@example.com",
-          permission: "read",
-          pending: true,
-        },
-      ])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce({
+        shares: [
+          {
+            principal_type: "user",
+            principal_id: null,
+            label: "pending@example.com",
+            email: "pending@example.com",
+            permission: "read",
+            pending: true,
+          },
+        ],
+        general_access: "restricted",
+      })
+      .mockResolvedValueOnce({ shares: [], general_access: "restricted" });
 
     render(
       <SessionFolderShareModal
@@ -80,5 +81,36 @@ describe("SessionFolderShareModal", () => {
     );
     expect(unshareObject).not.toHaveBeenCalled();
     await waitFor(() => expect(listObjectShares).toHaveBeenCalledTimes(2));
+  });
+
+  it("makes the folder public through the general-access endpoint", async () => {
+    vi.mocked(listObjectShares).mockResolvedValue({
+      shares: [],
+      general_access: "restricted",
+    });
+    const onChanged = vi.fn();
+
+    render(
+      <SessionFolderShareModal
+        folder={folder}
+        onClose={vi.fn()}
+        onChanged={onChanged}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Public" }));
+
+    await waitFor(() =>
+      expect(setGeneralAccess).toHaveBeenCalledWith(
+        "session_folder",
+        "folder-1",
+        "public"
+      )
+    );
+    expect(onChanged).toHaveBeenCalled();
+    // The public link surfaces once the folder is public.
+    expect(
+      screen.getByText(`${window.location.origin}/session-folders/shared-folder`)
+    ).toBeInTheDocument();
   });
 });

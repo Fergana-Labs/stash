@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ResourceShareButton from "./ResourceShareButton";
 import {
   listObjectShares,
+  setGeneralAccess,
   shareObjectByEmail,
   unshareObject,
 } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   listObjectShares: vi.fn(),
+  setGeneralAccess: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unshareObject: vi.fn(),
 }));
@@ -31,16 +33,20 @@ describe("ResourceShareButton", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(listObjectShares).mockResolvedValue([
-      {
-        principal_type: "user",
-        principal_id: "user-2",
-        label: "Ada Lovelace",
-        email: "ada@example.com",
-        permission: "read",
-        pending: false,
-      },
-    ]);
+    vi.mocked(listObjectShares).mockResolvedValue({
+      shares: [
+        {
+          principal_type: "user",
+          principal_id: "user-2",
+          label: "Ada Lovelace",
+          email: "ada@example.com",
+          permission: "read",
+          pending: false,
+        },
+      ],
+      general_access: "restricted",
+    });
+    vi.mocked(setGeneralAccess).mockResolvedValue(undefined);
     vi.mocked(shareObjectByEmail).mockResolvedValue(undefined);
     vi.mocked(unshareObject).mockResolvedValue(undefined);
   });
@@ -79,17 +85,20 @@ describe("ResourceShareButton", () => {
 
   it("invites people directly to the resource", async () => {
     vi.mocked(listObjectShares)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          principal_type: "user",
-          principal_id: null,
-          label: "ada@example.com",
-          email: "ada@example.com",
-          permission: "write",
-          pending: true,
-        },
-      ]);
+      .mockResolvedValueOnce({ shares: [], general_access: "restricted" })
+      .mockResolvedValueOnce({
+        shares: [
+          {
+            principal_type: "user",
+            principal_id: null,
+            label: "ada@example.com",
+            email: "ada@example.com",
+            permission: "write",
+            pending: true,
+          },
+        ],
+        general_access: "restricted",
+      });
 
     render(
       <ResourceShareButton
@@ -122,6 +131,30 @@ describe("ResourceShareButton", () => {
     );
     expect(await screen.findByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByText("Invited")).toBeInTheDocument();
+  });
+
+  it("makes the resource public via the general-access select", async () => {
+    render(
+      <ResourceShareButton
+        objectType="page"
+        objectId="page-1"
+        resourceName="Blog post outline"
+        resourceUrlPath="/p/page-1"
+        currentUser={currentUser}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    const select = await screen.findByLabelText("General access");
+    expect(select).toHaveValue("restricted");
+
+    fireEvent.change(select, { target: { value: "public" } });
+
+    await waitFor(() =>
+      expect(setGeneralAccess).toHaveBeenCalledWith("page", "page-1", "public"),
+    );
+    expect(await screen.findByText("Access updated.")).toBeInTheDocument();
+    expect(select).toHaveValue("public");
   });
 
   it("changes an existing person's permission", async () => {

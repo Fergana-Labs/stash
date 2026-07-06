@@ -39,6 +39,12 @@ class PendingInviteRevokeRequest(BaseModel):
     email: str
 
 
+class GeneralAccessRequest(BaseModel):
+    object_type: str
+    object_id: UUID
+    access: str  # 'public' | 'restricted' (validated in the service)
+
+
 @router.post("")
 async def create_share(req: ShareRequest, current_user: dict = Depends(get_current_user)):
     return await share_service.share_with_user_by_email(
@@ -61,6 +67,20 @@ async def delete_share(req: UnshareRequest, current_user: dict = Depends(get_cur
         owner_id=current_user["id"],
     )
     return {"ok": True}
+
+
+@router.put("/general-access")
+async def set_general_access(
+    req: GeneralAccessRequest, current_user: dict = Depends(get_current_user)
+):
+    """Set an object's general access level: 'public' (anyone with the link
+    can read) or 'restricted'. The one public mechanism for every resource."""
+    return await share_service.set_general_access(
+        object_type=req.object_type,
+        object_id=req.object_id,
+        access=req.access,
+        owner_id=current_user["id"],
+    )
 
 
 @router.delete("/invite")
@@ -102,5 +122,8 @@ async def list_shares(
     current_user: dict = Depends(get_current_user),
 ):
     return {
-        "shares": await share_service.list_object_shares(object_type, object_id, current_user["id"])
+        "shares": await share_service.list_object_shares(
+            object_type, object_id, current_user["id"]
+        ),
+        "general_access": await share_service.get_general_access(object_type, object_id),
     }

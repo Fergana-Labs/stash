@@ -21,6 +21,15 @@ def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
 
+async def _make_folder_public(client: AsyncClient, api_key: str, folder_id: str) -> None:
+    resp = await client.put(
+        "/api/v1/share/general-access",
+        json={"object_type": "folder", "object_id": folder_id, "access": "public"},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+
 def _scope(user: dict) -> dict:
     """The scope is the user: its id is the owner_user_id, its name is the
     owner's display name (what Discover surfaces as `owner_name`)."""
@@ -60,6 +69,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
         headers=_auth(api_key),
     )
     assert public_unlisted.status_code == 201
+    await _make_folder_public(client, api_key, unlisted_folder)
 
     published = await client.post(
         "/api/v1/me/skills",
@@ -76,6 +86,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     slug = published_skill["slug"]
     assert published_skill["owner_name"] == user["name"]
     assert published_skill["owner_display_name"] == user["display_name"]
+    await _make_folder_public(client, api_key, public_folder)
 
     owned_skills = await client.get(
         "/api/v1/me/skills",
@@ -83,12 +94,11 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     )
     assert owned_skills.status_code == 200
     owned_skill = next(
-        skill
-        for skill in owned_skills.json()["skills"]
-        if skill["published"] and skill["published"]["slug"] == slug
+        skill for skill in owned_skills.json()["skills"] if skill["skill"]["slug"] == slug
     )
     assert owned_skill["folder_id"] == public_folder
-    assert owned_skill["published"]["discoverable"] is True
+    assert owned_skill["public"] is True
+    assert owned_skill["skill"]["discoverable"] is True
 
     catalog = await client.get("/api/v1/discover/skills")
     assert catalog.status_code == 200
@@ -114,8 +124,8 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
 
 @pytest.mark.asyncio
 async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: AsyncClient):
-    """Discoverable is purely an opt-in catalog flag: a default publish is
-    publicly readable at its slug (anonymously) yet never surfaces in
+    """Discoverable is purely an opt-in catalog flag: a public-but-unlisted
+    skill is readable at its slug (anonymously) yet never surfaces in
     Discover."""
     api_key, user = await _register(client)
     scope = _scope(user)
@@ -128,12 +138,13 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
     )
     assert published.status_code == 201
     slug = published.json()["slug"]
+    await _make_folder_public(client, api_key, folder_id)
 
     catalog = await client.get("/api/v1/discover/skills")
     assert catalog.status_code == 200
     assert slug not in {skill["slug"] for skill in catalog.json()["skills"]}
 
-    # Anonymous read by slug still works — published == public.
+    # Anonymous read by slug works — the folder is publicly shared.
     detail = await client.get(f"/api/v1/skills/{slug}")
     assert detail.status_code == 200
     assert detail.json()["skill"]["discoverable"] is False
@@ -152,6 +163,7 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
             headers=_auth(api_key),
         )
         assert resp.status_code == 201
+        await _make_folder_public(client, api_key, folder_id)
 
     filtered = await client.get("/api/v1/discover/skills?q=alpha")
     assert filtered.status_code == 200
