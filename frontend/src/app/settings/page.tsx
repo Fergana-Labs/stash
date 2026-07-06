@@ -6,6 +6,7 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
+import AgentModelSection from "../../components/settings/AgentModelSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -52,6 +53,7 @@ export default function SettingsPage() {
           </div>
           <Profile user={user} onUpdated={refresh} />
           <SubscriptionSection />
+          <AgentModelSection />
           <IntegrationsSettings embedded />
           <ActiveSessions />
           {!AUTH0_ENABLED && <ChangePassword />}

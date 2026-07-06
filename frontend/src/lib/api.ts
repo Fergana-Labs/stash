@@ -1929,3 +1929,53 @@ export async function machineSaveToStash(
     body: JSON.stringify({ path, folder_id: folderId ?? null }),
   });
 }
+
+// ── Cloud-agent model credentials (BYO key / OAuth; see routers/agent_credentials) ──
+
+export async function listAgentCredentials(): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials");
+  return data.connected;
+}
+
+export async function connectAgentKey(provider: string, apiKey: string): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, api_key: apiKey }),
+  });
+  return data.connected;
+}
+
+export async function disconnectAgentCredential(provider: string): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>(
+    `/api/v1/me/agent-credentials/${provider}`,
+    { method: "DELETE" },
+  );
+  return data.connected;
+}
+
+export async function startAgentOAuth(
+  provider: string,
+): Promise<{ authorize_url: string; state: string }> {
+  return apiFetch("/api/v1/me/agent-credentials/oauth/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export async function finishAgentOAuth(
+  provider: string,
+  code: string,
+  state: string,
+): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>(
+    "/api/v1/me/agent-credentials/oauth/finish",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, code, state }),
+    },
+  );
+  return data.connected;
+}

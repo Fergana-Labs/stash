@@ -150,8 +150,13 @@ _SPRITE_HOME = "/home/sprite"
 
 
 def _codex_auth_json(secret: str) -> str:
-    # A full auth.json is stored verbatim; a bare token is wrapped.
-    stripped = secret.strip()
-    if stripped.startswith("{"):
-        return stripped
-    return json.dumps({"OPENAI_API_KEY": None, "tokens": json.loads(stripped)})
+    """A full auth.json (already has `tokens`) is written verbatim; a bare token
+    set is wrapped into one, mirroring the Codex CLI's own file."""
+    from datetime import UTC, datetime
+
+    parsed = json.loads(secret)
+    if "tokens" in parsed:
+        return secret
+    return json.dumps(
+        {"OPENAI_API_KEY": None, "tokens": parsed, "last_refresh": datetime.now(UTC).isoformat()}
+    )
