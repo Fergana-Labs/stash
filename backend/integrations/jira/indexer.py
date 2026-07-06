@@ -10,6 +10,7 @@ The sync only builds the navigable index: one row per issue keyed by its key
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from uuid import UUID
 
 import httpx
@@ -20,6 +21,16 @@ from ..storage import get_valid_token
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3"
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    """Jira returns ISO-8601 with a compact offset ('...+0000'); the column is
+    timestamptz."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
+
+
 ACCESSIBLE_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
 # cloud_id -> site base url (e.g. https://acme.atlassian.net). Cached because the
 # site url never changes for a cloud and the lookup costs a network round-trip.
@@ -203,7 +214,7 @@ async def index_jira(source: dict) -> str | None:
     next_page_token: str | None = None
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         while len(present) < MAX_ISSUES:
-            params = {"jql": jql, "maxResults": PAGE_SIZE, "fields": "summary"}
+            params = {"jql": jql, "maxResults": PAGE_SIZE, "fields": "summary,updated"}
             if next_page_token:
                 params["nextPageToken"] = next_page_token
             resp = await client.get(f"{base}/search/jql", params=params)
@@ -213,7 +224,8 @@ async def index_jira(source: dict) -> str | None:
                 key = issue.get("key")
                 if not key:
                     continue
-                summary = (issue.get("fields") or {}).get("summary") or key
+                fields = issue.get("fields") or {}
+                summary = fields.get("summary") or key
                 await source_service.upsert_index_row(
                     table="jira_documents",
                     source_id=source_id,
@@ -222,6 +234,7 @@ async def index_jira(source: dict) -> str | None:
                     name=f"{key}: {summary}",
                     kind="issue",
                     external_ref=f"{cloud_id}:{key}",
+                    external_updated_at=_parse_time(fields.get("updated")),
                 )
                 present.append(key)
             if payload.get("isLast") or not payload.get("nextPageToken"):

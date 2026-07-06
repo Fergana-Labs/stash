@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from uuid import UUID
 
 from ...database import get_pool
@@ -104,6 +105,19 @@ def _extract_transcript(td) -> str | list:
     if isinstance(td, str | list):
         return td
     return ""
+
+
+def _meeting_time(meeting: dict) -> datetime | None:
+    """The meeting's timestamp, if its date field parses as ISO-8601. Granola's
+    MCP tool returns free-form text, so an unparseable date yields None (the
+    document shows no timestamp) rather than failing the sync."""
+    when = meeting.get("date") or meeting.get("created_at") or meeting.get("start_time")
+    if not when or not isinstance(when, str):
+        return None
+    try:
+        return datetime.fromisoformat(when.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _render_meeting(meeting: dict, transcript) -> str:
@@ -221,6 +235,7 @@ async def index_granola(source: dict) -> str | None:
                 kind="note",
                 content=_render_meeting(meeting, transcript),
                 external_ref=meeting_id,
+                external_updated_at=_meeting_time(meeting),
             )
             present.append(meeting_id)
 
