@@ -30,6 +30,7 @@ import asyncio
 import hashlib
 import logging
 import re
+from datetime import UTC, datetime
 from urllib.parse import quote
 from uuid import UUID
 
@@ -700,11 +701,40 @@ async def list_documents(
         allowed_channel_ids = slack_allowed_channel_ids(source)
         if not allowed_channel_ids:
             return []
+        # Slack's document projection is one transcript per channel per UTC day
+        # (rows stay per-message). Cap-disclosure notices pass through as their
+        # own documents; their 0000- leaf sorts them first in the channel.
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind, external_ref FROM {table} "
-            f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
-            f"AND channel_id = ANY($5::text[]) "
-            f"ORDER BY path LIMIT $3",
+            """
+            SELECT * FROM (
+                SELECT channel_name || '/' || day AS path,
+                       '#' || channel_name || ' ' || day AS name,
+                       'transcript' AS kind,
+                       NULL AS external_ref,
+                       to_timestamp(last_ts) AS external_updated_at,
+                       size
+                FROM (
+                    SELECT channel_name,
+                           to_char(to_timestamp(ts::float8) AT TIME ZONE 'UTC',
+                                   'YYYY-MM-DD') AS day,
+                           max(ts::float8) AS last_ts,
+                           sum(length(coalesce(content, ''))) AS size
+                    FROM slack_messages
+                    WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'message'
+                      AND channel_id = ANY($5::text[])
+                    GROUP BY channel_name, day
+                ) days
+                UNION ALL
+                SELECT path, name, kind, external_ref,
+                       external_updated_at,
+                       length(coalesce(content, '')) AS size
+                FROM slack_messages
+                WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'notice'
+                  AND channel_id = ANY($5::text[])
+            ) docs
+            WHERE path LIKE $2 AND path > $4
+            ORDER BY path LIMIT $3
+            """,
             UUID(source["id"]),
             f"{prefix}%",
             limit,
@@ -718,7 +748,8 @@ async def list_documents(
         if not allowed_workspace_ids:
             return []
         rows = await get_pool().fetch(
-            f"SELECT path, name, kind, external_ref FROM {table} "
+            f"SELECT path, name, kind, external_ref, external_updated_at, "
+            f"length(coalesce(content, '')) AS size FROM {table} "
             f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
             f"AND gong_account_id = ANY($5::text[]) "
             f"ORDER BY path LIMIT $3",
@@ -730,8 +761,10 @@ async def list_documents(
         )
         return [_entry_row(r) for r in rows]
 
+    size_column = "length(coalesce(content, ''))" if table in CONTENT_TABLES else "NULL::bigint"
     rows = await get_pool().fetch(
-        f"SELECT path, name, kind, external_ref FROM {table} "
+        f"SELECT path, name, kind, external_ref, external_updated_at, "
+        f"{size_column} AS size FROM {table} "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
         f"ORDER BY path LIMIT $3",
         UUID(source["id"]),
@@ -743,11 +776,84 @@ async def list_documents(
 
 
 def _entry_row(r) -> dict:
+    external_updated_at = r["external_updated_at"]
     return {
         "path": r["path"],
         "name": r["name"],
         "kind": r["kind"],
         "external_ref": r["external_ref"],
+        "external_updated_at": (external_updated_at.isoformat() if external_updated_at else None),
+        "size": r["size"],
+    }
+
+
+_SLACK_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SLACK_TS_RE = re.compile(r"^\d+\.\d+$")
+
+
+async def _read_slack_document(
+    source: dict, path: str, allowed_channel_ids: list[str]
+) -> dict | None:
+    """Read one Slack document. `{channel}/{YYYY-MM-DD}` returns that day's
+    transcript; a per-message ref `{channel}/{ts}` (what search and
+    fetch-history return) resolves to the transcript of the day it belongs to;
+    anything else (cap-disclosure notices) reads its row directly."""
+    channel, _, leaf = path.rpartition("/")
+    if channel and _SLACK_TS_RE.match(leaf):
+        day = datetime.fromtimestamp(float(leaf), UTC).strftime("%Y-%m-%d")
+        return await _render_slack_day(source, channel, day, allowed_channel_ids)
+    if channel and _SLACK_DAY_RE.match(leaf):
+        return await _render_slack_day(source, channel, leaf, allowed_channel_ids)
+
+    row = await get_pool().fetchrow(
+        "SELECT path, name, kind, content FROM slack_messages "
+        "WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
+        "AND channel_id = ANY($3::text[])",
+        UUID(source["id"]),
+        path,
+        allowed_channel_ids,
+    )
+    if not row:
+        return None
+    return {
+        "path": row["path"],
+        "name": row["name"],
+        "kind": row["kind"],
+        "content": row["content"] or "",
+    }
+
+
+async def _render_slack_day(
+    source: dict, channel: str, day: str, allowed_channel_ids: list[str]
+) -> dict | None:
+    rows = await get_pool().fetch(
+        """
+        SELECT ts, author, content FROM slack_messages
+        WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'message'
+          AND channel_id = ANY($2::text[]) AND channel_name = $3
+          AND to_char(to_timestamp(ts::float8) AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $4
+        ORDER BY ts::float8
+        """,
+        UUID(source["id"]),
+        allowed_channel_ids,
+        channel,
+        day,
+    )
+    if not rows:
+        return None
+    lines = [f"# #{channel} — {day} (UTC)", ""]
+    for row in rows:
+        clock = datetime.fromtimestamp(float(row["ts"]), UTC).strftime("%H:%M")
+        # Continuation lines are indented so a line-leading HH:MM always means
+        # a new message.
+        text = (row["content"] or "").replace("\n", "\n    ")
+        author = row["author"] or ""
+        lines.append(f"{clock} {author}: {text}" if author else f"{clock} {text}")
+    return {
+        "path": f"{channel}/{day}",
+        "name": f"#{channel} {day}",
+        "kind": "transcript",
+        "content": "\n".join(lines) + "\n",
     }
 
 
@@ -813,22 +919,7 @@ async def read_document(source: dict, path: str) -> dict | None:
             allowed_channel_ids = slack_allowed_channel_ids(source)
             if not allowed_channel_ids:
                 return None
-            row = await get_pool().fetchrow(
-                f"SELECT path, name, kind, content FROM {table} "
-                f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL "
-                f"AND channel_id = ANY($3::text[])",
-                UUID(source["id"]),
-                path,
-                allowed_channel_ids,
-            )
-            if not row:
-                return None
-            return {
-                "path": row["path"],
-                "name": row["name"],
-                "kind": row["kind"],
-                "content": row["content"] or "",
-            }
+            return await _read_slack_document(source, path, allowed_channel_ids)
 
         if table == "gong_documents":
             allowed_workspace_ids = gong_allowed_workspace_ids(source)

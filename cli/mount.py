@@ -82,6 +82,13 @@ class StashVfsModel:
                     "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
                     "",
+                    "Listings are alphabetical by name; they carry no time meaning.",
+                    "For recency use `ls -lt` (sort by modified time), "
+                    "`find -mtime -N` / `find -newer <path>`, or `stat <path>`.",
+                    "Slack renders as one transcript per channel per UTC day; a "
+                    "`0000-history-cap` entry in a channel means older history "
+                    "exists in Slack but is not indexed here.",
+                    "",
                 ]
             ),
         )
@@ -368,6 +375,7 @@ class StashVfsModel:
 
     def _add_source_entries(self, source_root: str, handle: str, entries: list[dict]) -> None:
         parent_refs = _ancestor_refs(entries)
+        aliases: list[tuple[str, str]] = []
         for entry in entries:
             ref = str(entry.get("path") or "")
             segments = [_safe_name(seg) for seg in ref.split("/") if seg]
@@ -383,22 +391,30 @@ class StashVfsModel:
             # A page that also has child pages becomes a directory holding its own
             # body in a same-named index file, so the children nest under it
             # instead of being dropped on the file/dir name collision.
-            external_ref = entry.get("external_ref") or None
             if ref in parent_refs:
                 page_dir = self._add_dir(f"{parent}/{display}")
-                self._add_source_doc_file(f"{page_dir}/{display}", handle, ref, external_ref)
-                continue
-            self._add_source_doc_file(f"{parent}/{display}", handle, ref, external_ref)
+                added = self._add_source_doc_file(f"{page_dir}/{display}", handle, ref, entry)
+            else:
+                added = self._add_source_doc_file(f"{parent}/{display}", handle, ref, entry)
+            aliases.append((f"{source_root}/{ref}", added))
+        # The backend ref is what search results and history responses hand the
+        # agent — make it resolve too. Registered after all real entries so an
+        # alias can never shadow a real path; a ref that IS the display path
+        # (identical name) is simply already present.
+        for alias, target in aliases:
+            alias = self._clean_path(alias)
+            if alias not in self.nodes:
+                self.nodes[alias] = self.nodes[target]
 
-    def _add_source_doc_file(
-        self, path: str, handle: str, ref: str, external_ref: str | None = None
-    ) -> str:
+    def _add_source_doc_file(self, path: str, handle: str, ref: str, entry: dict) -> str:
         return self._add_file(
             path,
             loader=lambda h=handle, r=ref: _text_bytes(
                 _source_doc_text(self.client.read_source_doc(h, r))
             ),
-            external_ref=external_ref,
+            size_hint=entry.get("size"),
+            updated_at=entry.get("external_updated_at"),
+            external_ref=entry.get("external_ref") or None,
         )
 
     def _load_page(self, page_id: str) -> bytes:

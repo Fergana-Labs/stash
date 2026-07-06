@@ -1249,8 +1249,10 @@ async def test_slack_visibility_requires_channel_allowlist(client: AsyncClient):
         extra={"channel_id": "C2", "channel_name": "exec", "ts": "1"},
     )
 
+    # Messages project as one transcript per channel per UTC day; ts=1 epoch
+    # lands on 1970-01-01. The blocked channel contributes no document.
     docs = await source_service.list_documents(configured)
-    assert [doc["path"] for doc in docs] == ["general/1"]
+    assert [doc["path"] for doc in docs] == ["general/1970-01-01"]
     assert await source_service.read_document(configured, "exec/1") is None
     assert await source_service.source_item_count(configured) == 1
     allowed_hits = await source_service.search_documents(user_id=owner_id, query="allowed roadmap")
@@ -1514,7 +1516,7 @@ async def test_slack_indexer_backfills_only_allowed_channels(
         == 0
     )
     docs = await source_service.list_documents(src)
-    assert [doc["path"] for doc in docs] == ["general/1"]
+    assert [doc["path"] for doc in docs] == ["general/1970-01-01"]
 
 
 @pytest.mark.asyncio
@@ -1723,6 +1725,164 @@ async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
     assert rows[0]["path"] == "general/1717.0001"
     assert rows[0]["name"] == "#general"
     assert rows[0]["content"] == "updated confidential Slack message"
+
+
+@pytest.mark.asyncio
+async def test_slack_projects_day_transcripts_with_authors(client: AsyncClient):
+    """The agent-facing projection is one attributed transcript per channel per
+    UTC day — not one file per message. Chronology and authorship must survive
+    into both the listing (external_updated_at/size) and the rendered body,
+    and a per-message ref (what search returns) must resolve to its day."""
+    api_key, owner_id = await _register(client, "slack_days")
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_DAYS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    # 2026-07-05 18:17/18:18 UTC and 2026-07-06 01:24 UTC — two UTC days.
+    messages = [
+        ("1783275420.000100", "henry", "interesting treehacks project"),
+        ("1783275480.000200", "sam", "lol"),
+        ("1783301040.000300", "henry", "I'm gonna try these three"),
+    ]
+    for ts, author, text in messages:
+        await source_service.upsert_content_document(
+            table="slack_messages",
+            source_id=UUID(src["id"]),
+            owner_user_id=ws,
+            path=f"random/{ts}",
+            name="#random",
+            kind="message",
+            content=text,
+            external_ref=f"C1:{ts}",
+            extra={
+                "channel_id": "C1",
+                "channel_name": "random",
+                "ts": ts,
+                "author_id": f"U_{author}",
+                "author": author,
+            },
+        )
+
+    docs = await source_service.list_documents(src)
+    assert [d["path"] for d in docs] == ["random/2026-07-05", "random/2026-07-06"]
+    assert [d["kind"] for d in docs] == ["transcript", "transcript"]
+    day_one = docs[0]
+    assert day_one["name"] == "#random 2026-07-05"
+    assert day_one["external_updated_at"].startswith("2026-07-05")
+    assert day_one["size"] == len("interesting treehacks project") + len("lol")
+
+    doc = await source_service.read_document(src, "random/2026-07-05")
+    assert doc["kind"] == "transcript"
+    lines = doc["content"].splitlines()
+    assert lines[0] == "# #random — 2026-07-05 (UTC)"
+    assert "henry: interesting treehacks project" in lines[2]
+    assert "sam: lol" in lines[3]
+    assert lines[2] < lines[3]  # HH:MM prefixes keep the transcript chronological
+
+    # A search/history ref (channel/ts) reads as the day it belongs to.
+    by_ref = await source_service.read_document(src, "random/1783301040.000300")
+    assert by_ref["path"] == "random/2026-07-06"
+
+
+@pytest.mark.asyncio
+async def test_slack_backfill_resolves_authors_and_caches_lookups(
+    client: AsyncClient, monkeypatch, pool
+):
+    """Backfilled messages must be attributable: msg["user"] resolves to a
+    display name via users.info, one lookup per distinct user per sync."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_authors")
+    await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_AUTHORS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    users_info_calls: list[str] = []
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.USERS_INFO_URL:
+            users_info_calls.append(params["user"])
+            return {"ok": True, "user": {"name": "hdowling", "profile": {"display_name": "henry"}}}
+        return {
+            "messages": [
+                {"type": "message", "ts": "1783362000.1", "text": "one", "user": "U_HENRY"},
+                {"type": "message", "ts": "1783362001.1", "text": "two", "user": "U_HENRY"},
+            ]
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+
+    assert users_info_calls == ["U_HENRY"]  # cached after the first resolution
+    rows = await pool.fetch(
+        "SELECT author_id, author FROM slack_messages WHERE source_id = $1 ORDER BY ts",
+        UUID(src["id"]),
+    )
+    assert [(r["author_id"], r["author"]) for r in rows] == [
+        ("U_HENRY", "henry"),
+        ("U_HENRY", "henry"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slack_backfill_discloses_history_cap(client: AsyncClient, monkeypatch):
+    """A channel whose history exceeds the backfill cap must say so in its
+    listing — an agent must be able to tell "never discussed" apart from
+    "not indexed". The notice lists first and clears when history fits."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_cap")
+    await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_CAP",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    has_more = True
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {"channels": [{"id": "C1", "name": "general"}]}
+        return {
+            "messages": [{"type": "message", "ts": "1783362000.1", "text": "hi"}],
+            "has_more": has_more,
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+    docs = await source_service.list_documents(src)
+    assert [d["kind"] for d in docs] == ["notice", "transcript"]
+    assert docs[0]["path"] == f"general/{indexer.CAP_MARKER_LEAF}"
+    notice = await source_service.read_document(src, docs[0]["path"])
+    assert "not searchable here" in notice["content"]
+
+    # Full history now fits — the stale notice must disappear.
+    has_more = False
+    await indexer.index_slack(src)
+    docs = await source_service.list_documents(src)
+    assert [d["kind"] for d in docs] == ["transcript"]
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,4 @@
+import re
 import shlex
 from datetime import datetime
 
@@ -404,3 +405,63 @@ def test_ls_is_silent_when_a_source_listing_is_complete():
 
     assert "Welcome email" in result.stdout
     assert "INCOMPLETE" not in result.stderr
+
+
+def test_source_docs_carry_backend_timestamps_and_sizes():
+    """Connected-source entries ship external_updated_at + size, so an agent
+    can judge recency and weight from `ls -la`/`stat` without reading bodies.
+    An entry the backend has no timestamp for stays `-` — never fabricated."""
+    shell, _client = _shell()
+
+    listing = shell.run("ls -la /sources/gmail").stdout
+    dated = next(line for line in listing.splitlines() if "Welcome email" in line)
+    assert "      13 " in dated  # size known before the body is ever read
+    assert " - " not in dated
+
+    stat_out = shell.run("stat '/sources/gmail/Welcome email'").stdout
+    assert "size: 13" in stat_out
+    assert "modified: 2026-05-04T" in stat_out
+
+    undated = shell.run("ls -la /sources/gmail/threads").stdout
+    assert re.search(r"-\s+0\s+-\s+Nested note", undated)
+
+
+def test_ls_t_sorts_by_modified_time_newest_first():
+    shell, _client = _shell()
+
+    names = shell.run("ls -t /sources/gmail").stdout.splitlines()
+
+    # "Welcome email" has a 2026 mtime; "threads" (dir) has none and sorts last.
+    assert names.index("Welcome email") < names.index("threads")
+
+
+def test_find_mtime_and_newer_filter_by_modified_time():
+    shell, _client = _shell()
+
+    recent = shell.run("find /sources/gmail -mtime -100000").stdout
+    assert "/sources/gmail/Welcome email" in recent
+    # A node with no known mtime can never satisfy a time predicate.
+    assert "Nested note" not in recent
+
+    ancient = shell.run("find /sources/gmail -mtime +100000").stdout
+    assert "Welcome email" not in ancient
+
+    newer = shell.run("find /files -newer '/sources/gmail/Welcome email'")
+    assert newer.exit_code == 0
+    assert "Welcome email" not in newer.stdout
+
+    no_reference_time = shell.run("find /files -newer /sources/gmail/threads")
+    assert no_reference_time.exit_code == 2
+    assert "no modification time" in no_reference_time.stderr
+
+
+def test_cat_resolves_raw_backend_refs_as_aliases():
+    """search/history/ask-the-stash hand the agent backend refs, not display
+    names — those refs must be readable directly."""
+    shell, _client = _shell()
+
+    by_ref = shell.run("cat /sources/gmail/threads/msg-2")
+    by_display = shell.run("cat '/sources/gmail/threads/Nested note'")
+
+    assert by_ref.exit_code == 0
+    assert by_ref.stdout == by_display.stdout == "BODY of threads/msg-2"
