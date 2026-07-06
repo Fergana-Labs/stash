@@ -37,6 +37,15 @@ def _safe(segment: str) -> str:
     return (segment or "Untitled").replace("/", "-").strip() or "Untitled"
 
 
+def _dedupe(path: str, resource_id: str, present: list[str]) -> str:
+    """Paths are title-based, and Notion allows same-titled siblings — the second
+    would silently overwrite the first on the (source_id, path) upsert key, so it
+    gets the resource id appended instead."""
+    if path not in present:
+        return path
+    return f"{path} ({resource_id[:8]})"
+
+
 def _parse_time(value: str | None) -> datetime | None:
     """Notion returns ISO-8601 ('...Z'); the column is timestamptz."""
     if not value:
@@ -74,7 +83,7 @@ async def _index_page(
     # Render the blocks to markdown — both to discover sub-pages and to store
     # the body for full-text search.
     lines, child_ids = await fetch_block_tree(client, page_id)
-    path = f"{prefix}{title}"
+    path = _dedupe(f"{prefix}{title}", page_id, present)
     await source_service.upsert_content_document(
         table="notion_index",
         source_id=source_id,
@@ -122,7 +131,7 @@ async def _index_database(
         for row in payload.get("results", []):
             props = row.get("properties", {}) or {}
             title = _safe(_row_title(props))
-            path = f"{db_title}/{title}"
+            path = _dedupe(f"{db_title}/{title}", row["id"], present)
             # Database rows are indexed by their title (the property values are
             # the searchable text); we don't fetch each row's blocks to keep the
             # crawl cheap.

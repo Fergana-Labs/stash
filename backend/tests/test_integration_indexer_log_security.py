@@ -186,6 +186,7 @@ async def test_gmail_index_success_logs_internal_source_id_only(monkeypatch):
     async def get_metadata(client, message_id):
         return {
             "id": message_id,
+            "internalDate": "1751812200000",
             "payload": {"headers": [{"name": "Subject", "value": "Confidential launch plan"}]},
         }
 
