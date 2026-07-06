@@ -1,9 +1,11 @@
 """Linear OAuth provider.
 
-Linear issues long-lived access tokens with no refresh token (like GitHub
-user tokens), so supports_refresh is False. The connected token is what reads
-issues for ticket enrichment (backend/services/linear_ticket_service.py); the
-inbound webhook in backend/routers/webhooks.py keeps those labels fresh.
+Linear migrated all OAuth apps to 24-hour access tokens with rotating refresh
+tokens on 2026-04-01, so supports_refresh is True; storage.get_valid_token
+refreshes on use and COALESCEs the rotated refresh token back in. The
+connected token is what reads issues for ticket enrichment
+(backend/services/linear_ticket_service.py); the inbound webhook in
+backend/routers/webhooks.py keeps those labels fresh.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ class LinearIntegration(Integration):
     display_name = "Linear"
     # `read` covers issue lookups; app-level webhooks are delivered regardless of scope.
     scopes = ["read"]
-    supports_refresh = False
+    supports_refresh = True
 
     def _client_id(self) -> str:
         if not settings.LINEAR_OAUTH_CLIENT_ID:
@@ -55,18 +57,9 @@ class LinearIntegration(Integration):
         }
         return f"{AUTHORIZE_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> TokenSet:
+    async def _token_request(self, payload: dict) -> TokenSet:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                TOKEN_URL,
-                data={
-                    "grant_type": "authorization_code",
-                    "client_id": self._client_id(),
-                    "client_secret": self._client_secret(),
-                    "redirect_uri": self._redirect_uri(),
-                    "code": code,
-                },
-            )
+            resp = await client.post(TOKEN_URL, data=payload)
             if resp.status_code >= 400:
                 raise RuntimeError(f"Linear token endpoint returned status_code={resp.status_code}")
             data = resp.json()
@@ -75,13 +68,31 @@ class LinearIntegration(Integration):
         scope = data.get("scope") or ""
         return TokenSet(
             access_token=data["access_token"],
-            refresh_token=None,
+            refresh_token=data.get("refresh_token"),
             expires_at=expires_at,
             scopes=scope.split(",") if scope else list(self.scopes),
         )
 
+    async def exchange_code(self, code: str) -> TokenSet:
+        return await self._token_request(
+            {
+                "grant_type": "authorization_code",
+                "client_id": self._client_id(),
+                "client_secret": self._client_secret(),
+                "redirect_uri": self._redirect_uri(),
+                "code": code,
+            }
+        )
+
     async def refresh(self, refresh_token: str) -> TokenSet:
-        raise RuntimeError("Linear OAuth tokens are not refreshable")
+        return await self._token_request(
+            {
+                "grant_type": "refresh_token",
+                "client_id": self._client_id(),
+                "client_secret": self._client_secret(),
+                "refresh_token": refresh_token,
+            }
+        )
 
     async def revoke(self, access_token: str) -> None:
         async with httpx.AsyncClient(timeout=15.0) as client:

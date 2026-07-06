@@ -26,6 +26,8 @@ from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
+from backend.integrations.linear import provider as linear_provider
+from backend.integrations.linear.provider import LinearIntegration
 from backend.integrations.registry import list_providers
 from backend.integrations.twitter import indexer as twitter_indexer
 from backend.integrations.twitter import provider as twitter_provider
@@ -566,6 +568,49 @@ async def test_twitter_exchange_refresh_and_fetch_account(monkeypatch):
     account = await TwitterIntegration().fetch_account("tok")
     assert account.email is None
     assert account.display_name == "@stash"
+
+
+@pytest.mark.asyncio
+async def test_linear_exchange_and_refresh_keep_rotating_refresh_token(monkeypatch):
+    """Linear issues 24h access tokens with rotating refresh tokens (since its
+    2026-04-01 migration). Dropping the refresh token kills the connection
+    after a day — exactly the bug this pins against."""
+    monkeypatch.setattr(settings, "LINEAR_OAUTH_CLIENT_ID", "client-1")
+    monkeypatch.setattr(settings, "LINEAR_OAUTH_CLIENT_SECRET", "secret-1")
+    monkeypatch.setattr(settings, "LINEAR_OAUTH_REDIRECT_URI", "https://app.example.com/callback")
+
+    assert LinearIntegration().supports_refresh is True
+
+    exchange_client = _FakeClient(
+        {
+            "access_token": "tok",
+            "refresh_token": "refresh-1",
+            "expires_in": 86399,
+            "scope": "read",
+        }
+    )
+    monkeypatch.setattr(linear_provider.httpx, "AsyncClient", exchange_client)
+    token = await LinearIntegration().exchange_code("code-1")
+    assert token.access_token == "tok"
+    assert token.refresh_token == "refresh-1"
+    assert token.expires_at is not None
+    assert token.scopes == ["read"]
+    assert exchange_client.posts[0][1]["grant_type"] == "authorization_code"
+
+    refresh_client = _FakeClient(
+        {
+            "access_token": "tok-2",
+            "refresh_token": "refresh-2",
+            "expires_in": 86399,
+            "scope": "read",
+        }
+    )
+    monkeypatch.setattr(linear_provider.httpx, "AsyncClient", refresh_client)
+    refreshed = await LinearIntegration().refresh("refresh-1")
+    assert refreshed.access_token == "tok-2"
+    assert refreshed.refresh_token == "refresh-2"
+    assert refresh_client.posts[0][1]["grant_type"] == "refresh_token"
+    assert refresh_client.posts[0][1]["refresh_token"] == "refresh-1"
 
 
 def test_twitter_post_rendering_keeps_author_metrics_and_text():
