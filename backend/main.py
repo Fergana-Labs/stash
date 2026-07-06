@@ -42,6 +42,7 @@ from .routers import (
     sources,
     tables,
     tasks,
+    telegram,
     transcripts,
     trash,
     user_knowledge,
@@ -137,6 +138,7 @@ app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(agent_chat.router)
 app.include_router(machine.router)
+app.include_router(telegram.router)
 app.include_router(session_folders.me_router)
 app.include_router(session_folders.public_router)
 app.include_router(shares.router)

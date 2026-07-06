@@ -276,6 +276,12 @@ class Settings:
     # Verifies inbound Events API webhook signatures (X-Slack-Signature).
     SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET")
 
+    # --- Telegram agent (single platform bot; talk-to-Stash over Telegram) ---
+    TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_BOT_USERNAME: str | None = os.getenv("TELEGRAM_BOT_USERNAME")
+    # Echoed back in X-Telegram-Bot-Api-Secret-Token; verifies inbound webhooks.
+    TELEGRAM_WEBHOOK_SECRET: str | None = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+
     TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
     TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
     TWITTER_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(

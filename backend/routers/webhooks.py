@@ -122,6 +122,27 @@ async def slack_events(request: Request):
     return {"ok": True}
 
 
+# --- BEGIN Telegram agent (talk-to-Stash bot) — removable feature block ---
+@router.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    # The bot echoes our secret in this header; anything else is not Telegram.
+    secret = settings.TELEGRAM_WEBHOOK_SECRET
+    if not secret or request.headers.get("X-Telegram-Bot-Api-Secret-Token") != secret:
+        raise HTTPException(status_code=401, detail="bad secret")
+
+    update = await request.json()
+    message = update.get("message")
+    # update_id is Telegram's own monotonic id — dedupe on it.
+    if message and message.get("text") and not await _already_handled(
+        f"tg:{update.get('update_id')}"
+    ):
+        celery.send_task(
+            "backend.tasks.sources.respond_to_telegram_message", kwargs={"message": message}
+        )
+    return {"ok": True}
+# --- END Telegram agent ---
+
+
 def _verify_linear_signature(body: bytes, signature: str) -> bool:
     secret = settings.LINEAR_WEBHOOK_SECRET
     if not secret or not signature:

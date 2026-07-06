@@ -116,3 +116,16 @@ def respond_to_slack_mention(team_id: str, event: dict) -> None:
 
 
 # --- END Slack agent ---
+
+
+# --- BEGIN Telegram agent (talk-to-Stash bot) — removable feature block ---
+@celery.task(name="backend.tasks.sources.respond_to_telegram_message")
+def respond_to_telegram_message(message: dict) -> None:
+    """Run the agent for a Telegram message and post the reply (enqueued by the
+    webhook). Imported lazily so the agent surface stays self-contained."""
+    from ..integrations.telegram.agent import respond_to_message
+
+    run_async(respond_to_message(message))
+
+
+# --- END Telegram agent ---

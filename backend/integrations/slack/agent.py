@@ -78,11 +78,19 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     owner_user_id = user["id"]
     # The scope is the user, so its name is the user's display name.
     owner_name = user["display_name"] or user["name"]
-    # One continuous session per user → memory accumulates across DMs/channels/time.
-    session_id = f"slack-agent-{user['id']}"
+    session_id = _session_id(user["id"], event)
     answer = await sprite_agent_service.run_chat(
         owner_user_id, owner_name, user["id"], session_id, text
     )
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts
     )
+
+
+def _session_id(user_id, event: dict) -> str:
+    """DMs are one continuous conversation; each channel @-mention thread is its
+    own session, so a passing mention doesn't drag in the user's DM history."""
+    if event.get("channel_type") == "im":
+        return f"slack-agent-{user_id}-dm"
+    thread = event.get("thread_ts") or event.get("ts")
+    return f"slack-agent-{user_id}-t-{thread}"
