@@ -837,7 +837,7 @@ type UploadApiResponse = {
   id: string;
   owner_user_id: string;
   folder_id: string | null;
-  parent_page_id: string | null;
+  owner_page_id: string | null;
   name: string;
   content_type: string;
   app_url: string;
@@ -853,14 +853,12 @@ type UploadApiResponse = {
 
 async function uploadAny(
   file: File,
-  folderId?: string | null,
-  parentPageId?: string | null
+  folderId?: string | null
 ): Promise<UploadApiResponse> {
   const token = await getAuthToken();
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folder_id", folderId);
-  if (parentPageId) formData.append("parent_page_id", parentPageId);
   const resp = await fetch(`${API_BASE}${ME}/files`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -884,10 +882,9 @@ async function uploadAny(
 // server didn't route it to the pages table.
 export async function uploadFile(
   file: File,
-  folderId?: string | null,
-  parentPageId?: string | null
+  folderId?: string | null
 ): Promise<FileInfo> {
-  const result = await uploadAny(file, folderId, parentPageId);
+  const result = await uploadAny(file, folderId);
   if (result.kind === "page") {
     throw new Error(
       `uploadFile got a page back from the server (${file.name}); ` +
@@ -898,7 +895,7 @@ export async function uploadFile(
     id: result.id,
     owner_user_id: result.owner_user_id,
     folder_id: result.folder_id,
-    parent_page_id: result.parent_page_id,
+    owner_page_id: result.owner_page_id,
     name: result.name,
     content_type: result.content_type,
     size_bytes: result.size_bytes ?? 0,
@@ -953,7 +950,7 @@ export async function uploadFileOrPage(
     id: result.id,
     owner_user_id: result.owner_user_id,
     folder_id: result.folder_id,
-    parent_page_id: result.parent_page_id,
+    owner_page_id: result.owner_page_id,
     name: result.name,
     content_type: result.content_type,
     size_bytes: result.size_bytes ?? 0,

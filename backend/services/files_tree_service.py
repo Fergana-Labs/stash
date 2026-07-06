@@ -387,6 +387,7 @@ async def create_page(
         page["id"], owner_user_id, created_by, edit_agent_name, edit_session_id, "create"
     )
     if active:
+        await _reconcile_embedded_files(page["id"], owner_user_id, created_by, active)
         _schedule_embed(page["id"], active)
     return page
 
@@ -581,6 +582,7 @@ async def update_page(
                     active = _active_content(
                         page["content_type"], page["content_markdown"], page["content_html"]
                     )
+                    await _reconcile_embedded_files(page["id"], owner_user_id, updated_by, active)
                     _schedule_embed(page["id"], active)
                 if notify:
                     # An external (non-editor) write: drop stale collab state so a
@@ -690,10 +692,63 @@ async def edit_page(
     raise ConcurrentEditError(page)
 
 
+# The download route a page body uses to embed a file. A file is *embedded* —
+# owned by one page, absent from tree views — exactly when a live page body
+# references it. _reconcile_embedded_files enforces that invariant on every
+# body save, so the body is the single source of truth: no file can end up
+# owned-but-unreferenced (invisible everywhere) or referenced-but-unfiled
+# (cluttering the root).
+_EMBED_LINK_RE = re.compile(
+    r"/api/v1/me/files/"
+    r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+    r"/download"
+)
+
+
+async def _reconcile_embedded_files(
+    page_id: UUID, owner_user_id: UUID, actor: UUID, body: str
+) -> None:
+    """Sync files.owner_page_id to the embed links in a just-saved page body.
+
+    - A referenced file that is unfiled (at root) and unowned becomes embedded.
+      Files organized into folders are never claimed.
+    - A referenced file this page owns comes back from trash — editor undo
+      restores the link, so the bytes must follow.
+    - An owned file whose link left the body is trashed (restorable)."""
+    pool = get_pool()
+    referenced = list({UUID(m) for m in _EMBED_LINK_RE.findall(body)})
+    if referenced:
+        await pool.execute(
+            "UPDATE files SET owner_page_id = $1 "
+            "WHERE id = ANY($2::uuid[]) AND owner_user_id = $3 "
+            "AND owner_page_id IS NULL AND folder_id IS NULL AND deleted_at IS NULL",
+            page_id,
+            referenced,
+            owner_user_id,
+        )
+        await pool.execute(
+            "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
+            "WHERE id = ANY($2::uuid[]) AND owner_user_id = $3 "
+            "AND owner_page_id = $1 AND deleted_at IS NOT NULL",
+            page_id,
+            referenced,
+            owner_user_id,
+        )
+    await pool.execute(
+        "UPDATE files SET deleted_at = NOW(), deleted_by = $4 "
+        "WHERE owner_page_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL "
+        "AND NOT (id = ANY($3::uuid[]))",
+        page_id,
+        owner_user_id,
+        referenced,
+        actor,
+    )
+
+
 async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> bool:
     """Soft delete: stamps deleted_at + deleted_by. Restore via restore_page.
 
-    Attached files (parent_page_id) are part of the document, so they trash
+    Embedded files (owner_page_id) are part of the document, so they trash
     with it — stamped with the page's exact deleted_at so restore_page can
     tell them apart from files the user trashed individually beforehand."""
     pool = get_pool()
@@ -710,7 +765,7 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
     await pool.execute(
         "UPDATE files SET deleted_at = (SELECT deleted_at FROM pages WHERE id = $1), "
         "deleted_by = $3 "
-        "WHERE parent_page_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+        "WHERE owner_page_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         page_id,
         owner_user_id,
         deleted_by,
@@ -728,7 +783,7 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
 
 async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
-    # Grab the trash timestamp before clearing it — only attachments stamped
+    # Grab the trash timestamp before clearing it — only embedded files stamped
     # by this page's delete come back; individually-trashed ones stay trashed.
     page_deleted_at = await pool.fetchval(
         "SELECT deleted_at FROM pages "
@@ -749,7 +804,7 @@ async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) ->
         return False
     await pool.execute(
         "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
-        "WHERE parent_page_id = $1 AND owner_user_id = $2 AND deleted_at = $3",
+        "WHERE owner_page_id = $1 AND owner_user_id = $2 AND deleted_at = $3",
         page_id,
         owner_user_id,
         page_deleted_at,
@@ -767,7 +822,7 @@ async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) ->
 async def purge_page(page_id: UUID, owner_user_id: UUID) -> bool:
     """Permanent delete — only callable on a page already in trash.
 
-    Attached files are destroyed with the document: rows deleted and blobs
+    Embedded files are destroyed with the document: rows deleted and blobs
     dropped unless another row still points at the same storage key."""
     from . import files_service, storage_service
 
@@ -780,7 +835,7 @@ async def purge_page(page_id: UUID, owner_user_id: UUID) -> bool:
     if not in_trash:
         return False
     attachments = await pool.fetch(
-        "SELECT id, storage_key FROM files WHERE parent_page_id = $1 AND owner_user_id = $2",
+        "SELECT id, storage_key FROM files WHERE owner_page_id = $1 AND owner_user_id = $2",
         page_id,
         owner_user_id,
     )

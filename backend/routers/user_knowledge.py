@@ -89,10 +89,12 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
             user_id,
         ),
         pool.fetch(
-            "SELECT fi.id, fi.name, fi.folder_id, fi.parent_page_id, fi.size_bytes, "
+            # Embedded files (owner_page_id) are internals of their page, not
+            # tree entries — the overview only carries filed files.
+            "SELECT fi.id, fi.name, fi.folder_id, fi.size_bytes, "
             "       fi.content_type, fi.created_at, fi.linked_table_id "
             f"FROM files fi WHERE fi.owner_user_id = $1 AND fi.deleted_at IS NULL "
-            f"AND {readable_file} ORDER BY fi.created_at DESC",
+            f"AND fi.owner_page_id IS NULL AND {readable_file} ORDER BY fi.created_at DESC",
             owner_user_id,
             user_id,
         ),
@@ -101,18 +103,7 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
     hidden = await skill_service.skill_subtree_folder_ids(owner_user_id)
     folder_rows = [r for r in folder_rows if r["id"] not in hidden]
     page_rows = [r for r in page_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
-    # A page attachment is visible exactly when its page is — it nests under
-    # the page node, so a dangling parent would make it unreachable.
-    visible_page_ids = {r["id"] for r in page_rows}
-    file_rows = [
-        r
-        for r in file_rows
-        if (
-            r["parent_page_id"] in visible_page_ids
-            if r["parent_page_id"] is not None
-            else r["folder_id"] is None or r["folder_id"] not in hidden
-        )
-    ]
+    file_rows = [r for r in file_rows if r["folder_id"] is None or r["folder_id"] not in hidden]
 
     return {
         "folders": [
@@ -143,7 +134,6 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
                 "id": str(f["id"]),
                 "name": f["name"],
                 "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
-                "parent_page_id": str(f["parent_page_id"]) if f["parent_page_id"] else None,
                 "size_bytes": f["size_bytes"],
                 "content_type": f["content_type"],
                 "url": None,

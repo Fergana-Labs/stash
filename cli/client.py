@@ -77,20 +77,10 @@ class StashClient:
         data = self._get(url, **params)
         return data.get(key, data) if isinstance(data, dict) else data
 
-    def _upload(
-        self,
-        path: str,
-        file_path: str,
-        folder_id: str | None = None,
-        parent_page_id: str | None = None,
-    ) -> dict:
+    def _upload(self, path: str, file_path: str, folder_id: str | None = None) -> dict:
         filename = os.path.basename(file_path)
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        data = {}
-        if folder_id:
-            data["folder_id"] = folder_id
-        if parent_page_id:
-            data["parent_page_id"] = parent_page_id
+        data = {"folder_id": folder_id} if folder_id else None
         with open(file_path, "rb") as f:
             resp = self._request(
                 "POST",
@@ -454,13 +444,8 @@ class StashClient:
 
     # --- Files ---
 
-    def upload_file(
-        self,
-        file_path: str,
-        folder_id: str | None = None,
-        parent_page_id: str | None = None,
-    ) -> dict:
-        return self._upload("/api/v1/me/files", file_path, folder_id, parent_page_id)
+    def upload_file(self, file_path: str, folder_id: str | None = None) -> dict:
+        return self._upload("/api/v1/me/files", file_path, folder_id)
 
     def list_files(self) -> list:
         return self._list("/api/v1/me/files", "files")
@@ -507,14 +492,11 @@ class StashClient:
         name: str | None = None,
         folder_id: str | None = None,
         move_to_root: bool = False,
-        parent_page_id: str | None = None,
     ) -> dict:
         body: dict = {}
         if name is not None:
             body["name"] = name
-        if parent_page_id is not None:
-            body["parent_page_id"] = parent_page_id
-        elif move_to_root:
+        if move_to_root:
             body["move_to_root"] = True
         elif folder_id is not None:
             body["folder_id"] = folder_id

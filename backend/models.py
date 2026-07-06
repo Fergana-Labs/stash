@@ -548,7 +548,10 @@ class FileResponse(BaseModel):
     id: UUID
     owner_user_id: UUID | None
     folder_id: UUID | None = None
-    parent_page_id: UUID | None = None
+    # Set when the file is *embedded* in a page (its body links the file's
+    # download route). Embedded files are not tree entries. Read-only:
+    # derived from page bodies on save, never writable through the API.
+    owner_page_id: UUID | None = None
     name: str
     content_type: str
     size_bytes: int
@@ -568,7 +571,6 @@ class FileListResponse(BaseModel):
 class FileUpdateRequest(BaseModel):
     folder_id: UUID | None = None
     move_to_root: bool = False
-    parent_page_id: UUID | None = None
     name: str | None = None
 
 
@@ -584,7 +586,7 @@ class UploadResponse(BaseModel):
     id: UUID
     owner_user_id: UUID
     folder_id: UUID | None = None
-    parent_page_id: UUID | None = None
+    owner_page_id: UUID | None = None
     name: str
     content_type: str
     app_url: str

@@ -358,9 +358,9 @@ export default function MarkdownEditor({
     async (files: FileList | File[]) => {
       if (!editor) return;
       for (const fileToUpload of Array.from(files)) {
-        // Attach to this page so the file nests under the document in the
-        // files tree instead of piling up at the root.
-        const result = await uploadFile(fileToUpload, null, file.id);
+        // Inserting the download link embeds the file: the server claims it
+        // when the page body saves.
+        const result = await uploadFile(fileToUpload);
         // Build each insertion from the current editor state. Uploads can
         // overlap with remote Yjs updates, so old transactions may no longer
         // match the document by the time the upload finishes.
@@ -377,7 +377,7 @@ export default function MarkdownEditor({
         }
       }
     },
-    [editor, file.id]
+    [editor]
   );
 
   useEffect(() => {
@@ -530,7 +530,6 @@ export default function MarkdownEditor({
     <div className="flex h-full flex-col">
       <EditorToolbar
         editor={editor}
-        pageId={file.id}
         onStartComment={!readOnly && onAddComment ? openComposer : undefined}
       />
       {collabError && (

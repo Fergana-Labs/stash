@@ -142,12 +142,10 @@ class StashVfsModel:
         self._add_dir(root_path)
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         pages = tree.get("pages", [])
-        # Files attached to a page (parent_page_id) are internals of that
-        # document, not tree entries: the page's markdown links them by
-        # download URL and `stash files download` fetches the bytes. Keeping
-        # them out of the tree keeps paths stable — a page is always a plain
-        # file and never turns into a directory when an image is pasted in.
-        files = [file for file in tree.get("files", []) if not file.get("parent_page_id")]
+        # Files embedded in a page are internals of that document, not tree
+        # entries — the overview omits them. The page's markdown links them by
+        # download URL and `stash files download` fetches the bytes.
+        files = tree.get("files", [])
         ambiguous = _files_ambiguity(folders.values(), pages, files)
         folder_paths: dict[str, str] = {}
 

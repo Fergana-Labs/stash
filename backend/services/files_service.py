@@ -34,8 +34,12 @@ async def delete_file(file_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
 
 async def restore_file(file_id: UUID, owner_user_id: UUID, restored_by: UUID) -> bool:
     pool = get_pool()
+    # Restoring always *files* the row (folder or root, visible in trees).
+    # An embedded file lands in trash when its page stopped referencing it, so
+    # restoring it as still-embedded would leave it invisible everywhere. If a
+    # live page body does still reference it, the next save re-embeds it.
     result = await pool.execute(
-        "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
+        "UPDATE files SET deleted_at = NULL, deleted_by = NULL, owner_page_id = NULL "
         "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NOT NULL",
         file_id,
         owner_user_id,
@@ -88,8 +92,8 @@ async def purge_file(file_id: UUID, owner_user_id: UUID) -> bool:
 
 
 async def list_trashed_files(owner_user_id: UUID) -> list[dict]:
-    """Attachments whose page is also in trash are hidden — they ride with
-    the page (restoring/purging the page carries them along). An attachment
+    """Embedded files whose page is also in trash are hidden — they ride with
+    the page (restoring/purging the page carries them along). An embedded file
     trashed on its own, page still live, lists normally."""
     pool = get_pool()
     rows = await pool.fetch(
@@ -97,7 +101,7 @@ async def list_trashed_files(owner_user_id: UUID) -> list[dict]:
         "f.deleted_at, f.deleted_by "
         "FROM files f WHERE f.owner_user_id = $1 AND f.deleted_at IS NOT NULL "
         "AND NOT EXISTS (SELECT 1 FROM pages p "
-        "                WHERE p.id = f.parent_page_id AND p.deleted_at IS NOT NULL) "
+        "                WHERE p.id = f.owner_page_id AND p.deleted_at IS NOT NULL) "
         "ORDER BY f.deleted_at DESC",
         owner_user_id,
     )
