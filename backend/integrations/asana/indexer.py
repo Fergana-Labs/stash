@@ -9,6 +9,7 @@ builds the navigable index: one row per task keyed by its gid.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from uuid import UUID
 
 import httpx
@@ -25,6 +26,13 @@ TASK_FIELDS = "name,notes,completed,assignee.name,due_on,permalink_url"
 PAGE_SIZE = 100
 MAX_TASKS = 2000
 SEARCH_LIMIT = 25
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    """Asana returns ISO-8601 ('...Z'); the column is timestamptz."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _render_task(task: dict) -> str:
@@ -61,7 +69,7 @@ async def index_asana(source: dict) -> str | None:
     offset: str | None = None
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         while len(present) < MAX_TASKS:
-            params = {"opt_fields": "name", "limit": PAGE_SIZE}
+            params = {"opt_fields": "name,modified_at", "limit": PAGE_SIZE}
             if offset:
                 params["offset"] = offset
             resp = await client.get(url, params=params)
@@ -79,6 +87,7 @@ async def index_asana(source: dict) -> str | None:
                     name=task.get("name") or "(untitled task)",
                     kind="task",
                     external_ref=gid,
+                    external_updated_at=_parse_time(task.get("modified_at")),
                 )
                 present.append(gid)
             next_page = payload.get("next_page")

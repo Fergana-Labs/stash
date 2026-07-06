@@ -11,6 +11,7 @@ as the document body, which makes Notion full-text searchable for nearly free
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from uuid import UUID
 
 import httpx
@@ -34,6 +35,13 @@ MAX_PAGE_DEPTH = 8
 
 def _safe(segment: str) -> str:
     return (segment or "Untitled").replace("/", "-").strip() or "Untitled"
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    """Notion returns ISO-8601 ('...Z'); the column is timestamptz."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _row_title(props: dict) -> str:
@@ -61,7 +69,8 @@ async def _index_page(
     meta_resp = await client.get(PAGE_URL.format(id=page_id))
     if meta_resp.status_code != 200:
         return
-    title = _safe(_extract_title(meta_resp.json()))
+    meta = meta_resp.json()
+    title = _safe(_extract_title(meta))
     # Render the blocks to markdown — both to discover sub-pages and to store
     # the body for full-text search.
     lines, child_ids = await fetch_block_tree(client, page_id)
@@ -75,6 +84,7 @@ async def _index_page(
         kind="note",
         content="\n".join(lines),
         external_ref=page_id,
+        external_updated_at=_parse_time(meta.get("last_edited_time")),
     )
     present.append(path)
     for child_id in child_ids:
@@ -125,6 +135,7 @@ async def _index_database(
                 kind="note",
                 content=title,
                 external_ref=row.get("id"),
+                external_updated_at=_parse_time(row.get("last_edited_time")),
             )
             present.append(path)
         if not payload.get("has_more"):

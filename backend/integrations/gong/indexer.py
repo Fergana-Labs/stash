@@ -30,6 +30,14 @@ def _call_account_id(meta: dict) -> str:
     return str(meta.get("workspaceId") or "")
 
 
+def _parse_time(value: str | None) -> datetime | None:
+    """Gong returns ISO-8601 ('...Z'); the column is timestamptz. A call never
+    changes after it happened, so its start time is its modified time."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _render_call(meta: dict, monologues: list[dict]) -> str:
     title = meta.get("title") or "Untitled call"
     started = meta.get("started") or ""
@@ -123,6 +131,7 @@ async def index_gong(source: dict) -> str | None:
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
+            external_updated_at=_parse_time(meta.get("started")),
             extra={"gong_account_id": call_account_id},
         )
         present.append(call_id)
@@ -175,6 +184,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
             kind="call",
             content=_render_call(meta, transcript_by_id.get(call_id, [])),
             external_ref=call_id,
+            external_updated_at=_parse_time(meta.get("started")),
             extra={"gong_account_id": call_account_id},
         )
         refs.append(call_id)
