@@ -6,9 +6,43 @@ import remarkGfm from "remark-gfm";
 
 import { track } from "@/lib/analytics";
 import { API_BASE, getAuthToken, getOverview } from "@/lib/api";
-import { READ_TOOLS, describeToolCall } from "@/lib/agentChat";
 
 type Citation = { id: string; tool: string; label: string };
+
+// The onboarding ask runs the in-process tool loop (not the cloud agent), so
+// its stream carries the API tool names below — distinct from the cloud
+// agent's harness tools labelled in lib/agentChat.ts.
+const READ_TOOLS = new Set([
+  "read_page",
+  "grep_pages",
+  "read_file",
+  "search_history",
+  "search",
+  "read_source",
+  "list_source",
+]);
+
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function describeToolCall(name: string, args: Record<string, unknown> | undefined): string {
+  if (!args) return name;
+  if (name === "read_page" && typeof args.page_id === "string") return `page ${shortId(args.page_id)}`;
+  if (name === "read_file" && typeof args.file_id === "string") return `file ${shortId(args.file_id)}`;
+  if (
+    (name === "grep_pages" || name === "search_history" || name === "search") &&
+    typeof args.query === "string"
+  ) {
+    return `search "${args.query.slice(0, 40)}"`;
+  }
+  if (name === "read_source" && typeof args.ref === "string") return `read ${args.ref.slice(0, 48)}`;
+  if (name === "list_source" && typeof args.source === "string") {
+    const path = typeof args.path === "string" && args.path ? `/${args.path}` : "";
+    return `browse ${args.source}${path}`;
+  }
+  return name;
+}
 
 // Step 3: one live agentic search. Show a few personalized suggestions
 // (or let user type their own), stream the answer with citations, then

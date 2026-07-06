@@ -68,6 +68,13 @@ def parse_optional_secret(name: str, min_length: int = MIN_ADMIN_SECRET_LENGTH) 
     return value
 
 
+def parse_agent_exec_mode() -> str:
+    value = os.getenv("AGENT_EXEC_MODE", "local")
+    if value not in ("sprites", "local"):
+        raise RuntimeError("AGENT_EXEC_MODE must be 'sprites' or 'local'")
+    return value
+
+
 def parse_required_when_enabled(name: str, enabled: bool, enabled_name: str) -> str | None:
     value = os.getenv(name)
     if not enabled:
@@ -310,6 +317,20 @@ class Settings:
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
+
+    # --- Cloud agent (per-user sprite VM) ---
+    # "sprites" runs each user's agent on their Fly Sprite; "local" execs on
+    # this machine's own claude install (dev mode — no Sprites credentials).
+    AGENT_EXEC_MODE: str = parse_agent_exec_mode()
+    SPRITES_TOKEN: str | None = parse_required_when_enabled(
+        "SPRITES_TOKEN", AGENT_EXEC_MODE == "sprites", "AGENT_EXEC_MODE=sprites"
+    )
+    SPRITES_API_URL: str = os.getenv("SPRITES_API_URL", "https://api.sprites.dev")
+    # What the sprite's stash CLI calls back to; must be reachable from Fly.
+    SPRITES_STASH_API_URL: str | None = parse_required_when_enabled(
+        "SPRITES_STASH_API_URL", AGENT_EXEC_MODE == "sprites", "AGENT_EXEC_MODE=sprites"
+    )
+    AGENT_TURN_TIMEOUT_SECONDS: int = int(os.getenv("AGENT_TURN_TIMEOUT_SECONDS", "600"))
 
 
 settings = Settings()

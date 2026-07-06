@@ -12,7 +12,7 @@ security = HTTPBearer(auto_error=False)
 
 _LAST_SEEN_DEBOUNCE_SECONDS = 60
 _LAST_SEEN_CACHE_SIZE = 4096
-API_KEY_TYPES = {"password", "manual", "cli", "invite"}
+API_KEY_TYPES = {"password", "manual", "cli", "invite", "machine"}
 
 
 class _LastSeenCache:
