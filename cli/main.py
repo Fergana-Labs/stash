@@ -1101,8 +1101,9 @@ def upload(
 
     A single file lands directly in your Files (Markdown/HTML become
     editable pages, everything else a binary file) and the returned
-    ``app_url`` is the share link. A directory becomes a folder.
-    **No Skill is created.**
+    ``app_url`` is the share link. A directory becomes a folder, and
+    every text file in it — Markdown, HTML, code, CSV, and friends —
+    becomes an editable page. **No Skill is created.**
 
     Pass ``--skill <title>`` to *also* bundle the upload into a shareable
     Skill. Use a Skill when you're publishing a folder of related
@@ -2390,13 +2391,22 @@ def memory(
             if _use_json(as_json):
                 output_json(data)
                 return
-            console.print("Curator run started — the Memory wiki will update shortly.")
+            console.print(
+                "Curator run started — the Memory wiki will update shortly. "
+                "Check `stash memory` for the outcome."
+            )
             return
         folder = c.get_memory_folder()
+        curator = c.get_curator()
     if _use_json(as_json):
-        output_json(folder)
+        output_json({**folder, "curator": curator})
         return
     console.print(f"Memory folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
+    if curator:
+        last_run = curator["last_run_at"] or "never"
+        console.print(f"Curator last run: {last_run}")
+        if curator["last_run_error"]:
+            console.print(f"[red]Curator last run failed:[/red] {curator['last_run_error']}")
 
 
 @app.command("changes")

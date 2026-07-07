@@ -50,9 +50,14 @@ async def _run_curator_now(agent_id: UUID) -> None:
     agent = await agent_service.get_agent_by_id(agent_id)
     now = datetime.now(UTC)
     await agent_service.mark_run(agent_id)
-    # Seconds-resolution stamp so a manual run never shares a session with the
-    # beat's minute-stamped run.
-    await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
+    try:
+        # Seconds-resolution stamp so a manual run never shares a session with
+        # the beat's minute-stamped run.
+        await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
+    except Exception as e:
+        await agent_service.mark_run_failed(agent_id, str(e))
+        raise
+    await agent_service.mark_run_succeeded(agent_id)
     await agent_service.mark_curated(agent_id, now)
 
 
@@ -100,7 +105,9 @@ async def _run_due() -> int:
                 # `now` predates the run, so changes made during it stay ahead
                 # of the watermark and are picked up next time.
                 await agent_service.mark_curated(agent["id"], now)
+            await agent_service.mark_run_succeeded(agent["id"])
             ran += 1
-        except Exception:
+        except Exception as e:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])
+            await agent_service.mark_run_failed(agent["id"], str(e))
     return ran

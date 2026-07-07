@@ -291,6 +291,10 @@ class StashClient:
     def recompute_memory(self) -> dict:
         return self._post("/api/v1/me/memory/recompute")
 
+    def get_curator(self) -> dict | None:
+        agents = self._get("/api/v1/me/agents")["agents"]
+        return next((a for a in agents if a["is_curator"]), None)
+
     # --- Pages (user-scoped) ---
 
     def create_page(

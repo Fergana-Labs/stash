@@ -40,16 +40,27 @@ async def _reconcile_pages() -> int:
     )
     if not rows:
         return 0
+    # An empty input 400s the whole OpenAI batch, wedging every page in it.
+    # An empty page simply has no embedding.
+    empty_ids = [r["id"] for r in rows if not r["content_markdown"]]
+    if empty_ids:
+        await pool.execute(
+            "UPDATE pages SET embedding = NULL, embed_stale = FALSE WHERE id = ANY($1)",
+            empty_ids,
+        )
+    rows = [r for r in rows if r["content_markdown"]]
+    if not rows:
+        return len(empty_ids)
     ids = [r["id"] for r in rows]
-    texts = [r["content_markdown"] or "" for r in rows]
+    texts = [r["content_markdown"] for r in rows]
     vecs = await embedding_service.embed_batch(texts)
     if not vecs:
-        return 0
+        return len(empty_ids)
     await pool.executemany(
         "UPDATE pages SET embedding = $1, embed_stale = FALSE WHERE id = $2",
         list(zip(vecs, ids)),
     )
-    return len(ids)
+    return len(empty_ids) + len(ids)
 
 
 async def _reconcile_table_rows() -> int:
@@ -64,6 +75,9 @@ async def _reconcile_table_rows() -> int:
     )
     if not rows:
         return 0
+    # An empty input 400s the whole OpenAI batch — a row whose embed columns
+    # are all blank simply has no embedding.
+    empty = []
     ids = []
     texts = []
     hashes = []
@@ -71,17 +85,28 @@ async def _reconcile_table_rows() -> int:
         text = embedding_service.clip_text(
             _build_embedding_text(r["data"], r["embedding_config"], r["columns"])
         )
+        if not text:
+            empty.append((_text_hash(text), r["id"]))
+            continue
         ids.append(r["id"])
         texts.append(text)
         hashes.append(_text_hash(text))
+    if empty:
+        await pool.executemany(
+            "UPDATE table_rows SET embedding = NULL, content_hash = $1, embed_stale = FALSE "
+            "WHERE id = $2",
+            empty,
+        )
+    if not ids:
+        return len(empty)
     vecs = await embedding_service.embed_batch(texts)
     if not vecs:
-        return 0
+        return len(empty)
     await pool.executemany(
         "UPDATE table_rows SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
         [(v, h, rid) for rid, v, h in zip(ids, vecs, hashes)],
     )
-    return len(ids)
+    return len(empty) + len(ids)
 
 
 async def _reconcile_history_events() -> int:
@@ -93,17 +118,29 @@ async def _reconcile_history_events() -> int:
     )
     if not rows:
         return 0
+    # An empty input 400s the whole OpenAI batch — an empty event simply has
+    # no embedding.
+    empty = [(_text_hash(""), r["id"]) for r in rows if not r["content"]]
+    if empty:
+        await pool.executemany(
+            "UPDATE history_events SET embedding = NULL, content_hash = $1, embed_stale = FALSE "
+            "WHERE id = $2",
+            empty,
+        )
+    rows = [r for r in rows if r["content"]]
+    if not rows:
+        return len(empty)
     ids = [r["id"] for r in rows]
-    texts = [r["content"] or "" for r in rows]
+    texts = [r["content"] for r in rows]
     hashes = [_text_hash(t) for t in texts]
     vecs = await embedding_service.embed_batch(texts)
     if not vecs:
-        return 0
+        return len(empty)
     await pool.executemany(
         "UPDATE history_events SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
         [(v, h, eid) for eid, v, h in zip(ids, vecs, hashes)],
     )
-    return len(ids)
+    return len(empty) + len(ids)
 
 
 async def _reconcile_files() -> int:

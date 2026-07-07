@@ -18,8 +18,8 @@ from ..database import get_pool
 _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
-    "telegram_bound, last_run_at, curated_through, month_run_count, "
-    "month_run_anchor, created_at"
+    "telegram_bound, last_run_at, last_run_error, curated_through, "
+    "month_run_count, month_run_anchor, created_at"
 )
 
 
@@ -257,6 +257,26 @@ async def mark_run(agent_id: UUID) -> int:
         """,
         agent_id,
     )
+
+
+async def mark_run_failed(agent_id: UUID, error: str) -> None:
+    """Stamp the failure where the API can surface it, and refund the month
+    credit — an outage shouldn't eat the free allowance. The tick itself stays
+    consumed (last_run_at), so the beat won't re-fire the same window."""
+    await get_pool().execute(
+        """
+        UPDATE agents SET
+            last_run_error = left($2, 500),
+            month_run_count = greatest(month_run_count - 1, 0)
+        WHERE id = $1
+        """,
+        agent_id,
+        error,
+    )
+
+
+async def mark_run_succeeded(agent_id: UUID) -> None:
+    await get_pool().execute("UPDATE agents SET last_run_error = NULL WHERE id = $1", agent_id)
 
 
 async def mark_curated(agent_id: UUID, through) -> None:

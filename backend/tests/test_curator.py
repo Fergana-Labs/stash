@@ -222,6 +222,49 @@ async def test_failed_curator_run_preserves_watermark(
     assert after == watermark  # delta window intact
 
 
+@pytest.mark.asyncio
+async def test_failed_run_records_error_and_refunds_credit(
+    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
+):
+    """A failed run must be visible (last_run_error) and must not eat the
+    free monthly allowance — an infra outage would otherwise silently burn
+    all credits."""
+    from backend.services import sprite_agent_service
+    from backend.tasks.agent_schedules import _run_due
+
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    await client.post(
+        "/api/v1/me/pages/new", json={"name": "N", "content": "x"}, headers=_auth(key)
+    )
+    await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
+
+    async def boom(agent, stamp):
+        raise RuntimeError("sprite exploded")
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", boom)
+    await _run_due()
+
+    row = await _db_pool.fetchrow(
+        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        UUID(curator["id"]),
+    )
+    assert "sprite exploded" in row["last_run_error"]
+    assert row["month_run_count"] == 0  # consumed by mark_run, refunded on failure
+
+    # The next successful run clears the error.
+    monkeypatch.undo()
+    await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
+    ran = await _run_due()
+    assert ran == 1
+    row = await _db_pool.fetchrow(
+        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        UUID(curator["id"]),
+    )
+    assert row["last_run_error"] is None
+    assert row["month_run_count"] == 1
+
+
 # --- Manual recompute (POST /me/memory/recompute) ---
 
 
@@ -250,6 +293,38 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     )
     assert sprite_exec.calls  # the run actually woke the sprite
     assert row["curated_through"] >= before - timedelta(seconds=5)
+
+
+@pytest.mark.asyncio
+async def test_failed_manual_recompute_records_error(
+    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
+):
+    """The recompute endpoint answers 202 before the worker runs, so the
+    agent row is the only place a crash can surface."""
+    from backend.services import sprite_agent_service
+    from backend.tasks.agent_schedules import _run_curator_now
+
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+
+    async def boom(agent, stamp):
+        raise RuntimeError("harness missing")
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", boom)
+    with pytest.raises(RuntimeError):
+        await _run_curator_now(UUID(curator["id"]))
+
+    row = await _db_pool.fetchrow(
+        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        UUID(curator["id"]),
+    )
+    assert "harness missing" in row["last_run_error"]
+    assert row["month_run_count"] == 0
+
+    # The error is visible through the API the CLI reads.
+    r = await client.get("/api/v1/me/agents", headers=_auth(key))
+    fetched = next(a for a in r.json()["agents"] if a["is_curator"])
+    assert fetched["last_run_error"] == "harness missing"
 
 
 @pytest.mark.asyncio
