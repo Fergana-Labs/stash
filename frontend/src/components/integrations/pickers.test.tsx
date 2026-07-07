@@ -61,6 +61,58 @@ describe("AddSourceControls", () => {
   });
 });
 
+// A customer scopes the knowledge base by connecting one Drive folder — the
+// pasted link must become a source whose external_ref is that folder's id, so
+// the indexer (and therefore the curator) only ever sees that subtree.
+describe("DriveFolderControls", () => {
+  it("adds a folder-scoped source from a pasted link, with the given name", async () => {
+    addSource.mockResolvedValue({});
+    renderControls();
+
+    fireEvent.change(screen.getByPlaceholderText("Paste a Drive folder link"), {
+      target: { value: "https://drive.google.com/drive/u/0/folders/1AbC_dEf-234567890?usp=sharing" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Name (e.g. Knowledge Base)"), {
+      target: { value: "Heavi Knowledge Base" },
+    });
+    fireEvent.click(screen.getByText("Add folder"));
+
+    expect(addSource).toHaveBeenCalledWith({
+      source_type: "google_drive",
+      external_ref: "1AbC_dEf-234567890",
+      display_name: "Heavi Knowledge Base",
+    });
+  });
+
+  it("accepts a bare folder id and defaults the name", async () => {
+    addSource.mockResolvedValue({});
+    renderControls();
+
+    fireEvent.change(screen.getByPlaceholderText("Paste a Drive folder link"), {
+      target: { value: "1AbC_dEf-234567890" },
+    });
+    fireEvent.click(screen.getByText("Add folder"));
+
+    expect(addSource).toHaveBeenCalledWith({
+      source_type: "google_drive",
+      external_ref: "1AbC_dEf-234567890",
+      display_name: "Google Drive folder",
+    });
+  });
+
+  it("rejects non-folder input: button disabled, hint shown, nothing added", () => {
+    renderControls();
+
+    fireEvent.change(screen.getByPlaceholderText("Paste a Drive folder link"), {
+      target: { value: "https://drive.google.com/file/d/xyz/view" },
+    });
+    fireEvent.click(screen.getByText("Add folder"));
+
+    expect(addSource).not.toHaveBeenCalled();
+    expect(screen.getByText(/doesn't look like a folder link/)).toBeTruthy();
+  });
+});
+
 const githubConnector: Connector = {
   provider: "github",
   label: "GitHub",

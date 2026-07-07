@@ -134,14 +134,13 @@ export function AddSourceControls({
   if (connector.kind === "drive") {
     return (
       <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => void add({ external_ref: "root", display_name: "Google Drive" })}
-          disabled={busy}
-          className={secondaryButton()}
-        >
-          {busy ? "Adding..." : "Add My Drive"}
-        </button>
+        <DriveFolderControls
+          busy={busy}
+          onAddMyDrive={() => add({ external_ref: "root", display_name: "Google Drive" })}
+          onAddFolder={(folderId, displayName) =>
+            add({ external_ref: folderId, display_name: displayName })
+          }
+        />
         {errorRow}
       </div>
     );
@@ -243,6 +242,75 @@ export function AddSourceControls({
         {busy ? "Adding..." : "Add"}
       </button>
       {errorRow}
+    </div>
+  );
+}
+
+// A Drive source syncs one folder subtree (external_ref is the folder id;
+// "root" means all of My Drive). A pasted folder link reaches any folder the
+// account can read — nested or shared — without a Drive-listing endpoint.
+export function parseDriveFolderId(input: string): string | null {
+  const trimmed = input.trim();
+  const fromUrl = trimmed.match(/\/folders\/([A-Za-z0-9_-]+)/);
+  if (fromUrl) return fromUrl[1];
+  if (/^[A-Za-z0-9_-]{15,}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function DriveFolderControls({
+  busy,
+  onAddMyDrive,
+  onAddFolder,
+}: {
+  busy: boolean;
+  onAddMyDrive: () => Promise<boolean>;
+  onAddFolder: (folderId: string, displayName: string) => Promise<boolean>;
+}) {
+  const [link, setLink] = useState("");
+  const [name, setName] = useState("");
+  const folderId = parseDriveFolderId(link);
+
+  async function addFolder() {
+    if (!folderId) return;
+    const added = await onAddFolder(folderId, name.trim() || "Google Drive folder");
+    if (added) {
+      setLink("");
+      setName("");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => void onAddMyDrive()} disabled={busy} className={secondaryButton()}>
+          {busy ? "Adding..." : "Add My Drive"}
+        </button>
+        <span className="text-[11.5px] text-muted-foreground">or sync just one folder:</span>
+      </div>
+      <input
+        value={link}
+        onChange={(event) => setLink(event.target.value)}
+        placeholder="Paste a Drive folder link"
+        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground"
+        disabled={busy}
+      />
+      <div className="flex items-center gap-2">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Name (e.g. Knowledge Base)"
+          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground"
+          disabled={busy}
+        />
+        <button type="button" onClick={() => void addFolder()} disabled={busy || !folderId} className={primaryButton()}>
+          {busy ? "Adding..." : "Add folder"}
+        </button>
+      </div>
+      {link.trim() !== "" && !folderId && (
+        <div className="text-[11.5px] text-muted-foreground">
+          That doesn&apos;t look like a folder link — expected drive.google.com/drive/folders/…
+        </div>
+      )}
     </div>
   );
 }
