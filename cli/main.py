@@ -987,12 +987,14 @@ def share_session(
                 if e.status_code != 409:
                     raise
 
-        # Publish the session folder so the anonymous URL works immediately.
-        skill = c.publish_skill_folder(
+        # Classify the folder as a skill, then make it public so the
+        # anonymous URL works immediately.
+        skill = c.create_skill_record(
             folder["id"],
             title=page_title,
             description="Shared session Skill",
         )
+        c.set_general_access("folder", folder["id"], "public")
 
     public_url = f"{_web_app_url()}/skills/{skill['slug']}"
     console.print(f"\n[green bold]Shared![/green bold]  {public_url}")
@@ -1177,7 +1179,8 @@ def upload(
         result: dict = {"folder": root_folder, "app_url": folder_url}
 
         if create_skill:
-            # A skill is a folder with a SKILL.md; publishing makes it public.
+            # A skill is a folder with a SKILL.md and a skill record;
+            # --public additionally opens link access on the folder.
             try:
                 c.create_page(
                     name="SKILL.md",
@@ -1188,13 +1191,14 @@ def upload(
             except StashError as e:
                 if e.status_code != 409:
                     raise
+            skill_row = c.create_skill_record(
+                root_folder["id"],
+                title=skill_title,
+                description=f"Uploaded from {target.name}",
+            )
+            result["skill"] = skill_row
             if public:
-                skill_row = c.publish_skill_folder(
-                    root_folder["id"],
-                    title=skill_title,
-                    description=f"Uploaded from {target.name}",
-                )
-                result["skill"] = skill_row
+                c.set_general_access("folder", root_folder["id"], "public")
                 result["url"] = _skill_url(skill_row)
             else:
                 result["url"] = folder_url
@@ -1202,7 +1206,7 @@ def upload(
     if _use_json(as_json):
         output_json(result)
         return
-    if create_skill and "skill" in result:
+    if create_skill and public:
         console.print(
             f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
             f"[dim]Folder: {root_folder['id']}  Skill: {result['skill']['id']}[/dim]"
@@ -1210,8 +1214,8 @@ def upload(
     elif create_skill:
         console.print(
             f"\n[green bold]Uploaded![/green bold]  {folder_url}\n"
-            f"[dim]Folder: {root_folder['id']}  (private skill — publish with "
-            f"`stash skills publish {root_folder['id']}`)[/dim]"
+            f"[dim]Folder: {root_folder['id']}  (private skill — make it public with "
+            f"`stash visibility folder {root_folder['id']} public`)[/dim]"
         )
     else:
         console.print(
@@ -1221,23 +1225,29 @@ def upload(
         )
 
 
-def _parse_skill_slug(url_or_slug: str) -> str:
-    """Extract a Skill slug from a full URL or bare slug."""
-    url_or_slug = url_or_slug.strip().rstrip("/")
-    if "/skills/" in url_or_slug:
-        return url_or_slug.split("/skills/")[-1]
-    return url_or_slug
-
-
-@app.command("read")
-def read_skill(
-    url: str = typer.Argument(..., help="Skill URL or slug."),
+@app.command("visibility")
+def visibility(
+    object_type: str = typer.Argument(
+        ..., help="folder | page | file | table | session | session_folder | source"
+    ),
+    object_id: str = typer.Argument(..., help="ID of the resource."),
+    access: str = typer.Argument(..., help="public | private"),
+    as_json: bool = typer.Option(False, "--json"),
 ):
-    """Read a public Skill and print its contents."""
-    slug = _parse_skill_slug(url)
+    """Set general access for any resource: public (anyone with the link can read) or private."""
+    if access not in ("public", "private"):
+        console.print("[red]access must be 'public' or 'private'.[/red]")
+        raise typer.Exit(1)
+    backend_access = "public" if access == "public" else "restricted"
     with _client() as c:
-        text = c.get_skill_text(slug)
-    console.print(text)
+        try:
+            data = c.set_general_access(object_type, object_id, backend_access)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[green]{object_type} {object_id} is now {access}[/green]")
 
 
 # ===========================================================================
@@ -1246,9 +1256,9 @@ def read_skill(
 
 skills_app = typer.Typer(
     help=(
-        "Skills — modules of agent-usable knowledge. Local skills are Files "
-        "folders with a SKILL.md; shared skills are publishable bundles of "
-        "pages, sessions, tables, and files."
+        "Skills — modules of agent-usable knowledge: folders with a SKILL.md "
+        "bundling pages, sessions, tables, and files. Make one public with "
+        "`stash visibility folder <folder_id> public`."
     )
 )
 app.add_typer(skills_app, name="skills")
@@ -1281,20 +1291,23 @@ def skills_add(
                     folder_id=folder_id,
                     content_type="markdown",
                 )
+            c.create_skill_record(folder_id)
         except StashError as e:
             _err(e)
-    console.print(f"[green]Added skill '{folder_name}' to your Files.[/green]")
+    console.print(f"[green]Added skill '{folder_name}' to your Skills.[/green]")
 
 
 @skills_app.command("create")
 def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
     description: str = typer.Option("", "--description"),
-    public: bool = typer.Option(False, "--public", help="Publish immediately."),
+    public: bool = typer.Option(
+        False, "--public", help="Make the skill publicly readable at its /skills/<slug> URL."
+    ),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a skill: a folder with a SKILL.md template. Pass --public to publish."""
+    """Create a skill: a folder with a SKILL.md template. Pass --public to share it by link."""
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
@@ -1308,45 +1321,17 @@ def skills_create(
                 folder_id=folder["id"],
                 content_type="markdown",
             )
-            skill = None
+            skill = c.create_skill_record(folder["id"], discoverable=discover)
             if public:
-                skill = c.publish_skill_folder(
-                    folder["id"],
-                    discoverable=discover,
-                )
+                c.set_general_access("folder", folder["id"], "public")
         except StashError as e:
             _err(e)
     if _use_json(as_json):
-        output_json({"folder_id": folder["id"], "name": name, "published": skill})
+        output_json({"folder_id": folder["id"], "name": name, "skill": skill, "public": public})
         return
     console.print(f"[green]Created skill[/green] '{name}'  folder {folder['id']}")
-    if skill:
+    if public:
         console.print(f"  Public URL: [cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]")
-
-
-@skills_app.command("publish")
-def skills_publish(
-    folder_id: str = typer.Argument(..., help="Skill folder ID to publish."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Publish a skill folder: mint its share record and print the public URL."""
-    with _client() as c:
-        try:
-            skill = c.publish_skill_folder(
-                folder_id,
-                discoverable=discover,
-            )
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(skill)
-        return
-    label = "Published to Discover" if skill.get("discoverable") else "Published"
-    console.print(
-        f"[green]{label}[/green] '{skill['title']}' -> "
-        f"[cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]"
-    )
 
 
 @skills_app.command("update")
@@ -1361,7 +1346,7 @@ def skills_update(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a published skill's metadata, access, or Discover flag."""
+    """Update a skill's metadata or Discover flag."""
     fields = {}
     if title is not None:
         fields["title"] = title
@@ -1381,21 +1366,29 @@ def skills_update(
     if _use_json(as_json):
         output_json(skill)
         return
-    flag = f"[cyan]{skill['access']}[/cyan]"
-    if skill.get("discoverable"):
-        flag = f"{flag} [cyan]discover[/cyan]"
+    flag = "[cyan]discover[/cyan]" if skill.get("discoverable") else ""
     console.print(f"[green]Updated Skill[/green] '{skill['title']}'  {flag}")
 
 
-@skills_app.command("unpublish")
-def skills_unpublish(skill_id: str = typer.Argument(...)):
-    """Stop sharing a skill: delete its publish record. The folder stays."""
+@skills_app.command("add-session")
+def skills_add_session(
+    session_id: str = typer.Argument(..., help="Session ID (the string id, not the row uuid)."),
+    skill_folder_id: str = typer.Argument(..., help="Skill folder to freeze the session into."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Materialize a session transcript into a skill folder as a frozen
+    snapshot page (re-running replaces it in place)."""
     with _client() as c:
         try:
-            c.unpublish_skill(skill_id)
+            page = c.materialize_session(session_id, skill_folder_id)
         except StashError as e:
             _err(e)
-    console.print(f"[green]Unpublished Skill[/green] {skill_id}")
+    if _use_json(as_json):
+        output_json(page)
+        return
+    console.print(
+        f"[green]Materialized session[/green] {session_id}  [dim]→ page {page.get('id')}[/dim]"
+    )
 
 
 def _safe_skill_dirname(name: str) -> str:
@@ -1609,6 +1602,9 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
                     summary["ignored"].append(f"{name} (deleted in Stash; kept local copy)")
                 elif push_new:
                     folder = c.create_folder(name)
+                    # The record is what classifies the folder as a skill —
+                    # without it the new skill wouldn't be listed next sync.
+                    c.create_skill_record(folder["id"])
                     push(name, folder["id"])
                 else:
                     summary["ignored"].append(f"{name} (local-only; `stash skills add` to share)")
@@ -3437,8 +3433,8 @@ search Stash first — it has the full session record and human decisions across
 ### What a Skill is
 
 A Skill is a *special folder* — one containing a SKILL.md — holding related artifacts
-(pages, files, tables) that shares like any folder and gains a public URL when
-published. Use one when you're publishing a *collection* of related things together — a
+(pages, files, tables) that shares like any folder and gains a public URL when made
+public. Use one when you're publishing a *collection* of related things together — a
 project writeup with its supporting files, a research thread with its sources, a session
 transcript frozen as a page plus the files it produced.
 
@@ -3468,7 +3464,7 @@ Common reads:
 
 Common writes:
 - `stash share --title "..."` — share this session as a public Skill
-- `stash read <url>` — read a public Skill URL
+- `stash visibility <type> <id> public|private` — set link sharing on any resource
 """
     claude_md.write_text(existing.rstrip() + "\n" + block)
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
@@ -4283,7 +4279,7 @@ What a Skill is
 
 A Skill is a special folder — one containing a SKILL.md — holding related
 artifacts (pages, files, tables) that shares like any folder and gains a
-public URL when published. Use one when you're publishing a collection of
+public URL when made public. Use one when you're publishing a collection of
 related things together — a project writeup with its supporting files, a
 research thread with its sources, a session transcript frozen as a page
 with its outputs.
@@ -4294,7 +4290,7 @@ When to create a Skill
 Create a Skill when:
 - You're publishing a curated collection of related artifacts that belong
   together as one share.
-- You want a single public URL for the whole collection (publish it), or
+- You want a single public URL for the whole collection (make it public), or
   to hand a teammate everything at once (share the folder).
 
 Do NOT create a Skill when:
@@ -4311,12 +4307,12 @@ Commands to reach for
   `app_url`. No Skill created. This is the default for "share this one
   file."
 - `stash upload <path> --skill "<title>" --json` — same as above AND
-  publish the uploaded folder as a Skill with the given title. Use only
-  when you're producing a shareable collection.
+  bundle the uploaded folder into a public Skill with the given title.
+  Use only when you're producing a shareable collection.
 - `stash skills create "<name>" --public --json` — create a fresh skill
-  folder (with a SKILL.md template) and publish it. Add content with the
-  normal files/pages commands; `stash skills publish <folder_id>` shares
-  an existing skill folder.
+  folder (with a SKILL.md template) and make it public. Add content with
+  the normal files/pages commands; `stash visibility folder <folder_id>
+  public` makes an existing skill folder public.
 - `stash share <session_id>` — freeze a coding session (transcript + the
   files it touched) into a Skill folder. Sessions are inherently a
   collection, so this is the right unit.

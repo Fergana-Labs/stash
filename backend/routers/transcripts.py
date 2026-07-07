@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..services import (
     memory_service,
@@ -218,7 +218,7 @@ async def get_transcript_events(
     session_id: str,
     limit: int = 100,
     offset: int = 0,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """One page of chat-thread turns for a session, oldest first, sourced
     directly from history_events. The viewer loads the first page on open and
@@ -226,10 +226,12 @@ async def get_transcript_events(
     in-session search can jump straight to a match's window.
 
     No ownership gate: can_read_session is enforced per scope below, so
-    another user the session is shared with can read it."""
+    another user the session is shared with can read it. Anonymous viewers
+    can only read publicly-shared sessions — check_access enforces that."""
+    viewer_id = current_user["id"] if current_user else None
     for row in await session_service.list_sessions_for_session_id(session_id):
         owner_user_id = row["owner_user_id"]
-        if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
+        if not await memory_service.can_read_session(owner_user_id, session_id, viewer_id):
             continue
         events, total = await memory_service.read_session_events_page(
             owner_user_id, session_id, limit, offset

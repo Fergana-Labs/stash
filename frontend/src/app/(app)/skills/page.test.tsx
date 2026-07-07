@@ -11,10 +11,12 @@ import SkillsPage from "./page";
 import {
   createFolder,
   createPage,
+  createSkillRecord,
   listSkills,
   listSkillsSharedWithMe,
   type SharedSkill,
   type Skill,
+  type SkillRecord,
 } from "@/lib/api";
 import type { Page } from "@/lib/types";
 import { skillMdTemplate } from "@/lib/localSkill";
@@ -58,6 +60,7 @@ vi.mock("@/lib/api", () => ({
   },
   createFolder: vi.fn(),
   createPage: vi.fn(),
+  createSkillRecord: vi.fn(),
   deleteFolder: vi.fn(),
   forkSkill: vi.fn(),
   listSkills: vi.fn(),
@@ -92,7 +95,16 @@ function skill(overrides: Partial<Skill> = {}): Skill {
     mcp_exposed: false,
     file_count: 3,
     updated_at: "2026-06-01T00:00:00Z",
-    published: null,
+    public: false,
+    skill: {
+      id: "skill-1",
+      slug: "launch-plan",
+      title: "Launch Plan",
+      discoverable: false,
+      cover_image_url: null,
+      icon_url: null,
+      view_count: 0,
+    },
     ...overrides,
   };
 }
@@ -121,9 +133,11 @@ describe("SkillsPage", () => {
         name: "Research",
         description: "",
         file_count: 1,
-        published: {
+        public: true,
+        skill: {
           id: "skill-2",
           slug: "research",
+          title: "Research",
           discoverable: true,
           cover_image_url: null,
           icon_url: null,
@@ -153,9 +167,9 @@ describe("SkillsPage", () => {
     }
     expect(screen.getByText("How we launch")).toBeInTheDocument();
 
-    // Unpublished skills badge as Private; published ones say Published.
+    // Restricted skills badge as Private; publicly shared ones say Public.
     expect(screen.getByText("Private")).toBeInTheDocument();
-    expect(screen.getByText("Published")).toBeInTheDocument();
+    expect(screen.getByText("Public")).toBeInTheDocument();
     const researchLinks = screen
       .getAllByText("Research")
       .map((el) => el.closest("a"));
@@ -187,7 +201,7 @@ describe("SkillsPage", () => {
     expect(viewLinks[1]).toHaveAttribute("href", "/skills/published-guide");
   });
 
-  it("creates a New Skill folder with a SKILL.md and navigates to it", async () => {
+  it("creates a New Skill folder with a SKILL.md, a skill record, and navigates to it", async () => {
     vi.stubGlobal("prompt", vi.fn(() => "My Skill"));
     vi.mocked(createFolder).mockResolvedValue({
       id: "folder-9",
@@ -199,6 +213,9 @@ describe("SkillsPage", () => {
       updated_at: "",
     });
     vi.mocked(createPage).mockResolvedValue({ id: "page-9" } as unknown as Page);
+    vi.mocked(createSkillRecord).mockResolvedValue(
+      { id: "skill-9", slug: "my-skill" } as unknown as SkillRecord,
+    );
 
     render(<SkillsPage />);
 
@@ -210,6 +227,8 @@ describe("SkillsPage", () => {
       "folder-9",
       skillMdTemplate("My Skill"),
     );
+    // Without the record the folder is just a folder — it must be minted here.
+    await waitFor(() => expect(createSkillRecord).toHaveBeenCalledWith("folder-9"));
     await waitFor(() =>
       expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-9"),
     );

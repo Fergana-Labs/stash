@@ -21,7 +21,7 @@ import httpx
 
 from ..auth import hash_password
 from ..database import get_pool
-from . import files_tree_service, shared_skill_service, skill_service
+from . import files_tree_service, share_service, shared_skill_service, skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ async def import_skill(
 
     folder_id = await _create_root_folder(owner_user_id, owner_id, title)
     await files_tree_service.write_folder_files(owner_user_id, owner_id, folder_id, files)
-    await shared_skill_service.publish_folder(
+    await shared_skill_service.create_skill_record(
         owner_user_id,
         owner_id,
         folder_id,
@@ -198,6 +198,12 @@ async def import_skill(
         description=description,
         discoverable=True,
         source_github_url=source_url,
+    )
+    await share_service.set_general_access(
+        object_type="folder",
+        object_id=folder_id,
+        access="public",
+        owner_id=owner_id,
     )
     return "created"
 
@@ -222,9 +228,9 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
 
 async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
     """Import every SKILL.md folder in a repo into a user's OWN scope as private
-    skills — a skill is just a folder containing SKILL.md, so we create the
-    folder and write the repo files; no publish/discover record. Returns
-    {skills, imported}. A user is their own scope (owner_user_id == created_by)."""
+    skills: create the folder, write the repo files, and mint the skill record
+    that classifies it (no public share). Returns {skills, imported}. A user is
+    their own scope (owner_user_id == created_by)."""
     skills = await fetch_repo_skills(repo_url)
     imported = 0
     for skill in skills:
@@ -236,6 +242,9 @@ async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
         title = str(meta.get("name") or skill["fallback_title"])
         folder_id = await _create_root_folder(owner_user_id, owner_user_id, title)
         await files_tree_service.write_folder_files(owner_user_id, owner_user_id, folder_id, files)
+        await shared_skill_service.create_skill_record(
+            owner_user_id, owner_user_id, folder_id, title=title
+        )
         imported += 1
     return {"skills": len(skills), "imported": imported}
 

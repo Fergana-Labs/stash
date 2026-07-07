@@ -288,8 +288,8 @@ async def _query_table(args: dict) -> dict:
 
 @tool(
     "list_skills",
-    "List skills (folders with SKILL.md) in this Stash account, with their "
-    "publish info when shared.",
+    "List skills in this Stash account, with their record (slug, Discover "
+    "flag) and whether each is publicly shared.",
     {"type": "object", "properties": {}},
 )
 async def _list_skills(args: dict) -> dict:
@@ -302,7 +302,8 @@ async def _list_skills(args: dict) -> dict:
             "description": s["description"],
             "folder_id": s["folder_id"],
             "files": s["file_count"],
-            "published": s["published"],
+            "public": s["public"],
+            "skill": s["skill"],
         }
         for s in skills
     ]
@@ -376,41 +377,62 @@ async def _create_skill(args: dict) -> dict:
             content=extra["content"],
             content_type="markdown",
         )
-    return _text_result(json.dumps({"folder_id": str(folder["id"]), "name": args["name"]}))
+    skill = await shared_skill_service.create_skill_record(
+        owner_user_id, user_id, folder["id"], title=args["name"]
+    )
+    return _text_result(
+        json.dumps(
+            {
+                "folder_id": str(folder["id"]),
+                "name": args["name"],
+                "skill_id": str(skill["id"]),
+                "slug": skill["slug"],
+                "url": f"{settings.PUBLIC_URL.rstrip('/')}/skills/{skill['slug']}",
+            }
+        )
+    )
 
 
 @tool(
-    "publish_skill",
-    "Publish a skill folder: make it publicly readable at /skills/<slug> and return the URL.",
+    "set_general_access",
+    "Set an object's general access: 'public' (anyone with the link can read) "
+    "or 'restricted'. Works for any resource: folder, page, file, table, "
+    "session, session_folder. To share a skill publicly, set its folder public.",
     {
         "type": "object",
         "properties": {
-            "folder_id": {"type": "string"},
-            "discoverable": {"type": "boolean", "default": False},
+            "object_type": {"type": "string"},
+            "object_id": {"type": "string"},
+            "access": {"type": "string", "enum": ["public", "restricted"]},
         },
-        "required": ["folder_id"],
+        "required": ["object_type", "object_id", "access"],
     },
 )
-async def _publish_skill(args: dict) -> dict:
-    owner_user_id = _current_scope()
+async def _set_general_access(args: dict) -> dict:
+    from fastapi import HTTPException
+
+    from . import share_service
+
     user_id = _current_user()
     try:
-        skill = await shared_skill_service.publish_folder(
-            owner_user_id,
-            user_id,
-            UUID(args["folder_id"]),
-            discoverable=bool(args.get("discoverable", False)),
+        result = await share_service.set_general_access(
+            object_type=args["object_type"],
+            object_id=UUID(args["object_id"]),
+            access=args["access"],
+            owner_id=user_id,
         )
-    except (ValueError, PermissionError) as e:
-        return _text_result(json.dumps({"error": str(e)}))
-    out = _skill_to_dict(skill)
-    out["url"] = f"{settings.PUBLIC_URL.rstrip('/')}/skills/{skill['slug']}"
-    return _text_result(json.dumps(out))
+    except HTTPException as e:
+        return _text_result(json.dumps({"error": e.detail}))
+    if args["object_type"] == "folder" and args["access"] == "public":
+        skill = await shared_skill_service.get_skill_for_folder(UUID(args["object_id"]))
+        if skill:
+            result["url"] = f"{settings.PUBLIC_URL.rstrip('/')}/skills/{skill['slug']}"
+    return _text_result(json.dumps(result))
 
 
 @tool(
     "update_skill",
-    "Update a published skill's share settings (title, description, access, Discover listing).",
+    "Update a skill's record: title, description, Discover listing.",
     {
         "type": "object",
         "properties": {
@@ -433,22 +455,6 @@ async def _update_skill(args: dict) -> dict:
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps(_skill_to_dict(skill)))
-
-
-@tool(
-    "unpublish_skill",
-    "Stop sharing a skill: delete its publish record. The folder keeps the skill.",
-    {
-        "type": "object",
-        "properties": {"skill_id": {"type": "string"}},
-        "required": ["skill_id"],
-    },
-)
-async def _unpublish_skill(args: dict) -> dict:
-    user_id = _current_user()
-    skill_id = UUID(args["skill_id"])
-    deleted = await shared_skill_service.unpublish_skill(skill_id, user_id)
-    return _text_result(json.dumps({"deleted": deleted, "skill_id": str(skill_id)}))
 
 
 # --- Source-aware tools ----------------------------------------------------
@@ -1114,9 +1120,8 @@ _TOOLS_BY_NAME = {
     "list_skills": _list_skills,
     "read_skill": _read_skill,
     "create_skill": _create_skill,
-    "publish_skill": _publish_skill,
+    "set_general_access": _set_general_access,
     "update_skill": _update_skill,
-    "unpublish_skill": _unpublish_skill,
     "list_sources": _list_sources,
     "list_source": _list_source,
     "read_source": _read_source,

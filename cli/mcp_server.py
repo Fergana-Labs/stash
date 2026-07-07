@@ -370,7 +370,9 @@ def stash_delete_column(table_id: str, column_id: str) -> str:
 
 @mcp.tool()
 def stash_list_skills() -> str:
-    """List your skills — local SKILL.md folders and shared bundles."""
+    """List your skills. Each item carries the skill record under `skill`
+    (id, slug, title, discoverable, view_count) and a `public` flag saying
+    whether the skill's folder is publicly shared."""
     return _json(_client().list_skills())
 
 
@@ -441,25 +443,28 @@ def stash_create_skill(
     name: str,
     skill_md: str = "",
 ) -> str:
-    """Create a skill: a folder with a SKILL.md. Pass skill_md as the full
-    SKILL.md content (frontmatter + body); a template is used when omitted."""
+    """Create a skill: a folder with a SKILL.md, classified by a skill record
+    (slug, title). Pass skill_md as the full SKILL.md content (frontmatter +
+    body); a template is used when omitted. The skill starts private — make
+    it public with stash_set_general_access on the returned folder_id."""
     client = _client()
     folder = client.create_folder(name)
     content = skill_md or f"---\nname: {name}\ndescription: \n---\n\n# {name}\n"
     client.create_page(
         name="SKILL.md", content=content, folder_id=folder["id"], content_type="markdown"
     )
-    return _json({"folder_id": folder["id"], "name": name})
+    skill = client.create_skill_record(folder["id"])
+    return _json({"folder_id": folder["id"], "name": name, "skill": skill})
 
 
 @mcp.tool()
-def stash_publish_skill(
-    folder_id: str,
-    discoverable: bool = False,
-) -> str:
-    """Publish a skill folder: make it publicly readable at /skills/<slug>.
-    To share privately with a person instead, share the folder (stash_share_object)."""
-    return _json(_client().publish_skill_folder(folder_id, discoverable=discoverable))
+def stash_set_general_access(object_type: str, object_id: str, access: str) -> str:
+    """Set link-level access on any resource: access is 'public' (anyone with
+    the link can read) or 'restricted'. object_type: folder | page | file |
+    table | session | session_folder | source. To make a skill public, set
+    access on its folder. To share with one person instead, use
+    stash_share_object."""
+    return _json(_client().set_general_access(object_type, object_id, access))
 
 
 @mcp.tool()
@@ -469,7 +474,7 @@ def stash_update_skill(
     description: str = "",
     discoverable: str = "",
 ) -> str:
-    """Update a published skill's metadata or Discover flag."""
+    """Update a skill's metadata or Discover flag."""
     fields: dict = {}
     if title:
         fields["title"] = title
@@ -483,11 +488,11 @@ def stash_update_skill(
 
 
 @mcp.tool()
-def stash_unpublish_skill(skill_id: str) -> str:
-    """Stop sharing a skill: delete its publish record. The folder stays."""
-    client = _client()
-    client.unpublish_skill(skill_id)
-    return _json({"unpublished": skill_id})
+def stash_add_session_to_skill(session_id: str, folder_id: str) -> str:
+    """Materialize a session transcript into a skill folder as a frozen
+    snapshot page (re-running replaces it in place). session_id is the
+    session's string id, not the row uuid."""
+    return _json(_client().materialize_session(session_id, folder_id))
 
 
 @mcp.tool()

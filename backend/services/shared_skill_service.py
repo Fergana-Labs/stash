@@ -1,10 +1,11 @@
-"""Published skills — public records attached 1:1 to skill folders.
+"""Skill records — classification + metadata attached 1:1 to skill folders.
 
-A skill is a folder containing SKILL.md (skill_service). Person-to-person
-sharing rides the generic folder shares; this module owns only *publishing*:
-the ``skills`` row (slug, Discover flag, cover art, view count) whose
-existence makes the folder publicly readable at /skills/<slug>. Writes always
-go through the normal Files APIs and are never granted by the record.
+A folder is a skill iff a ``skills`` row (slug, title, Discover flag, cover
+art, view count) points at it. The record grants nothing: person-to-person
+sharing rides the generic folder shares, and public readability at
+/skills/<slug> is a public share on the folder (share_service general
+access), same as any other resource. Writes always go through the normal
+Files APIs.
 """
 
 import hashlib
@@ -99,7 +100,7 @@ def agent_install_pitch(stash_url: str) -> str:
         "Stash:\n\n"
         "```bash\n"
         '"$HOME/.local/bin/stash" connect\n'
-        f'"$HOME/.local/bin/stash" read {stash_url}\n'
+        f"curl -sL {stash_url}.md\n"
         "```\n\n"
         "After setup, use `stash vfs` to browse your Stash like a "
         "filesystem without mounting anything into the OS, for example "
@@ -108,7 +109,7 @@ def agent_install_pitch(stash_url: str) -> str:
         "```bash\n"
         "stash signin --non-interactive\n"
         "stash connect\n"
-        f"stash read {stash_url}\n"
+        f"curl -sL {stash_url}.md\n"
         "```"
     )
 
@@ -136,10 +137,10 @@ async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, 
     )
 
 
-# --- Publish lifecycle ---
+# --- Record lifecycle (classify / declassify) ---
 
 
-async def publish_folder(
+async def create_skill_record(
     owner_user_id: UUID,
     owner_id: UUID,
     folder_id: UUID,
@@ -151,9 +152,9 @@ async def publish_folder(
     icon_url: str | None = None,
     source_github_url: str | None = None,
 ) -> dict:
-    """Mint the publish record for a skill folder — the folder becomes
-    publicly readable at /skills/<slug>. Creates the SKILL.md template if the
-    folder doesn't have one yet."""
+    """Classify a folder as a skill: mint its record (slug, title, Discover
+    flag). Grants no access — make the folder public via general access.
+    Creates the SKILL.md template if the folder doesn't have one yet."""
     pool = get_pool()
     folder = await pool.fetchrow(
         "SELECT id, name, owner_user_id FROM folders WHERE id = $1", folder_id
@@ -161,11 +162,11 @@ async def publish_folder(
     if not folder or folder["owner_user_id"] != owner_user_id:
         raise ValueError("Folder not found in this scope")
     if not await user_scope_service.is_owner(owner_user_id, owner_id):
-        raise ValueError("Only scope owners can publish Skills")
+        raise ValueError("Only scope owners can create Skills")
     if not await permission_service.check_access(
         "folder", folder_id, owner_id, owner_user_id=owner_user_id, require="write"
     ):
-        raise PermissionError("Not allowed to publish this folder")
+        raise PermissionError("Not allowed to make this folder a skill")
 
     if not title:
         skill_md = await pool.fetchval(
@@ -195,7 +196,7 @@ async def publish_folder(
             source_github_url,
         )
     except asyncpg.UniqueViolationError:
-        raise ValueError("Skill is already published") from None
+        raise ValueError("Folder is already a skill") from None
     row = await get_pool().fetchrow(f"{_SKILL_SELECT} WHERE v.id = $1", inserted["id"])
     return dict(row)
 
@@ -231,8 +232,9 @@ async def update_skill(skill_id: UUID, user_id: UUID, updates: dict) -> dict | N
     return dict(row) if row else None
 
 
-async def unpublish_skill(skill_id: UUID, user_id: UUID) -> bool:
-    """Delete the publish record only — the folder stays a (private) skill."""
+async def delete_skill_record(skill_id: UUID, user_id: UUID) -> bool:
+    """Declassify: delete the record so the folder returns to Files. Shares on
+    the folder are untouched — sharing and classification are orthogonal."""
     pool = get_pool()
     if not await user_can_manage(skill_id, user_id):
         return False
@@ -253,13 +255,17 @@ async def get_skill_for_folder(folder_id: UUID) -> dict | None:
 
 
 async def get_public_skill(slug: str, viewer_id: UUID | None = None) -> dict | None:
-    """Resolve a skill by slug for the given viewer (None = anonymous)."""
+    """Resolve a skill by slug for the given viewer (None = anonymous). The
+    folder's access rules decide: owner, explicit share, or public share."""
     pool = get_pool()
     row = await pool.fetchrow(f"{_SKILL_SELECT} WHERE v.slug = $1", slug)
     if not row:
         return None
     skill = dict(row)
-    _ = viewer_id  # published == public
+    if not await permission_service.check_access(
+        "folder", skill["folder_id"], viewer_id, owner_user_id=skill["owner_user_id"]
+    ):
+        return None
     await pool.execute("UPDATE skills SET view_count = view_count + 1 WHERE id = $1", skill["id"])
 
     names = await pool.fetchrow(
@@ -299,9 +305,13 @@ async def list_public_skills(
     sort: str = "trending",
     limit: int = 48,
 ) -> list[dict]:
-    """Discover catalog: public + discoverable skills."""
+    """Discover catalog: skills that are discoverable AND publicly shared."""
     pool = get_pool()
-    where = ["v.discoverable = true"]
+    where = [
+        "v.discoverable = true",
+        "EXISTS (SELECT 1 FROM shares pub WHERE pub.object_type = 'folder' "
+        "AND pub.object_id = v.folder_id AND pub.principal_type = 'public')",
+    ]
     args: list = []
     idx = 1
     if query:
@@ -349,8 +359,7 @@ async def list_public_skills(
 
 
 async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
-    """Skill folders shared with this user via folder shares, with publish
-    info when the owner has also published them."""
+    """Skill folders shared with this user via folder shares."""
     pool = get_pool()
     rows = await pool.fetch(
         """
@@ -361,10 +370,10 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
                v.slug
         FROM shares sh
         JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder'
-        JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
+        JOIN skills v ON v.folder_id = f.id
         JOIN users ow ON ow.id = sh.owner_user_id
         LEFT JOIN users u ON u.id = sh.created_by
-        LEFT JOIN skills v ON v.folder_id = f.id
+        LEFT JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
         WHERE sh.principal_type = 'user' AND sh.principal_id = $1
           AND (sh.expires_at IS NULL OR sh.expires_at > now())
         ORDER BY owner_name, f.name
@@ -757,6 +766,47 @@ async def fork_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | N
 
 
 # --- Snapshots + session materialization ---
+#
+# Everything added to a skill from another surface is a frozen snapshot, never
+# a live view. Each snapshot page records its origin in pages.snapshot_key so
+# a re-snapshot replaces the page in place instead of duplicating it.
+
+
+async def _upsert_snapshot_page(
+    owner_user_id: UUID,
+    user_id: UUID,
+    folder_id: UUID,
+    *,
+    snapshot_key: str,
+    name: str,
+    content: str,
+) -> dict:
+    pool = get_pool()
+    existing_id = await pool.fetchval(
+        "SELECT id FROM pages WHERE folder_id = $1 AND snapshot_key = $2 AND deleted_at IS NULL",
+        folder_id,
+        snapshot_key,
+    )
+    if existing_id:
+        return await files_tree_service.update_page(
+            existing_id,
+            owner_user_id,
+            user_id,
+            name=name,
+            content=content,
+            content_type="markdown",
+            guard_content_hash=False,
+            is_snapshot_refresh=True,
+        )
+    return await files_tree_service.create_page(
+        owner_user_id,
+        name,
+        user_id,
+        folder_id=folder_id,
+        content=content,
+        content_type="markdown",
+        snapshot_key=snapshot_key,
+    )
 
 
 async def snapshot_source_into_skill(
@@ -768,6 +818,7 @@ async def snapshot_source_into_skill(
 ) -> dict | None:
     """Copy a point-in-time snapshot of one connected-source document into the
     skill's folder as a native page, so the skill stays self-contained.
+    Re-snapshotting the same document replaces the page in place.
 
     The caller validates source ownership (get_owned_source).
     Returns None if the document is gone or its provider fetch failed — an
@@ -780,13 +831,13 @@ async def snapshot_source_into_skill(
     doc = await source_service.read_document(source, path)
     if doc is None or "error" in doc:
         return None
-    return await files_tree_service.create_page(
+    return await _upsert_snapshot_page(
         skill["owner_user_id"],
-        doc["name"],
         user_id,
-        folder_id=skill["folder_id"],
+        skill["folder_id"],
+        snapshot_key=f"source:{source['id']}:{path}",
+        name=doc["name"],
         content=doc["content"],
-        content_type="markdown",
     )
 
 
@@ -797,7 +848,8 @@ async def materialize_session_page(
     user_id: UUID,
 ) -> dict | None:
     """Freeze a session transcript into a markdown page inside a folder —
-    the way sessions travel into skills now that they can't be bundled."""
+    the way sessions travel into skills now that they can't be bundled.
+    Re-materializing the same session replaces the page in place."""
     pool = get_pool()
     session = await pool.fetchrow(
         "SELECT id, session_id, agent_name, files_touched FROM sessions "
@@ -837,13 +889,13 @@ async def materialize_session_page(
                 f"### {event['event_type'] or 'event'} ({event['agent_name'] or 'agent'})\n\n{content}"
             )
 
-    return await files_tree_service.create_page(
+    return await _upsert_snapshot_page(
         owner_user_id,
-        f"Session {session['session_id']}.md",
         user_id,
-        folder_id=folder_id,
+        folder_id,
+        snapshot_key=f"session:{session['session_id']}",
+        name=f"Session {session['session_id']}.md",
         content="\n\n".join(lines),
-        content_type="markdown",
     )
 
 
@@ -997,16 +1049,18 @@ def contents_to_text(title: str, contents: dict) -> str:
     return "\n\n".join(parts)
 
 
-# --- Access checks (on the publish record) ---
+# --- Access checks (on the skill record) ---
 #
-# A publish record's existence means "publicly readable"; managing it is
-# owner-only. Person-to-person access rides folder shares, not this module.
+# The record grants nothing: reading follows the folder's access (owner,
+# explicit share, or public share); managing the record is owner-only.
 
 
 async def user_can_read(skill_id: UUID, user_id: UUID | None) -> bool:
-    _ = user_id  # published == public
     pool = get_pool()
-    return bool(await pool.fetchval("SELECT 1 FROM skills WHERE id = $1", skill_id))
+    folder_id = await pool.fetchval("SELECT folder_id FROM skills WHERE id = $1", skill_id)
+    if folder_id is None:
+        return False
+    return await permission_service.check_access("folder", folder_id, user_id)
 
 
 async def user_can_manage(skill_id: UUID, user_id: UUID) -> bool:

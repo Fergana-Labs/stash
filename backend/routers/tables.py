@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..models import (
     ColumnAddRequest,
     ColumnReorderRequest,
@@ -72,7 +72,7 @@ async def _check_ws_table(
 async def _check_table_access(
     owner_user_id: UUID,
     table_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     require_write: bool = False,
 ) -> None:
@@ -107,14 +107,16 @@ def _parse_row_ids(body: dict) -> list[UUID]:
 @router.get("/{table_id}", response_model=TableResponse)
 async def get_table_by_id(
     table_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Any failure is a 404: an unscoped lookup must not confirm that a
-    table the caller can't read exists."""
+    table the caller can't read exists. Anonymous viewers (viewer_id None)
+    can only read publicly-shared tables — check_access enforces that."""
+    viewer_id = current_user["id"] if current_user else None
     table = await table_service.get_table(table_id)
     if not table or not table.get("owner_user_id"):
         raise HTTPException(status_code=404, detail="Table not found")
-    await _check_table_access(table["owner_user_id"], table_id, current_user["id"])
+    await _check_table_access(table["owner_user_id"], table_id, viewer_id)
     return TableResponse(**table)
 
 
@@ -287,12 +289,16 @@ async def list_ws_rows(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     filters: str | None = Query(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    owner_user_id = current_user["id"]
-    await _check_read(owner_user_id, current_user["id"])
-    await _check_ws_table(owner_user_id, table_id)
-    await _check_table_access(owner_user_id, table_id, current_user["id"])
+    """The scope comes from the table row, not the caller: the table viewer
+    reads rows of shared and publicly-shared tables, including anonymous
+    viewers. check_access is the only gate."""
+    viewer_id = current_user["id"] if current_user else None
+    table = await table_service.get_table_metadata(table_id)
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    await _check_table_access(table["owner_user_id"], table_id, viewer_id)
     parsed_filters = json.loads(filters) if filters else None
     rows, total = await table_service.list_rows(
         table_id,

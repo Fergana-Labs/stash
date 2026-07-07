@@ -228,7 +228,7 @@ def test_app_vfs_xargs_feeds_paths_with_spaces_into_a_command():
     result = shell.run("find /skills -type f -name '*.md' | xargs cat")
 
     assert result.exit_code == 0
-    assert result.stdout == "# Demo Stash\n"
+    assert result.stdout == "# Demo Stash\n# Private Skill\n"
 
 
 def test_app_vfs_xargs_replaces_placeholder_and_batches():

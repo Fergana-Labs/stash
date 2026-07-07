@@ -349,15 +349,21 @@ async def test_table_share_by_email_grants_direct_read(pool):
 
 
 @pytest.mark.asyncio
-async def test_published_skill_grants_read_only(pool):
-    """A publish record's existence makes the skill folder publicly readable —
-    stranger and anonymous alike — but is never a write grant."""
+async def test_public_skill_folder_grants_read_only(pool):
+    """A public share on a skill folder makes its contents publicly readable —
+    stranger and anonymous alike — but is never a write grant. The skill
+    record itself grants nothing."""
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     scope = await _make_scope(pool, owner)
     folder = await _make_folder(pool, scope, owner, name="public-skill")
     page = await _make_page(pool, scope, owner, folder_id=folder)
-    await shared_skill_service.publish_folder(scope, owner, folder, title="Public Skill")
+    await shared_skill_service.create_skill_record(scope, owner, folder, title="Public Skill")
+    # Classification alone grants nothing.
+    assert not await permission_service.check_access("page", page, stranger)
+    await share_service.set_general_access(
+        object_type="folder", object_id=folder, access="public", owner_id=owner
+    )
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -368,12 +374,11 @@ async def test_public_session_folder_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     scope = await _make_scope(pool, owner)
-    folder = await session_folder_service.create_folder(
-        scope,
-        "Public Sessions",
-        public_permission="read",
-    )
+    folder = await session_folder_service.create_folder(scope, "Public Sessions")
     folder_id = uuid.UUID(folder["id"])
+    await share_service.set_general_access(
+        object_type="session_folder", object_id=folder_id, access="public", owner_id=owner
+    )
 
     assert await permission_service.check_access("session_folder", folder_id, stranger)
     assert await permission_service.check_access("session_folder", folder_id, None)
@@ -383,6 +388,86 @@ async def test_public_session_folder_grants_read_only(pool):
     assert not await permission_service.check_access(
         "session_folder", folder_id, None, require="write"
     )
+
+
+@pytest.mark.asyncio
+async def test_folder_general_access_public_then_restricted(pool):
+    """A public share on a folder grants anonymous read on the folder and its
+    pages; flipping back to restricted revokes it. Public never grants comment
+    or write."""
+    owner = await _make_user(pool)
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner, name="toggle-folder")
+    page = await _make_page(pool, scope, owner, folder_id=folder)
+
+    assert not await permission_service.check_access("folder", folder, None)
+    assert not await permission_service.check_access("page", page, None)
+
+    await share_service.set_general_access(
+        object_type="folder", object_id=folder, access="public", owner_id=owner
+    )
+    assert await share_service.get_general_access("folder", folder) == "public"
+    assert await permission_service.check_access("folder", folder, None)
+    assert await permission_service.check_access("page", page, None)
+    # Public is a read grant only — never comment, never write.
+    assert not await permission_service.check_access("page", page, None, require="comment")
+    assert not await permission_service.check_access("page", page, None, require="write")
+    assert not await permission_service.check_access("folder", folder, None, require="write")
+
+    await share_service.set_general_access(
+        object_type="folder", object_id=folder, access="restricted", owner_id=owner
+    )
+    assert await share_service.get_general_access("folder", folder) == "restricted"
+    assert not await permission_service.check_access("folder", folder, None)
+    assert not await permission_service.check_access("page", page, None)
+
+
+@pytest.mark.asyncio
+async def test_set_general_access_is_owner_only(pool):
+    from fastapi import HTTPException
+
+    owner = await _make_user(pool)
+    other = await _make_user(pool)
+    scope = await _make_scope(pool, owner)
+    folder = await _make_folder(pool, scope, owner, name="not-yours")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await share_service.set_general_access(
+            object_type="folder", object_id=folder, access="public", owner_id=other
+        )
+    assert excinfo.value.status_code == 404
+    assert not await permission_service.check_access("folder", folder, None)
+
+
+@pytest.mark.asyncio
+async def test_public_session_folder_cascades_to_sessions_and_payload_access(pool):
+    """Making a session folder public cascades anonymous read to the sessions
+    inside it, and the folder payload reports access == 'public' computed from
+    the share."""
+    owner = await _make_user(pool)
+    scope = await _make_scope(pool, owner)
+    folder = await session_folder_service.create_folder(scope, "Launch logs")
+    folder_id = uuid.UUID(folder["id"])
+    assert folder["access"] == "private"
+
+    session_row = await _make_session(pool, scope, owner, session_id="pub-sf-sess")
+    await pool.execute(
+        "UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, folder_id
+    )
+    assert not await permission_service.check_access("session", session_row, None)
+
+    await share_service.set_general_access(
+        object_type="session_folder", object_id=folder_id, access="public", owner_id=owner
+    )
+    assert (await session_folder_service.get_folder(folder_id))["access"] == "public"
+    assert await permission_service.check_access("session", session_row, None)
+    assert not await permission_service.check_access("session", session_row, None, require="write")
+
+    await share_service.set_general_access(
+        object_type="session_folder", object_id=folder_id, access="restricted", owner_id=owner
+    )
+    assert (await session_folder_service.get_folder(folder_id))["access"] == "private"
+    assert not await permission_service.check_access("session", session_row, None)
 
 
 @pytest.mark.asyncio
@@ -713,16 +798,26 @@ async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_public_write_session_folder_requests_are_rejected(client: AsyncClient):
+async def test_general_access_rejects_anything_but_public_or_restricted(client: AsyncClient):
+    """Public access is read-only by construction: the general-access endpoint
+    only accepts 'public'/'restricted', so a public write grant can't exist."""
     owner_key, _ = await _register(client)
+    folder_id = (
+        await client.post(
+            "/api/v1/me/session-folders",
+            json={"name": "Editable sessions"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
 
-    create = await client.post(
-        "/api/v1/me/session-folders",
-        json={"name": "Editable sessions", "public_permission": "write"},
+    resp = await client.put(
+        "/api/v1/share/general-access",
+        json={"object_type": "session_folder", "object_id": folder_id, "access": "write"},
         headers=_auth(owner_key),
     )
 
-    assert create.status_code == 422
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "access must be public or restricted"
 
 
 @pytest.mark.asyncio
@@ -792,10 +887,20 @@ async def test_session_folder_write_access_cannot_manage_folder(client: AsyncCli
     public_folder_id = (
         await client.post(
             "/api/v1/me/session-folders",
-            json={"name": "Public Read", "public_permission": "read"},
+            json={"name": "Public Read"},
             headers=_auth(owner_key),
         )
     ).json()["id"]
+    made_public = await client.put(
+        "/api/v1/share/general-access",
+        json={
+            "object_type": "session_folder",
+            "object_id": public_folder_id,
+            "access": "public",
+        },
+        headers=_auth(owner_key),
+    )
+    assert made_public.status_code == 200
     shared_folder_id = (
         await client.post(
             "/api/v1/me/session-folders",
@@ -1302,12 +1407,14 @@ async def test_predicate_and_check_access_agree(pool):
                     f"boolean={boolean} predicate={predicate}"
                 )
 
-    # Published-skill folder: stranger and anonymous get READ (never write), and
+    # Publicly-shared folder: stranger and anonymous get READ (never write), and
     # the predicate must agree. This is the public-read branch the refactor folded
     # into the one predicate, so it gets an explicit equivalence check.
     pub_folder = await _make_folder(pool, scope, owner, name="pub-skill")
     pub_page = await _make_page(pool, scope, owner, folder_id=pub_folder)
-    await shared_skill_service.publish_folder(scope, owner, pub_folder, title="Pub")
+    await share_service.set_general_access(
+        object_type="folder", object_id=pub_folder, access="public", owner_id=owner
+    )
     for viewer in (stranger, None):
         for require in ("read", "write"):
             boolean = await permission_service.check_access(

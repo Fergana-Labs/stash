@@ -24,6 +24,7 @@ from ..services import (
     demo_service,
     files_tree_service,
     memory_service,
+    share_service,
     shared_skill_service,
 )
 from ..services.files_tree_service import DuplicatePageName
@@ -264,7 +265,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
         )
 
     try:
-        skill = await shared_skill_service.publish_folder(
+        skill = await shared_skill_service.create_skill_record(
             owner_user_id,
             owner_id,
             folder["id"],
@@ -273,6 +274,12 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    await share_service.set_general_access(
+        object_type="folder",
+        object_id=folder["id"],
+        access="public",
+        owner_id=owner_id,
+    )
 
     base = settings.PUBLIC_URL.rstrip("/")
     return {

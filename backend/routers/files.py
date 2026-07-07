@@ -345,10 +345,12 @@ async def list_my_files(
 @canonical_router.get("/{file_id}", response_model=FileResponse)
 async def get_file_by_id(
     file_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Any failure is a 404: an unscoped lookup must not confirm that a
-    file the caller can't read exists."""
+    file the caller can't read exists. Anonymous viewers (viewer_id None)
+    can only read publicly-shared files — check_access enforces that."""
+    viewer_id = current_user["id"] if current_user else None
     pool = get_pool()
     row = await pool.fetchrow(
         f"SELECT {_FILE_COLS} {_FILE_FROM} WHERE f.id = $1 AND f.deleted_at IS NULL",
@@ -356,7 +358,7 @@ async def get_file_by_id(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, row["owner_user_id"], current_user["id"]):
+    if not await _can_access_file(file_id, row["owner_user_id"], viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
@@ -381,9 +383,10 @@ async def download_my_file(
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Permanent URL for file links embedded in wiki pages. Resolves the file's
-    real owner so recipients of a shared page can load its embedded images."""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    real owner so recipients of a shared page can load its embedded images.
+    Anonymous viewers (viewer_id None) can only download publicly-shared
+    files — check_access enforces that."""
+    viewer_id = current_user["id"] if current_user else None
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT owner_user_id, name, content_type, storage_key FROM files "
@@ -392,7 +395,7 @@ async def download_my_file(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, row["owner_user_id"], current_user["id"]):
+    if not await _can_access_file(file_id, row["owner_user_id"], viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
     content_type = row["content_type"] or "application/octet-stream"

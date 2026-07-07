@@ -1,11 +1,11 @@
-"""Skill service — skills are special folders containing a SKILL.md file.
+"""Skill service — skills are folders explicitly classified by a ``skills`` row.
 
-Detection rule: any folder whose immediate children include a page named
-``SKILL.md``. Skill-ness is derived, never stored; reads/writes go through
-the Files API. Files and Skills are MECE: skill subtrees are filtered out of
-every Files surface (see ``skill_subtree_folder_ids``) and surfaced in the
-Skills area instead. Publishing/sharing attaches a 1:1 ``skills`` row to the
-folder (shared_skill_service).
+A folder is a skill iff a ``skills`` record (slug, title, Discover flag, cover
+art — shared_skill_service) points at it. Classification never depends on
+whether a SKILL.md page exists. Files and Skills are MECE: skill subtrees are
+filtered out of every Files surface (see ``skill_subtree_folder_ids``) and
+surfaced in the Skills area instead. Public readability is a public share on
+the folder, like any other resource.
 """
 
 from __future__ import annotations
@@ -19,23 +19,19 @@ SKILL_MD_NAME = "SKILL.md"
 
 
 def not_skill_folder_pred(alias: str) -> str:
-    """SQL fragment: folder ``alias`` has no live SKILL.md child."""
-    return (
-        f"NOT EXISTS (SELECT 1 FROM pages skp WHERE skp.folder_id = {alias}.id "
-        "AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL)"
-    )
+    """SQL fragment: folder ``alias`` is not classified as a skill."""
+    return f"NOT EXISTS (SELECT 1 FROM skills sk WHERE sk.folder_id = {alias}.id)"
 
 
 async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
-    """Every folder inside any skill subtree: the SKILL.md folders themselves
+    """Every folder inside any skill subtree: the classified folders themselves
     plus all their descendants. Used to keep Files surfaces skill-free."""
     pool = get_pool()
     rows = await pool.fetch(
         "WITH RECURSIVE skill_tree AS ("
         "  SELECT f.id FROM folders f "
         "  WHERE f.owner_user_id = $1 "
-        "    AND EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
-        "                AND p.name = 'SKILL.md' AND p.deleted_at IS NULL)"
+        "    AND EXISTS (SELECT 1 FROM skills sk WHERE sk.folder_id = f.id)"
         "  UNION"
         "  SELECT f.id FROM folders f JOIN skill_tree st ON f.parent_folder_id = st.id"
         ") SELECT id FROM skill_tree",
@@ -75,20 +71,24 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
 
 
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """List every skill folder in the scope: folder + SKILL.md frontmatter,
-    plus the publish record when the skill has been shared."""
+    """List every skill in the scope: the record, the folder, SKILL.md
+    frontmatter when present, and whether the folder is publicly shared."""
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
         "SELECT f.id AS folder_id, f.name AS folder_name, "
-        "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
+        "  p.content_markdown AS skill_md, "
+        "  COALESCE(p.updated_at, f.updated_at) AS updated_at, "
         "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
         "   AND p2.deleted_at IS NULL) AS file_count, "
-        "  s.id AS publish_id, s.slug, s.title, s.discoverable, "
-        "  s.cover_image_url, s.icon_url, s.view_count "
-        "FROM folders f "
-        "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
-        "LEFT JOIN skills s ON s.folder_id = f.id "
+        "  s.id AS skill_id, s.slug, s.title, s.discoverable, "
+        "  s.cover_image_url, s.icon_url, s.view_count, "
+        "  EXISTS (SELECT 1 FROM shares pub WHERE pub.object_type = 'folder' "
+        "   AND pub.object_id = f.id AND pub.principal_type = 'public') AS public "
+        "FROM skills s "
+        "JOIN folders f ON f.id = s.folder_id "
+        "LEFT JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' "
+        "  AND p.deleted_at IS NULL "
         f"WHERE f.owner_user_id = $1 AND {readable} "
         "ORDER BY f.name",
         owner_user_id,
@@ -97,16 +97,6 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     out = []
     for r in rows:
         meta, _body = parse_frontmatter(r["skill_md"] or "")
-        published = None
-        if r["publish_id"]:
-            published = {
-                "id": str(r["publish_id"]),
-                "slug": r["slug"],
-                "discoverable": bool(r["discoverable"]),
-                "cover_image_url": r["cover_image_url"],
-                "icon_url": r["icon_url"],
-                "view_count": int(r["view_count"] or 0),
-            }
         out.append(
             {
                 "folder_id": str(r["folder_id"]),
@@ -117,7 +107,16 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
                 "file_count": int(r["file_count"]),
                 "updated_at": r["updated_at"],
-                "published": published,
+                "public": bool(r["public"]),
+                "skill": {
+                    "id": str(r["skill_id"]),
+                    "slug": r["slug"],
+                    "title": r["title"],
+                    "discoverable": bool(r["discoverable"]),
+                    "cover_image_url": r["cover_image_url"],
+                    "icon_url": r["icon_url"],
+                    "view_count": int(r["view_count"] or 0),
+                },
             }
         )
     return out

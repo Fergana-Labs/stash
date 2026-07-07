@@ -244,19 +244,27 @@ class StashVfsModel:
         skills_path = "/skills"
         self._add_dir(skills_path)
         self._add_jsonl_file(f"{skills_path}/_index.jsonl", skills)
-        published = [skill for skill in skills if skill.get("folder_id")]
         ambiguous = _ambiguous_basenames(
-            [_safe_name(skill.get("name") or "skill") for skill in published]
+            [_safe_name(skill.get("name") or "skill") for skill in skills]
         )
-        for skill in published:
+        for skill in skills:
             folder_id = str(skill["folder_id"])
-            basename = _dir_display_name(skill.get("name") or "skill", folder_id, ambiguous)
+            name = skill.get("name") or "skill"
+            basename = _dir_display_name(name, folder_id, ambiguous)
             self._add_json_file(f"{skills_path}/{basename}.json", skill)
-            slug = (skill.get("published") or {}).get("slug")
-            if slug:
+            # Public skills read through the public text endpoint by slug;
+            # private ones through the authenticated read-by-name endpoint.
+            md_path = f"{skills_path}/{basename}.md"
+            if skill["public"]:
+                slug = skill["skill"]["slug"]
                 self._add_file(
-                    f"{skills_path}/{basename}.md",
+                    md_path,
                     loader=lambda s=slug: _text_bytes(self.client.get_skill_text(s)),
+                )
+            else:
+                self._add_file(
+                    md_path,
+                    loader=lambda n=name: _text_bytes(self.client.read_skill(n)["combined"]),
                 )
 
     def _add_sessions(self, sessions: list[dict]) -> None:

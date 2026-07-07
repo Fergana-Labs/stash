@@ -1,11 +1,11 @@
-"""One-call publish endpoint for AI agents."""
+"""One-call publish endpoint for AI agents: page -> public skill."""
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user
 from ..config import settings
 from ..models import PublishRequest, PublishResponse
-from ..services import files_tree_service, shared_skill_service, user_scope_service
+from ..services import files_tree_service, share_service, shared_skill_service, user_scope_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -15,7 +15,7 @@ async def publish(
     req: PublishRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Create a skill folder containing the content page and publish it."""
+    """Create a skill folder containing the content page and share it publicly."""
     if req.owner_user_id is None:
         owner_user_id = current_user["id"]
     else:
@@ -26,7 +26,7 @@ async def publish(
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Only the owner can publish")
 
-    # Gate before any side effects: publish_folder would reject non-owners
+    # Gate before any side effects: create_skill_record would reject non-owners
     # anyway, but only after the folder and page were already created.
     if not await user_scope_service.is_owner(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Only scope owners can publish Skills")
@@ -63,7 +63,7 @@ async def publish(
     )
 
     try:
-        skill = await shared_skill_service.publish_folder(
+        skill = await shared_skill_service.create_skill_record(
             owner_user_id,
             current_user["id"],
             target_folder["id"],
@@ -71,6 +71,12 @@ async def publish(
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    await share_service.set_general_access(
+        object_type="folder",
+        object_id=target_folder["id"],
+        access="public",
+        owner_id=current_user["id"],
+    )
 
     base = settings.PUBLIC_URL.rstrip("/")
     return PublishResponse(

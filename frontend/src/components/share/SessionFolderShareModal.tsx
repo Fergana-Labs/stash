@@ -9,9 +9,9 @@ import {
   type SessionFolderVisibility,
   listObjectShares,
   revokePendingShareInvite,
+  setGeneralAccess,
   shareObjectByEmail,
   unshareObject,
-  updateSessionFolder,
 } from "../../lib/api";
 
 // Two-state visibility: Private (only you, plus anyone you invite below) vs
@@ -21,13 +21,6 @@ const VISIBILITIES: { key: SessionFolderVisibility; label: string; hint: string 
   { key: "private", label: "Private", hint: "Only you and people you invite" },
   { key: "public", label: "Public", hint: "Anyone with the link" },
 ];
-
-function permissionsFor(v: SessionFolderVisibility): {
-  public_permission: GeneralPermission;
-} {
-  if (v === "public") return { public_permission: "read" };
-  return { public_permission: "none" };
-}
 
 export default function SessionFolderShareModal({
   folder,
@@ -51,7 +44,8 @@ export default function SessionFolderShareModal({
 
   const loadShares = useCallback(async () => {
     try {
-      setShares(await listObjectShares("session_folder", folder.id));
+      const res = await listObjectShares("session_folder", folder.id);
+      setShares(res.shares);
     } catch {
       /* owner-only; ignore on shared views */
     }
@@ -66,7 +60,11 @@ export default function SessionFolderShareModal({
     setBusy(true);
     setError("");
     try {
-      await updateSessionFolder(folder.id, permissionsFor(next));
+      await setGeneralAccess(
+        "session_folder",
+        folder.id,
+        next === "public" ? "public" : "restricted",
+      );
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update visibility");

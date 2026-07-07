@@ -1058,8 +1058,6 @@ export interface SessionFolder {
   name: string;
   owner_display_name: string | null;
   access: SessionFolderVisibility;
-  public_permission: GeneralPermission;
-  discoverable: boolean;
   is_default: boolean;
   view_count: number;
   session_count: number;
@@ -1082,8 +1080,7 @@ export async function updateSessionFolder(
   folderId: string,
   data: {
     name?: string;
-    public_permission?: GeneralPermission;
-    discoverable?: boolean;
+    cover_image_url?: string | null;
   },
 ): Promise<SessionFolder> {
   return apiFetch<SessionFolder>(
@@ -1260,20 +1257,22 @@ export async function recordRecent(
   });
 }
 
-// --- Skills (special folders with a SKILL.md, plus their publish records) ---
+// --- Skills (folders classified as skills via a skill record) ---
 
-// The publish record on a skill folder. Published means publicly readable;
-// null for skills that have never been published.
-export interface SkillPublishInfo {
+// The skill record on a skill folder: identity + presentation. Every skill
+// folder has one; whether it's public is a separate general-access share on
+// the folder.
+export interface SkillRecordInfo {
   id: string;
   slug: string;
+  title: string;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
 }
 
-// A skill folder: SKILL.md frontmatter + folder stats + publish info.
+// A skill folder: SKILL.md frontmatter + folder stats + its skill record.
 export interface Skill {
   folder_id: string;
   name: string;
@@ -1283,7 +1282,8 @@ export interface Skill {
   mcp_exposed: boolean;
   file_count: number;
   updated_at: string;
-  published: SkillPublishInfo | null;
+  public: boolean;
+  skill: SkillRecordInfo;
 }
 
 export async function listSkills(): Promise<Skill[]> {
@@ -1301,8 +1301,8 @@ export async function importGithubSkill(
   });
 }
 
-// The full publish record, as returned by publish/update.
-export interface PublishedSkill {
+// The full skill record, as returned by create/update.
+export interface SkillRecord {
   id: string;
   owner_user_id: string;
   folder_id: string;
@@ -1321,8 +1321,9 @@ export interface PublishedSkill {
   updated_at: string;
 }
 
-// Mint (or fetch) the publish record for a skill folder.
-export async function publishSkillFolder(
+// Classify a folder as a skill: mints (or fetches) its skill record.
+// Does NOT make the folder public — that's setGeneralAccess on the folder.
+export async function createSkillRecord(
   folderId: string,
   body: {
     title?: string;
@@ -1331,12 +1332,12 @@ export async function publishSkillFolder(
     cover_image_url?: string | null;
     icon_url?: string | null;
   } = {}
-): Promise<PublishedSkill> {
-  const skill = await apiFetch<PublishedSkill>(`${ME}/skills`, {
+): Promise<SkillRecord> {
+  const skill = await apiFetch<SkillRecord>(`${ME}/skills`, {
     method: "POST",
     body: JSON.stringify({ folder_id: folderId, ...body }),
   });
-  trackEvent("web.skill_published");
+  trackEvent("web.skill_created");
   return skill;
 }
 
@@ -1404,14 +1405,15 @@ export interface PublicSkillContents {
 }
 
 export interface PublicSkillDetail {
-  skill: PublishedSkill;
+  skill: SkillRecord;
   folder_name: string;
   contents: PublicSkillContents;
   can_write: boolean;
 }
 
-// Unpublish: deletes the publish record only — the folder stays a skill.
-export async function unpublishSkill(skillId: string): Promise<void> {
+// Declassify: deletes the skill record so the folder returns to Files.
+// Shares on the folder are untouched.
+export async function deleteSkillRecord(skillId: string): Promise<void> {
   await apiFetch(`/api/v1/skills/${skillId}`, { method: "DELETE" });
 }
 
@@ -1424,7 +1426,7 @@ export async function updateSkill(
     cover_image_url?: string | null;
     icon_url?: string | null;
   }
-): Promise<PublishedSkill> {
+): Promise<SkillRecord> {
   return apiFetch(`/api/v1/skills/${skillId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -1824,14 +1826,38 @@ export interface ObjectShare {
   pending: boolean;
 }
 
+// General access (cf Google Docs): "restricted" = only invited people,
+// "public" = anyone with the link can view.
+export type GeneralAccess = "public" | "restricted";
+
+export interface ObjectSharesResponse {
+  shares: ObjectShare[];
+  general_access: GeneralAccess;
+}
+
 export async function listObjectShares(
   objectType: SharedObjectType,
   objectId: string,
-): Promise<ObjectShare[]> {
-  const res = await apiFetch<{ shares: ObjectShare[] }>(
+): Promise<ObjectSharesResponse> {
+  return apiFetch(
     `/api/v1/share?object_type=${objectType}&object_id=${objectId}`,
   );
-  return res.shares;
+}
+
+// The single way to make any resource public (or restricted again).
+export async function setGeneralAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+  access: GeneralAccess,
+): Promise<void> {
+  await apiFetch("/api/v1/share/general-access", {
+    method: "PUT",
+    body: JSON.stringify({
+      object_type: objectType,
+      object_id: objectId,
+      access,
+    }),
+  });
 }
 
 export async function shareObjectByEmail(

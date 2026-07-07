@@ -19,8 +19,6 @@ from ..services import session_folder_service, user_scope_service
 me_router = APIRouter(prefix="/api/v1/me/session-folders", tags=["session-folders"])
 public_router = APIRouter(prefix="/api/v1/session-folders", tags=["session-folders"])
 
-GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
-
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
     if not await user_scope_service.is_owner(owner_user_id, user_id):
@@ -34,29 +32,10 @@ async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
 
 class CreateFolderRequest(BaseModel):
     name: str
-    public_permission: GeneralPermission = "none"
-    discoverable: bool = False
-
-
-async def _require_owner_for_folder_visibility(
-    owner_user_id: UUID,
-    user_id: UUID,
-    body: CreateFolderRequest,
-) -> None:
-    """Scope-visible folders are the everyday default the owner may create;
-    only publishing a folder beyond the scope is owner-gated."""
-    is_public = body.public_permission != "none" or body.discoverable
-    if is_public and not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(
-            status_code=403,
-            detail="Only scope owners can create public session folders",
-        )
 
 
 class UpdateFolderRequest(BaseModel):
     name: str | None = None
-    public_permission: GeneralPermission | None = None
-    discoverable: bool | None = None
     cover_image_url: str | None = None
 
 
@@ -70,16 +49,7 @@ async def create_folder(body: CreateFolderRequest, current_user: dict = Depends(
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
-    await _require_owner_for_folder_visibility(owner_user_id, current_user["id"], body)
-    try:
-        return await session_folder_service.create_folder(
-            owner_user_id,
-            body.name,
-            public_permission=body.public_permission,
-            discoverable=body.discoverable,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    return await session_folder_service.create_folder(owner_user_id, body.name)
 
 
 @me_router.get("")
@@ -98,14 +68,9 @@ async def update_folder(
     body: UpdateFolderRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    try:
-        folder = await session_folder_service.update_folder(
-            folder_id, current_user["id"], body.model_dump(exclude_unset=True)
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    folder = await session_folder_service.update_folder(
+        folder_id, current_user["id"], body.model_dump(exclude_unset=True)
+    )
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     return folder

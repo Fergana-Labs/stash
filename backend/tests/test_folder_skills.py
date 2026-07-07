@@ -1,17 +1,26 @@
 """Tests for folder-shaped skills.
 
-A skill is a folder containing a SKILL.md page. Two properties matter:
+A skill is a folder classified by a `skills` record — SKILL.md alone means
+nothing. Two properties matter:
 
-- MECE: skill subtrees are *moved* out of every Files surface (tree, sidebar,
-  parent folder contents) and into the Skills area — never shown twice.
-- Publishing attaches a 1:1 record to the folder that grants READ on the whole
-  subtree to whoever can open the skill, and never write.
+- MECE: classified skill subtrees are *moved* out of every Files surface
+  (tree, sidebar, parent folder contents) and into the Skills area — never
+  shown twice.
+- Access is orthogonal: the record classifies; a public share on the folder
+  is what grants READ on the whole subtree, and never write.
 """
+
+import uuid
 
 import pytest
 from httpx import AsyncClient
 
-from backend.services import permission_service, shared_skill_service
+from backend.services import (
+    files_tree_service,
+    permission_service,
+    share_service,
+    shared_skill_service,
+)
 
 from .conftest import unique_name
 
@@ -62,13 +71,15 @@ def _all_tree_folder_ids(node: dict) -> set[str]:
     return ids
 
 
-# --- MECE: skill subtrees leave the Files surfaces ---
+# --- MECE: classified skill subtrees leave the Files surfaces ---
 
 
 @pytest.mark.asyncio
-async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted(
-    client: AsyncClient,
-):
+async def test_skill_record_not_skill_md_classifies_folder(client: AsyncClient):
+    """Classification is the skills record, not SKILL.md sniffing: a folder
+    with a SKILL.md but no record stays in Files and off the skills list;
+    creating the record moves the whole subtree to the Skills area, and
+    deleting the record moves it back."""
     api_key, _ = await _register(client)
     scope = await _scope(client, api_key)
 
@@ -78,7 +89,26 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     skill_md = await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
     nested_page = await _page(client, api_key, scope, "notes", folder_id=nested)
 
-    # /tree hides the whole skill subtree (the SKILL.md folder + descendants).
+    # SKILL.md alone does NOT classify: the folder stays on every Files
+    # surface and off the skills list.
+    tree = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
+    assert skill_folder in _all_tree_folder_ids(tree)
+    sidebar = (await client.get("/api/v1/me/sidebar", headers=_auth(api_key))).json()
+    assert skill_folder in {f["id"] for f in sidebar["files"]["folders"]}
+    assert skill_folder not in {s["folder_id"] for s in sidebar["skills"]}
+    listed = (await client.get("/api/v1/me/skills", headers=_auth(api_key))).json()["skills"]
+    assert skill_folder not in {s["folder_id"] for s in listed}
+
+    # Creating the record classifies the folder.
+    created = await client.post(
+        "/api/v1/me/skills",
+        json={"folder_id": skill_folder, "title": "My skill"},
+        headers=_auth(api_key),
+    )
+    assert created.status_code == 201
+    skill_id = created.json()["id"]
+
+    # /tree hides the whole skill subtree (the classified folder + descendants).
     tree = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     tree_folder_ids = _all_tree_folder_ids(tree)
     assert docs in tree_folder_ids
@@ -114,11 +144,14 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     assert "SKILL.md" in [p["name"] for p in body["pages"]]
     assert nested in [f["id"] for f in body["subfolders"]]
 
-    # Deleting SKILL.md ends skill-ness: the folder rejoins the Files tree.
-    deleted = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
+    # Deleting the record declassifies: the folder rejoins the Files tree even
+    # though its SKILL.md still exists.
+    deleted = await client.delete(f"/api/v1/skills/{skill_id}", headers=_auth(api_key))
     assert deleted.status_code == 204
     tree_after = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     assert skill_folder in _all_tree_folder_ids(tree_after)
+    listed_after = (await client.get("/api/v1/me/skills", headers=_auth(api_key))).json()["skills"]
+    assert skill_folder not in {s["folder_id"] for s in listed_after}
 
 
 # --- Published skill = read grant on the whole folder subtree ---
@@ -158,7 +191,7 @@ async def _make_page(pool, scope, created_by, folder_id, name="page"):
 
 
 @pytest.mark.asyncio
-async def test_published_skill_grants_subtree_read_never_write(pool):
+async def test_public_skill_folder_grants_subtree_read_never_write(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     scope = await _make_scope(pool, owner)
@@ -167,12 +200,16 @@ async def test_published_skill_grants_subtree_read_never_write(pool):
     deep = await _make_folder(pool, scope, owner, "deep", parent_folder_id=mid)
     page = await _make_page(pool, scope, owner, deep, name="deep page")
 
-    # Unpublished: a skill folder on its own grants nothing to outsiders.
+    await shared_skill_service.create_skill_record(scope, owner, root, title="Subtree skill")
+
+    # Classification alone grants nothing to outsiders.
     assert not await permission_service.check_access("page", page, stranger)
 
-    await shared_skill_service.publish_folder(scope, owner, root, title="Subtree skill")
+    await share_service.set_general_access(
+        object_type="folder", object_id=root, access="public", owner_id=owner
+    )
 
-    # The publish record grants READ on the whole subtree — anonymous included.
+    # The public share grants READ on the whole subtree — anonymous included.
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert await permission_service.check_access("folder", deep, stranger)
@@ -230,6 +267,66 @@ async def test_materialize_session_creates_transcript_page_in_folder(client: Asy
 
 
 @pytest.mark.asyncio
+async def test_rematerialize_session_replaces_snapshot_page_in_place(client: AsyncClient):
+    """Materializing the same session twice must not pile up copies: the second
+    run refreshes the existing snapshot page (same id, new content)."""
+    api_key, register_body = await _register(client)
+    scope = await _scope(client, api_key)
+
+    async def _push_event(content: str):
+        resp = await client.post(
+            "/api/v1/me/sessions/events",
+            json={
+                "agent_name": "tester",
+                "event_type": "assistant_message",
+                "content": content,
+                "session_id": "remat-sess-1",
+            },
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 201
+
+    await _push_event("first finding")
+    folder = await _folder(client, api_key, scope, "remat-skill")
+
+    first = await client.post(
+        "/api/v1/me/sessions/remat-sess-1/materialize",
+        json={"folder_id": folder},
+        headers=_auth(api_key),
+    )
+    assert first.status_code == 201, first.text
+    first_page = first.json()
+    assert "first finding" in first_page["content_markdown"]
+
+    await _push_event("second finding")
+    second = await client.post(
+        "/api/v1/me/sessions/remat-sess-1/materialize",
+        json={"folder_id": folder},
+        headers=_auth(api_key),
+    )
+    assert second.status_code == 201, second.text
+    second_page = second.json()
+
+    # Same page, refreshed content, no duplicate.
+    assert second_page["id"] == first_page["id"]
+    assert "second finding" in second_page["content_markdown"]
+    contents = (
+        await client.get(f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key))
+    ).json()
+    session_pages = [p for p in contents["pages"] if p["name"] == "Session remat-sess-1.md"]
+    assert len(session_pages) == 1
+
+    # Snapshot pages are frozen: only re-snapshotting the origin may change them.
+    with pytest.raises(ValueError, match="Snapshot pages cannot be edited"):
+        await files_tree_service.update_page(
+            uuid.UUID(first_page["id"]),
+            uuid.UUID(scope),
+            uuid.UUID(register_body["id"]),
+            content="hand edit",
+        )
+
+
+@pytest.mark.asyncio
 async def test_materialize_unknown_session_404(client: AsyncClient):
     api_key, _ = await _register(client)
     scope = await _scope(client, api_key)
@@ -243,40 +340,40 @@ async def test_materialize_unknown_session_404(client: AsyncClient):
     assert resp.status_code == 404
 
 
-# --- Publish lifecycle ---
+# --- Record lifecycle ---
 
 
 @pytest.mark.asyncio
-async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
+async def test_create_record_mints_skill_md_when_missing_and_rejects_double_create(
     client: AsyncClient,
 ):
     api_key, _ = await _register(client)
     scope = await _scope(client, api_key)
     folder = await _folder(client, api_key, scope, "bare-folder")
 
-    published = await client.post(
+    created = await client.post(
         "/api/v1/me/skills",
         json={"folder_id": folder, "title": "Minted skill"},
         headers=_auth(api_key),
     )
-    assert published.status_code == 201, published.text
-    assert published.json()["folder_id"] == folder
+    assert created.status_code == 201, created.text
+    assert created.json()["folder_id"] == folder
 
-    # Publishing turned the bare folder into a skill by minting SKILL.md.
+    # Classifying turned the bare folder into a skill by minting SKILL.md.
     contents = (
         await client.get(f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key))
     ).json()
     assert contents["folder"]["is_skill"] is True
     assert "SKILL.md" in [p["name"] for p in contents["pages"]]
 
-    # The publish record is 1:1 with the folder — a second publish must 400.
+    # The record is 1:1 with the folder — a second create must 400.
     again = await client.post(
         "/api/v1/me/skills",
         json={"folder_id": folder, "title": "Minted skill"},
         headers=_auth(api_key),
     )
     assert again.status_code == 400
-    assert "already published" in again.json()["detail"]
+    assert "already a skill" in again.json()["detail"]
 
 
 # --- Person-to-person sharing rides generic folder shares ---

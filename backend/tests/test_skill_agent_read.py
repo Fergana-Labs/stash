@@ -68,6 +68,12 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     )
     assert published.status_code == 201
     slug = published.json()["slug"]
+    made_public = await client.put(
+        "/api/v1/share/general-access",
+        json={"object_type": "folder", "object_id": folder["id"], "access": "public"},
+        headers=_auth(api_key),
+    )
+    assert made_public.status_code == 200
 
     resp = await client.get(f"/api/v1/skills/{slug}?format=text")
     assert resp.status_code == 200
@@ -97,7 +103,7 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     assert 'stash vfs "find /me -maxdepth 3 -type f"' in text
     assert "stash connect" in text
     assert '"$HOME/.local/bin/stash" connect' in text
-    assert f"stash read http://localhost:3457/skills/{slug}" in text
+    assert f"curl -sL http://localhost:3457/skills/{slug}.md" in text
 
 
 @pytest.mark.asyncio
@@ -130,7 +136,7 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
         'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --non-interactive'
     ) in resp.text
     assert 'stash vfs "find /me -maxdepth 3 -type f"' in resp.text
-    assert f"stash read http://localhost:3457/skills/{body['skill_slug']}" in resp.text
+    assert f"curl -sL http://localhost:3457/skills/{body['skill_slug']}.md" in resp.text
 
     json_resp = await client.get(
         f"/api/v1/skills/{body['skill_slug']}/items/page/{body['page_id']}"
@@ -152,7 +158,7 @@ async def test_llms_txt_documents_agent_skill_reads(client: AsyncClient):
     ) in resp.text
     assert "stash signin --non-interactive" in resp.text
     assert 'stash vfs "find /me -maxdepth 3 -type f"' in resp.text
-    assert "stash read https://app.joinstash.ai/skills/example" in resp.text
+    assert "curl -sL https://app.joinstash.ai/skills/example.md" in resp.text
 
 
 @pytest.mark.asyncio

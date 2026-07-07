@@ -399,6 +399,7 @@ async def create_page(
     html_layout: str = "responsive",
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
+    snapshot_key: str | None = None,
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
@@ -414,11 +415,11 @@ async def create_page(
             "INSERT INTO pages "
             "(owner_user_id, folder_id, name, content_markdown, content_html, content_type, "
             "html_layout, content_hash, metadata, created_by, updated_by, "
-            "last_edit_session_id, last_edit_agent_name) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12) "
+            "last_edit_session_id, last_edit_agent_name, snapshot_key) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12, $13) "
             "RETURNING id, owner_user_id, folder_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, created_by, updated_by, "
-            "last_edit_session_id, last_edit_agent_name, created_at, updated_at",
+            "last_edit_session_id, last_edit_agent_name, snapshot_key, created_at, updated_at",
             owner_user_id,
             folder_id,
             name,
@@ -431,6 +432,7 @@ async def create_page(
             created_by,
             edit_session_id,
             edit_agent_name,
+            snapshot_key,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicatePageName(owner_user_id, folder_id, name) from e
@@ -444,8 +446,12 @@ async def create_page(
     return page
 
 
-async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
-    """Access semantics match get_page; the scope comes from the row."""
+async def get_page_by_id(page_id: UUID, user_id: UUID | None) -> dict | None:
+    """Access semantics match get_page; the scope comes from the row.
+
+    user_id=None means an anonymous viewer, so access is checked here
+    explicitly — unlike get_page, where user_id=None is the trusted
+    internal path that skips checks entirely."""
     pool = get_pool()
     owner_user_id = await pool.fetchval(
         f"SELECT owner_user_id FROM pages WHERE id = $1 AND {_PAGE_FILTER}",
@@ -453,7 +459,9 @@ async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
     )
     if owner_user_id is None:
         return None
-    return await get_page(page_id, owner_user_id, user_id)
+    if not await permission_service.check_access("page", page_id, user_id, owner_user_id):
+        return None
+    return await get_page(page_id, owner_user_id)
 
 
 async def get_page(
@@ -519,14 +527,23 @@ async def update_page(
     edit_agent_name: str | None = None,
     edit_op: str = "update",
     notify: bool = True,
+    is_snapshot_refresh: bool = False,
 ) -> dict | None:
     """Update a page with optimistic concurrency on content_hash.
 
     When `notify` (the default for agent/REST writes, but False for the live
     editor's own Yjs->DB projection), a content change broadcasts a page-update
     event to open viewers and invalidates any persisted collab doc so a reopened
-    editor reloads the fresh content instead of stale Yjs state."""
+    editor reloads the fresh content instead of stale Yjs state.
+
+    Snapshot pages (snapshot_key set) are frozen copies of an origin (a
+    session, a source doc) and can only be changed by re-snapshotting that
+    origin — `is_snapshot_refresh` is passed by the snapshot services alone."""
     pool = get_pool()
+    if not is_snapshot_refresh:
+        snapshot_key = await pool.fetchval("SELECT snapshot_key FROM pages WHERE id = $1", page_id)
+        if snapshot_key is not None:
+            raise ValueError("Snapshot pages cannot be edited — re-snapshot the origin instead")
     if content_html is not None:
         content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None

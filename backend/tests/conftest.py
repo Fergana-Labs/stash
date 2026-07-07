@@ -31,6 +31,9 @@ os.environ["DATABASE_URL"] = _TEST_DB_URL
 # Tests that explicitly need the skill seeded call `seed_slides_skill`
 # themselves.
 os.environ.setdefault("STASH_DISABLE_DEFAULT_SKILL_SEEDS", "1")
+# The agent-OAuth flows encrypt state/credentials with a Fernet keyring; give
+# the suite a deterministic test key so those tests run without real secrets.
+os.environ.setdefault("INTEGRATIONS_ENCRYPTION_KEY", "5Fj9YkQ8vX2mN4pL7wR3tZ6bC1dE0aG8hI5jK2lM9nO=")
 
 from backend import database as db_module  # noqa: E402
 from backend.main import app  # noqa: E402 — must come after env override

@@ -73,10 +73,11 @@ async def test_list_files_tool_scopes_by_owner(scope: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_pool):
-    """The agent's skill lifecycle: create makes a SKILL.md folder, publish
-    mints the share record (and a public URL), update edits the record, and
-    unpublish removes only the record — the folder stays a skill."""
+async def test_skill_tools_create_share_update_and_restrict(scope: UUID, _db_pool):
+    """The agent's skill lifecycle: create makes a SKILL.md folder AND mints the
+    record, set_general_access('public') shares it (returning the public URL),
+    update edits the record, and set_general_access('restricted') removes only
+    the public share — the record and folder stay a skill."""
     user_id = scope  # the scope id is the user id
 
     scope_token = agent_runtime._scope_ctx.set(scope)
@@ -96,43 +97,72 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
             )["content"][0]["text"]
         )
         listed = json.loads((await agent_runtime._list_skills.handler({}))["content"][0]["text"])
-        published = json.loads(
-            (await agent_runtime._publish_skill.handler({"folder_id": created["folder_id"]}))[
-                "content"
-            ][0]["text"]
+        shared = json.loads(
+            (
+                await agent_runtime._set_general_access.handler(
+                    {
+                        "object_type": "folder",
+                        "object_id": created["folder_id"],
+                        "access": "public",
+                    }
+                )
+            )["content"][0]["text"]
+        )
+        listed_public = json.loads(
+            (await agent_runtime._list_skills.handler({}))["content"][0]["text"]
         )
         updated = json.loads(
             (
                 await agent_runtime._update_skill.handler(
-                    {"skill_id": published["id"], "description": "Edited"}
+                    {"skill_id": created["skill_id"], "description": "Edited"}
                 )
             )["content"][0]["text"]
         )
-        unpublished = json.loads(
-            (await agent_runtime._unpublish_skill.handler({"skill_id": published["id"]}))[
-                "content"
-            ][0]["text"]
+        restricted = json.loads(
+            (
+                await agent_runtime._set_general_access.handler(
+                    {
+                        "object_type": "folder",
+                        "object_id": created["folder_id"],
+                        "access": "restricted",
+                    }
+                )
+            )["content"][0]["text"]
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._scope_ctx.reset(scope_token)
 
+    # create mints the record alongside the folder — with a slug and URL.
     assert created["name"] == "Launch bundle"
+    assert created["url"].endswith(f"/skills/{created['slug']}")
     [skill] = [s for s in listed if s["folder_id"] == created["folder_id"]]
     assert skill["name"] == "Launch bundle"
     assert skill["files"] == 2  # SKILL.md + checklist.md
-    assert skill["published"] is None  # creating a skill does not share it
+    assert skill["public"] is False  # creating a skill does not share it
+    assert skill["skill"]["slug"] == created["slug"]
+    assert skill["skill"]["discoverable"] is False
 
-    # Publishing alone makes the skill public but not Discover-listed.
-    assert published["discoverable"] is False
-    assert published["url"].endswith(f"/skills/{published['slug']}")
+    # Making the folder public returns the skill URL; list reflects it.
+    assert shared["access"] == "public"
+    assert shared["url"].endswith(f"/skills/{created['slug']}")
+    [skill_public] = [s for s in listed_public if s["folder_id"] == created["folder_id"]]
+    assert skill_public["public"] is True
+
     assert updated["description"] == "Edited"
-    assert unpublished == {"deleted": True, "skill_id": published["id"]}
-    # The publish record is gone but the folder is still a skill.
+
+    # Restricting removes only the public share — the record survives.
+    assert restricted["access"] == "restricted"
+    public_share = await _db_pool.fetchval(
+        "SELECT 1 FROM shares WHERE object_type = 'folder' AND object_id = $1 "
+        "AND principal_type = 'public'",
+        UUID(created["folder_id"]),
+    )
+    assert public_share is None
     record = await _db_pool.fetchval(
         "SELECT 1 FROM skills WHERE folder_id = $1", UUID(created["folder_id"])
     )
-    assert record is None
+    assert record == 1
     skill_md = await _db_pool.fetchval(
         "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' AND deleted_at IS NULL",
         UUID(created["folder_id"]),
@@ -490,7 +520,7 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         "External Stash source",
         owner_id,
     )
-    source = await shared_skill_service.publish_folder(
+    source = await shared_skill_service.create_skill_record(
         scope,
         owner_id,
         folder_id,

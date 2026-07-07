@@ -5,8 +5,9 @@ everything in it. Beyond their own scope, access comes from the `shares` table:
 a row grants a principal access to an object. Folder / session-folder shares
 cascade to contents via the recursive folder chain.
 
-A skill is a published folder: publishing makes its folder subtree publicly
-readable — never writable.
+Public access rides the same table: a row with principal_type='public'
+(principal_id NULL, always read-only) matches every viewer, including
+anonymous ones. There is no other public mechanism.
 
 Scope is the user: every content row carries an `owner_user_id`, and the owner
 can do anything in their own scope.
@@ -88,30 +89,6 @@ def _share_target_condition(object_type: str, object_alias: str, share_alias: st
     return "FALSE"
 
 
-def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -> str:
-    """A published skill on an ancestor folder grants READ to everyone —
-    publishing IS the public grant. Person shares ride the shares branch.
-    Sessions never live in folders, so no skill clause."""
-    _ = user_arg
-    if object_type == "folder":
-        folder_chain = _folder_chain_sql(f"{object_alias}.id")
-    elif object_type in ("page", "file", "table"):
-        folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
-    else:
-        return "FALSE"
-    guard = (
-        f"{object_alias}.folder_id IS NOT NULL AND "
-        if object_type in ("page", "file", "table")
-        else ""
-    )
-    return f"""
-        ({guard}EXISTS (
-          SELECT 1 FROM skills content_skill
-          WHERE content_skill.folder_id IN ({folder_chain})
-        ))
-    """
-
-
 # A share satisfies a required level when its own level is >= it (read < comment
 # < write). `require` is a trusted internal enum, never user input.
 _LEVEL_SHARE_FILTER = {
@@ -121,19 +98,16 @@ _LEVEL_SHARE_FILTER = {
 }
 
 
-def _public_read_container_condition(
+def _session_folder_owner_condition(
     object_type: str, object_alias: str, user_arg: int
 ) -> str | None:
-    """Read-only access a session inherits from its session folder: the folder is
-    public, OR the viewer owns the folder — a folder owner reads every session
-    filed under it, even sessions they don't own. Content rows use the published-
-    skill grant instead; types without a container grant return None."""
+    """A session-folder owner reads every session filed under it, even sessions
+    they don't own."""
     if object_type == "session":
         return (
-            f"EXISTS (SELECT 1 FROM session_folders public_sf "
-            f"WHERE public_sf.id = {object_alias}.session_folder_id "
-            f"AND (public_sf.public_permission <> 'none' "
-            f"OR public_sf.owner_user_id = ${user_arg}))"
+            f"EXISTS (SELECT 1 FROM session_folders container_sf "
+            f"WHERE container_sf.id = {object_alias}.session_folder_id "
+            f"AND container_sf.owner_user_id = ${user_arg})"
         )
     return None
 
@@ -143,10 +117,10 @@ def readable_content_condition(
 ) -> str:
     """SQL predicate: may user ${user_arg} access the row at object_alias at the
     `require` level (read < comment < write)? The single source of truth for
-    row-level access: owner OR a sufficient user share (direct/ancestor folder)
-    OR — for reads only — a public container (published skill folder / public
-    session folder). `check_access` executes this same predicate for one row, so
-    the SQL filter and the boolean can never disagree."""
+    row-level access: owner OR a sufficient user share (direct/ancestor
+    container) OR — for reads only — a public share on the object or a
+    container. `check_access` executes this same predicate for one row, so the
+    SQL filter and the boolean can never disagree."""
     share_target = _share_target_condition(object_type, object_alias, "content_share")
     parts = [
         f"{object_alias}.owner_user_id = ${user_arg}",
@@ -157,10 +131,14 @@ def readable_content_condition(
         f"AND {share_target}{_LEVEL_SHARE_FILTER[require]})",
     ]
     if require == "read":
-        parts.append(_skill_grant_condition(object_type, object_alias, user_arg))
-        public_container = _public_read_container_condition(object_type, object_alias, user_arg)
-        if public_container:
-            parts.append(public_container)
+        parts.append(
+            f"EXISTS (SELECT 1 FROM shares content_share "
+            f"WHERE content_share.principal_type = 'public' "
+            f"AND {share_target})"
+        )
+        owner_container = _session_folder_owner_condition(object_type, object_alias, user_arg)
+        if owner_container:
+            parts.append(owner_container)
     return "(" + " OR ".join(parts) + ")"
 
 
@@ -290,32 +268,27 @@ async def _user_share_grants(
     return False
 
 
-async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
-    """Published skills whose folder is the object or one of its ancestors."""
-    if object_type not in _CONTENT_TYPES:
-        return []
-    ancestor_folder_ids = [
-        target_id
-        for target_type, target_id in await _object_targets(object_type, object_id)
-        if target_type == "folder"
-    ]
-    if not ancestor_folder_ids:
-        return []
+async def public_share_grants(object_type: str, object_id: UUID) -> bool:
+    """A public share on the object or any container it inherits from."""
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, owner_user_id, owner_id FROM skills WHERE folder_id = ANY($1::uuid[])",
-        ancestor_folder_ids,
-    )
-    return [dict(row) for row in rows]
+    for target_type, target_id in await _object_targets(object_type, object_id):
+        row = await pool.fetchrow(
+            "SELECT 1 FROM shares WHERE principal_type = 'public' "
+            "AND object_type = $1 AND object_id = $2",
+            target_type,
+            target_id,
+        )
+        if row:
+            return True
+    return False
 
 
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
-    """Can the user access this session folder? Public link (read-only),
+    """Can the user access this session folder? Public share (read-only),
     owner, or an explicit user share."""
-    public = folder["public_permission"]
-    if require == "read" and public != "none":
+    if require == "read" and await public_share_grants("session_folder", folder_id):
         return True
     if user_id is None:
         return False
@@ -339,24 +312,25 @@ async def check_access(
     if user_id is not None and owner_user_id is not None and owner_user_id == user_id:
         return True
 
-    # The publish record itself: existence == publicly readable; owner manages.
+    # The skill record is classification + metadata; reading it follows the
+    # folder's access, managing it is owner-only.
     if object_type == "skill":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, owner_id FROM skills WHERE id = $1",
+            "SELECT folder_id, owner_id FROM skills WHERE id = $1",
             object_id,
         )
         if not row:
             return False
         if require != "read":
             return row["owner_id"] == user_id
-        return True
+        return await check_access("folder", row["folder_id"], user_id)
 
-    # A session folder is a shareable bundle: public link, owner, or user share.
+    # A session folder is a shareable bundle: public share, owner, or user share.
     if object_type == "session_folder":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT owner_user_id, public_permission FROM session_folders WHERE id = $1",
+            "SELECT owner_user_id FROM session_folders WHERE id = $1",
             object_id,
         )
         if not row:
@@ -386,17 +360,16 @@ async def check_access(
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
-    """'public' if in any public skill, 'shared' if shared with anyone,
-    else 'private'."""
+    """'public' if a public share covers the object (directly or via a
+    container), 'shared' if shared with anyone, else 'private'."""
     pool = get_pool()
-    skills = await _containing_skills(object_type, object_id)
-    if skills:
+    if await public_share_grants(object_type, object_id):
         return "public"
     shared = await pool.fetchrow(
         "SELECT 1 FROM shares WHERE object_type = $1 AND object_id = $2 LIMIT 1",
         object_type,
         object_id,
     )
-    if shared or skills:
+    if shared:
         return "shared"
     return "private"

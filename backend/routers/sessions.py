@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..database import get_pool
 from ..services import (
@@ -241,13 +241,14 @@ async def upsert_session(
 
 
 async def _session_detail_payload(
-    owner_user_id: UUID, session_id: str, user_id: UUID
+    owner_user_id: UUID, session_id: str, user_id: UUID | None
 ) -> dict | None:
     """Full session detail if the user may read it, else None.
 
     No ownership pre-gate: a session may be shared with a
     user who does not own the scope. can_read_session enforces check_access (owner OR share OR
-    open skill).
+    public share); user_id None is an anonymous viewer, allowed only via a
+    public share.
     """
     if not await memory_service.can_read_session(owner_user_id, session_id, user_id):
         return None
@@ -269,16 +270,16 @@ async def _session_detail_payload(
 @router.get("/sessions/{session_id}")
 async def get_session_canonical(
     session_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """session_id is unique per scope, not globally; when the same
     session exists in several scopes, return the newest one the caller
     can read. Any failure is a 404: an unscoped lookup must not confirm
-    that an unreadable session exists."""
+    that an unreadable session exists. Anonymous viewers can only read
+    publicly-shared sessions — check_access enforces that."""
+    viewer_id = current_user["id"] if current_user else None
     for row in await session_service.list_sessions_for_session_id(session_id):
-        payload = await _session_detail_payload(
-            row["owner_user_id"], session_id, current_user["id"]
-        )
+        payload = await _session_detail_payload(row["owner_user_id"], session_id, viewer_id)
         if payload:
             return payload
     raise HTTPException(status_code=404, detail="Session not found")

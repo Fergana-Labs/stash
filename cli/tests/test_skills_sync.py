@@ -12,6 +12,7 @@ class _FakeSyncClient:
 
     def __init__(self):
         self.skills: dict[str, dict] = {}
+        self.skill_records: list[str] = []
         self._next = 0
 
     def add_remote_skill(self, name: str, files: dict[str, bytes]) -> str:
@@ -62,6 +63,10 @@ class _FakeSyncClient:
         self._next += 1
         self.skills[folder_id] = {"folder_name": name, "files": {}}
         return {"id": folder_id}
+
+    def create_skill_record(self, folder_id, **kwargs):
+        self.skill_records.append(folder_id)
+        return {"id": f"skill-{folder_id}", "slug": folder_id}
 
     def fetch_bytes(self, url: str) -> bytes:
         folder_id, _, rel = url.removeprefix("fake://").partition("/")
@@ -132,8 +137,10 @@ def test_new_local_skill_pushes_only_in_project_mode(tmp_path):
 
     summary, _state = _sync(c, tmp_path, {}, push_new=True)
     assert summary["pushed"] == ["my-skill"]
-    only = next(iter(c.skills.values()))
+    only_id, only = next(iter(c.skills.items()))
     assert only["files"]["SKILL.md"] == b"# mine"
+    # A pushed skill must get a record, or list_skills won't include it next sync.
+    assert c.skill_records == [only_id]
 
 
 def test_untracked_name_collision_is_a_conflict(tmp_path):

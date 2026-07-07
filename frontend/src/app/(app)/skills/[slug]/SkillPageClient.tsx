@@ -31,7 +31,7 @@ import {
   uploadFile,
   type PublicSkillContents,
   type PublicSkillDetail,
-  type SkillPublishInfo,
+  type SkillRecordInfo,
 } from "@/lib/api";
 import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
 import AddToStashButton from "./AddToStashButton";
@@ -78,9 +78,10 @@ export default function SkillPageClient({ slug }: { slug: string }) {
   const canWrite = data?.can_write ?? false;
   const shareAction = useMemo(() => {
     if (!skill || !canWrite) return null;
-    const publish: SkillPublishInfo = {
+    const record: SkillRecordInfo = {
       id: skill.id,
       slug: skill.slug,
+      title: skill.title,
       discoverable: skill.discoverable,
       cover_image_url: skill.cover_image_url,
       icon_url: skill.icon_url,
@@ -100,8 +101,8 @@ export default function SkillPageClient({ slug }: { slug: string }) {
         )}
         <SkillShareButton
           folderId={skill.folder_id}
-          publish={publish}
-          onPublishChange={() => void load()}
+          skill={record}
+          onSkillChange={() => void load()}
         />
       </div>
     );

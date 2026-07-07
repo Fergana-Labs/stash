@@ -1,4 +1,7 @@
-"""Skills: special folders (SKILL.md) plus their publish records."""
+"""Skills: folders classified by a skill record (slug, title, Discover flag).
+
+The record grants no access — public readability is a public share on the
+folder, set through the generic general-access endpoint like any resource."""
 
 from uuid import UUID
 
@@ -11,8 +14,8 @@ from ..config import settings
 from ..models import (
     ForkSkillRequest,
     PageResponse,
+    SkillCreateRequest,
     SkillPublicResponse,
-    SkillPublishRequest,
     SkillResponse,
     SkillUpdateRequest,
 )
@@ -39,14 +42,15 @@ async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
 
 
 @me_router.post("/skills", response_model=SkillResponse, status_code=201)
-async def publish_skill(
-    req: SkillPublishRequest,
+async def create_skill(
+    req: SkillCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Mint the publish record for a skill folder (share/publish it)."""
+    """Classify a folder as a skill: mint its record (slug, title, Discover
+    flag). Make it public via the general-access share endpoint."""
     owner_user_id = current_user["id"]
     try:
-        skill = await shared_skill_service.publish_folder(
+        skill = await shared_skill_service.create_skill_record(
             owner_user_id,
             current_user["id"],
             req.folder_id,
@@ -269,13 +273,13 @@ async def update_skill(
 
 
 @public_router.delete("/{skill_id}", status_code=204)
-async def unpublish_skill(
+async def delete_skill_record(
     skill_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    """Delete the publish record (stop sharing). The folder stays a skill;
-    delete the folder through the Files API to delete the skill itself."""
-    deleted = await shared_skill_service.unpublish_skill(skill_id, current_user["id"])
+    """Declassify: delete the record so the folder returns to Files. Shares on
+    the folder are untouched — revoke them separately if needed."""
+    deleted = await shared_skill_service.delete_skill_record(skill_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Skill not found")
 
