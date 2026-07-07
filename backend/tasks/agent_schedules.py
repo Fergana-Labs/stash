@@ -57,7 +57,6 @@ async def _run_curator_now(agent_id: UUID) -> None:
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e))
         raise
-    await agent_service.mark_run_succeeded(agent_id)
     await agent_service.mark_curated(agent_id, now)
 
 
@@ -105,7 +104,6 @@ async def _run_due() -> int:
                 # `now` predates the run, so changes made during it stay ahead
                 # of the watermark and are picked up next time.
                 await agent_service.mark_curated(agent["id"], now)
-            await agent_service.mark_run_succeeded(agent["id"])
             ran += 1
         except Exception as e:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])

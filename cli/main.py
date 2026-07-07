@@ -2375,6 +2375,28 @@ def search(
     _print_search(query, source, limit, as_json)
 
 
+def _poll_recompute_outcome(
+    c: StashClient, before: dict | None, attempts: int = 15
+) -> tuple[str, str | None]:
+    """Watch the enqueued curator run get picked up by the worker.
+
+    The recompute API answers 202 before anything executes — the web service
+    can't see the worker's world, so "started" is only real once last_run_at
+    advances on the agent row. mark_run clears last_run_error at pickup, so an
+    error present after that means THIS run died (crashes happen within
+    seconds; the multi-minute happy path reports "running")."""
+    baseline = (before or {}).get("last_run_at")
+    for _ in range(attempts):
+        time.sleep(2)
+        curator = c.get_curator()
+        if not curator or curator["last_run_at"] == baseline:
+            continue
+        if curator["last_run_error"]:
+            return "failed", curator["last_run_error"]
+        return "running", None
+    return "queued", None
+
+
 @app.command("memory")
 def memory(
     recompute: bool = typer.Option(
@@ -2387,14 +2409,25 @@ def memory(
     """Show your reserved Memory folder (its id is where the wiki lives)."""
     with _client() as c:
         if recompute:
+            before = c.get_curator()
             data = c.recompute_memory()
+            outcome, run_error = _poll_recompute_outcome(c, before)
             if _use_json(as_json):
-                output_json(data)
-                return
-            console.print(
-                "Curator run started — the Memory wiki will update shortly. "
-                "Check `stash memory` for the outcome."
-            )
+                output_json({**data, "outcome": outcome, "last_run_error": run_error})
+            elif outcome == "failed":
+                console.print(f"[red]Curator run failed:[/red] {run_error}")
+            elif outcome == "queued":
+                console.print(
+                    "[yellow]Curator run was enqueued but no worker picked it up "
+                    "within 30s — it may still run; check `stash memory` later.[/yellow]"
+                )
+            else:
+                console.print(
+                    "Curator run started — the Memory wiki will update shortly. "
+                    "Check `stash memory` for the outcome."
+                )
+            if outcome == "failed":
+                raise typer.Exit(1)
             return
         folder = c.get_memory_folder()
         curator = c.get_curator()
