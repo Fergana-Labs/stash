@@ -50,7 +50,8 @@ async def _run(file_id: UUID) -> int:
 
     from ..config import settings
     from ..services import storage_service
-    from ..services.file_extraction import extract_text
+    from ..services.file_extraction import extract_text, is_pdf
+    from ..services.pdf_ocr import ocr_pdf
 
     MAX_EXTRACTED_TEXT = 1 * 1024 * 1024
 
@@ -66,6 +67,11 @@ async def _run(file_id: UUID) -> int:
 
         content = await storage_service.download_file(row["storage_key"])
         text = extract_text(content, row["content_type"])
+        if text is None and is_pdf(row["content_type"]):
+            # A PDF with no embedded text layer is a scan. OCR errors
+            # propagate to the except below so the row records the
+            # failure and the retry machinery re-runs it.
+            text = await ocr_pdf(content) or None
         if text and len(text) > MAX_EXTRACTED_TEXT:
             text = text[:MAX_EXTRACTED_TEXT] + "\n\n[truncated]"
 
