@@ -211,3 +211,11 @@ async def test_tool_calls_persist_as_history_events(client: AsyncClient, sprite_
     assert row is not None
     assert row["tool_name"] == "Bash"
     assert row["content"] == "Ran: stash changes --json"
+
+    # Restoring the tab returns the tool call in order, so the client can
+    # rebuild the citations strip the live stream showed.
+    got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
+    tool_rows = [m for m in got.json()["messages"] if m["role"] == "tool"]
+    assert len(tool_rows) == 1
+    assert tool_rows[0]["tool_name"] == "Bash"
+    assert tool_rows[0]["metadata"]["command"] == "stash changes --json"
