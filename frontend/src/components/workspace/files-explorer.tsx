@@ -286,7 +286,7 @@ export default function FilesExplorer({
 
       {/* List — root is also a drop target (move to root) */}
       <div
-        className="min-h-0 flex-1 overflow-y-auto py-1"
+        className="min-h-0 flex-1 overflow-y-auto pt-1 pb-24"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { const raw = e.dataTransfer.getData(DND); if (raw) void move(JSON.parse(raw) as Item, folderId); }}
       >
