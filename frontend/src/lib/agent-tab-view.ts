@@ -12,3 +12,18 @@ export function requestAgentConfigView(agentId: string): void {
 export function takeAgentConfigView(agentId: string): boolean {
   return pending.delete(agentId);
 }
+
+// Same one-shot pattern for the Memory explorer's "Curate wiki" button: it
+// opens the curator's config tab, which reads (and clears) this to auto-start
+// a run. There is one curator per account, so no id key is needed.
+let curatorRunPending = false;
+
+export function requestCuratorRun(): void {
+  curatorRunPending = true;
+}
+
+export function takeCuratorRun(): boolean {
+  const was = curatorRunPending;
+  curatorRunPending = false;
+  return was;
+}

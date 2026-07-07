@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
-import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, SquareTerminal } from "lucide-react";
+import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
+import { toast } from "sonner";
 import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
-import { requestAgentConfigView } from "@/lib/agent-tab-view";
+import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
@@ -301,6 +302,18 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
+  // "Curate wiki": open the Memory curator's tab and start a pass immediately,
+  // so the wiki can be refreshed from Memory without hunting through Agents.
+  async function curateWiki() {
+    const curator = (await listAgents()).find((a) => a.is_curator);
+    if (!curator) {
+      toast.error("No Memory curator agent found on this account.");
+      return;
+    }
+    requestCuratorRun();
+    open("agent-config", curator.id, curator.name);
+  }
+
   // Files, Memory, Skills & Sessions are all file managers (own breadcrumb/toolbar).
   if ((section === "files" || section === "memory" || section === "skills" || section === "sessions") && !atRoot) {
     if (section === "memory" && !memoryFolderId) {
@@ -324,6 +337,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
           showImport={!isSessions}
           vfsWritable={!isSessions}
+          headerAction={
+            section === "memory"
+              ? { icon: <Sparkles className="h-4 w-4" />, label: "Curate wiki", run: () => void curateWiki() }
+              : undefined
+          }
         />
       </div>
     );

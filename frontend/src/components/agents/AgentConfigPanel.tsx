@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { type Citation, streamAgentRun } from "@/lib/agentChat";
+import { takeCuratorRun } from "@/lib/agent-tab-view";
 import {
   type Agent,
   type AgentPrompt,
@@ -50,6 +51,13 @@ export default function AgentConfigPanel({
   }, [agent?.is_curator, agent?.id]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // The Memory explorer's "Curate wiki" button opens this tab with a one-shot
+  // request to start a curation pass immediately.
+  useEffect(() => {
+    if (agent?.is_curator && takeCuratorRun()) void runNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent?.is_curator]);
 
   if (!agent) return <div className="p-6 text-[13px] text-muted-foreground">Loading agent…</div>;
 

@@ -43,6 +43,7 @@ export default function FilesExplorer({
   openRootTab,
   showImport = true,
   vfsWritable = true,
+  headerAction,
 }: {
   onRoot: () => void;
   rootLabel?: string;
@@ -65,6 +66,8 @@ export default function FilesExplorer({
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
+  /** A labeled section-specific action in the toolbar (e.g. Memory's "Curate wiki"). */
+  headerAction?: { icon: React.ReactNode; label: string; run: () => void };
 }) {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
@@ -244,6 +247,12 @@ export default function FilesExplorer({
           </span>
         ))}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {headerAction && (
+            <button onClick={headerAction.run} title={headerAction.label} className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
+              {headerAction.icon}
+              {headerAction.label}
+            </button>
+          )}
           {atVirtualRoot ? (
             newRootItem && (
               <button title={newRootItem.label} aria-label={newRootItem.label} onClick={runNewRootItem} className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
