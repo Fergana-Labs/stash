@@ -1221,6 +1221,36 @@ def upload(
         )
 
 
+@app.command("export")
+def export(
+    output: str = typer.Option(
+        "",
+        "--output",
+        "-o",
+        help="Path for the zip (default: stash-export-<timestamp>.zip in the current directory).",
+    ),
+):
+    """Download your entire Stash as a zip of standard files.
+
+    Folders become directories, pages become plain .md/.html files, and
+    uploads keep their original bytes — no proprietary formats, no lock-in."""
+    _require_auth()
+    telemetry.record("export")
+    destination = (
+        Path(output) if output else Path(f"stash-export-{time.strftime('%Y%m%d-%H%M%S')}.zip")
+    )
+    console.print("[dim]Packaging your Stash…[/dim]")
+    with _client() as c:
+        try:
+            data = c.export_zip()
+        except StashError as e:
+            _err(e)
+    destination.write_bytes(data)
+    console.print(
+        f"[green bold]Exported![/green bold]  {destination}  [dim]{len(data):,} bytes[/dim]"
+    )
+
+
 def _parse_skill_slug(url_or_slug: str) -> str:
     """Extract a Skill slug from a full URL or bare slug."""
     url_or_slug = url_or_slug.strip().rstrip("/")

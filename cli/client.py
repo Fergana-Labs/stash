@@ -515,6 +515,13 @@ class StashClient:
     def download_file(self, file_id: str) -> bytes:
         return self._request("GET", f"/api/v1/me/files/{file_id}/download").content
 
+    def export_zip(self) -> bytes:
+        """The whole scope (folders, pages, uploaded files) as one zip.
+
+        Big scopes take a while to package server-side, so this call gets a
+        much longer timeout than the client default."""
+        return self._request("GET", "/api/v1/me/export", timeout=600).content
+
     # --- The user's cloud computer (read-through machine filesystem) ---
 
     def machine_fs_list(self, path: str) -> list[dict]:
