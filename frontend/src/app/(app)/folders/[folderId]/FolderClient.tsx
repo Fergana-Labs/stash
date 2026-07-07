@@ -14,6 +14,7 @@ import {
   createPage,
   getFolderContents,
   getPublicSkill,
+  type FolderBreadcrumb,
   type PublicSkillContents,
   type PublicSkillSubfolder,
 } from "@/lib/api";
@@ -22,6 +23,7 @@ import {
   SKILL_MD,
   skillMdTemplate,
 } from "@/lib/localSkill";
+import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {
@@ -36,9 +38,20 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
   // Small auxiliary breadcrumb fetch so the top bar is correct before the
   // file browser shell finishes its own load. The shell still owns the main
   // folder-contents fetch.
-  const [crumbs, setCrumbs] = useState<{ label: string; href?: string }[]>([
-    { label: "Folder" },
-  ]);
+  const [chain, setChain] = useState<{
+    breadcrumbs: FolderBreadcrumb[];
+    name: string;
+    id: string;
+  } | null>(null);
+  const memoryFolderId = useMemoryFolderId();
+  const crumbs = useMemo(() => {
+    if (!chain) return [{ label: "Folder" }];
+    if (chain.id === memoryFolderId) return [{ label: "Memory" }];
+    return [
+      ...sectionCrumbs(chain.breadcrumbs.slice(0, -1), memoryFolderId),
+      { label: chain.name },
+    ];
+  }, [chain, memoryFolderId]);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [skillFallback, setSkillFallback] = useState<{
     skillSlug: string;
@@ -79,6 +92,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     }
     let cancelled = false;
     setFolderName(null);
+    setChain(null);
     getFolderContents(folderId)
       .then((c) => {
         if (cancelled) return;
@@ -87,15 +101,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
           router.replace(`/skills/${folderId}`);
           return;
         }
-        const trail = c.breadcrumbs.slice(0, -1).map((cr) => ({
-          label: cr.name,
-          href: `/folders/${cr.id}`,
-        }));
-        setCrumbs([
-          { label: "Files", href: `/files` },
-          ...trail,
-          { label: c.folder.name },
-        ]);
+        setChain({ breadcrumbs: c.breadcrumbs, name: c.folder.name, id: c.folder.id });
         setFolderName(c.folder.name);
         setSkillFallback(null);
       })

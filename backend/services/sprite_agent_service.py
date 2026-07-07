@@ -137,6 +137,43 @@ def _redact_event(event: dict, provider_env: dict[str, str]) -> dict:
     return event
 
 
+def _tool_event_summary(event: dict) -> tuple[str, dict]:
+    """A compact tool_use content + metadata, matching the local plugin's
+    format so cloud and local session transcripts render the same way."""
+    name = event.get("name") or "tool"
+    args = event.get("args") or {}
+    if name == "Bash" and args.get("command"):
+        command = str(args["command"])[:300]
+        return f"Ran: {command}", {"command": command}
+    if name in ("Edit", "Write") and args.get("file_path"):
+        return f"{'Edited' if name == 'Edit' else 'Created/wrote'} {args['file_path']}", {
+            "file_path": args["file_path"]
+        }
+    if name == "Read" and args.get("file_path"):
+        return f"Read {args['file_path']}", {"file_path": args["file_path"]}
+    preview = json.dumps(args)[:300]
+    return f"{name}: {preview}", {"args_preview": preview}
+
+
+async def _record_tool_event(
+    owner_user_id: UUID, user_id: UUID, session_id: str, event: dict, provider_env: dict[str, str]
+) -> None:
+    """Persist a harness tool call as a history event. Cloud runs have no
+    plugin hooks streaming these, so without this the stored session is just
+    prompt + final answer — unauditable."""
+    content, metadata = _tool_event_summary(event)
+    await memory_service.push_event(
+        owner_user_id,
+        AGENT_NAME,
+        "tool_use",
+        _redact(content, provider_env),
+        user_id,
+        session_id=session_id,
+        tool_name=event.get("name") or "tool",
+        metadata=metadata,
+    )
+
+
 async def _turn_events(
     auth: agent_auth.RunAuth,
     sprite: sprite_service.Sprite,
@@ -313,6 +350,8 @@ async def stream_chat(
             ):
                 if event["type"] == "end":
                     final = event.pop("_result_text")
+                elif event["type"] == "tool":
+                    await _record_tool_event(owner_user_id, user_id, session_id, event, auth.env)
                 yield _sse(event)
 
             if final:
@@ -395,6 +434,8 @@ async def run_chat(
                 final = event.pop("_result_text")
             elif event["type"] == "error":
                 error = event["message"]
+            elif event["type"] == "tool":
+                await _record_tool_event(owner_user_id, user_id, session_id, event, auth.env)
         if error:
             raise RuntimeError(f"agent turn failed: {error}")
 
