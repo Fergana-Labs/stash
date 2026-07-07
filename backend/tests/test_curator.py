@@ -251,6 +251,7 @@ async def test_failed_run_records_error_and_refunds_credit(
     async def boom(agent, stamp):
         raise RuntimeError("sprite exploded")
 
+    real_run_scheduled = sprite_agent_service.run_scheduled
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", boom)
     await _run_due()
 
@@ -261,8 +262,11 @@ async def test_failed_run_records_error_and_refunds_credit(
     assert "sprite exploded" in row["last_run_error"]
     assert row["month_run_count"] == 0  # consumed by mark_run, refunded on failure
 
-    # The next successful run clears the error.
-    monkeypatch.undo()
+    # The next successful run clears the error. Re-patch the real function
+    # rather than monkeypatch.undo() — the fixture is shared with sprite_exec,
+    # so undo() would also drop the fake sprite exec and this "successful run"
+    # would exec a real `claude` binary (passes on a dev machine, dies in CI).
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", real_run_scheduled)
     await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
     ran = await _run_due()
     assert ran == 1
