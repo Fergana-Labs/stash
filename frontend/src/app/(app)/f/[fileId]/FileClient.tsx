@@ -28,6 +28,7 @@ import FileContentRenderer, {
   isText,
 } from "@/components/content/FileContentRenderer";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
+import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 
 function isCsv(ct: string) {
@@ -73,20 +74,20 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
   // via ?skill= still gets full edit affordances.
   const [readOnly, setReadOnly] = useState(false);
 
+  const memoryFolderId = useMemoryFolderId();
+  const ancestorCrumbs = useMemo(
+    () =>
+      readOnly
+        ? [
+            { label: "Skills", href: "/skills" },
+            { label: skillTitle ?? "Skill", href: skillSlug ? `/skills/${skillSlug}` : "/skills" },
+          ]
+        : sectionCrumbs(folderChain, memoryFolderId),
+    [readOnly, skillTitle, skillSlug, folderChain, memoryFolderId],
+  );
+
   useBreadcrumbs(
-    readOnly
-      ? [
-          { label: "Skills", href: "/skills" },
-          { label: skillTitle ?? "Skill", href: skillSlug ? `/skills/${skillSlug}` : "/skills" },
-          { label: file ? file.name : "File" },
-        ]
-      : [
-          ...folderChain.map((c) => ({
-            label: c.name,
-            href: `/folders/${c.id}`,
-          })),
-          { label: file ? file.name : "File" },
-        ],
+    [...ancestorCrumbs, { label: file ? file.name : "File" }],
     `file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${skillSlug ?? ""}`
   );
 
@@ -234,6 +235,7 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
         <FileViewerHeader
           icon={<KindGlyph contentType={file?.content_type ?? ""} name={file?.name ?? ""} />}
           iconColor={kindIconColor(file?.content_type ?? "")}
+          breadcrumbs={ancestorCrumbs}
           title={file?.name ?? "File"}
           onRenameTitle={
             file

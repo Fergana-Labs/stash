@@ -43,6 +43,7 @@ export default function FilesExplorer({
   openRootTab,
   showImport = true,
   vfsWritable = true,
+  tabSection,
 }: {
   onRoot: () => void;
   rootLabel?: string;
@@ -50,6 +51,10 @@ export default function FilesExplorer({
   rootFolderId?: string | null;
   /** A root-level folder to hide from the listing (e.g. Memory hidden from Files). */
   hideFolderId?: string | null;
+  /** Workspace section stamped on opened tab URLs (?section=) — without it the
+   *  shell derives the section from the path, which lands Memory items in
+   *  Files (all folder/page routes are files-shaped). */
+  tabSection?: string;
   /** Custom root listing (e.g. Skills lists skill folders). Default = the VFS tree. */
   loadRoot?: () => Promise<Item[]>;
   /** Custom folder navigation (e.g. Sessions folders aren't VFS folders). Default =
@@ -129,7 +134,8 @@ export default function FilesExplorer({
     if (item.kind === "session-folder") { setFolderId(item.id); return; }
     const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
     openTab(kind, item.id, item.name);
-    router.replace(urlForTab({ kind, refId: item.id }));
+    const suffix = tabSection ? `?section=${tabSection}` : "";
+    router.replace(urlForTab({ kind, refId: item.id }) + suffix);
   }
 
   // Single-click a folder (or skill/session folder) → browse into it in the

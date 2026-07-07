@@ -13,6 +13,11 @@ interface BackLink {
   href: string;
 }
 
+interface Breadcrumb {
+  label: string;
+  href: string;
+}
+
 interface Tag {
   label: string;
   tone?: "brand" | "muted";
@@ -33,6 +38,9 @@ interface FileViewerHeaderProps {
   readOnlyLabel?: string;
   /** Back link rendered above the title (e.g. "← Demo Skill"). */
   backLink?: BackLink;
+  /** Ancestor trail rendered before the title in the compact bar
+   *  (e.g. Files / Research / — the title itself is the last crumb). */
+  breadcrumbs?: Breadcrumb[];
   /** Small label chips before the meta items. */
   tags?: Tag[];
   /**
@@ -72,6 +80,7 @@ export default function FileViewerHeader({
   readOnly,
   readOnlyLabel = "read-only",
   backLink,
+  breadcrumbs,
   tags,
   meta,
   saveStatus,
@@ -91,6 +100,12 @@ export default function FileViewerHeader({
         <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-base text-[14px]" style={iconStyle}>
           {icon}
         </span>
+        {breadcrumbs?.map((crumb) => (
+          <span key={crumb.href} className="hidden shrink-0 items-center gap-2.5 text-[12.5px] text-muted-foreground sm:inline-flex">
+            <Link href={crumb.href} className="max-w-[160px] truncate hover:text-foreground">{crumb.label}</Link>
+            <span className="text-muted-foreground/50">/</span>
+          </span>
+        ))}
         <span className="min-w-0 shrink truncate text-[13.5px] font-semibold text-foreground">
           {readOnly || !onRenameTitle ? title : <EditableTitle value={title} onSave={onRenameTitle} />}
         </span>
@@ -129,6 +144,16 @@ export default function FileViewerHeader({
           >
             &larr; {backLink.label}
           </Link>
+        )}
+        {!backLink && breadcrumbs && breadcrumbs.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
+            {breadcrumbs.map((crumb, i) => (
+              <span key={crumb.href} className="inline-flex items-center gap-1.5">
+                {i > 0 && <span className="text-muted-foreground/50">/</span>}
+                <Link href={crumb.href} className="hover:text-foreground">{crumb.label}</Link>
+              </span>
+            ))}
+          </div>
         )}
         <span
           className="inline-flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-base"
