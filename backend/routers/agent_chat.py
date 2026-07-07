@@ -81,33 +81,24 @@ async def run_now(
     req: RunRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Run a scheduled agent on demand (e.g. to test the Memory curator without
-    waiting for its cron), streamed live like a chat turn. The server builds the
-    prompt — the curator's from its watermark, others' from schedule_prompt — so
-    the run is identical to what the beat task fires. The watermark is untouched,
-    so a manual run is safe to repeat while testing."""
+    """Run a prompt-scheduled agent on demand, streamed live like a chat turn.
+    The server builds the prompt from schedule_prompt, so the run is identical
+    to what the beat task fires.
+
+    Curator runs are refused here: a curation pass takes minutes and an SSE
+    run dies with the browser tab (the disconnect cancels the stream with no
+    trace). They enqueue on the worker via POST /me/memory/recompute — the
+    same path the daily schedule and the CLI use."""
     agent = await agent_service.get_agent(current_user["id"], UUID(req.agent_id))
     if agent["run_mode"] != "scheduled":
         raise HTTPException(status_code=400, detail="Only scheduled agents can be run on demand.")
-    if not agent["is_curator"] and not agent["schedule_prompt"]:
-        raise HTTPException(status_code=400, detail="This agent has no scheduled prompt to run.")
-    # Manual curator runs draw from the same monthly sleep-time allowance the
-    # scheduler enforces — otherwise "Run now" is unmetered sleep compute.
     if agent["is_curator"]:
-        from ..config import settings
-        from ..database import get_pool
-
-        if agent_service.month_runs_used(agent) >= settings.FREE_CURATOR_RUNS_PER_MONTH:
-            plan = await get_pool().fetchval(
-                "SELECT plan FROM users WHERE id = $1", current_user["id"]
-            )
-            if plan != "enterprise":
-                raise HTTPException(
-                    status_code=402,
-                    detail=f"Free accounts get {settings.FREE_CURATOR_RUNS_PER_MONTH} sleep-time "
-                    "curator runs per month; the enterprise plan is unlimited.",
-                )
-        await agent_service.mark_run(UUID(agent["id"]))
+        raise HTTPException(
+            status_code=400,
+            detail="Curator runs execute on the worker — use POST /me/memory/recompute.",
+        )
+    if not agent["schedule_prompt"]:
+        raise HTTPException(status_code=400, detail="This agent has no scheduled prompt to run.")
     try:
         auth = await agent_auth.resolve(current_user["id"], agent["model_provider"])
     except agent_auth.NeedsAuth:

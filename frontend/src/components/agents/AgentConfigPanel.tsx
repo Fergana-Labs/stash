@@ -7,9 +7,11 @@ import { takeCuratorRun } from "@/lib/agent-tab-view";
 import {
   type Agent,
   type AgentPrompt,
+  ApiError,
   deleteAgent,
   getAgentPrompt,
   listAgents,
+  recomputeMemory,
   updateAgent,
 } from "@/lib/api";
 
@@ -98,8 +100,58 @@ export default function AgentConfigPanel({
     onChanged?.();
   }
 
+  // Curator runs enqueue to the worker — the same path as the daily schedule
+  // and the CLI — so closing this tab doesn't kill the run mid-curation (a
+  // browser-tethered SSE run once died silently that way). The panel just
+  // polls the agent row for the outcome.
+  async function runCuratorNow(baseline: Agent) {
+    setRun({ streaming: true, status: "Queuing a curation pass…", text: "", tools: [], error: null });
+    try {
+      await recomputeMemory();
+    } catch (e) {
+      const nothingNew = e instanceof ApiError && e.status === 409;
+      setRun({
+        streaming: false,
+        status: null,
+        text: nothingNew ? "Nothing new to curate since the last run." : "",
+        tools: [],
+        error: nothingNew ? null : e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
+    // Poll until the worker picks it up and finishes: last_run_at advances at
+    // pickup (clearing last_run_error), curated_through advances on success.
+    for (let i = 0; i < 200; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const cur = (await listAgents().catch(() => [])).find((a) => a.id === baseline.id);
+      if (!cur || cur.last_run_at === baseline.last_run_at) continue;
+      setAgent(cur);
+      if (cur.last_run_error) {
+        setRun({ streaming: false, status: null, text: "", tools: [], error: cur.last_run_error });
+        return;
+      }
+      if (cur.curated_through && cur.last_run_at && cur.curated_through >= cur.last_run_at) {
+        setRun({ streaming: false, status: null, text: "Done — the Memory wiki is updated.", tools: [], error: null });
+        window.dispatchEvent(new Event("agents-changed"));
+        return;
+      }
+      setRun((r) => (r ? { ...r, status: "Curating on your cloud computer — safe to close this tab." } : r));
+    }
+    setRun({
+      streaming: false,
+      status: null,
+      text: "Still running — check back here or in `stash memory` for the outcome.",
+      tools: [],
+      error: null,
+    });
+  }
+
   async function runNow() {
     if (!agent || run?.streaming) return;
+    if (agent.is_curator) {
+      void runCuratorNow(agent);
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     setRun({ streaming: true, status: "Starting…", text: "", tools: [], error: null });
@@ -304,7 +356,7 @@ function RunOnDemand({
           <div className="text-[12.5px] font-medium text-foreground">Run on demand</div>
           <div className="text-[11.5px] text-muted-foreground">
             {isCurator
-              ? "Trigger a curation pass now instead of waiting for the daily schedule. Your watermark is untouched, so it's safe to repeat."
+              ? "Trigger a curation pass now instead of waiting for the daily schedule. It runs on your cloud computer — safe to close this tab."
               : "Run this scheduled agent now to test it."}
           </div>
         </div>

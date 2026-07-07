@@ -2005,11 +2005,21 @@ export type Agent = {
   is_curator: boolean;
   slack_bound: boolean;
   telegram_bound: boolean;
+  last_run_at: string | null;
+  last_run_error: string | null;
+  curated_through: string | null;
 };
 
 export async function listAgents(): Promise<Agent[]> {
   const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
   return data.agents;
+}
+
+/** Enqueue a curation pass on the worker — the same path the daily schedule
+ *  and the CLI use, so the run survives the browser. 409 = nothing changed
+ *  since the watermark. */
+export async function recomputeMemory(): Promise<{ status: string; agent_id: string }> {
+  return apiFetch("/api/v1/me/memory/recompute", { method: "POST" });
 }
 
 export async function createAgent(fields: Partial<Agent>): Promise<Agent> {
