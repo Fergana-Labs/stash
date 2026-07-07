@@ -1,5 +1,6 @@
 """Per-user harness + credential resolution: BYO keys, managed OpenRouter, gate."""
 
+import json
 import uuid
 
 import pytest
@@ -84,6 +85,11 @@ async def test_no_credential_pro_gets_managed_openrouter_glm(monkeypatch):
     assert auth.harness is h.OPENCODE
     assert auth.harness.default_model == "z-ai/glm-5.2"
     assert auth.env == {"OPENROUTER_API_KEY": "sk-managed-or"}
+    # The customer-facing no-training guarantee: every managed turn must pin
+    # OpenRouter routing to providers that don't retain or train on prompts.
+    opencode_config = json.loads(auth.files["/home/sprite/.config/opencode/opencode.json"])
+    model_options = opencode_config["provider"]["openrouter"]["models"]["z-ai/glm-5.2"]["options"]
+    assert model_options["provider"] == {"data_collection": "deny"}
 
 
 @pytest.mark.asyncio

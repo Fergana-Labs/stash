@@ -51,6 +51,24 @@ _API_KEY_ONLY = {"openrouter"}
 # The managed agent: opencode driving OpenRouter's GLM 5.2, on our key.
 MANAGED_HARNESS = harness_mod.OPENCODE
 
+# OpenRouter load-balances GLM across many third-party hosts, each with its own
+# data policy. data_collection "deny" makes OpenRouter route only to providers
+# that neither retain nor train on prompts — the basis of the no-training
+# guarantee we give customers, so it must ride on every managed turn.
+_OPENCODE_PRIVACY_CONFIG = json.dumps(
+    {
+        "provider": {
+            "openrouter": {
+                "models": {
+                    MANAGED_HARNESS.default_model: {
+                        "options": {"provider": {"data_collection": "deny"}}
+                    }
+                }
+            }
+        }
+    }
+)
+
 
 @dataclass
 class RunAuth:
@@ -150,7 +168,11 @@ async def _managed(user_id: UUID) -> RunAuth:
     key = settings.OPENROUTER_API_KEY
     if not key:
         raise ProviderNotConfigured
-    return RunAuth(harness=MANAGED_HARNESS, env={model_provider.OPENROUTER.env_var: key})
+    return RunAuth(
+        harness=MANAGED_HARNESS,
+        env={model_provider.OPENROUTER.env_var: key},
+        files={f"{_SPRITE_HOME}/.config/opencode/opencode.json": _OPENCODE_PRIVACY_CONFIG},
+    )
 
 
 def _byo_auth(cred: dict) -> RunAuth:
