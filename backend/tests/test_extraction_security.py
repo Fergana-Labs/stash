@@ -141,6 +141,37 @@ async def extraction_file(_db_pool):
 
 
 @pytest.mark.asyncio
+async def test_successful_extraction_persists_text_against_real_db(
+    monkeypatch, extraction_file, _db_pool
+):
+    """The success-path UPDATE must run against real Postgres. The mocked
+    connection used elsewhere can't catch SQL-level failures — the #408
+    embed_stale CASE shipped with an AmbiguousParameterError that broke
+    every production extraction until this path had DB coverage."""
+
+    async def download_file(storage_key):
+        return b"file body"
+
+    async def close_storage():
+        pass
+
+    monkeypatch.setattr(storage_service, "download_file", download_file)
+    monkeypatch.setattr(storage_service, "close", close_storage)
+
+    assert await extract_one._run(extraction_file) == 0
+
+    row = await _db_pool.fetchrow(
+        "SELECT extracted_text, extraction_status, extraction_error, embed_stale "
+        "FROM files WHERE id = $1",
+        extraction_file,
+    )
+    assert row["extraction_status"] == "done"
+    assert row["extracted_text"] == "file body"
+    assert row["extraction_error"] is None
+    assert row["embed_stale"] is True
+
+
+@pytest.mark.asyncio
 async def test_parent_preserves_child_persisted_error(monkeypatch, extraction_file, _db_pool):
     """When the child persists its redacted error, the parent's external
     failure marking must not overwrite it with a bare exit-code marker —

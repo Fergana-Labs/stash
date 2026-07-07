@@ -85,7 +85,7 @@ class _FakeConnection:
             "extraction_attempts": 0,
         }
 
-    async def execute(self, query, file_id, text):
+    async def execute(self, query, file_id, text, embed_stale=None):
         self.persisted_text = text
 
     async def close(self):
