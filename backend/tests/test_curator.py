@@ -109,6 +109,11 @@ def test_curator_prompt_embeds_folder_and_window():
     assert "stash changes --json" in boot and "--since" not in boot
     maint = prompts.render_curator_prompt("folder-123", "2026-07-06T09:00:00")
     assert "2026-07-06T09:00:00" in maint and "stash changes --since" in maint
+    # The onboarding promise is upload → recompute → see it in the wiki: the
+    # prompt must make uploads first-class content and forbid silent drops
+    # (a bootstrap run once ignored a fresh upload entirely).
+    assert "content, not context" in boot
+    assert "never a silent drop" in boot
 
 
 async def _make_due(pool, agent_id: str, watermark: datetime) -> None:

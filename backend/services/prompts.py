@@ -146,8 +146,15 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - **Scope by diff, not by corpus.** Only touch pages whose topic appears in this
   delta. Leave untouched pages alone.
 - **Category-first, pages-second.** Every page belongs to a category (a subfolder
-  under Memory). A concept gets its own page only when it appears in >=2 distinct
-  events. One-shot mentions stay as bullets on the category index page.
+  under Memory). A concept from chat history gets its own page only when it
+  appears in >=2 distinct events; one-shot mentions stay as bullets on the
+  category index page.
+- **Uploaded documents are content, not context.** The changed pages and new
+  files in the delta are material the user deliberately added — represent every
+  distinct document or document set in the wiki: a topic page, or bullets under
+  the best-fit category, adding a new category when none fits. The >=2 rule
+  above is for chat mentions and never applies to documents. After curation,
+  each upload must be findable by searching the wiki.
 - **Tag confidence.** Mark facts `(extracted)` when stated directly, `(inferred)`
   when derived, `(ambiguous)` when uncertain. Never create a page from
   ambiguous-only material.
@@ -173,6 +180,9 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Report
 One line per action: created / updated / merged / skipped, with page titles.
+Account for every changed page and new file in the delta — anything you chose
+not to represent in the wiki gets a `skipped` line with a one-line reason,
+never a silent drop.
 
 Begin now.
 """
