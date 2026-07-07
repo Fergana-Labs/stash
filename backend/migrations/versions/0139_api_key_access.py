@@ -1,13 +1,13 @@
 """Access level on API keys: 'read' (reads + transcript upload) or 'full'.
 
-Revision ID: 0136
-Revises: 0135
+Revision ID: 0139
+Revises: 0138
 """
 
 from alembic import op
 
-revision = "0136"
-down_revision = "0135"
+revision = "0139"
+down_revision = "0138"
 branch_labels = None
 depends_on = None
 
