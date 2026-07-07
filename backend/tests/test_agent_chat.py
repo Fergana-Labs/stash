@@ -158,10 +158,13 @@ async def test_agent_failure_surfaces_error_event(client: AsyncClient, sprite_ex
     assert errors and "API overloaded" in errors[0]["message"]
     assert evts[-1]["type"] == "end"
 
-    # A failed turn persists the user message but no assistant reply.
+    # A failed turn records the failure as the reply — a prompt with no
+    # answer would be indistinguishable from a run that never happened.
     session_id = evts[0]["session_id"]
     got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
-    assert [m["role"] for m in got.json()["messages"]] == ["user"]
+    messages = got.json()["messages"]
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert "API overloaded" in messages[1]["content"]
 
 
 @pytest.mark.asyncio

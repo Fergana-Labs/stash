@@ -239,7 +239,17 @@ function AgentsExplorer() {
         ))}
         <div className="mx-2 my-1 border-t border-sidebar-border" />
         <div className="px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">Recent chats</div>
-        {(rows ?? []).map((s) => <LeafRow key={s.session_id} icon={<MessagesSquare className="h-3.5 w-3.5" />} label={s.title || s.agent_name || "Chat"} onOpen={() => open("agent", s.session_id, s.title || s.agent_name || "Chat")} />)}
+        {(rows ?? []).map((s) => (
+          <LeafRow
+            key={s.session_id}
+            icon={<MessagesSquare className="h-3.5 w-3.5" />}
+            label={s.title || s.agent_name || "Chat"}
+            onOpen={() => open("agent", s.session_id, s.title || s.agent_name || "Chat")}
+            // Which agent ran this chat — titles alone hide scheduled runs
+            // (e.g. the Memory curator's) in a flat list.
+            trailing={s.agent_name ? <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-muted-foreground/70">{s.agent_name}</span> : undefined}
+          />
+        ))}
       </div>
     </div>
   );
@@ -332,6 +342,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
               ? { icon: <Sparkles className="h-4 w-4" />, label: "Curate wiki", run: () => void curateWiki() }
               : undefined
           }
+          confirmMemoryWrites={section === "memory"}
         />
       </div>
     );

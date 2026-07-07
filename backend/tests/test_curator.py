@@ -114,6 +114,10 @@ def test_curator_prompt_embeds_folder_and_window():
     # (a bootstrap run once ignored a fresh upload entirely).
     assert "content, not context" in boot
     assert "never a silent drop" in boot
+    # Links must be real markdown routes — double-bracket wiki syntax renders
+    # as plain text in the product, so the prompt must never ask for it.
+    assert "](/p/" in boot
+    assert "[[" not in boot
 
 
 async def _make_due(pool, agent_id: str, watermark: datetime) -> None:
@@ -298,6 +302,13 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     )
     assert sprite_exec.calls  # the run actually woke the sprite
     assert row["curated_through"] >= before - timedelta(seconds=5)
+
+    # The run's events carry the curator's own name, so its sessions are
+    # attributable in the Agents/Sessions lists (not generic "Stash Agent").
+    names = await _db_pool.fetch(
+        "SELECT DISTINCT agent_name FROM history_events WHERE session_id LIKE 'agent-curate-%'"
+    )
+    assert [n["agent_name"] for n in names] == ["Memory curator"]
 
 
 @pytest.mark.asyncio
