@@ -215,7 +215,14 @@ export default function FilesExplorer({
   async function newFolder(folder: string | null) { await createFolder("New folder", folder); await load(); }
   async function runNewRootItem() { if (!newRootItem) return; await newRootItem.run(); await load(); }
   async function uploadFiles(files: File[], folder: string | null) {
-    for (const f of files) await uploadFileOrPage(f, folder ?? undefined);
+    const label = files.length === 1 ? files[0].name : `${files.length} files`;
+    const toastId = toast.loading(`Uploading ${label}…`);
+    try {
+      for (const f of files) await uploadFileOrPage(f, folder ?? undefined);
+      toast.success(`Uploaded ${label}`, { id: toastId });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed", { id: toastId });
+    }
     await load();
   }
   function onUpload(e: React.ChangeEvent<HTMLInputElement>) {

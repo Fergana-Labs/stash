@@ -13,7 +13,7 @@ vi.mock("@/lib/workspace-store", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn() },
 }));
 
 vi.mock("@/lib/api", () => ({

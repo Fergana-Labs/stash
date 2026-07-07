@@ -872,10 +872,18 @@ type UploadApiResponse = {
   created_by?: string;
 };
 
+// Matches MAX_FILE_SIZE in backend/routers/files.py and the Next proxy
+// limit in next.config.ts. Rejecting here gives an instant, clear error
+// instead of uploading for many seconds and failing downstream.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 async function uploadAny(
   file: File,
   folderId?: string | null
 ): Promise<UploadApiResponse> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`${file.name} is too large (max 100 MB)`);
+  }
   const token = await getAuthToken();
   const formData = new FormData();
   formData.append("file", file);
