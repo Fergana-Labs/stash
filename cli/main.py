@@ -1095,6 +1095,14 @@ def upload(
         "--public/--private",
         help="Skill visibility (only meaningful with --skill).",
     ),
+    folder: str = typer.Option(
+        "",
+        "--folder",
+        help=(
+            "Target folder id for a single-file upload. Works for your own "
+            "folders and folders shared with you with write permission."
+        ),
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Upload a local file or directory into your Files.
@@ -1116,12 +1124,16 @@ def upload(
         console.print(f"[red]Not found: {path}[/red]")
         raise typer.Exit(1)
 
+    if folder and not (target.is_file() and not skill):
+        console.print("[red]--folder only applies to a single-file upload without --skill.[/red]")
+        raise typer.Exit(1)
+
     # A single file with no Skill goes straight into Files — no wrapping
     # folder. The server routes Markdown/HTML to pages.
     if target.is_file() and not skill:
         with _client() as c:
             try:
-                data = _upload_path(c, str(target))
+                data = c.upload_file(str(target), folder_id=folder or None)
             except StashError as e:
                 _err(e)
         if _use_json(as_json):
@@ -4177,10 +4189,37 @@ def keys_list(as_json: bool = typer.Option(False, "--json")):
     for k in keys:
         last = k.get("last_used_at") or "never"
         console.print(
-            f"  [bold]{k['name']}[/bold]  "
+            f"  [bold]{k['name']}[/bold]  [cyan]{k['access']}[/cyan]  "
             f"[dim]id: {k['id']}  created: {str(k['created_at'])[:10]}  "
             f"last used: {str(last)[:10]}[/dim]"
         )
+
+
+@keys_app.command("create")
+def keys_create(
+    name: str = typer.Argument(..., help="Key name, e.g. heavi-parts-agent."),
+    access: str = typer.Option(
+        ...,
+        "--access",
+        help="'read' (search/read + transcript upload, for production agents) or 'full'.",
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Mint a new API key. The raw key is printed once and never shown again."""
+    if access not in ("read", "full"):
+        console.print(f"[red]--access must be 'read' or 'full', got '{access}'.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            key = c.create_api_key(name, access)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(key)
+        return
+    console.print(f"[green]Created key [bold]{key['name']}[/bold] ({key['access']}).[/green]")
+    console.print(f"  {key['api_key']}")
+    console.print("[dim]Copy it now — this is the only time the full key is shown.[/dim]")
 
 
 @keys_app.command("revoke")

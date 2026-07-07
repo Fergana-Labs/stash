@@ -1,12 +1,15 @@
 """Writes into folders under the /me routing model.
 
-A user only ever reaches their OWN scope through /api/v1/me/... Uploads and
-moves therefore land in the caller's own scope; a folder_id always refers to a
-folder the caller owns. Cross-user isolation: another user's folder is simply
-not in your scope, so targeting it fails (400) — there is no membership/role
-gate to trip anymore, and the upload endpoint has no canonical cross-scope
-variant to write into someone else's folder.
+An upload or page create lands in the scope that OWNS the target folder: your
+own folders always accept, and another user's folder accepts if it (or an
+ancestor) is shared with you with write permission — the content is owned by
+the folder's owner and attributed to you via uploaded_by/created_by. Without a
+write share, targeting someone else's folder fails 403. This is how multiple
+people contribute to one company brain (e.g. two founders uploading docs into
+a shared knowledge folder) without an org entity.
 """
+
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -107,23 +110,32 @@ async def test_owner_can_upload_and_move_page_into_own_folder(client: AsyncClien
     assert moved.json()["folder_id"] == folder_id
 
 
+async def _share_folder(pool, folder_id: str, owner_id: str, user_id: str, permission: str):
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1, 'folder', $2, 'user', $3, $4, $1)",
+        UUID(owner_id),
+        UUID(folder_id),
+        UUID(user_id),
+        permission,
+    )
+
+
 @pytest.mark.asyncio
 async def test_stranger_cannot_upload_into_another_users_folder(client: AsyncClient):
-    """Cross-user isolation: a folder owned by someone else is not in the
-    caller's scope, so targeting it from /me/files fails. The stranger's own
-    scope still accepts an unscoped upload."""
+    """Without a write share, someone else's folder refuses the upload. The
+    stranger's own scope still accepts an unscoped upload."""
     owner_key, _, _ = await _register(client, "fiso_owner")
     stranger_key, _, _ = await _register(client, "fiso_stranger")
     folder_id = await _folder(client, owner_key)
 
-    # The owner's folder_id does not belong to the stranger's scope.
     denied = await client.post(
         "/api/v1/me/files",
         files={"file": ("notes.md", b"# hi", "text/markdown")},
         data={"folder_id": folder_id},
         headers=_auth(stranger_key),
     )
-    assert denied.status_code == 400
+    assert denied.status_code == 403
 
     # An unscoped upload lands in the stranger's own root.
     rootless = await client.post(
@@ -134,3 +146,90 @@ async def test_stranger_cannot_upload_into_another_users_folder(client: AsyncCli
     assert rootless.status_code == 201
     assert rootless.json()["kind"] == "page"
     assert rootless.json()["folder_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_write_share_allows_upload_into_owners_folder(client: AsyncClient, _db_pool):
+    """A write share on a folder lets a non-owner upload into it: the content
+    belongs to the folder's owner and is attributed to the uploader."""
+    owner_key, _, owner_id = await _register(client, "fws_owner")
+    writer_key, _, writer_id = await _register(client, "fws_writer")
+    folder_id = await _folder(client, owner_key)
+    await _share_folder(_db_pool, folder_id, owner_id, writer_id, "write")
+
+    uploaded = await client.post(
+        "/api/v1/me/files",
+        files={"file": ("cheatsheet.md", b"# brake parts", "text/markdown")},
+        data={"folder_id": folder_id},
+        headers=_auth(writer_key),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    body = uploaded.json()
+    assert body["owner_user_id"] == owner_id
+    assert body["created_by"] == writer_id
+    assert body["folder_id"] == folder_id
+
+    # The owner sees the contributed page in their folder.
+    contents = await client.get(
+        f"/api/v1/me/folders/{folder_id}/contents",
+        headers=_auth(owner_key),
+    )
+    assert contents.status_code == 200
+    assert any(p["name"] == "cheatsheet" for p in contents.json()["pages"])
+
+
+@pytest.mark.asyncio
+async def test_write_share_cascades_to_subfolders(client: AsyncClient, _db_pool):
+    """Sharing a folder with write permission covers its subfolders too."""
+    owner_key, _, owner_id = await _register(client, "fwc_owner")
+    writer_key, _, writer_id = await _register(client, "fwc_writer")
+    parent_id = await _folder(client, owner_key)
+    sub = await client.post(
+        "/api/v1/me/folders",
+        json={"name": "Sub", "parent_folder_id": parent_id},
+        headers=_auth(owner_key),
+    )
+    assert sub.status_code == 201
+    await _share_folder(_db_pool, parent_id, owner_id, writer_id, "write")
+
+    uploaded = await client.post(
+        "/api/v1/me/files",
+        files={"file": ("nested.md", b"# nested", "text/markdown")},
+        data={"folder_id": sub.json()["id"]},
+        headers=_auth(writer_key),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["owner_user_id"] == owner_id
+
+
+@pytest.mark.asyncio
+async def test_read_share_does_not_allow_upload(client: AsyncClient, _db_pool):
+    owner_key, _, owner_id = await _register(client, "frs_owner")
+    reader_key, _, reader_id = await _register(client, "frs_reader")
+    folder_id = await _folder(client, owner_key)
+    await _share_folder(_db_pool, folder_id, owner_id, reader_id, "read")
+
+    denied = await client.post(
+        "/api/v1/me/files",
+        files={"file": ("notes.md", b"# hi", "text/markdown")},
+        data={"folder_id": folder_id},
+        headers=_auth(reader_key),
+    )
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_write_share_allows_page_create_in_owners_folder(client: AsyncClient, _db_pool):
+    owner_key, _, owner_id = await _register(client, "fpc_owner")
+    writer_key, _, writer_id = await _register(client, "fpc_writer")
+    folder_id = await _folder(client, owner_key)
+    await _share_folder(_db_pool, folder_id, owner_id, writer_id, "write")
+
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Field notes", "folder_id": folder_id},
+        headers=_auth(writer_key),
+    )
+    assert page.status_code == 201, page.text
+    assert page.json()["owner_user_id"] == owner_id
+    assert page.json()["created_by"] == writer_id

@@ -162,9 +162,15 @@ async def upload_my_file(
     There is no way to upload a file as *embedded* — embedding is derived
     from page bodies: saving a page whose body carries a file's download
     link claims that file (see _reconcile_embedded_files)."""
+    # The upload lands in the scope that owns the target folder, so a folder
+    # shared with write permission accepts uploads from non-owners (the file
+    # is owned by the folder's owner, attributed via uploaded_by/created_by).
     owner_user_id = current_user["id"]
-    # Scope writers can upload anywhere; other users can upload into a
-    # specific folder shared with them with write permission.
+    if folder_id is not None:
+        folder_owner = await permission_service.resolve_owner_user_id("folder", folder_id)
+        if folder_owner is None:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        owner_user_id = folder_owner
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         can_write_folder = folder_id is not None and await permission_service.check_access(
             "folder",

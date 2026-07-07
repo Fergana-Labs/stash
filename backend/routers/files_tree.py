@@ -483,11 +483,16 @@ async def create_page(
     req: PageCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    owner_user_id = current_user["id"]
+    # The page is created in the scope that owns the target folder, so a
+    # folder shared with write permission accepts pages from non-owners.
     if req.folder_id is None:
+        owner_user_id = current_user["id"]
         await _check_scope_write(owner_user_id, current_user["id"])
     else:
-        await _check_scope_owns_folder(owner_user_id, req.folder_id)
+        folder = await files_tree_service.get_folder(req.folder_id)
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        owner_user_id = folder["owner_user_id"]
         await _check_content_access(
             "folder",
             req.folder_id,
