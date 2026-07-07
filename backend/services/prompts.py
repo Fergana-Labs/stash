@@ -132,9 +132,9 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   history/chats, changed pages, new files, and connected sources. This IS your
   work set; do not re-scan the whole corpus.
 - `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
-- `stash ls /files --json` under the Memory folder and `stash read <page_id>`
-  to inspect existing wiki pages. `stash search "<topic>" --json` to pull
-  related source/file context on demand.
+- `stash ls /memory --json` and `stash read <page_id>` to inspect existing
+  wiki pages. `stash search "<topic>" --json` to pull related source/file
+  context on demand.
 
 ## Operating principles
 - **Bootstrap vs. maintain — know which mode you're in.** If the Memory folder

@@ -78,6 +78,7 @@ class StashVfsModel:
                     "This is a read-only virtual filesystem view over Stash.",
                     "",
                     "- `files` exposes folders, pages, and uploaded files.",
+                    "- `memory` is the agent-curated Memory wiki (stored separately from `files`).",
                     "- Sessions, skills, and tables are read-only projections.",
                     "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
@@ -139,8 +140,9 @@ class StashVfsModel:
 
     def _add_root(self) -> None:
         overview = self.client.get_overview()
+        memory_folder_id = str(self.client.get_memory_folder()["id"])
 
-        self._add_files_tree(overview.get("files", {}))
+        self._add_files_tree(overview.get("files", {}), memory_folder_id)
         self._add_skills(overview.get("skills", []))
         self._add_sessions(overview.get("sessions", []))
         self._add_tables()
@@ -176,9 +178,13 @@ class StashVfsModel:
                     size_hint=entry.get("size"),
                 )
 
-    def _add_files_tree(self, tree: dict) -> None:
+    def _add_files_tree(self, tree: dict, memory_folder_id: str) -> None:
         root_path = "/files"
         self._add_dir(root_path)
+        # The Memory wiki is stored as a reserved folder in the files tree but
+        # presented as its own root — /files and /memory are MECE, mirroring
+        # the app Explorer's sections.
+        self._add_dir("/memory")
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         pages = tree.get("pages", [])
         # Files embedded in a page are internals of that document, not tree
@@ -194,6 +200,9 @@ class StashVfsModel:
         def folder_path(folder_id: str) -> str:
             if folder_id in folder_paths:
                 return folder_paths[folder_id]
+            if folder_id == memory_folder_id:
+                folder_paths[folder_id] = "/memory"
+                return "/memory"
             folder = folders[folder_id]
             parent_id = folder.get("parent_folder_id")
             parent_path = folder_path(str(parent_id)) if parent_id else root_path

@@ -5,10 +5,21 @@ class FakeClient:
     def __init__(self):
         self.source_entry_calls = 0
 
+    def get_memory_folder(self):
+        return {"id": "memfolder-12345678", "name": "Memory"}
+
     def get_overview(self):
         return {
             "files": {
-                "folders": [{"id": "folder-12345678", "name": "Notes", "parent_folder_id": None}],
+                "folders": [
+                    {"id": "folder-12345678", "name": "Notes", "parent_folder_id": None},
+                    {"id": "memfolder-12345678", "name": "Memory", "parent_folder_id": None},
+                    {
+                        "id": "memcat-12345678",
+                        "name": "Projects",
+                        "parent_folder_id": "memfolder-12345678",
+                    },
+                ],
                 "pages": [
                     {
                         "id": "page-12345678",
@@ -17,7 +28,15 @@ class FakeClient:
                         "folder_id": "folder-12345678",
                         "created_at": "2026-05-01T09:00:00Z",
                         "updated_at": "2026-05-02T10:30:00Z",
-                    }
+                    },
+                    {
+                        "id": "wikipage-12345678",
+                        "name": "Memory Wiki",
+                        "content_type": "markdown",
+                        "folder_id": "memfolder-12345678",
+                        "created_at": "2026-05-01T09:00:00Z",
+                        "updated_at": "2026-05-02T10:30:00Z",
+                    },
                 ],
                 "files": [
                     {
@@ -49,7 +68,7 @@ class FakeClient:
         }
 
     def get_page(self, page_id):
-        assert page_id == "page-12345678"
+        assert page_id in ("page-12345678", "wikipage-12345678")
         return {"content_type": "markdown", "content_markdown": "# Plan\n", "content_html": ""}
 
     def download_file(self, file_id):
@@ -143,6 +162,7 @@ def test_vfs_exposes_user_sections():
         "README.md",
         "computer",
         "files",
+        "memory",
         "sessions",
         "skills",
         "tables",
@@ -217,6 +237,18 @@ def test_vfs_keeps_children_of_a_page_that_has_its_own_body():
     assert model.read_file(f"{parent}/Parent") == b"BODY of Parent"
     assert model.read_file(f"{parent}/Child A") == b"BODY of Parent/Child A"
     assert model.read_file(f"{parent}/Child B") == b"BODY of Parent/Child B"
+
+
+def test_vfs_memory_is_its_own_root_not_under_files():
+    """/files and /memory are MECE, mirroring the app Explorer's sections —
+    the Memory wiki is stored as a reserved files-tree folder but must not
+    show up when browsing /files."""
+    model = _model()
+
+    assert not any(name.startswith("Memory") for name in model.list_dir("/files"))
+    memory_entries = model.list_dir("/memory")
+    assert any(name.startswith("Projects") for name in memory_entries)
+    assert any(name.startswith("Memory Wiki") for name in memory_entries)
 
 
 def test_vfs_reads_files_and_pages():
