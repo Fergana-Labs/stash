@@ -1147,12 +1147,14 @@ export interface LinearTicketLabel {
 export async function listMySessions(
   limit = 50,
   sessionFolderId?: string,
-  offset = 0
+  offset = 0,
+  agentChatsOnly = false
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (offset) qs.set("offset", String(offset));
   if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
+  if (agentChatsOnly) qs.set("agent_chats_only", "true");
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
   );

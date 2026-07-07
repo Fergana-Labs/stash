@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, SquareTerminal } from "lucide-react";
 import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
+import { requestAgentConfigView } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
@@ -169,7 +170,9 @@ function AgentsExplorer() {
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   const [rows, setRows] = useState<SessionSummary[] | null>(null);
   const reloadAgents = useCallback(() => { listAgents().then(setAgents).catch(() => setAgents([])); }, []);
-  useEffect(() => { reloadAgents(); listMySessions(50).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
+  // Recent chats here are only conversations that ran through our platform
+  // agents — CLI transcripts live in the Sessions view, not here.
+  useEffect(() => { reloadAgents(); listMySessions(50, undefined, 0, true).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
   // Keep the list fresh when the config panel saves/deletes an agent.
   useEffect(() => {
     const onChange = () => reloadAgents();
@@ -180,7 +183,20 @@ function AgentsExplorer() {
   async function newAgent() {
     const a = await createAgent({ name: "New agent" });
     reloadAgents();
-    open("agent-config", a.id, a.name);
+    // A fresh agent wants configuring first — open its tab on the Config side.
+    requestAgentConfigView(a.id);
+    open("agent", `agent-${a.id}`, a.name);
+  }
+
+  // The curator has no chat — its settings are their own tab. Every other
+  // agent's settings live on the Config side of its single chat tab.
+  function openSettings(a: AgentRow) {
+    if (a.is_curator) {
+      open("agent-config", a.id, a.name);
+      return;
+    }
+    requestAgentConfigView(a.id);
+    open("agent", `agent-${a.id}`, a.name);
   }
 
   return (
@@ -214,7 +230,7 @@ function AgentsExplorer() {
                 <Plus className="h-3.5 w-3.5" />
               </button>
             )}
-            <button onClick={() => open("agent-config", a.id, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
+            <button onClick={() => openSettings(a)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
               <Settings className="h-3.5 w-3.5" />
             </button>
           </div>

@@ -97,7 +97,7 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     user = dict(row)
-    if managed_auth_enabled and user["key_type"] not in ("cli", "manual"):
+    if managed_auth_enabled and user["key_type"] not in ("cli", "manual", "machine"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key is not allowed for managed auth",

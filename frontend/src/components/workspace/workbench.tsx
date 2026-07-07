@@ -94,7 +94,7 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col bg-base"
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-base"
       onMouseDown={() => setFocusedPane(pane)}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
