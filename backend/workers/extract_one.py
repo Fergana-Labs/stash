@@ -30,10 +30,11 @@ import resource
 import sys
 from uuid import UUID
 
-# Cap address space BEFORE importing any extraction libs. 350 MB leaves
-# headroom on Render Starter's 512 MB dyno while giving pypdf room for
-# large arxiv-style documents.
-_MEM_LIMIT_BYTES = int(os.getenv("EXTRACTION_MEMORY_LIMIT_MB", "350")) * 1024 * 1024
+# Cap address space BEFORE importing any extraction libs. The old 350 MB
+# default OOM'd in production: OpenBLAS (via numpy) sizes per-thread
+# buffers from the host's core count, and RLIMIT_AS only applies on Linux
+# so local runs never caught it. The worker runs on a 2 GB instance now.
+_MEM_LIMIT_BYTES = int(os.getenv("EXTRACTION_MEMORY_LIMIT_MB", "1024")) * 1024 * 1024
 
 
 def _apply_memory_limit() -> None:
@@ -77,16 +78,20 @@ async def _run(file_id: UUID) -> int:
 
         # embed_stale flips on if there's text to embed. The reconciler
         # in backend/tasks/embeddings.py picks files up from there.
+        # The flag is computed in Python and passed as its own parameter:
+        # reusing $2 inside a CASE makes Postgres unable to infer the
+        # parameter's type (AmbiguousParameterError).
         await conn.execute(
             "UPDATE files SET "
             "extracted_text = $2, "
             "extraction_status = 'done', "
             "extraction_error = NULL, "
             "locked_at = NULL, "
-            "embed_stale = CASE WHEN $2 IS NOT NULL AND $2 <> '' THEN TRUE ELSE embed_stale END "
+            "embed_stale = embed_stale OR $3 "
             "WHERE id = $1",
             file_id,
             text,
+            bool(text),
         )
         return 0
     except Exception as e:
