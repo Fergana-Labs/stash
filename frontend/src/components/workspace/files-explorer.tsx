@@ -43,6 +43,7 @@ export default function FilesExplorer({
   openRootTab,
   showImport = true,
   vfsWritable = true,
+  confirmMemoryWrites = false,
 }: {
   onRoot: () => void;
   rootLabel?: string;
@@ -65,6 +66,9 @@ export default function FilesExplorer({
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
+  /** Memory is the curator agent's knowledge base, so a manual write there is
+   *  unusual: confirm it first and offer to send the item to Files instead. */
+  confirmMemoryWrites?: boolean;
 }) {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
@@ -80,6 +84,9 @@ export default function FilesExplorer({
   const [importOpen, setImportOpen] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [importing, setImporting] = useState(false);
+  // A write action waiting on the "Add to Memory?" confirmation. `run` receives
+  // the destination folder: the browsed Memory folder, or null for Files root.
+  const [pendingWrite, setPendingWrite] = useState<{ run: (folder: string | null) => Promise<void> } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -176,24 +183,34 @@ export default function FilesExplorer({
     await load();
   }
 
-  async function newDoc(contentType: "markdown" | "html") {
-    const p = await createPage("Untitled", folderId, "", { content_type: contentType });
+  // In Memory, every create/upload goes through the "Add to Memory?" dialog;
+  // everywhere else the action runs immediately in the browsed folder.
+  function guardWrite(run: (folder: string | null) => Promise<void>) {
+    if (confirmMemoryWrites) setPendingWrite({ run });
+    else void run(folderId);
+  }
+  async function newDoc(contentType: "markdown" | "html", folder: string | null) {
+    const p = await createPage("Untitled", folder, "", { content_type: contentType });
     await load();
     openAsTab({ kind: "page", id: p.id, name: "Untitled" });
   }
-  async function newTableItem() {
+  async function newTableItem(folder: string | null) {
     const t = await createTable("Untitled table");
-    if (folderId) await updateTable(t.id, { folder_id: folderId });
+    if (folder) await updateTable(t.id, { folder_id: folder });
     await load();
     openAsTab({ kind: "table", id: t.id, name: t.name });
   }
-  async function newFolder() { await createFolder("New folder", folderId); await load(); }
+  async function newFolder(folder: string | null) { await createFolder("New folder", folder); await load(); }
   async function runNewRootItem() { if (!newRootItem) return; await newRootItem.run(); await load(); }
-  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    for (const f of files) await uploadFileOrPage(f, folderId ?? undefined);
-    if (fileRef.current) fileRef.current.value = "";
+  async function uploadFiles(files: File[], folder: string | null) {
+    for (const f of files) await uploadFileOrPage(f, folder ?? undefined);
     await load();
+  }
+  function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (fileRef.current) fileRef.current.value = "";
+    if (files.length === 0) return;
+    guardWrite((folder) => uploadFiles(files, folder));
   }
   async function doImport() {
     if (!repoUrl.trim()) return;
@@ -259,12 +276,12 @@ export default function FilesExplorer({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => newDoc("markdown")}><FileText className="h-4 w-4" /> Markdown page</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => newDoc("html")}><Code2 className="h-4 w-4" /> HTML page</DropdownMenuItem>
-                  <DropdownMenuItem onClick={newTableItem}><Table2 className="h-4 w-4" /> Table</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => guardWrite((f) => newDoc("markdown", f))}><FileText className="h-4 w-4" /> Markdown page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => guardWrite((f) => newDoc("html", f))}><Code2 className="h-4 w-4" /> HTML page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => guardWrite(newTableItem)}><Table2 className="h-4 w-4" /> Table</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <ToolBtn icon={<FolderPlus className="h-4 w-4" />} label="New folder" onClick={newFolder} />
+              <ToolBtn icon={<FolderPlus className="h-4 w-4" />} label="New folder" onClick={() => guardWrite(newFolder)} />
               <ToolBtn icon={<Upload className="h-4 w-4" />} label="Upload" onClick={() => fileRef.current?.click()} />
             </>
           ) : null}
@@ -340,6 +357,29 @@ export default function FilesExplorer({
           <button onClick={async () => { const it = menu.item; setMenu(null); await del(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
         </div>
       )}
+
+      <Dialog open={!!pendingWrite} onOpenChange={(open) => { if (!open) setPendingWrite(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add to Memory?</DialogTitle></DialogHeader>
+          <p className="text-[13px] text-muted-foreground">
+            Memory is your curator agent&apos;s knowledge base — it&apos;s usually maintained
+            automatically, not by hand. Most files belong in Files.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { const w = pendingWrite!; setPendingWrite(null); void w.run(folderId); }}
+            >
+              Add to Memory anyway
+            </Button>
+            <Button
+              onClick={async () => { const w = pendingWrite!; setPendingWrite(null); await w.run(null); toast.success("Added to Files"); }}
+            >
+              Add to Files instead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>
