@@ -214,9 +214,14 @@ export async function updateMe(data: {
   });
 }
 
+// 'read' keys can read/search everything and upload session transcripts,
+// nothing else — intended for production agents.
+export type ApiKeyAccess = "read" | "full";
+
 export interface ApiKeyInfo {
   id: string;
   name: string;
+  access: ApiKeyAccess;
   created_at: string;
   last_used_at: string | null;
 }
@@ -232,14 +237,15 @@ export async function revokeMyKey(keyId: string): Promise<void> {
 export interface ApiKeyCreated {
   id: string;
   name: string;
+  access: ApiKeyAccess;
   api_key: string; // raw key — shown exactly once
   created_at: string;
 }
 
-export async function createMyKey(name: string): Promise<ApiKeyCreated> {
+export async function createMyKey(name: string, access: ApiKeyAccess): Promise<ApiKeyCreated> {
   return apiFetch("/api/v1/users/me/keys", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, access }),
   });
 }
 
