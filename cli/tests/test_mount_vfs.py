@@ -101,6 +101,9 @@ class FakeClient:
         assert session_id == "session-abc"
         return '{"type":"user"}\n'
 
+    def machine_fs_list(self, path):
+        return []
+
     def list_tables(self):
         return [{"id": "table-12345678", "name": "Ideas", "columns": [], "row_count": 1}]
 
@@ -138,6 +141,7 @@ def test_vfs_exposes_user_sections():
 
     assert set(model.list_dir("/")) == {
         "README.md",
+        "computer",
         "files",
         "sessions",
         "skills",
