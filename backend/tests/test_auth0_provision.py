@@ -163,7 +163,7 @@ async def test_managed_auth0_allows_manual_api_key_creation(client, monkeypatch)
 
     created = await client.post(
         "/api/v1/users/me/keys",
-        json={"name": "production-agent"},
+        json={"name": "production-agent", "access": "full"},
         headers=headers,
     )
 

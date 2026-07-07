@@ -127,7 +127,7 @@ async def list_my_keys(current_user: dict = Depends(get_current_user)):
 
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, name, created_at, last_used_at "
+        "SELECT id, name, access, created_at, last_used_at "
         "FROM user_api_keys "
         "WHERE user_id = $1 AND revoked_at IS NULL "
         "ORDER BY created_at DESC",
@@ -147,17 +147,20 @@ async def create_my_key(
     and never shown again; only its hash is stored."""
     from ..database import get_pool
 
-    api_key = await create_api_key(current_user["id"], name=req.name, key_type="manual")
+    api_key = await create_api_key(
+        current_user["id"], name=req.name, key_type="manual", access=req.access
+    )
     pool = get_pool()
     from ..auth import hash_api_key
 
     row = await pool.fetchrow(
-        "SELECT id, name, created_at FROM user_api_keys WHERE key_hash = $1",
+        "SELECT id, name, access, created_at FROM user_api_keys WHERE key_hash = $1",
         hash_api_key(api_key),
     )
     return ApiKeyCreateResponse(
         id=row["id"],
         name=row["name"],
+        access=row["access"],
         api_key=api_key,
         created_at=row["created_at"],
     )

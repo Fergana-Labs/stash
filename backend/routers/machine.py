@@ -104,6 +104,11 @@ async def terminal(ws: WebSocket, token: str = "", cols: int = 80, rows: int = 2
     except HTTPException:
         await ws.close(code=4401, reason="Invalid token")
         return
+    # This websocket authenticates outside get_current_user, so the read-key
+    # gate must be applied here too — a shell is unrestricted write access.
+    if user["key_access"] == "read":
+        await ws.close(code=4403, reason="Read-only API key cannot open a terminal")
+        return
     await ws.accept()
 
     try:

@@ -108,6 +108,9 @@ class StashClient:
     def list_api_keys(self) -> list:
         return self._get("/api/v1/users/me/keys")
 
+    def create_api_key(self, name: str, access: str) -> dict:
+        return self._post("/api/v1/users/me/keys", json={"name": name, "access": access})
+
     def revoke_api_key(self, key_id: str) -> None:
         self._delete(f"/api/v1/users/me/keys/{key_id}")
 

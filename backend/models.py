@@ -72,17 +72,22 @@ class UserSearchResult(BaseModel):
 class ApiKeyInfo(BaseModel):
     id: UUID
     name: str
+    access: Literal["read", "full"]
     created_at: datetime
     last_used_at: datetime | None
 
 
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field("Personal token", min_length=1, max_length=128)
+    # 'read' keys can read/search everything and upload session transcripts,
+    # nothing else — intended for production agents.
+    access: Literal["read", "full"]
 
 
 class ApiKeyCreateResponse(BaseModel):
     id: UUID
     name: str
+    access: Literal["read", "full"]
     api_key: str  # raw token — shown exactly once
     created_at: datetime
 
