@@ -21,6 +21,8 @@ class _Recorder:
     def __init__(self, fail_first_n: int = 0):
         self.calls: list[dict] = []
         self.fail_first_n = fail_first_n
+        # path → HTTP status to answer with (instead of 200).
+        self.status_by_path: dict[str, int] = {}
 
     def request(self, method, path, **kwargs):
         self.calls.append(
@@ -33,13 +35,15 @@ class _Recorder:
         )
         if len(self.calls) <= self.fail_first_n:
             raise RuntimeError("simulated network failure")
+        status = self.status_by_path.get(path, 200)
 
         class _Resp:
-            status_code = 200
-            is_success = True
+            status_code = status
+            is_success = status < 400
+            text = "simulated error"
 
             def json(self_inner):
-                return {"ok": True}
+                return {"ok": True} if status < 400 else {"detail": "simulated error"}
 
         return _Resp()
 
@@ -118,6 +122,73 @@ def test_drain_stops_on_first_failure(tmp_path):
     queued = _queue_lines(tmp_path)
     assert len(queued) == 2
     assert {q["body"]["content"] for q in queued} == {"e0", "e1"}
+
+
+def test_drain_drops_permanently_rejected_entries(tmp_path):
+    """Entries the backend rejects with a non-retryable 4xx (dead route,
+    bad body) can never send — they must be dropped so they don't wedge
+    the queue in front of good entries forever."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    dead = {"path": "/api/v1/workspaces/w1/memory/events", "body": {"content": "old"}, "ts": 1.0}
+    good = {"path": "/api/v1/me/sessions/events", "body": {"content": "new"}, "ts": 2.0}
+    qp.write_text(json.dumps(dead) + "\n" + json.dumps(good) + "\n")
+    client._http.status_by_path["/api/v1/workspaces/w1/memory/events"] = 404
+
+    client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    # Dead entry dropped, good entry sent, queue empty.
+    assert _queue_lines(tmp_path) == []
+    sent_paths = [c["path"] for c in client._http.calls]
+    assert sent_paths.count("/api/v1/me/sessions/events") == 2  # live push + drained entry
+    status = read_upload_status(tmp_path)
+    assert status["queued_events"] == 0
+
+
+def test_drain_keeps_entries_on_auth_failure(tmp_path):
+    """401 heals with a re-signin, so entries stay queued instead of
+    being dropped."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    entry = {"path": "/api/v1/me/sessions/events", "body": {"content": "e0"}, "ts": 1.0}
+    qp.write_text(json.dumps(entry) + "\n")
+    client._http.status_by_path["/api/v1/me/sessions/events"] = 401
+
+    with pytest.raises(Exception):
+        client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    # Live push failed (401) and got enqueued; the original entry survives.
+    queued = _queue_lines(tmp_path)
+    assert {q["body"]["content"] for q in queued} == {"e0", "live"}
+
+
+def test_live_push_success_recorded_despite_stuck_backlog(tmp_path):
+    """A landed live event is a success even when the backlog can't drain
+    (health still reports failing while anything is queued)."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    stuck = {"path": "/api/v1/me/sessions/stuck", "body": {"content": "e0"}, "ts": 1.0}
+    qp.write_text(json.dumps(stuck) + "\n")
+    client._http.status_by_path["/api/v1/me/sessions/stuck"] = 500
+
+    client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    status = read_upload_status(tmp_path)
+    assert status["last_success_operation"] == "event"
+    assert status["queued_events"] == 1
+    assert status["health"] == "failing"
+
+
+def test_drain_drops_corrupt_lines(tmp_path):
+    """A line that isn't valid queue JSON can never send — drop it."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    good = {"path": "/api/v1/me/sessions/events", "body": {"content": "e0"}, "ts": 1.0}
+    qp.write_text("not-json\n" + json.dumps(good) + "\n")
+
+    client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    assert _queue_lines(tmp_path) == []
 
 
 def test_no_data_dir_no_queue(tmp_path):

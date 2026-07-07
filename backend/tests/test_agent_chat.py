@@ -162,3 +162,49 @@ async def test_agent_failure_surfaces_error_event(client: AsyncClient, sprite_ex
     session_id = evts[0]["session_id"]
     got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
     assert [m["role"] for m in got.json()["messages"]] == ["user"]
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_persist_as_history_events(client: AsyncClient, sprite_exec, _db_pool):
+    """Cloud runs have no plugin hooks, so the backend itself must record the
+    harness's tool calls — otherwise the stored session is prompt + answer
+    only and a run's behavior can't be audited after the fact."""
+    key, _ = await _register(client)
+
+    sprite_exec.replies.append(
+        (
+            [
+                json.dumps({"type": "system", "subtype": "init"}),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "tu1",
+                                    "name": "Bash",
+                                    "input": {"command": "stash changes --json"},
+                                }
+                            ]
+                        },
+                    }
+                ),
+                json.dumps({"type": "result", "subtype": "success", "result": "done"}),
+            ],
+            0,
+        )
+    )
+    r = await client.post("/api/v1/me/agent-chat", json={"message": "curate"}, headers=_auth(key))
+    evts = _events(r.text)
+    assert any(e["type"] == "tool" for e in evts)  # still streamed live
+    session_id = evts[0]["session_id"]
+
+    row = await _db_pool.fetchrow(
+        "SELECT content, tool_name FROM history_events "
+        "WHERE session_id = $1 AND event_type = 'tool_use'",
+        session_id,
+    )
+    assert row is not None
+    assert row["tool_name"] == "Bash"
+    assert row["content"] == "Ran: stash changes --json"

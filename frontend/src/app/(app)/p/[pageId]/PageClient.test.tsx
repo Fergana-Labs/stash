@@ -25,6 +25,7 @@ const api = vi.hoisted(() => {
     deleteCommentMessage: vi.fn(),
     deleteCommentThread: vi.fn(),
     getFolderContents: vi.fn(),
+    getMemoryFolder: vi.fn().mockResolvedValue({ id: "memory-folder-1", name: "Memory" }),
     getPage: vi.fn(),
     getPublicSkill: vi.fn(),
     listCommentThreads: vi.fn(),

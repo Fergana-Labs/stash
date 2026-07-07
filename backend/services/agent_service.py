@@ -18,8 +18,8 @@ from ..database import get_pool
 _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
-    "telegram_bound, last_run_at, curated_through, month_run_count, "
-    "month_run_anchor, created_at"
+    "telegram_bound, last_run_at, last_run_error, curated_through, "
+    "month_run_count, month_run_anchor, created_at"
 )
 
 
@@ -243,11 +243,15 @@ def month_runs_used(agent: dict) -> int:
 async def mark_run(agent_id: UUID) -> int:
     """Consume the cron tick and meter the run against the calendar month.
     Returns the run count within the current month (including this one) —
-    the free-tier curator credit gate reads it."""
+    the free-tier curator credit gate reads it.
+
+    Also clears last_run_error, so after last_run_at advances the error state
+    is unambiguous: non-null means THIS run failed (clients poll on that)."""
     return await get_pool().fetchval(
         """
         UPDATE agents SET
             last_run_at = now(),
+            last_run_error = NULL,
             month_run_count = CASE
                 WHEN month_run_anchor = date_trunc('month', now())::date
                 THEN month_run_count + 1 ELSE 1 END,
@@ -256,6 +260,22 @@ async def mark_run(agent_id: UUID) -> int:
         RETURNING month_run_count
         """,
         agent_id,
+    )
+
+
+async def mark_run_failed(agent_id: UUID, error: str) -> None:
+    """Stamp the failure where the API can surface it, and refund the month
+    credit — an outage shouldn't eat the free allowance. The tick itself stays
+    consumed (last_run_at), so the beat won't re-fire the same window."""
+    await get_pool().execute(
+        """
+        UPDATE agents SET
+            last_run_error = left($2, 500),
+            month_run_count = greatest(month_run_count - 1, 0)
+        WHERE id = $1
+        """,
+        agent_id,
+        error,
     )
 
 

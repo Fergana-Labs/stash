@@ -26,7 +26,7 @@ from stashai.plugin.upload_status import (
 
 QUEUE_FILENAME = "event_queue.jsonl"
 QUEUE_MAX_ENTRIES = 1000  # cap so a long backend outage doesn't fill the disk
-DRAIN_BATCH = 50          # how many backlog rows to flush per successful push
+DRAIN_BATCH = 50  # how many backlog rows to flush per successful push
 
 
 class StashError(Exception):
@@ -34,6 +34,20 @@ class StashError(Exception):
         self.status_code = status_code
         self.detail = detail
         super().__init__(f"[{status_code}] {detail}")
+
+
+def _is_permanent_rejection(e: Exception) -> bool:
+    """A 4xx the backend will never accept no matter when we retry.
+
+    Auth (401/403) heals with a re-signin and 408/429 heal on their own, so
+    those stay queued. Every other 4xx (404 dead route, 422 bad body, ...) is
+    rejected forever — retrying it just wedges the queue.
+    """
+    if not isinstance(e, StashError):
+        return False
+    if e.status_code in (401, 403, 408, 429):
+        return False
+    return 400 <= e.status_code < 500
 
 
 class StashClient:
@@ -95,14 +109,20 @@ class StashClient:
 
     def push_event(
         self,
-        agent_name: str, event_type: str, content: str,
-        session_id: str, tool_name: str | None = None,
-        metadata: dict | None = None, client: str | None = None,
+        agent_name: str,
+        event_type: str,
+        content: str,
+        session_id: str,
+        tool_name: str | None = None,
+        metadata: dict | None = None,
+        client: str | None = None,
         session_folder_id: str | None = None,
     ) -> dict:
         body: dict = {
-            "agent_name": agent_name, "event_type": event_type,
-            "content": content, "session_id": session_id,
+            "agent_name": agent_name,
+            "event_type": event_type,
+            "content": content,
+            "session_id": session_id,
         }
         # Pin streamed on every event so the session lands in the right folder
         # no matter which event creates the row (agents without a session-start
@@ -125,9 +145,12 @@ class StashClient:
             self._enqueue(path, body)
             record_upload_failure(self._data_dir, "event", e)
             raise
+        # The live push landed — that's a success regardless of how the
+        # backlog drain below fares (drain failures are recorded on their own
+        # as "event_queue", and health stays failing while anything is queued).
+        record_upload_success(self._data_dir, "event")
         # Backend reachable — try to flush some of the backlog while we're here.
-        if self._drain_queue():
-            record_upload_success(self._data_dir, "event")
+        self._drain_queue()
         return result
 
     # --- Failed-event queue ---
@@ -189,14 +212,27 @@ class StashClient:
                         continue
                     try:
                         entry = json.loads(line)
-                        self._post(entry["path"], json=entry["body"])
+                        path, body = entry["path"], entry["body"]
+                    except (ValueError, KeyError):
+                        # Corrupt line — it can never send, so drop it rather
+                        # than wedge the queue behind it forever.
+                        continue
+                    try:
+                        self._post(path, json=body)
                         sent += 1
                     except Exception as e:
-                        # Backend still unhappy. Stop now; keep this and the rest.
-                        remaining.append(line)
                         record_upload_failure(self._data_dir, "event_queue", e)
+                        if _is_permanent_rejection(e):
+                            # The backend will never accept this entry (e.g. a
+                            # 404 for a route that no longer exists). Drop it
+                            # and keep draining the rest.
+                            sent += 1
+                            continue
+                        # Retryable (network, 5xx, auth) — keep this and the
+                        # rest for a later drain; further entries would likely
+                        # fail the same way.
+                        remaining.append(line)
                         drained = False
-                        # Don't try further entries — likely all will fail.
                         sent = DRAIN_BATCH
                 f.seek(0)
                 f.truncate()
@@ -208,9 +244,12 @@ class StashClient:
 
     def query_events(
         self,
-        agent_name: str | None = None, event_type: str | None = None,
+        agent_name: str | None = None,
+        event_type: str | None = None,
         session_id: str | None = None,
-        limit: int = 50, after: str | None = None, order: str | None = None,
+        limit: int = 50,
+        after: str | None = None,
+        order: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
         if agent_name:
@@ -228,7 +267,9 @@ class StashClient:
     def search_events(self, query: str, limit: int = 50) -> list:
         return self._list(
             f"{self._EVENTS_PATH}/search",
-            "events", q=query, limit=limit,
+            "events",
+            q=query,
+            limit=limit,
         )
 
     # --- Transcript upload: gzip the .jsonl client-side (compresses 5-10x),
@@ -236,8 +277,12 @@ class StashClient:
     # timeout is 2s — way too short for a big file — so we override per-
     # request.
     def upload_transcript(
-        self, session_id: str, transcript_path: Path,
-        agent_name: str, cwd: str | None = None, session_folder_id: str | None = None,
+        self,
+        session_id: str,
+        transcript_path: Path,
+        agent_name: str,
+        cwd: str | None = None,
+        session_folder_id: str | None = None,
     ) -> dict:
         import gzip
 
@@ -273,8 +318,11 @@ class StashClient:
     # --- Sessions ---
 
     def create_session(
-        self, session_id: str, agent_name: str,
-        cwd: str | None = None, files_touched: list[str] | None = None,
+        self,
+        session_id: str,
+        agent_name: str,
+        cwd: str | None = None,
+        files_touched: list[str] | None = None,
         session_folder_id: str | None = None,
     ) -> dict:
         body = {
@@ -289,7 +337,10 @@ class StashClient:
         return self._post("/api/v1/me/sessions", json=body)
 
     def upload_session_artifact(
-        self, session_row_id: str, file_path: str, content: bytes,
+        self,
+        session_row_id: str,
+        file_path: str,
+        content: bytes,
     ) -> dict:
         """Upload a file the agent touched during a session."""
         record_upload_attempt(self._data_dir, "artifact")
@@ -313,7 +364,9 @@ class StashClient:
     # --- History aggregate (optional) ---
 
     def list_all_history_events(
-        self, agent_name: str | None = None, event_type: str | None = None,
+        self,
+        agent_name: str | None = None,
+        event_type: str | None = None,
         limit: int = 50,
     ) -> list:
         params: dict = {"limit": limit}

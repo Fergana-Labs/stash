@@ -5,7 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
@@ -244,18 +245,6 @@ function AgentsExplorer() {
   );
 }
 
-/** Memory is its own space — a reserved system folder (backend-enforced: one per
- *  user, hidden from Files, can't be renamed/moved/deleted). */
-function useMemoryFolder(): string | null {
-  const [id, setId] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    getMemoryFolder().then((f) => { if (!cancelled) setId(f.id); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-  return id;
-}
-
 /** The left panel. Agents is a chat list. Every other section is shown fully
  *  (no accordion) with a breadcrumb up to Home, which lists the sections. Files
  *  and Memory are VFS file managers (breadcrumbs, context menu, drag, upload);
@@ -264,7 +253,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const open = useOpenTab();
   const [atRoot, setAtRoot] = useState(false);
-  const memoryFolderId = useMemoryFolder();
+  const memoryFolderId = useMemoryFolderId();
   // A rail-section change means we're back to viewing that section, not Home.
   useEffect(() => { setAtRoot(false); }, [section]);
 
@@ -328,6 +317,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
+          tabSection={section === "memory" ? "memory" : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
           newRootItem={
