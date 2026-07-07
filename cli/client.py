@@ -288,6 +288,9 @@ class StashClient:
         params = {"since": since} if since else {}
         return self._get("/api/v1/me/changes", **params)
 
+    def recompute_memory(self) -> dict:
+        return self._post("/api/v1/me/memory/recompute")
+
     # --- Pages (user-scoped) ---
 
     def create_page(

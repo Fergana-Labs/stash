@@ -8,6 +8,7 @@ agent, whose config shapes the turn.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -53,6 +54,15 @@ async def get_agent(user_id: UUID, agent_id: UUID) -> dict:
     )
     if row is None:
         raise HTTPException(status_code=404, detail="agent not found")
+    return _row(row)
+
+
+async def get_agent_by_id(agent_id: UUID) -> dict:
+    """Unscoped fetch for internal tasks — the enqueuing router already
+    authorized the caller."""
+    row = await get_pool().fetchrow(f"SELECT {_COLUMNS} FROM agents WHERE id = $1", agent_id)
+    if row is None:
+        raise ValueError(f"agent {agent_id} not found")
     return _row(row)
 
 
@@ -218,6 +228,16 @@ async def list_scheduled() -> list[dict]:
         "AND (is_curator OR schedule_prompt IS NOT NULL)"
     )
     return [_row(r) for r in rows]
+
+
+def month_runs_used(agent: dict) -> int:
+    """Scheduled runs consumed in the current calendar month. An anchor from a
+    prior month means the counter is stale; mark_run resets it on the next run."""
+    anchor = agent.get("month_run_anchor")
+    today = date.today()
+    if anchor is None or (anchor.year, anchor.month) != (today.year, today.month):
+        return 0
+    return agent["month_run_count"]
 
 
 async def mark_run(agent_id: UUID) -> int:

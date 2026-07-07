@@ -36,6 +36,26 @@ def run_due() -> int:
     return run_async(_run_due())
 
 
+@celery.task(name="backend.tasks.agent_schedules.run_curator_now")
+def run_curator_now(agent_id: str) -> None:
+    run_async(_run_curator_now(UUID(agent_id)))
+
+
+async def _run_curator_now(agent_id: UUID) -> None:
+    """A user-requested curator run: same execution as the daily tick, minus
+    the due-check — the user is the trigger. The router already enforced the
+    free-tier allowance and resolved credentials."""
+    from ..services import agent_service, sprite_agent_service
+
+    agent = await agent_service.get_agent_by_id(agent_id)
+    now = datetime.now(UTC)
+    await agent_service.mark_run(agent_id)
+    # Seconds-resolution stamp so a manual run never shares a session with the
+    # beat's minute-stamped run.
+    await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
+    await agent_service.mark_curated(agent_id, now)
+
+
 async def _run_due() -> int:
     from ..config import settings
     from ..database import get_pool

@@ -6,14 +6,14 @@ unlimited sleep-time curator runs; free accounts get a monthly allowance.
 an entitlement). `month_run_count`/`month_run_anchor` meter scheduled-agent
 runs per calendar month for the free-tier curator gate.
 
-Revision ID: 0135
-Revises: 0134
+Revision ID: 0136
+Revises: 0135
 """
 
 from alembic import op
 
-revision = "0135"
-down_revision = "0134"
+revision = "0136"
+down_revision = "0135"
 branch_labels = None
 depends_on = None
 

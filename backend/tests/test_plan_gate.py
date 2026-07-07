@@ -135,3 +135,33 @@ async def test_free_curator_credits_exhausted_skips_run(
 
     assert ran == 1
     assert sprite_exec.calls != []
+
+
+@pytest.mark.asyncio
+async def test_on_demand_curator_run_is_metered(client: AsyncClient, sprite_exec, _db_pool):
+    """The UI's "Run now" draws from the same monthly allowance as the beat —
+    otherwise it's an unmetered sleep-compute loophole for free accounts."""
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    await _db_pool.execute(
+        "UPDATE agents SET month_run_count = $2, "
+        "month_run_anchor = date_trunc('month', now())::date WHERE id = $1",
+        UUID(curator["id"]),
+        settings.FREE_CURATOR_RUNS_PER_MONTH,
+    )
+
+    r = await client.post(
+        "/api/v1/me/agent-chat/run", json={"agent_id": curator["id"]}, headers=_auth(key)
+    )
+    assert r.status_code == 402
+
+    # Enterprise → the same run streams, and is still counted.
+    await _db_pool.execute("UPDATE users SET plan = 'enterprise' WHERE id = $1", uid)
+    r = await client.post(
+        "/api/v1/me/agent-chat/run", json={"agent_id": curator["id"]}, headers=_auth(key)
+    )
+    assert r.status_code == 200
+    count = await _db_pool.fetchval(
+        "SELECT month_run_count FROM agents WHERE id = $1", UUID(curator["id"])
+    )
+    assert count == settings.FREE_CURATOR_RUNS_PER_MONTH + 1

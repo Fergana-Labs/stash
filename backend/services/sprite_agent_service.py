@@ -364,8 +364,6 @@ async def run_chat(
         agent = await agent_service.channel_agent(user_id, channel)
         model_provider = agent["model_provider"]
         persona = agent["system_prompt"]
-        # A channel message is user activity → ensure the daily curator exists.
-        await agent_service.get_or_create_curator(user_id)
     try:
         auth = await agent_auth.resolve(user_id, model_provider)
     except agent_auth.NeedsAuth:

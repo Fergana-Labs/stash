@@ -25,11 +25,15 @@ def _auth(k: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_default_agent_autocreated_and_listed(client: AsyncClient):
+    """A fresh account has exactly its two reserved agents: the default chat
+    agent and the signup-provisioned Memory curator."""
     key = await _register(client)
     r = await client.get("/api/v1/me/agents", headers=_auth(key))
     assert r.status_code == 200
     agents = r.json()["agents"]
-    assert len(agents) == 1 and agents[0]["is_default"] is True
+    assert len(agents) == 2
+    assert agents[0]["is_default"] is True  # default sorts first
+    assert any(a["is_curator"] for a in agents)
 
 
 @pytest.mark.asyncio

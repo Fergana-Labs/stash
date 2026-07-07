@@ -47,10 +47,10 @@ async def test_curator_cannot_be_deleted(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_curator_provisioned_on_activity_via_chat(client: AsyncClient, sprite_exec):
-    # A web chat turn is activity → the curator should be auto-provisioned.
+async def test_curator_provisioned_at_signup(client: AsyncClient):
+    """Every account gets sleep-time curation from day one — including
+    API-key-only production integrations that never touch chat or channels."""
     key, uid = await _register(client)
-    await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
     agents = (await client.get("/api/v1/me/agents", headers=_auth(key))).json()["agents"]
     assert any(a["is_curator"] for a in agents)
 
@@ -220,3 +220,73 @@ async def test_failed_curator_run_preserves_watermark(
         "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
     )
     assert after == watermark  # delta window intact
+
+
+# --- Manual recompute (POST /me/memory/recompute) ---
+
+
+@pytest.mark.asyncio
+async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_pool):
+    """The onboarding flow: upload documents, recompute, watch the wiki build —
+    no waiting for the daily tick. The run advances the watermark."""
+    from backend.tasks.agent_schedules import _run_curator_now, run_curator_now
+
+    key, uid = await _register(client)
+    await client.post(
+        "/api/v1/me/pages/new", json={"name": "N", "content": "x"}, headers=_auth(key)
+    )
+
+    started = []
+    run_curator_now.delay = lambda agent_id: started.append(agent_id)
+    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
+    assert r.status_code == 202
+    curator = await agent_service.get_or_create_curator(uid)
+    assert started == [curator["id"]]
+
+    before = datetime.now(UTC)
+    await _run_curator_now(UUID(curator["id"]))
+    row = await _db_pool.fetchrow(
+        "SELECT curated_through, last_run_at FROM agents WHERE id = $1", UUID(curator["id"])
+    )
+    assert sprite_exec.calls  # the run actually woke the sprite
+    assert row["curated_through"] >= before - timedelta(seconds=5)
+
+
+@pytest.mark.asyncio
+async def test_recompute_409_when_nothing_changed(client: AsyncClient, _db_pool):
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    future = datetime.now(UTC) + timedelta(hours=1)
+    await _db_pool.execute(
+        "UPDATE agents SET curated_through = $2 WHERE id = $1", UUID(curator["id"]), future
+    )
+    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
+    assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_recompute_metered_like_the_scheduler(client: AsyncClient, _db_pool):
+    """Manual runs draw from the same monthly sleep-time allowance: free
+    accounts stop at the cap, enterprise is unlimited."""
+    from backend.config import settings
+    from backend.tasks.agent_schedules import run_curator_now
+
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    await client.post(
+        "/api/v1/me/pages/new", json={"name": "N", "content": "x"}, headers=_auth(key)
+    )
+    await _db_pool.execute(
+        "UPDATE agents SET month_run_count = $2, "
+        "month_run_anchor = date_trunc('month', now())::date WHERE id = $1",
+        UUID(curator["id"]),
+        settings.FREE_CURATOR_RUNS_PER_MONTH,
+    )
+
+    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
+    assert r.status_code == 402
+
+    await _db_pool.execute("UPDATE users SET plan = 'enterprise' WHERE id = $1", uid)
+    run_curator_now.delay = lambda agent_id: None
+    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
+    assert r.status_code == 202

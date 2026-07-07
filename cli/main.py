@@ -2345,9 +2345,23 @@ def search(
 
 
 @app.command("memory")
-def memory(as_json: bool = typer.Option(False, "--json")):
+def memory(
+    recompute: bool = typer.Option(
+        False,
+        "--recompute",
+        help="Run the Memory curator now instead of waiting for the daily pass.",
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Show your reserved Memory folder (its id is where the wiki lives)."""
     with _client() as c:
+        if recompute:
+            data = c.recompute_memory()
+            if _use_json(as_json):
+                output_json(data)
+                return
+            console.print("Curator run started — the Memory wiki will update shortly.")
+            return
         folder = c.get_memory_folder()
     if _use_json(as_json):
         output_json(folder)

@@ -42,8 +42,6 @@ async def chat(
         if req.agent_id
         else await agent_service.get_or_create_default(current_user["id"])
     )
-    # This user is active → ensure their daily Memory curator exists (idempotent).
-    await agent_service.get_or_create_curator(current_user["id"])
     # Resolve the harness + credentials up front so an unconnected free user
     # gets a clean 402 instead of a stream that dies mid-flight.
     try:
@@ -92,6 +90,23 @@ async def run_now(
         raise HTTPException(status_code=400, detail="Only scheduled agents can be run on demand.")
     if not agent["is_curator"] and not agent["schedule_prompt"]:
         raise HTTPException(status_code=400, detail="This agent has no scheduled prompt to run.")
+    # Manual curator runs draw from the same monthly sleep-time allowance the
+    # scheduler enforces — otherwise "Run now" is unmetered sleep compute.
+    if agent["is_curator"]:
+        from ..config import settings
+        from ..database import get_pool
+
+        if agent_service.month_runs_used(agent) >= settings.FREE_CURATOR_RUNS_PER_MONTH:
+            plan = await get_pool().fetchval(
+                "SELECT plan FROM users WHERE id = $1", current_user["id"]
+            )
+            if plan != "enterprise":
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Free accounts get {settings.FREE_CURATOR_RUNS_PER_MONTH} sleep-time "
+                    "curator runs per month; the enterprise plan is unlimited.",
+                )
+        await agent_service.mark_run(UUID(agent["id"]))
     try:
         auth = await agent_auth.resolve(current_user["id"], agent["model_provider"])
     except agent_auth.NeedsAuth:
