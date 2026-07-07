@@ -44,7 +44,11 @@ logger = logging.getLogger(__name__)
 me_router = APIRouter(prefix="/api/v1/me/files", tags=["files"])
 canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+# Render's proxy rejects request bodies around 100 MB, so this is the
+# practical ceiling for uploads that pass through our servers. Keep in
+# sync with the Next proxy limit (frontend/next.config.ts) and the
+# client guard (frontend/src/lib/api.ts).
+MAX_FILE_SIZE = 100 * 1024 * 1024
 
 # File rows are always read joined to their uploader so responses can show
 # attribution ("Uploaded by Sam") without a second round trip.
@@ -181,7 +185,7 @@ async def upload_my_file(
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
 
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
