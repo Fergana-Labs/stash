@@ -44,6 +44,11 @@ SPRITE_PATH = (
     "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
+# Bump whenever _seed_script changes: boxes provisioned under an older
+# version re-run the (idempotent) seed on their next acquire, so additions
+# like a new harness CLI reach existing sprites, not just new ones.
+SEED_VERSION = 1
+
 # A first-ever provision creates the VM and seeds it (~10-30s).
 PROVISION_TIMEOUT_S = 180
 # A provisioning row older than this is presumed crashed and retried.
@@ -84,13 +89,16 @@ async def acquire(user_id: UUID) -> Sprite:
 
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT sprite_name, status FROM user_sprites WHERE user_id = $1", user_id
+        "SELECT sprite_name, status, seed_version FROM user_sprites WHERE user_id = $1", user_id
     )
     # A 'ready' row can outlive its box — Sprites reaps idle VMs, leaving the
     # row pointing at a sprite that 404s on exec. Confirm the box still exists
     # before handing it back; if it's gone, fall through to re-provision.
     if row and row["status"] == "ready" and await _sprite_exists(row["sprite_name"]):
-        return Sprite(name=row["sprite_name"])
+        sprite = Sprite(name=row["sprite_name"])
+        if row["seed_version"] != SEED_VERSION:
+            await _reseed(user_id, sprite)
+        return sprite
     return await _provision(user_id)
 
 
@@ -159,10 +167,44 @@ async def _provision(user_id: UUID) -> Sprite:
         raise
 
     await pool.execute(
-        "UPDATE user_sprites SET status = 'ready', last_active_at = now() WHERE user_id = $1",
+        "UPDATE user_sprites SET status = 'ready', seed_version = $2, last_active_at = now() "
+        "WHERE user_id = $1",
         user_id,
+        SEED_VERSION,
     )
     return sprite
+
+
+async def _reseed(user_id: UUID, sprite: Sprite) -> None:
+    """Re-run the seed on an existing box after the seed script changed —
+    e.g. a harness CLI added to the seed after this box was provisioned.
+
+    The conditional version bump is the concurrency lock: one request seeds,
+    a concurrent one runs this turn on the old seed (same behavior as before
+    the bump). On failure the version resets so the next acquire retries."""
+    pool = get_pool()
+    won = await pool.fetchrow(
+        "UPDATE user_sprites SET seed_version = $2 "
+        "WHERE user_id = $1 AND seed_version != $2 RETURNING user_id",
+        user_id,
+        SEED_VERSION,
+    )
+    if won is None:
+        return
+
+    try:
+        stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
+        output, code = await exec_collect(
+            sprite,
+            ["bash", "-c", _seed_script(stash_key)],
+            env={},
+            timeout_s=PROVISION_TIMEOUT_S,
+        )
+        if code != 0:
+            raise SpriteError(f"sprite reseed exited {code}: {output[-2000:]}")
+    except BaseException:
+        await pool.execute("UPDATE user_sprites SET seed_version = 0 WHERE user_id = $1", user_id)
+        raise
 
 
 async def _wait_until_ready(user_id: UUID) -> Sprite:

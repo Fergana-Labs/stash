@@ -165,6 +165,38 @@ def test_get_unknown_harness_raises():
         h.get("nonesuch")
 
 
+# --- exit-code diagnostics (_run_harness) ---
+
+
+@pytest.mark.asyncio
+async def test_nonzero_exit_surfaces_cli_output(monkeypatch):
+    # A CLI that dies before emitting stream-json (missing binary, auth
+    # failure) must report its actual output — a bare "exited with code 1"
+    # is undebuggable. Injected secrets in that output must not leak.
+    from backend.services import sprite_service
+
+    async def fake_exec_stream(sprite, argv, *, env, cwd=None):
+        yield {"stream": "stdout", "data": b"bash: opencode: command not found sk-live-secret\n"}
+        yield {"exit_code": 127}
+
+    monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
+    state = h.TurnState()
+    events = [
+        e
+        async for e in svc._run_harness(
+            h.OPENCODE,
+            sprite_service.Sprite(name="s"),
+            ["opencode", "run", "hi"],
+            state,
+            {"OPENROUTER_API_KEY": "sk-live-secret"},
+        )
+    ]
+    assert events == []
+    assert state.error.startswith("agent exited with code 127: ")
+    assert "command not found" in state.error
+    assert "sk-live-secret" not in state.error
+
+
 # --- turn env + redaction (sprite_agent_service) ---
 
 

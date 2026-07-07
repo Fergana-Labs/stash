@@ -165,6 +165,20 @@ async def test_agent_failure_surfaces_error_event(client: AsyncClient, sprite_ex
 
 
 @pytest.mark.asyncio
+async def test_cli_death_reports_its_output_not_just_exit_code(client: AsyncClient, sprite_exec):
+    # A CLI that dies without emitting stream-json (missing binary, auth
+    # failure) must surface its plain-text output in the error event — a bare
+    # "exited with code 1" cost us a production outage to diagnose.
+    key, _ = await _register(client)
+    sprite_exec.replies.append((["bash: opencode: command not found"], 127))
+
+    r = await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
+    errors = [e for e in _events(r.text) if e["type"] == "error"]
+    assert errors and "command not found" in errors[0]["message"]
+    assert "exited with code 127" in errors[0]["message"]
+
+
+@pytest.mark.asyncio
 async def test_tool_calls_persist_as_history_events(client: AsyncClient, sprite_exec, _db_pool):
     """Cloud runs have no plugin hooks, so the backend itself must record the
     harness's tool calls — otherwise the stored session is prompt + answer
