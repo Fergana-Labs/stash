@@ -47,11 +47,49 @@ export function citationFor(
   return null;
 }
 
+type StoredMessage = {
+  role: ChatRole | "tool";
+  content: string;
+  tool_name?: string;
+  metadata?: Record<string, unknown>;
+};
+
+/** Rebuild citationFor's args shape from a stored tool event's metadata
+ *  ({command} for Bash, {file_path} for file tools, {args_preview} JSON for
+ *  the rest). */
+function argsFromMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  if (typeof metadata.args_preview === "string") {
+    try {
+      return JSON.parse(metadata.args_preview) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return metadata;
+}
+
 export async function getAgentChat(sessionId: string): Promise<ChatMessage[]> {
-  const data = await apiFetch<{ messages: { role: ChatRole; content: string }[] }>(
+  const data = await apiFetch<{ messages: StoredMessage[] }>(
     `/api/v1/me/agent-chat/${encodeURIComponent(sessionId)}`,
   );
-  return data.messages.map((m) => ({ role: m.role, content: m.content }));
+  // Fold stored tool rows into the citations of the assistant message that
+  // follows them — the same shape the live stream builds turn by turn.
+  const messages: ChatMessage[] = [];
+  let pending: Citation[] = [];
+  for (const [i, m] of data.messages.entries()) {
+    if (m.role === "tool") {
+      const label = citationFor(m.tool_name ?? "tool", argsFromMetadata(m.metadata ?? {}));
+      if (label) pending.push({ id: `stored-${i}`, tool: m.tool_name ?? "tool", label });
+      continue;
+    }
+    if (m.role === "assistant") {
+      messages.push({ role: m.role, content: m.content, citations: pending });
+      pending = [];
+    } else {
+      messages.push({ role: m.role, content: m.content });
+    }
+  }
+  return messages;
 }
 
 type StreamHandlers = {

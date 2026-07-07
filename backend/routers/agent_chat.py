@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import agent_auth, agent_service, sprite_agent_service
+from ..services import agent_auth, agent_service, memory_service, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agent-chat", tags=["agent-chat"])
 
@@ -143,9 +143,24 @@ async def get_chat(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """The chat's turns as [{role, content}], for restoring a tab."""
+    """The chat's turns for restoring a tab: [{role, content}] plus the turn's
+    tool calls as {role: "tool", tool_name, metadata} rows in order — the
+    client folds them into the citations strip, matching the live stream."""
     owner_user_id = current_user["id"]
-    messages = await sprite_agent_service._load_history(
-        owner_user_id, session_id, current_user["id"]
-    )
+    events = await memory_service.read_session_events(owner_user_id, session_id, current_user["id"])
+    messages = []
+    for e in events:
+        content = (e.get("content") or "").strip()
+        kind = e["event_type"]
+        if kind in ("user_message", "assistant_message") and content:
+            messages.append({"role": kind.removesuffix("_message"), "content": content})
+        elif kind == "tool_use":
+            messages.append(
+                {
+                    "role": "tool",
+                    "content": content,
+                    "tool_name": e.get("tool_name"),
+                    "metadata": e.get("metadata") or {},
+                }
+            )
     return {"session_id": session_id, "messages": messages}
