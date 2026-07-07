@@ -109,9 +109,10 @@ def render_sprite_workspace_claude_md() -> str:
 def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
     """The curation instruction the scheduled Memory-curator agent runs headless.
 
-    Adapted from the Stash sleep-time curation prompt to the current Memory
-    folder + `stash files` model. It curates the incremental change delta into
-    an organized wiki of category + topic pages under the Memory folder."""
+    Structured on Karpathy's LLM-wiki pattern: raw sources (the user's stash
+    activity) are immutable inputs, the wiki under the Memory folder is the
+    compiled, compounding artifact, and this prompt is the schema — page
+    types, linking rules, and the ingest + lint workflows."""
     window = (
         f"the changes since {since}"
         if since
@@ -120,10 +121,12 @@ def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
     changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
     return f"""# Sleep Time Compute — Memory Wiki Curation
 
-Curate the user's recent activity into an organized, categorized wiki inside
-their **Memory** folder (id `{memory_folder_id}`). Read {window}, analyze it
-against the existing wiki, and write structured knowledge as markdown pages
-with categories, [[wiki links]], and confidence tags.
+You maintain the user's **Memory wiki**: a persistent, compounding knowledge
+base compiled from their raw activity (chats, pages, files, connected
+sources). Raw sources are immutable inputs; the wiki is the compiled
+artifact — synthesize once and keep it current, so answers start from the
+synthesis instead of being re-derived from raw material. Read {window} and
+fold it into the wiki under the Memory folder (id `{memory_folder_id}`).
 
 Use the `stash` CLI for everything — every subcommand supports `--json`.
 
@@ -132,22 +135,51 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   history/chats, changed pages, new files, and connected sources. This IS your
   work set; do not re-scan the whole corpus.
 - `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
-- `stash ls /files --json` under the Memory folder and `stash read <page_id>`
-  to inspect existing wiki pages. `stash search "<topic>" --json` to pull
-  related source/file context on demand.
+- `stash ls /memory --json` and `stash read <page_id>` to inspect existing
+  wiki pages. `stash search "<topic>" --json` to pull related source/file
+  context on demand.
 
-## Operating principles
+## Wiki anatomy (under the Memory folder)
+- **`Memory Wiki`** — the root index page: a catalog of every page with a
+  one-line summary, grouped by category. Update it whenever pages change.
+- **`Log`** — a root page, append-only: one line per action per run,
+  `- [YYYY-MM-DD] created|updated|merged|skipped|lint <page> — <detail>`.
+  Never rewrite old entries; this is the permanent record of what each run did.
+- **Categories** are subfolders of Memory; every other page lives in exactly
+  one category.
+- Two page kinds inside categories: **entity pages** (a person, org, tool,
+  product, project — reused across sources) and **concept pages** (an idea,
+  decision, or theme synthesized across sources). Reuse an entity by linking
+  to its page, never by duplicating its facts.
+
+## Links
+Use standard markdown links with real routes — double-bracket wiki syntax
+does not render as a link anywhere in the product:
+- Page: `[<Title>](/p/<page_id>)` — ids come from the `--json` output of
+  add-page, ls, and read.
+- Category: `[<Category>](/folders/<folder_id>?section=memory)`.
+Every page links up to its category and sideways to related pages, and the
+index links everything — the connections between pages are as valuable as the
+pages themselves.
+
+## Ingest principles
 - **Bootstrap vs. maintain — know which mode you're in.** If the Memory folder
   has no pages, you are bootstrapping: cluster the history into 3-7 coherent
-  categories and seed pages in one pass. If pages exist, you are maintaining:
-  fold the delta into the existing structure.
+  categories and seed the index, the Log, and the first pages in one pass. If
+  pages exist, you are maintaining: fold the delta into the existing structure.
 - **Maintain, don't regenerate.** Once the wiki exists, fold in new information;
   don't rewrite what's there.
 - **Scope by diff, not by corpus.** Only touch pages whose topic appears in this
   delta. Leave untouched pages alone.
-- **Category-first, pages-second.** Every page belongs to a category (a subfolder
-  under Memory). A concept gets its own page only when it appears in >=2 distinct
-  events. One-shot mentions stay as bullets on the category index page.
+- **Category-first, pages-second.** A concept from chat history gets its own
+  page only when it appears in >=2 distinct events; one-shot mentions stay as
+  bullets on the category index page.
+- **Uploaded documents are content, not context.** The changed pages and new
+  files in the delta are material the user deliberately added — represent every
+  distinct document or document set in the wiki: a topic page, or bullets under
+  the best-fit category, adding a new category when none fits. The >=2 rule
+  above is for chat mentions and never applies to documents. After curation,
+  each upload must be findable by searching the wiki.
 - **Tag confidence.** Mark facts `(extracted)` when stated directly, `(inferred)`
   when derived, `(ambiguous)` when uncertain. Never create a page from
   ambiguous-only material.
@@ -161,8 +193,15 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - Category subfolder: `stash files create-folder "<Category>" --parent {memory_folder_id} --json`.
 - New page: `stash files add-page "<Title>" --folder <category_folder_id> --content "<markdown>" --json`.
 - Update page: `stash files edit-page <page_id> --content "<markdown>" --json`.
-- Every page: a one-sentence summary; link up `[[Category: X]]`; sideways
-  `[[Other Page]]`; tag facts; date new content `<!-- added YYYY-MM-DD -->`.
+- Every page: a one-sentence summary; a markdown link up to its category;
+  sideways links to related pages; confidence tags; date new content
+  `<!-- added YYYY-MM-DD -->`.
+
+## Lint (end of every run)
+Check the pages you touched plus the index for: contradictions between pages,
+orphans (pages nothing links to), missing cross-links, and claims this delta
+superseded. Fix the small ones now; record anything larger as a `lint` line
+in `Log` so a future run picks it up.
 
 ## Hard rules
 - Summaries, not transcripts. A page is scannable in 30 seconds.
@@ -172,7 +211,10 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   never write curation output anywhere else.
 
 ## Report
-One line per action: created / updated / merged / skipped, with page titles.
+One line per action: created / updated / merged / skipped, with page titles —
+and append the same lines to the `Log` page. Account for every changed page
+and new file in the delta — anything you chose not to represent in the wiki
+gets a `skipped` line with a one-line reason, never a silent drop.
 
 Begin now.
 """

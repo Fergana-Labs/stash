@@ -137,6 +137,64 @@ def _redact_event(event: dict, provider_env: dict[str, str]) -> dict:
     return event
 
 
+def _tool_event_summary(event: dict) -> tuple[str, dict]:
+    """A compact tool_use content + metadata, matching the local plugin's
+    format so cloud and local session transcripts render the same way."""
+    name = event.get("name") or "tool"
+    args = event.get("args") or {}
+    if name == "Bash" and args.get("command"):
+        command = str(args["command"])[:300]
+        return f"Ran: {command}", {"command": command}
+    if name in ("Edit", "Write") and args.get("file_path"):
+        return f"{'Edited' if name == 'Edit' else 'Created/wrote'} {args['file_path']}", {
+            "file_path": args["file_path"]
+        }
+    if name == "Read" and args.get("file_path"):
+        return f"Read {args['file_path']}", {"file_path": args["file_path"]}
+    preview = json.dumps(args)[:300]
+    return f"{name}: {preview}", {"args_preview": preview}
+
+
+async def _record_tool_event(
+    owner_user_id: UUID,
+    user_id: UUID,
+    session_id: str,
+    event: dict,
+    provider_env: dict[str, str],
+    agent_name: str,
+) -> None:
+    """Persist a harness tool call as a history event. Cloud runs have no
+    plugin hooks streaming these, so without this the stored session is just
+    prompt + final answer — unauditable."""
+    content, metadata = _tool_event_summary(event)
+    await memory_service.push_event(
+        owner_user_id,
+        agent_name,
+        "tool_use",
+        _redact(content, provider_env),
+        user_id,
+        session_id=session_id,
+        tool_name=event.get("name") or "tool",
+        metadata=metadata,
+    )
+
+
+async def _record_run_failure(
+    owner_user_id: UUID, user_id: UUID, session_id: str, agent_name: str, error: str
+) -> None:
+    """Close a failed turn's stored session with the error. Without this a
+    crashed run leaves a prompt with no reply — indistinguishable from a run
+    that never happened."""
+    await memory_service.push_event(
+        owner_user_id,
+        agent_name,
+        "assistant_message",
+        f"⚠️ Agent run failed: {error}",
+        user_id,
+        session_id=session_id,
+    )
+
+
 async def _turn_events(
     auth: agent_auth.RunAuth,
     sprite: sprite_service.Sprite,
@@ -267,6 +325,7 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
         message,
         model_provider=agent["model_provider"],
         persona=agent["system_prompt"],
+        agent_name=agent["name"],
     )
 
 
@@ -278,6 +337,7 @@ async def stream_chat(
     message: str,
     auth: agent_auth.RunAuth,
     persona: str | None = None,
+    agent_name: str = AGENT_NAME,
 ) -> AsyncIterator[str]:
     """Multi-turn agent chat over a stored session, streamed as SSE.
 
@@ -289,7 +349,7 @@ async def stream_chat(
         async with _TurnLock(session_id):
             history = await _load_history(owner_user_id, session_id, user_id)
             await memory_service.push_event(
-                owner_user_id, AGENT_NAME, "user_message", message, user_id, session_id=session_id
+                owner_user_id, agent_name, "user_message", message, user_id, session_id=session_id
             )
             yield _sse({"type": "session", "session_id": session_id})
             yield _sse({"type": "status", "stage": "waking"})
@@ -303,6 +363,7 @@ async def stream_chat(
             await sprite_service.touch(user_id)
 
             final = ""
+            error: str | None = None
             async for event in _turn_events(
                 auth,
                 sprite,
@@ -313,17 +374,25 @@ async def stream_chat(
             ):
                 if event["type"] == "end":
                     final = event.pop("_result_text")
+                elif event["type"] == "error":
+                    error = event["message"]
+                elif event["type"] == "tool":
+                    await _record_tool_event(
+                        owner_user_id, user_id, session_id, event, auth.env, agent_name
+                    )
                 yield _sse(event)
 
             if final:
                 await memory_service.push_event(
                     owner_user_id,
-                    AGENT_NAME,
+                    agent_name,
                     "assistant_message",
                     final,
                     user_id,
                     session_id=session_id,
                 )
+            elif error:
+                await _record_run_failure(owner_user_id, user_id, session_id, agent_name, error)
     except TurnInProgress:
         yield _sse({"type": "error", "message": "A turn is already running in this chat."})
         yield _sse({"type": "end"})
@@ -331,6 +400,14 @@ async def stream_chat(
         # SSE has already started, so an exception can't become an HTTP error —
         # without this the stream just dies and the client sees nothing.
         logger.exception("cloud agent: turn failed for session %s", session_id)
+        try:
+            await _record_run_failure(
+                owner_user_id, user_id, session_id, agent_name, "The agent turn failed."
+            )
+        except Exception:
+            # Recording is best-effort here — the client must still get its
+            # error + end events even if the DB write is what's broken.
+            logger.exception("cloud agent: could not record failure for %s", session_id)
         yield _sse({"type": "error", "message": "The agent turn failed. Try again."})
         yield _sse({"type": "end"})
 
@@ -355,6 +432,7 @@ async def run_chat(
     channel: str | None = None,
     model_provider: str | None = None,
     persona: str | None = None,
+    agent_name: str = AGENT_NAME,
 ) -> str:
     """Non-streaming turn for Slack/Telegram/scheduled: returns the final answer.
     `channel` ('slack'|'telegram') selects the bound agent's model + persona;
@@ -364,8 +442,7 @@ async def run_chat(
         agent = await agent_service.channel_agent(user_id, channel)
         model_provider = agent["model_provider"]
         persona = agent["system_prompt"]
-        # A channel message is user activity → ensure the daily curator exists.
-        await agent_service.get_or_create_curator(user_id)
+        agent_name = agent["name"]
     try:
         auth = await agent_auth.resolve(user_id, model_provider)
     except agent_auth.NeedsAuth:
@@ -375,35 +452,46 @@ async def run_chat(
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(
-            owner_user_id, AGENT_NAME, "user_message", message, user_id, session_id=session_id
+            owner_user_id, agent_name, "user_message", message, user_id, session_id=session_id
         )
         sprite = await sprite_service.acquire(user_id)
         await sprite_service.touch(user_id)
 
         final = ""
         error: str | None = None
-        async for event in _turn_events(
-            auth,
-            sprite,
-            history,
-            message,
-            session_id,
-            _system_prompt(owner_name, persona),
-            # Channel messages are untrusted input; scheduled runs (curator
-            # included) execute a trusted prompt and need their full toolset.
-            disallowed_tools=SLACK_DISALLOWED_TOOLS if channel else None,
-        ):
-            if event["type"] == "end":
-                final = event.pop("_result_text")
-            elif event["type"] == "error":
-                error = event["message"]
+        cause: Exception | None = None
+        try:
+            async for event in _turn_events(
+                auth,
+                sprite,
+                history,
+                message,
+                session_id,
+                _system_prompt(owner_name, persona),
+                # Channel messages are untrusted input; scheduled runs (curator
+                # included) execute a trusted prompt and need their full toolset.
+                disallowed_tools=SLACK_DISALLOWED_TOOLS if channel else None,
+            ):
+                if event["type"] == "end":
+                    final = event.pop("_result_text")
+                elif event["type"] == "error":
+                    error = event["message"]
+                elif event["type"] == "tool":
+                    await _record_tool_event(
+                        owner_user_id, user_id, session_id, event, auth.env, agent_name
+                    )
+        except Exception as e:
+            # Substrate-level failures (exec crash, sprite gone) — record them
+            # like harness errors so the stored session isn't a dangling prompt.
+            error, cause = str(e), e
         if error:
-            raise RuntimeError(f"agent turn failed: {error}")
+            await _record_run_failure(owner_user_id, user_id, session_id, agent_name, error)
+            raise RuntimeError(f"agent turn failed: {error}") from cause
 
         if final:
             await memory_service.push_event(
                 owner_user_id,
-                AGENT_NAME,
+                agent_name,
                 "assistant_message",
                 final,
                 user_id,

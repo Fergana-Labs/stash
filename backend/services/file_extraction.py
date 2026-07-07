@@ -39,6 +39,11 @@ _OOXML_DRAWING_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 _OOXML_WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
+def is_pdf(content_type: str) -> bool:
+    ct = (content_type or "").lower()
+    return ct == "application/pdf" or ct.endswith("/pdf")
+
+
 def _extract_pdf_embedded(content: bytes) -> str:
     if not _HAS_PYPDF:
         return ""
@@ -155,7 +160,7 @@ def extract_text(content: bytes, content_type: str) -> str | None:
     try:
         ct = (content_type or "").lower()
 
-        if ct == "application/pdf" or ct.endswith("/pdf"):
+        if is_pdf(ct):
             text = _extract_pdf_embedded(content)
             return _sanitize_for_postgres(text) if text else None
 

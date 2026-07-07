@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
-import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, SquareTerminal } from "lucide-react";
-import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
+import { toast } from "sonner";
+import { listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
-import { requestAgentConfigView } from "@/lib/agent-tab-view";
+import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
@@ -237,22 +239,20 @@ function AgentsExplorer() {
         ))}
         <div className="mx-2 my-1 border-t border-sidebar-border" />
         <div className="px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">Recent chats</div>
-        {(rows ?? []).map((s) => <LeafRow key={s.session_id} icon={<MessagesSquare className="h-3.5 w-3.5" />} label={s.title || s.agent_name || "Chat"} onOpen={() => open("agent", s.session_id, s.title || s.agent_name || "Chat")} />)}
+        {(rows ?? []).map((s) => (
+          <LeafRow
+            key={s.session_id}
+            icon={<MessagesSquare className="h-3.5 w-3.5" />}
+            label={s.title || s.agent_name || "Chat"}
+            onOpen={() => open("agent", s.session_id, s.title || s.agent_name || "Chat")}
+            // Which agent ran this chat — titles alone hide scheduled runs
+            // (e.g. the Memory curator's) in a flat list.
+            trailing={s.agent_name ? <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-muted-foreground/70">{s.agent_name}</span> : undefined}
+          />
+        ))}
       </div>
     </div>
   );
-}
-
-/** Memory is its own space — a reserved system folder (backend-enforced: one per
- *  user, hidden from Files, can't be renamed/moved/deleted). */
-function useMemoryFolder(): string | null {
-  const [id, setId] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    getMemoryFolder().then((f) => { if (!cancelled) setId(f.id); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-  return id;
 }
 
 /** The left panel. Agents is a chat list. Every other section is shown fully
@@ -263,7 +263,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const open = useOpenTab();
   const [atRoot, setAtRoot] = useState(false);
-  const memoryFolderId = useMemoryFolder();
+  const memoryFolderId = useMemoryFolderId();
   // A rail-section change means we're back to viewing that section, not Home.
   useEffect(() => { setAtRoot(false); }, [section]);
 
@@ -301,6 +301,18 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
+  // "Curate wiki": open the Memory curator's tab and start a pass immediately,
+  // so the wiki can be refreshed from Memory without hunting through Agents.
+  async function curateWiki() {
+    const curator = (await listAgents()).find((a) => a.is_curator);
+    if (!curator) {
+      toast.error("No Memory curator agent found on this account.");
+      return;
+    }
+    requestCuratorRun();
+    open("agent-config", curator.id, curator.name);
+  }
+
   // Files, Memory, Skills & Sessions are all file managers (own breadcrumb/toolbar).
   if ((section === "files" || section === "memory" || section === "skills" || section === "sessions") && !atRoot) {
     if (section === "memory" && !memoryFolderId) {
@@ -315,6 +327,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
+          tabSection={section === "memory" ? "memory" : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
           newRootItem={
@@ -324,6 +337,12 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
           showImport={!isSessions}
           vfsWritable={!isSessions}
+          headerAction={
+            section === "memory"
+              ? { icon: <Sparkles className="h-4 w-4" />, label: "Curate wiki", run: () => void curateWiki() }
+              : undefined
+          }
+          confirmMemoryWrites={section === "memory"}
         />
       </div>
     );

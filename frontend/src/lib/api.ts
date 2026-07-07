@@ -206,6 +206,7 @@ export async function updateMe(data: {
   role?: string;
   referral_source?: string;
   use_case?: string;
+  plan_intent?: string;
 }): Promise<User> {
   return apiFetch("/api/v1/users/me", {
     method: "PATCH",

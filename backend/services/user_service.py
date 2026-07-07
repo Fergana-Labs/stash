@@ -79,6 +79,7 @@ async def update_user(
     role: str | None = None,
     referral_source: str | None = None,
     use_case: str | None = None,
+    plan_intent: str | None = None,
 ) -> dict:
     """Update profile fields. Password changes must present `current_password`,
     and revoke every other API key so a stolen session can't outlive the rotation.
@@ -123,10 +124,14 @@ async def update_user(
         sets.append(f"use_case = ${idx}")
         args.append(use_case)
         idx += 1
+    if plan_intent is not None:
+        sets.append(f"plan_intent = ${idx}")
+        args.append(plan_intent)
+        idx += 1
     if not sets:
         row = await pool.fetchrow(
             "SELECT id, name, display_name, email, description, created_at, last_seen, "
-            "       role, referral_source, use_case "
+            "       role, referral_source, use_case, plan, plan_intent "
             "FROM users WHERE id = $1",
             user_id,
         )
@@ -135,7 +140,7 @@ async def update_user(
     row = await pool.fetchrow(
         f"UPDATE users SET {', '.join(sets)} WHERE id = ${idx} "
         "RETURNING id, name, display_name, email, description, created_at, last_seen, "
-        "          role, referral_source, use_case",
+        "          role, referral_source, use_case, plan, plan_intent",
         *args,
     )
 

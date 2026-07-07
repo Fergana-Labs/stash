@@ -1,6 +1,7 @@
 """Admin router: cross-user analytics. Gated by a shared X-Admin-Token header."""
 
 import hmac
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -158,3 +159,21 @@ async def remove_discover_skill(req: RepoRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"repo_url": req.repo_url, "removed": removed}
+
+
+class PlanRequest(BaseModel):
+    plan: str
+
+
+@router.post("/users/{user_id}/plan", dependencies=[Depends(require_admin_token)])
+async def set_user_plan(user_id: UUID, req: PlanRequest):
+    """Set a user's billing entitlement. 'enterprise' unlocks unlimited
+    sleep-time curator runs; granted manually after the sales conversation."""
+    if req.plan not in ("free", "enterprise"):
+        raise HTTPException(status_code=400, detail=f"unknown plan: {req.plan}")
+    from ..database import get_pool
+
+    result = await get_pool().execute("UPDATE users SET plan = $2 WHERE id = $1", user_id, req.plan)
+    if not result.endswith(" 1"):
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user_id": str(user_id), "plan": req.plan}

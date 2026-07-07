@@ -179,6 +179,43 @@ async def get_changes(
     return await curation_service.changes_since(current_user["id"], current_user["id"], since_dt)
 
 
+@router.post("/memory/recompute", status_code=202)
+async def recompute_memory(
+    current_user: dict = Depends(get_current_user),
+):
+    """Run the Memory curator now instead of waiting for the daily tick — the
+    onboarding flow: connect sources, upload documents, watch the wiki build.
+    Enforces the same free-tier sleep-time allowance as the scheduler."""
+    from ..config import settings
+    from ..services import agent_auth, agent_service, curation_service
+    from ..tasks.agent_schedules import run_curator_now
+
+    user_id = current_user["id"]
+    curator = await agent_service.get_or_create_curator(user_id)
+    if not await curation_service.has_changes_since(user_id, user_id, curator["curated_through"]):
+        raise HTTPException(status_code=409, detail="Nothing new to curate since the last run.")
+    if agent_service.month_runs_used(curator) >= settings.FREE_CURATOR_RUNS_PER_MONTH:
+        plan = await get_pool().fetchval("SELECT plan FROM users WHERE id = $1", user_id)
+        if plan != "enterprise":
+            raise HTTPException(
+                status_code=402,
+                detail=f"Free accounts get {settings.FREE_CURATOR_RUNS_PER_MONTH} sleep-time "
+                "curator runs per month; the enterprise plan is unlimited.",
+            )
+    try:
+        await agent_auth.resolve(user_id, curator["model_provider"])
+    except agent_auth.NeedsAuth:
+        raise HTTPException(
+            status_code=402,
+            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
+            "or upgrade to Pro to run the Memory curator.",
+        )
+    except agent_auth.ProviderNotConfigured:
+        raise HTTPException(status_code=503, detail="The agent is not configured.")
+    run_curator_now.delay(curator["id"])
+    return {"status": "started", "agent_id": curator["id"]}
+
+
 # --- Folders ---
 
 

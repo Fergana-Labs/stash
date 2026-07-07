@@ -39,7 +39,7 @@ export const CONNECTORS: Connector[] = [
     label: "Google Drive",
     sourceType: "google_drive",
     kind: "drive",
-    blurb: "Index My Drive and read docs on demand.",
+    blurb: "Index all of My Drive, or just one folder.",
   },
   {
     provider: "gmail",

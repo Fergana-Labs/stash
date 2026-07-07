@@ -22,6 +22,7 @@ import HtmlPageView, {
 import ExportDeckButton from "@/components/export/ExportDeckButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
+import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,
@@ -186,12 +187,15 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
     });
   }, [scopeId, pageId, user, skillSlug]);
 
+  const memoryFolderId = useMemoryFolderId();
+  const ancestorCrumbs = useMemo(
+    () => sectionCrumbs(folderChain, memoryFolderId),
+    [folderChain, memoryFolderId],
+  );
+
   useBreadcrumbs(
     [
-      ...folderChain.map((c) => ({
-        label: c.name,
-        href: `/folders/${c.id}`,
-      })),
+      ...ancestorCrumbs,
       { label: page ? page.name.replace(/\.md$/, "") : "Page" },
     ],
     `page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
@@ -550,6 +554,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
         compact
         icon={isHtml ? <HtmlGlyph /> : <PageGlyph />}
         iconColor={isHtml ? "var(--color-brand-600)" : "var(--text-muted)"}
+        breadcrumbs={ancestorCrumbs}
         title={baseName}
         onRenameTitle={
           page

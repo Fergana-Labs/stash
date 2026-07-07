@@ -43,6 +43,8 @@ class UserProfile(BaseModel):
     role: str | None = None
     referral_source: str | None = None
     use_case: str | None = None
+    plan: str = "free"
+    plan_intent: str | None = None
 
 
 class UserUpdateRequest(BaseModel):
@@ -56,6 +58,9 @@ class UserUpdateRequest(BaseModel):
     role: str | None = Field(None, max_length=128)
     referral_source: str | None = Field(None, max_length=128)
     use_case: str | None = Field(None, max_length=2000)
+    # The plan the user picked during onboarding — a sales signal, not the
+    # billing entitlement (that's `users.plan`, set by admins).
+    plan_intent: str | None = Field(None, max_length=64)
 
 
 class LoginRequest(BaseModel):

@@ -173,6 +173,15 @@ body {
   font-size: 14px;
 }
 
+/* Tailwind v4 preflight sets `cursor: default` on buttons; we want web-app
+   pointer affordance on everything clickable. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 /* Notion-style sidebar primitives */
 .scroll-thin::-webkit-scrollbar {
   width: 6px;

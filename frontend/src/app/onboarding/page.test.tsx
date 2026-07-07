@@ -27,6 +27,7 @@ vi.mock("../../components/integrations/SourceConnectorList", () => ({
 vi.mock("./paths/memory/MemoryAskStep", () => ({ default: () => null }));
 vi.mock("../../lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("../../lib/api", () => ({
+  createMyKey: vi.fn(),
   createPage: vi.fn(),
   getAgentApiKey: vi.fn(),
   updateMe: vi.fn(),
@@ -51,13 +52,25 @@ describe("about step pills", () => {
     render(<OnboardingPage />);
     const role = screen.getByRole("button", { name: "Engineer" });
     const referral = screen.getByRole("button", { name: "Search" });
+    const plan = screen.getByRole("button", { name: "Personal — Free" });
     const continueButton = screen.getByRole("button", { name: "Continue" });
 
     fireEvent.click(role);
     fireEvent.click(referral);
+    fireEvent.click(plan);
     expect(continueButton).toBeEnabled();
 
     fireEvent.click(role);
     expect(continueButton).toBeDisabled();
+  });
+
+  it("plan choice is required before Continue unlocks", () => {
+    render(<OnboardingPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Engineer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Production agent — Enterprise" }));
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
   });
 });

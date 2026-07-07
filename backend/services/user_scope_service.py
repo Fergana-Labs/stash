@@ -34,8 +34,16 @@ async def can_write(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
 
 async def seed_user_scope(user_id: UUID) -> None:
     """Provision a new user's scope: seed the default slides skill so the agent
-    can discover it. Best-effort; failures must not block signup."""
+    can discover it, and the daily Memory curator so sleep-time curation works
+    for every account — including API-key-only production integrations that
+    never touch chat. Best-effort; failures must not block signup."""
+    from . import agent_service
+
     try:
         await skill_seeds.seed_slides_skill(user_id, user_id)
     except Exception:
         logger.exception("seed_slides_skill failed for user %s", user_id)
+    try:
+        await agent_service.get_or_create_curator(user_id)
+    except Exception:
+        logger.exception("curator provisioning failed for user %s", user_id)

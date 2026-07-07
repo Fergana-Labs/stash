@@ -331,6 +331,12 @@ class Settings:
     OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
     MANAGED_GEMINI_API_KEY: str | None = os.getenv("MANAGED_GEMINI_API_KEY")
 
+    # Free accounts get this many scheduled sleep-time curator runs per
+    # calendar month; the enterprise plan is unlimited.
+    FREE_CURATOR_RUNS_PER_MONTH: int = int(os.getenv("FREE_CURATOR_RUNS_PER_MONTH", "10"))
+    # Where enterprise-intent signups are sent as sales leads.
+    SALES_NOTIFY_EMAIL: str = os.getenv("SALES_NOTIFY_EMAIL", "henry@ferganalabs.com")
+
     # --- Cloud agent (per-user sprite VM) ---
     # "sprites" runs each user's agent on their Fly Sprite; "local" execs on
     # this machine's own claude install (dev mode — no Sprites credentials).

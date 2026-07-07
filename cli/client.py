@@ -291,6 +291,13 @@ class StashClient:
         params = {"since": since} if since else {}
         return self._get("/api/v1/me/changes", **params)
 
+    def recompute_memory(self) -> dict:
+        return self._post("/api/v1/me/memory/recompute")
+
+    def get_curator(self) -> dict | None:
+        agents = self._get("/api/v1/me/agents")["agents"]
+        return next((a for a in agents if a["is_curator"]), None)
+
     # --- Pages (user-scoped) ---
 
     def create_page(
@@ -517,6 +524,13 @@ class StashClient:
 
     def download_file(self, file_id: str) -> bytes:
         return self._request("GET", f"/api/v1/me/files/{file_id}/download").content
+
+    def export_zip(self) -> bytes:
+        """The whole scope (folders, pages, uploaded files) as one zip.
+
+        Big scopes take a while to package server-side, so this call gets a
+        much longer timeout than the client default."""
+        return self._request("GET", "/api/v1/me/export", timeout=600).content
 
     # --- The user's cloud computer (read-through machine filesystem) ---
 

@@ -7,6 +7,7 @@ import WorkspaceShell from "@/components/workspace/workspace-shell";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
 import AgentModelSection from "../../components/settings/AgentModelSection";
+import ExportSection from "../../components/settings/ExportSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -57,6 +58,7 @@ export default function SettingsPage() {
           <AgentModelSection />
           <IntegrationsSettings embedded />
           <ActiveSessions />
+          <ExportSection />
           {!AUTH0_ENABLED && <ChangePassword />}
         </div>
       </main>

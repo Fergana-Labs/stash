@@ -1109,8 +1109,9 @@ def upload(
 
     A single file lands directly in your Files (Markdown/HTML become
     editable pages, everything else a binary file) and the returned
-    ``app_url`` is the share link. A directory becomes a folder.
-    **No Skill is created.**
+    ``app_url`` is the share link. A directory becomes a folder, and
+    every text file in it — Markdown, HTML, code, CSV, and friends —
+    becomes an editable page. **No Skill is created.**
 
     Pass ``--skill <title>`` to *also* bundle the upload into a shareable
     Skill. Use a Skill when you're publishing a folder of related
@@ -1231,6 +1232,36 @@ def upload(
             f"[dim]Folder: {root_folder['id']}  "
             f"(pass --skill <title> to turn the folder into a shareable Skill)[/dim]"
         )
+
+
+@app.command("export")
+def export(
+    output: str = typer.Option(
+        "",
+        "--output",
+        "-o",
+        help="Path for the zip (default: stash-export-<timestamp>.zip in the current directory).",
+    ),
+):
+    """Download your entire Stash as a zip of standard files.
+
+    Folders become directories, pages become plain .md/.html files, and
+    uploads keep their original bytes — no proprietary formats, no lock-in."""
+    _require_auth()
+    telemetry.record("export")
+    destination = (
+        Path(output) if output else Path(f"stash-export-{time.strftime('%Y%m%d-%H%M%S')}.zip")
+    )
+    console.print("[dim]Packaging your Stash…[/dim]")
+    with _client() as c:
+        try:
+            data = c.export_zip()
+        except StashError as e:
+            _err(e)
+    destination.write_bytes(data)
+    console.print(
+        f"[green bold]Exported![/green bold]  {destination}  [dim]{len(data):,} bytes[/dim]"
+    )
 
 
 def _parse_skill_slug(url_or_slug: str) -> str:
@@ -2356,15 +2387,71 @@ def search(
     _print_search(query, source, limit, as_json)
 
 
+def _poll_recompute_outcome(
+    c: StashClient, before: dict | None, attempts: int = 15
+) -> tuple[str, str | None]:
+    """Watch the enqueued curator run get picked up by the worker.
+
+    The recompute API answers 202 before anything executes — the web service
+    can't see the worker's world, so "started" is only real once last_run_at
+    advances on the agent row. mark_run clears last_run_error at pickup, so an
+    error present after that means THIS run died (crashes happen within
+    seconds; the multi-minute happy path reports "running")."""
+    baseline = (before or {}).get("last_run_at")
+    for _ in range(attempts):
+        time.sleep(2)
+        curator = c.get_curator()
+        if not curator or curator["last_run_at"] == baseline:
+            continue
+        if curator["last_run_error"]:
+            return "failed", curator["last_run_error"]
+        return "running", None
+    return "queued", None
+
+
 @app.command("memory")
-def memory(as_json: bool = typer.Option(False, "--json")):
+def memory(
+    recompute: bool = typer.Option(
+        False,
+        "--recompute",
+        help="Run the Memory curator now instead of waiting for the daily pass.",
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Show your reserved Memory folder (its id is where the wiki lives)."""
     with _client() as c:
+        if recompute:
+            before = c.get_curator()
+            data = c.recompute_memory()
+            outcome, run_error = _poll_recompute_outcome(c, before)
+            if _use_json(as_json):
+                output_json({**data, "outcome": outcome, "last_run_error": run_error})
+            elif outcome == "failed":
+                console.print(f"[red]Curator run failed:[/red] {run_error}")
+            elif outcome == "queued":
+                console.print(
+                    "[yellow]Curator run was enqueued but no worker picked it up "
+                    "within 30s — it may still run; check `stash memory` later.[/yellow]"
+                )
+            else:
+                console.print(
+                    "Curator run started — the Memory wiki will update shortly. "
+                    "Check `stash memory` for the outcome."
+                )
+            if outcome == "failed":
+                raise typer.Exit(1)
+            return
         folder = c.get_memory_folder()
+        curator = c.get_curator()
     if _use_json(as_json):
-        output_json(folder)
+        output_json({**folder, "curator": curator})
         return
     console.print(f"Memory folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
+    if curator:
+        last_run = curator["last_run_at"] or "never"
+        console.print(f"Curator last run: {last_run}")
+        if curator["last_run_error"]:
+            console.print(f"[red]Curator last run failed:[/red] {curator['last_run_error']}")
 
 
 @app.command("changes")
