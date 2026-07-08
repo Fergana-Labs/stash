@@ -1843,6 +1843,37 @@ export async function listObjectShares(
   return res.shares;
 }
 
+// The object's current "anyone with the link" level ('none' when it's only
+// reachable by the owner and named shares).
+export async function getGeneralAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+): Promise<GeneralPermission> {
+  const res = await apiFetch<{ general_access: GeneralPermission }>(
+    `/api/v1/share?object_type=${objectType}&object_id=${objectId}`,
+  );
+  return res.general_access;
+}
+
+export async function updateGeneralAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+  publicPermission: GeneralPermission,
+): Promise<GeneralPermission> {
+  const res = await apiFetch<{ public_permission: GeneralPermission }>(
+    `/api/v1/share/general-access`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        object_type: objectType,
+        object_id: objectId,
+        public_permission: publicPermission,
+      }),
+    },
+  );
+  return res.public_permission;
+}
+
 export async function shareObjectByEmail(
   objectType: SharedObjectType,
   objectId: string,

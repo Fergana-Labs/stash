@@ -15,6 +15,7 @@ import {
 } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 import {
+  getGeneralAccess,
   getPublicSkill,
   listObjectShares,
   shareObjectByEmail,
@@ -62,6 +63,8 @@ vi.mock("../../../../lib/api", () => ({
   githubOwner: (url: string) =>
     url.replace("https://github.com/", "").split("/")[0],
   listObjectShares: vi.fn(),
+  getGeneralAccess: vi.fn(),
+  updateGeneralAccess: vi.fn(),
   publishSkillFolder: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unpublishSkill: vi.fn(),
@@ -156,6 +159,7 @@ describe("SkillPageClient", () => {
       can_write: true,
     });
     vi.mocked(listObjectShares).mockResolvedValue([]);
+    vi.mocked(getGeneralAccess).mockResolvedValue("none");
     vi.mocked(updateSkill).mockImplementation(async (_skillId, updates) => ({
       ...skillDetail().skill,
       ...updates,

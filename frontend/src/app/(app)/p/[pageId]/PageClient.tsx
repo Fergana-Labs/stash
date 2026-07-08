@@ -263,6 +263,12 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       ) {
         if (await loadSkillFallback()) return;
       }
+      // A logged-out visitor who can't read this page (it has no public link)
+      // is sent to sign in rather than shown a raw error.
+      if (!user) {
+        router.push("/login");
+        return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load page");
       return;
     }
@@ -283,7 +289,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       setFolderChain([]);
     }
     refreshThreads().catch(() => {});
-  }, [pageId, refreshThreads, skillSlug, loadSkillFallback]);
+  }, [pageId, refreshThreads, skillSlug, loadSkillFallback, user, router]);
 
   const reconcileAfterSave = useCallback(
     (savedContent: string, contentType: "markdown" | "html") => {
@@ -426,17 +432,12 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   );
 
   useEffect(() => {
-    // Anonymous viewers can load this page when ?skill=<slug> is set —
-    // the skill payload is the read source. Authenticated viewers always
-    // try the canonical page endpoint first.
-    if (user) load();
-    else if (!loading && skillSlug) void loadSkillFallback();
-  }, [user, loading, load, loadSkillFallback, skillSlug]);
-
-  useEffect(() => {
-    // Only bounce to login if there's no skill fallback path available.
-    if (!loading && !user && !skillSlug) router.push("/login");
-  }, [user, loading, router, skillSlug]);
+    // Everyone attempts the canonical read: an authenticated viewer via their
+    // token, a logged-out viewer anonymously (which succeeds only for a page
+    // with a public link). load()'s catch handles the skill fallback and, for a
+    // logged-out viewer who can't read a non-public page, the bounce to login.
+    if (!loading) void load();
+  }, [loading, load]);
 
   const handleHtmlAnchorTops = useCallback((iframeAnchorTops: Record<string, number>) => {
     const layout = pageLayoutRef.current;
@@ -499,8 +500,35 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
     return <PageAccessDeniedScreen accountLabel={user?.email ?? user?.name ?? null} />;
   }
   if (!user) {
-    // Login bounce is already firing for the no-skill case.
-    if (!skillSlug) return null;
+    // Anonymous viewer of a public-link page: render read-only, with no editor
+    // chrome. load() has already bounced non-public pages to login.
+    if (page) {
+      return (
+        <div className="scroll-thin flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+            <h1 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+              {page.name || "(untitled)"}
+            </h1>
+            <div className="mt-6">
+              <PageBody
+                page={{
+                  id: page.id,
+                  name: page.name,
+                  content_type: page.content_type,
+                  content_markdown: page.content_markdown,
+                  content_html: page.content_html,
+                  html_layout: page.html_layout,
+                  updated_at: page.updated_at,
+                  folder_path: [],
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // No page yet: load() is still resolving (and bounces to login on failure).
+    if (!skillSlug) return <DocumentPageSkeleton />;
     // Skill mode: waiting on the fallback to land, or it failed.
     if (!error) return <DocumentPageSkeleton />;
     return (
