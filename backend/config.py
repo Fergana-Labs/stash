@@ -142,6 +142,15 @@ class Settings:
     # --- Server ---
     PORT: int = int(os.getenv("PORT", "3456"))
 
+    # --- Coding-agent session ingest kill-switch ---
+    # Global emergency stop for the plugin's session streaming. When true, the
+    # ingest endpoints (session upsert, events, transcripts, artifacts) accept
+    # requests but persist nothing, and session upsert returns a blank id and
+    # app_url so already-installed plugins suppress the "Session: {url}"
+    # postscript and skip every upload — no client update required. Flip back to
+    # false once the plugin default-change ships.
+    SESSION_INGEST_DISABLED: bool = os.getenv("SESSION_INGEST_DISABLED", "false").lower() == "true"
+
     # --- Auth0 (managed deployment only) ---
     # When AUTH0_ENABLED=true, password login/register is disabled and the
     # managed auth0 router is mounted at /api/v1/auth0/. Requires the

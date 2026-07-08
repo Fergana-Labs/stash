@@ -7,7 +7,7 @@ Hierarchy: Scope → Agent → Session → Events
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..auth import get_current_user
 from ..config import settings
@@ -46,6 +46,9 @@ async def push_event(
     req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    if settings.SESSION_INGEST_DISABLED:
+        return Response(status_code=204)
+
     owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
@@ -72,6 +75,9 @@ async def push_events_batch(
     req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    if settings.SESSION_INGEST_DISABLED:
+        return Response(status_code=204)
+
     owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]

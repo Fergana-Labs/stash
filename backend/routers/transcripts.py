@@ -15,10 +15,11 @@ just to have the client parse it back — the rows are the source of truth.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
 from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_pool
 from ..services import (
     memory_service,
@@ -60,6 +61,9 @@ async def upload_transcript(
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
+    if settings.SESSION_INGEST_DISABLED:
+        return Response(status_code=204)
+
     owner_user_id = current_user["id"]
     await _check_write(owner_user_id, current_user["id"])
     if not _is_jsonl(file.filename):

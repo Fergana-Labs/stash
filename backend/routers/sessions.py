@@ -10,7 +10,7 @@ session viewer can ship a Share button without involving the CLI.
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
@@ -45,6 +45,30 @@ class SessionUpsertRequest(BaseModel):
 
 def _session_app_url(session_id: str) -> str:
     return f"{settings.PUBLIC_URL.rstrip('/')}/sessions/{session_id}"
+
+
+def _ingest_disabled_response(req: "SessionUpsertRequest") -> dict:
+    """Kill-switch stand-in for a session that was never persisted.
+
+    Blank id and app_url are the two fields the whole client-side upload chain
+    keys off: with them empty, existing plugins skip the "Session: {url}"
+    postscript, never spawn the live event watcher, and bail out of the
+    end-of-session transcript upload.
+    """
+    return {
+        "id": "",
+        "owner_user_id": "",
+        "session_id": req.session_id,
+        "app_url": "",
+        "title": "",
+        "linear_tickets": [],
+        "agent_name": req.agent_name,
+        "cwd": req.cwd,
+        "files_touched": req.files_touched,
+        "started_at": None,
+        "finished_at": None,
+        "created_by": None,
+    }
 
 
 def _session_response(row: dict, title: str | None = None) -> dict:
@@ -212,6 +236,9 @@ async def upsert_session(
     req: SessionUpsertRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    if settings.SESSION_INGEST_DISABLED:
+        return _ingest_disabled_response(req)
+
     owner_user_id = current_user["id"]
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Only the owner can create sessions")
@@ -423,6 +450,9 @@ async def upload_session_artifact(
     file_path: str = Form(...),
     current_user: dict = Depends(get_current_user),
 ):
+    if settings.SESSION_INGEST_DISABLED:
+        return Response(status_code=204)
+
     owner_user_id = current_user["id"]
     session = await session_service.get_session_by_id(session_row_id)
     if not session or session["owner_user_id"] != owner_user_id:
