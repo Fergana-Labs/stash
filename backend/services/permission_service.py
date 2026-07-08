@@ -120,6 +120,39 @@ _LEVEL_SHARE_FILTER = {
     "write": " AND content_share.permission = 'write'",
 }
 
+# public_permission ("anyone with the link") values that satisfy each required
+# level. A 'write' link grants read+comment+write; 'comment' grants read+comment.
+_PUBLIC_LEVELS_FOR = {
+    "read": ("read", "comment", "write"),
+    "comment": ("comment", "write"),
+    "write": ("write",),
+}
+
+
+def _public_permission_condition(object_type: str, object_alias: str, require: str) -> str:
+    """SQL predicate: does the per-object public link grant `require`-level access
+    to everyone? True when the row's own public_permission is high enough, or —
+    cascading like a folder share — any ancestor folder's is. Content rows read
+    the ancestor chain from their folder_id; a folder reads it from its own id
+    (the recursive CTE includes the folder itself)."""
+    levels = ", ".join(f"'{lvl}'" for lvl in _PUBLIC_LEVELS_FOR[require])
+    if object_type == "folder":
+        chain = _folder_chain_sql(f"{object_alias}.id")
+        return (
+            f"EXISTS (SELECT 1 FROM folders public_folder "
+            f"WHERE public_folder.id IN ({chain}) "
+            f"AND public_folder.public_permission IN ({levels}))"
+        )
+    chain = _folder_chain_sql(f"{object_alias}.folder_id")
+    own = f"{object_alias}.public_permission IN ({levels})"
+    ancestor = (
+        f"({object_alias}.folder_id IS NOT NULL AND EXISTS ("
+        f"SELECT 1 FROM folders public_folder "
+        f"WHERE public_folder.id IN ({chain}) "
+        f"AND public_folder.public_permission IN ({levels})))"
+    )
+    return f"({own} OR {ancestor})"
+
 
 def _public_read_container_condition(
     object_type: str, object_alias: str, user_arg: int
@@ -156,6 +189,10 @@ def readable_content_condition(
         f"AND (content_share.expires_at IS NULL OR content_share.expires_at > now()) "
         f"AND {share_target}{_LEVEL_SHARE_FILTER[require]})",
     ]
+    # The per-object public link grants read/comment/write to everyone, so it
+    # applies at every require level — unlike publishing, which is read-only.
+    if object_type in ("page", "file", "table", "folder"):
+        parts.append(_public_permission_condition(object_type, object_alias, require))
     if require == "read":
         parts.append(_skill_grant_condition(object_type, object_alias, user_arg))
         public_container = _public_read_container_condition(object_type, object_alias, user_arg)
@@ -385,18 +422,45 @@ async def check_access(
     )
 
 
-async def get_visibility(object_type: str, object_id: UUID) -> str:
-    """'public' if in any public skill, 'shared' if shared with anyone,
-    else 'private'."""
+async def _has_public_link(object_type: str, object_id: UUID) -> bool:
+    """Does a per-object public link (own row or an ancestor folder) grant
+    anyone access? Mirrors the SQL public_permission clause for the Python path."""
+    if object_type not in ("page", "file", "table", "folder"):
+        return False
     pool = get_pool()
-    skills = await _containing_skills(object_type, object_id)
-    if skills:
+    table = _OWNER_LOOKUP[object_type][0]
+    own = await pool.fetchval(f"SELECT public_permission FROM {table} WHERE id = $1", object_id)
+    if own and own != "none":
+        return True
+    ancestor_folder_ids = [
+        target_id
+        for target_type, target_id in await _object_targets(object_type, object_id)
+        if target_type == "folder"
+    ]
+    if not ancestor_folder_ids:
+        return False
+    return bool(
+        await pool.fetchval(
+            "SELECT 1 FROM folders WHERE id = ANY($1::uuid[]) "
+            "AND public_permission <> 'none' LIMIT 1",
+            ancestor_folder_ids,
+        )
+    )
+
+
+async def get_visibility(object_type: str, object_id: UUID) -> str:
+    """'public' if reachable by anyone (a public link or a published skill),
+    'shared' if shared with a named principal, else 'private'."""
+    pool = get_pool()
+    if await _containing_skills(object_type, object_id) or await _has_public_link(
+        object_type, object_id
+    ):
         return "public"
     shared = await pool.fetchrow(
         "SELECT 1 FROM shares WHERE object_type = $1 AND object_id = $2 LIMIT 1",
         object_type,
         object_id,
     )
-    if shared or skills:
+    if shared:
         return "shared"
     return "private"

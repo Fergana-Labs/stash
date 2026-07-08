@@ -57,6 +57,37 @@ async def test_create_page_strips_scripts_keeps_structure(scope, _db_pool):
 
 
 @pytest.mark.asyncio
+async def test_inline_svg_keeps_geometry(scope, _db_pool):
+    """Diagrams ship as inline SVG. The shapes' geometry and paint live in
+    attributes (viewBox, d, x/y, fill, marker-end) — if the sanitizer keeps the
+    tags but drops those, every shape collapses and the diagram renders blank.
+    html5ever preserves camelCase for SVG attrs, so the allowlist must too."""
+    scope_id, user_id = scope
+    diagram = (
+        '<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">'
+        '<defs><marker id="a" markerWidth="9" refX="7" orient="auto">'
+        '<path d="M0,0 L7,3 L0,6 Z" fill="#5b6672"/></marker></defs>'
+        '<rect x="16" y="20" width="80" height="40" rx="10" fill="#fff" stroke="#ccc"/>'
+        '<path d="M100 40 L160 40" stroke="#c026d3" marker-end="url(#a)"/>'
+        '<text x="30" y="45" font-size="11" text-anchor="middle">Brain</text>'
+        "</svg>"
+    )
+    page = await files_tree_service.create_page(
+        owner_user_id=scope_id,
+        name="Diagram",
+        created_by=user_id,
+        content_type="html",
+        content_html=diagram,
+    )
+    stored = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", page["id"])
+    for attr in ('viewBox="0 0 200 100"', 'refX="7"', 'markerWidth="9"'):
+        assert attr in stored  # camelCased foreign attrs survive with casing intact
+    for attr in ('d="M100 40 L160 40"', 'x="16"', 'rx="10"', 'marker-end="url(#a)"'):
+        assert attr in stored  # geometry + paint survive
+    assert "<marker" in stored and "<defs" in stored
+
+
+@pytest.mark.asyncio
 async def test_title_text_does_not_leak_into_body(scope, _db_pool):
     """A full HTML document carries a <title>. nh3 drops the (disallowed) tag,
     but without clean_content_tags it would keep the title's text and render it

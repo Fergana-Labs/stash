@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..models import (
     CommentReconcileRequest,
@@ -607,11 +607,13 @@ async def search_pages(
 @canonical_router.get("/pages/{page_id}", response_model=PageResponse)
 async def get_page_by_id(
     page_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    """Any failure is a 404: an unscoped lookup must not confirm that a
-    page the caller can't read exists."""
-    page = await files_tree_service.get_page_by_id(page_id, current_user["id"])
+    """Optional auth: a page with a public link ("anyone with the link") is
+    readable while logged out. Any failure is a 404: an unscoped lookup must not
+    confirm that a page the caller can't read exists."""
+    viewer_id = current_user["id"] if current_user else None
+    page = await files_tree_service.get_page_by_id(page_id, viewer_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)

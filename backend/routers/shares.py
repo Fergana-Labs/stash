@@ -39,6 +39,12 @@ class PendingInviteRevokeRequest(BaseModel):
     email: str
 
 
+class GeneralAccessRequest(BaseModel):
+    object_type: str
+    object_id: UUID
+    public_permission: str
+
+
 @router.post("")
 async def create_share(req: ShareRequest, current_user: dict = Depends(get_current_user)):
     return await share_service.share_with_user_by_email(
@@ -95,6 +101,20 @@ async def list_shared_session_folder_sessions(
     }
 
 
+@router.patch("/general-access")
+async def set_general_access(
+    req: GeneralAccessRequest, current_user: dict = Depends(get_current_user)
+):
+    """Set the "anyone with the link" level for a page/file/folder/table."""
+    public_permission = await share_service.set_general_access(
+        object_type=req.object_type,
+        object_id=req.object_id,
+        public_permission=req.public_permission,
+        user_id=current_user["id"],
+    )
+    return {"public_permission": public_permission}
+
+
 @router.get("")
 async def list_shares(
     object_type: str,
@@ -102,5 +122,10 @@ async def list_shares(
     current_user: dict = Depends(get_current_user),
 ):
     return {
-        "shares": await share_service.list_object_shares(object_type, object_id, current_user["id"])
+        "shares": await share_service.list_object_shares(
+            object_type, object_id, current_user["id"]
+        ),
+        "general_access": await share_service.get_general_access(
+            object_type, object_id, current_user["id"]
+        ),
     }
