@@ -21,7 +21,7 @@ from ..integrations.asana.indexer import index_asana
 from ..integrations.github.indexer import index_github_repo
 from ..integrations.gmail.indexer import index_gmail
 from ..integrations.gong.indexer import index_gong
-from ..integrations.google.indexer import index_google_drive
+from ..integrations.google.indexer import index_google_drive, index_google_drive_folder
 from ..integrations.granola.indexer import index_granola
 from ..integrations.jira.indexer import index_jira
 from ..integrations.linear.indexer import index_linear
@@ -39,6 +39,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "github_repo": index_github_repo,
     "gmail": index_gmail,
     "google_drive": index_google_drive,
+    "google_drive_folder": index_google_drive_folder,
     "notion": index_notion,
     "slack": index_slack,
     "granola": index_granola,

@@ -24,6 +24,7 @@ celery = Celery(
     backend=settings.REDIS_URL,
     include=[
         "backend.tasks.extraction",
+        "backend.tasks.drive_extraction",
         "backend.tasks.embeddings",
         "backend.tasks.linear_tickets",
         "backend.tasks.session_titles",

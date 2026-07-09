@@ -29,7 +29,7 @@ import {
   submitCredentials,
   type IntegrationStatus,
 } from "@/lib/integrations";
-import { connectorForProvider, connectorIcon } from "@/components/integrations/connectors";
+import { connectorForProvider, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
 import {
   AddSourceControls,
   CredentialForm,
@@ -77,7 +77,9 @@ export default function IntegrationPage() {
       listSources(),
     ]);
     setStatus(integrations.providers.find((p) => p.provider === provider) ?? null);
-    setSources(allSources.filter((s) => s.type === connector.sourceType));
+    // A provider can own more than one source type — a whole Drive and a
+    // picked folder are different types on the same Google connector.
+    setSources(allSources.filter((s) => providerForSourceType[s.type] === connector.provider));
   }, [connector, provider]);
 
   useEffect(() => {

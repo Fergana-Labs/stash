@@ -209,6 +209,11 @@ async def read_source_doc(
         raise HTTPException(status_code=404, detail="Source not found")
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
+    # A document we cannot read is an error, not an empty document. The VFS turns
+    # this into a per-file warning on stderr, so a `grep` reports what it skipped
+    # instead of quietly reporting no matches.
+    if "http_status" in doc:
+        raise HTTPException(status_code=doc["http_status"], detail=doc["error"])
     return doc
 
 

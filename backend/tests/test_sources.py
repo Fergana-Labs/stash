@@ -54,6 +54,7 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "github_repo": "acme/widgets",
         "gmail": "cleanup@example.com",
         "google_drive": "drive-root",
+        "google_drive_folder": "drive-folder-1",
         "notion": "notion-root",
         "slack": "T123",
         "granola": "granola",
