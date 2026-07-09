@@ -6,6 +6,8 @@ responding), not per-session. We only push assistant_message here;
 session_end lives in on_session_end.py.
 """
 
+import json
+
 from adapt import adapt_stop
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 
@@ -33,7 +35,9 @@ def main():
         pass
     warning = upload_health_warning(cfg, state, event, DATA_DIR)
     if warning:
-        print(color_upload_health_warning(warning))
+        # Claude Code only shows a Stop hook's `systemMessage`; bare stdout
+        # reaches the transcript, which the user never sees.
+        print(json.dumps({"systemMessage": color_upload_health_warning(warning)}))
 
 
 if __name__ == "__main__":
