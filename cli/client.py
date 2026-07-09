@@ -9,12 +9,16 @@ from pathlib import Path
 
 import httpx
 
+from stashvfs import VfsClientError
 
-class StashError(Exception):
+
+class StashError(VfsClientError):
     def __init__(self, status_code: int, detail):
         self.status_code = status_code
-        self.detail = detail
-        super().__init__(f"[{status_code}] {detail}")
+        super().__init__(detail)
+
+    def __str__(self) -> str:
+        return f"[{self.status_code}] {self.detail}"
 
 
 # Page size when the VFS walks a source's entries. Callers page with the

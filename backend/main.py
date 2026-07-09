@@ -50,6 +50,7 @@ from .routers import (
     trash,
     user_knowledge,
     users,
+    vfs,
     webhooks,
 )
 from .services import demo_service
@@ -139,6 +140,7 @@ app.include_router(security_audit.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
+app.include_router(vfs.router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)
 app.include_router(agents.router)

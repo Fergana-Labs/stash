@@ -34,7 +34,7 @@ stash = "cli.main:app"
 stash-mcp = "cli.mcp_server:main"
 
 [tool.setuptools.packages.find]
-include = ["cli*", "stashai*"]
+include = ["cli*", "stashai*", "stashvfs*"]
 
 [tool.setuptools.package-data]
 stashai = ["plugin/assets/**/*"]

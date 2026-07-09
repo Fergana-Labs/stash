@@ -4320,8 +4320,7 @@ def vfs_command(
     cwd: str = typer.Option("/", "--cwd", help="Virtual working directory."),
 ):
     """Run bash-shaped commands against Stash sources."""
-    from .app_vfs import SkillAppVfsShell
-    from .mount import MountError, StashVfsModel
+    from stashvfs import MountError, SkillAppVfsShell, StashVfsModel
 
     cfg = load_config()
     if not cfg.get("api_key"):
@@ -4330,7 +4329,7 @@ def vfs_command(
 
     client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
     try:
-        model = StashVfsModel(client)
+        model = StashVfsModel(client, include_computer=True)
         model.refresh()
         shell = SkillAppVfsShell(model, cwd=cwd)
 

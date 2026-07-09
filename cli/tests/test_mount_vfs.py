@@ -1,4 +1,4 @@
-from cli.mount import StashVfsModel
+from stashvfs import StashVfsModel
 
 
 class FakeClient:
@@ -150,7 +150,7 @@ class FakeClient:
 
 
 def _model():
-    model = StashVfsModel(FakeClient())
+    model = StashVfsModel(FakeClient(), include_computer=True)
     model.refresh()
     return model
 
@@ -186,7 +186,7 @@ def test_vfs_loads_source_entries_lazily():
     # Listing source names must not fetch any source's contents — that's the
     # whole point: enumerating a 10k-doc source costs the same as a 1-doc one.
     client = FakeClient()
-    model = StashVfsModel(client)
+    model = StashVfsModel(client, include_computer=True)
     model.refresh()
     sources_path = "/sources"
 
@@ -228,7 +228,7 @@ def test_vfs_keeps_children_of_a_page_that_has_its_own_body():
     # A page that is both content and a parent must not swallow its children.
     # It becomes a directory; its body lives in a same-named index file so the
     # children stay reachable alongside it.
-    model = StashVfsModel(NestedPagesClient())
+    model = StashVfsModel(NestedPagesClient(), include_computer=True)
     model.refresh()
     # Sole notion connection collapses into /sources/notion (see _add_sources).
     parent = "/sources/notion/Parent"
@@ -277,7 +277,7 @@ class DuplicateNameClient(FakeClient):
 
 
 def test_vfs_suffixes_only_colliding_names():
-    model = StashVfsModel(DuplicateNameClient())
+    model = StashVfsModel(DuplicateNameClient(), include_computer=True)
     model.refresh()
 
     entries = set(model.list_dir("/tables"))

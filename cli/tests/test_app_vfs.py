@@ -2,10 +2,10 @@ import re
 import shlex
 from datetime import datetime
 
-from cli.app_vfs import SkillAppVfsShell, _ls_time
 from cli.client import StashError
-from cli.mount import StashVfsModel
 from cli.tests.test_mount_vfs import FakeClient
+from stashvfs import StashVfsModel
+from stashvfs.shell import SkillAppVfsShell, _ls_time
 
 
 class DeadTranscriptClient(FakeClient):
@@ -70,7 +70,7 @@ class CountingClient(FakeClient):
 
 def _shell(client=None):
     client = client or FakeClient()
-    model = StashVfsModel(client)
+    model = StashVfsModel(client, include_computer=True)
     model.refresh()
     return SkillAppVfsShell(model), client
 
@@ -335,7 +335,7 @@ def test_source_listing_follows_pages_to_completion():
 
 
 def test_find_warns_loudly_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
-    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    monkeypatch.setattr("stashvfs.model.SOURCE_ENTRIES_MAX", 4)
     shell, _client = _shell(PagedSourceClient())
 
     result = shell.run("find /sources/gmail -type f")
@@ -374,7 +374,7 @@ def test_stat_omits_external_ref_when_the_entry_has_none():
 
 
 def test_tree_warns_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
-    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    monkeypatch.setattr("stashvfs.model.SOURCE_ENTRIES_MAX", 4)
     shell, _client = _shell(PagedSourceClient())
 
     result = shell.run("tree /sources/gmail")
@@ -384,7 +384,7 @@ def test_tree_warns_when_a_source_exceeds_the_materialization_ceiling(monkeypatc
 
 
 def test_ls_warns_inside_a_truncated_source_but_not_above_it(monkeypatch):
-    monkeypatch.setattr("cli.mount.SOURCE_ENTRIES_MAX", 4)
+    monkeypatch.setattr("stashvfs.model.SOURCE_ENTRIES_MAX", 4)
     shell, _client = _shell(PagedSourceClient())
 
     # Listing the source root — children come from the capped materialization.
