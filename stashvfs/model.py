@@ -11,6 +11,7 @@ import stat
 import time
 from collections import Counter
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -22,6 +23,11 @@ BytesLoader = Callable[[], bytes]
 # gets a truncation warning from the listing commands rather than an
 # ever-growing tree walk.
 SOURCE_ENTRIES_MAX = 10_000
+
+# How many file bodies `prefetch` loads at once. Each load is one request to the
+# backend, and for an index-only source (Drive, Notion, Gmail) the backend then
+# makes one request to the provider — so this is also how hard we hit Google.
+PREFETCH_CONCURRENCY = 12
 
 
 class MountError(Exception):
@@ -41,6 +47,10 @@ class VfsNode:
     # Provider-side id of a connected-source document (a Drive file id, a Gmail
     # message id, …), so `stat` can tie a VFS path back to the provider object.
     external_ref: str | None = None
+    # Set when `prefetch` already tried this loader and it failed. `read_file`
+    # re-raises it rather than fetching again — a second fetch would hit the
+    # provider twice and, server-side, spend the document budget twice.
+    error: VfsClientError | None = None
 
     @property
     def is_dir(self) -> bool:
@@ -122,6 +132,8 @@ class StashVfsModel:
         node = self._get_node(path)
         if not node.is_file:
             raise IsADirectoryError(path)
+        if node.error is not None:
+            raise node.error
         if node.content is None:
             if node.loader is None:
                 node.content = b""
@@ -129,6 +141,49 @@ class StashVfsModel:
                 node.content = node.loader()
                 node.size_hint = len(node.content)
         return node.content
+
+    def prefetch(self, paths: list[str]) -> None:
+        """Load these files' bodies concurrently, so a later `read_file` on each
+        is a cache hit. A whole-directory `grep` reads every file it walks; done
+        one at a time that is a round trip per file, and for Drive a round trip
+        to Google per file.
+
+        Nodes are resolved on this thread — expanding a lazy subtree mutates the
+        tree — and only the loaders run in the pool.
+
+        Every file is fetched exactly once, whether it succeeds or fails. A
+        loader that raises has its error parked on the node so `read_file` can
+        re-raise it at the file the caller was actually reading, without going
+        back to the provider. Fetching a failed file a second time would hit the
+        provider twice and, server-side, spend two units of the document budget
+        for one document — enough to abort a command that was within its ceiling."""
+        pending: list[VfsNode] = []
+        seen: set[int] = set()
+        for path in paths:
+            node = self._get_node(path)
+            if not (node.is_file and node.content is None and node.error is None):
+                continue
+            if node.loader is None or id(node) in seen:
+                continue
+            seen.add(id(node))
+            pending.append(node)
+        if len(pending) < 2:
+            return
+
+        def load(node: VfsNode) -> tuple[VfsNode, bytes | VfsClientError]:
+            try:
+                return node, node.loader()
+            except VfsClientError as e:
+                return node, e
+
+        workers = min(PREFETCH_CONCURRENCY, len(pending))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for node, result in pool.map(load, pending):
+                if isinstance(result, VfsClientError):
+                    node.error = result
+                    continue
+                node.content = result
+                node.size_hint = len(result)
 
     def getattr(self, path: str) -> dict:
         node = self._get_node(path)

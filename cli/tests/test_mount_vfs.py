@@ -1,4 +1,6 @@
-from stashvfs import StashVfsModel
+import threading
+
+from stashvfs import StashVfsModel, VfsClientError
 
 
 class FakeClient:
@@ -288,3 +290,134 @@ def test_vfs_suffixes_only_colliding_names():
     assert "Untitled table--aaaaaaaa" in entries
     assert "Untitled table--bbbbbbbb" in entries
     assert "Untitled table" not in entries
+
+
+class CountingLoaderClient(FakeClient):
+    """Records every document body fetched, and whether two fetches ever overlapped.
+
+    `prefetch` exists to turn one round trip per file into one batch of round
+    trips. If it ever double-fetched, a `grep -r` over Drive would double the
+    calls we make to Google — so the call count, not just the output, is the
+    thing under test.
+
+    Overlap is detected with a two-party barrier rather than by counting threads:
+    a pool whose work finishes instantly may serve every task on one worker, so
+    thread identity proves nothing."""
+
+    def __init__(self):
+        super().__init__()
+        self.doc_reads: list[str] = []
+        self.overlapped = False
+        self._lock = threading.Lock()
+        self._barrier = threading.Barrier(2, timeout=1.0)
+
+    def read_source_doc(self, source, ref):
+        with self._lock:
+            self.doc_reads.append(ref)
+        try:
+            self._barrier.wait()
+        except threading.BrokenBarrierError:
+            return {"content": f"needle in {ref}"}
+        with self._lock:
+            self.overlapped = True
+        return {"content": f"needle in {ref}"}
+
+
+def _grep_gmail(concurrency: int) -> tuple[str, CountingLoaderClient]:
+    import stashvfs.model as model_module
+    from stashvfs import SkillAppVfsShell
+
+    original = model_module.PREFETCH_CONCURRENCY
+    model_module.PREFETCH_CONCURRENCY = concurrency
+    try:
+        client = CountingLoaderClient()
+        model = StashVfsModel(client, include_computer=True)
+        model.refresh()
+        result = SkillAppVfsShell(model).run("grep -ri needle /sources/gmail")
+        return result.stdout, client
+    finally:
+        model_module.PREFETCH_CONCURRENCY = original
+
+
+def test_prefetch_does_not_change_what_grep_finds():
+    """Concurrency is an optimization. If it altered results — dropped a file,
+    reordered matches — a `grep` would silently answer differently depending on
+    how many workers happened to run."""
+    serial_output, serial_client = _grep_gmail(1)
+    parallel_output, parallel_client = _grep_gmail(12)
+
+    assert serial_output == parallel_output
+    assert serial_output != ""
+    assert sorted(serial_client.doc_reads) == sorted(parallel_client.doc_reads)
+
+
+def test_prefetch_reads_each_file_exactly_once():
+    _, client = _grep_gmail(12)
+
+    assert len(client.doc_reads) == len(set(client.doc_reads))
+    assert len(client.doc_reads) > 1
+
+
+def test_prefetch_fetches_bodies_concurrently():
+    """Guards the fix itself: a `prefetch` that quietly ran serially would still
+    pass every other test here, and Drive would still take a minute. Two loaders
+    must be in flight at once for the barrier to release."""
+    _, client = _grep_gmail(12)
+
+    assert client.overlapped
+
+
+def test_prefetch_left_serial_does_not_overlap():
+    """The control. Proves the barrier above is actually detecting concurrency
+    rather than always releasing."""
+    _, client = _grep_gmail(1)
+
+    assert not client.overlapped
+
+
+class FailingLoaderClient(FakeClient):
+    """A source whose bodies cannot be read — an expired token, a Drive file with
+    no export, a provider 500. The listing still works; every read fails."""
+
+    def __init__(self):
+        super().__init__()
+        self.doc_reads: list[str] = []
+        self._lock = threading.Lock()
+
+    def read_source_doc(self, source, ref):
+        with self._lock:
+            self.doc_reads.append(ref)
+        raise VfsClientError(f"cannot read {ref}")
+
+
+def test_a_failed_read_is_not_retried_by_the_grep_loop():
+    """prefetch and the read that follows it must not both hit the provider.
+
+    Server-side each read spends one unit of the document budget, charged before
+    the request is issued — so a file fetched twice on failure spends two units.
+    A directory of unreadable files could then abort a command that was well
+    inside its ceiling, throwing away matches already found in the readable ones."""
+    from stashvfs import SkillAppVfsShell
+
+    client = FailingLoaderClient()
+    model = StashVfsModel(client, include_computer=True)
+    model.refresh()
+
+    result = SkillAppVfsShell(model).run("grep -ri needle /sources/gmail")
+
+    assert len(client.doc_reads) == len(set(client.doc_reads))
+    assert "cannot read" in result.stderr
+
+
+def test_a_failed_read_still_warns_per_file_and_does_not_abort():
+    """The old behavior, preserved: an unreadable file is a warning on stderr, not
+    a dead command. Caching the error must not turn it into something else."""
+    from stashvfs import SkillAppVfsShell
+
+    model = StashVfsModel(FailingLoaderClient(), include_computer=True)
+    model.refresh()
+
+    result = SkillAppVfsShell(model).run("grep -ri needle /sources/gmail")
+
+    assert result.exit_code == 1  # grep found nothing, rather than crashing
+    assert result.stderr.count("cannot read") == 2

@@ -454,6 +454,7 @@ class SkillAppVfsShell:
             file_paths = [path] if node.is_file else self._file_paths(path) if recursive else []
             if node.is_dir and not recursive:
                 raise VfsShellError(f"{raw_path}: is a directory")
+            self.model.prefetch(file_paths)
             for file_path in file_paths:
                 try:
                     text = self._read_text(file_path)

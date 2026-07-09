@@ -14,10 +14,11 @@ instead of two that drift.
 
 from __future__ import annotations
 
+import asyncio
 import functools
+import threading
 
 import anyio
-import anyio.from_thread
 import anyio.to_thread
 import httpx
 
@@ -44,14 +45,21 @@ class InProcessVfsClient:
     down to the query parameters — the two are alternate transports for one API.
     """
 
-    def __init__(self, http: httpx.AsyncClient) -> None:
+    def __init__(self, http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop) -> None:
         self._http = http
+        self._loop = loop
         self._document_reads = 0
+        self._reads_lock = threading.Lock()
 
     def _request(self, method: str, endpoint: str, **params) -> httpx.Response:
-        response = anyio.from_thread.run(
-            functools.partial(self._http.request, method, endpoint, params=params or None)
+        # Dispatched onto the app's event loop from whichever thread we are on.
+        # `StashVfsModel.prefetch` calls loaders from a pool, so this must work
+        # from an arbitrary thread — not just anyio's worker, which is all
+        # `anyio.from_thread.run` supports.
+        future = asyncio.run_coroutine_threadsafe(
+            self._http.request(method, endpoint, params=params or None), self._loop
         )
+        response = future.result()
         if response.status_code >= 400:
             raise VfsClientError(_error_detail(response))
         return response
@@ -62,8 +70,10 @@ class InProcessVfsClient:
     def _read_document(self, method: str, endpoint: str, **params) -> httpx.Response:
         """A fetch of a node's bytes, as opposed to a listing. Only these are
         budgeted: listings are bounded by the model's own entry ceiling."""
-        self._document_reads += 1
-        if self._document_reads > MAX_DOCUMENT_READS:
+        with self._reads_lock:
+            self._document_reads += 1
+            over_budget = self._document_reads > MAX_DOCUMENT_READS
+        if over_budget:
             raise VfsBudgetExceeded(
                 f"command read more than {MAX_DOCUMENT_READS} documents; "
                 "scope it to a subdirectory or use search"
@@ -138,11 +148,13 @@ def _error_detail(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
-def _run_script(http: httpx.AsyncClient, script: str, cwd: str) -> dict:
+def _run_script(
+    http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, script: str, cwd: str
+) -> dict:
     """Blocking: the model and shell are synchronous, and their lazy loaders reach
-    back into the event loop through `anyio.from_thread`. Runs in a worker thread
-    for that reason — see `run_vfs_script`."""
-    model = StashVfsModel(InProcessVfsClient(http), include_computer=False)
+    back into `loop` to issue their requests. Runs in a worker thread for that
+    reason — see `run_vfs_script`."""
+    model = StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
     model.refresh()
     result = SkillAppVfsShell(model, cwd=cwd).run(script)
     return {
@@ -159,6 +171,7 @@ async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict
     `authorization` is forwarded verbatim onto every nested request, so the VFS
     sees precisely what that credential sees anywhere else in the API.
     """
+    loop = asyncio.get_running_loop()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -166,4 +179,6 @@ async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict
         headers={"Authorization": authorization},
         timeout=None,
     ) as http:
-        return await anyio.to_thread.run_sync(functools.partial(_run_script, http, script, cwd))
+        return await anyio.to_thread.run_sync(
+            functools.partial(_run_script, http, loop, script, cwd)
+        )
