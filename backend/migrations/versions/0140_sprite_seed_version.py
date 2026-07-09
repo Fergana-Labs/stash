@@ -5,14 +5,14 @@ install) never reached boxes provisioned earlier — their managed-harness runs
 died with "command not found". Existing rows default to 0 (stale), so every
 old box re-seeds on its next acquire.
 
-Revision ID: 0139
-Revises: 0138
+Revision ID: 0140
+Revises: 0139
 """
 
 from alembic import op
 
-revision = "0139"
-down_revision = "0138"
+revision = "0140"
+down_revision = "0139"
 branch_labels = None
 depends_on = None
 
