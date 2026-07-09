@@ -20,6 +20,7 @@ import {
   type Source,
   type SourceEntry,
   type SourceSearchHit,
+  type SourceStatus,
 } from "@/lib/api";
 import {
   disconnectIntegration,
@@ -36,6 +37,12 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
+
+// How often a row re-checks a source that is mid-sync, and how many times before
+// it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
+// as long as the tab happens to be open buys nothing.
+const SYNC_POLL_INTERVAL_MS = 3000;
+const SYNC_POLL_MAX_ATTEMPTS = 100;
 
 export default function IntegrationPage() {
   const params = useParams();
@@ -437,19 +444,51 @@ function SourceRow({
   onSync: () => void;
   onRemove: () => void;
 }) {
-  const [itemCount, setItemCount] = useState<number | null>(null);
+  // The row owns a live status so the item count and sync badge update as the
+  // background sync runs — the parent's source list is only re-fetched on user
+  // actions, so a source that finishes syncing (or gets its first documents)
+  // would otherwise stay frozen at "syncing · 0 items". While syncing we poll
+  // until it settles, then stop. Seeded from the parent's row so this is the
+  // only thing the render reads; item_count is unknown until the first poll.
+  const [status, setStatus] = useState<SourceStatus>({ ...source, item_count: null });
+  // Why this row stopped tracking the sync. Distinct from `status.sync_error`,
+  // which is the sync itself failing — this is us failing to observe it.
+  const [pollStopped, setPollStopped] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    getSourceStatus(source.source)
-      .then((s) => {
-        if (!cancelled) setItemCount(s.item_count);
-      })
-      .catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+
+    async function poll() {
+      let next: SourceStatus;
+      try {
+        next = await getSourceStatus(source.source);
+      } catch (e) {
+        if (!cancelled) setPollStopped(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      if (cancelled) return;
+      setStatus(next);
+      if (next.sync_status !== "syncing") return;
+
+      attempts += 1;
+      if (attempts >= SYNC_POLL_MAX_ATTEMPTS) {
+        setPollStopped("Still syncing. Stopped checking for updates — reload to resume.");
+        return;
+      }
+      timer = setTimeout(poll, SYNC_POLL_INTERVAL_MS);
+    }
+
+    setPollStopped(null);
+    void poll();
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [source.source]);
+    // Re-poll when the parent hands us a fresh source object (e.g. after the
+    // user clicks Sync, which flips sync_status back to "syncing").
+  }, [source.source, source.sync_status, source.last_synced_at]);
 
   const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project" || source.type === "twitter";
   // Search-driven sources (twitter) have no indexer; the backend rejects sync
@@ -470,15 +509,18 @@ function SourceRow({
           {ref && <span className="font-mono text-[12px] font-normal text-muted-foreground">{ref}</span>}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
-          {syncs && <SyncStatusMark syncStatus={source.sync_status} />}
+          {syncs && <SyncStatusMark syncStatus={status.sync_status} />}
           <span>
-            {syncs ? relativeTime(source.last_synced_at) : "live"}
-            {itemCount !== null && ` · ${itemCount} items`}
+            {syncs ? relativeTime(status.last_synced_at) : "live"}
+            {status.item_count !== null && ` · ${status.item_count} items`}
             {federated && " · federated"}
           </span>
         </div>
-        {source.sync_status === "failed" && source.sync_error && (
-          <div className="mt-1 truncate font-mono text-[11.5px] text-error">{source.sync_error}</div>
+        {status.sync_status === "failed" && status.sync_error && (
+          <div className="mt-1 truncate font-mono text-[11.5px] text-error">{status.sync_error}</div>
+        )}
+        {pollStopped && (
+          <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
         )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
