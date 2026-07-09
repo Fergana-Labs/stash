@@ -65,6 +65,10 @@ celery.conf.update(
             "task": "backend.tasks.extraction.enqueue_pending",
             "schedule": 60.0,
         },
+        "drive-extraction-enqueue-pending": {
+            "task": "backend.tasks.drive_extraction.enqueue_pending",
+            "schedule": 60.0,
+        },
         "session-title-reconcile": {
             "task": "backend.tasks.session_titles.reconcile_missing",
             "schedule": 60.0,

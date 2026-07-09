@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 CHILD_TIMEOUT_SECONDS = 1800
 MAX_ATTEMPTS = 3
 
+# A 'processing' lock older than this belongs to a worker that died: a live
+# extraction is killed at CHILD_TIMEOUT_SECONDS (30 min), so no healthy child
+# holds a lock longer. The sweep and the claim must agree on this cutoff, or
+# the sweep enqueues rows the claim then refuses.
+STALE_LOCK = "30 minutes"
+
 
 async def _run_child(row_id: UUID) -> int:
     proc = await asyncio.create_subprocess_exec(
@@ -49,7 +55,9 @@ async def _run_child(row_id: UUID) -> int:
 
 async def _claim(row_id: UUID) -> bool:
     """Take the row if nobody else has. A file can be enqueued twice — once by the
-    sync walk, once by the Beat sweep — and OCR is too expensive to do twice."""
+    sync walk, once by the Beat sweep — and OCR is too expensive to do twice.
+    A stale 'processing' lock is claimable: its worker died mid-extraction and
+    will never release it."""
     row = await get_pool().fetchrow(
         f"""
         UPDATE drive_documents
@@ -61,6 +69,7 @@ async def _claim(row_id: UUID) -> bool:
           AND (
                 extraction_status = 'pending'
              OR (extraction_status = 'failed' AND extraction_attempts < {MAX_ATTEMPTS})
+             OR (extraction_status = 'processing' AND locked_at < now() - INTERVAL '{STALE_LOCK}')
           )
         RETURNING id
         """,
@@ -119,7 +128,7 @@ async def _enqueue_pending() -> int:
           AND (
                 extraction_status = 'pending'
              OR (extraction_status = 'failed' AND extraction_attempts < {MAX_ATTEMPTS})
-             OR (extraction_status = 'processing' AND locked_at < now() - INTERVAL '30 minutes')
+             OR (extraction_status = 'processing' AND locked_at < now() - INTERVAL '{STALE_LOCK}')
           )
         LIMIT 100
         """,

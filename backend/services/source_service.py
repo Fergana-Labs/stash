@@ -651,6 +651,15 @@ async def upsert_index_row(
     return "inserted" if existing is None else "updated"
 
 
+# Extraction outcomes that are final for a given version of the file: re-running
+# on the same bytes reproduces the same outcome, so a sync re-queues these only
+# when Drive's `modifiedTime` moves. Without this, an unsupported 200 MB video
+# would be re-downloaded on every 30-minute sync, forever. 'pending' and
+# 'processing' are in-flight, not settled — the sweep and claim in
+# `tasks/drive_extraction.py` own their retry.
+SETTLED_EXTRACTION_STATUSES = ("done", "unsupported", "too_large", "failed")
+
+
 async def upsert_drive_document(
     *,
     source_id: UUID,
@@ -663,9 +672,10 @@ async def upsert_drive_document(
     """Record a Drive folder file, and say whether its body needs extracting.
 
     Returns the row id when the file is new or has changed in Drive since we last
-    extracted it, and None when the stored text is still current. Extraction is
+    extracted it, and None when its extraction is settled. Extraction is
     expensive — a scanned catalog is a Claude-vision call — so it is keyed on
-    Drive's own `modifiedTime` rather than re-run on every sync."""
+    Drive's own `modifiedTime` rather than re-run on every sync. A 'failed' row
+    rests once retries are spent; only a new version of the file revives it."""
     pool = get_pool()
     existing = await pool.fetchrow(
         "SELECT id, name, external_ref, external_updated_at, extraction_status, deleted_at "
@@ -679,7 +689,7 @@ async def upsert_drive_document(
         and existing["name"] == name
         and existing["external_ref"] == external_ref
         and existing["external_updated_at"] == external_updated_at
-        and existing["extraction_status"] == "done"
+        and existing["extraction_status"] in SETTLED_EXTRACTION_STATUSES
     )
     if unchanged:
         return None

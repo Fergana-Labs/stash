@@ -10,6 +10,7 @@ error the caller can see, and a body that has been extracted is served from
 Postgres without touching Google.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -180,3 +181,66 @@ async def test_only_the_folder_type_copies_content():
     assert "drive_index" not in source_service.CONTENT_TABLES
     assert "google_drive" in source_service.FEDERATED_SEARCH_TYPES
     assert "google_drive_folder" not in source_service.FEDERATED_SEARCH_TYPES
+
+
+async def test_a_settled_unreadable_file_is_not_requeued_by_the_next_sync(client: AsyncClient):
+    """'unsupported' is a fact about the bytes: the same version of the file will
+    be unsupported next time too. If a sync treated it as work to redo, an
+    unsupported 200 MB video would be re-downloaded every 30 minutes forever.
+    Only a new Drive `modifiedTime` revives extraction."""
+    _, owner_id = await _register(client)
+    src = await _folder_source(owner_id)
+    modified = datetime(2026, 7, 1, tzinfo=UTC)
+    upsert = dict(
+        source_id=UUID(src["id"]),
+        owner_user_id=owner_id,
+        path="training.mp4",
+        name="training.mp4",
+        external_ref="drive-file-id",
+    )
+
+    row_id = await source_service.upsert_drive_document(**upsert, external_updated_at=modified)
+    assert row_id is not None  # first sight: extract it
+    await get_pool().execute(
+        "UPDATE drive_documents SET extraction_status = 'unsupported' WHERE id = $1", row_id
+    )
+
+    same_version = await source_service.upsert_drive_document(
+        **upsert, external_updated_at=modified
+    )
+    assert same_version is None
+
+    new_version = await source_service.upsert_drive_document(
+        **upsert, external_updated_at=datetime(2026, 7, 2, tzinfo=UTC)
+    )
+    assert new_version is not None
+
+
+async def test_a_stale_processing_lock_is_reclaimable(client: AsyncClient):
+    """A worker that dies mid-extraction leaves 'processing' behind forever. The
+    Beat sweep re-enqueues such rows, so the claim must accept them — while
+    refusing a live lock, whose worker is still extracting."""
+    from backend.tasks.drive_extraction import _claim
+
+    _, owner_id = await _register(client)
+    src = await _folder_source(owner_id)
+
+    stuck = await _row(UUID(src["id"]), owner_id, "Stuck.pdf", extraction_status="processing")
+    await get_pool().execute(
+        "UPDATE drive_documents SET locked_at = now() - INTERVAL '31 minutes' WHERE id = $1",
+        stuck,
+    )
+    assert await _claim(stuck) is True
+
+    live = await _row(UUID(src["id"]), owner_id, "Live.pdf", extraction_status="processing")
+    await get_pool().execute("UPDATE drive_documents SET locked_at = now() WHERE id = $1", live)
+    assert await _claim(live) is False
+
+
+async def test_the_recovery_sweep_is_scheduled():
+    """The sweep is the only rescue for a dropped `.delay()` or a dead worker.
+    A task that exists but is absent from `beat_schedule` never fires."""
+    from backend.celery_app import celery
+
+    scheduled = {entry["task"] for entry in celery.conf.beat_schedule.values()}
+    assert "backend.tasks.drive_extraction.enqueue_pending" in scheduled

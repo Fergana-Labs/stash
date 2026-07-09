@@ -317,39 +317,43 @@ async def extract_drive_text(
         from ...services.file_extraction import extract_text, is_pdf
 
         if mime == MIME_GOOGLE_DOC:
-            return await _export(client, file_id, "text/markdown")
-        if mime == MIME_GOOGLE_SHEET:
+            text = await _export(client, file_id, "text/markdown")
+        elif mime == MIME_GOOGLE_SHEET:
             # XLSX export keeps every visible sheet (Drive's CSV export drops
             # everything except the first).
             xlsx = await _export_bytes(client, file_id, _XLSX_MIME)
-            return extract_text(xlsx, _XLSX_MIME) or ""
-        if mime == MIME_GOOGLE_SLIDE:
-            return await _export(client, file_id, "text/plain")
+            text = extract_text(xlsx, _XLSX_MIME)
+        elif mime == MIME_GOOGLE_SLIDE:
+            text = await _export(client, file_id, "text/plain")
+        else:
+            size = int(info.get("size") or 0)
+            if size > max_bytes:
+                raise DriveFileTooLarge(
+                    f"{size // (1024 * 1024)} MB exceeds the {max_bytes // (1024 * 1024)} MB limit"
+                )
 
-        size = int(info.get("size") or 0)
-        if size > max_bytes:
-            raise DriveFileTooLarge(
-                f"{size // (1024 * 1024)} MB exceeds the {max_bytes // (1024 * 1024)} MB limit"
+            media = await client.get(
+                DRIVE_FILE_URL.format(file_id=file_id),
+                params={**ALL_DRIVES, "alt": "media"},
             )
+            media.raise_for_status()
+            content = media.content
+            if len(content) > max_bytes:
+                raise DriveFileTooLarge(
+                    f"{len(content) // (1024 * 1024)} MB exceeds the "
+                    f"{max_bytes // (1024 * 1024)} MB limit"
+                )
 
-        media = await client.get(
-            DRIVE_FILE_URL.format(file_id=file_id),
-            params={**ALL_DRIVES, "alt": "media"},
-        )
-        media.raise_for_status()
-        content = media.content
-        if len(content) > max_bytes:
-            raise DriveFileTooLarge(
-                f"{len(content) // (1024 * 1024)} MB exceeds the {max_bytes // (1024 * 1024)} MB limit"
-            )
+            # Defer to the file-extraction service so docx/pptx/xlsx/pdf/text/*
+            # share the same handler set as the direct-upload extraction queue.
+            text = extract_text(content, mime)
+            if text is None and is_pdf(mime) and ocr_scanned_pdfs:
+                from ...services.pdf_ocr import ocr_pdf
 
-        # Defer to the file-extraction service so docx/pptx/xlsx/pdf/text/*
-        # share the same handler set as the direct-upload extraction queue.
-        text = extract_text(content, mime)
-        if text is None and is_pdf(mime) and ocr_scanned_pdfs:
-            from ...services.pdf_ocr import ocr_pdf
+                text = await ocr_pdf(content) or None
 
-            text = await ocr_pdf(content) or None
+        # Every branch lands here, Google-native exports included — an export
+        # that came back empty must not be stored as a blank 'done' document.
         if not text:
             raise DriveFileUnsupported(f"no text could be extracted from {mime or 'unknown type'}")
         return text
@@ -358,10 +362,14 @@ async def extract_drive_text(
 async def _export(client: httpx.AsyncClient, file_id: str, mime: str) -> str:
     url = DRIVE_EXPORT_URL.format(file_id=file_id)
     resp = await client.get(url, params={**ALL_DRIVES, "mimeType": mime})
-    return resp.text if resp.status_code == 200 else ""
+    # A failed export must raise, not read as an empty document — the folder
+    # extraction path would otherwise store "" as a successfully extracted body.
+    resp.raise_for_status()
+    return resp.text
 
 
 async def _export_bytes(client: httpx.AsyncClient, file_id: str, mime: str) -> bytes:
     url = DRIVE_EXPORT_URL.format(file_id=file_id)
     resp = await client.get(url, params={**ALL_DRIVES, "mimeType": mime})
-    return resp.content if resp.status_code == 200 else b""
+    resp.raise_for_status()
+    return resp.content
