@@ -341,6 +341,9 @@ async def sync_source_now(
         object_type="source",
         object_id=source_id,
     )
+    # Mark syncing at enqueue (not just when the worker picks it up) so the UI
+    # sees the in-flight sync as soon as this request returns.
+    await source_service.mark_sync_started(source_id)
     celery.send_task(
         "backend.tasks.sources.sync_source",
         kwargs={"source_id": str(source_id)},
