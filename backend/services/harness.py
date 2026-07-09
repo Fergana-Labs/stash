@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from collections import deque
 from dataclasses import dataclass
 
 from ..database import get_pool
@@ -58,6 +59,10 @@ class TurnState:
         self.error: str | None = None
         self.resume_missing = False
         self.native_id: str | None = None  # captured for resume (codex/opencode)
+        # Last plain-text lines (CLI errors land here since Sprites merges
+        # stderr into stdout) — surfaced when the CLI dies without a parsed
+        # error, so "exited with code 1" carries the actual cause.
+        self.unparsed: deque[str] = deque(maxlen=5)
 
 
 @dataclass(frozen=True)
@@ -166,8 +171,10 @@ def map_line(harness: Harness, line: str, state: TurnState) -> list[dict]:
     try:
         obj = json.loads(line)
     except json.JSONDecodeError:
-        # Sprites merges stderr into stdout, so CLI warnings land here. Skip
-        # them, but still catch the resume-missing signal so we can reseed.
+        # Sprites merges stderr into stdout, so CLI warnings land here. Keep
+        # them for exit-code diagnostics, and still catch the resume-missing
+        # signal so we can reseed.
+        state.unparsed.append(line.strip())
         if RESUME_MISSING_RE.search(line):
             state.resume_missing = True
         return []

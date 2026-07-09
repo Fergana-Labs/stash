@@ -127,6 +127,11 @@ async def _run_harness(
 
     if exit_code != 0 and state.error is None and not state.resume_missing:
         state.error = f"agent exited with code {exit_code}"
+        # The cause is in the CLI's plain-text output (auth failures, missing
+        # binaries, crashes) — without it this error is undebuggable.
+        tail = _redact(" ".join(state.unparsed), provider_env)[-400:]
+        if tail:
+            state.error += f": {tail}"
     if state.error and harness_mod.RESUME_MISSING_RE.search(state.error):
         state.resume_missing = True
 
