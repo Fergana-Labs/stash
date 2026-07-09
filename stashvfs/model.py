@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from .client import StashClient, StashError
+from .client import MachineVfsClient, VfsClient, VfsClientError
 
 BytesLoader = Callable[[], bytes]
 
@@ -52,8 +52,12 @@ class VfsNode:
 
 
 class StashVfsModel:
-    def __init__(self, client: StashClient):
+    def __init__(self, client: VfsClient | MachineVfsClient, *, include_computer: bool):
+        # `include_computer` mounts the user's cloud computer at /computer, which
+        # requires a MachineVfsClient. The server-side VFS leaves it off: an API
+        # key issued to a partner must not reach through to a real machine's disk.
         self.client = client
+        self.include_computer = include_computer
         self.nodes: dict[str, VfsNode] = {}
         # Source-root path -> thunk that fetches that source's entries. A source's
         # contents are materialized only when something first descends into it, so
@@ -69,6 +73,14 @@ class StashVfsModel:
         self._truncated = {}
         self._add_dir("/")
         self._add_root()
+        computer_lines = (
+            [
+                "- `computer` is a live, read-only view of your cloud "
+                "computer's disk (browsing may wake it).",
+            ]
+            if self.include_computer
+            else []
+        )
         self._add_static_file(
             "/README.md",
             "\n".join(
@@ -82,8 +94,7 @@ class StashVfsModel:
                     "- Sessions, skills, and tables are read-only projections.",
                     "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
-                    "- `computer` is a live, read-only view of your cloud "
-                    "computer's disk (browsing may wake it).",
+                    *computer_lines,
                     "",
                     "Listings are alphabetical by name; they carry no time meaning.",
                     "For recency use `ls -lt` (sort by modified time), "
@@ -147,7 +158,8 @@ class StashVfsModel:
         self._add_sessions(overview.get("sessions", []))
         self._add_tables()
         self._add_sources()
-        self._add_computer()
+        if self.include_computer:
+            self._add_computer()
 
     def _add_computer(self) -> None:
         """The user's cloud computer, projected read-through at /computer.
@@ -162,7 +174,7 @@ class StashVfsModel:
     def _expand_computer_dir(self, dir_path: str, rel_path: str) -> None:
         try:
             entries = self.client.machine_fs_list(rel_path)
-        except StashError:
+        except VfsClientError:
             return
         for entry in entries:
             child_rel = f"{rel_path}/{entry['name']}" if rel_path else entry["name"]
@@ -349,7 +361,7 @@ class StashVfsModel:
         document bodies load lazily on read."""
         try:
             sources = self.client.list_sources()
-        except StashError:
+        except VfsClientError:
             return
         connected = [s for s in sources if not str(s.get("type", "")).startswith("native_")]
         if not connected:
@@ -381,7 +393,7 @@ class StashVfsModel:
         while True:
             try:
                 page, truncated = self.client.list_source_entries_page(handle, "", after=after)
-            except StashError:
+            except VfsClientError:
                 break
             entries.extend(page)
             if not truncated:

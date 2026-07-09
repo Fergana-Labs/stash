@@ -10,8 +10,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from .client import StashError
-from .mount import MountError, StashVfsModel
+from .client import VfsClientError
+from .model import MountError, StashVfsModel
 
 
 @dataclass
@@ -86,7 +86,7 @@ class SkillAppVfsShell:
             return self._stage_result(stderr=f"{name}: {message}\n", exit_code=1)
         except (MountError, ValueError) as e:
             return self._stage_result(stderr=f"{name}: {e}\n", exit_code=2)
-        except StashError as e:
+        except VfsClientError as e:
             return self._stage_result(stderr=f"{name}: {e}\n", exit_code=2)
 
     def _stage_result(
@@ -457,7 +457,7 @@ class SkillAppVfsShell:
             for file_path in file_paths:
                 try:
                     text = self._read_text(file_path)
-                except StashError as e:
+                except VfsClientError as e:
                     self._warn(f"{name}: {file_path}: {e.detail}")
                     continue
                 matches.append(
