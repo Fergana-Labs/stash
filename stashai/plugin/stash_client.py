@@ -30,9 +30,12 @@ DRAIN_BATCH = 50  # how many backlog rows to flush per successful push
 
 
 class StashError(Exception):
-    def __init__(self, status_code: int, detail: str):
+    def __init__(self, status_code: int, detail: str, from_api: bool = True):
         self.status_code = status_code
         self.detail = detail
+        # False when the response body was not JSON — nothing behind our API
+        # answers that way, so the request died at an edge proxy.
+        self.from_api = from_api
         super().__init__(f"[{status_code}] {detail}")
 
 
@@ -42,11 +45,18 @@ def _is_permanent_rejection(e: Exception) -> bool:
     Auth (401/403) heals with a re-signin and 408/429 heal on their own, so
     those stay queued. Every other 4xx (404 dead route, 422 bad body, ...) is
     rejected forever — retrying it just wedges the queue.
+
+    An edge 403 is not our API's auth 403: Render fronts us with a Cloudflare
+    WAF whose command-injection rules match agent shell text (`foo; curl -s
+    bar`), and no re-signin makes that body acceptable. Retrying it stalls the
+    drain on the first blocked entry and every good event behind it.
     """
     if not isinstance(e, StashError):
         return False
-    if e.status_code in (401, 403, 408, 429):
+    if e.status_code in (401, 408, 429):
         return False
+    if e.status_code == 403:
+        return not e.from_api
     return 400 <= e.status_code < 500
 
 
@@ -79,11 +89,12 @@ class StashClient:
         headers.update(self._headers())
         resp = self._http.request(method, path, headers=headers, **kwargs)
         if not resp.is_success:
-            detail = ""
             try:
-                detail = resp.json().get("detail", resp.text)
-            except Exception:
-                detail = resp.text
+                payload = resp.json()
+            except ValueError:
+                # An HTML error page — an edge proxy answered, not our API.
+                raise StashError(resp.status_code, resp.text, from_api=False) from None
+            detail = payload.get("detail", resp.text) if isinstance(payload, dict) else resp.text
             raise StashError(resp.status_code, detail)
         return resp
 

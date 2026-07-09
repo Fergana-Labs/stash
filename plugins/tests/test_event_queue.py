@@ -23,6 +23,8 @@ class _Recorder:
         self.fail_first_n = fail_first_n
         # path → HTTP status to answer with (instead of 200).
         self.status_by_path: dict[str, int] = {}
+        # Paths the edge blocks: an HTML page, so .json() raises like httpx does.
+        self.edge_blocked_paths: set[str] = set()
 
     def request(self, method, path, **kwargs):
         self.calls.append(
@@ -35,14 +37,17 @@ class _Recorder:
         )
         if len(self.calls) <= self.fail_first_n:
             raise RuntimeError("simulated network failure")
-        status = self.status_by_path.get(path, 200)
+        edge_blocked = path in self.edge_blocked_paths
+        status = 403 if edge_blocked else self.status_by_path.get(path, 200)
 
         class _Resp:
             status_code = status
             is_success = status < 400
-            text = "simulated error"
+            text = "<!DOCTYPE html><title>Blocked</title>" if edge_blocked else "simulated error"
 
             def json(self_inner):
+                if edge_blocked:
+                    raise ValueError("not json")
                 return {"ok": True} if status < 400 else {"detail": "simulated error"}
 
         return _Resp()
@@ -189,6 +194,46 @@ def test_drain_drops_corrupt_lines(tmp_path):
     client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
 
     assert _queue_lines(tmp_path) == []
+
+
+def test_drain_drops_edge_blocked_entries(tmp_path):
+    """Render fronts us with a Cloudflare WAF that 403s bodies containing agent
+    shell text (`foo; curl -s bar`). No re-signin makes that body acceptable, so
+    the entry must be dropped — otherwise the drain stalls on it and every good
+    event queued behind it never sends."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    blocked = {
+        "path": "/api/v1/me/sessions/blocked",
+        "body": {"content": "foo; curl -s bar"},
+        "ts": 1.0,
+    }
+    good = {"path": "/api/v1/me/sessions/events", "body": {"content": "e0"}, "ts": 2.0}
+    qp.write_text(json.dumps(blocked) + "\n" + json.dumps(good) + "\n")
+    client._http.edge_blocked_paths.add("/api/v1/me/sessions/blocked")
+
+    client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    # Blocked entry dropped; the event queued behind it still went out.
+    assert _queue_lines(tmp_path) == []
+    sent = [c["path"] for c in client._http.calls]
+    assert sent.count("/api/v1/me/sessions/events") == 2  # live push + drained good entry
+
+
+def test_drain_keeps_entries_on_api_403(tmp_path):
+    """A 403 our API actually issued (JSON body) is a permission denial and
+    heals with a re-signin — it must stay queued. Only edge 403s are dropped."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    entry = {"path": "/api/v1/me/sessions/events", "body": {"content": "e0"}, "ts": 1.0}
+    qp.write_text(json.dumps(entry) + "\n")
+    client._http.status_by_path["/api/v1/me/sessions/events"] = 403
+
+    with pytest.raises(Exception):
+        client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    queued = _queue_lines(tmp_path)
+    assert {q["body"]["content"] for q in queued} == {"e0", "live"}
 
 
 def test_no_data_dir_no_queue(tmp_path):
