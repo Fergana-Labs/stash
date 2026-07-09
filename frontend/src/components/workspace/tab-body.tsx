@@ -92,25 +92,28 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "page") return <PageClient pageId={tab.refId} />;
   if (tab.kind === "file") return <FileClient fileId={tab.refId} />;
   if (tab.kind === "table") return <TableClient tableId={tab.refId} embedded />;
-  if (tab.kind === "sessions-home")
-    // SessionsPage's root is `flex-1` and needs a bounded flex-column parent to
-    // scroll (the standalone route's <main> is one; the tab host isn't).
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <SessionsPage />
-      </div>
-    );
+  if (tab.kind === "sessions-home") return <SessionsPage />;
   if (tab.kind === "session") return <SessionClient sessionId={tab.refId} />;
   if (tab.kind === "skill") return <SkillFolderClient folderId={tab.refId} />;
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;
   if (tab.kind === "agent") return <AgentChatTab refId={tab.refId} />;
+  // Tool + agent-config bodies are plain document flows with no height or
+  // scroller of their own, so the tab gives them one (same as AgentChatTab
+  // does for the config side of a chat tab).
   if (tab.kind === "tool")
     return (
-      <div className="mx-auto w-full max-w-3xl px-6 py-6">
-        <IntegrationsSettings embedded />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-6 py-6">
+          <IntegrationsSettings embedded />
+        </div>
       </div>
     );
-  if (tab.kind === "agent-config") return <AgentConfigPanel agentId={tab.refId} />;
+  if (tab.kind === "agent-config")
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <AgentConfigPanel agentId={tab.refId} />
+      </div>
+    );
   if (tab.kind === "machine-file") return <MachineFileView path={tab.refId} />;
   if (tab.kind === "terminal")
     return (

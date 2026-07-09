@@ -44,7 +44,11 @@ logger = logging.getLogger(__name__)
 me_router = APIRouter(prefix="/api/v1/me/files", tags=["files"])
 canonical_router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+# Render's proxy rejects request bodies around 100 MB, so this is the
+# practical ceiling for uploads that pass through our servers. Keep in
+# sync with the Next proxy limit (frontend/next.config.ts) and the
+# client guard (frontend/src/lib/api.ts).
+MAX_FILE_SIZE = 100 * 1024 * 1024
 
 # File rows are always read joined to their uploader so responses can show
 # attribution ("Uploaded by Sam") without a second round trip.
@@ -181,7 +185,7 @@ async def upload_my_file(
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
 
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
@@ -345,10 +349,12 @@ async def list_my_files(
 @canonical_router.get("/{file_id}", response_model=FileResponse)
 async def get_file_by_id(
     file_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    """Any failure is a 404: an unscoped lookup must not confirm that a
-    file the caller can't read exists."""
+    """Optional auth: a file with a public link is readable while logged out. Any
+    failure is a 404: an unscoped lookup must not confirm that a file the caller
+    can't read exists."""
+    viewer_id = current_user["id"] if current_user else None
     pool = get_pool()
     row = await pool.fetchrow(
         f"SELECT {_FILE_COLS} {_FILE_FROM} WHERE f.id = $1 AND f.deleted_at IS NULL",
@@ -356,7 +362,7 @@ async def get_file_by_id(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, row["owner_user_id"], current_user["id"]):
+    if not await _can_access_file(file_id, row["owner_user_id"], viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
@@ -381,9 +387,9 @@ async def download_my_file(
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Permanent URL for file links embedded in wiki pages. Resolves the file's
-    real owner so recipients of a shared page can load its embedded images."""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    real owner so recipients of a shared page — or a public link, logged out —
+    can load its embedded images."""
+    viewer_id = current_user["id"] if current_user else None
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT owner_user_id, name, content_type, storage_key FROM files "
@@ -392,7 +398,7 @@ async def download_my_file(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, row["owner_user_id"], current_user["id"]):
+    if not await _can_access_file(file_id, row["owner_user_id"], viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
     content_type = row["content_type"] or "application/octet-stream"

@@ -1351,3 +1351,168 @@ async def test_session_folder_owner_reads_sessions_they_do_not_own(pool):
         boolean = await permission_service.check_access("session", session_row, viewer)
         predicate = await _predicate_says(pool, "session", session_row, viewer, "read")
         assert boolean == predicate
+
+
+# --- Per-object public link ("anyone with the link", read < comment < write) ---
+
+
+async def _set_public(pool, table, object_id, permission):
+    await pool.execute(
+        f"UPDATE {table} SET public_permission = $1 WHERE id = $2", permission, object_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_public_read_link_grants_stranger_and_anonymous(pool):
+    """A read link must let anyone — logged in or not — read but never write."""
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    page = await _make_page(pool, owner, owner)
+    await _set_public(pool, "pages", page, "read")
+
+    assert await permission_service.check_access("page", page, stranger)
+    assert await permission_service.check_access("page", page, None)
+    assert not await permission_service.check_access("page", page, stranger, require="write")
+    assert not await permission_service.check_access("page", page, None, require="comment")
+
+
+@pytest.mark.asyncio
+async def test_public_comment_link_grants_comment_not_write(pool):
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    page = await _make_page(pool, owner, owner)
+    await _set_public(pool, "pages", page, "comment")
+
+    assert await permission_service.check_access("page", page, stranger, require="read")
+    assert await permission_service.check_access("page", page, stranger, require="comment")
+    assert not await permission_service.check_access("page", page, stranger, require="write")
+
+
+@pytest.mark.asyncio
+async def test_public_write_link_grants_every_level(pool):
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    page = await _make_page(pool, owner, owner)
+    await _set_public(pool, "pages", page, "write")
+
+    for require in ("read", "comment", "write"):
+        assert await permission_service.check_access("page", page, stranger, require=require)
+
+
+@pytest.mark.asyncio
+async def test_public_folder_cascades_to_contents(pool):
+    """A public folder grants its level to descendant pages/files/tables — the
+    same cascade a folder share gets."""
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    folder = await _make_folder(pool, owner, owner)
+    page = await _make_page(pool, owner, owner, folder_id=folder)
+    file_id = await _make_file(pool, owner, owner, folder_id=folder)
+    await _set_public(pool, "folders", folder, "write")
+
+    assert await permission_service.check_access("page", page, stranger, require="write")
+    assert await permission_service.check_access("file", file_id, None, require="read")
+    assert await permission_service.check_access("folder", folder, None, require="read")
+
+
+@pytest.mark.asyncio
+async def test_public_folder_read_does_not_grant_write_to_contents(pool):
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    folder = await _make_folder(pool, owner, owner)
+    page = await _make_page(pool, owner, owner, folder_id=folder)
+    await _set_public(pool, "folders", folder, "read")
+
+    assert await permission_service.check_access("page", page, stranger, require="read")
+    assert not await permission_service.check_access("page", page, stranger, require="write")
+
+
+@pytest.mark.asyncio
+async def test_no_public_link_stays_private(pool):
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    page = await _make_page(pool, owner, owner)  # public_permission defaults to 'none'
+    assert not await permission_service.check_access("page", page, stranger)
+    assert not await permission_service.check_access("page", page, None)
+
+
+@pytest.mark.asyncio
+async def test_public_link_visibility_and_predicate_agree(pool):
+    owner = await _make_user(pool)
+    stranger = await _make_user(pool)
+    page = await _make_page(pool, owner, owner)
+    assert await permission_service.get_visibility("page", page) == "private"
+
+    await _set_public(pool, "pages", page, "comment")
+    assert await permission_service.get_visibility("page", page) == "public"
+    # check_access and the SQL predicate answer identically for every viewer/level.
+    for viewer in (owner, stranger, None):
+        for require in ("read", "comment", "write"):
+            boolean = await permission_service.check_access("page", page, viewer, require=require)
+            predicate = await _predicate_says(pool, "page", page, viewer, require)
+            assert boolean == predicate
+
+
+@pytest.mark.asyncio
+async def test_general_access_endpoint_makes_page_anonymously_readable(client: AsyncClient, pool):
+    """End-to-end: owner sets 'anyone with the link', then a logged-out client
+    (no Authorization header) reads the page through the canonical route."""
+    owner_key, _ = await _register(client)
+    page_id = (
+        await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": "Schematic", "content": "public diagram"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    page_url = f"/api/v1/pages/{page_id}"
+
+    # Restricted by default: an anonymous read (no auth header) is a 404.
+    assert (await client.get(page_url)).status_code == 404
+
+    grant = await client.patch(
+        "/api/v1/share/general-access",
+        json={"object_type": "page", "object_id": page_id, "public_permission": "read"},
+        headers=_auth(owner_key),
+    )
+    assert grant.status_code == 200
+    assert grant.json()["public_permission"] == "read"
+
+    # Now anyone with the link — logged out — can read it.
+    anon = await client.get(page_url)
+    assert anon.status_code == 200
+    assert anon.json()["name"] == "Schematic"
+
+    # The share list reports the current general-access level to the owner UI.
+    shares = await client.get(
+        "/api/v1/share",
+        params={"object_type": "page", "object_id": page_id},
+        headers=_auth(owner_key),
+    )
+    assert shares.json()["general_access"] == "read"
+
+
+@pytest.mark.asyncio
+async def test_general_access_owner_only(client: AsyncClient, pool):
+    """Only the scope owner may change publicity; a stranger gets a 404 (the
+    same not-found guard the share endpoints use)."""
+    owner_key, _ = await _register(client)
+    page_id = (
+        await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": "Plan", "content": "roadmap"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    stranger_key, _ = await _register(client)
+
+    denied = await client.patch(
+        "/api/v1/share/general-access",
+        json={"object_type": "page", "object_id": page_id, "public_permission": "write"},
+        headers=_auth(stranger_key),
+    )
+    assert denied.status_code == 404
+    # And the page is still private to the stranger.
+    assert (
+        await client.get(f"/api/v1/pages/{page_id}", headers=_auth(stranger_key))
+    ).status_code == 404

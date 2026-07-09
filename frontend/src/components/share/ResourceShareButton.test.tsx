@@ -3,15 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ResourceShareButton from "./ResourceShareButton";
 import {
+  getGeneralAccess,
   listObjectShares,
   shareObjectByEmail,
   unshareObject,
+  updateGeneralAccess,
 } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   listObjectShares: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unshareObject: vi.fn(),
+  getGeneralAccess: vi.fn(),
+  updateGeneralAccess: vi.fn(),
 }));
 
 const currentUser = {
@@ -43,6 +47,10 @@ describe("ResourceShareButton", () => {
     ]);
     vi.mocked(shareObjectByEmail).mockResolvedValue(undefined);
     vi.mocked(unshareObject).mockResolvedValue(undefined);
+    vi.mocked(getGeneralAccess).mockResolvedValue("none");
+    vi.mocked(updateGeneralAccess).mockImplementation(
+      async (_type, _id, permission) => permission,
+    );
   });
 
   afterEach(() => {

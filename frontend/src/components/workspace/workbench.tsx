@@ -173,7 +173,11 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
               </div>
             );
           return (
-            <div key={active.id} className="h-full">
+            // A bounded flex column, so a tab body whose root is
+            // `flex-1 overflow-y-auto` actually gets a height to scroll
+            // within — as a plain block, those bodies grew past the host
+            // and were clipped by its overflow-hidden with no scrollbar.
+            <div key={active.id} className="flex h-full min-h-0 flex-col">
               <ShellChromeScope scopeId={active.id}>
                 <TabBody tab={active} />
               </ShellChromeScope>

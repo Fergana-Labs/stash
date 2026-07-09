@@ -114,6 +114,10 @@ def test_curator_prompt_embeds_folder_and_window():
     # (a bootstrap run once ignored a fresh upload entirely).
     assert "content, not context" in boot
     assert "never a silent drop" in boot
+    # Links must be real markdown routes — double-bracket wiki syntax renders
+    # as plain text in the product, so the prompt must never ask for it.
+    assert "](/p/" in boot
+    assert "[[" not in boot
 
 
 async def _make_due(pool, agent_id: str, watermark: datetime) -> None:
@@ -247,6 +251,7 @@ async def test_failed_run_records_error_and_refunds_credit(
     async def boom(agent, stamp):
         raise RuntimeError("sprite exploded")
 
+    real_run_scheduled = sprite_agent_service.run_scheduled
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", boom)
     await _run_due()
 
@@ -257,8 +262,11 @@ async def test_failed_run_records_error_and_refunds_credit(
     assert "sprite exploded" in row["last_run_error"]
     assert row["month_run_count"] == 0  # consumed by mark_run, refunded on failure
 
-    # The next successful run clears the error.
-    monkeypatch.undo()
+    # The next successful run clears the error. Re-patch the real function
+    # rather than monkeypatch.undo() — the fixture is shared with sprite_exec,
+    # so undo() would also drop the fake sprite exec and this "successful run"
+    # would exec a real `claude` binary (passes on a dev machine, dies in CI).
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", real_run_scheduled)
     await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
     ran = await _run_due()
     assert ran == 1
@@ -298,6 +306,13 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     )
     assert sprite_exec.calls  # the run actually woke the sprite
     assert row["curated_through"] >= before - timedelta(seconds=5)
+
+    # The run's events carry the curator's own name, so its sessions are
+    # attributable in the Agents/Sessions lists (not generic "Stash Agent").
+    names = await _db_pool.fetch(
+        "SELECT DISTINCT agent_name FROM history_events WHERE session_id LIKE 'agent-curate-%'"
+    )
+    assert [n["agent_name"] for n in names] == ["Memory curator"]
 
 
 @pytest.mark.asyncio

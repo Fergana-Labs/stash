@@ -6,8 +6,17 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from cryptography.fernet import Fernet
 
+from backend.config import settings
 from backend.services import agent_auth, agent_oauth
+
+
+@pytest.fixture(autouse=True)
+def _encryption_key(monkeypatch):
+    """OAuth state is Fernet-encrypted; CI has no INTEGRATIONS_ENCRYPTION_KEY
+    in its environment, so give the suite its own (same as test_billing)."""
+    monkeypatch.setattr(settings, "INTEGRATIONS_ENCRYPTION_KEY", Fernet.generate_key().decode())
 
 
 def test_claude_authorize_url_shape():

@@ -10,9 +10,11 @@ import {
 
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
+  getGeneralAccess,
   listObjectShares,
   shareObjectByEmail,
   unshareObject,
+  updateGeneralAccess,
   type GeneralPermission,
   type ObjectShare,
   type SharedObjectType,
@@ -26,6 +28,17 @@ const PERMISSIONS: { value: SharePermission; label: string }[] = [
   { value: "comment", label: "Can comment" },
   { value: "write", label: "Can edit" },
 ];
+
+// "Anyone with the link" role labels, mirroring Google Docs.
+const LINK_ROLES: { value: SharePermission; label: string }[] = [
+  { value: "read", label: "Viewer" },
+  { value: "comment", label: "Commenter" },
+  { value: "write", label: "Editor" },
+];
+
+// Object types that carry a per-object public link. Sessions and skills manage
+// visibility through their own flows, so the dropdown is theirs-only.
+const GENERAL_ACCESS_TYPES: SharedObjectType[] = ["page", "file", "folder", "table"];
 
 export default function ResourceShareButton({
   objectType,
@@ -47,7 +60,11 @@ export default function ResourceShareButton({
   const [busy, setBusy] = useState(false);
   const [loadingShares, setLoadingShares] = useState(false);
   const [message, setMessage] = useState("");
+  const [generalAccess, setGeneralAccess] = useState<GeneralPermission>("none");
+  const [savingAccess, setSavingAccess] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const supportsGeneralAccess = GENERAL_ACCESS_TYPES.includes(objectType);
 
   useEscapeKey(open, () => setOpen(false));
 
@@ -61,13 +78,35 @@ export default function ResourceShareButton({
     setLoadingShares(true);
     setMessage("");
     try {
-      setShares(await listObjectShares(objectType, objectId));
+      const [shareRows, access] = await Promise.all([
+        listObjectShares(objectType, objectId),
+        supportsGeneralAccess
+          ? getGeneralAccess(objectType, objectId)
+          : Promise.resolve<GeneralPermission>("none"),
+      ]);
+      setShares(shareRows);
+      setGeneralAccess(access);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Could not load access.");
     } finally {
       setLoadingShares(false);
     }
-  }, [objectId, objectType]);
+  }, [objectId, objectType, supportsGeneralAccess]);
+
+  async function changeGeneralAccess(next: GeneralPermission) {
+    const previous = generalAccess;
+    setGeneralAccess(next);
+    setSavingAccess(true);
+    setMessage("");
+    try {
+      setGeneralAccess(await updateGeneralAccess(objectType, objectId, next));
+    } catch (e) {
+      setGeneralAccess(previous);
+      setMessage(e instanceof Error ? e.message : "Could not update access.");
+    } finally {
+      setSavingAccess(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -285,26 +324,87 @@ export default function ResourceShareButton({
             </h3>
             <div className="mt-2 flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base text-muted-foreground ring-1 ring-border">
-                <svg
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="5" y="11" width="14" height="10" rx="2" />
-                  <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                </svg>
+                {generalAccess === "none" ? (
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <rect x="5" y="11" width="14" height="10" rx="2" />
+                    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                  </svg>
+                ) : (
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                  </svg>
+                )}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium text-foreground">
-                  Restricted
-                </span>
-                <span className="block truncate text-[12px] text-muted-foreground">
-                  Only people with access can open this link
-                </span>
+                {supportsGeneralAccess ? (
+                  <>
+                    <select
+                      aria-label="General access"
+                      value={generalAccess === "none" ? "none" : "link"}
+                      disabled={savingAccess}
+                      onChange={(e) =>
+                        void changeGeneralAccess(
+                          e.target.value === "none"
+                            ? "none"
+                            : generalAccess === "none"
+                              ? "read"
+                              : generalAccess,
+                        )
+                      }
+                      className="-ml-1 block cursor-pointer rounded border-none bg-transparent px-1 py-0.5 text-[13px] font-medium text-foreground hover:bg-raised focus:outline-none disabled:opacity-60"
+                    >
+                      <option value="none">Restricted</option>
+                      <option value="link">Anyone with the link</option>
+                    </select>
+                    <span className="block truncate px-1 text-[12px] text-muted-foreground">
+                      {generalAccess === "none"
+                        ? "Only people with access can open this link"
+                        : "Anyone on the internet with the link can access"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="block text-[13px] font-medium text-foreground">
+                      Restricted
+                    </span>
+                    <span className="block truncate text-[12px] text-muted-foreground">
+                      Only people with access can open this link
+                    </span>
+                  </>
+                )}
               </span>
+              {supportsGeneralAccess && generalAccess !== "none" && (
+                <select
+                  aria-label="Link role"
+                  value={generalAccess}
+                  disabled={savingAccess}
+                  onChange={(e) =>
+                    void changeGeneralAccess(e.target.value as GeneralPermission)
+                  }
+                  className="shrink-0 cursor-pointer rounded border border-border bg-base px-2 py-1 text-[12px] font-medium text-foreground hover:bg-raised focus:outline-none disabled:opacity-60"
+                >
+                  {LINK_ROLES.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </section>
 

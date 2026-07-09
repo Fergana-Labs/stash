@@ -22,6 +22,11 @@ from . import permission_service, security_audit_service, user_scope_service
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "source"}
 _PERMISSIONS = {"read", "comment", "write"}
 
+# Objects that carry a per-object public link ("anyone with the link"). Session
+# folders keep their own public-link flow; these are the content types.
+_GENERAL_ACCESS_TABLE = {"page": "pages", "file": "files", "folder": "folders", "table": "tables"}
+_PUBLIC_PERMISSIONS = {"none", "read", "comment", "write"}
+
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
     """The caller must be an owner of the object's scope."""
@@ -316,6 +321,46 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         for inv in invites
     )
     return shares
+
+
+async def get_general_access(object_type: str, object_id: UUID, user_id: UUID) -> str:
+    """The object's current public link level ('none' when only owner/shares can
+    reach it). Owner-only, so it sits behind the same gate as the share list."""
+    if object_type not in _GENERAL_ACCESS_TABLE:
+        return "none"
+    await _require_owner(object_type, object_id, user_id)
+    table = _GENERAL_ACCESS_TABLE[object_type]
+    value = await get_pool().fetchval(
+        f"SELECT public_permission FROM {table} WHERE id = $1", object_id
+    )
+    return value or "none"
+
+
+async def set_general_access(
+    *, object_type: str, object_id: UUID, public_permission: str, user_id: UUID
+) -> str:
+    """Set the "anyone with the link" level for a page/file/folder/table. Only the
+    scope owner may change publicity, mirroring session-folder general access."""
+    if object_type not in _GENERAL_ACCESS_TABLE:
+        raise HTTPException(status_code=400, detail=f"{object_type} has no general access link")
+    if public_permission not in _PUBLIC_PERMISSIONS:
+        raise HTTPException(status_code=400, detail="invalid public_permission")
+    owner_user_id = await _require_owner(object_type, object_id, user_id)
+    table = _GENERAL_ACCESS_TABLE[object_type]
+    await get_pool().execute(
+        f"UPDATE {table} SET public_permission = $1 WHERE id = $2",
+        public_permission,
+        object_id,
+    )
+    await _record_share_event(
+        action="general_access.set",
+        actor_user_id=user_id,
+        owner_user_id=owner_user_id,
+        object_type=object_type,
+        object_id=object_id,
+        metadata={"public_permission": public_permission},
+    )
+    return public_permission
 
 
 async def list_shared_with_user(user_id: UUID) -> list[dict]:

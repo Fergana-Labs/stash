@@ -27,9 +27,15 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
   const isSkillItemRoute = searchParams.has("skill");
+  // Page and file viewers may hold content with an "anyone with the link"
+  // public grant, so anonymous visitors must reach the viewer instead of being
+  // bounced to /login; the viewer's own read (getPage/getFile) is the gate and
+  // shows an error if the link isn't actually public.
   const isPublicSkillRoute =
     pathname.startsWith("/skills/") ||
     pathname.startsWith("/session-folders/") ||
+    pathname.startsWith("/p/") ||
+    pathname.startsWith("/f/") ||
     isSkillItemRoute;
 
   useEffect(() => {

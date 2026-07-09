@@ -872,10 +872,18 @@ type UploadApiResponse = {
   created_by?: string;
 };
 
+// Matches MAX_FILE_SIZE in backend/routers/files.py and the Next proxy
+// limit in next.config.ts. Rejecting here gives an instant, clear error
+// instead of uploading for many seconds and failing downstream.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 async function uploadAny(
   file: File,
   folderId?: string | null
 ): Promise<UploadApiResponse> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`${file.name} is too large (max 100 MB)`);
+  }
   const token = await getAuthToken();
   const formData = new FormData();
   formData.append("file", file);
@@ -1835,6 +1843,37 @@ export async function listObjectShares(
   return res.shares;
 }
 
+// The object's current "anyone with the link" level ('none' when it's only
+// reachable by the owner and named shares).
+export async function getGeneralAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+): Promise<GeneralPermission> {
+  const res = await apiFetch<{ general_access: GeneralPermission }>(
+    `/api/v1/share?object_type=${objectType}&object_id=${objectId}`,
+  );
+  return res.general_access;
+}
+
+export async function updateGeneralAccess(
+  objectType: SharedObjectType,
+  objectId: string,
+  publicPermission: GeneralPermission,
+): Promise<GeneralPermission> {
+  const res = await apiFetch<{ public_permission: GeneralPermission }>(
+    `/api/v1/share/general-access`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        object_type: objectType,
+        object_id: objectId,
+        public_permission: publicPermission,
+      }),
+    },
+  );
+  return res.public_permission;
+}
+
 export async function shareObjectByEmail(
   objectType: SharedObjectType,
   objectId: string,
@@ -1997,11 +2036,21 @@ export type Agent = {
   is_curator: boolean;
   slack_bound: boolean;
   telegram_bound: boolean;
+  last_run_at: string | null;
+  last_run_error: string | null;
+  curated_through: string | null;
 };
 
 export async function listAgents(): Promise<Agent[]> {
   const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
   return data.agents;
+}
+
+/** Enqueue a curation pass on the worker — the same path the daily schedule
+ *  and the CLI use, so the run survives the browser. 409 = nothing changed
+ *  since the watermark. */
+export async function recomputeMemory(): Promise<{ status: string; agent_id: string }> {
+  return apiFetch("/api/v1/me/memory/recompute", { method: "POST" });
 }
 
 export async function createAgent(fields: Partial<Agent>): Promise<Agent> {

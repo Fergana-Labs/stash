@@ -130,7 +130,9 @@ function DialogTitle({
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-heading text-base leading-none font-medium",
+        // Not `text-base`: this theme defines --color-base (white), which makes
+        // `text-base` compile to `color: white` instead of a font size.
+        "font-heading text-[16px] leading-none font-medium",
         className
       )}
       {...props}

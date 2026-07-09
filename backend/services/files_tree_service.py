@@ -41,36 +41,106 @@ def detect_page_kind(filename: str, content_type: str) -> str | None:
 # javascript: + data:text/html URLs on write so an agent- or attacker-authored
 # page can't run hostile JS for a public viewer. The trusted resize/slide
 # bootstrap is injected at render time (not stored), so this never touches it.
-_SANITIZE_TAGS = nh3.ALLOWED_TAGS | {
-    "section",
-    "style",
-    "div",
-    "span",
-    "header",
-    "footer",
-    "main",
-    "article",
-    "aside",
-    "nav",
-    "figure",
-    "figcaption",
-    "video",
-    "audio",
-    "source",
-    "picture",
-    "details",
-    "summary",
-    "mark",
+# Inline SVG diagrams. html5ever parses these in the SVG namespace, so it
+# preserves the camelCase of foreign attributes (viewBox, refX) — the allowlist
+# below must match that casing, not a lowercased form.
+_SVG_TAGS = {
     "svg",
-    "path",
     "g",
+    "defs",
+    "marker",
+    "path",
     "circle",
+    "ellipse",
     "rect",
     "line",
     "polyline",
     "polygon",
     "text",
+    "tspan",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "clipPath",
 }
+_SVG_ATTRS = {
+    "viewBox",
+    "xmlns",
+    "preserveAspectRatio",
+    "transform",
+    "d",
+    "points",
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "dx",
+    "dy",
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "stroke",
+    "stroke-width",
+    "stroke-dasharray",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-opacity",
+    "opacity",
+    "text-anchor",
+    "dominant-baseline",
+    "font-size",
+    "font-family",
+    "font-weight",
+    "letter-spacing",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    "markerWidth",
+    "markerHeight",
+    "markerUnits",
+    "refX",
+    "refY",
+    "orient",
+    "gradientUnits",
+    "gradientTransform",
+    "offset",
+    "stop-color",
+    "stop-opacity",
+    "clip-path",
+    "clip-rule",
+}
+_SANITIZE_TAGS = (
+    nh3.ALLOWED_TAGS
+    | {
+        "section",
+        "style",
+        "div",
+        "span",
+        "header",
+        "footer",
+        "main",
+        "article",
+        "aside",
+        "nav",
+        "figure",
+        "figcaption",
+        "video",
+        "audio",
+        "source",
+        "picture",
+        "details",
+        "summary",
+        "mark",
+    }
+    | _SVG_TAGS
+)
 _SANITIZE_ATTRS = {
     "*": {"class", "id", "style", "title", "lang", "dir", "role", "width", "height"},
     "span": {"data-comment-id"},  # inline comment anchors depend on this
@@ -82,6 +152,7 @@ _SANITIZE_ATTRS = {
     "td": {"colspan", "rowspan"},
     "th": {"colspan", "rowspan", "scope"},
     "section": {"data-slide"},
+    **{tag: _SVG_ATTRS for tag in _SVG_TAGS},
 }
 _SANITIZE_URL_SCHEMES = {"http", "https", "mailto", "tel", "data"}
 
@@ -444,14 +515,20 @@ async def create_page(
     return page
 
 
-async def get_page_by_id(page_id: UUID, user_id: UUID) -> dict | None:
-    """Access semantics match get_page; the scope comes from the row."""
+async def get_page_by_id(page_id: UUID, user_id: UUID | None) -> dict | None:
+    """Canonical cross-scope read: the scope comes from the row. Enforces
+    check_access for the viewer (user_id None = anonymous), so a page is returned
+    only to its owner, someone it's shared with, or via a public link/skill —
+    this is the public read path, so it can't lean on get_page's trusted-None
+    bypass, which exists for in-scope agent callers."""
     pool = get_pool()
     owner_user_id = await pool.fetchval(
         f"SELECT owner_user_id FROM pages WHERE id = $1 AND {_PAGE_FILTER}",
         page_id,
     )
     if owner_user_id is None:
+        return None
+    if not await permission_service.check_access("page", page_id, user_id, owner_user_id):
         return None
     return await get_page(page_id, owner_user_id, user_id)
 
