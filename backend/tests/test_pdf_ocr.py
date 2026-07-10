@@ -85,6 +85,10 @@ async def test_the_text_layer_rides_along_as_grounding(monkeypatch):
     )
     assert "288241R\tOR288241\t106113" in prompt
     assert "<text_layer>" in prompt
+    # A page can render a token cut off (page edge, cropped scan) while the
+    # layer holds the whole string; the instruction to recover it must ride
+    # along, or clipped part numbers come back as fragments.
+    assert "complete string" in prompt
 
 
 @pytest.mark.asyncio
