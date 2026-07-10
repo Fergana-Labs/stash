@@ -49,7 +49,10 @@ _PROMPT = (
 _LAYER_PROMPT = (
     "\n\nThe document's embedded text layer, extracted by machine, follows. Its characters "
     "are exact but its layout is unreliable. Trust it for characters - part numbers, digits, "
-    "codes - and trust the page images for structure, column grouping, and reading order.\n\n"
+    "codes - and trust the page images for structure, column grouping, and reading order. "
+    "Where the page renders a token visibly cut off - at a page edge, a clipped column, a "
+    "cropped scan - the text layer usually holds the whole string: output the complete string "
+    "from the text layer, never the truncated fragment you see in the image.\n\n"
     "<text_layer>\n{layer}\n</text_layer>"
 )
 
