@@ -164,6 +164,15 @@ async def get_memory_folder(
     return FolderResponse(**folder)
 
 
+@router.get("/memory-graph")
+async def get_memory_graph(
+    current_user: dict = Depends(get_current_user),
+):
+    """The Memory wiki as a graph — pages in the Memory subtree plus the
+    links between them. Drives the dashboard's context-graph visual."""
+    return await files_tree_service.memory_wiki_graph(current_user["id"])
+
+
 @router.get("/changes")
 async def get_changes(
     since: str | None = None,

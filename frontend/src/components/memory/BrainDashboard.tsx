@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -10,30 +9,27 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import WorkspaceShell from "@/components/workspace/workspace-shell";
-import {
-  ActivitySkeleton,
-  BasicPageSkeleton,
-  SkeletonBlock,
-} from "../../components/SkeletonStates";
+import { ActivitySkeleton, SkeletonBlock } from "@/components/SkeletonStates";
 import {
   FileIcon,
   PageIcon,
   SessionsIcon,
   SkillIcon,
-} from "../../components/SkillIcons";
-import ContributorActivityTimeline from "../../components/viz/ContributorActivityTimeline";
-import EmbeddingSpaceExplorer from "../../components/viz/EmbeddingSpaceExplorer";
-import { useAuth } from "../../hooks/useAuth";
+} from "@/components/SkillIcons";
+import ContributorActivityTimeline from "@/components/viz/ContributorActivityTimeline";
+import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
+import WikiGraph from "@/components/memory/WikiGraph";
 import {
   getActivityTimeline,
   getEmbeddingProjection,
+  getMemoryGraph,
   getMeOverview,
   listActivity,
   type ActivityEvent,
   type MeOverview,
-} from "../../lib/api";
-import type { ActivityTimeline, EmbeddingProjection } from "../../lib/types";
+  type WikiGraph as WikiGraphData,
+} from "@/lib/api";
+import type { ActivityTimeline, EmbeddingProjection } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
@@ -65,9 +61,10 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export default function ActivityPage() {
-  const router = useRouter();
-  const { user, loading, logout } = useAuth();
+/** The brain dashboard — knowledge map, vitals, commit timeline, and the
+ *  recent-learnings feed. Renders as the Memory section's landing content;
+ *  the shell guarantees a signed-in user. Scrolls itself (h-full). */
+export default function BrainDashboard() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
   const [hasMore, setHasMore] = useState(false);
@@ -76,12 +73,12 @@ export default function ActivityPage() {
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [overview, setOverview] = useState<MeOverview | null>(null);
+  const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!user) return;
     let cancelled = false;
     listActivity({ limit: PAGE_SIZE })
       .then((feed) => {
@@ -96,7 +93,7 @@ export default function ActivityPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || events.length === 0) return;
@@ -129,29 +126,26 @@ export default function ActivityPage() {
   // everything shared with them (the /me/* aggregates, called without a
   // scope, include readable shared rows).
   useEffect(() => {
-    if (!user) return;
     let cancelled = false;
     setInsightsLoaded(false);
     Promise.allSettled([
       getActivityTimeline(30, "day"),
       getEmbeddingProjection(500),
       getMeOverview(),
+      getMemoryGraph(),
     ])
-      .then(([t, p, o]) => {
+      .then(([t, p, o, g]) => {
         if (cancelled) return;
         if (t.status === "fulfilled") setTimeline(t.value);
         if (p.status === "fulfilled") setProjection(p.value);
         if (o.status === "fulfilled") setOverview(o.value);
+        if (g.status === "fulfilled") setGraph(g.value);
         setInsightsLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [user]);
-
-  useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+  }, []);
 
   const recent24h = useMemo(() => {
     const since = nowMs - 24 * 60 * 60 * 1000;
@@ -160,19 +154,17 @@ export default function ActivityPage() {
 
   const knowledgePoints = projection?.stats.total_embeddings ?? 0;
 
-  if (loading) return <BasicPageSkeleton />;
-  if (!user) return null;
   if (fetching) {
     return (
-      <WorkspaceShell user={user} onLogout={logout}>
+      <div className="h-full min-h-0 overflow-y-auto">
         <ActivitySkeleton />
-      </WorkspaceShell>
+      </div>
     );
   }
 
   return (
-    <WorkspaceShell user={user} onLogout={logout}>
-      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="mx-auto max-w-[1360px] px-8 pb-10 pt-7">
         {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
           Your brain
@@ -181,71 +173,104 @@ export default function ActivityPage() {
           {`${knowledgePoints.toLocaleString()} things learned across your own and shared knowledge · ${recent24h} new in the last 24 hours.`}
         </p>
 
-        {/* Brain map — the knowledge the brain holds, laid out in space. The
-            centerpiece visual. (Decorative.) */}
-        <VizCard label="Knowledge map" className="mt-6">
-          {!insightsLoaded ? (
-            <SkeletonBlock className="h-64 w-full" />
-          ) : projection && projection.points.length > 0 ? (
-            <EmbeddingSpaceExplorer data={projection} />
-          ) : (
-            <div className="px-2 py-12 text-center text-[12.5px] text-muted-foreground">
-              No embeddings indexed yet. Pages, table rows, and session events get
-              embedded as they&apos;re added.
-            </div>
-          )}
-        </VizCard>
+        {/* Dashboard grid: wiki graph + map/vitals/timeline on the left,
+            learnings feed as its own scrolling panel on the right. */}
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
+            {/* Wiki graph — the curated context graph of linked pages, obsidian
+                style. The centerpiece: click a node to open its page. */}
+            <VizCard
+              label={
+                graph
+                  ? `Memory wiki · ${graph.nodes.length} pages · ${graph.edges.length} links`
+                  : "Memory wiki"
+              }
+            >
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-[360px] w-full" />
+              ) : graph && graph.nodes.length > 0 ? (
+                <WikiGraph data={graph} />
+              ) : (
+                <div className="flex h-[360px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
+                  No wiki pages yet. Hit &quot;Curate wiki&quot; in the explorer and the
+                  agent will compile your history into a context graph of linked pages.
+                </div>
+              )}
+            </VizCard>
 
-        {/* Vitals — the brain's current size and pulse. */}
-        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
-          <VitalCard label="Knowledge points" value={knowledgePoints} tint="var(--color-brand-600)" />
-          <VitalCard label="Pages" value={overview?.pages ?? 0} tint="var(--color-human)" />
-          <VitalCard label="Files" value={overview?.files ?? 0} tint="#16A34A" />
-          <VitalCard label="Sessions" value={overview?.sessions ?? 0} tint="var(--color-agent)" />
-          <VitalCard label="Learned today" value={recent24h} tint="var(--text-muted)" />
-        </div>
-
-        {/* Human / agent commits over time. (Decorative.) */}
-        <VizCard label="Human / agent commits — last 30 days" className="mt-5" scroll>
-          {!insightsLoaded ? (
-            <SkeletonBlock className="h-40 w-full" />
-          ) : timeline && timeline.contributors.length > 0 ? (
-            <ContributorActivityTimeline data={timeline} />
-          ) : (
-            <div className="px-2 py-6 text-center text-[12.5px] text-muted-foreground">
-              No agent session commits yet. Push a transcript to populate this view.
+            {/* Vitals — the brain's current size and pulse. */}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+              <VitalCard label="Knowledge points" value={knowledgePoints} tint="var(--color-brand-600)" />
+              <VitalCard label="Pages" value={overview?.pages ?? 0} tint="var(--color-human)" />
+              <VitalCard label="Files" value={overview?.files ?? 0} tint="#16A34A" />
+              <VitalCard label="Sessions" value={overview?.sessions ?? 0} tint="var(--color-agent)" />
+              <VitalCard label="Learned today" value={recent24h} tint="var(--text-muted)" />
             </div>
-          )}
-        </VizCard>
 
-        {/* Newsfeed — what the brain has been learning lately. */}
-        <div className="mt-8 border-b border-border pb-2">
-          <span className="sys-label">Recent learnings</span>
-        </div>
+            {/* Human / agent commits over time. (Decorative.) */}
+            <VizCard label="Human / agent commits — last 30 days" scroll>
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-40 w-full" />
+              ) : timeline && timeline.contributors.length > 0 ? (
+                <ContributorActivityTimeline data={timeline} />
+              ) : (
+                <div className="px-2 py-6 text-center text-[12.5px] text-muted-foreground">
+                  No agent session commits yet. Push a transcript to populate this view.
+                </div>
+              )}
+            </VizCard>
+          </div>
 
-        <div className="mt-3.5 flex flex-col gap-2.5">
-          {events.length === 0 ? (
-            <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
-              Nothing learned yet. Push a transcript, edit a page, or upload a
-              file.
-            </div>
-          ) : (
-            events.map((event, i) => (
-              <FeedCard
-                key={`${event.kind}-${event.target_id}-${i}`}
-                event={event}
-              />
-            ))
-          )}
-          {loadingMore && (
-            <div className="py-2 text-center text-[12.5px] text-muted-foreground">
-              Loading more…
-            </div>
-          )}
-          {hasMore && <div ref={sentinelRef} />}
+          <div className="flex min-h-0 min-w-0 flex-col gap-4">
+            {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
+            <VizCard label="Knowledge map">
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-[240px] w-full" />
+              ) : projection && projection.points.length > 0 ? (
+                <div className="h-[240px]">
+                  <EmbeddingSpaceExplorer data={projection} />
+                </div>
+              ) : (
+                <div className="flex h-[240px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
+                  No embeddings indexed yet. Pages, table rows, and session events
+                  get embedded as they&apos;re added.
+                </div>
+              )}
+            </VizCard>
+
+            {/* Newsfeed — what the brain has been learning lately. Scrolls in
+                place (hard cap — inside a grid, flex-1 can't bound it) so the
+                panel row stays a dashboard, not a page. */}
+            <section className="flex flex-col">
+              <div className="sys-label mb-1.5">Recent learnings</div>
+              <div className="card-soft max-h-[480px] overflow-y-auto p-3">
+                <div className="flex flex-col gap-2.5">
+                  {events.length === 0 ? (
+                    <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
+                      Nothing learned yet. Push a transcript, edit a page, or
+                      upload a file.
+                    </div>
+                  ) : (
+                    events.map((event, i) => (
+                      <FeedCard
+                        key={`${event.kind}-${event.target_id}-${i}`}
+                        event={event}
+                      />
+                    ))
+                  )}
+                  {loadingMore && (
+                    <div className="py-2 text-center text-[12.5px] text-muted-foreground">
+                      Loading more…
+                    </div>
+                  )}
+                  {hasMore && <div ref={sentinelRef} />}
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
-    </WorkspaceShell>
+    </div>
   );
 }
 

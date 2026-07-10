@@ -1,7 +1,9 @@
 "use client";
 
-// Memory is a workspace section — the shell renders the explorer + workbench;
-// this route just needs to exist so /memory resolves.
+import BrainDashboard from "@/components/memory/BrainDashboard";
+
+// Memory is a workspace section — the shell renders the explorer beside this
+// route's content: the brain dashboard as the section's landing view.
 export default function MemoryRoute() {
-  return null;
+  return <BrainDashboard />;
 }

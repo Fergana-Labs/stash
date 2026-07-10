@@ -455,6 +455,22 @@ export async function getMemoryFolder(): Promise<Folder> {
   return apiFetch(`${ME}/memory-folder`);
 }
 
+export interface WikiGraphNode {
+  id: string;
+  name: string;
+  degree: number;
+}
+
+export interface WikiGraph {
+  nodes: WikiGraphNode[];
+  edges: { source: string; target: string }[];
+}
+
+// The Memory wiki as a graph: pages in the Memory subtree + links between them.
+export async function getMemoryGraph(): Promise<WikiGraph> {
+  return apiFetch(`${ME}/memory-graph`);
+}
+
 export async function createFolder(
   name: string,
   parentFolderId?: string | null

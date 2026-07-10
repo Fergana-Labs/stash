@@ -385,3 +385,35 @@ async def test_recompute_metered_like_the_scheduler(client: AsyncClient, _db_poo
     run_curator_now.delay = lambda agent_id: None
     r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
     assert r.status_code == 202
+
+
+# --- Memory wiki graph (GET /me/memory-graph) ---
+
+
+@pytest.mark.asyncio
+async def test_memory_graph_nodes_edges_and_scope(client: AsyncClient):
+    key, uid = await _register(client)
+    mem = (await client.get("/api/v1/me/memory-folder", headers=_auth(key))).json()
+
+    async def add_page(name: str, content: str, folder_id: str | None) -> str:
+        r = await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": name, "content": content, "folder_id": folder_id},
+            headers=_auth(key),
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    alpha = await add_page("Alpha", "seed page", mem["id"])
+    beta = await add_page("Beta", f"see [Alpha](/p/{alpha})", mem["id"])
+    # A Files page linking into the wiki is not a wiki node and adds no edge.
+    await add_page("Outside", f"see [Alpha](/p/{alpha})", None)
+
+    r = await client.get("/api/v1/me/memory-graph", headers=_auth(key))
+    assert r.status_code == 200
+    graph = r.json()
+    assert {n["name"] for n in graph["nodes"]} == {"Alpha", "Beta"}
+    a, b = sorted([alpha, beta])
+    assert graph["edges"] == [{"source": a, "target": b}]
+    # The link is one undirected edge — both ends count it in their degree.
+    assert {n["name"]: n["degree"] for n in graph["nodes"]} == {"Alpha": 1, "Beta": 1}
