@@ -153,7 +153,10 @@ class StashClient:
         try:
             result = self._post(path, json=body)
         except Exception as e:
-            self._enqueue(path, body)
+            # A permanent rejection can never be delivered, so queueing it would
+            # only evict retryable events from the capped backlog.
+            if not _is_permanent_rejection(e):
+                self._enqueue(path, body)
             record_upload_failure(self._data_dir, "event", e)
             raise
         # The live push landed — that's a success regardless of how the

@@ -196,6 +196,26 @@ def test_drain_drops_corrupt_lines(tmp_path):
     assert _queue_lines(tmp_path) == []
 
 
+def test_live_push_permanent_rejection_is_not_enqueued(tmp_path):
+    """A 404 (dead route) can never be delivered. Queueing it would evict
+    retryable events from the capped backlog while the outage persists."""
+    client = _make_client(tmp_path)
+    qp = tmp_path / QUEUE_FILENAME
+    retryable = {"path": "/api/v1/me/sessions/events", "body": {"content": "e0"}, "ts": 1.0}
+    qp.write_text(json.dumps(retryable) + "\n")
+    client._http.status_by_path["/api/v1/me/sessions/events"] = 404
+
+    with pytest.raises(Exception):
+        client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
+
+    # The rejected live event is gone; the earlier retryable entry survives.
+    queued = _queue_lines(tmp_path)
+    assert [q["body"]["content"] for q in queued] == ["e0"]
+    status = read_upload_status(tmp_path)
+    assert status["health"] == "failing"
+    assert status["last_failure_operation"] == "event"
+
+
 def test_drain_drops_edge_blocked_entries(tmp_path):
     """Render fronts us with a Cloudflare WAF that 403s bodies containing agent
     shell text (`foo; curl -s bar`). No re-signin makes that body acceptable, so
