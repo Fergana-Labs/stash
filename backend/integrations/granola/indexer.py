@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from ...database import get_pool
@@ -109,17 +109,40 @@ def _extract_transcript(td) -> str | list:
     return ""
 
 
+# US timezone abbreviations in the list blob's date. strptime's %Z can't parse
+# these portably, so the zone is split off and applied as an explicit offset.
+_US_TZ_OFFSET_HOURS = {
+    "PST": -8,
+    "PDT": -7,
+    "MST": -7,
+    "MDT": -6,
+    "CST": -6,
+    "CDT": -5,
+    "EST": -5,
+    "EDT": -4,
+}
+
+
 def _meeting_time(meeting: dict) -> datetime | None:
-    """The meeting's timestamp. Granola's MCP tool returns dates in two shapes —
-    ISO-8601 and the list blob's "Jun 5, 2026" — so both parse; anything else
-    yields None (the document shows no timestamp) rather than failing the sync."""
+    """The meeting's timestamp. Granola's MCP tool returns dates in three
+    shapes — ISO-8601, "Jun 5, 2026", and "Jul 9, 2026 6:10 PM PDT" — so all
+    parse; anything else yields None (the document shows no timestamp) rather
+    than failing the sync."""
     when = meeting.get("date") or meeting.get("created_at") or meeting.get("start_time")
     if not when or not isinstance(when, str):
         return None
+    when = when.strip()
     try:
         return datetime.fromisoformat(when.replace("Z", "+00:00"))
     except ValueError:
         pass
+    date_part, _, zone = when.rpartition(" ")
+    if zone in _US_TZ_OFFSET_HOURS:
+        try:
+            naive = datetime.strptime(date_part, "%b %d, %Y %I:%M %p")
+        except ValueError:
+            return None
+        return naive.replace(tzinfo=timezone(timedelta(hours=_US_TZ_OFFSET_HOURS[zone])))
     try:
         return datetime.strptime(when, "%b %d, %Y")
     except ValueError:

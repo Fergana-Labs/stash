@@ -72,6 +72,23 @@ def test_granola_path_parses_the_list_blob_date_format():
     assert _meeting_path(meeting, meeting["id"]) == "2026-06/05 Standup (abc12345)"
 
 
+def test_granola_path_parses_the_list_blob_date_with_time_and_zone():
+    # Live accounts return "Jul 9, 2026 6:10 PM PDT" — with this unparsed,
+    # every meeting piled into undated/ and no document carried a timestamp,
+    # so `ls -lt`/`stat`/"my most recent call" were all unanswerable.
+    meeting = {"id": "abc12345-6789", "title": "Standup", "date": "Jul 9, 2026 6:10 PM PDT"}
+    assert _meeting_path(meeting, meeting["id"]) == "2026-07/09 Standup (abc12345)"
+
+
+def test_granola_meeting_time_carries_the_zone_offset():
+    # external_updated_at is timestamptz and becomes the VFS mtime — the PDT
+    # offset must survive so recency sorting is correct across zones.
+    meeting = {"id": "abc12345-6789", "title": "Standup", "date": "Jul 9, 2026 6:10 PM PDT"}
+    when = granola_indexer._meeting_time(meeting)
+    assert when is not None
+    assert when.astimezone(UTC) == datetime(2026, 7, 10, 1, 10, tzinfo=UTC)
+
+
 def test_granola_path_files_unparseable_dates_visibly():
     meeting = {"id": "abc12345-6789", "title": "Standup", "date": "last Tuesday"}
     assert _meeting_path(meeting, meeting["id"]) == "undated/Standup (abc12345)"
