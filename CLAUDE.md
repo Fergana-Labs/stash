@@ -85,6 +85,7 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Install deps: `uv pip install -r backend/requirements.txt -r backend/requirements-dev.txt`
 - Migrate DB: `alembic upgrade head`
 - Run server: `uvicorn backend.main:app --host 0.0.0.0 --port 3456 --proxy-headers --forwarded-allow-ips '*'`
+- Seed dev data: `python -m backend.scripts.seed_dev` — a demo user + one fake connected source per provider (bypasses OAuth), so the integrations UI, source sharing, and the VFS `/sources` tree are demoable locally. Prints an API key; set it with `localStorage.setItem('stash_token', '<key>')` in the browser console. Refuses to run under Auth0.
 - Tests: `pytest`
 - Lint (matches CI exactly): `ruff check backend/ cli/ && ruff format --check backend/ cli/`
   - Fix formatting with `ruff format backend/ cli/`. There is no black; ruff is the only linter *and* formatter.
