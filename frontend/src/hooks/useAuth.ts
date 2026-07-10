@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, clearToken, getMe, getToken, revokeStoredApiKey } from "../lib/api";
-import { auth0LogoutUrl, markManualAuth0Logout } from "../lib/authLogout";
+import { markManualAuth0Logout } from "../lib/authLogout";
 import { markSignedInBefore } from "../lib/returningUser";
 import { User } from "../lib/types";
 
@@ -69,7 +69,7 @@ export function useAuth() {
     // Hard navigation so module-level caches reset. We intentionally do NOT use
     // `?federated` — that would tell Auth0 to clear the upstream identity provider
     // (e.g. Google) session, signing the user out of Google itself, not just Stash.
-    window.location.href = AUTH0_ENABLED ? auth0LogoutUrl() : "/login";
+    window.location.href = AUTH0_ENABLED ? "/auth/logout" : "/login";
   }, []);
 
   return {

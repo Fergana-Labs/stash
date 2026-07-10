@@ -24,12 +24,12 @@ const nextConfig: NextConfig = {
   // open → close → reopen its WebSocket on every load (slow, flaky first paint).
   // Production never double-mounts; turning it off keeps dev in parity.
   reactStrictMode: false,
-  // Because a middleware exists, Next buffers every request body and caps it
-  // at 10MB by default — larger uploads were silently truncated before they
-  // reached the backend. Keep in sync with MAX_FILE_SIZE in
+  // Because a proxy (middleware) exists, Next buffers every request body and
+  // caps it at 10MB by default — larger uploads were silently truncated before
+  // they reached the backend. Keep in sync with MAX_FILE_SIZE in
   // backend/routers/files.py and the guard in src/lib/api.ts.
   experimental: {
-    middlewareClientMaxBodySize: "100mb",
+    proxyClientMaxBodySize: "100mb",
   },
   async rewrites() {
     return {

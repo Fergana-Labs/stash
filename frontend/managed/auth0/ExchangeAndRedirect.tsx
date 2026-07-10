@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { API_BASE, getAuth0AccessToken, revokeStoredApiKey } from "@/lib/api";
-import { auth0LogoutUrl } from "@/lib/authLogout";
 import { localNextPath } from "@/lib/loginRedirect";
 
 type Props = {
@@ -114,7 +113,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
         >
           {submitting ? "Authorizing..." : "Authorize CLI"}
         </button>
-        <a href={auth0LogoutUrl()} className="text-[11px] text-muted hover:text-foreground">
+        <a href="/auth/logout" className="text-[11px] text-muted hover:text-foreground">
           Use a different account
         </a>
       </div>
@@ -133,7 +132,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
           Your sign-in session has expired. Signing out and back in will fix it.
         </p>
         <div className="flex flex-col items-center gap-2">
-          <a href={auth0LogoutUrl()} className="text-sm text-brand hover:underline">
+          <a href="/auth/logout" className="text-sm text-brand hover:underline">
             Sign out and start over
           </a>
           <a href="/auth/login" className="text-[11px] text-muted hover:text-foreground">
