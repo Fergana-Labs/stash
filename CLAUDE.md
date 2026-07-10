@@ -20,7 +20,17 @@ If you are about to ask the user to do something for you, think about whether yo
 - **Never ask the user to check logs.** Check them yourself — via running the server with captured output, MCPs for hosted servers, or ngrok inspector (`localhost:4040`).
 - **Never speculate about env vars, API keys, or config.** If you need to know whether something is set, check it yourself (e.g. `env | grep`, read `.env`, etc.). Just do it. Do not guess or assume. Do not ask the user. Check it yourself.
 - **Never ask the user to test UI**. Use `agent-browser` as the default tool for manual E2E/QA browser checks: click through the changed workflow, inspect the page state, capture screenshots when useful, and check logs yourself. Use existing Playwright tests for scripted regression coverage when the repo already has them or when adding a durable test is part of the task.
-- **Never ask permission to kill/restart local processes.** If you need to restart uvicorn, ngrok, or any dev server to make progress, just do it. But scope kills to this worktree: several worktrees run the same stack on this machine, so kill by specific PID or port (`kill <pid>`, `pkill -f "next dev -p 3457"`) — never by bare command pattern (`pkill -f "next dev"`, `pkill -f uvicorn`), which takes down other worktrees' servers.
+- **Never ask permission to kill/restart local processes.** If you need to restart uvicorn, ngrok, or any dev server to make progress, just do it. But scope kills to this worktree — see the isolation rules below.
+
+
+### Worktree isolation
+
+Several worktrees of this repo run on this machine at once, each with its own agent session. Ports, the compose database, and the browser daemon are shared mutable state: an agent that grabs them blindly breaks its siblings (and gets broken back). On 2026-07-10 five concurrent sessions fought over ports 3456–3462 and one shared browser; these rules are the post-mortem.
+
+- **Browser automation: always set a worktree-scoped session.** Before the first `agent-browser` call, `export AGENT_BROWSER_SESSION="$(basename "$PWD")"`. The default session is one shared Chrome across every agent on the machine — another session's `open` steals your tab mid-flow and corrupts both runs.
+- **Ports: pin per worktree, never improvise.** The primary checkout owns the defaults (3456 backend, 3457 frontend, 3100 www). In any other worktree, don't bind the defaults and don't probe for "something nearby" — that's a race against siblings doing the same. Pick a free pair once, record it in the worktree's `.env` (`BACKEND_PORT`, `FRONTEND_PORT`), and reuse it every session: `uvicorn backend.main:app --port "$BACKEND_PORT"`, `BACKEND_INTERNAL_URL="http://localhost:$BACKEND_PORT" npx next dev -p "$FRONTEND_PORT"`.
+- **Database: never touch the shared compose stack from a secondary worktree.** No `docker compose down`/`restart` — other worktrees are on it. Run your own instance instead: `docker run -d --name "stash-dev-pg-$(basename "$PWD")" -e POSTGRES_USER=stash -e POSTGRES_PASSWORD=stash -e POSTGRES_DB=stash -p <free-port>:5432 pgvector/pgvector:pg16`, then set `DATABASE_URL` to it and run `alembic upgrade head`.
+- **Kills: by PID or exact port, never by pattern.** `kill <pid>` or `pkill -f "next dev -p 3457"` — never `pkill -f "next dev"` or `pkill -f uvicorn`, which take down other worktrees' servers.
 
 
 ### PR hygiene
