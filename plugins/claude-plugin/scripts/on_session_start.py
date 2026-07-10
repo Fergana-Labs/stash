@@ -7,6 +7,7 @@ import os
 import sys
 
 from adapt import adapt_session_start
+from cache_drift import plugin_cache_drift_warning
 from config import DATA_DIR, get_config, get_stdin_data
 
 try:
@@ -16,6 +17,17 @@ except ImportError:
     # auto-updates; skip the check until the package catches up.
     def shadow_install_warning() -> None:
         return None
+
+
+try:
+    from stashai.plugin.hooks import color_upload_health_warning, upload_health_warning
+except ImportError:
+    # Same version-skew window as above.
+    def upload_health_warning(*_args) -> None:
+        return None
+
+    def color_upload_health_warning(text: str) -> str:
+        return text
 
 
 from stashai.plugin.hooks import (
@@ -81,7 +93,9 @@ def main():
     state = load_state(DATA_DIR)
     if not uploads_enabled(cfg):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
-        messages = [m for m in (warning, shadow_install_warning()) if m]
+        messages = [
+            m for m in (warning, shadow_install_warning(), plugin_cache_drift_warning()) if m
+        ]
         if messages:
             json.dump({"systemMessage": "\n\n".join(messages)}, sys.stdout)
         return
@@ -122,9 +136,22 @@ def main():
             "additionalContext": CONTEXT + session_context,
         }
     }
-    shadow_warning = shadow_install_warning()
-    if shadow_warning:
-        output["systemMessage"] = shadow_warning
+    # Surface upload failures at session START, not only at first Stop: warned
+    # before any work happens, the user can fix streaming while it still covers
+    # the whole session. The once-per-session gate inside upload_health_warning
+    # keeps on_stop from repeating this.
+    health_warning = upload_health_warning(cfg, state, event, DATA_DIR)
+    messages = [
+        m
+        for m in (
+            shadow_install_warning(),
+            plugin_cache_drift_warning(),
+            color_upload_health_warning(health_warning) if health_warning else None,
+        )
+        if m
+    ]
+    if messages:
+        output["systemMessage"] = "\n\n".join(messages)
     json.dump(output, sys.stdout)
 
 

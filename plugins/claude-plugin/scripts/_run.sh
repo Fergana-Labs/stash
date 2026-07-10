@@ -68,10 +68,15 @@ PY_EOF
 )"
 fi
 
-# pip --user (stashai on system site-packages) or any case the venv-python
-# heuristic missed — fall through to whatever python3 is on PATH.
+# No interpreter that can import stashai means nothing can upload. Exec'ing a
+# bare python3 here would "work" whenever some stale site-packages copy is
+# importable — old client code against a new API, failing silently on every
+# hook (that exact path cost a machine a month of session uploads in June '26).
+# Refuse loudly instead.
 if [ -z "$PY" ]; then
-  PY="python3"
+  echo "stash plugin: no stashai install found — session activity is NOT uploading to Stash." \
+    "Fix: uv tool install stashai (or run install.sh from the stash repo)." >&2
+  exit 1
 fi
 
 exec "$PY" "$TARGET" "$@"
