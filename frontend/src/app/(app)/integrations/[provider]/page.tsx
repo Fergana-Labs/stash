@@ -539,6 +539,7 @@ function SourceRow({
           resourceName={source.display_name}
           resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
           currentUser={currentUser}
+          variant="secondary"
         />
         <div className="flex items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
           <button type="button" onClick={onOpen} className={rowButton()}>

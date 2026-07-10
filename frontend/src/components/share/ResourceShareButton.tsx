@@ -46,12 +46,17 @@ export default function ResourceShareButton({
   resourceName,
   resourceUrlPath,
   currentUser,
+  variant = "primary",
 }: {
   objectType: SharedObjectType;
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
   currentUser: User;
+  // "primary" is the filled brand button for page headers where Share is the
+  // main action; "secondary" is the quiet bordered style for list rows where
+  // Share sits among other row actions and must not dominate.
+  variant?: "primary" | "secondary";
 }) {
   const [open, setOpen] = useState(false);
   const [shares, setShares] = useState<ObjectShare[]>([]);
@@ -204,7 +209,11 @@ export default function ResourceShareButton({
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+        className={
+          variant === "primary"
+            ? "cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            : "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised"
+        }
       >
         Share
       </button>
