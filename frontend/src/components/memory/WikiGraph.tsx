@@ -51,13 +51,15 @@ function buildSim(data: WikiGraphData, w: number, h: number): Sim {
 function tick(sim: Sim, w: number, h: number) {
   const { x, y, vx, vy, edges, alpha } = sim;
   const n = x.length;
+  // Bigger graphs need more shove to claim the same canvas.
+  const repulsion = 15000 * Math.max(1, n / 25);
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       const dx = x[i] - x[j];
       const dy = y[i] - y[j];
       const d2 = Math.max(dx * dx + dy * dy, 400);
-      const f = (15000 * alpha) / d2;
+      const f = (repulsion * alpha) / d2;
       const d = Math.sqrt(d2);
       vx[i] += (dx / d) * f;
       vy[i] += (dy / d) * f;
