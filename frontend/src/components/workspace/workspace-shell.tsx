@@ -93,7 +93,10 @@ export default function WorkspaceShell({
   const requestedSection = searchParams.get("section");
   const selectedSection = EXPLORER_SECTIONS.find((s) => s === requestedSection) ?? null;
   const section = selectedSection ?? routeSection;
-  const renderRouteContent = pathname === "/sessions" && !selectedSection && searchParams.get("workspace") !== "1";
+  const renderRouteContent =
+    (pathname === "/sessions" && !selectedSection && searchParams.get("workspace") !== "1") ||
+    // Memory lands on the brain dashboard; opening an item switches to the workbench.
+    (pathname === "/memory" && !selectedSection);
 
   return (
     // Chrome surface — the content panel floats on top of it.

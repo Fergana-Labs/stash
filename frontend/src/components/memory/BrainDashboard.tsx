@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -10,21 +9,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import WorkspaceShell from "@/components/workspace/workspace-shell";
-import {
-  ActivitySkeleton,
-  BasicPageSkeleton,
-  SkeletonBlock,
-} from "../../components/SkeletonStates";
+import { ActivitySkeleton, SkeletonBlock } from "@/components/SkeletonStates";
 import {
   FileIcon,
   PageIcon,
   SessionsIcon,
   SkillIcon,
-} from "../../components/SkillIcons";
-import ContributorActivityTimeline from "../../components/viz/ContributorActivityTimeline";
-import EmbeddingSpaceExplorer from "../../components/viz/EmbeddingSpaceExplorer";
-import { useAuth } from "../../hooks/useAuth";
+} from "@/components/SkillIcons";
+import ContributorActivityTimeline from "@/components/viz/ContributorActivityTimeline";
+import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
 import {
   getActivityTimeline,
   getEmbeddingProjection,
@@ -32,8 +25,8 @@ import {
   listActivity,
   type ActivityEvent,
   type MeOverview,
-} from "../../lib/api";
-import type { ActivityTimeline, EmbeddingProjection } from "../../lib/types";
+} from "@/lib/api";
+import type { ActivityTimeline, EmbeddingProjection } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
@@ -65,9 +58,10 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export default function ActivityPage() {
-  const router = useRouter();
-  const { user, loading, logout } = useAuth();
+/** The brain dashboard — knowledge map, vitals, commit timeline, and the
+ *  recent-learnings feed. Renders as the Memory section's landing content;
+ *  the shell guarantees a signed-in user. Scrolls itself (h-full). */
+export default function BrainDashboard() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
   const [hasMore, setHasMore] = useState(false);
@@ -81,7 +75,6 @@ export default function ActivityPage() {
   const [nowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!user) return;
     let cancelled = false;
     listActivity({ limit: PAGE_SIZE })
       .then((feed) => {
@@ -96,7 +89,7 @@ export default function ActivityPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || events.length === 0) return;
@@ -129,7 +122,6 @@ export default function ActivityPage() {
   // everything shared with them (the /me/* aggregates, called without a
   // scope, include readable shared rows).
   useEffect(() => {
-    if (!user) return;
     let cancelled = false;
     setInsightsLoaded(false);
     Promise.allSettled([
@@ -147,11 +139,7 @@ export default function ActivityPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
-
-  useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+  }, []);
 
   const recent24h = useMemo(() => {
     const since = nowMs - 24 * 60 * 60 * 1000;
@@ -160,18 +148,16 @@ export default function ActivityPage() {
 
   const knowledgePoints = projection?.stats.total_embeddings ?? 0;
 
-  if (loading) return <BasicPageSkeleton />;
-  if (!user) return null;
   if (fetching) {
     return (
-      <WorkspaceShell user={user} onLogout={logout}>
+      <div className="h-full min-h-0 overflow-y-auto">
         <ActivitySkeleton />
-      </WorkspaceShell>
+      </div>
     );
   }
 
   return (
-    <WorkspaceShell user={user} onLogout={logout}>
+    <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
         {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
@@ -245,7 +231,7 @@ export default function ActivityPage() {
           {hasMore && <div ref={sentinelRef} />}
         </div>
       </div>
-    </WorkspaceShell>
+    </div>
   );
 }
 

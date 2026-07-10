@@ -101,6 +101,13 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
+    // Memory's landing is the brain dashboard, so it navigates; other sections
+    // just swap the explorer beside whatever's open.
+    if (section === "memory") {
+      setRailSection(section);
+      router.replace("/memory");
+      return;
+    }
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
     setRailSection(section);
