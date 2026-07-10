@@ -73,7 +73,7 @@ Built for —
 ## Quick Start
 
 ```bash
-pip install stashai / uv tool install stashai
+uv tool install stashai
 stash signin
 ```
 
@@ -170,7 +170,7 @@ docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 Then install the CLI:
 
 ```bash
-pip install stashai   # or: uv tool install stashai
+uv tool install stashai
 cd /path/to/the/repo/you/want/to/connect
 stash signin   # choose "Self-host" and enter http://localhost:3456
 ```

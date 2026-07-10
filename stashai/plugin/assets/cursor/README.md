@@ -5,7 +5,7 @@ plugin's event coverage.
 
 ## Prerequisites
 
-- `stash` CLI installed and logged in (`pip install stashai && stash signin`)
+- `stash` CLI installed and logged in (`uv tool install stashai && stash signin`)
 - `.stash` manifest present in repo (or ancestor)
 - Python 3.10+ on PATH
 - `httpx` installed (`pip install httpx`)

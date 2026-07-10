@@ -34,7 +34,7 @@ curl https://app.example.com/health   # wait for {"status":"ok"}`}</CodeBlock>
       <P>
         Then install the CLI and connect a repo:
       </P>
-      <CodeBlock>{`pip install stashai   # or: uv tool install stashai
+      <CodeBlock>{`uv tool install stashai
 cd /path/to/your/repo
 stash signin   # choose "Self-host" and enter http://localhost:3456`}</CodeBlock>
       <P>

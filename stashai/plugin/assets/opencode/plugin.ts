@@ -3,7 +3,7 @@
  *
  * Thin TS shim: each opencode event handler serializes its input and pipes it
  * into the matching Python hook script via stdin. All real work happens in
- * the `stashai.plugin` package (shipped via pip install stashai), reused
+ * the `stashai.plugin` package (shipped with the stashai package), reused
  * from every other agent's plugin.
  *
  * Bus events (session.*, message.*, file.*, etc.) are delivered through the

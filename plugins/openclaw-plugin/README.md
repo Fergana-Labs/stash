@@ -28,14 +28,14 @@ openclaw-plugin/
 
 `index.ts` runs inside the Openclaw Node process. On each hook it
 normalizes the event to a flat JSON payload and pipes it into the matching
-Python script. The Python side imports from `stashai.plugin` (shipped via
-`pip install stashai`) just like every other agent's plugin.
+Python script. The Python side imports from `stashai.plugin` (shipped with the `stashai`
+package) just like every other agent's plugin.
 
 ## Install
 
 ```bash
 # Prereqs (one-time)
-pip install stashai httpx
+uv tool install stashai
 stash connect
 # Ensure .stash manifest exists in your repo
 

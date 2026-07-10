@@ -14,7 +14,7 @@ export default function CLIPage() {
       </Callout>
 
       <H2>Install</H2>
-      <CodeBlock>{`pip install stashai`}</CodeBlock>
+      <CodeBlock>{`uv tool install stashai`}</CodeBlock>
 
       <H2>First-time setup</H2>
       <P>

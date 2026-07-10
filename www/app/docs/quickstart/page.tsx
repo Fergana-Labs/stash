@@ -23,7 +23,7 @@ export default function QuickstartPage() {
       <P>
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
         <code className="text-brand font-mono text-[13px]">stash connect</code> after installing{" "}
-        <code className="text-brand font-mono text-[13px]">pip install stashai</code>. The
+        <code className="text-brand font-mono text-[13px]">uv tool install stashai</code>. The
         interactive wizard covers account creation
         in one shot — then come back to step 2.
       </P>
@@ -34,7 +34,7 @@ export default function QuickstartPage() {
       </Callout>
 
       <H3>2. Install the CLI</H3>
-      <CodeBlock>{`pip install stashai
+      <CodeBlock>{`uv tool install stashai
 stash signin`}</CodeBlock>
 
       <H3>3. Try these commands</H3>
