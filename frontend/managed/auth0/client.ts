@@ -13,4 +13,12 @@ const { audience } = requireManagedAuth0Config();
 
 export const auth0 = new Auth0Client({
   authorizationParameters: { audience },
+  // Rolling sessions re-write the session cookie on every response, so a
+  // request in flight while /auth/logout deletes the cookie can resurrect it
+  // and undo the sign-out. Fixed-duration sessions only write the cookie at
+  // login and token refresh.
+  session: {
+    rolling: false,
+    absoluteDuration: 60 * 60 * 24 * 30, // 30 days, then re-login
+  },
 });
