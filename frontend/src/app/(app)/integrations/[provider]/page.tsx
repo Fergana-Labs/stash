@@ -37,6 +37,8 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
+import ResourceShareButton from "@/components/share/ResourceShareButton";
+import type { User } from "@/lib/types";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
@@ -327,6 +329,7 @@ export default function IntegrationPage() {
                 <SourceRow
                   key={source.source}
                   source={source}
+                  currentUser={user}
                   highlighted={source.source === highlightSourceId}
                   open={source.source === openSourceId}
                   busySync={busy === `sync:${source.source}`}
@@ -429,6 +432,7 @@ function shortRef(source: Source): string | null {
 
 function SourceRow({
   source,
+  currentUser,
   highlighted,
   open,
   busySync,
@@ -438,6 +442,7 @@ function SourceRow({
   onRemove,
 }: {
   source: Source;
+  currentUser: User;
   highlighted: boolean;
   open: boolean;
   busySync: boolean;
@@ -525,18 +530,29 @@ function SourceRow({
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
         )}
       </button>
-      <div className="flex shrink-0 items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
-        <button type="button" onClick={onOpen} className={rowButton()}>
-          {open ? "Close" : "Browse"}
-        </button>
-        {syncs && (
-          <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
-            {busySync ? "Syncing..." : "Sync"}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* Share stays full-opacity (an open dialog must not inherit the row's
+            hover-dimming); Browse/Sync/Remove reveal on hover as before. */}
+        <ResourceShareButton
+          objectType="source"
+          objectId={source.source}
+          resourceName={source.display_name}
+          resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
+          currentUser={currentUser}
+        />
+        <div className="flex items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
+          <button type="button" onClick={onOpen} className={rowButton()}>
+            {open ? "Close" : "Browse"}
           </button>
-        )}
-        <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
-          Remove
-        </button>
+          {syncs && (
+            <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
+              {busySync ? "Syncing..." : "Sync"}
+            </button>
+          )}
+          <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
+            Remove
+          </button>
+        </div>
       </div>
     </div>
   );

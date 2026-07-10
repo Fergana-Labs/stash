@@ -1797,7 +1797,14 @@ export async function getFolderContents(folderId: string): Promise<FolderContent
 
 // --- Shared with me ---
 
-export type SharedObjectType = "folder" | "session_folder" | "page" | "file" | "table" | "session";
+export type SharedObjectType =
+  | "folder"
+  | "session_folder"
+  | "page"
+  | "file"
+  | "table"
+  | "session"
+  | "source";
 
 export interface SharedWithMeItem {
   object_type: SharedObjectType;
