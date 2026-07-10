@@ -104,7 +104,10 @@ def main():
     spawn_skills_sync(cfg)
 
     if session_url:
-        session_context = "\n" + SESSION_CONTEXT.format(url=session_url)
+        # The link instruction is its own toggle (`stash settings` → Session
+        # link), independent of uploads — the record and watcher always run.
+        if cfg.get("session_link"):
+            session_context = "\n" + SESSION_CONTEXT.format(url=session_url)
         spawn_session_watcher(
             agent_pid=os.getppid(),
             session_id=event.session_id,

@@ -33,6 +33,8 @@ from .config import (
     load_manifest,
     save_config,
     save_enabled_agents,
+    session_link_enabled,
+    set_session_link,
     start_streaming,
     stop_streaming,
     stored_base_url,
@@ -4186,6 +4188,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             {
                 "config": display_cfg,
                 "enabled_agents": load_enabled_agents(),
+                "session_link": session_link_enabled(),
                 "plugins_installed": [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()],
                 "upload_health": _upload_health_snapshot(),
             }
@@ -4203,6 +4206,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         rows = [
             ("Streaming", enabled_label, "enabled_agents"),
+            ("Session link", "on" if session_link_enabled() else "off", "session_link"),
             ("Endpoint", base_url, "base_url"),
         ]
         label_w = max(len(label) for label, _, _ in rows)
@@ -4237,6 +4241,13 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             if selected is not None:
                 save_enabled_agents(selected)
                 _install_all_hooks(selected)
+        elif picked == "session_link":
+            answer = questionary.confirm(
+                "Append the session record link to every Claude response?",
+                default=session_link_enabled(),
+            ).ask()
+            if answer is not None:
+                set_session_link(answer)
         elif picked == "base_url":
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()
             if new_url:

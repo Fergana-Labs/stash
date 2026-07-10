@@ -160,3 +160,20 @@ def start_streaming() -> None:
 
 def stop_streaming() -> None:
     _write_to(USER_CONFIG_FILE, {"stopped_streaming": True})
+
+
+# --- Session-link toggle ---
+#
+# When on, the Claude plugin instructs the agent to append the session record
+# link to every response. Independent of upload streaming, and off unless the
+# user turns it on.
+
+
+def session_link_enabled() -> bool:
+    if USER_CONFIG_FILE.exists():
+        return bool(_read_json(USER_CONFIG_FILE).get("session_link"))
+    return False
+
+
+def set_session_link(enabled: bool) -> None:
+    _write_to(USER_CONFIG_FILE, {"session_link": enabled})

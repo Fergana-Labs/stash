@@ -57,6 +57,7 @@ def get_config() -> dict:
             "agent_name": cli.get("username", ""),
             "session_folder_id": cli.get("session_folder_id", ""),
             "stopped_streaming": bool(cli.get("stopped_streaming")),
+            "session_link": bool(cli.get("session_link")),
             "client": "claude_code",
         }
 
@@ -66,12 +67,9 @@ def get_config() -> dict:
         ),
         "api_key": api_key,
         "agent_name": agent_name,
-        "session_folder_id": os.environ.get(
-            "CLAUDE_PLUGIN_USER_CONFIG_session_folder_id", ""
-        ),
-        "stopped_streaming": bool(
-            os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_stopped_streaming")
-        ),
+        "session_folder_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_session_folder_id", ""),
+        "stopped_streaming": bool(os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_stopped_streaming")),
+        "session_link": bool(os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_session_link")),
         "client": "claude_code",
     }
 
