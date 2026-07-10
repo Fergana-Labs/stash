@@ -3920,6 +3920,63 @@ def _install_claude_plugin() -> bool:
         last = (result.stdout or "").strip().splitlines()
         if last:
             console.print(f"  [green]✓[/green] {last[-1]}")
+
+    if _enable_marketplace_autoupdate(Path.home() / ".claude" / "settings.json"):
+        console.print("  [green]✓[/green] auto-update enabled for the stash-plugins marketplace")
+    else:
+        console.print(
+            "  [yellow]Could not update ~/.claude/settings.json — enable auto-update "
+            "manually: /plugin → Marketplaces → stash-plugins → Enable auto-update. "
+            "Without it the plugin never updates itself.[/yellow]"
+        )
+
+    # Freshen right now regardless: until this run set autoUpdate (or on Claude
+    # Code versions that ignore the key at user scope), the marketplace clone
+    # and plugin may be weeks stale. Best-effort — a failure here still leaves
+    # a working install, and the plugin's session-start drift warning names any
+    # remaining staleness.
+    for cmd in (
+        ["claude", "plugin", "marketplace", "update", "stash-plugins"],
+        ["claude", "plugin", "update", "stash@stash-plugins"],
+    ):
+        try:
+            _sp.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+        except (_sp.CalledProcessError, FileNotFoundError, _sp.TimeoutExpired) as e:
+            console.print(f"  [yellow]`{' '.join(cmd)}` failed: {e}[/yellow]")
+            break
+    else:
+        console.print("  [green]✓[/green] marketplace and plugin updated to latest")
+    return True
+
+
+def _enable_marketplace_autoupdate(settings_path: Path) -> bool:
+    """Set `autoUpdate: true` on the stash-plugins marketplace in Claude Code's
+    user settings.
+
+    Claude Code auto-updates plugins from the official marketplace only;
+    third-party marketplaces like ours default to auto-update OFF, which
+    fossilizes the installed plugin (a machine ran June's hook scripts for a
+    month this way). `extraKnownMarketplaces.<name>.autoUpdate` is the settings
+    key documented for enabling it without the /plugin menu.
+
+    Returns False without writing when the settings file is unparseable —
+    clobbering a user's hand-edited settings.json is worse than a manual toggle.
+    """
+    try:
+        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+    except (json.JSONDecodeError, OSError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    marketplaces = data.setdefault("extraKnownMarketplaces", {})
+    entry = marketplaces.setdefault(
+        "stash-plugins", {"source": {"source": "github", "repo": "Fergana-Labs/stash"}}
+    )
+    if entry.get("autoUpdate") is True:
+        return True
+    entry["autoUpdate"] = True
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
     return True
 
 
