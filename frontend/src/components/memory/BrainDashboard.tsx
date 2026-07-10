@@ -18,13 +18,16 @@ import {
 } from "@/components/SkillIcons";
 import ContributorActivityTimeline from "@/components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
+import WikiGraph from "@/components/memory/WikiGraph";
 import {
   getActivityTimeline,
   getEmbeddingProjection,
+  getMemoryGraph,
   getMeOverview,
   listActivity,
   type ActivityEvent,
   type MeOverview,
+  type WikiGraph as WikiGraphData,
 } from "@/lib/api";
 import type { ActivityTimeline, EmbeddingProjection } from "@/lib/types";
 
@@ -70,6 +73,7 @@ export default function BrainDashboard() {
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [overview, setOverview] = useState<MeOverview | null>(null);
+  const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
@@ -128,12 +132,14 @@ export default function BrainDashboard() {
       getActivityTimeline(30, "day"),
       getEmbeddingProjection(500),
       getMeOverview(),
+      getMemoryGraph(),
     ])
-      .then(([t, p, o]) => {
+      .then(([t, p, o, g]) => {
         if (cancelled) return;
         if (t.status === "fulfilled") setTimeline(t.value);
         if (p.status === "fulfilled") setProjection(p.value);
         if (o.status === "fulfilled") setOverview(o.value);
+        if (g.status === "fulfilled") setGraph(g.value);
         setInsightsLoaded(true);
       });
     return () => {
@@ -167,9 +173,30 @@ export default function BrainDashboard() {
           {`${knowledgePoints.toLocaleString()} things learned across your own and shared knowledge · ${recent24h} new in the last 24 hours.`}
         </p>
 
-        {/* Brain map — the knowledge the brain holds, laid out in space. The
-            centerpiece visual. (Decorative.) */}
-        <VizCard label="Knowledge map" className="mt-6">
+        {/* Wiki graph — the curated context graph of linked pages, obsidian
+            style. The centerpiece: click a node to open its page. */}
+        <VizCard
+          label={
+            graph
+              ? `Memory wiki · ${graph.nodes.length} pages · ${graph.edges.length} links`
+              : "Memory wiki"
+          }
+          className="mt-6"
+        >
+          {!insightsLoaded ? (
+            <SkeletonBlock className="h-64 w-full" />
+          ) : graph && graph.nodes.length > 0 ? (
+            <WikiGraph data={graph} />
+          ) : (
+            <div className="px-2 py-12 text-center text-[12.5px] text-muted-foreground">
+              No wiki pages yet. Hit &quot;Curate wiki&quot; in the explorer and the
+              agent will compile your history into a context graph of linked pages.
+            </div>
+          )}
+        </VizCard>
+
+        {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
+        <VizCard label="Knowledge map" className="mt-5">
           {!insightsLoaded ? (
             <SkeletonBlock className="h-64 w-full" />
           ) : projection && projection.points.length > 0 ? (

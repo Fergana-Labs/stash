@@ -340,6 +340,45 @@ async def memory_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     return {r["id"] for r in rows}
 
 
+# The curator links wiki pages as `[Title](/p/<page_id>)` (markdown) or
+# `href="/p/<page_id>"` (HTML layout), so any /p/<uuid> reference is a link.
+_WIKI_PAGE_LINK = re.compile(
+    r"/p/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
+)
+
+
+async def memory_wiki_graph(owner_user_id: UUID) -> dict:
+    """The Memory wiki as a graph: every live page in the Memory subtree is a
+    node; a page-body reference to another wiki page is an undirected edge."""
+    pool = get_pool()
+    folder_ids = await memory_subtree_folder_ids(owner_user_id)
+    if not folder_ids:
+        return {"nodes": [], "edges": []}
+    rows = await pool.fetch(
+        "SELECT id, name, content_markdown, content_html FROM pages "
+        "WHERE folder_id = ANY($1::uuid[]) AND deleted_at IS NULL",
+        list(folder_ids),
+    )
+    page_ids = {r["id"] for r in rows}
+    edges: set[tuple[str, str]] = set()
+    for r in rows:
+        body = (r["content_markdown"] or "") + (r["content_html"] or "")
+        for match in _WIKI_PAGE_LINK.finditer(body):
+            target = UUID(match.group(1))
+            if target in page_ids and target != r["id"]:
+                edges.add(tuple(sorted((str(r["id"]), str(target)))))
+    degree = {str(r["id"]): 0 for r in rows}
+    for a, b in edges:
+        degree[a] += 1
+        degree[b] += 1
+    return {
+        "nodes": [
+            {"id": str(r["id"]), "name": r["name"], "degree": degree[str(r["id"])]} for r in rows
+        ],
+        "edges": [{"source": a, "target": b} for a, b in sorted(edges)],
+    }
+
+
 async def _assert_not_memory(folder_id: UUID, owner_user_id: UUID) -> None:
     pool = get_pool()
     row = await pool.fetchrow(
