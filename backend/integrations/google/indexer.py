@@ -38,6 +38,7 @@ DRIVE_DRIVES_URL = "https://www.googleapis.com/drive/v3/drives"
 # without them the API pretends Shared Drive content does not exist.
 ALL_DRIVES = {"supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
 MIME_FOLDER = "application/vnd.google-apps.folder"
+MIME_SHORTCUT = "application/vnd.google-apps.shortcut"
 MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
 MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
 MIME_GOOGLE_SLIDE = "application/vnd.google-apps.presentation"
@@ -75,7 +76,7 @@ async def _list(client: httpx.AsyncClient, q: str) -> list[dict]:
         params = {
             **ALL_DRIVES,
             "q": q,
-            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime)",
+            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime, shortcutDetails)",
             "pageSize": 200,
         }
         if page_token:
@@ -87,6 +88,36 @@ async def _list(client: httpx.AsyncClient, q: str) -> list[dict]:
         page_token = body.get("nextPageToken")
         if not page_token:
             return out
+
+
+async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str | None:
+    resp = await client.get(
+        DRIVE_FILE_URL.format(file_id=file_id),
+        params={**ALL_DRIVES, "fields": "modifiedTime"},
+    )
+    resp.raise_for_status()
+    return resp.json().get("modifiedTime")
+
+
+async def _resolve_shortcut(client: httpx.AsyncClient, entry: dict) -> dict:
+    """A shortcut's target as a plain entry, under the shortcut's display name.
+
+    Shortcuts are Drive's symlinks; the walks must index the target, never the
+    shortcut itself — a shortcut has no body (downloading one is a guaranteed
+    403) and a folder shortcut's contents live under the target id. The
+    shortcut's own modifiedTime is when the *shortcut* last moved, so a file
+    target's real modifiedTime costs one metadata fetch — without it, edits to
+    the target would never re-extract.
+    """
+    target = entry["shortcutDetails"]
+    if target["targetMimeType"] == MIME_FOLDER:
+        return {"id": target["targetId"], "name": entry["name"], "mimeType": MIME_FOLDER}
+    return {
+        "id": target["targetId"],
+        "name": entry["name"],
+        "mimeType": target["targetMimeType"],
+        "modifiedTime": await _target_modified_time(client, target["targetId"]),
+    }
 
 
 async def _shared_drives(client: httpx.AsyncClient) -> list[dict]:
@@ -142,6 +173,11 @@ async def index_google_drive(source: dict) -> str | None:
                 if entry["id"] in seen:
                     continue
                 seen.add(entry["id"])
+                if entry["mimeType"] == MIME_SHORTCUT:
+                    entry = await _resolve_shortcut(client, entry)
+                    if entry["id"] in seen:
+                        continue
+                    seen.add(entry["id"])
                 name = entry["name"]
                 if entry["mimeType"] == MIME_FOLDER:
                     await _walk(entry["id"], f"{prefix}{name}/", depth + 1)
@@ -156,6 +192,11 @@ async def index_google_drive(source: dict) -> str | None:
                 if entry["id"] in seen:
                     continue
                 seen.add(entry["id"])
+                if entry["mimeType"] == MIME_SHORTCUT:
+                    entry = await _resolve_shortcut(client, entry)
+                    if entry["id"] in seen:
+                        continue
+                    seen.add(entry["id"])
                 if entry["mimeType"] == MIME_FOLDER:
                     await _walk(entry["id"], f"Shared with me/{entry['name']}/", 1)
                     continue
@@ -199,6 +240,11 @@ async def index_google_drive_folder(source: dict) -> str | None:
                 if entry["id"] in seen:
                     continue
                 seen.add(entry["id"])
+                if entry["mimeType"] == MIME_SHORTCUT:
+                    entry = await _resolve_shortcut(client, entry)
+                    if entry["id"] in seen:
+                        continue
+                    seen.add(entry["id"])
                 name = entry["name"]
                 if entry["mimeType"] == MIME_FOLDER:
                     await _walk(entry["id"], f"{prefix}{name}/", depth + 1)

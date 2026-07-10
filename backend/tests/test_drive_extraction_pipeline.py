@@ -63,12 +63,54 @@ def _stub_drive(monkeypatch, files: list[dict]) -> list[str]:
     return enqueued
 
 
+def _stub_drive_listings(monkeypatch, listings: dict[str, list[dict]]) -> list[str]:
+    """Like `_stub_drive`, but keyed by parent folder id so a walk that descends
+    into subfolders (or shortcut targets) sees each folder's own children.
+    Shortcut targets report MODIFIED as their modifiedTime."""
+
+    async def fake_token(*_a, **_k):
+        return "token"
+
+    async def fake_list(_client, q):
+        if "in parents" not in q:
+            return []
+        return listings.get(q.split("'")[1], [])
+
+    async def fake_target_time(_client, _file_id):
+        return _iso(MODIFIED)
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(indexer, "_list", fake_list)
+    monkeypatch.setattr(indexer, "_target_modified_time", fake_target_time)
+    monkeypatch.setattr(
+        drive_extraction.extract_drive_document, "delay", lambda row_id: enqueued.append(row_id)
+    )
+    return enqueued
+
+
+def _iso(moment: datetime) -> str:
+    return moment.isoformat().replace("+00:00", "Z")
+
+
 def _entry(name: str, modified: datetime = MODIFIED) -> dict:
     return {
         "id": f"drive-{name}",
         "name": name,
         "mimeType": "application/pdf",
-        "modifiedTime": modified.isoformat().replace("+00:00", "Z"),
+        "modifiedTime": _iso(modified),
+    }
+
+
+def _shortcut(name: str, target_id: str, target_mime: str) -> dict:
+    # The shortcut's own modifiedTime is deliberately ancient: anything that
+    # leaks it into a row would fail the freshness assertions.
+    return {
+        "id": f"shortcut-{name}",
+        "name": name,
+        "mimeType": "application/vnd.google-apps.shortcut",
+        "modifiedTime": _iso(datetime(2020, 1, 1, tzinfo=UTC)),
+        "shortcutDetails": {"targetId": target_id, "targetMimeType": target_mime},
     }
 
 
@@ -136,6 +178,81 @@ async def test_a_file_edited_in_drive_is_re_extracted(client: AsyncClient, monke
     assert row["extraction_status"] == "pending"
     # The old text stays readable while the new extraction runs.
     assert row["content"] == "old"
+
+
+async def test_a_shortcut_to_a_folder_indexes_the_targets_files(client: AsyncClient, monkeypatch):
+    """A Drive shortcut is how a customer symlinks a live folder into the synced
+    one without copying it. The walk must descend into the target folder; the
+    shortcut itself must get no row — it has no body, so its row could only ever
+    be a permanently failed extraction."""
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    listings = {
+        src["external_ref"]: [
+            _shortcut("Transcripts", "tgt-folder", "application/vnd.google-apps.folder")
+        ],
+        "tgt-folder": [_entry("Bendix.pdf")],
+    }
+    enqueued = _stub_drive_listings(monkeypatch, listings)
+
+    await indexer.index_google_drive_folder(src)
+
+    rows = await get_pool().fetch(
+        "SELECT path, external_ref FROM drive_documents WHERE source_id = $1 ORDER BY path",
+        UUID(src["id"]),
+    )
+    assert [r["path"] for r in rows] == ["Transcripts/Bendix.pdf"]
+    assert rows[0]["external_ref"] == "drive-Bendix.pdf"
+    assert len(enqueued) == 1
+
+
+async def test_a_shortcut_to_a_file_extracts_the_target(client: AsyncClient, monkeypatch):
+    """The row must carry the target's id and the target's modifiedTime.
+    Downloading the shortcut id is a guaranteed 403, and the shortcut's own
+    modifiedTime only moves when the link moves — keyed on it, edits to the
+    target would never re-extract."""
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    listings = {src["external_ref"]: [_shortcut("Catalog.pdf", "tgt-file", "application/pdf")]}
+    enqueued = _stub_drive_listings(monkeypatch, listings)
+
+    await indexer.index_google_drive_folder(src)
+
+    row = await get_pool().fetchrow(
+        "SELECT path, external_ref, external_updated_at FROM drive_documents WHERE source_id = $1",
+        UUID(src["id"]),
+    )
+    assert row["path"] == "Catalog.pdf"
+    assert row["external_ref"] == "tgt-file"
+    assert row["external_updated_at"] == MODIFIED
+    assert len(enqueued) == 1
+
+
+async def test_a_shortcut_to_an_already_walked_folder_is_skipped(client: AsyncClient, monkeypatch):
+    """A folder and a shortcut to that same folder in one tree must index its
+    files once, and a shortcut cycle must not recurse forever."""
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    listings = {
+        src["external_ref"]: [
+            {
+                "id": "tgt-folder",
+                "name": "Transcripts",
+                "mimeType": "application/vnd.google-apps.folder",
+            },
+            _shortcut("Transcripts", "tgt-folder", "application/vnd.google-apps.folder"),
+        ],
+        "tgt-folder": [_entry("Bendix.pdf")],
+    }
+    enqueued = _stub_drive_listings(monkeypatch, listings)
+
+    await indexer.index_google_drive_folder(src)
+
+    rows = await get_pool().fetch(
+        "SELECT path FROM drive_documents WHERE source_id = $1", UUID(src["id"])
+    )
+    assert [r["path"] for r in rows] == ["Transcripts/Bendix.pdf"]
+    assert len(enqueued) == 1
 
 
 async def _pending_row(client: AsyncClient, monkeypatch) -> tuple[UUID, UUID]:
