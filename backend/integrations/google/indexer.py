@@ -38,14 +38,27 @@ DRIVE_DRIVES_URL = "https://www.googleapis.com/drive/v3/drives"
 # without them the API pretends Shared Drive content does not exist.
 ALL_DRIVES = {"supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
 MIME_FOLDER = "application/vnd.google-apps.folder"
+MIME_SHORTCUT = "application/vnd.google-apps.shortcut"
 MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
 MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
 MIME_GOOGLE_SLIDE = "application/vnd.google-apps.presentation"
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MAX_FOLDER_DEPTH = 8
-# Native (non-Google) files can be massive (terabyte videos). Cap downloads so
-# a stray click doesn't drag a huge file into the agent's response.
+# Native (non-Google) files can be massive (terabyte videos). A whole-Drive
+# source reads bodies inline on the request path, so it caps downloads tightly.
+# A folder source extracts in a memory-bounded child process at sync time and
+# can afford real catalogs — a 180 MB parts catalog is a normal thing to own.
 MAX_NATIVE_DOWNLOAD_BYTES = 25 * 1024 * 1024
+MAX_EXTRACTION_DOWNLOAD_BYTES = 256 * 1024 * 1024
+
+
+class DriveFileUnsupported(Exception):
+    """Drive returned bytes we cannot turn into text — a video, an archive, a
+    CAD drawing. Not an error to retry; the document has no text to index."""
+
+
+class DriveFileTooLarge(Exception):
+    pass
 
 
 def _parse_time(value: str | None) -> datetime | None:
@@ -63,7 +76,7 @@ async def _list(client: httpx.AsyncClient, q: str) -> list[dict]:
         params = {
             **ALL_DRIVES,
             "q": q,
-            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime)",
+            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime, shortcutDetails)",
             "pageSize": 200,
         }
         if page_token:
@@ -75,6 +88,36 @@ async def _list(client: httpx.AsyncClient, q: str) -> list[dict]:
         page_token = body.get("nextPageToken")
         if not page_token:
             return out
+
+
+async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str | None:
+    resp = await client.get(
+        DRIVE_FILE_URL.format(file_id=file_id),
+        params={**ALL_DRIVES, "fields": "modifiedTime"},
+    )
+    resp.raise_for_status()
+    return resp.json().get("modifiedTime")
+
+
+async def _resolve_shortcut(client: httpx.AsyncClient, entry: dict) -> dict:
+    """A shortcut's target as a plain entry, under the shortcut's display name.
+
+    Shortcuts are Drive's symlinks; the walks must index the target, never the
+    shortcut itself — a shortcut has no body (downloading one is a guaranteed
+    403) and a folder shortcut's contents live under the target id. The
+    shortcut's own modifiedTime is when the *shortcut* last moved, so a file
+    target's real modifiedTime costs one metadata fetch — without it, edits to
+    the target would never re-extract.
+    """
+    target = entry["shortcutDetails"]
+    if target["targetMimeType"] == MIME_FOLDER:
+        return {"id": target["targetId"], "name": entry["name"], "mimeType": MIME_FOLDER}
+    return {
+        "id": target["targetId"],
+        "name": entry["name"],
+        "mimeType": target["targetMimeType"],
+        "modifiedTime": await _target_modified_time(client, target["targetId"]),
+    }
 
 
 async def _shared_drives(client: httpx.AsyncClient) -> list[dict]:
@@ -130,6 +173,11 @@ async def index_google_drive(source: dict) -> str | None:
                 if entry["id"] in seen:
                     continue
                 seen.add(entry["id"])
+                if entry["mimeType"] == MIME_SHORTCUT:
+                    entry = await _resolve_shortcut(client, entry)
+                    if entry["id"] in seen:
+                        continue
+                    seen.add(entry["id"])
                 name = entry["name"]
                 if entry["mimeType"] == MIME_FOLDER:
                     await _walk(entry["id"], f"{prefix}{name}/", depth + 1)
@@ -144,6 +192,11 @@ async def index_google_drive(source: dict) -> str | None:
                 if entry["id"] in seen:
                     continue
                 seen.add(entry["id"])
+                if entry["mimeType"] == MIME_SHORTCUT:
+                    entry = await _resolve_shortcut(client, entry)
+                    if entry["id"] in seen:
+                        continue
+                    seen.add(entry["id"])
                 if entry["mimeType"] == MIME_FOLDER:
                     await _walk(entry["id"], f"Shared with me/{entry['name']}/", 1)
                     continue
@@ -154,6 +207,72 @@ async def index_google_drive(source: dict) -> str | None:
 
     await source_service.remove_missing_documents("drive_index", source_id, present)
     logger.info("google drive source %s: indexed %d file(s)", source_id, len(present))
+    return None
+
+
+async def index_google_drive_folder(source: dict) -> str | None:
+    """Crawl one picked folder and extract every file's text.
+
+    Unlike a whole-Drive source this copies bodies: the folder is bounded, and an
+    agent grepping a shelf of scanned parts catalogs cannot afford a Google round
+    trip and a pypdf pass per file per query. The walk only records rows; the
+    bodies are extracted by `backend.workers.extract_drive_one`, one child process
+    per file, because pypdf on a 180 MB catalog will OOM whatever it runs inside.
+    """
+    from ...tasks.drive_extraction import extract_drive_document
+
+    source_id = UUID(source["id"])
+    owner_user_id = UUID(source["owner_user_id"])
+    folder_id = source["external_ref"]
+
+    token = await get_valid_token(owner_user_id, "google")
+    headers = {"Authorization": f"Bearer {token}"}
+    present: list[str] = []
+    stale: list[UUID] = []
+    seen: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+
+        async def _walk(parent_id: str, prefix: str, depth: int) -> None:
+            if depth > MAX_FOLDER_DEPTH:
+                return
+            for entry in await _list(client, f"'{parent_id}' in parents and trashed = false"):
+                if entry["id"] in seen:
+                    continue
+                seen.add(entry["id"])
+                if entry["mimeType"] == MIME_SHORTCUT:
+                    entry = await _resolve_shortcut(client, entry)
+                    if entry["id"] in seen:
+                        continue
+                    seen.add(entry["id"])
+                name = entry["name"]
+                if entry["mimeType"] == MIME_FOLDER:
+                    await _walk(entry["id"], f"{prefix}{name}/", depth + 1)
+                    continue
+                path = f"{prefix}{name}"
+                present.append(path)
+                row_id = await source_service.upsert_drive_document(
+                    source_id=source_id,
+                    owner_user_id=owner_user_id,
+                    path=path,
+                    name=name,
+                    external_ref=entry["id"],
+                    external_updated_at=_parse_time(entry.get("modifiedTime")),
+                )
+                if row_id is not None:
+                    stale.append(row_id)
+
+        await _walk(folder_id, "", 0)
+
+    await source_service.remove_missing_documents("drive_documents", source_id, present)
+    for row_id in stale:
+        extract_drive_document.delay(str(row_id))
+    logger.info(
+        "google drive folder %s: indexed %d file(s), %d to extract",
+        source_id,
+        len(present),
+        len(stale),
+    )
     return None
 
 
@@ -196,17 +315,42 @@ async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
 
 
 async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
-    """Lazy read: route by Drive MIME type.
+    """Lazy read for a whole-Drive source, on the request path. Bounded by
+    MAX_NATIVE_DOWNLOAD_BYTES and never calls Claude vision — see
+    `extract_drive_text` for the folder-source path, which runs at sync time
+    in a child process."""
+    return await extract_drive_text(
+        owner_user_id,
+        file_id,
+        max_bytes=MAX_NATIVE_DOWNLOAD_BYTES,
+        transcribe_pdfs=False,
+    )
+
+
+async def extract_drive_text(
+    owner_user_id: UUID,
+    file_id: str,
+    *,
+    max_bytes: int,
+    transcribe_pdfs: bool,
+) -> str:
+    """A Drive file as text. Routes by MIME type:
 
     - Google Doc       → markdown export
-    - Google Sheet     → CSV export, rendered as a markdown table (first sheet)
+    - Google Sheet     → XLSX export, rendered as one TSV block per sheet
     - Google Slides    → text/plain export
-    - PDF              → bytes + pypdf extraction
-    - Office formats (docx/pptx/xlsx) and text/* → bytes + file_extraction
-    - Anything else    → empty string
+    - PDF              → with `transcribe_pdfs`, Claude vision grounded by the
+                         embedded text layer (structure from the page images,
+                         characters from the layer; a scan just has no layer);
+                         without it, the raw pypdf text layer
+    - Office formats (docx/pptx/xlsx) and text/* → file_extraction
+    - Anything else    → DriveFileUnsupported
 
-    The metadata lookup costs one extra round-trip per read but avoids storing
-    mime types on every index row (and avoids drift if a file is converted).
+    The metadata lookup costs one extra round-trip but avoids storing mime types
+    on every index row (and avoids drift if a file is converted).
+
+    Raises rather than returning a placeholder or an empty string: a caller that
+    cannot read a document must know it, not mistake it for a blank one.
     """
     token = await get_valid_token(owner_user_id, "google")
     headers = {"Authorization": f"Bearer {token}"}
@@ -215,57 +359,72 @@ async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
             DRIVE_FILE_URL.format(file_id=file_id),
             params={**ALL_DRIVES, "fields": "mimeType,name,size"},
         )
-        if meta.status_code != 200:
-            return ""
+        meta.raise_for_status()
         info = meta.json()
         mime = info.get("mimeType") or ""
 
+        from ...services.file_extraction import extract_text, is_pdf
+
         if mime == MIME_GOOGLE_DOC:
-            return await _export(client, file_id, "text/markdown")
-        if mime == MIME_GOOGLE_SHEET:
+            text = await _export(client, file_id, "text/markdown")
+        elif mime == MIME_GOOGLE_SHEET:
             # XLSX export keeps every visible sheet (Drive's CSV export drops
-            # everything except the first). file_extraction renders one TSV
-            # block per sheet.
+            # everything except the first).
             xlsx = await _export_bytes(client, file_id, _XLSX_MIME)
-            if not xlsx:
-                return ""
-            from ...services.file_extraction import extract_text
+            text = extract_text(xlsx, _XLSX_MIME)
+        elif mime == MIME_GOOGLE_SLIDE:
+            text = await _export(client, file_id, "text/plain")
+        else:
+            size = int(info.get("size") or 0)
+            if size > max_bytes:
+                raise DriveFileTooLarge(
+                    f"{size // (1024 * 1024)} MB exceeds the {max_bytes // (1024 * 1024)} MB limit"
+                )
 
-            return extract_text(xlsx, _XLSX_MIME) or ""
-        if mime == MIME_GOOGLE_SLIDE:
-            return await _export(client, file_id, "text/plain")
+            media = await client.get(
+                DRIVE_FILE_URL.format(file_id=file_id),
+                params={**ALL_DRIVES, "alt": "media"},
+            )
+            media.raise_for_status()
+            content = media.content
+            if len(content) > max_bytes:
+                raise DriveFileTooLarge(
+                    f"{len(content) // (1024 * 1024)} MB exceeds the "
+                    f"{max_bytes // (1024 * 1024)} MB limit"
+                )
 
-        # Native files: cap by size, download bytes, route by mime to a text
-        # extractor.
-        size = int(info.get("size") or 0)
-        if size and size > MAX_NATIVE_DOWNLOAD_BYTES:
-            return f"_(file too large to inline: {size // (1024 * 1024)} MB)_"
+            if is_pdf(mime) and transcribe_pdfs:
+                # One codepath for every PDF: vision reads the pages, the
+                # embedded text layer (empty for a scan) grounds the characters.
+                # pypdf alone scrambles multi-column tables, and a scrambled
+                # parts table reads fine while crossing the wrong part numbers.
+                from ...services.pdf_ocr import transcribe_pdf
 
-        media = await client.get(
-            DRIVE_FILE_URL.format(file_id=file_id),
-            params={**ALL_DRIVES, "alt": "media"},
-        )
-        if media.status_code != 200:
-            return ""
-        content = media.content
-        if len(content) > MAX_NATIVE_DOWNLOAD_BYTES:
-            return f"_(file too large to inline: {len(content) // (1024 * 1024)} MB)_"
+                text = await transcribe_pdf(content)
+            else:
+                # Defer to the file-extraction service so docx/pptx/xlsx/pdf/
+                # text/* share the same handler set as the direct-upload
+                # extraction queue.
+                text = extract_text(content, mime)
 
-        # Defer to the file-extraction service so docx/pptx/xlsx/pdf/text/*
-        # share the same handler set as the direct-upload extraction queue.
-        from ...services.file_extraction import extract_text
-
-        text = extract_text(content, mime)
-        return text or ""
+        # Every branch lands here, Google-native exports included — an export
+        # that came back empty must not be stored as a blank 'done' document.
+        if not text:
+            raise DriveFileUnsupported(f"no text could be extracted from {mime or 'unknown type'}")
+        return text
 
 
 async def _export(client: httpx.AsyncClient, file_id: str, mime: str) -> str:
     url = DRIVE_EXPORT_URL.format(file_id=file_id)
     resp = await client.get(url, params={**ALL_DRIVES, "mimeType": mime})
-    return resp.text if resp.status_code == 200 else ""
+    # A failed export must raise, not read as an empty document — the folder
+    # extraction path would otherwise store "" as a successfully extracted body.
+    resp.raise_for_status()
+    return resp.text
 
 
 async def _export_bytes(client: httpx.AsyncClient, file_id: str, mime: str) -> bytes:
     url = DRIVE_EXPORT_URL.format(file_id=file_id)
     resp = await client.get(url, params={**ALL_DRIVES, "mimeType": mime})
-    return resp.content if resp.status_code == 200 else b""
+    resp.raise_for_status()
+    return resp.content

@@ -47,6 +47,9 @@ class VfsNode:
     # Provider-side id of a connected-source document (a Drive file id, a Gmail
     # message id, …), so `stat` can tie a VFS path back to the provider object.
     external_ref: str | None = None
+    # Stash id of the connected source this node is the root of. It's the object
+    # id `shares add source <id>` takes, so `stat` surfaces it for sharing.
+    source_id: str | None = None
     # Set when `prefetch` already tried this loader and it failed. `read_file`
     # re-raises it rather than fetching again — a second fetch would hit the
     # provider twice and, server-side, spend the document budget twice.
@@ -429,6 +432,7 @@ class StashVfsModel:
                 # Sole connection collapses — its documents sit directly in the
                 # provider folder (e.g. /sources/granola/<call>).
                 handle = str(members[0].get("source") or "")
+                self.nodes[provider_root].source_id = handle
                 self._expanders[provider_root] = lambda root=provider_root, h=handle: (
                     self._expand_source(root, h)
                 )
@@ -438,6 +442,7 @@ class StashVfsModel:
                 member_root = self._add_dir_child(
                     provider_root, _source_slug(member.get("display_name") or handle)
                 )
+                self.nodes[member_root].source_id = handle
                 self._expanders[member_root] = lambda root=member_root, h=handle: (
                     self._expand_source(root, h)
                 )

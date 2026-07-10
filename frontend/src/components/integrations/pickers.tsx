@@ -26,6 +26,10 @@ import { AsanaIcon, GitHubIcon, JiraIcon, NotionIcon, SlackIcon } from "./BrandI
 import type { Connector } from "./connectors";
 
 type AddSourceBody = {
+  // Overrides the connector's default type. A picked Drive folder is its own
+  // source type: its files are copied and extracted, where a whole Drive is
+  // indexed by name only.
+  source_type?: string;
   external_ref?: string;
   display_name?: string;
   settings?: Record<string, unknown>;
@@ -138,7 +142,11 @@ export function AddSourceControls({
           busy={busy}
           onAddMyDrive={() => add({ external_ref: "root", display_name: "Google Drive" })}
           onAddFolder={(folderId, displayName) =>
-            add({ external_ref: folderId, display_name: displayName })
+            add({
+              source_type: "google_drive_folder",
+              external_ref: folderId,
+              display_name: displayName,
+            })
           }
         />
         {errorRow}

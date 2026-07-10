@@ -23,11 +23,19 @@ _COLUMNS = (
 )
 
 
-# The daily curator's cron is staggered per user so sprite wakes spread across
-# the day rather than all firing at once.
-def _staggered_daily_cron(user_id: UUID) -> str:
+# The curator runs nightly, inside a quiet window (08:00–11:59 UTC = midnight–4am
+# Pacific): users are asleep so the wiki isn't chasing live edits, and no deploys
+# are restarting the worker mid-run (the cron tick is consumed up front, so a
+# killed run is lost until the next night). Staggered per user within the window
+# so sprite wakes don't all fire at once.
+CURATOR_WINDOW_START_HOUR_UTC = 8
+CURATOR_WINDOW_HOURS = 4
+
+
+def _staggered_nightly_cron(user_id: UUID) -> str:
     n = int.from_bytes(user_id.bytes, "big")
-    return f"{n % 60} {n % 24} * * *"
+    hour = CURATOR_WINDOW_START_HOUR_UTC + (n // 60) % CURATOR_WINDOW_HOURS
+    return f"{n % 60} {hour} * * *"
 
 
 _VALID_PROVIDERS = {"anthropic", "openai", "openrouter"}
@@ -97,7 +105,7 @@ CURATOR_BACKFILL_DAYS = 90
 async def get_or_create_curator(user_id: UUID) -> dict:
     """The user's reserved Memory-curator agent, created on first use.
 
-    Scheduled daily (staggered). Both the cron baseline (last_run_at) and the
+    Scheduled nightly (staggered). Both the cron baseline (last_run_at) and the
     delta watermark (curated_through) seed to a bounded backfill point, so the
     first run is due immediately and bootstraps from real history."""
     pool = get_pool()
@@ -117,7 +125,7 @@ async def get_or_create_curator(user_id: UUID) -> dict:
         RETURNING {_COLUMNS}
         """,
         user_id,
-        _staggered_daily_cron(user_id),
+        _staggered_nightly_cron(user_id),
         CURATOR_BACKFILL_DAYS,
     )
     if row is None:  # lost the race — read the winner.

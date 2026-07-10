@@ -343,8 +343,13 @@ export async function getSourceStatus(sourceId: string): Promise<SourceStatus> {
 export async function getSourceEntries(
   source: string,
   path = "",
+  opts: { limit?: number; after?: string } = {},
 ): Promise<SourceEntry[]> {
-  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.after) params.set("after", opts.after);
+  const q = params.size ? `?${params}` : "";
   const data = await apiFetch<{ entries: SourceEntry[] }>(
     `${ME}/sources/${source}/entries${q}`,
   );
@@ -1797,7 +1802,14 @@ export async function getFolderContents(folderId: string): Promise<FolderContent
 
 // --- Shared with me ---
 
-export type SharedObjectType = "folder" | "session_folder" | "page" | "file" | "table" | "session";
+export type SharedObjectType =
+  | "folder"
+  | "session_folder"
+  | "page"
+  | "file"
+  | "table"
+  | "session"
+  | "source";
 
 export interface SharedWithMeItem {
   object_type: SharedObjectType;

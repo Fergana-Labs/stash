@@ -740,6 +740,9 @@ class SkillAppVfsShell:
         )
         if node.external_ref:
             out += f"  external_ref: {node.external_ref}\n"
+        if node.source_id:
+            out += f"  source_id: {node.source_id}\n"
+            out += f"  share: stash shares add source {node.source_id} <email>\n"
         return out
 
     def _read_text(self, path: str) -> str:

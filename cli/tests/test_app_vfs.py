@@ -373,6 +373,25 @@ def test_stat_omits_external_ref_when_the_entry_has_none():
     assert "external_ref" not in result.stdout
 
 
+def test_stat_shows_source_id_and_share_hint_at_a_source_root():
+    # The source root's id is the object id `shares add source <id>` takes, so
+    # `stat` is how you discover it without a bespoke listing command.
+    shell, _client = _shell()
+
+    result = shell.run("stat /sources/gmail")
+
+    assert "source_id: src-gmail-1" in result.stdout
+    assert "share: stash shares add source src-gmail-1 <email>" in result.stdout
+
+
+def test_stat_omits_source_id_for_documents_inside_a_source():
+    shell, _client = _shell()
+
+    result = shell.run("stat '/sources/gmail/Welcome email'")
+
+    assert "source_id" not in result.stdout
+
+
 def test_tree_warns_when_a_source_exceeds_the_materialization_ceiling(monkeypatch):
     monkeypatch.setattr("stashvfs.model.SOURCE_ENTRIES_MAX", 4)
     shell, _client = _shell(PagedSourceClient())

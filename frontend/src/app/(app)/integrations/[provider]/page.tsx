@@ -2,7 +2,8 @@
 
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -29,7 +30,7 @@ import {
   submitCredentials,
   type IntegrationStatus,
 } from "@/lib/integrations";
-import { connectorForProvider, connectorIcon } from "@/components/integrations/connectors";
+import { connectorForProvider, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
 import {
   AddSourceControls,
   CredentialForm,
@@ -37,6 +38,14 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
+import { ResourceShareDialog } from "@/components/share/ResourceShareButton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { User } from "@/lib/types";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
@@ -77,7 +86,9 @@ export default function IntegrationPage() {
       listSources(),
     ]);
     setStatus(integrations.providers.find((p) => p.provider === provider) ?? null);
-    setSources(allSources.filter((s) => s.type === connector.sourceType));
+    // A provider can own more than one source type — a whole Drive and a
+    // picked folder are different types on the same Google connector.
+    setSources(allSources.filter((s) => providerForSourceType[s.type] === connector.provider));
   }, [connector, provider]);
 
   useEffect(() => {
@@ -325,6 +336,7 @@ export default function IntegrationPage() {
                 <SourceRow
                   key={source.source}
                   source={source}
+                  currentUser={user}
                   highlighted={source.source === highlightSourceId}
                   open={source.source === openSourceId}
                   busySync={busy === `sync:${source.source}`}
@@ -427,6 +439,7 @@ function shortRef(source: Source): string | null {
 
 function SourceRow({
   source,
+  currentUser,
   highlighted,
   open,
   busySync,
@@ -436,6 +449,7 @@ function SourceRow({
   onRemove,
 }: {
   source: Source;
+  currentUser: User;
   highlighted: boolean;
   open: boolean;
   busySync: boolean;
@@ -454,6 +468,10 @@ function SourceRow({
   // Why this row stopped tracking the sync. Distinct from `status.sync_error`,
   // which is the sync itself failing — this is us failing to observe it.
   const [pollStopped, setPollStopped] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Outside-click boundary for the share dialog: covers the "..." trigger so
+  // opening the menu doesn't immediately close the dialog.
+  const menuBoundaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -523,29 +541,61 @@ function SourceRow({
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
         )}
       </button>
-      <div className="flex shrink-0 items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
-        <button type="button" onClick={onOpen} className={rowButton()}>
-          {open ? "Close" : "Browse"}
-        </button>
-        {syncs && (
-          <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
-            {busySync ? "Syncing..." : "Sync"}
+      <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
+          <button type="button" onClick={onOpen} className={rowButton()}>
+            {open ? "Close" : "Browse"}
           </button>
-        )}
-        <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
-          Remove
-        </button>
+          {syncs && (
+            <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
+              {busySync ? "Syncing..." : "Sync"}
+            </button>
+          )}
+        </div>
+        {/* The menu and share dialog live outside the hover-dim group: an open
+            dialog must not inherit the row's hover-dimming. */}
+        <div ref={menuBoundaryRef} className="relative">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="More actions"
+                className="flex cursor-pointer items-center rounded-lg px-1.5 py-1.5 text-muted-foreground opacity-55 transition-opacity hover:bg-raised hover:text-foreground group-hover:opacity-100"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-max min-w-28">
+              <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={busyDelete}
+                onClick={onRemove}
+              >
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {shareOpen && (
+            <ResourceShareDialog
+              objectType="source"
+              objectId={source.source}
+              resourceName={source.display_name}
+              resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
+              currentUser={currentUser}
+              boundaryRef={menuBoundaryRef}
+              onClose={() => setShareOpen(false)}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// The quiet bordered row action (Browse/Sync) and its borderless ghost (Remove).
+// The quiet bordered row action (Browse/Sync).
 function rowButton(): string {
   return "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
-}
-function rowButtonGhost(): string {
-  return "cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-error disabled:opacity-60";
 }
 
 function BrowsePanel({
@@ -825,28 +875,94 @@ function NavigablePanel({
 }) {
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<SourceEntry[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [crumbs, setCrumbs] = useState<{ label: string; path: string }[]>([{ label: source.display_name, path: "" }]);
   const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(null);
   const [error, setError] = useState("");
+  // Bumped whenever the listing target changes, so an in-flight Load more for
+  // the previous directory can't clobber the new one.
+  const listingSeq = useRef(0);
+
+  // The endpoint truncates at the requested limit; asking for one extra row is
+  // how callers detect that another page exists (see routers/sources.py).
+  const PAGE_SIZE = 200;
+
+  async function fetchPage(dir: string, after: string): Promise<{ page: SourceEntry[]; more: boolean }> {
+    const rows = await getSourceEntries(source.source, dir, { limit: PAGE_SIZE + 1, after });
+    const more = rows.length > PAGE_SIZE;
+    return { page: more ? rows.slice(0, PAGE_SIZE) : rows, more };
+  }
 
   useEffect(() => {
-    let cancelled = false;
+    const seq = ++listingSeq.current;
     setEntries(null);
+    setHasMore(false);
     setError("");
-    getSourceEntries(source.source, path)
-      .then((next) => {
-        if (!cancelled) setEntries(next);
+    fetchPage(path, "")
+      .then(({ page, more }) => {
+        if (listingSeq.current !== seq) return;
+        setEntries(page);
+        setHasMore(more);
       })
       .catch((e) => {
-        if (!cancelled) {
-          setEntries([]);
-          setError(e instanceof Error ? e.message : "Could not list entries");
-        }
+        if (listingSeq.current !== seq) return;
+        setEntries([]);
+        setError(e instanceof Error ? e.message : "Could not list entries");
       });
-    return () => {
-      cancelled = true;
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source.source, path]);
+
+  async function loadMore(all: boolean) {
+    if (!entries || loadingMore) return;
+    const seq = listingSeq.current;
+    setLoadingMore(true);
+    try {
+      let acc = entries;
+      let more = hasMore;
+      while (more) {
+        const cursor = acc[acc.length - 1]?.path;
+        if (!cursor) break; // the cursor is a path; a path-less listing can't page
+        const { page, more: nextMore } = await fetchPage(path, cursor);
+        if (listingSeq.current !== seq) return;
+        acc = [...acc, ...page];
+        more = nextMore;
+        if (!all) break;
+      }
+      setEntries(acc);
+      setHasMore(more);
+    } catch (e) {
+      if (listingSeq.current === seq) {
+        setError(e instanceof Error ? e.message : "Could not list entries");
+      }
+    } finally {
+      if (listingSeq.current === seq) setLoadingMore(false);
+    }
+  }
+
+  // The entries endpoint returns every descendant file as a flat, path-ordered
+  // list (the VFS builds its tree from the same shape). Fold that into one
+  // directory level: an entry nested below the current path becomes a folder
+  // row for its first path segment, emitted once, in path order.
+  const visibleEntries = useMemo(() => {
+    if (!entries) return null;
+    const dirPrefix = path ? `${path}/` : "";
+    const seenFolders = new Set<string>();
+    const rows: SourceEntry[] = [];
+    for (const entry of entries) {
+      const rel = entry.path?.startsWith(dirPrefix) ? entry.path.slice(dirPrefix.length) : null;
+      const slash = rel?.indexOf("/") ?? -1;
+      if (rel === null || slash === -1) {
+        rows.push(entry);
+        continue;
+      }
+      const segment = rel.slice(0, slash);
+      if (seenFolders.has(segment)) continue;
+      seenFolders.add(segment);
+      rows.push({ name: segment, kind: "dir", path: `${dirPrefix}${segment}` });
+    }
+    return rows;
+  }, [entries, path]);
 
   // Folder-like entries (have a `path` and are a container) drill in; leaves open a doc.
   function isFolder(entry: SourceEntry): boolean {
@@ -890,15 +1006,15 @@ function NavigablePanel({
 
       {error && <div className="mb-2 text-[12px] text-error">{error}</div>}
 
-      {entries === null ? (
+      {visibleEntries === null ? (
         <div className="text-[12px] text-muted-foreground">Loading…</div>
-      ) : entries.length === 0 ? (
+      ) : visibleEntries.length === 0 ? (
         <div className="text-[12px] text-muted-foreground">Empty.</div>
       ) : (
         <div className="space-y-0.5">
-          {entries.map((entry) => {
-            const key = entry.id ?? entry.path ?? entry.name;
+          {visibleEntries.map((entry) => {
             const folder = isFolder(entry);
+            const key = `${folder ? "dir" : "doc"}:${entry.id ?? entry.path ?? entry.name}`;
             return (
               <button
                 key={key}
@@ -913,6 +1029,30 @@ function NavigablePanel({
               </button>
             );
           })}
+          {hasMore && (
+            <div className="flex items-center gap-3 px-2 py-1.5 text-[12px] text-muted-foreground">
+              {loadingMore ? (
+                <span>Loading…</span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => loadMore(false)}
+                    className="cursor-pointer hover:text-foreground hover:underline"
+                  >
+                    Load more
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadMore(true)}
+                    className="cursor-pointer hover:text-foreground hover:underline"
+                  >
+                    Load all
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

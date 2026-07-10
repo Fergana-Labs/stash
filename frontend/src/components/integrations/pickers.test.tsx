@@ -78,7 +78,7 @@ describe("DriveFolderControls", () => {
     fireEvent.click(screen.getByText("Add folder"));
 
     expect(addSource).toHaveBeenCalledWith({
-      source_type: "google_drive",
+      source_type: "google_drive_folder",
       external_ref: "1AbC_dEf-234567890",
       display_name: "Heavi Knowledge Base",
     });
@@ -94,7 +94,7 @@ describe("DriveFolderControls", () => {
     fireEvent.click(screen.getByText("Add folder"));
 
     expect(addSource).toHaveBeenCalledWith({
-      source_type: "google_drive",
+      source_type: "google_drive_folder",
       external_ref: "1AbC_dEf-234567890",
       display_name: "Google Drive folder",
     });

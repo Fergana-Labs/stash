@@ -47,7 +47,12 @@ SPRITE_PATH = (
 # Bump whenever _seed_script changes: boxes provisioned under an older
 # version re-run the (idempotent) seed on their next acquire, so additions
 # like a new harness CLI reach existing sprites, not just new ones.
-SEED_VERSION = 1
+SEED_VERSION = 2
+
+# Pinned because the installer's "latest" lookup hits the unauthenticated
+# GitHub API, whose per-IP rate limit the sprites' shared egress IP exhausts —
+# a pinned version downloads straight from the release CDN instead.
+OPENCODE_VERSION = "1.17.18"
 
 # A first-ever provision creates the VM and seeds it (~10-30s).
 PROVISION_TIMEOUT_S = 180
@@ -244,7 +249,7 @@ set -euo pipefail
 export PATH="{SPRITE_PATH}"
 command -v stash > /dev/null || python3 -m pip install --user --break-system-packages stashai
 mkdir -p ~/.local/bin
-command -v opencode > /dev/null || {{ curl -fsSL https://opencode.ai/install | bash; ln -sf ~/.opencode/bin/opencode ~/.local/bin/opencode; }}
+command -v opencode > /dev/null || {{ curl -fsSL https://opencode.ai/install | VERSION={OPENCODE_VERSION} bash; ln -sf ~/.opencode/bin/opencode ~/.local/bin/opencode; }}
 mkdir -p ~/.stash
 cat > ~/.stash/config.json << 'STASH_CONFIG'
 {config}

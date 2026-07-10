@@ -112,6 +112,7 @@ export const providerForSourceType: Record<string, string> = {
   github_repo: "github",
   gmail: "gmail",
   google_drive: "google",
+  google_drive_folder: "google",
   notion: "notion",
   jira_project: "jira",
   asana_project: "asana",
@@ -163,6 +164,7 @@ export function labelForSourceType(type: string): string {
   if (type === "github_repo") return "GitHub";
   if (type === "gmail") return "Gmail";
   if (type === "google_drive") return "Google Drive";
+  if (type === "google_drive_folder") return "Google Drive folder";
   if (type === "notion") return "Notion";
   if (type === "slack") return "Slack";
   if (type === "granola") return "Granola";

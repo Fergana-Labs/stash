@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { API_BASE, getAuth0AccessToken, revokeStoredApiKey } from "@/lib/api";
+import { auth0LogoutUrl } from "@/lib/authLogout";
 
 type Props = {
   cliSession?: string | null;
@@ -107,7 +108,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
         >
           {submitting ? "Authorizing..." : "Authorize CLI"}
         </button>
-        <a href="/auth/logout" className="text-[11px] text-muted hover:text-foreground">
+        <a href={auth0LogoutUrl()} className="text-[11px] text-muted hover:text-foreground">
           Use a different account
         </a>
       </div>

@@ -24,6 +24,7 @@ celery = Celery(
     backend=settings.REDIS_URL,
     include=[
         "backend.tasks.extraction",
+        "backend.tasks.drive_extraction",
         "backend.tasks.embeddings",
         "backend.tasks.linear_tickets",
         "backend.tasks.session_titles",
@@ -62,6 +63,10 @@ celery.conf.update(
         },
         "extraction-enqueue-pending": {
             "task": "backend.tasks.extraction.enqueue_pending",
+            "schedule": 60.0,
+        },
+        "drive-extraction-enqueue-pending": {
+            "task": "backend.tasks.drive_extraction.enqueue_pending",
             "schedule": 60.0,
         },
         "session-title-reconcile": {

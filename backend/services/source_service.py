@@ -56,6 +56,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "github_repo": 3600,
     "gmail": 1800,
     "google_drive": 1800,
+    "google_drive_folder": 1800,
     "notion": 1800,
     "slack": 21600,
     "granola": 21600,
@@ -70,6 +71,7 @@ SOURCE_CAPABILITY = {
     "github_repo": "navigable",
     "gmail": "searchable",
     "google_drive": "navigable",
+    "google_drive_folder": "navigable",
     "notion": "navigable",
     "slack": "searchable",
     "granola": "searchable",
@@ -82,7 +84,7 @@ SOURCE_CAPABILITY = {
 
 PROVIDER_SOURCE_TYPES = {
     "github": ("github_repo",),
-    "google": ("google_drive",),
+    "google": ("google_drive", "google_drive_folder"),
     "gmail": ("gmail",),
     "notion": ("notion",),
     "slack": ("slack",),
@@ -466,6 +468,7 @@ SOURCE_TABLE = {
     "github_repo": "github_documents",
     "gmail": "gmail_index",
     "google_drive": "drive_index",
+    "google_drive_folder": "drive_documents",
     "notion": "notion_index",
     "slack": "slack_messages",
     "granola": "granola_notes",
@@ -489,6 +492,9 @@ CONTENT_TABLES = {
     "granola_notes",
     "gong_documents",
     "notion_index",
+    # A picked Drive folder is bounded, so its bodies are extracted once at sync
+    # (OCR included) and stored. A whole-Drive source is not, and stays index-only.
+    "drive_documents",
 }
 
 # Index-only source types whose `search` is federated live to the provider's
@@ -643,6 +649,73 @@ async def upsert_index_row(
         external_updated_at,
     )
     return "inserted" if existing is None else "updated"
+
+
+# Extraction outcomes that are final for a given version of the file: re-running
+# on the same bytes reproduces the same outcome, so a sync re-queues these only
+# when Drive's `modifiedTime` moves. Without this, an unsupported 200 MB video
+# would be re-downloaded on every 30-minute sync, forever. 'pending' and
+# 'processing' are in-flight, not settled — the sweep and claim in
+# `tasks/drive_extraction.py` own their retry.
+SETTLED_EXTRACTION_STATUSES = ("done", "unsupported", "too_large", "failed")
+
+
+async def upsert_drive_document(
+    *,
+    source_id: UUID,
+    owner_user_id: UUID,
+    path: str,
+    name: str,
+    external_ref: str,
+    external_updated_at,
+) -> UUID | None:
+    """Record a Drive folder file, and say whether its body needs extracting.
+
+    Returns the row id when the file is new or has changed in Drive since we last
+    extracted it, and None when its extraction is settled. Extraction is
+    expensive — a scanned catalog is a Claude-vision call — so it is keyed on
+    Drive's own `modifiedTime` rather than re-run on every sync. A 'failed' row
+    rests once retries are spent; only a new version of the file revives it."""
+    pool = get_pool()
+    existing = await pool.fetchrow(
+        "SELECT id, name, external_ref, external_updated_at, extraction_status, deleted_at "
+        "FROM drive_documents WHERE source_id = $1 AND path = $2",
+        source_id,
+        path,
+    )
+    unchanged = (
+        existing
+        and existing["deleted_at"] is None
+        and existing["name"] == name
+        and existing["external_ref"] == external_ref
+        and existing["external_updated_at"] == external_updated_at
+        and existing["extraction_status"] in SETTLED_EXTRACTION_STATUSES
+    )
+    if unchanged:
+        return None
+
+    row = await pool.fetchrow(
+        "INSERT INTO drive_documents "
+        "(source_id, owner_user_id, path, name, kind, external_ref, external_updated_at, "
+        " extraction_status, extraction_attempts) "
+        "VALUES ($1, $2, $3, $4, 'file', $5, $6, 'pending', 0) "
+        "ON CONFLICT (source_id, path) DO UPDATE SET "
+        "name = EXCLUDED.name, external_ref = EXCLUDED.external_ref, "
+        "external_updated_at = EXCLUDED.external_updated_at, "
+        # Any text we already hold stays put while the new extraction runs. It is
+        # at most one sync interval stale, which beats making the document
+        # unreadable for the minutes an OCR pass takes.
+        "extraction_status = 'pending', extraction_error = NULL, extraction_attempts = 0, "
+        "locked_at = NULL, deleted_at = NULL, updated_at = now() "
+        "RETURNING id",
+        source_id,
+        owner_user_id,
+        path,
+        name,
+        external_ref,
+        external_updated_at,
+    )
+    return row["id"]
 
 
 async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:
@@ -943,6 +1016,9 @@ async def read_document(source: dict, path: str) -> dict | None:
                 "external_ref": row["external_ref"],
             }
 
+        if table == "drive_documents":
+            return await _read_drive_document(UUID(source["id"]), path)
+
         row = await get_pool().fetchrow(
             f"SELECT path, name, kind, content, external_ref FROM {table} "
             f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
@@ -988,6 +1064,54 @@ async def read_document(source: dict, path: str) -> dict | None:
         "name": row["name"],
         "kind": row["kind"],
         "content": content,
+        "external_ref": row["external_ref"],
+    }
+
+
+# extraction_status -> the HTTP status a read deserves when the row has no body.
+DRIVE_UNREADABLE_STATUS = {
+    "pending": 409,  # sync has seen it; the extraction child hasn't run yet
+    "processing": 409,
+    "unsupported": 415,  # a video, an archive — there is no text to read
+    "too_large": 413,
+    "failed": 422,  # extraction ran and blew up; the row records why
+}
+
+
+async def _read_drive_document(source_id: UUID, path: str) -> dict | None:
+    """A Drive folder document, or a loud explanation of why it has no body.
+
+    The row exists from the moment the sync walk sees the file; the body arrives
+    later, from a child process. Returning `content or ""` for a row that has no
+    content yet would tell the agent the catalog is blank — which is exactly the
+    bug this table was built to kill.
+
+    Text we already hold is served even while a re-extraction is pending: it is
+    one sync interval stale at worst, and that is the same contract every other
+    copied source has."""
+    row = await get_pool().fetchrow(
+        "SELECT path, name, kind, content, external_ref, extraction_status, extraction_error "
+        "FROM drive_documents WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        source_id,
+        path,
+    )
+    if not row:
+        return None
+    if row["content"] is None:
+        status = row["extraction_status"]
+        return {
+            "path": row["path"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "content": "",
+            "error": row["extraction_error"] or f"extraction {status}",
+            "http_status": DRIVE_UNREADABLE_STATUS[status],
+        }
+    return {
+        "path": row["path"],
+        "name": row["name"],
+        "kind": row["kind"],
+        "content": row["content"],
         "external_ref": row["external_ref"],
     }
 
