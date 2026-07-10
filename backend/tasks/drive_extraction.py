@@ -23,8 +23,8 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
-# Scanned catalogs go to Claude vision ten pages at a time, with a 120s per-request
-# timeout — a 100-page scan is ten of those.
+# PDFs go to Claude vision ten pages at a time, with a 120s per-request
+# timeout — a 100-page catalog is ten of those.
 CHILD_TIMEOUT_SECONDS = 1800
 MAX_ATTEMPTS = 3
 

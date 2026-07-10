@@ -83,7 +83,7 @@ async def _run(row_id: UUID) -> int:
                 row["owner_user_id"],
                 row["external_ref"],
                 max_bytes=MAX_EXTRACTION_DOWNLOAD_BYTES,
-                ocr_scanned_pdfs=True,
+                transcribe_pdfs=True,
             )
         except DriveFileUnsupported as e:
             await _store_unreadable(conn, row_id, "unsupported", str(e))

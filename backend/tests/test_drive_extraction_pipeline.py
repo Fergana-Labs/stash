@@ -8,6 +8,7 @@ that a correctly populated table reads correctly — never that anything fills i
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,7 +16,7 @@ from httpx import AsyncClient
 
 from backend.database import get_pool
 from backend.integrations.google import indexer
-from backend.services import source_service
+from backend.services import file_extraction, pdf_ocr, source_service
 from backend.tasks import drive_extraction
 from backend.workers import extract_drive_one
 
@@ -276,3 +277,89 @@ async def test_a_file_removed_from_drive_stops_being_readable(client: AsyncClien
         UUID(src["id"]),
     )
     assert [r["path"] for r in live] == ["Bendix.pdf"]
+
+
+# --- PDF routing: which parser a Drive PDF gets --------------------------------
+#
+# A folder source's PDFs go through Claude vision grounded by the embedded text
+# layer (structure from the images, characters from the layer). A whole-Drive
+# source reads on the request path and must never pay for an API call.
+
+
+class _FakeResponse:
+    def __init__(self, *, json_body=None, content=b""):
+        self._json = json_body
+        self.content = content
+        self.status_code = 200
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._json
+
+
+class _FakeDriveHttp:
+    """Stands in for httpx.AsyncClient: a metadata lookup, then a media download."""
+
+    def __init__(self, *_a, **_k):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return False
+
+    async def get(self, _url, params=None):
+        if "fields" in (params or {}):
+            return _FakeResponse(json_body={"mimeType": "application/pdf", "size": "9"})
+        return _FakeResponse(content=b"%PDF-fake")
+
+
+def _stub_drive_http(monkeypatch):
+    async def fake_token(*_a, **_k):
+        return "token"
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(indexer, "httpx", SimpleNamespace(AsyncClient=_FakeDriveHttp))
+
+
+async def test_a_folder_pdf_is_vision_reconciled_not_raw_pypdf(monkeypatch):
+    """The behavior this feature adds: a text-layer PDF in a folder source does
+    not stop at pypdf — it goes to vision with the layer as grounding, because
+    pypdf alone flattens a three-column parts table into a stream that crosses
+    part numbers between columns."""
+    _stub_drive_http(monkeypatch)
+    seen = {}
+
+    async def fake_transcribe(content):
+        seen["bytes"] = content
+        return "288241R\tOR288241\t106113"
+
+    monkeypatch.setattr(pdf_ocr, "transcribe_pdf", fake_transcribe)
+
+    text = await indexer.extract_drive_text(
+        uuid4(), "file-1", max_bytes=10_000, transcribe_pdfs=True
+    )
+
+    assert text == "288241R\tOR288241\t106113"
+    assert seen["bytes"] == b"%PDF-fake"
+
+
+async def test_a_whole_drive_pdf_never_pays_for_vision(monkeypatch):
+    """Whole-Drive reads run per-request against an unbounded corpus; an API
+    call per read is an unbounded bill. They get the raw text layer only."""
+    _stub_drive_http(monkeypatch)
+
+    async def fail_transcribe(content):
+        raise AssertionError("a whole-Drive read must not call the vision API")
+
+    monkeypatch.setattr(pdf_ocr, "transcribe_pdf", fail_transcribe)
+    monkeypatch.setattr(file_extraction, "extract_text", lambda _c, _ct: "raw text layer")
+
+    text = await indexer.extract_drive_text(
+        uuid4(), "file-1", max_bytes=10_000, transcribe_pdfs=False
+    )
+
+    assert text == "raw text layer"

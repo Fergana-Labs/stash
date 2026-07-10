@@ -270,13 +270,14 @@ async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
 
 async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
     """Lazy read for a whole-Drive source, on the request path. Bounded by
-    MAX_NATIVE_DOWNLOAD_BYTES and never OCRs — see `extract_drive_text` for the
-    folder-source path, which runs at sync time in a child process."""
+    MAX_NATIVE_DOWNLOAD_BYTES and never calls Claude vision — see
+    `extract_drive_text` for the folder-source path, which runs at sync time
+    in a child process."""
     return await extract_drive_text(
         owner_user_id,
         file_id,
         max_bytes=MAX_NATIVE_DOWNLOAD_BYTES,
-        ocr_scanned_pdfs=False,
+        transcribe_pdfs=False,
     )
 
 
@@ -285,15 +286,17 @@ async def extract_drive_text(
     file_id: str,
     *,
     max_bytes: int,
-    ocr_scanned_pdfs: bool,
+    transcribe_pdfs: bool,
 ) -> str:
     """A Drive file as text. Routes by MIME type:
 
     - Google Doc       → markdown export
     - Google Sheet     → XLSX export, rendered as one TSV block per sheet
     - Google Slides    → text/plain export
-    - PDF              → pypdf; a PDF with no text layer is a scan, and is sent
-                         to Claude vision when `ocr_scanned_pdfs`
+    - PDF              → with `transcribe_pdfs`, Claude vision grounded by the
+                         embedded text layer (structure from the page images,
+                         characters from the layer; a scan just has no layer);
+                         without it, the raw pypdf text layer
     - Office formats (docx/pptx/xlsx) and text/* → file_extraction
     - Anything else    → DriveFileUnsupported
 
@@ -344,13 +347,19 @@ async def extract_drive_text(
                     f"{max_bytes // (1024 * 1024)} MB limit"
                 )
 
-            # Defer to the file-extraction service so docx/pptx/xlsx/pdf/text/*
-            # share the same handler set as the direct-upload extraction queue.
-            text = extract_text(content, mime)
-            if text is None and is_pdf(mime) and ocr_scanned_pdfs:
-                from ...services.pdf_ocr import ocr_pdf
+            if is_pdf(mime) and transcribe_pdfs:
+                # One codepath for every PDF: vision reads the pages, the
+                # embedded text layer (empty for a scan) grounds the characters.
+                # pypdf alone scrambles multi-column tables, and a scrambled
+                # parts table reads fine while crossing the wrong part numbers.
+                from ...services.pdf_ocr import transcribe_pdf
 
-                text = await ocr_pdf(content) or None
+                text = await transcribe_pdf(content)
+            else:
+                # Defer to the file-extraction service so docx/pptx/xlsx/pdf/
+                # text/* share the same handler set as the direct-upload
+                # extraction queue.
+                text = extract_text(content, mime)
 
         # Every branch lands here, Google-native exports included — an export
         # that came back empty must not be stored as a blank 'done' document.
