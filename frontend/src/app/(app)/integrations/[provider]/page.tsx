@@ -2,7 +2,8 @@
 
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -37,7 +38,13 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
-import ResourceShareButton from "@/components/share/ResourceShareButton";
+import { ResourceShareDialog } from "@/components/share/ResourceShareButton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { User } from "@/lib/types";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
@@ -461,6 +468,10 @@ function SourceRow({
   // Why this row stopped tracking the sync. Distinct from `status.sync_error`,
   // which is the sync itself failing — this is us failing to observe it.
   const [pollStopped, setPollStopped] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Outside-click boundary for the share dialog: covers the "..." trigger so
+  // opening the menu doesn't immediately close the dialog.
+  const menuBoundaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,16 +542,6 @@ function SourceRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
-        {/* Share stays full-opacity (an open dialog must not inherit the row's
-            hover-dimming); Browse/Sync/Remove reveal on hover as before. */}
-        <ResourceShareButton
-          objectType="source"
-          objectId={source.source}
-          resourceName={source.display_name}
-          resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
-          currentUser={currentUser}
-          variant="secondary"
-        />
         <div className="flex items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
           <button type="button" onClick={onOpen} className={rowButton()}>
             {open ? "Close" : "Browse"}
@@ -550,21 +551,51 @@ function SourceRow({
               {busySync ? "Syncing..." : "Sync"}
             </button>
           )}
-          <button type="button" disabled={busyDelete} onClick={onRemove} className={rowButtonGhost()}>
-            Remove
-          </button>
+        </div>
+        {/* The menu and share dialog live outside the hover-dim group: an open
+            dialog must not inherit the row's hover-dimming. */}
+        <div ref={menuBoundaryRef} className="relative">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="More actions"
+                className="flex cursor-pointer items-center rounded-lg px-1.5 py-1.5 text-muted-foreground opacity-55 transition-opacity hover:bg-raised hover:text-foreground group-hover:opacity-100"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-max min-w-28">
+              <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={busyDelete}
+                onClick={onRemove}
+              >
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {shareOpen && (
+            <ResourceShareDialog
+              objectType="source"
+              objectId={source.source}
+              resourceName={source.display_name}
+              resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
+              currentUser={currentUser}
+              boundaryRef={menuBoundaryRef}
+              onClose={() => setShareOpen(false)}
+            />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// The quiet bordered row action (Browse/Sync) and its borderless ghost (Remove).
+// The quiet bordered row action (Browse/Sync).
 function rowButton(): string {
   return "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
-}
-function rowButtonGhost(): string {
-  return "cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-error disabled:opacity-60";
 }
 
 function BrowsePanel({
