@@ -164,7 +164,7 @@ export default function BrainDashboard() {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
+      <div className="mx-auto max-w-[1360px] px-8 pb-10 pt-7">
         {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
           Your brain
@@ -173,89 +173,101 @@ export default function BrainDashboard() {
           {`${knowledgePoints.toLocaleString()} things learned across your own and shared knowledge · ${recent24h} new in the last 24 hours.`}
         </p>
 
-        {/* Wiki graph — the curated context graph of linked pages, obsidian
-            style. The centerpiece: click a node to open its page. */}
-        <VizCard
-          label={
-            graph
-              ? `Memory wiki · ${graph.nodes.length} pages · ${graph.edges.length} links`
-              : "Memory wiki"
-          }
-          className="mt-6"
-        >
-          {!insightsLoaded ? (
-            <SkeletonBlock className="h-64 w-full" />
-          ) : graph && graph.nodes.length > 0 ? (
-            <WikiGraph data={graph} />
-          ) : (
-            <div className="px-2 py-12 text-center text-[12.5px] text-muted-foreground">
-              No wiki pages yet. Hit &quot;Curate wiki&quot; in the explorer and the
-              agent will compile your history into a context graph of linked pages.
-            </div>
-          )}
-        </VizCard>
+        {/* Dashboard grid: wiki graph + map/vitals/timeline on the left,
+            learnings feed as its own scrolling panel on the right. */}
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
+            {/* Wiki graph — the curated context graph of linked pages, obsidian
+                style. The centerpiece: click a node to open its page. */}
+            <VizCard
+              label={
+                graph
+                  ? `Memory wiki · ${graph.nodes.length} pages · ${graph.edges.length} links`
+                  : "Memory wiki"
+              }
+            >
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-[360px] w-full" />
+              ) : graph && graph.nodes.length > 0 ? (
+                <WikiGraph data={graph} />
+              ) : (
+                <div className="flex h-[360px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
+                  No wiki pages yet. Hit &quot;Curate wiki&quot; in the explorer and the
+                  agent will compile your history into a context graph of linked pages.
+                </div>
+              )}
+            </VizCard>
 
-        {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
-        <VizCard label="Knowledge map" className="mt-5">
-          {!insightsLoaded ? (
-            <SkeletonBlock className="h-64 w-full" />
-          ) : projection && projection.points.length > 0 ? (
-            <EmbeddingSpaceExplorer data={projection} />
-          ) : (
-            <div className="px-2 py-12 text-center text-[12.5px] text-muted-foreground">
-              No embeddings indexed yet. Pages, table rows, and session events get
-              embedded as they&apos;re added.
+            {/* Vitals — the brain's current size and pulse. */}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+              <VitalCard label="Knowledge points" value={knowledgePoints} tint="var(--color-brand-600)" />
+              <VitalCard label="Pages" value={overview?.pages ?? 0} tint="var(--color-human)" />
+              <VitalCard label="Files" value={overview?.files ?? 0} tint="#16A34A" />
+              <VitalCard label="Sessions" value={overview?.sessions ?? 0} tint="var(--color-agent)" />
+              <VitalCard label="Learned today" value={recent24h} tint="var(--text-muted)" />
             </div>
-          )}
-        </VizCard>
 
-        {/* Vitals — the brain's current size and pulse. */}
-        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
-          <VitalCard label="Knowledge points" value={knowledgePoints} tint="var(--color-brand-600)" />
-          <VitalCard label="Pages" value={overview?.pages ?? 0} tint="var(--color-human)" />
-          <VitalCard label="Files" value={overview?.files ?? 0} tint="#16A34A" />
-          <VitalCard label="Sessions" value={overview?.sessions ?? 0} tint="var(--color-agent)" />
-          <VitalCard label="Learned today" value={recent24h} tint="var(--text-muted)" />
-        </div>
+            {/* Human / agent commits over time. (Decorative.) */}
+            <VizCard label="Human / agent commits — last 30 days" scroll>
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-40 w-full" />
+              ) : timeline && timeline.contributors.length > 0 ? (
+                <ContributorActivityTimeline data={timeline} />
+              ) : (
+                <div className="px-2 py-6 text-center text-[12.5px] text-muted-foreground">
+                  No agent session commits yet. Push a transcript to populate this view.
+                </div>
+              )}
+            </VizCard>
+          </div>
 
-        {/* Human / agent commits over time. (Decorative.) */}
-        <VizCard label="Human / agent commits — last 30 days" className="mt-5" scroll>
-          {!insightsLoaded ? (
-            <SkeletonBlock className="h-40 w-full" />
-          ) : timeline && timeline.contributors.length > 0 ? (
-            <ContributorActivityTimeline data={timeline} />
-          ) : (
-            <div className="px-2 py-6 text-center text-[12.5px] text-muted-foreground">
-              No agent session commits yet. Push a transcript to populate this view.
-            </div>
-          )}
-        </VizCard>
+          <div className="flex min-h-0 min-w-0 flex-col gap-4">
+            {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
+            <VizCard label="Knowledge map">
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-[240px] w-full" />
+              ) : projection && projection.points.length > 0 ? (
+                <div className="h-[240px]">
+                  <EmbeddingSpaceExplorer data={projection} />
+                </div>
+              ) : (
+                <div className="flex h-[240px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
+                  No embeddings indexed yet. Pages, table rows, and session events
+                  get embedded as they&apos;re added.
+                </div>
+              )}
+            </VizCard>
 
-        {/* Newsfeed — what the brain has been learning lately. */}
-        <div className="mt-8 border-b border-border pb-2">
-          <span className="sys-label">Recent learnings</span>
-        </div>
-
-        <div className="mt-3.5 flex flex-col gap-2.5">
-          {events.length === 0 ? (
-            <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
-              Nothing learned yet. Push a transcript, edit a page, or upload a
-              file.
-            </div>
-          ) : (
-            events.map((event, i) => (
-              <FeedCard
-                key={`${event.kind}-${event.target_id}-${i}`}
-                event={event}
-              />
-            ))
-          )}
-          {loadingMore && (
-            <div className="py-2 text-center text-[12.5px] text-muted-foreground">
-              Loading more…
-            </div>
-          )}
-          {hasMore && <div ref={sentinelRef} />}
+            {/* Newsfeed — what the brain has been learning lately. Scrolls in
+                place (hard cap — inside a grid, flex-1 can't bound it) so the
+                panel row stays a dashboard, not a page. */}
+            <section className="flex flex-col">
+              <div className="sys-label mb-1.5">Recent learnings</div>
+              <div className="card-soft max-h-[480px] overflow-y-auto p-3">
+                <div className="flex flex-col gap-2.5">
+                  {events.length === 0 ? (
+                    <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
+                      Nothing learned yet. Push a transcript, edit a page, or
+                      upload a file.
+                    </div>
+                  ) : (
+                    events.map((event, i) => (
+                      <FeedCard
+                        key={`${event.kind}-${event.target_id}-${i}`}
+                        event={event}
+                      />
+                    ))
+                  )}
+                  {loadingMore && (
+                    <div className="py-2 text-center text-[12.5px] text-muted-foreground">
+                      Loading more…
+                    </div>
+                  )}
+                  {hasMore && <div ref={sentinelRef} />}
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>

@@ -86,7 +86,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
     if (!ctx) return;
 
     const containerWidth = canvas.parentElement?.clientWidth || 400;
-    const containerHeight = 320;
+    const containerHeight = canvas.parentElement?.clientHeight || 320;
     const dpr = window.devicePixelRatio || 2;
 
     canvas.width = containerWidth * dpr;
@@ -284,11 +284,10 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   );
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <canvas
         ref={canvasRef}
-        className="w-full cursor-grab active:cursor-grabbing"
-        style={{ height: 320 }}
+        className="block w-full cursor-grab active:cursor-grabbing"
         onMouseMove={handleMouseMove}
         onMouseLeave={() => {
           setTooltip(null);
