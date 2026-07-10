@@ -2813,7 +2813,7 @@ def cp_cmd(
 shares_app = typer.Typer(help="Shares — grant people access to an object by email.")
 app.add_typer(shares_app, name="shares")
 
-_SHARE_OBJECT_TYPES = "folder | page | file | session | table"
+_SHARE_OBJECT_TYPES = "folder | page | file | session | session_folder | table | source"
 
 
 @shares_app.command("ls")
