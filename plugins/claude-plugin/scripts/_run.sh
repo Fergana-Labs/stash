@@ -75,7 +75,7 @@ fi
 # Refuse loudly instead.
 if [ -z "$PY" ]; then
   echo "stash plugin: no stashai install found — session activity is NOT uploading to Stash." \
-    "Fix: uv tool install stashai (or run install.sh from the stash repo)." >&2
+    "Fix: uv tool install stashai" >&2
   exit 1
 fi
 
