@@ -253,7 +253,7 @@ function FeedCard({ event }: { event: ActivityEvent }) {
       <div className="flex flex-wrap items-baseline gap-2 text-[12.5px] text-dim">
         <span>
           <strong className="font-medium text-foreground">
-            {event.agent_name ?? "human"}
+            {event.agent_name ?? "Stash admin"}
           </strong>{" "}
           {verb}
         </span>

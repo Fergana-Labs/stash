@@ -1569,7 +1569,8 @@ export interface ActivityEvent {
   actor: { name: string; display_name: string };
   target_id: string;
   target_label: string;
-  /** Agent that made the edit (e.g. the Memory curator); null = a human did. */
+  /** Agent that made the edit (e.g. the Memory curator); null = the edit
+   *  didn't come through an agent session (a person, or setup/API writes). */
   agent_name: string | null;
 }
 
