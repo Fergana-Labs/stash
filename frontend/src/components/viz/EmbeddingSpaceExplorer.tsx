@@ -3,12 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmbeddingProjection, EmbeddingProjectionPoint } from "../../lib/types";
 
-const SOURCE_COLORS: Record<string, [number, number, number]> = {
-  history_events: [249, 115, 22], // orange — sessions
-  pages: [34, 197, 94], // green — files
-  table_rows: [59, 130, 246], // blue — tables
-};
-const FALLBACK_COLOR: [number, number, number] = [148, 163, 184];
+// One hue per semantic island (k-means cluster of the 3D UMAP coords).
+const CLUSTER_COLORS: [number, number, number][] = [
+  [249, 115, 22], // orange
+  [59, 130, 246], // blue
+  [34, 197, 94], // green
+  [139, 92, 246], // violet
+  [245, 158, 11], // amber
+  [20, 184, 166], // teal
+  [244, 63, 94], // rose
+  [100, 116, 139], // slate
+];
 
 interface TooltipInfo {
   x: number;
@@ -43,32 +48,81 @@ function rotatePoint(
   return [x1, y1, z2];
 }
 
-/** Each point's 2 nearest neighbors in 3D — the constellation lines that turn
- *  a dot cloud into visible structure. O(n²) but computed once per dataset. */
-function nearestNeighborEdges(points: EmbeddingProjectionPoint[]): [number, number][] {
-  const edges = new Set<number>();
+interface Prep {
+  /** Coordinates rescaled so the cloud fills the unit sphere. */
+  coords: [number, number, number][];
+  /** Cluster index per point. */
+  cluster: number[];
+  /** Per cluster, the index of the point closest to its centroid — its label. */
+  representatives: number[];
+}
+
+/** Normalize the cloud to fill the view and split it into semantic islands
+ *  (plain k-means on the 3D coords — they're already neighbor-preserving).
+ *  Deterministic: centroids seed from evenly-strided points. */
+function prepare(points: EmbeddingProjectionPoint[]): Prep {
   const n = points.length;
-  for (let i = 0; i < n; i++) {
-    let best1 = -1, best2 = -1;
-    let d1 = Infinity, d2 = Infinity;
-    for (let j = 0; j < n; j++) {
-      if (j === i) continue;
-      const dx = points[i].x - points[j].x;
-      const dy = points[i].y - points[j].y;
-      const dz = points[i].z - points[j].z;
-      const d = dx * dx + dy * dy + dz * dz;
-      if (d < d1) {
-        d2 = d1; best2 = best1;
-        d1 = d; best1 = j;
-      } else if (d < d2) {
-        d2 = d; best2 = j;
+  let maxR = 0;
+  for (const p of points) {
+    maxR = Math.max(maxR, Math.hypot(p.x, p.y, p.z));
+  }
+  const s = maxR > 0 ? 1 / maxR : 1;
+  const coords = points.map((p) => [p.x * s, p.y * s, p.z * s] as [number, number, number]);
+
+  const k = Math.max(1, Math.min(CLUSTER_COLORS.length, Math.round(Math.sqrt(n / 2))));
+  const centroids = Array.from({ length: k }, (_, c) => [...coords[Math.floor((c * n) / k)]]);
+  const cluster = new Array<number>(n).fill(0);
+
+  for (let iter = 0; iter < 12; iter++) {
+    for (let i = 0; i < n; i++) {
+      let best = 0;
+      let bestD = Infinity;
+      for (let c = 0; c < k; c++) {
+        const dx = coords[i][0] - centroids[c][0];
+        const dy = coords[i][1] - centroids[c][1];
+        const dz = coords[i][2] - centroids[c][2];
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bestD) {
+          bestD = d;
+          best = c;
+        }
+      }
+      cluster[i] = best;
+    }
+    const sums = Array.from({ length: k }, () => [0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) {
+      const sum = sums[cluster[i]];
+      sum[0] += coords[i][0];
+      sum[1] += coords[i][1];
+      sum[2] += coords[i][2];
+      sum[3] += 1;
+    }
+    for (let c = 0; c < k; c++) {
+      if (sums[c][3] > 0) {
+        centroids[c] = [sums[c][0] / sums[c][3], sums[c][1] / sums[c][3], sums[c][2] / sums[c][3]];
       }
     }
-    for (const j of [best1, best2]) {
-      if (j >= 0) edges.add(i < j ? i * n + j : j * n + i);
-    }
   }
-  return [...edges].map((key) => [Math.floor(key / n), key % n]);
+
+  const representatives: number[] = [];
+  for (let c = 0; c < k; c++) {
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (cluster[i] !== c) continue;
+      const dx = coords[i][0] - centroids[c][0];
+      const dy = coords[i][1] - centroids[c][1];
+      const dz = coords[i][2] - centroids[c][2];
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best >= 0) representatives.push(best);
+  }
+
+  return { coords, cluster, representatives };
 }
 
 export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
@@ -85,7 +139,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const autoRotateRef = useRef(true);
   const animRef = useRef<number>(0);
 
-  const edges = useMemo(() => nearestNeighborEdges(data.points), [data]);
+  const prep = useMemo(() => prepare(data.points), [data]);
 
   // Project a 3D point to 2D screen coordinates with perspective
   const project = useCallback(
@@ -94,7 +148,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
       const fov = 3;
       const viewDist = fov + rz;
-      const scale = Math.min(w, h) * 0.42 * (fov / Math.max(viewDist, 0.5));
+      const scale = Math.min(w, h) * 0.46 * (fov / Math.max(viewDist, 0.5));
 
       return {
         sx: w / 2 + rx * scale,
@@ -124,32 +178,18 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
     ctx.clearRect(0, 0, containerWidth, containerHeight);
 
-    const projected = data.points.map((point) => {
-      const { sx, sy, depth } = project(point.x, point.y, point.z, containerWidth, containerHeight);
-      return { point, sx, sy, depth };
-    });
-
-    // Constellation lines first, faded by the depth of their midpoint.
-    for (const [a, b] of edges) {
-      const pa = projected[a];
-      const pb = projected[b];
-      const depthNorm = Math.max(0, Math.min(1, ((pa.depth + pb.depth) / 2 + 1.5) / 3));
-      ctx.beginPath();
-      ctx.moveTo(pa.sx, pa.sy);
-      ctx.lineTo(pb.sx, pb.sy);
-      ctx.strokeStyle = `rgba(26,23,20,${0.05 + depthNorm * 0.12})`;
-      ctx.lineWidth = 0.75;
-      ctx.stroke();
-    }
+    const { coords, cluster, representatives } = prep;
+    const projected = coords.map(([x, y, z]) => project(x, y, z, containerWidth, containerHeight));
 
     // Points back-to-front for correct overlap; halo pass + core pass per
     // point gives a soft glow without the cost of shadowBlur.
-    projected.sort((a, b) => a.depth - b.depth);
-    for (const { point, sx, sy, depth } of projected) {
+    const order = projected.map((_, i) => i).sort((a, b) => projected[a].depth - projected[b].depth);
+    for (const i of order) {
+      const { sx, sy, depth } = projected[i];
       if (sx < -20 || sx > containerWidth + 20 || sy < -20 || sy > containerHeight + 20) continue;
 
-      const depthNorm = Math.max(0, Math.min(1, (depth + 1.5) / 3)); // 0 far, 1 near
-      const [r, g, b] = SOURCE_COLORS[point.source] || FALLBACK_COLOR;
+      const depthNorm = Math.max(0, Math.min(1, (depth + 1) / 2)); // 0 far, 1 near
+      const [r, g, b] = CLUSTER_COLORS[cluster[i] % CLUSTER_COLORS.length];
       const radius = 1.6 + depthNorm * 2.6;
 
       ctx.beginPath();
@@ -162,7 +202,28 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       ctx.fillStyle = `rgba(${r},${g},${b},${0.35 + depthNorm * 0.6})`;
       ctx.fill();
     }
-  }, [data, edges, project]);
+
+    // One label per island: the page closest to the cluster centroid, so
+    // each blob of color says what it's about.
+    ctx.font = "10.5px ui-monospace, Menlo, monospace";
+    ctx.textBaseline = "middle";
+    for (const i of representatives) {
+      const { sx, sy, depth } = projected[i];
+      const depthNorm = Math.max(0, Math.min(1, (depth + 1) / 2));
+      const name = data.points[i].label;
+      const label = name.length > 24 ? `${name.slice(0, 23)}…` : name;
+      // Flip to the left side near the right edge so labels never clip.
+      const left = sx > containerWidth - 150;
+      ctx.textAlign = left ? "right" : "left";
+      const lx = left ? sx - 7 : sx + 7;
+      // Halo so the label survives crossing other points.
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.strokeText(label, lx, sy);
+      ctx.fillStyle = `rgba(26,23,20,${0.4 + depthNorm * 0.5})`;
+      ctx.fillText(label, lx, sy);
+    }
+  }, [data, prep, project]);
 
   // Animation loop for auto-rotation
   useEffect(() => {
@@ -185,22 +246,22 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       const h = canvas.clientHeight;
       const hitRadius = 10;
 
-      // Check front-to-back (reverse of draw order)
       let best: { point: EmbeddingProjectionPoint; dist: number } | null = null;
-      for (const point of data.points) {
-        const { sx, sy } = project(point.x, point.y, point.z, w, h);
+      for (let i = 0; i < prep.coords.length; i++) {
+        const [x, y, z] = prep.coords[i];
+        const { sx, sy } = project(x, y, z, w, h);
         const dx = mx - sx;
         const dy = my - sy;
         const dist = dx * dx + dy * dy;
         if (dist < hitRadius * hitRadius) {
           if (!best || dist < best.dist) {
-            best = { point, dist };
+            best = { point: data.points[i], dist };
           }
         }
       }
       return best?.point ?? null;
     },
-    [data, project],
+    [data, prep, project],
   );
 
   const handleMouseMove = useCallback(
