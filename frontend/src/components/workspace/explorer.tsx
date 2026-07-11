@@ -37,11 +37,12 @@ function useOpenTab() {
   };
 }
 
-// `onOpen` fires on double-click (standardized across the explorer — like a file
-// manager). `onClick` (single) is for navigation rows (Home → section).
+// `onClick` (single) is for navigation rows (Home → section). Rows without one
+// open on single click (web convention); rows with both keep `onOpen` on
+// double-click so navigate and open don't collide.
 function LeafRow({ icon, label, onClick, onOpen, trailing }: { icon: React.ReactNode; label: string; onClick?: () => void; onOpen?: () => void; trailing?: React.ReactNode }) {
   return (
-    <button onClick={onClick} onDoubleClick={onOpen} className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] text-sidebar-foreground hover:bg-sidebar-accent" title={label}>
+    <button onClick={onClick ?? onOpen} onDoubleClick={onClick ? onOpen : undefined} className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] text-sidebar-foreground hover:bg-sidebar-accent" title={label}>
       <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {trailing}

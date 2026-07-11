@@ -151,16 +151,17 @@ export default function FilesExplorer({
     router.replace(urlForTab({ kind, refId: item.id }) + suffix);
   }
 
-  // Single-click a folder (or skill/session folder) → browse into it in the
-  // explorer; double-click → open it as a tab. A short timer lets the dblclick
-  // cancel the pending navigate.
+  // Single-click opens files/pages/tables as a tab (web convention). Folders
+  // (and skill/session folders) browse on single-click and open as a tab on
+  // double-click; a short timer lets the dblclick cancel the pending navigate.
   const isFolderLike = (item: Item) => item.kind === "folder" || item.kind === "skill" || item.kind === "session-folder";
   function onRowClick(item: Item) {
-    if (!isFolderLike(item)) return;
+    if (!isFolderLike(item)) { openAsTab(item); return; }
     if (clickTimer.current) clearTimeout(clickTimer.current);
     clickTimer.current = setTimeout(() => { clickTimer.current = null; setFolderId(item.id); }, 220);
   }
   function onRowDoubleClick(item: Item) {
+    if (!isFolderLike(item)) return; // files already opened on the first click
     if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
     openAsTab(item);
   }
