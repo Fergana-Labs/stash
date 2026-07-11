@@ -260,7 +260,7 @@ async def embedding_projection(
     owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """2D UMAP projection of embeddings for the space explorer."""
+    """3D UMAP projection of embeddings for the space explorer."""
     if owner_user_id is not None:
         await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_embedding_projection(

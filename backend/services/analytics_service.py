@@ -1,5 +1,6 @@
 """Analytics service: aggregated views for dashboard visualizations."""
 
+import asyncio
 import logging
 import math
 import re
@@ -10,6 +11,33 @@ import numpy as np
 
 from ..database import get_pool
 from . import memory_service, permission_service
+
+# Numba's default threading layer aborts the whole process on concurrent
+# entry, so UMAP runs strictly one-at-a-time per process.
+_UMAP_LOCK = asyncio.Lock()
+
+
+def _umap_3d(embeddings: np.ndarray) -> np.ndarray:
+    """3D UMAP of an embedding matrix, whitened per axis and clamped to
+    [-1, 1] at 2.5σ. CPU-heavy (seconds) — call via asyncio.to_thread,
+    holding _UMAP_LOCK."""
+    # Deferred import: umap-learn's numba JIT makes module import slow, and
+    # only this path needs it.
+    import umap
+
+    reducer = umap.UMAP(
+        n_components=3,
+        n_neighbors=min(15, embeddings.shape[0] - 1),
+        min_dist=0.35,
+        metric="cosine",
+        random_state=42,
+    )
+    coords = np.asarray(reducer.fit_transform(embeddings), dtype=np.float64)
+    coords -= coords.mean(axis=0)
+    std = coords.std(axis=0)
+    std[std == 0] = 1.0
+    return np.clip(coords / (2.5 * std), -1.0, 1.0)
+
 
 logger = logging.getLogger(__name__)
 
@@ -717,7 +745,7 @@ async def get_embedding_projection(
     source: str | None = None,
     owner_user_id: UUID | None = None,
 ) -> dict:
-    """3D PCA projection of embeddings for the space explorer.
+    """3D UMAP projection of embeddings for the space explorer.
 
     Pass ``owner_user_id`` to scope to one user.
 
@@ -818,10 +846,11 @@ async def get_embedding_projection(
     if total_count == 0:
         return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
 
-    # Fetch embeddings from each source. Divide by the number of sources
-    # so the union doesn't exceed max_points by much.
+    # Fetch up to the full budget from each source — splitting it evenly
+    # starved accounts that live in one source. The union is downsampled to
+    # max_points after the fact.
     all_items: list[dict] = []
-    per_source_limit = max_points if source else max(max_points // 4, 1)
+    per_source_limit = max_points
     content_fetch_args = [user_id, per_source_limit]
     content_fetch_scope_idx = None
     if owner_user_id is not None:
@@ -937,19 +966,19 @@ async def get_embedding_projection(
             "cached": False,
         }
 
-    # 3D PCA projection
+    # Downsample the union evenly (each source list is recency-ordered, so a
+    # stride keeps the mix representative).
+    if len(all_items) > max_points:
+        idx = np.linspace(0, len(all_items) - 1, max_points).astype(int)
+        all_items = [all_items[i] for i in idx]
+
+    # 3D UMAP — neighbor-preserving, so related content clumps into visible
+    # islands (PCA collapsed everything into one centered blob). Whiten each
+    # axis and clamp outliers so a single far point can't compress the rest.
     embeddings_matrix = np.stack([item["embedding"] for item in all_items])
-    mean = embeddings_matrix.mean(axis=0)
-    centered = embeddings_matrix - mean
-    if centered.shape[0] > 2:
-        cov = np.cov(centered.T)
-        eigenvalues, eigenvectors = np.linalg.eigh(cov)
-        top3 = eigenvectors[:, -3:][:, ::-1]  # descending by eigenvalue
-        coords = centered @ top3
-        for dim in range(3):
-            mn, mx = coords[:, dim].min(), coords[:, dim].max()
-            rng = mx - mn if mx != mn else 1.0
-            coords[:, dim] = 2.0 * (coords[:, dim] - mn) / rng - 1.0
+    if embeddings_matrix.shape[0] > 3:
+        async with _UMAP_LOCK:
+            coords = await asyncio.to_thread(_umap_3d, embeddings_matrix)
     else:
         coords = np.zeros((len(all_items), 3))
 
