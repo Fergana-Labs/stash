@@ -62,11 +62,11 @@ interface Prep {
  *  Deterministic: centroids seed from evenly-strided points. */
 function prepare(points: EmbeddingProjectionPoint[]): Prep {
   const n = points.length;
-  let maxR = 0;
-  for (const p of points) {
-    maxR = Math.max(maxR, Math.hypot(p.x, p.y, p.z));
-  }
-  const s = maxR > 0 ? 1 / maxR : 1;
+  // Fill the view from the 90th-percentile radius, not the max — otherwise
+  // one far outlier shrinks the whole cloud (it just renders past the edge).
+  const radii = points.map((p) => Math.hypot(p.x, p.y, p.z)).sort((a, b) => a - b);
+  const fitR = radii[Math.min(n - 1, Math.floor(n * 0.9))];
+  const s = fitR > 0 ? 1 / fitR : 1;
   const coords = points.map((p) => [p.x * s, p.y * s, p.z * s] as [number, number, number]);
 
   const k = Math.max(1, Math.min(CLUSTER_COLORS.length, Math.round(Math.sqrt(n / 2))));
@@ -148,7 +148,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
       const fov = 3;
       const viewDist = fov + rz;
-      const scale = Math.min(w, h) * 0.46 * (fov / Math.max(viewDist, 0.5));
+      const scale = Math.min(w, h) * 0.52 * (fov / Math.max(viewDist, 0.5));
 
       return {
         sx: w / 2 + rx * scale,
