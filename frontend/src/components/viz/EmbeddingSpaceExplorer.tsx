@@ -1,24 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmbeddingProjection, EmbeddingProjectionPoint } from "../../lib/types";
 
-interface Props {
-  data: EmbeddingProjection;
-  onPointClick?: (point: EmbeddingProjectionPoint) => void;
-}
-
-const SOURCE_COLORS: Record<string, string> = {
-  history_events: "#F97316",  // orange — sessions
-  pages: "#22C55E",           // green — files
-  table_rows: "#3B82F6",      // blue
+const SOURCE_COLORS: Record<string, [number, number, number]> = {
+  history_events: [249, 115, 22], // orange — sessions
+  pages: [34, 197, 94], // green — files
+  table_rows: [59, 130, 246], // blue — tables
 };
-
-const SOURCE_LABELS: Record<string, string> = {
-  history_events: "Sessions",
-  pages: "Files",
-  table_rows: "Tables",
-};
+const FALLBACK_COLOR: [number, number, number] = [148, 163, 184];
 
 interface TooltipInfo {
   x: number;
@@ -26,12 +16,19 @@ interface TooltipInfo {
   point: EmbeddingProjectionPoint;
 }
 
+interface Props {
+  data: EmbeddingProjection;
+  onPointClick?: (point: EmbeddingProjectionPoint) => void;
+}
+
 // Rotate a 3D point around the Y axis, then X axis
 function rotatePoint(
-  px: number, py: number, pz: number,
-  rotY: number, rotX: number,
+  px: number,
+  py: number,
+  pz: number,
+  rotY: number,
+  rotX: number,
 ): [number, number, number] {
-  // Y-axis rotation
   const cosY = Math.cos(rotY);
   const sinY = Math.sin(rotY);
   const x1 = px * cosY + pz * sinY;
@@ -44,6 +41,34 @@ function rotatePoint(
   const z2 = py * sinX + z1 * cosX;
 
   return [x1, y1, z2];
+}
+
+/** Each point's 2 nearest neighbors in 3D — the constellation lines that turn
+ *  a dot cloud into visible structure. O(n²) but computed once per dataset. */
+function nearestNeighborEdges(points: EmbeddingProjectionPoint[]): [number, number][] {
+  const edges = new Set<number>();
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    let best1 = -1, best2 = -1;
+    let d1 = Infinity, d2 = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const dx = points[i].x - points[j].x;
+      const dy = points[i].y - points[j].y;
+      const dz = points[i].z - points[j].z;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < d1) {
+        d2 = d1; best2 = best1;
+        d1 = d; best1 = j;
+      } else if (d < d2) {
+        d2 = d; best2 = j;
+      }
+    }
+    for (const j of [best1, best2]) {
+      if (j >= 0) edges.add(i < j ? i * n + j : j * n + i);
+    }
+  }
+  return [...edges].map((key) => [Math.floor(key / n), key % n]);
 }
 
 export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
@@ -60,6 +85,8 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const autoRotateRef = useRef(true);
   const animRef = useRef<number>(0);
 
+  const edges = useMemo(() => nearestNeighborEdges(data.points), [data]);
+
   // Project a 3D point to 2D screen coordinates with perspective
   const project = useCallback(
     (px: number, py: number, pz: number, w: number, h: number) => {
@@ -67,7 +94,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
       const fov = 3;
       const viewDist = fov + rz;
-      const scale = Math.min(w, h) * 0.35 * (fov / Math.max(viewDist, 0.5));
+      const scale = Math.min(w, h) * 0.42 * (fov / Math.max(viewDist, 0.5));
 
       return {
         sx: w / 2 + rx * scale,
@@ -97,88 +124,45 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
     ctx.clearRect(0, 0, containerWidth, containerHeight);
 
-    // Sort points by depth (back to front) for correct overlap
     const projected = data.points.map((point) => {
       const { sx, sy, depth } = project(point.x, point.y, point.z, containerWidth, containerHeight);
       return { point, sx, sy, depth };
     });
-    projected.sort((a, b) => a.depth - b.depth);
 
-    // Draw axes (faint guide lines through origin)
-    const axisLen = 0.8;
-    const axes = [
-      { dir: [axisLen, 0, 0] as const, label: "PC1", color: "#475569" },
-      { dir: [0, axisLen, 0] as const, label: "PC2", color: "#475569" },
-      { dir: [0, 0, axisLen] as const, label: "PC3", color: "#475569" },
-    ];
-    for (const axis of axes) {
-      const start = project(-axis.dir[0], -axis.dir[1], -axis.dir[2], containerWidth, containerHeight);
-      const end = project(axis.dir[0], axis.dir[1], axis.dir[2], containerWidth, containerHeight);
+    // Constellation lines first, faded by the depth of their midpoint.
+    for (const [a, b] of edges) {
+      const pa = projected[a];
+      const pb = projected[b];
+      const depthNorm = Math.max(0, Math.min(1, ((pa.depth + pb.depth) / 2 + 1.5) / 3));
       ctx.beginPath();
-      ctx.moveTo(start.sx, start.sy);
-      ctx.lineTo(end.sx, end.sy);
-      ctx.strokeStyle = axis.color;
-      ctx.lineWidth = 0.5;
-      ctx.globalAlpha = 0.3;
+      ctx.moveTo(pa.sx, pa.sy);
+      ctx.lineTo(pb.sx, pb.sy);
+      ctx.strokeStyle = `rgba(26,23,20,${0.05 + depthNorm * 0.12})`;
+      ctx.lineWidth = 0.75;
       ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      // Axis label at the positive end
-      ctx.font = "400 9px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "#64748B";
-      ctx.textAlign = "center";
-      ctx.fillText(axis.label, end.sx, end.sy - 6);
     }
 
-    // Draw points
+    // Points back-to-front for correct overlap; halo pass + core pass per
+    // point gives a soft glow without the cost of shadowBlur.
+    projected.sort((a, b) => a.depth - b.depth);
     for (const { point, sx, sy, depth } of projected) {
-      if (sx < -10 || sx > containerWidth + 10 || sy < -10 || sy > containerHeight + 10) continue;
+      if (sx < -20 || sx > containerWidth + 20 || sy < -20 || sy > containerHeight + 20) continue;
 
-      // Size and opacity based on depth (closer = bigger/brighter)
-      const depthNorm = (depth + 1.5) / 3; // roughly 0..1
-      const radius = 2.5 + depthNorm * 2.5;
-      const alpha = 0.3 + depthNorm * 0.5;
+      const depthNorm = Math.max(0, Math.min(1, (depth + 1.5) / 3)); // 0 far, 1 near
+      const [r, g, b] = SOURCE_COLORS[point.source] || FALLBACK_COLOR;
+      const radius = 1.6 + depthNorm * 2.6;
+
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius * 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${r},${g},${b},${0.05 + depthNorm * 0.12})`;
+      ctx.fill();
 
       ctx.beginPath();
       ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = SOURCE_COLORS[point.source] || "#94A3B8";
-      ctx.globalAlpha = alpha;
+      ctx.fillStyle = `rgba(${r},${g},${b},${0.35 + depthNorm * 0.6})`;
       ctx.fill();
-      ctx.globalAlpha = 1;
     }
-
-    // Legend
-    const legendX = containerWidth - 120;
-    const legendY = 16;
-    ctx.font = "500 10px 'JetBrains Mono', monospace";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-
-    const sources = [...new Set(data.points.map((p) => p.source))];
-    for (let i = 0; i < sources.length; i++) {
-      const s = sources[i];
-      const y = legendY + i * 18;
-
-      ctx.beginPath();
-      ctx.arc(legendX, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = SOURCE_COLORS[s] || "#94A3B8";
-      ctx.fill();
-
-      ctx.fillStyle = "#94A3B8";
-      ctx.fillText(SOURCE_LABELS[s] || s, legendX + 10, y);
-    }
-
-    // Stats
-    ctx.font = "400 10px 'JetBrains Mono', monospace";
-    ctx.fillStyle = "#64748B";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillText(
-      `${data.stats.projected} / ${data.stats.total_embeddings} points · 3D PCA`,
-      8,
-      containerHeight - 8,
-    );
-  }, [data, project]);
+  }, [data, edges, project]);
 
   // Animation loop for auto-rotation
   useEffect(() => {
@@ -303,20 +287,6 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
           style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
         >
           <div className="text-xs font-medium text-foreground">{tooltip.point.label}</div>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: SOURCE_COLORS[tooltip.point.source] }}
-            />
-            <span className="text-[10px] text-muted-foreground">
-              {SOURCE_LABELS[tooltip.point.source] || tooltip.point.source}
-            </span>
-          </div>
-          {tooltip.point.created_at && (
-            <div className="text-[10px] text-muted-foreground mt-0.5">
-              {new Date(tooltip.point.created_at).toLocaleDateString()}
-            </div>
-          )}
         </div>
       )}
     </div>

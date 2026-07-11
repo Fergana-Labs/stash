@@ -122,7 +122,7 @@ export default function BrainDashboard() {
   useEffect(() => {
     let cancelled = false;
     setInsightsLoaded(false);
-    Promise.allSettled([getEmbeddingProjection(500), getMemoryGraph()])
+    Promise.allSettled([getEmbeddingProjection(2000), getMemoryGraph()])
       .then(([p, g]) => {
         if (cancelled) return;
         if (p.status === "fulfilled") setProjection(p.value);
