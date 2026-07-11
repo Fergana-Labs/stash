@@ -29,22 +29,6 @@ import type { EmbeddingProjection } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
-const AVATAR_CLASSES = [
-  "av-rose",
-  "av-orange",
-  "av-emerald",
-  "av-amber",
-  "av-sky",
-  "av-teal",
-  "av-lime",
-];
-
-function avatarClassFor(name: string): string {
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_CLASSES[h % AVATAR_CLASSES.length];
-}
-
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   if (ms < 60_000) return "just now";
@@ -261,49 +245,33 @@ function VizCard({
 }
 
 function FeedCard({ event }: { event: ActivityEvent }) {
-  const name = event.actor.display_name;
-  const avClass = avatarClassFor(name);
-  const initials = name.slice(0, 2).toUpperCase();
   const verb = verbFor(event.kind);
-  const tag = tagFor(event.kind);
   const href = hrefFor(event);
 
   return (
-    <article className="card flex items-start gap-3 px-4 py-3.5">
-      <span
-        className={`avatar ${avClass}`}
-        style={{ width: 28, height: 28, fontSize: 11 }}
-      >
-        {initials}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-2 text-[13px] text-dim">
-          <span>
-            <strong className="text-foreground">{name}</strong> {verb}
-          </span>
-          <span className="sys-label" style={{ fontSize: 10.5 }}>
-            {relativeTime(event.ts)}
-          </span>
-          {tag && <span className={`tag tag-${tag.kind}`}>{tag.label}</span>}
-        </div>
-        <h3 className="my-1.5 font-display text-[17px] font-bold leading-tight tracking-[-0.01em]">
-          <span className="mr-1.5 inline-flex align-middle text-muted-foreground">
-            <EventGlyph kind={event.kind} />
-          </span>
-          {event.target_label || event.target_id}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[11.5px] text-muted-foreground">
-          <span className="flex-1" />
-          {href && (
-            <Link
-              href={href}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
-            >
-              Open →
-            </Link>
-          )}
-        </div>
+    <article className="card px-4 py-3.5">
+      <div className="flex flex-wrap items-baseline gap-2 text-[12.5px] text-dim">
+        <span>{verb}</span>
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {relativeTime(event.ts)}
+        </span>
       </div>
+      <h3 className="my-1.5 font-display text-[16px] font-bold leading-tight tracking-[-0.01em]">
+        <span className="mr-1.5 inline-flex align-middle text-muted-foreground">
+          <EventGlyph kind={event.kind} />
+        </span>
+        {event.target_label || event.target_id}
+      </h3>
+      {href && (
+        <div className="mt-1 flex justify-end">
+          <Link
+            href={href}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
+          >
+            Open →
+          </Link>
+        </div>
+      )}
     </article>
   );
 }
@@ -314,13 +282,6 @@ function verbFor(kind: string): string {
   if (kind === "file.uploaded") return "uploaded a file";
   if (kind === "skill.published") return "published a Skill";
   return kind;
-}
-
-function tagFor(kind: string): { kind: "agent" | "human"; label: string } | null {
-  if (kind === "session.uploaded") return { kind: "agent", label: "agent" };
-  if (kind === "page.updated" || kind === "file.uploaded")
-    return { kind: "human", label: "human" };
-  return null;
 }
 
 function hrefFor(event: ActivityEvent): string | null {
