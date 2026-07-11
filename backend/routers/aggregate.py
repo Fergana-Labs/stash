@@ -113,6 +113,10 @@ async def list_activity(
                    ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
                    FILTER (WHERE he.agent_name IS NOT NULL)
                  )[1] || ': ' || he.session_id AS target_label,
+                 (
+                   ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
+                   FILTER (WHERE he.agent_name IS NOT NULL)
+                 )[1] AS agent_name,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM history_events he
@@ -130,6 +134,7 @@ async def list_activity(
                  COALESCE(p.updated_by, p.created_by) AS actor_id,
                  p.id::text AS target_id,
                  p.name AS target_label,
+                 p.last_edit_agent_name AS agent_name,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM pages p
@@ -146,6 +151,7 @@ async def list_activity(
                  f.uploaded_by AS actor_id,
                  f.id::text AS target_id,
                  f.name AS target_label,
+                 NULL::text AS agent_name,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM files f
@@ -184,6 +190,7 @@ async def list_activity(
                 "actor": users[r["actor_id"]],
                 "target_id": r["target_id"],
                 "target_label": r["target_label"],
+                "agent_name": r["agent_name"],
                 "owner_user_id": r["owner_user_id"],
                 "owner_name": r["owner_name"],
             }

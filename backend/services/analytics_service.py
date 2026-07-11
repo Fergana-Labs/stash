@@ -791,6 +791,10 @@ async def get_embedding_projection(
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
+              -- The wiki's _system folder holds meta pages (schema, usage
+              -- notes) — instructions about the knowledge, not knowledge.
+              AND (np.folder_id IS NULL OR np.folder_id NOT IN
+                   (SELECT id FROM folders WHERE name = '_system'))
             """,
             *content_count_args,
         )
@@ -870,6 +874,8 @@ async def get_embedding_projection(
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
+              AND (np.folder_id IS NULL OR np.folder_id NOT IN
+                   (SELECT id FROM folders WHERE name = '_system'))
             ORDER BY np.updated_at DESC
             LIMIT $2
             """,

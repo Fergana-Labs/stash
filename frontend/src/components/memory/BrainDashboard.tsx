@@ -191,7 +191,7 @@ export default function BrainDashboard() {
                 place (hard cap — inside a grid, flex-1 can't bound it) so the
                 panel row stays a dashboard, not a page. */}
             <section className="flex flex-col">
-              <div className="sys-label mb-1.5">Recent learnings</div>
+              <div className="sys-label mb-1.5">Recent edits</div>
               <div className="card-soft max-h-[480px] overflow-y-auto p-3">
                 <div className="flex flex-col gap-2.5">
                   {events.length === 0 ? (
@@ -251,7 +251,12 @@ function FeedCard({ event }: { event: ActivityEvent }) {
   return (
     <article className="card px-4 py-3.5">
       <div className="flex flex-wrap items-baseline gap-2 text-[12.5px] text-dim">
-        <span>{verb}</span>
+        <span>
+          <strong className="font-medium text-foreground">
+            {event.agent_name ?? "human"}
+          </strong>{" "}
+          {verb}
+        </span>
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {relativeTime(event.ts)}
         </span>

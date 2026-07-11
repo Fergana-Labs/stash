@@ -1569,6 +1569,8 @@ export interface ActivityEvent {
   actor: { name: string; display_name: string };
   target_id: string;
   target_label: string;
+  /** Agent that made the edit (e.g. the Memory curator); null = a human did. */
+  agent_name: string | null;
 }
 
 export interface ActivityFeed {
