@@ -234,18 +234,18 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
     const sim = buildSim(data, w, HEIGHT);
     simRef.current = sim;
     viewRef.current = { scale: 1, tx: 0, ty: 0 };
-    // Fit the whole graph in view: padded on the right where labels hang.
+    // Obsidian-style fit: frame the 5th–95th percentile of node positions
+    // with tight margins, so a stray leaf sits near the edge instead of
+    // shrinking the whole map to include it.
     const fitView = () => {
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (let i = 0; i < sim.x.length; i++) {
-        minX = Math.min(minX, sim.x[i]);
-        maxX = Math.max(maxX, sim.x[i]);
-        minY = Math.min(minY, sim.y[i]);
-        maxY = Math.max(maxY, sim.y[i]);
-      }
+      const xs = Array.from(sim.x).sort((a, b) => a - b);
+      const ys = Array.from(sim.y).sort((a, b) => a - b);
+      const k = Math.floor(xs.length * 0.05);
+      const minX = xs[k], maxX = xs[xs.length - 1 - k];
+      const minY = ys[k], maxY = ys[ys.length - 1 - k];
       const bw = Math.max(maxX - minX, 1);
       const bh = Math.max(maxY - minY, 1);
-      const padX = 150, padY = 40;
+      const padX = 60, padY = 30;
       const scale = Math.min((w - 2 * padX) / bw, (HEIGHT - 2 * padY) / bh, 1);
       const v = viewRef.current;
       v.scale = scale;
