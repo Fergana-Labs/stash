@@ -375,17 +375,6 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
           userAdjustedRef.current = false;
         }}
       />
-      <div className="absolute bottom-2 right-2 flex flex-col gap-1 rounded-md border border-border bg-base/85 px-2.5 py-2 backdrop-blur">
-        {[
-          { dot: "#F97316", label: "hub" },
-          { dot: "#6B655B", label: "leaf" },
-        ].map((row) => (
-          <div key={row.label} className="flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground">
-            <span className="h-[7px] w-[7px] rounded-full" style={{ background: row.dot }} />
-            {row.label}
-          </div>
-        ))}
-      </div>
       <div className="absolute bottom-2 left-2 rounded-md border border-border bg-base/85 px-2.5 py-1.5 font-mono text-[10.5px] text-muted-foreground backdrop-blur">
         scroll to zoom · drag to pan · double-click to fit
       </div>
