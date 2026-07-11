@@ -487,7 +487,9 @@ async def delete_folder(
         require="write",
     )
     try:
-        deleted = await files_tree_service.delete_folder(folder_id, owner_user_id)
+        deleted = await files_tree_service.delete_folder(
+            folder_id, owner_user_id, current_user["id"]
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not deleted:

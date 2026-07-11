@@ -428,15 +428,63 @@ async def update_folder(
     return dict(row) if row else None
 
 
-async def delete_folder(folder_id: UUID, owner_user_id: UUID) -> bool:
-    pool = get_pool()
+async def delete_folder(folder_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> bool:
+    """Delete a folder and everything in its subtree.
+
+    Contents get the same treatment their own delete endpoints give them:
+    pages and files are soft-deleted into trash, tables are hard-deleted,
+    and skill rows cascade with their folder. Without this pass, the
+    ON DELETE SET NULL foreign keys would silently strand every page, file,
+    and table of the subtree at the scope root instead of deleting them.
+    (Trashed pages/files still get their folder_id nulled by the FK, so a
+    later restore files them at the scope root — same as restoring any item
+    whose folder is gone.)
+    """
     await _assert_not_memory(folder_id, owner_user_id)
-    result = await pool.execute(
-        "DELETE FROM folders WHERE id = $1 AND owner_user_id = $2",
-        folder_id,
-        owner_user_id,
+    async with get_pool().acquire() as conn, conn.transaction():
+        subtree = await conn.fetch(
+            "WITH RECURSIVE tree AS ("
+            "  SELECT id FROM folders WHERE id = $1 AND owner_user_id = $2"
+            "  UNION ALL"
+            "  SELECT f.id FROM folders f JOIN tree t ON f.parent_folder_id = t.id"
+            ") SELECT id FROM tree",
+            folder_id,
+            owner_user_id,
+        )
+        if not subtree:
+            return False
+        folder_ids = [r["id"] for r in subtree]
+        pages_result = await conn.execute(
+            "UPDATE pages SET deleted_at = NOW(), deleted_by = $2 "
+            "WHERE folder_id = ANY($1) AND deleted_at IS NULL",
+            folder_ids,
+            deleted_by,
+        )
+        files_result = await conn.execute(
+            "UPDATE files SET deleted_at = NOW(), deleted_by = $2 "
+            "WHERE folder_id = ANY($1) AND deleted_at IS NULL",
+            folder_ids,
+            deleted_by,
+        )
+        tables_result = await conn.execute(
+            "DELETE FROM tables WHERE folder_id = ANY($1)", folder_ids
+        )
+        await conn.execute("DELETE FROM folders WHERE id = $1", folder_id)
+    # Audited here so every front door (REST, batch, agent tools) leaves a trail.
+    await security_audit_service.record_content_lifecycle_event(
+        operation="deleted",
+        actor_user_id=deleted_by,
+        owner_user_id=owner_user_id,
+        target_type="folder",
+        target_id=folder_id,
+        metadata={
+            "folders": len(folder_ids),
+            "pages_trashed": int(pages_result.split()[-1]),
+            "files_trashed": int(files_result.split()[-1]),
+            "tables_deleted": int(tables_result.split()[-1]),
+        },
     )
-    return result == "DELETE 1"
+    return True
 
 
 async def walk_ancestors(folder_id: UUID) -> list[dict]:
