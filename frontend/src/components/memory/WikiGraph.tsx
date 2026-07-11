@@ -114,6 +114,10 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
   const viewRef = useRef<View>({ scale: 1, tx: 0, ty: 0 });
   const dragRef = useRef<Drag | null>(null);
   const hoverRef = useRef<number>(-1);
+  // Until the user zooms/pans/drags, the view auto-fits the whole graph
+  // (the settling layout grows past the canvas otherwise). Double-click
+  // hands control back to the auto-fit.
+  const userAdjustedRef = useRef(false);
   const [cursor, setCursor] = useState("grab");
 
   const toWorld = useCallback((mx: number, my: number) => {
@@ -193,11 +197,13 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
       ctx.stroke();
     }
 
-    // Label everything on small wikis; only hubs + the hovered node on big
-    // ones — unless zoomed in, where there's room for every label. Labels
-    // keep a constant on-screen size regardless of zoom.
-    const labelAll = nodes.length <= 40 || v.scale >= 1.5;
-    ctx.font = `${11 / v.scale}px ui-monospace, Menlo, monospace`;
+    // At overview zoom only hubs (and the hovered node) get labels — the
+    // fit-scale core is too dense for full text. Zooming in labels every
+    // node, earlier for small wikis. Label screen size shrinks a little
+    // zoomed out and caps zoomed in, so text never drowns the nodes.
+    const labelAll = v.scale >= (nodes.length <= 40 ? 0.8 : 1.5);
+    const labelPx = Math.min(12, Math.max(8.5, 11 * v.scale));
+    ctx.font = `${labelPx / v.scale}px ui-monospace, Menlo, monospace`;
     ctx.textBaseline = "middle";
     const labelPad = 5 / v.scale;
     for (let i = 0; i < nodes.length; i++) {
@@ -228,9 +234,29 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
     const sim = buildSim(data, w, HEIGHT);
     simRef.current = sim;
     viewRef.current = { scale: 1, tx: 0, ty: 0 };
+    // Fit the whole graph in view: padded on the right where labels hang.
+    const fitView = () => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < sim.x.length; i++) {
+        minX = Math.min(minX, sim.x[i]);
+        maxX = Math.max(maxX, sim.x[i]);
+        minY = Math.min(minY, sim.y[i]);
+        maxY = Math.max(maxY, sim.y[i]);
+      }
+      const bw = Math.max(maxX - minX, 1);
+      const bh = Math.max(maxY - minY, 1);
+      const padX = 150, padY = 40;
+      const scale = Math.min((w - 2 * padX) / bw, (HEIGHT - 2 * padY) / bh, 1);
+      const v = viewRef.current;
+      v.scale = scale;
+      v.tx = (w - bw * scale) / 2 - minX * scale;
+      v.ty = (HEIGHT - bh * scale) / 2 - minY * scale;
+    };
+
     let raf = 0;
     const step = () => {
       if (sim.alpha > 0.02) tick(sim, w, HEIGHT);
+      if (!userAdjustedRef.current) fitView();
       // A held node stays glued to the cursor — the tick above would
       // otherwise spring it back toward its neighbors every frame.
       const drag = dragRef.current;
@@ -254,6 +280,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
     if (!canvas) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      userAdjustedRef.current = true;
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
@@ -294,6 +321,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
           const sim = simRef.current;
 
           if (drag?.mode === "pan") {
+            userAdjustedRef.current = true;
             viewRef.current.tx += mx - drag.lastX;
             viewRef.current.ty += my - drag.lastY;
             if (Math.abs(mx - drag.lastX) + Math.abs(my - drag.lastY) > 2) drag.moved = true;
@@ -302,6 +330,9 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
             return;
           }
           if (drag?.mode === "node" && sim) {
+            // Freeze auto-fit — refitting mid-drag would slide the world
+            // under the cursor.
+            userAdjustedRef.current = true;
             const { wx, wy } = toWorld(mx, my);
             drag.wx = wx;
             drag.wy = wy;
@@ -341,7 +372,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
           if (i >= 0 && sim) router.push(`/p/${sim.nodes[i].id}?section=memory`);
         }}
         onDoubleClick={() => {
-          viewRef.current = { scale: 1, tx: 0, ty: 0 };
+          userAdjustedRef.current = false;
         }}
       />
       <div className="absolute bottom-2 right-2 flex flex-col gap-1 rounded-md border border-border bg-base/85 px-2.5 py-2 backdrop-blur">
@@ -356,7 +387,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
         ))}
       </div>
       <div className="absolute bottom-2 left-2 rounded-md border border-border bg-base/85 px-2.5 py-1.5 font-mono text-[10.5px] text-muted-foreground backdrop-blur">
-        scroll to zoom · drag to pan · double-click to reset
+        scroll to zoom · drag to pan · double-click to fit
       </div>
     </div>
   );
