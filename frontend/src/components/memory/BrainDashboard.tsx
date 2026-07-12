@@ -118,6 +118,27 @@ export default function BrainDashboard() {
     };
   }, []);
 
+  // First projection for an account computes in the worker (~a minute);
+  // poll while the backend reports pending so the map appears when ready.
+  useEffect(() => {
+    if (!projection?.pending) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (attempts > 15) {
+        clearInterval(timer);
+        return;
+      }
+      getEmbeddingProjection(2000)
+        .then((p) => {
+          setProjection(p);
+          if (!p.pending) clearInterval(timer);
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [projection?.pending]);
+
   const recent24h = useMemo(() => {
     const since = nowMs - 24 * 60 * 60 * 1000;
     return events.filter((e) => new Date(e.ts).getTime() >= since).length;
@@ -181,8 +202,11 @@ export default function BrainDashboard() {
                 </div>
               ) : (
                 <div className="flex h-[240px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No embeddings indexed yet. Pages, table rows, and session events
-                  get embedded as they&apos;re added.
+                  {projection?.pending
+                    ? "Mapping your knowledge — the first pass takes about a minute."
+                    : projection && projection.stats.total_embeddings > 0
+                      ? "Not enough embedded content to map yet."
+                      : "No embeddings indexed yet. Pages, table rows, and session events get embedded as they're added."}
                 </div>
               )}
             </VizCard>

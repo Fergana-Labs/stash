@@ -196,6 +196,8 @@ export interface EmbeddingProjection {
   points: EmbeddingProjectionPoint[];
   stats: { total_embeddings: number; projected: number };
   cached: boolean;
+  /** The worker hasn't computed this projection yet — poll until it lands. */
+  pending: boolean;
 }
 
 // --- Page comments ---

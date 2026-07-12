@@ -185,7 +185,105 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
         "points": [],
         "stats": {"total_embeddings": 0, "projected": 0},
         "cached": False,
+        "pending": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_embedding_projection_serves_from_worker_cache(
+    client: AsyncClient, pool, monkeypatch
+):
+    from backend.services import analytics_service
+    from backend.tasks import viz as viz_tasks
+
+    api_key = await _register(client, "proj_cache")
+    me = await _scope(client, api_key)
+    user_id = UUID(me["id"])
+
+    enqueued = []
+    monkeypatch.setattr(viz_tasks.refresh_projection, "delay", lambda *args: enqueued.append(args))
+
+    # Three embedded pages: enough to count, below the projection floor.
+    emb = [0.1] * 384
+    for i in range(3):
+        await pool.execute(
+            "INSERT INTO pages (name, created_by, owner_user_id, embedding, embed_stale) "
+            "VALUES ($1, $2, $2, $3, false)",
+            f"P{i}",
+            user_id,
+            emb,
+        )
+
+    # Cache miss: nothing served, refresh enqueued, caller told to wait.
+    r = await client.get("/api/v1/me/embedding-projection", headers=_auth(api_key))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pending"] is True
+    assert body["points"] == []
+    assert body["stats"]["total_embeddings"] == 3
+    assert len(enqueued) == 1
+
+    # The worker computes; under the floor it caches an empty projection.
+    projected = await analytics_service.compute_embedding_projection(user_id)
+    assert projected == 0
+
+    r = await client.get("/api/v1/me/embedding-projection", headers=_auth(api_key))
+    assert r.json() == {
+        "points": [],
+        "stats": {"total_embeddings": 3, "projected": 0},
+        "cached": True,
+        "pending": False,
+    }
+    # Fresh, scope-valid cache: no second refresh enqueued.
+    assert len(enqueued) == 1
+
+
+@pytest.mark.asyncio
+async def test_embedding_projection_scope_change_reads_as_cache_miss(
+    client: AsyncClient, pool, monkeypatch
+):
+    from backend.tasks import viz as viz_tasks
+
+    api_key = await _register(client, "proj_scope")
+    me = await _scope(client, api_key)
+    user_id = UUID(me["id"])
+
+    monkeypatch.setattr(viz_tasks.refresh_projection, "delay", lambda *args: None)
+
+    emb = [0.1] * 384
+    await pool.execute(
+        "INSERT INTO pages (name, created_by, owner_user_id, embedding, embed_stale) "
+        "VALUES ('P', $1, $1, $2, false)",
+        user_id,
+        emb,
+    )
+    # A cache row computed over a different scope set (here: empty) must not
+    # be served — its points may belong to scopes the user can no longer read.
+    await pool.execute(
+        "INSERT INTO embedding_projections "
+        "(user_id, source_type, owner_user_id, points, embedding_count, computed_at, scope_ids) "
+        "VALUES ($1, '_all', NULL, $2::jsonb, 1, now(), '{}')",
+        user_id,
+        json.dumps(
+            [
+                {
+                    "id": "left-over",
+                    "x": 0,
+                    "y": 0,
+                    "z": 0,
+                    "source": "pages",
+                    "label": "revoked-scope page",
+                    "created_at": None,
+                }
+            ]
+        ),
+    )
+
+    r = await client.get("/api/v1/me/embedding-projection", headers=_auth(api_key))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pending"] is True
+    assert body["points"] == []
 
 
 @pytest.mark.asyncio
