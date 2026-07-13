@@ -27,6 +27,7 @@ from ..integrations.jira.indexer import index_jira
 from ..integrations.linear.indexer import index_linear
 from ..integrations.notion.indexer import index_notion
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
+from ..integrations.twitter.indexer import index_twitter_bookmarks
 from ..services import source_service
 from ._celery_helpers import run_async
 
@@ -47,6 +48,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "asana_project": index_asana,
     "linear": index_linear,
     "gong_calls": index_gong,
+    "twitter_bookmarks": index_twitter_bookmarks,
 }
 
 

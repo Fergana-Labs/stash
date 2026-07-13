@@ -116,7 +116,7 @@ async def _resolve_twitter_source(user_id) -> tuple[str, str]:
             status_code=400,
             detail="Reconnect Twitter / X before adding it as a source.",
         )
-    return me["id"], f"Twitter / X (@{username})"
+    return me["id"], username
 
 
 async def _resolve_linear_source(user_id) -> tuple[str, str]:
@@ -288,8 +288,11 @@ async def add_source(
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
         display_name = display_name or resolved_name
     elif body.source_type == "twitter":
-        external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
-        display_name = resolved_name
+        external_ref, username = await _resolve_twitter_source(current_user["id"])
+        display_name = f"Twitter / X (@{username})"
+    elif body.source_type == "twitter_bookmarks":
+        external_ref, username = await _resolve_twitter_source(current_user["id"])
+        display_name = f"X bookmarks (@{username})"
     elif body.source_type == "linear":
         external_ref, resolved_name = await _resolve_linear_source(current_user["id"])
         display_name = display_name or resolved_name

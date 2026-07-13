@@ -64,6 +64,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "asana_project": 1800,
     "linear": 1800,
     "gong_calls": 21600,
+    "twitter_bookmarks": 21600,
 }
 
 # Which capability each connected source type exposes.
@@ -80,6 +81,7 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "gong_calls": "searchable",
     "twitter": "searchable",
+    "twitter_bookmarks": "searchable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -93,7 +95,7 @@ PROVIDER_SOURCE_TYPES = {
     "asana": ("asana_project",),
     "linear": ("linear",),
     "gong": ("gong_calls",),
-    "twitter": ("twitter",),
+    "twitter": ("twitter", "twitter_bookmarks"),
 }
 
 SOURCE_TYPE_PROVIDER = {
@@ -477,6 +479,7 @@ SOURCE_TABLE = {
     "linear": "linear_index",
     "gong_calls": "gong_documents",
     "twitter": "twitter_posts",
+    "twitter_bookmarks": "twitter_bookmark_docs",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -495,6 +498,8 @@ CONTENT_TABLES = {
     # A picked Drive folder is bounded, so its bodies are extracted once at sync
     # (OCR included) and stored. A whole-Drive source is not, and stays index-only.
     "drive_documents",
+    # Bookmarks are an archive: posts vanish from X but never from here.
+    "twitter_bookmark_docs",
 }
 
 # Index-only source types whose `search` is federated live to the provider's
