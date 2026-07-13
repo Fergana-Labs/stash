@@ -13,25 +13,32 @@ import {
   initClipper,
   uploadPageClip,
 } from './background/clip';
+import {
+  initInstagram,
+  receiveSavedItems,
+  savedItemsFailed,
+  shouldFetchSaves,
+} from './background/instagram';
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 
 initClipper();
 initChatPoll(syncConversation);
+initInstagram();
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).
 const CONNECT_POLL_TIMEOUT_MS = 600_000;
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handle(message)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handle(message, sender)
     .then(sendResponse)
     .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
   return true;
 });
 
-async function handle(message: any): Promise<any> {
+async function handle(message: any, sender: chrome.runtime.MessageSender): Promise<any> {
   switch (message.type) {
     case 'SYNC_CONVERSATION':
       return syncConversation(message.snapshot);
@@ -45,6 +52,12 @@ async function handle(message: any): Promise<any> {
       return importBookmarks(message.name, message.content);
     case 'IMPORT_PROGRESS':
       return importProgress(message.id);
+    case 'SHOULD_FETCH_SAVES':
+      return shouldFetchSaves();
+    case 'SAVED_ITEMS':
+      return receiveSavedItems(message.items, sender);
+    case 'SAVED_ITEMS_FAILED':
+      return savedItemsFailed(message.error, sender);
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':

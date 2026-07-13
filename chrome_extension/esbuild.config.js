@@ -6,6 +6,7 @@ const options = {
     chatgpt: 'src/content/chatgpt.ts',
     claude: 'src/content/claude.ts',
     clipper: 'src/content/clipper.ts',
+    instagram: 'src/content/instagram.ts',
     popup: 'src/popup/popup.ts',
   },
   bundle: true,
