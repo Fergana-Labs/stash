@@ -82,6 +82,27 @@ async def create_folder(body: CreateFolderRequest, current_user: dict = Depends(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+class GetOrCreateFolderRequest(BaseModel):
+    name: str
+
+
+@me_router.post("/get-or-create")
+async def get_or_create_folder(
+    body: GetOrCreateFolderRequest, current_user: dict = Depends(get_current_user)
+):
+    """Idempotent folder-by-name for machine callers (e.g. one folder per
+    customer org, resolved on every uploaded turn). Concurrent calls with the
+    same name return the same folder — no list-then-create race. Always
+    creates private folders; publishing stays on the explicit routes."""
+    owner_user_id = current_user["id"]
+    await _require_member(owner_user_id, current_user["id"])
+    await _require_write(owner_user_id, current_user["id"])
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Folder name is required")
+    return await session_folder_service.get_or_create_folder(owner_user_id, name)
+
+
 @me_router.get("")
 async def list_folders(current_user: dict = Depends(get_current_user)):
     owner_user_id = current_user["id"]

@@ -253,6 +253,9 @@ async def _upsert_sessions_for_events(
         sessions[session_id] = {
             "agent_name": event.get("agent_name") or "",
             "cwd": metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None,
+            # First event for a session wins, matching upsert_session's
+            # set-once folder semantics.
+            "session_folder_id": event.get("session_folder_id"),
         }
 
     for session_id, session in sessions.items():
@@ -262,6 +265,7 @@ async def _upsert_sessions_for_events(
             agent_name=session["agent_name"],
             cwd=session["cwd"],
             created_by=created_by,
+            session_folder_id=session["session_folder_id"],
         )
         contents = [
             event.get("content") or "" for event in events if event.get("session_id") == session_id

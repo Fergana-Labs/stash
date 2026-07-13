@@ -77,6 +77,17 @@ def _row(r) -> dict:
     }
 
 
+_INSERT_FOLDER_SQL = (
+    "WITH inserted AS ("
+    "  INSERT INTO session_folders "
+    "    (owner_user_id, name, slug, "
+    "     public_permission, discoverable, is_default) "
+    "  VALUES ($1, $2, $3, $4, $5, $6) "
+    "  RETURNING *"
+    f") {_FOLDER_SELECT.replace('session_folders sf', 'inserted sf')}"
+)
+
+
 async def create_folder(
     owner_user_id: UUID,
     name: str,
@@ -87,13 +98,7 @@ async def create_folder(
 ) -> dict:
     _validate_permissions(public_permission, discoverable)
     r = await get_pool().fetchrow(
-        f"WITH inserted AS ("
-        "  INSERT INTO session_folders "
-        "    (owner_user_id, name, slug, "
-        "     public_permission, discoverable, is_default) "
-        "  VALUES ($1, $2, $3, $4, $5, $6) "
-        "  RETURNING *"
-        f") {_FOLDER_SELECT.replace('session_folders sf', 'inserted sf')}",
+        _INSERT_FOLDER_SQL,
         owner_user_id,
         name,
         _slugify(name),
@@ -102,6 +107,44 @@ async def create_folder(
         is_default,
     )
     return _row(r)
+
+
+async def get_or_create_folder(owner_user_id: UUID, name: str) -> dict:
+    """Atomic get-or-create by exact name.
+
+    For machine callers that map an external grouping onto folders — e.g. a
+    customer's app creating one folder per org on the first uploaded turn.
+    Folder names are not unique, so a bare list-then-create race would mint
+    duplicates; concurrent callers serialize on a transaction-scoped advisory
+    lock instead, and the oldest name match wins thereafter.
+
+    Matching is by exact name: renaming the folder breaks the mapping and the
+    next call recreates it under the original name.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                f"session_folder:{owner_user_id}:{name}",
+            )
+            row = await conn.fetchrow(
+                f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.name = $2 "
+                "ORDER BY sf.created_at, sf.id LIMIT 1",
+                owner_user_id,
+                name,
+            )
+            if row is None:
+                row = await conn.fetchrow(
+                    _INSERT_FOLDER_SQL,
+                    owner_user_id,
+                    name,
+                    _slugify(name),
+                    "none",
+                    False,
+                    False,
+                )
+    return _row(row)
 
 
 async def ensure_default_folder(owner_user_id: UUID) -> dict:
