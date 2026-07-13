@@ -115,9 +115,10 @@ def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
     types, linking rules, and the ingest + lint workflows.
 
     Reading is recursive, RLM-style (arXiv:2512.24601): the corpus can exceed
-    one context window, so the root agent handles sources symbolically (paths
-    and metadata only) and each artifact is fully read inside a disposable
-    reader subagent that writes the page and returns a constant-size digest.
+    one context window, so the root agent peeks at documents to triage but
+    never accumulates their bodies — each artifact is fully read inside a
+    disposable reader subagent that writes the page and returns a
+    constant-size digest.
     A bootstrap run once skimmed transcripts with `head -20` and published
     confident-looking pages whose "facts" were inferred from byte sizes —
     this structure exists so that can't recur."""
@@ -156,15 +157,16 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - `stash ls /memory --json` and `stash read <page_id>` to inspect existing
   wiki pages. `stash search "<topic>" --json` to pull related source/file
   context on demand.
-- You may list files and sources and read their metadata (paths, names,
-  sizes), but never print a document's *content* into your own context — no
-  `cat`/`head`/`grep` over file bodies, source docs, or transcripts.
-  Documents are read only inside reader subagents (next section).
+- Peeking at document content is fine — a bounded `head`, a targeted
+  `grep` — to triage: pick a category, spot a duplicate, judge whether a
+  document matters. What you must not do is accumulate document bodies in
+  your context: full reads happen inside reader subagents (next section),
+  and your window stays free for orchestration.
 
 ## Reading documents (one reader subagent per artifact)
 Your context window cannot hold the corpus, and a page written from a
 partial read looks complete while containing nothing — worse than no page.
-Documents stay outside your context; you touch them through subagents:
+Peek at documents to triage; ingest them through subagents:
 
 - Dispatch one Task subagent per document in the delta, a few in parallel.
   Give each: the document's path, the target category folder id, whether a
@@ -180,11 +182,13 @@ Documents stay outside your context; you touch them through subagents:
   forbidden. If the document cannot be fully read this run, the subagent
   writes a stub page saying exactly that and returns INCOMPLETE; log every
   INCOMPLETE in `Log` as next-run work — it is not done.
-- You never write a document-derived page yourself. Your job is inventory →
-  dispatch → weave: categories, cross-page links, the index, and `Log`,
-  built from the digests — the global view only you have. (Chat history
-  arrives inline via `stash changes` and you curate it directly; the
-  subagent rule is for documents.)
+- A small document you have already read in full during triage is the
+  exception: write its page yourself. Everything you only peeked at gets
+  dispatched. Your job is inventory → dispatch → weave: categories,
+  cross-page links, the index, and `Log`, built from the digests — the
+  global view only you have. (Chat history arrives inline via
+  `stash changes` and you curate it directly; the subagent rule is for
+  documents.)
 
 Example — a bootstrap delta with 40 documents: inventory the 40 paths;
 dispatch reader subagents in batches of 5; collect 40 digests; write the

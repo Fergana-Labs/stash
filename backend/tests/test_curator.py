@@ -256,9 +256,9 @@ def test_curator_prompt_reads_documents_via_subagents():
     assert "reader subagent" in boot
     assert "ENTIRE document" in boot
     assert "INCOMPLETE" in boot
-    # The root handles documents symbolically — content reads at the root are
-    # banned by name so the rule survives paraphrase-y prompt edits.
-    assert "never print a document's *content*" in boot
+    # The root may peek at document content to triage, but must not fill its
+    # window with document bodies — that pressure is what caused the skim.
+    assert "accumulate document bodies" in boot
 
 
 async def _make_due(pool, agent_id: str, watermark: datetime) -> None:
