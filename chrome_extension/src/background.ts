@@ -4,9 +4,19 @@
 // rest as replace-mode transcripts so a growing chat keeps updating the
 // same Stash session.
 
+import {
+  clipActiveTab,
+  clipAllTabs,
+  importBookmarks,
+  importProgress,
+  initClipper,
+  uploadPageClip,
+} from './background/clip';
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
+
+initClipper();
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).
@@ -23,10 +33,20 @@ async function handle(message: any): Promise<any> {
   switch (message.type) {
     case 'SYNC_CONVERSATION':
       return syncConversation(message.snapshot);
+    case 'CLIP_TAB':
+      return clipActiveTab();
+    case 'CLIP_PAGE':
+      return uploadPageClip(message.clip);
+    case 'CLIP_ALL_TABS':
+      return clipAllTabs();
+    case 'IMPORT_BOOKMARKS':
+      return importBookmarks(message.name, message.content);
+    case 'IMPORT_PROGRESS':
+      return importProgress(message.id);
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':
-      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastError']);
+      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastClip', 'lastImport', 'lastError']);
       return { ok: true };
     case 'GET_STATUS':
       return getStatus();
@@ -238,6 +258,8 @@ async function getStatus(): Promise<any> {
     'folderName',
     'folders',
     'lastSync',
+    'lastClip',
+    'lastImport',
     'lastError',
   ]);
   return {
@@ -248,6 +270,8 @@ async function getStatus(): Promise<any> {
     folderId: cfg.folderId || null,
     folders: cfg.folders || [],
     lastSync: cfg.lastSync || null,
+    lastClip: cfg.lastClip || null,
+    lastImport: cfg.lastImport || null,
     lastError: cfg.lastError || null,
   };
 }

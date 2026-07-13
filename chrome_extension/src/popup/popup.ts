@@ -68,8 +68,38 @@ async function render(): Promise<void> {
 
     app.append(
       el('p', {}, ['Connected as ', el('strong', { textContent: status.username || '?' })]),
+      el('div', { className: 'row' }, [
+        el('button', {
+          textContent: 'Save this page to Stash',
+          onclick: async () => {
+            const result = await send({ type: 'CLIP_TAB' });
+            if (result?.ok) {
+              // Give the injected clipper a beat to report back, then re-render
+              // so lastClip / lastError shows.
+              setTimeout(() => void render(), 1200);
+            } else {
+              await render();
+            }
+          },
+        }),
+      ]),
       el('div', { className: 'row' }, [el('label', { textContent: 'Session folder' }), folderSelect])
     );
+
+    if (status.lastClip) {
+      const clipChildren: (HTMLElement | string)[] = [
+        `Clipped “${status.lastClip.title}” ${timeAgo(status.lastClip.at)}`,
+      ];
+      if (status.lastClip.appUrl) {
+        clipChildren.push(
+          ' — ',
+          el('a', { href: status.lastClip.appUrl, target: '_blank', textContent: 'view clip' })
+        );
+      } else if (status.lastClip.importId) {
+        clipChildren.push(' — processing on the server');
+      }
+      app.append(el('p', { className: 'row muted' }, clipChildren));
+    }
 
     if (status.lastSync) {
       app.append(
@@ -87,6 +117,8 @@ async function render(): Promise<void> {
     if (status.lastError) {
       app.append(el('div', { className: 'error', textContent: status.lastError }));
     }
+
+    app.append(renderImports(status));
 
     app.append(
       el('div', { className: 'row' }, [
@@ -121,6 +153,67 @@ async function render(): Promise<void> {
       ]),
     ])
   );
+}
+
+// Bulk imports: clip every open tab, or upload a browser bookmarks.html
+// export. Both run in the background worker; this section just triggers
+// them and polls batch progress.
+function renderImports(status: any): HTMLElement {
+  const section = el('details', {}, [el('summary', { textContent: 'Import' })]);
+  const progressRow = el('div', { className: 'row muted' });
+
+  async function showProgress(importId: string): Promise<void> {
+    const result = await send({ type: 'IMPORT_PROGRESS', id: importId });
+    if (!result?.ok) {
+      progressRow.textContent = result?.error || 'Progress check failed';
+      return;
+    }
+    const p = result.progress;
+    progressRow.textContent = `${p.kind} import: ${p.done}/${p.total} done, ${p.failed} failed, ${p.pending} pending`;
+    if (p.pending > 0) setTimeout(() => void showProgress(importId), 2000);
+  }
+
+  const fileInput = el('input', { type: 'file', accept: '.html' });
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    progressRow.textContent = 'Uploading bookmarks…';
+    const result = await send({
+      type: 'IMPORT_BOOKMARKS',
+      name: file.name,
+      content: await file.text(),
+    });
+    if (!result?.ok) {
+      progressRow.textContent = result?.error || 'Import failed';
+      return;
+    }
+    void showProgress(result.importId);
+  });
+
+  section.append(
+    el('div', { className: 'row' }, [
+      el('button', {
+        textContent: 'Clip all open tabs',
+        onclick: async () => {
+          progressRow.textContent = 'Starting…';
+          const result = await send({ type: 'CLIP_ALL_TABS' });
+          if (!result?.ok) {
+            progressRow.textContent = result?.error || 'Clip-all-tabs failed';
+            return;
+          }
+          void showProgress(result.importId);
+        },
+      }),
+    ]),
+    el('div', { className: 'row' }, [
+      el('label', { textContent: 'Import a bookmarks.html export' }),
+      fileInput,
+    ]),
+    progressRow
+  );
+
+  if (status.lastImport?.id) void showProgress(status.lastImport.id);
+  return section;
 }
 
 void render();
