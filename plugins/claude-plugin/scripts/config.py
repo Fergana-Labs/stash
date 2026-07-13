@@ -13,12 +13,10 @@ from pathlib import Path
 
 from stashai.plugin.stash_client import StashClient
 
-DATA_DIR = Path(
-    os.environ.get(
-        "CLAUDE_PLUGIN_DATA",
-        Path.home() / ".claude/plugins/data/stash",
-    )
-)
+# Claude Code sets this for every hook invocation. No fallback: a guessed
+# path splits plugin state across two dirs and `stash status` reads the
+# wrong one (which is how upload failures went invisible once already).
+DATA_DIR = Path(os.environ["CLAUDE_PLUGIN_DATA"])
 
 PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
