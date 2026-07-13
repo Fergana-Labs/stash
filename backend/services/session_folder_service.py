@@ -134,9 +134,7 @@ async def get_or_create_folder(
         async with conn.transaction():
             if external_key is not None:
                 lock_token = f"session_folder:key:{owner_user_id}:{external_key}"
-                match_sql = (
-                    f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.external_key = $2"
-                )
+                match_sql = f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.external_key = $2"
                 match_arg = external_key
             else:
                 lock_token = f"session_folder:name:{owner_user_id}:{name}"
@@ -145,9 +143,7 @@ async def get_or_create_folder(
                     "ORDER BY sf.created_at, sf.id LIMIT 1"
                 )
                 match_arg = name
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lock_token
-            )
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lock_token)
             row = await conn.fetchrow(match_sql, owner_user_id, match_arg)
             if row is None:
                 row = await conn.fetchrow(
