@@ -33,6 +33,23 @@ export async function chatgptAccessToken(ctx: FetchCtx): Promise<string | null> 
   return cachedToken.value;
 }
 
+export async function chatgptListConversations(
+  ctx: FetchCtx,
+  token: string,
+  limit: number
+): Promise<{ id: string; title: string; updatedAt: string }[]> {
+  const res = await get(ctx, `/backend-api/conversations?offset=0&limit=${limit}&order=updated`, {
+    Authorization: `Bearer ${token}`,
+  });
+  if (!res.ok) throw new Error(`conversation list failed (${res.status})`);
+  const data = await res.json();
+  return (data.items || []).map((item: any) => ({
+    id: item.id,
+    title: item.title || 'ChatGPT conversation',
+    updatedAt: item.update_time,
+  }));
+}
+
 function chatgptTextFromMessage(message: any): string {
   const content = message?.content;
   if (!content) return '';
@@ -121,6 +138,20 @@ export async function claudeOrgIds(ctx: FetchCtx, knownOrgId?: string | null): P
     }
   }
   return ids;
+}
+
+export async function claudeListConversations(
+  ctx: FetchCtx,
+  orgId: string
+): Promise<{ id: string; title: string; updatedAt: string }[]> {
+  const res = await get(ctx, `/api/organizations/${orgId}/chat_conversations`);
+  if (!res.ok) throw new Error(`conversation list failed (${res.status})`);
+  const data = await res.json();
+  return (Array.isArray(data) ? data : []).map((conv: any) => ({
+    id: conv.uuid,
+    title: conv.name || 'Claude conversation',
+    updatedAt: conv.updated_at,
+  }));
 }
 
 function claudeTextFromMessage(msg: any): string {

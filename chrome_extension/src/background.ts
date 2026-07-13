@@ -4,6 +4,7 @@
 // rest as replace-mode transcripts so a growing chat keeps updating the
 // same Stash session.
 
+import { initChatPoll } from './background/chat_poll';
 import {
   clipActiveTab,
   clipAllTabs,
@@ -17,6 +18,7 @@ import type { ConversationSnapshot } from './content/sync';
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 
 initClipper();
+initChatPoll(syncConversation);
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).
