@@ -65,6 +65,9 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "gong_calls": 21600,
     "twitter_bookmarks": 21600,
+    # Freshness comes from extension pushes (which kick a sync); the interval
+    # is the retry pass for failed hydrations.
+    "instagram_saves": 1800,
 }
 
 # Which capability each connected source type exposes.
@@ -82,6 +85,7 @@ SOURCE_CAPABILITY = {
     "gong_calls": "searchable",
     "twitter": "searchable",
     "twitter_bookmarks": "searchable",
+    "instagram_saves": "searchable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -96,6 +100,9 @@ PROVIDER_SOURCE_TYPES = {
     "linear": ("linear",),
     "gong": ("gong_calls",),
     "twitter": ("twitter", "twitter_bookmarks"),
+    # Provider-less grouping: there is no Instagram OAuth integration — the
+    # extension pushes the save list and ScrapeCreators hydrates it.
+    "instagram": ("instagram_saves",),
 }
 
 SOURCE_TYPE_PROVIDER = {
@@ -480,6 +487,7 @@ SOURCE_TABLE = {
     "gong_calls": "gong_documents",
     "twitter": "twitter_posts",
     "twitter_bookmarks": "twitter_bookmark_docs",
+    "instagram_saves": "instagram_save_docs",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -500,6 +508,8 @@ CONTENT_TABLES = {
     "drive_documents",
     # Bookmarks are an archive: posts vanish from X but never from here.
     "twitter_bookmark_docs",
+    # Same archive semantics for Instagram saves.
+    "instagram_save_docs",
 }
 
 # Index-only source types whose `search` is federated live to the provider's
@@ -1024,6 +1034,9 @@ async def read_document(source: dict, path: str) -> dict | None:
         if table == "drive_documents":
             return await _read_drive_document(UUID(source["id"]), path)
 
+        if table == "instagram_save_docs":
+            return await _read_instagram_save(UUID(source["id"]), path)
+
         row = await get_pool().fetchrow(
             f"SELECT path, name, kind, content, external_ref FROM {table} "
             f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
@@ -1119,6 +1132,45 @@ async def _read_drive_document(source_id: UUID, path: str) -> dict | None:
         "content": row["content"],
         "external_ref": row["external_ref"],
     }
+
+
+async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
+    """An Instagram save, or a loud explanation while hydration is pending —
+    same contract as drive_documents: never hand back a blank body as if the
+    post were empty. Hydrated docs carry a fresh presigned media URL so the
+    archived video/image renders in the viewer."""
+    from . import storage_service
+
+    row = await get_pool().fetchrow(
+        "SELECT path, name, kind, content, external_ref, media_storage_key, "
+        "media_content_type, hydration_status, hydration_error "
+        "FROM instagram_save_docs WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        source_id,
+        path,
+    )
+    if not row:
+        return None
+    if row["content"] is None:
+        status = row["hydration_status"]
+        return {
+            "path": row["path"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "content": "",
+            "error": row["hydration_error"] or f"hydration {status}",
+            "http_status": 422 if status == "failed" else 409,
+        }
+    doc = {
+        "path": row["path"],
+        "name": row["name"],
+        "kind": row["kind"],
+        "content": row["content"],
+        "external_ref": row["external_ref"],
+    }
+    if row["media_storage_key"]:
+        doc["media_url"] = await storage_service.get_file_url(row["media_storage_key"])
+        doc["media_content_type"] = row["media_content_type"]
+    return doc
 
 
 async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
@@ -1819,6 +1871,8 @@ async def _deep_link(source: dict, doc: dict) -> str | None:
 
     if source_type == "github_repo":
         return source_document_url("github_repo", source["external_ref"], doc["path"])
+    if source_type == "instagram_saves":
+        return f"https://www.instagram.com/p/{doc['path']}/"
     if source_type == "asana_project":
         # The task gid lives in external_ref; the path is "Section/Name (gid)".
         return source_document_url("asana_project", None, doc_ref)

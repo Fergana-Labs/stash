@@ -643,18 +643,23 @@ function DocViewer({
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState(name ?? "");
   const [url, setUrl] = useState<string | null>(null);
+  const [media, setMedia] = useState<{ url: string; contentType: string } | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setContent(null);
     setUrl(null);
+    setMedia(null);
     setError("");
     readSourceDoc(source, refValue)
       .then((doc) => {
         if (cancelled) return;
         setContent(doc.content ?? "");
         setUrl(doc.url ?? null);
+        if (doc.media_url) {
+          setMedia({ url: doc.media_url, contentType: doc.media_content_type ?? "" });
+        }
         if (doc.name) setTitle(doc.name);
       })
       .catch((e) => {
@@ -692,9 +697,21 @@ function DocViewer({
       ) : content === null ? (
         <div className="bg-base px-3 py-3 text-[12px] text-muted-foreground">Loading…</div>
       ) : (
-        <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
-          {content}
-        </pre>
+        <>
+          {media &&
+            (media.contentType.startsWith("video/") ? (
+              // eslint-disable-next-line jsx-a11y/media-has-caption -- archived
+              // social video; the transcript is in the document body below.
+              <video src={media.url} controls className="max-h-72 w-full bg-black" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- presigned
+              // blob URL, not an optimizable static asset.
+              <img src={media.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
+            ))}
+          <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
+            {content}
+          </pre>
+        </>
       )}
     </div>
   );

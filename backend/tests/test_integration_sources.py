@@ -143,8 +143,11 @@ def test_connected_source_types_are_fully_wired():
 
 
 def test_provider_disconnect_cleanup_mapping_covers_registered_providers():
+    # Every registered provider must have a disconnect-cleanup mapping. The map
+    # may also carry provider-less groupings (instagram: the extension pushes
+    # the save list; there is no OAuth integration to disconnect).
     provider_names = {provider.name for provider in list_providers()}
-    assert set(source_service.PROVIDER_SOURCE_TYPES) == provider_names
+    assert provider_names <= set(source_service.PROVIDER_SOURCE_TYPES)
 
 
 def test_notion_is_searchable_content_source():

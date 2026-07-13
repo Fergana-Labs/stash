@@ -175,5 +175,6 @@ export function labelForSourceType(type: string): string {
   if (type === "gong_calls") return "Gong";
   if (type === "twitter") return "Twitter / X";
   if (type === "twitter_bookmarks") return "X bookmarks";
+  if (type === "instagram_saves") return "Instagram saves";
   return type;
 }
