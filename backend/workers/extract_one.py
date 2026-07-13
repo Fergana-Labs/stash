@@ -54,7 +54,11 @@ async def _run(file_id: UUID) -> int:
     from ..services.file_extraction import extract_text, is_pdf
     from ..services.pdf_ocr import transcribe_pdf
 
-    MAX_EXTRACTED_TEXT = 1 * 1024 * 1024
+    # A document that extracts to more than this is stored truncated rather
+    # than refused — the marker tells the reader the tail is missing. Matches
+    # the Drive worker's cap; 1MB clipped vision transcriptions of large
+    # scanned catalogs (~2-3MB for a few hundred pages) mid-document.
+    MAX_EXTRACTED_TEXT = 4 * 1024 * 1024
 
     conn = await asyncpg.connect(settings.DATABASE_URL)
     try:

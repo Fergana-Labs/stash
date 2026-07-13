@@ -27,7 +27,7 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
-# Scanned-PDF OCR calls the Anthropic API with a 120s per-request timeout
+# Scanned-PDF OCR calls the Anthropic API with a 300s per-request timeout
 # and SDK retries, so the child needs far more headroom than local parsing.
 CHILD_TIMEOUT_SECONDS = 600
 MAX_ATTEMPTS = 3
