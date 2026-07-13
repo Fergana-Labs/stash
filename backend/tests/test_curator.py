@@ -246,6 +246,21 @@ def test_curator_prompt_embeds_folder_and_window():
     assert "[[" not in boot
 
 
+def test_curator_prompt_reads_documents_via_subagents():
+    """Documents must be ingested RLM-style: the corpus can exceed one context
+    window, and a Heavi bootstrap run that read transcripts with `head -20`
+    published pages whose "facts" were inferred from byte sizes. The prompt
+    must keep document bodies out of the root's context, force whole-document
+    reads inside reader subagents, and make unfinished reads loud."""
+    boot = prompts.render_curator_prompt("folder-123", None)
+    assert "reader subagent" in boot
+    assert "ENTIRE document" in boot
+    assert "INCOMPLETE" in boot
+    # The root handles documents symbolically — content reads at the root are
+    # banned by name so the rule survives paraphrase-y prompt edits.
+    assert "never print a document's *content*" in boot
+
+
 async def _make_due(pool, agent_id: str, watermark: datetime) -> None:
     """Every-minute cron with a consumed-tick baseline in the past (due now),
     and the delta watermark set independently."""
