@@ -10,14 +10,17 @@ task uses to skip idle users without waking a sprite.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from ..database import get_pool
-from . import files_tree_service, memory_service, source_service
+from . import files_tree_service, source_service
 
-# Caps so a long-idle account's first delta stays bounded.
-_MAX_EVENTS = 200
+# Caps so a single delta stays bounded (a long-idle account's first delta, a
+# high-volume account's busy day). Overflowing _MAX_EVENTS never loses events:
+# the watermark only advances through what fit (see complete_through), so the
+# remainder is re-presented on the next run.
+_MAX_EVENTS = 500
 _MAX_PAGES = 100
 _MAX_FILES = 100
 _SNIPPET = 280
@@ -58,12 +61,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
     memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
     exclude = list(memory_ids) or None
 
-    events, _ = await memory_service.query_scope_events(
-        owner_user_id, user_id, after=since, limit=_MAX_EVENTS, order="asc"
-    )
-    # The curator's own run transcripts are not user activity — feeding them
-    # back would echo-loop the daily gate and pollute the wiki.
-    events = [e for e in events if not str(e.get("session_id") or "").startswith("agent-curate-")]
+    events, history_has_more = await _feed_events(owner_user_id, since, None, _MAX_EVENTS)
     history = [
         {
             "session_id": e.get("session_id"),
@@ -140,10 +138,58 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "sources": len(sources),
         },
         "history": history,
+        "history_has_more": history_has_more,
         "pages": pages,
         "files": files,
         "sources": sources,
     }
+
+
+async def _feed_events(
+    owner_user_id: UUID,
+    since: datetime | None,
+    until: datetime | None,
+    limit: int,
+) -> tuple[list[dict], bool]:
+    """The curator's event feed, oldest first. Returns (events, has_more).
+
+    The curator's own run transcripts (`agent-curate-%` sessions) are excluded
+    in SQL — feeding them back would echo-loop the daily gate and pollute the
+    wiki, and filtering after the query would let them consume feed slots that
+    belong to real activity."""
+    pool = get_pool()
+    args: list = [owner_user_id]
+    where = "owner_user_id = $1 AND (session_id IS NULL OR session_id NOT LIKE 'agent-curate-%')"
+    if since is not None:
+        args.append(since)
+        where += f" AND created_at > ${len(args)}"
+    if until is not None:
+        args.append(until)
+        where += f" AND created_at <= ${len(args)}"
+    rows = await pool.fetch(
+        f"SELECT session_id, agent_name, event_type, content, created_at "
+        f"FROM history_events WHERE {where} "
+        f"ORDER BY created_at, id LIMIT {limit + 1}",
+        *args,
+    )
+    has_more = len(rows) > limit
+    return [dict(r) for r in rows[:limit]], has_more
+
+
+async def complete_through(
+    owner_user_id: UUID, since: datetime | None, until: datetime
+) -> datetime:
+    """How far the curator's watermark may advance after a successful run.
+
+    The feed is complete through `until` unless it overflowed _MAX_EVENTS, in
+    which case it is only complete through the last event that fit — minus a
+    microsecond, so events sharing that exact timestamp are re-presented next
+    run rather than skipped. Overflow therefore drains run by run and no event
+    is ever silently dropped from curation."""
+    events, has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
+    if not has_more:
+        return until
+    return events[-1]["created_at"] - timedelta(microseconds=1)
 
 
 def _iso(dt) -> str | None:

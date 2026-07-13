@@ -134,6 +134,9 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - `{changes_cmd}` — the delta to curate: recent
   history/chats, changed pages, new files, and connected sources. This IS your
   work set; do not re-scan the whole corpus.
+- `history_has_more: true` means the history overflowed this run's cap. The
+  remainder is already queued for your next run (the watermark only advances
+  through what you were shown) — curate what's present, don't try to page.
 - `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
 - `stash ls /memory --json` and `stash read <page_id>` to inspect existing
   wiki pages. `stash search "<topic>" --json` to pull related source/file
