@@ -5,7 +5,10 @@ asyncpg==0.30.0
 pydantic==2.13.4
 httpx>=0.27.0
 bcrypt>=4.0.0
-pgvector>=0.3.0
+# ==0.4.2: pgvector 0.5.0 changed asyncpg decoding to return Vector objects
+# instead of numpy arrays, which 500s /me/embedding-projection (UMAP gets an
+# object-dtype matrix). Re-test the projection endpoint before bumping.
+pgvector==0.4.2
 slowapi>=0.1.9
 alembic>=1.14.0
 sqlalchemy[asyncio]>=2.0.0

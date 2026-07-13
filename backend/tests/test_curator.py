@@ -82,6 +82,100 @@ async def test_has_changes_and_feed_exclude_memory(client: AsyncClient, _db_pool
     assert all(p["name"] != "Wiki Page" for p in feed2["pages"])
 
 
+async def _push_events(client: AsyncClient, key: str, events: list[dict]) -> None:
+    r = await client.post(
+        "/api/v1/me/sessions/events/batch", json={"events": events}, headers=_auth(key)
+    )
+    assert r.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_feed_overflow_never_drops_events(client: AsyncClient, _db_pool, monkeypatch):
+    """A busy account can produce more events than one delta holds. The feed
+    truncates, but the watermark bound stops at the last event that fit — so
+    the next run picks up exactly where this one left off, and every event is
+    eventually curated."""
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 3)
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "heavi-chat",
+                "event_type": "user_message",
+                "content": f"turn {i}",
+                "session_id": f"conv-{i}",
+                "created_at": (base + timedelta(minutes=i)).isoformat(),
+            }
+            for i in range(5)
+        ],
+    )
+
+    feed = await curation_service.changes_since(uid, uid, old)
+    assert feed["history_has_more"] is True
+    assert [h["content"] for h in feed["history"]] == ["turn 0", "turn 1", "turn 2"]
+
+    until = base + timedelta(hours=1)
+    through = await curation_service.complete_through(uid, old, until)
+    # Complete only through the last event that fit, not through `until`.
+    assert through < base + timedelta(minutes=3)
+
+    # The next run's feed starts where this one stopped: nothing was lost.
+    # The boundary event re-appears by design — the watermark backs off a
+    # microsecond so events sharing its timestamp can never be skipped; a
+    # duplicated boundary event is the cheap side of that trade.
+    next_feed = await curation_service.changes_since(uid, uid, through)
+    assert [h["content"] for h in next_feed["history"]] == ["turn 2", "turn 3", "turn 4"]
+    assert next_feed["history_has_more"] is False
+    assert await curation_service.complete_through(uid, through, until) == until
+
+
+@pytest.mark.asyncio
+async def test_curate_sessions_do_not_consume_feed_slots(
+    client: AsyncClient, _db_pool, monkeypatch
+):
+    """The curator's own run transcripts are excluded in SQL. If they were
+    filtered after the query they would eat delta slots and could crowd real
+    activity out of the feed entirely."""
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 3)
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+    curate_noise = [
+        {
+            "agent_name": "curator",
+            "event_type": "assistant_message",
+            "content": f"curator step {i}",
+            "session_id": "agent-curate-abc-202601011200",
+            "created_at": (base + timedelta(seconds=i)).isoformat(),
+        }
+        for i in range(4)
+    ]
+    real = [
+        {
+            "agent_name": "heavi-chat",
+            "event_type": "user_message",
+            "content": f"real {i}",
+            "session_id": f"conv-{i}",
+            "created_at": (base + timedelta(minutes=1 + i)).isoformat(),
+        }
+        for i in range(2)
+    ]
+    await _push_events(client, key, curate_noise + real)
+
+    feed = await curation_service.changes_since(uid, uid, old)
+    assert [h["content"] for h in feed["history"]] == ["real 0", "real 1"]
+    assert feed["history_has_more"] is False
+    assert await curation_service.complete_through(
+        uid, old, base + timedelta(hours=1)
+    ) == base + timedelta(hours=1)
+
+
 @pytest.mark.asyncio
 async def test_has_changes_false_after_watermark(client: AsyncClient, _db_pool):
     key, uid = await _register(client)
@@ -417,3 +511,46 @@ async def test_memory_graph_nodes_edges_and_scope(client: AsyncClient):
     assert graph["edges"] == [{"source": a, "target": b}]
     # The link is one undirected edge — both ends count it in their degree.
     assert {n["name"]: n["degree"] for n in graph["nodes"]} == {"Alpha": 1, "Beta": 1}
+
+
+# --- Memory wiki file-system tree (GET /me/memory-tree) ---
+
+
+@pytest.mark.asyncio
+async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClient):
+    key, uid = await _register(client)
+    mem = (await client.get("/api/v1/me/memory-folder", headers=_auth(key))).json()
+
+    sub = (
+        await client.post(
+            "/api/v1/me/folders",
+            json={"name": "Research", "parent_folder_id": mem["id"]},
+            headers=_auth(key),
+        )
+    ).json()
+
+    async def add_page(name: str, folder_id: str | None) -> str:
+        r = await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": name, "content": "x", "folder_id": folder_id},
+            headers=_auth(key),
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    root_page = await add_page("Index", mem["id"])
+    nested_page = await add_page("Deep Dive", sub["id"])
+    # A Files page is not part of the wiki tree.
+    await add_page("Outside", None)
+
+    r = await client.get("/api/v1/me/memory-tree", headers=_auth(key))
+    assert r.status_code == 200
+    tree = r.json()
+    assert [p["id"] for p in tree["pages"]] == [root_page]
+    assert [f["name"] for f in tree["folders"]] == ["Research"]
+    assert [p["id"] for p in tree["folders"][0]["pages"]] == [nested_page]
+
+    # The Files tree keeps hiding the Memory subtree — the two stay MECE.
+    files_tree = (await client.get("/api/v1/me/tree", headers=_auth(key))).json()
+    assert [p["name"] for p in files_tree["pages"]] == ["Outside"]
+    assert all(f["id"] != mem["id"] for f in files_tree["folders"])

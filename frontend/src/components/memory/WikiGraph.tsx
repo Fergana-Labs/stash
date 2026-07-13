@@ -275,10 +275,14 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
 
   // React registers onWheel passively, so preventDefault (needed to stop the
   // page scrolling while zooming) requires a native non-passive listener.
+  // Plain wheel scrolls the page — the graph sits mid-page, so swallowing
+  // every wheel event traps scrolling whenever the cursor crosses it. Zoom
+  // needs ⌘/ctrl held; trackpad pinch arrives as ctrl+wheel, so it zooms too.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onWheel = (e: WheelEvent) => {
+      if (!e.metaKey && !e.ctrlKey) return;
       e.preventDefault();
       userAdjustedRef.current = true;
       const rect = canvas.getBoundingClientRect();
@@ -376,7 +380,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
         }}
       />
       <div className="absolute bottom-2 left-2 rounded-md border border-border bg-base/85 px-2.5 py-1.5 font-mono text-[10.5px] text-muted-foreground backdrop-blur">
-        scroll to zoom · drag to pan · double-click to fit
+        ⌘ scroll to zoom · drag to pan · double-click to fit
       </div>
     </div>
   );

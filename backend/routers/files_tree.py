@@ -166,6 +166,16 @@ async def get_memory_folder(
     return FolderResponse(**folder)
 
 
+@router.get("/memory-tree", response_model=ScopeTreeResponse)
+async def get_memory_tree(
+    current_user: dict = Depends(get_current_user),
+):
+    """The Memory wiki as a nested file-system tree (folders + pages), rooted
+    at the caller's Memory folder. Drives the wiki browser page."""
+    tree = await files_tree_service.memory_tree(current_user["id"], current_user["id"])
+    return ScopeTreeResponse(**tree)
+
+
 @router.get("/memory-graph")
 async def get_memory_graph(
     scope_user_id: UUID = Depends(get_scope),

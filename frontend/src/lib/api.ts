@@ -493,6 +493,11 @@ export async function getMemoryGraph(): Promise<WikiGraph> {
   return apiFetch(`${ME}/memory-graph`);
 }
 
+// The Memory wiki as a nested file-system tree, rooted at the Memory folder.
+export async function getMemoryTree(): Promise<Tree> {
+  return apiFetch(`${ME}/memory-tree`);
+}
+
 export async function createFolder(
   name: string,
   parentFolderId?: string | null

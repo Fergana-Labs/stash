@@ -45,7 +45,7 @@ async def _run_curator_now(agent_id: UUID) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
     the due-check — the user is the trigger. The router already enforced the
     free-tier allowance and resolved credentials."""
-    from ..services import agent_service, sprite_agent_service
+    from ..services import agent_service, curation_service, sprite_agent_service
 
     agent = await agent_service.get_agent_by_id(agent_id)
     now = datetime.now(UTC)
@@ -57,7 +57,10 @@ async def _run_curator_now(agent_id: UUID) -> None:
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e))
         raise
-    await agent_service.mark_curated(agent_id, now)
+    through = await curation_service.complete_through(
+        UUID(str(agent["user_id"])), agent["curated_through"], now
+    )
+    await agent_service.mark_curated(agent_id, through)
 
 
 async def _run_due() -> int:
@@ -102,8 +105,13 @@ async def _run_due() -> int:
             await sprite_agent_service.run_scheduled(agent, stamp)
             if agent["is_curator"]:
                 # `now` predates the run, so changes made during it stay ahead
-                # of the watermark and are picked up next time.
-                await agent_service.mark_curated(agent["id"], now)
+                # of the watermark and are picked up next time. If the delta
+                # overflowed the event cap, the watermark stops at the last
+                # event that fit — the overflow drains on subsequent runs.
+                through = await curation_service.complete_through(
+                    user_id, agent["curated_through"], now
+                )
+                await agent_service.mark_curated(agent["id"], through)
             ran += 1
         except Exception as e:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])

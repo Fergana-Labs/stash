@@ -18,14 +18,16 @@ import {
 } from "@/components/SkillIcons";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
 import WikiGraph from "@/components/memory/WikiGraph";
+import WikiFileTree from "@/components/memory/WikiFileTree";
 import {
   getEmbeddingProjection,
   getMemoryGraph,
+  getMemoryTree,
   listActivity,
   type ActivityEvent,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
-import type { EmbeddingProjection } from "@/lib/types";
+import type { EmbeddingProjection, Tree } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
@@ -52,7 +54,10 @@ export default function BrainDashboard() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
-  const [insightsLoaded, setInsightsLoaded] = useState(false);
+  const [wikiTree, setWikiTree] = useState<Tree | null>(null);
+  const [projectionLoaded, setProjectionLoaded] = useState(false);
+  const [graphLoaded, setGraphLoaded] = useState(false);
+  const [treeLoaded, setTreeLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
 
@@ -102,16 +107,34 @@ export default function BrainDashboard() {
 
   // The brain's vitals + visualizations. All span the user's own content plus
   // everything shared with them (the /me/* aggregates, called without a
-  // scope, include readable shared rows).
+  // scope, include readable shared rows). Each card renders as soon as its
+  // own fetch settles — gating them together let one slow or failing
+  // endpoint hold the whole dashboard in skeletons.
   useEffect(() => {
     let cancelled = false;
-    setInsightsLoaded(false);
-    Promise.allSettled([getEmbeddingProjection(2000), getMemoryGraph()])
-      .then(([p, g]) => {
-        if (cancelled) return;
-        if (p.status === "fulfilled") setProjection(p.value);
-        if (g.status === "fulfilled") setGraph(g.value);
-        setInsightsLoaded(true);
+    getEmbeddingProjection(2000)
+      .then((p) => {
+        if (!cancelled) setProjection(p);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setProjectionLoaded(true);
+      });
+    getMemoryGraph()
+      .then((g) => {
+        if (!cancelled) setGraph(g);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setGraphLoaded(true);
+      });
+    getMemoryTree()
+      .then((t) => {
+        if (!cancelled) setWikiTree(t);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTreeLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -157,7 +180,7 @@ export default function BrainDashboard() {
                   : "Memory wiki"
               }
             >
-              {!insightsLoaded ? (
+              {!graphLoaded ? (
                 <SkeletonBlock className="h-[560px] w-full" />
               ) : graph && graph.nodes.length > 0 ? (
                 <WikiGraph data={graph} />
@@ -168,12 +191,39 @@ export default function BrainDashboard() {
                 </div>
               )}
             </VizCard>
+
+            {/* Wiki file system — the same pages, laid out as browsable
+                folders. Links to the full-page view at /memory/wiki. */}
+            <section>
+              <div className="mb-1.5 flex items-baseline justify-between">
+                <span className="sys-label">Wiki file system</span>
+                <Link
+                  href="/memory/wiki"
+                  className="text-[12px] text-dim hover:text-foreground"
+                >
+                  Open full view →
+                </Link>
+              </div>
+              <div className="card-soft max-h-[420px] overflow-y-auto p-3">
+                {!treeLoaded ? (
+                  <SkeletonBlock className="h-[180px] w-full" />
+                ) : wikiTree &&
+                  (wikiTree.folders.length > 0 || wikiTree.pages.length > 0) ? (
+                  <WikiFileTree tree={wikiTree} />
+                ) : (
+                  <div className="flex h-[180px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
+                    Nothing filed yet. Wiki pages show up here as folders and
+                    pages once the curator runs.
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
             {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
             <VizCard label="Knowledge map">
-              {!insightsLoaded ? (
+              {!projectionLoaded ? (
                 <SkeletonBlock className="h-[240px] w-full" />
               ) : projection && projection.points.length > 0 ? (
                 <div className="h-[240px]">
