@@ -40,6 +40,46 @@ async def clips_subfolder_id(owner_user_id: UUID, user_id: UUID, name: str) -> U
     return folder["id"]
 
 
+async def ensure_clips_subtree(
+    owner_user_id: UUID,
+    user_id: UUID,
+    root_name: str,
+    paths: set[tuple[str, ...]],
+) -> dict[tuple[str, ...], UUID]:
+    """Idempotently create Clips/<root_name>/<path...> folders for every path.
+
+    Returns path → folder id, with () mapping to Clips/<root_name>. Built for
+    bulk imports: one lookup/create per distinct folder, not per bookmark.
+    """
+    pool = get_pool()
+    root_id = await clips_subfolder_id(owner_user_id, user_id, root_name)
+    folder_ids: dict[tuple[str, ...], UUID] = {(): root_id}
+
+    async def ensure(path: tuple[str, ...]) -> UUID:
+        if path in folder_ids:
+            return folder_ids[path]
+        parent_id = await ensure(path[:-1])
+        name = path[-1]
+        existing = await pool.fetchval(
+            "SELECT id FROM folders WHERE owner_user_id = $1 AND parent_folder_id = $2 AND name = $3",
+            owner_user_id,
+            parent_id,
+            name,
+        )
+        if existing:
+            folder_ids[path] = existing
+            return existing
+        folder = await files_tree_service.create_folder(
+            owner_user_id, name, user_id, parent_folder_id=parent_id
+        )
+        folder_ids[path] = folder["id"]
+        return folder["id"]
+
+    for path in paths:
+        await ensure(path)
+    return folder_ids
+
+
 async def create_clip_page(
     *,
     owner_user_id: UUID,

@@ -38,6 +38,23 @@ async def create_url_imports(
     return [r["id"] for r in rows]
 
 
+async def create_batch(
+    *,
+    owner_user_id: UUID,
+    kind: str,
+    filename: str | None,
+    total: int,
+) -> UUID:
+    return await get_pool().fetchval(
+        "INSERT INTO import_batches (owner_user_id, kind, filename, total) "
+        "VALUES ($1, $2, $3, $4) RETURNING id",
+        owner_user_id,
+        kind,
+        filename,
+        total,
+    )
+
+
 async def get_url_import(import_id: UUID, owner_user_id: UUID) -> dict | None:
     row = await get_pool().fetchrow(
         "SELECT * FROM url_imports WHERE id = $1 AND owner_user_id = $2",
