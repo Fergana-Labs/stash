@@ -10,11 +10,15 @@ the text layer; a scanned PDF simply has no layer to attach and the
 same call degrades to pure OCR.
 
 Pages go up in chunks of PAGES_PER_REQUEST to the configured fast-tier
-model (`ANTHROPIC_FAST_MODEL`), all chunks in parallel, with vision
-capped at MAX_VISION_PAGES so one giant catalog can't burn unbounded
-API spend. Pages past the cap contribute their raw text layer under an
-explicit marker — the cap bounds spend, it must not discard text that
-pypdf reads for free.
+model (`ANTHROPIC_FAST_MODEL`), at most OCR_CONCURRENCY chunks in
+flight at once, with vision capped at MAX_VISION_PAGES so one giant
+catalog can't burn unbounded API spend. Pages past the cap contribute
+their raw text layer under an explicit marker — the cap bounds spend,
+it must not discard text that pypdf reads for free.
+
+Chunk slices are built lazily, one per in-flight request: the whole
+document held simultaneously as slices plus their base64 copies is what
+used to breach the extraction child's RLIMIT_AS on scanned catalogs.
 
 Unlike `file_extraction.extract_text`, this module raises on failure
 (missing API key, API errors) so the extraction pipeline's retry
@@ -36,8 +40,12 @@ from .file_extraction import extract_text
 
 MAX_VISION_PAGES = 100
 PAGES_PER_REQUEST = 10
+OCR_CONCURRENCY = 3
 MAX_OUTPUT_TOKENS = 16000
-REQUEST_TIMEOUT_SECONDS = 120.0
+# A dense 10-page catalog chunk emitting toward the 16K output cap routinely
+# needs more than two minutes; at 120s the timeout burned all three extraction
+# attempts on real customer catalogs.
+REQUEST_TIMEOUT_SECONDS = 300.0
 
 _PROMPT = (
     "Transcribe all text in this document exactly as it appears, in reading order. "
@@ -95,6 +103,19 @@ async def _transcribe_chunk(client: AsyncAnthropic, chunk: bytes) -> str:
     return text
 
 
+def _text_layer_tail(reader: pypdf.PdfReader, start: int) -> str:
+    """Text layer of pages[start:], read straight off the open reader —
+    building a sliced copy of a several-hundred-page tail is itself enough
+    to breach the extraction child's memory cap."""
+    parts: list[str] = []
+    for page in reader.pages[start:]:
+        try:
+            parts.append(page.extract_text() or "")
+        except Exception:
+            continue
+    return "\n\n".join(p for p in parts if p).strip()
+
+
 async def transcribe_pdf(content: bytes) -> str:
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is required to transcribe PDFs")
@@ -102,20 +123,28 @@ async def transcribe_pdf(content: bytes) -> str:
     reader = pypdf.PdfReader(io.BytesIO(content))
     total_pages = len(reader.pages)
     vision_pages = min(total_pages, MAX_VISION_PAGES)
-    chunks = [
-        _slice_pdf(reader, start, min(start + PAGES_PER_REQUEST, vision_pages))
-        for start in range(0, vision_pages, PAGES_PER_REQUEST)
-    ]
+
+    sem = asyncio.Semaphore(OCR_CONCURRENCY)
+
+    async def transcribe_from(start: int) -> str:
+        # The slice is built inside the semaphore and freed when this frame
+        # ends, so peak memory is the document plus OCR_CONCURRENCY slices —
+        # not the document plus every slice at once.
+        async with sem:
+            chunk = _slice_pdf(reader, start, min(start + PAGES_PER_REQUEST, vision_pages))
+            return await _transcribe_chunk(client, chunk)
 
     client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY, timeout=REQUEST_TIMEOUT_SECONDS)
     try:
-        texts = await asyncio.gather(*(_transcribe_chunk(client, chunk) for chunk in chunks))
+        texts = await asyncio.gather(
+            *(transcribe_from(start) for start in range(0, vision_pages, PAGES_PER_REQUEST))
+        )
     finally:
         await client.close()
 
     parts = [t for t in texts if t]
     if total_pages > vision_pages:
-        tail = extract_text(_slice_pdf(reader, vision_pages, total_pages), "application/pdf")
+        tail = _text_layer_tail(reader, vision_pages)
         if tail:
             parts.append(
                 f"[vision transcription stopped at page {vision_pages} of {total_pages}; "
