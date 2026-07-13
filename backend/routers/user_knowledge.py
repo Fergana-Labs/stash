@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..services import (
@@ -22,6 +22,7 @@ from ..services import (
     session_title_service,
     skill_service,
     user_scope_service,
+    workspace_service,
 )
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
@@ -169,8 +170,9 @@ class AskRequest(BaseModel):
 async def ask_scope(
     req: AskRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=503,
@@ -185,7 +187,12 @@ async def ask_scope(
             detail="Ask currently accepts exactly one user message per request.",
         )
     prompt = req.messages[0].content
-    scope_name = current_user.get("display_name") or current_user["name"]
+    if scope_user_id == current_user["id"]:
+        scope_name = current_user.get("display_name") or current_user["name"]
+    else:
+        scope_name = await get_pool().fetchval(
+            "SELECT COALESCE(display_name, name) FROM users WHERE id = $1", scope_user_id
+        )
 
     return StreamingResponse(
         ask_service.stream_ask(owner_user_id, scope_name, prompt, current_user["id"]),
@@ -301,13 +308,14 @@ async def memory_demo(
 @router.get("/overview")
 async def get_scope_overview(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """{sessions, files, skills} for the scope home page.
 
     `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_overview_access(owner_user_id, current_user["id"])
 
     sessions, files, skills = await asyncio.gather(
@@ -322,11 +330,12 @@ async def get_scope_overview(
 async def get_scope_sidebar(
     request: Request,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Lighter payload for the nav sidebar: sessions + files + skills. Carries an
     ETag derived from the scope's mutation timestamps so navigation
     between scopes hits 304 instead of re-fetching."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_overview_access(owner_user_id, current_user["id"])
 
     etag = await _sidebar_etag(owner_user_id, current_user["id"])
@@ -349,8 +358,15 @@ async def get_scope_sidebar(
 
 
 async def _check_overview_access(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
+
+
+@router.get("/workspaces")
+async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
+    """Workspaces the caller belongs to. Powers the frontend scope switcher;
+    an empty list hides it."""
+    return {"workspaces": await workspace_service.list_for_user(current_user["id"])}
 
 
 async def _sidebar_etag(owner_user_id: UUID, user_id: UUID) -> str:

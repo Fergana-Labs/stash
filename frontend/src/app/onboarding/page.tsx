@@ -525,7 +525,7 @@ function BuildOption() {
     setCreating(true);
     setError("");
     try {
-      setMinted(await createMyKey("onboarding"));
+      setMinted(await createMyKey("onboarding", "full"));
       track("onboarding.api_key_minted", {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create key");

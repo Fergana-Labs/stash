@@ -9,7 +9,10 @@ A skill is a published folder: publishing makes its folder subtree publicly
 readable — never writable.
 
 Scope is the user: every content row carries an `owner_user_id`, and the owner
-can do anything in their own scope.
+can do anything in their own scope. A workspace is a scope owned by a dedicated
+login-less user; `workspace_members` rows grant members read+write on that
+scope's content (never owner powers: shares, sources, publishing stay with the
+workspace user itself).
 """
 
 from uuid import UUID
@@ -188,6 +191,12 @@ def readable_content_condition(
         f"AND content_share.principal_id = ${user_arg} "
         f"AND (content_share.expires_at IS NULL OR content_share.expires_at > now()) "
         f"AND {share_target}{_LEVEL_SHARE_FILTER[require]})",
+        # Workspace members have read+write on the workspace scope's content,
+        # like a 'write' share — so this branch applies at every require level.
+        f"EXISTS (SELECT 1 FROM workspaces member_ws "
+        f"JOIN workspace_members member_row ON member_row.workspace_id = member_ws.id "
+        f"WHERE member_row.user_id = ${user_arg} "
+        f"AND member_ws.scope_user_id = {object_alias}.owner_user_id)",
     ]
     # The per-object public link grants read/comment/write to everyone, so it
     # applies at every require level — unlike publishing, which is read-only.
@@ -211,6 +220,10 @@ def accessible_scope_ids_sql(user_arg: int) -> str:
         UNION
         SELECT owner_user_id AS id FROM shares
         WHERE principal_type = 'user' AND principal_id = ${user_arg}
+        UNION
+        SELECT member_ws.scope_user_id AS id FROM workspaces member_ws
+        JOIN workspace_members member_row ON member_row.workspace_id = member_ws.id
+        WHERE member_row.user_id = ${user_arg}
     )"""
 
 
@@ -346,17 +359,35 @@ async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+async def is_workspace_member(scope_user_id: UUID | None, user_id: UUID | None) -> bool:
+    """Is `user_id` a member of the workspace whose scope is `scope_user_id`?"""
+    if scope_user_id is None or user_id is None:
+        return False
+    pool = get_pool()
+    return bool(
+        await pool.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM workspaces w "
+            "JOIN workspace_members m ON m.workspace_id = w.id "
+            "WHERE w.scope_user_id = $1 AND m.user_id = $2)",
+            scope_user_id,
+            user_id,
+        )
+    )
+
+
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
     """Can the user access this session folder? Public link (read-only),
-    owner, or an explicit user share."""
+    owner, workspace member, or an explicit user share."""
     public = folder["public_permission"]
     if require == "read" and public != "none":
         return True
     if user_id is None:
         return False
     if folder["owner_user_id"] == user_id:
+        return True
+    if await is_workspace_member(folder["owner_user_id"], user_id):
         return True
     return await _user_share_grants("session_folder", folder_id, user_id, require)
 

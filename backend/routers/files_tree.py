@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
-from ..auth import get_current_user, get_current_user_optional
+from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..database import get_pool
 from ..models import (
     CommentReconcileRequest,
@@ -49,8 +49,8 @@ canonical_router = APIRouter(prefix="/api/v1", tags=["files"])
 
 
 async def _check_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
-    """Read gate: only the scope owner is allowed."""
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    """Read gate: the scope owner, or a member of the workspace it belongs to."""
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
@@ -96,8 +96,9 @@ async def _check_content_access(
 @router.get("/pages", response_model=ScopePageListResponse)
 async def list_scope_pages(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
     rows = await files_tree_service.list_scope_pages(owner_user_id, current_user["id"])
     return ScopePageListResponse(pages=[ScopePageEntry(**r) for r in rows])
@@ -111,11 +112,12 @@ _PAGE_EVENTS_HEARTBEAT_S = 25
 async def page_events_stream(
     request: Request,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """SSE stream of page-update events for the scope. Open viewers subscribe
     and refetch the affected page so an agent (or another user) editing it shows
     up live."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
 
     async def event_stream():
@@ -146,8 +148,9 @@ async def page_events_stream(
 @router.get("/tree", response_model=ScopeTreeResponse)
 async def get_scope_tree(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
     tree = await files_tree_service.list_scope_tree(owner_user_id, current_user["id"])
     return ScopeTreeResponse(**tree)
@@ -156,27 +159,27 @@ async def get_scope_tree(
 @router.get("/memory-folder", response_model=FolderResponse)
 async def get_memory_folder(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    """The caller's reserved Memory folder (created on first access)."""
-    folder = await files_tree_service.get_or_create_memory_folder(
-        current_user["id"], current_user["id"]
-    )
+    """The scope's reserved Memory folder (created on first access)."""
+    folder = await files_tree_service.get_or_create_memory_folder(scope_user_id, current_user["id"])
     return FolderResponse(**folder)
 
 
 @router.get("/memory-graph")
 async def get_memory_graph(
-    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """The Memory wiki as a graph — pages in the Memory subtree plus the
     links between them. Drives the dashboard's context-graph visual."""
-    return await files_tree_service.memory_wiki_graph(current_user["id"])
+    return await files_tree_service.memory_wiki_graph(scope_user_id)
 
 
 @router.get("/changes")
 async def get_changes(
     since: str | None = None,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """The incremental change feed the Memory curator reads: history, changed
     pages (excl. Memory), new files, and connected sources since `since`."""
@@ -185,12 +188,13 @@ async def get_changes(
     from ..services import curation_service
 
     since_dt = datetime.fromisoformat(since) if since else None
-    return await curation_service.changes_since(current_user["id"], current_user["id"], since_dt)
+    return await curation_service.changes_since(scope_user_id, current_user["id"], since_dt)
 
 
 @router.post("/memory/recompute", status_code=202)
 async def recompute_memory(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Run the Memory curator now instead of waiting for the daily tick — the
     onboarding flow: connect sources, upload documents, watch the wiki build.
@@ -199,6 +203,14 @@ async def recompute_memory(
     from ..services import agent_auth, agent_service, curation_service
     from ..tasks.agent_schedules import run_curator_now
 
+    # A workspace's curator runs on the workspace's own credentials and
+    # schedule; a member's recompute button must not silently rebuild their
+    # personal memory instead.
+    if scope_user_id != current_user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Workspace memory recomputes on the workspace's own schedule.",
+        )
     user_id = current_user["id"]
     curator = await agent_service.get_or_create_curator(user_id)
     if not await curation_service.has_changes_since(user_id, user_id, curator["curated_through"]):
@@ -231,8 +243,9 @@ async def recompute_memory(
 @router.get("/folders", response_model=FolderListResponse)
 async def list_folders(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
     folders = await files_tree_service.list_folders(owner_user_id, current_user["id"])
     return FolderListResponse(folders=[FolderResponse(**f) for f in folders])
@@ -242,8 +255,9 @@ async def list_folders(
 async def create_folder(
     req: FolderCreateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if req.parent_folder_id is None:
         await _check_scope_write(owner_user_id, current_user["id"])
     else:
@@ -271,8 +285,9 @@ async def create_folder(
 async def get_folder(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     folder = await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
     return FolderResponse(**folder)
@@ -282,11 +297,12 @@ async def get_folder(
 async def get_folder_contents(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Immediate children of a folder — subfolders, pages, files — plus
     the breadcrumb chain from scope root down to this folder. Powers
     the unified Files tree (sidebar lazy-expand + folder detail page)."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     folder = await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
     pool = get_pool()
@@ -434,8 +450,9 @@ async def update_folder(
     folder_id: UUID,
     req: FolderUpdateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access(
         "folder",
@@ -476,8 +493,9 @@ async def update_folder(
 async def delete_folder(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access(
         "folder",
@@ -501,8 +519,9 @@ async def copy_folder(
     folder_id: UUID,
     req: CopyRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_owns_folder(owner_user_id, folder_id)
     await _check_content_access("folder", folder_id, owner_user_id, current_user["id"])
     if req.target_folder_id is not None:
@@ -530,8 +549,9 @@ async def copy_folder(
 async def create_page(
     req: PageCreateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if req.folder_id is None:
         await _check_scope_write(owner_user_id, current_user["id"])
     else:
@@ -561,8 +581,9 @@ async def copy_page(
     page_id: UUID,
     req: CopyRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
     if req.target_folder_id is not None:
         await _check_scope_owns_folder(owner_user_id, req.target_folder_id)
@@ -584,8 +605,9 @@ async def semantic_search_pages(
     q: str,
     limit: int = 20,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
     from ..services import embeddings as embedding_service
 
@@ -608,8 +630,9 @@ async def search_pages(
     q: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
     pages = await files_tree_service.search_pages_fts(owner_user_id, q, limit, current_user["id"])
     return {"pages": pages}
@@ -634,10 +657,11 @@ async def get_page_by_id(
 async def get_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
-    # Owner-scoped: get_page filters on owner_user_id == caller, so this only
-    # ever returns the caller's own pages. Cross-user reads of shared/public
+    owner_user_id = scope_user_id
+    # Scope-bound: get_page filters on owner_user_id == the active scope, so this
+    # only ever returns pages in that scope. Cross-scope reads of shared/public
     # pages go through the canonical /api/v1/pages/{id} route (get_page_by_id),
     # which resolves the real owner before enforcing check_access.
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
@@ -650,6 +674,7 @@ async def get_page(
 async def download_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Raw page body, parallel to /files/{file_id}/download.
 
@@ -658,7 +683,7 @@ async def download_page(
     would a binary file. Permission is the existing page-read check —
     the scope owner plus anyone the page is shared with.
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -682,8 +707,9 @@ async def update_page(
     page_id: UUID,
     req: PageUpdateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access(
         "page",
         page_id,
@@ -727,8 +753,9 @@ async def update_page(
 async def delete_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access(
         "page",
         page_id,
@@ -745,8 +772,9 @@ async def delete_page(
 async def restore_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"], require="write")
     restored = await files_tree_service.restore_page(page_id, owner_user_id, current_user["id"])
     if not restored:
@@ -757,9 +785,10 @@ async def restore_page(
 async def purge_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Permanent delete — only callable on a page already in trash."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"], require="write")
     purged = await files_tree_service.purge_page(page_id, owner_user_id)
     if not purged:
@@ -794,8 +823,9 @@ async def _check_page_in_scope(owner_user_id: UUID, page_id: UUID) -> None:
 async def list_comment_threads(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
     await _check_page_in_scope(owner_user_id, page_id)
     threads = await comment_service.list_threads(page_id)
@@ -811,8 +841,9 @@ async def create_comment_thread(
     page_id: UUID,
     req: CommentThreadCreateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     # Commenting needs at least the 'comment' share level (the scope owner
     # always qualifies); a plain read-only share can view but not comment.
     await _check_content_access(
@@ -840,8 +871,9 @@ async def reply_to_thread(
     thread_id: UUID,
     req: CommentReplyRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access(
         "page", page_id, owner_user_id, current_user["id"], require="comment"
     )
@@ -861,8 +893,9 @@ async def update_thread_resolved(
     thread_id: UUID,
     req: CommentResolveRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
     await _check_page_in_scope(owner_user_id, page_id)
     thread = await comment_service.set_resolved(
@@ -881,9 +914,10 @@ async def delete_comment_thread(
     page_id: UUID,
     thread_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Delete an entire thread. Only the thread creator is allowed."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
     await _check_page_in_scope(owner_user_id, page_id)
     result = await comment_service.delete_thread(thread_id, user_id=current_user["id"])
@@ -900,13 +934,14 @@ async def delete_comment_message(
     page_id: UUID,
     message_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Delete a single message. Author only. If the deleted message was
     the last one in its thread, the thread is auto-deleted and the
     response body's `thread` field is null — the frontend should then
     strip the inline anchor from the page content.
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_content_access("page", page_id, owner_user_id, current_user["id"])
     await _check_page_in_scope(owner_user_id, page_id)
     status, thread = await comment_service.delete_message(message_id, user_id=current_user["id"])
@@ -927,6 +962,7 @@ async def reconcile_comment_anchors(
     page_id: UUID,
     req: CommentReconcileRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Mark threads whose inline anchor is missing as orphaned.
 
@@ -935,7 +971,7 @@ async def reconcile_comment_anchors(
     flip to orphaned = true; threads in the set flip back to false.
     Resolved threads are left alone.
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_scope_write(owner_user_id, current_user["id"])
     await _check_content_access("page", page_id, owner_user_id, current_user["id"], require="write")
     await _check_page_in_scope(owner_user_id, page_id)

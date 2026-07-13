@@ -4,6 +4,16 @@
 // (Read, Grep, Bash, …) rather than bespoke API tools.
 
 import { API_BASE, apiFetch, getAuthToken } from "@/lib/api";
+import { getScopeUserId, SCOPE_HEADER } from "@/lib/scope-store";
+
+// The two streaming calls below build their own headers (apiFetch can't stream),
+// so they repeat api.ts's scope stamping: an agent chat started inside a
+// workspace must read and write that workspace's knowledge base, not the
+// personal one.
+function scopeHeader(): Record<string, string> {
+  const scopeUserId = getScopeUserId();
+  return scopeUserId ? { [SCOPE_HEADER]: scopeUserId } : {};
+}
 
 export type Citation = { id: string; tool: string; label: string };
 export type ChatRole = "user" | "assistant";
@@ -172,6 +182,7 @@ export async function streamAgentChat(
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...scopeHeader(),
     },
     body: JSON.stringify({
       message: opts.message,
@@ -194,6 +205,7 @@ export async function streamAgentRun(
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...scopeHeader(),
     },
     body: JSON.stringify({ agent_id: opts.agentId }),
     signal: opts.signal,

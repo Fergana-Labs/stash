@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..services import (
@@ -95,6 +95,7 @@ async def list_my_sessions(
     offset: int = Query(0, ge=0),
     agent_chats_only: bool = Query(False),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Recent sessions across the user's accessible scopes, grouped by
     session_id. Each row carries the agent name, event count, first & last
@@ -103,6 +104,10 @@ async def list_my_sessions(
     Pass `session_folder_id` to scope to one folder — without it the list is a
     global recent window, so a folder's older sessions would never appear.
     `offset` pages through the (last_event_at DESC) order for infinite scroll."""
+    # The personal view spans every accessible scope (own + shared + workspace);
+    # switching into a workspace narrows the window to that scope's sessions.
+    if owner_user_id is None and scope_user_id != current_user["id"]:
+        owner_user_id = scope_user_id
     pool = get_pool()
     args: list = [current_user["id"]]
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
@@ -288,8 +293,9 @@ async def get_session_canonical(
 async def get_my_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     payload = await _session_detail_payload(owner_user_id, session_id, current_user["id"])
     if not payload:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -305,8 +311,9 @@ async def rename_my_session(
     session_id: str,
     body: SessionTitleRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -364,8 +371,9 @@ async def _check_session_write(
 async def delete_my_session(
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     """Soft delete: stamps deleted_at + deleted_by."""
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     deleted = await session_service.delete_session(
@@ -379,8 +387,9 @@ async def delete_my_session(
 async def restore_my_session(
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     restored = await session_service.restore_session(
         session_row_id, owner_user_id, current_user["id"]
@@ -393,8 +402,9 @@ async def restore_my_session(
 async def purge_my_session(
     session_row_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     """Permanent delete — only callable on a session already in trash."""
     await _check_session_write(owner_user_id, session_row_id, current_user["id"])
     storage_keys = await session_service.list_trashed_session_artifact_storage_keys(
@@ -494,8 +504,9 @@ def _format_session_markdown(events: list[dict]) -> str:
 async def materialize_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     """Idempotent: turn a session_id into a page in the scope's
     Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather

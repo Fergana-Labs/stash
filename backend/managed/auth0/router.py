@@ -37,6 +37,7 @@ async def session(
         auth0_sub=claims["sub"],
         email=profile.get("email"),
         name=profile.get("name"),
+        email_verified=bool(profile.get("email_verified")),
     )
     return Auth0SessionResponse(
         id=user["id"],

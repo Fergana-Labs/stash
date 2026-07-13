@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from ..auth import get_current_user, get_current_user_optional
+from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..models import (
@@ -61,8 +61,8 @@ _FILE_FROM = "FROM files f JOIN users u ON u.id = f.uploaded_by"
 
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
-    """Read gate: owner only."""
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    """Read gate: the scope owner, or a member of the workspace it belongs to."""
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
@@ -160,13 +160,14 @@ async def upload_my_file(
     file: UploadFile,
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Upload a page (markdown/html) or a binary file.
 
     There is no way to upload a file as *embedded* — embedding is derived
     from page bodies: saving a page whose body carries a file's download
     link claims that file (see _reconcile_embedded_files)."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     # Scope writers can upload anywhere; other users can upload into a
     # specific folder shared with them with write permission.
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
@@ -329,8 +330,9 @@ async def ingest_bytes(
 @me_router.get("", response_model=FileListResponse)
 async def list_my_files(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_member(owner_user_id, current_user["id"])
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 2)
@@ -371,8 +373,9 @@ async def get_file_by_id(
 async def get_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     row = await _fetch_file_row(file_id, owner_user_id)
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
@@ -423,8 +426,9 @@ async def download_my_file(
 async def get_my_file_text(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_member(owner_user_id, current_user["id"])
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 3)
@@ -450,13 +454,14 @@ async def update_my_file(
     file_id: UUID,
     req: FileUpdateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Update a file. Supports rename (`name`) and move
     (`folder_id` / `move_to_root`). Moving an embedded file *files* it —
     owner_page_id clears and it becomes an ordinary tree entry again.
     Embedding is not writable here; it is derived from page bodies.
     Any subset can be passed; an empty request returns the file unchanged."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     pool = get_pool()
     file_row = await pool.fetchrow(
         "SELECT * FROM files WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
@@ -525,11 +530,12 @@ async def update_my_file(
 async def delete_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Soft delete: stamps deleted_at + deleted_by. Object storage blob stays
     so a restore is fully reversible. Use POST /restore to undo or DELETE
     /purge to wipe permanently."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     trashed = await files_service.delete_file(file_id, owner_user_id, current_user["id"])
@@ -542,9 +548,10 @@ async def copy_my_file(
     file_id: UUID,
     req: CopyRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Duplicate a file (and its S3 blob) as 'Copy of <name>'."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if not await _can_access_file(file_id, owner_user_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     if req.target_folder_id is not None:
@@ -573,8 +580,9 @@ async def copy_my_file(
 async def restore_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     restored = await files_service.restore_file(file_id, owner_user_id, current_user["id"])
@@ -586,9 +594,10 @@ async def restore_my_file(
 async def purge_my_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Permanent delete — only callable on a file already in trash."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     if not await _can_access_file(file_id, owner_user_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     row = await files_service.get_trashed_file(file_id, owner_user_id)
@@ -620,12 +629,13 @@ async def purge_my_file(
 async def ingest_csv_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Parse a CSV file into a real Table and link them.
 
     Idempotent: if the file is already linked, returns the existing table.
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
@@ -710,6 +720,7 @@ _XLSX_CONTENT_TYPES = {
 async def ingest_xlsx_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Parse an .xlsx file into one table per sheet.
 
@@ -719,7 +730,7 @@ async def ingest_xlsx_file(
     ingest. (Re-import as a new file if the source workbook changes
     sheets.)
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(

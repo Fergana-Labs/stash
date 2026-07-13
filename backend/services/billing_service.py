@@ -51,13 +51,17 @@ async def get_subscription(user_id: UUID) -> dict | None:
 
 async def is_pro(user_id: UUID) -> bool:
     row = await get_pool().fetchrow(
-        "SELECT u.email, s.status FROM users u "
+        "SELECT u.email, u.plan, s.status FROM users u "
         "LEFT JOIN user_subscriptions s ON s.user_id = u.id "
         "WHERE u.id = $1",
         user_id,
     )
     if row is None:
         return False
+    # Enterprise is an admin-granted entitlement (no Stripe subscription) —
+    # workspace scope users rely on it to connect more than one source.
+    if row["plan"] == "enterprise":
+        return True
     if is_internal_email(row["email"]):
         return True
     return row["status"] in ACTIVE_STATUSES

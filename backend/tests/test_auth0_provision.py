@@ -318,3 +318,62 @@ async def test_welcome_email_failure_logs_only_metadata(monkeypatch):
     assert "user@webflow.com" not in str(captured_logs)
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_verified_auth0_email_persists_and_auto_enrolls(pool):
+    """Domain auto-enroll trusts Auth0's email_verified claim and nothing
+    else. A verified signup on a workspace domain joins the workspace; an
+    unverified one must not."""
+    from backend.services import workspace_service
+
+    domain = f"{unique_name('corp')}.com".lower()
+    ws = await workspace_service.create_workspace("Corp", domain)
+
+    verified, _ = await get_or_create_user_row_from_auth0(
+        auth0_sub=f"google-oauth2|{unique_name()}",
+        email=f"a@{domain}",
+        name="Verified",
+        email_verified=True,
+    )
+    unverified, _ = await get_or_create_user_row_from_auth0(
+        auth0_sub=f"auth0|{unique_name()}",
+        email=f"b@{domain}",
+        name="Unverified",
+        email_verified=False,
+    )
+
+    assert await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", verified["id"])
+    members = {
+        row["user_id"]
+        for row in await pool.fetch(
+            "SELECT user_id FROM workspace_members WHERE workspace_id = $1", ws["id"]
+        )
+    }
+    assert verified["id"] in members
+    assert unverified["id"] not in members
+
+
+@pytest.mark.asyncio
+async def test_returning_login_auto_enrolls_once_verified(pool):
+    """A user who existed before the workspace (or before verifying) joins on
+    their next verified login — the UPDATE path enrolls too."""
+    from backend.services import workspace_service
+
+    domain = f"{unique_name('corp')}.com".lower()
+    sub = f"google-oauth2|{unique_name()}"
+    email = f"late@{domain}"
+
+    user, _ = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=email, name="Late", email_verified=False
+    )
+    ws = await workspace_service.create_workspace("Corp", domain)
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=email, name="Late", email_verified=True
+    )
+    assert await pool.fetchval(
+        "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        ws["id"],
+        user["id"],
+    )

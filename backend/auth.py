@@ -1,9 +1,10 @@
 import hashlib
 import secrets
 import time
+from uuid import UUID
 
 import bcrypt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .database import get_pool
@@ -207,6 +208,34 @@ async def get_current_user(
     user = await authenticate_token(credentials.credentials)
     _enforce_key_access(user, request)
     return user
+
+
+async def get_scope(
+    current_user: dict = Depends(get_current_user),
+    x_stash_scope: str | None = Header(default=None),
+) -> UUID:
+    """The effective content scope for this request.
+
+    The frontend's scope switcher sends `X-Stash-Scope: <scope_user_id>` when
+    the user is working in a workspace; content routes own/list/create under
+    that scope instead of the caller's personal one. Absent header → personal
+    scope. A header naming a workspace the caller isn't a member of is a hard
+    403 — never a silent fallback to personal.
+    """
+    if x_stash_scope is None:
+        return current_user["id"]
+    try:
+        scope_user_id = UUID(x_stash_scope)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="X-Stash-Scope must be a UUID")
+    if scope_user_id == current_user["id"]:
+        return scope_user_id
+
+    from .services import permission_service
+
+    if not await permission_service.is_workspace_member(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of that workspace")
+    return scope_user_id
 
 
 async def get_current_user_optional(

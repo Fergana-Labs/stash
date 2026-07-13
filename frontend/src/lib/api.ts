@@ -15,7 +15,9 @@ import {
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
+  Workspace,
 } from "./types";
+import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
 
 const TOKEN_KEY = "stash_token";
 export const API_BASE = "";
@@ -119,6 +121,8 @@ export async function fetchAuthed(path: string): Promise<Response> {
   const token = await getAuthToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) headers[SCOPE_HEADER] = scopeUserId;
   return fetch(`${API_BASE}${path}`, { headers });
 }
 
@@ -138,6 +142,10 @@ export async function apiFetch<T>(
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) {
+    headers[SCOPE_HEADER] = scopeUserId;
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -196,6 +204,14 @@ export async function getMe(): Promise<User> {
     _meInflight = null;
   });
   return _meInflight;
+}
+
+// The workspaces the signed-in user belongs to — empty for most users. Sending
+// a workspace's scope_user_id as X-Stash-Scope switches every scoped read and
+// write to that workspace's shared knowledge base.
+export async function listMyWorkspaces(): Promise<Workspace[]> {
+  const data = await apiFetch<{ workspaces: Workspace[] }>(`${ME}/workspaces`);
+  return data.workspaces;
 }
 
 export async function updateMe(data: {

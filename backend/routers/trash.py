@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from ..auth import get_current_user
+from ..auth import get_scope
 from ..database import get_pool
 from ..services import (
     files_service,
@@ -17,14 +17,14 @@ router = APIRouter(prefix="/api/v1/me", tags=["trash"])
 
 @router.get("/trash")
 async def list_trash(
-    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Trash listing: pages + files + sessions, each sorted by deleted_at DESC.
 
     Includes deleted_by display name so the UI can show "Deleted by Alice"
     without a second round-trip.
     """
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
 
     pages = await files_tree_service.list_trashed_pages(owner_user_id)
     files = await files_service.list_trashed_files(owner_user_id)

@@ -248,3 +248,18 @@ export interface TrashListing {
   files: TrashEntry[];
   sessions: TrashEntry[];
 }
+
+// --- Workspaces ---
+
+// A workspace the signed-in user belongs to. `scope_user_id` is the synthetic
+// user that owns the workspace's shared content; requests carrying it as
+// X-Stash-Scope read and write the org knowledge base instead of the personal one.
+export interface Workspace {
+  id: string;
+  name: string;
+  domain: string;
+  scope_user_id: string;
+}
+
+/** The selected scope — the slice of a workspace we persist and send. */
+export type Scope = Pick<Workspace, "scope_user_id" | "name">;

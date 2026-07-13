@@ -4,7 +4,7 @@ import logging
 import re
 
 from backend.database import get_pool
-from backend.services import share_service, user_scope_service
+from backend.services import share_service, user_scope_service, workspace_service
 from backend.services.email_service import send_welcome_email
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ async def get_or_create_user_row_from_auth0(
     auth0_sub: str,
     email: str | None,
     name: str | None,
+    email_verified: bool = False,
 ):
     """Return (user_row, created) for an Auth0 identity.
 
@@ -50,13 +51,16 @@ async def get_or_create_user_row_from_auth0(
     if row:
         if email:
             await pool.execute(
-                "UPDATE users SET last_seen = now(), email = $2 WHERE id = $1",
+                "UPDATE users SET last_seen = now(), email = $2, email_verified = $3 WHERE id = $1",
                 row["id"],
                 email,
+                email_verified,
             )
             # An invite may have been addressed to this email after the account
             # existed (e.g. before its email was recorded) — convert on login.
             await share_service.convert_pending_invites(row["id"], email)
+            if email_verified:
+                await workspace_service.enroll_by_domain(row["id"], email)
         else:
             await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
         user = dict(row)
@@ -68,19 +72,23 @@ async def get_or_create_user_row_from_auth0(
     display_name = name or username
 
     row = await pool.fetchrow(
-        "INSERT INTO users (name, display_name, auth0_sub, description, email) "
-        "VALUES ($1, $2, $3, '', $4) "
+        "INSERT INTO users (name, display_name, auth0_sub, description, email, email_verified) "
+        "VALUES ($1, $2, $3, '', $4, $5) "
         "RETURNING id, name, display_name, description, created_at, last_seen",
         username,
         display_name,
         auth0_sub,
         email,
+        email_verified,
     )
     user = dict(row)
 
     await user_scope_service.seed_user_scope(user["id"])
 
     await share_service.convert_pending_invites(user["id"], email)
+
+    if email and email_verified:
+        await workspace_service.enroll_by_domain(user["id"], email)
 
     if email:
         try:
