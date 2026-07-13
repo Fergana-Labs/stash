@@ -63,6 +63,7 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "linear": "me",
         "gong_calls": "gong-source",
         "twitter": "111",
+        "twitter_bookmarks": "111",
     }
     return refs[source_type]
 
@@ -718,10 +719,12 @@ async def test_twitter_source_stores_account_id_and_handle(monkeypatch):
     monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
     monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
 
-    external_ref, display_name = await sources_router._resolve_twitter_source(uuid4())
+    # The resolver returns the raw handle; each source type composes its own
+    # display name from it ("Twitter / X (@…)" vs "X bookmarks (@…)").
+    external_ref, username = await sources_router._resolve_twitter_source(uuid4())
 
     assert external_ref == "111"
-    assert display_name == "Twitter / X (@henry_dowling)"
+    assert username == "henry_dowling"
 
 
 @pytest.mark.asyncio
