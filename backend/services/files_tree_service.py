@@ -379,6 +379,44 @@ async def memory_wiki_graph(owner_user_id: UUID) -> dict:
     }
 
 
+async def memory_tree(owner_user_id: UUID, created_by: UUID) -> dict:
+    """The Memory wiki as a nested file-system tree — folders with pages
+    attached at each level, rooted at the Memory folder (the folder itself is
+    implicit; the response is its contents). Owner-only, like the graph."""
+    memory = await get_or_create_memory_folder(owner_user_id, created_by)
+    pool = get_pool()
+    folder_rows = await pool.fetch(
+        "WITH RECURSIVE mtree AS ("
+        "  SELECT f.* FROM folders f WHERE f.id = $1"
+        "  UNION ALL"
+        "  SELECT f.* FROM folders f JOIN mtree m ON f.parent_folder_id = m.id"
+        ") SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "FROM mtree ORDER BY name",
+        memory["id"],
+    )
+    folder_by_id: dict[UUID, dict] = {}
+    for row in folder_rows:
+        node = dict(row)
+        node["folders"] = []
+        node["pages"] = []
+        folder_by_id[node["id"]] = node
+
+    page_rows = await pool.fetch(
+        "SELECT id, owner_user_id, folder_id, name, content_type, created_at, updated_at "
+        "FROM pages WHERE folder_id = ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY name",
+        list(folder_by_id.keys()),
+    )
+
+    for node in folder_by_id.values():
+        if node["id"] != memory["id"]:
+            folder_by_id[node["parent_folder_id"]]["folders"].append(node)
+    for row in page_rows:
+        folder_by_id[row["folder_id"]]["pages"].append(dict(row))
+
+    root = folder_by_id[memory["id"]]
+    return {"folders": root["folders"], "pages": root["pages"]}
+
+
 async def _assert_not_memory(folder_id: UUID, owner_user_id: UUID) -> None:
     pool = get_pool()
     row = await pool.fetchrow(

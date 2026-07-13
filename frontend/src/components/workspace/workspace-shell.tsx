@@ -67,7 +67,7 @@ function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
-  if (pathname === "/memory") return "memory";
+  if (pathname === "/memory" || pathname.startsWith("/memory/")) return "memory";
   if (pathname === "/tools") return "tools";
   return null;
 }
@@ -95,8 +95,9 @@ export default function WorkspaceShell({
   const section = selectedSection ?? routeSection;
   const renderRouteContent =
     (pathname === "/sessions" && !selectedSection && searchParams.get("workspace") !== "1") ||
-    // Memory lands on the brain dashboard; opening an item switches to the workbench.
-    (pathname === "/memory" && !selectedSection);
+    // Memory routes (brain dashboard, wiki file system) render as pages
+    // beside the explorer; opening an item switches to the workbench.
+    (pathname.startsWith("/memory") && !selectedSection);
 
   return (
     // Chrome surface — the content panel floats on top of it.

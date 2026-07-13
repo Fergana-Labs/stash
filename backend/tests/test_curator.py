@@ -417,3 +417,46 @@ async def test_memory_graph_nodes_edges_and_scope(client: AsyncClient):
     assert graph["edges"] == [{"source": a, "target": b}]
     # The link is one undirected edge — both ends count it in their degree.
     assert {n["name"]: n["degree"] for n in graph["nodes"]} == {"Alpha": 1, "Beta": 1}
+
+
+# --- Memory wiki file-system tree (GET /me/memory-tree) ---
+
+
+@pytest.mark.asyncio
+async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClient):
+    key, uid = await _register(client)
+    mem = (await client.get("/api/v1/me/memory-folder", headers=_auth(key))).json()
+
+    sub = (
+        await client.post(
+            "/api/v1/me/folders",
+            json={"name": "Research", "parent_folder_id": mem["id"]},
+            headers=_auth(key),
+        )
+    ).json()
+
+    async def add_page(name: str, folder_id: str | None) -> str:
+        r = await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": name, "content": "x", "folder_id": folder_id},
+            headers=_auth(key),
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    root_page = await add_page("Index", mem["id"])
+    nested_page = await add_page("Deep Dive", sub["id"])
+    # A Files page is not part of the wiki tree.
+    await add_page("Outside", None)
+
+    r = await client.get("/api/v1/me/memory-tree", headers=_auth(key))
+    assert r.status_code == 200
+    tree = r.json()
+    assert [p["id"] for p in tree["pages"]] == [root_page]
+    assert [f["name"] for f in tree["folders"]] == ["Research"]
+    assert [p["id"] for p in tree["folders"][0]["pages"]] == [nested_page]
+
+    # The Files tree keeps hiding the Memory subtree — the two stay MECE.
+    files_tree = (await client.get("/api/v1/me/tree", headers=_auth(key))).json()
+    assert [p["name"] for p in files_tree["pages"]] == ["Outside"]
+    assert all(f["id"] != mem["id"] for f in files_tree["folders"])
