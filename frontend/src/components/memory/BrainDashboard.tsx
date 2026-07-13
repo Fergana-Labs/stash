@@ -55,7 +55,9 @@ export default function BrainDashboard() {
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [wikiTree, setWikiTree] = useState<Tree | null>(null);
-  const [insightsLoaded, setInsightsLoaded] = useState(false);
+  const [projectionLoaded, setProjectionLoaded] = useState(false);
+  const [graphLoaded, setGraphLoaded] = useState(false);
+  const [treeLoaded, setTreeLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
 
@@ -105,21 +107,35 @@ export default function BrainDashboard() {
 
   // The brain's vitals + visualizations. All span the user's own content plus
   // everything shared with them (the /me/* aggregates, called without a
-  // scope, include readable shared rows).
+  // scope, include readable shared rows). Each card renders as soon as its
+  // own fetch settles — gating them together let one slow or failing
+  // endpoint hold the whole dashboard in skeletons.
   useEffect(() => {
     let cancelled = false;
-    setInsightsLoaded(false);
-    Promise.allSettled([
-      getEmbeddingProjection(2000),
-      getMemoryGraph(),
-      getMemoryTree(),
-    ]).then(([p, g, t]) => {
-      if (cancelled) return;
-      if (p.status === "fulfilled") setProjection(p.value);
-      if (g.status === "fulfilled") setGraph(g.value);
-      if (t.status === "fulfilled") setWikiTree(t.value);
-      setInsightsLoaded(true);
-    });
+    getEmbeddingProjection(2000)
+      .then((p) => {
+        if (!cancelled) setProjection(p);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setProjectionLoaded(true);
+      });
+    getMemoryGraph()
+      .then((g) => {
+        if (!cancelled) setGraph(g);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setGraphLoaded(true);
+      });
+    getMemoryTree()
+      .then((t) => {
+        if (!cancelled) setWikiTree(t);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTreeLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -164,7 +180,7 @@ export default function BrainDashboard() {
                   : "Memory wiki"
               }
             >
-              {!insightsLoaded ? (
+              {!graphLoaded ? (
                 <SkeletonBlock className="h-[560px] w-full" />
               ) : graph && graph.nodes.length > 0 ? (
                 <WikiGraph data={graph} />
@@ -189,7 +205,7 @@ export default function BrainDashboard() {
                 </Link>
               </div>
               <div className="card-soft max-h-[420px] overflow-y-auto p-3">
-                {!insightsLoaded ? (
+                {!treeLoaded ? (
                   <SkeletonBlock className="h-[180px] w-full" />
                 ) : wikiTree &&
                   (wikiTree.folders.length > 0 || wikiTree.pages.length > 0) ? (
@@ -207,7 +223,7 @@ export default function BrainDashboard() {
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
             {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
             <VizCard label="Knowledge map">
-              {!insightsLoaded ? (
+              {!projectionLoaded ? (
                 <SkeletonBlock className="h-[240px] w-full" />
               ) : projection && projection.points.length > 0 ? (
                 <div className="h-[240px]">
