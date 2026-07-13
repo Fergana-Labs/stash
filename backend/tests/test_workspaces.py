@@ -306,3 +306,21 @@ async def test_workspace_key_endpoint_rejects_unknown_access(client: AsyncClient
         headers=ADMIN,
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_member_sees_workspace_session_folders(client: AsyncClient, pool):
+    """The sessions explorer lists a scope's session folders through an inline
+    predicate (not check_access) — it must include workspace members, or the
+    workspace Sessions view renders empty for every human."""
+    domain = _domain()
+    key, body = await _register_with_email(client, f"m@{domain}")
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+
+    scoped = {**_auth(key), "X-Stash-Scope": ws["scope_user_id"]}
+    resp = await client.get("/api/v1/me/session-folders", headers=scoped)
+    assert resp.status_code == 200
+    # Listing lazily provisions the workspace's Default folder and the member
+    # can see it.
+    assert "Default" in [f["name"] for f in resp.json()["folders"]]
