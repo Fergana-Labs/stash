@@ -24,6 +24,7 @@ celery = Celery(
     backend=settings.REDIS_URL,
     include=[
         "backend.tasks.extraction",
+        "backend.tasks.clips",
         "backend.tasks.drive_extraction",
         "backend.tasks.embeddings",
         "backend.tasks.linear_tickets",
@@ -64,6 +65,10 @@ celery.conf.update(
         "extraction-enqueue-pending": {
             "task": "backend.tasks.extraction.enqueue_pending",
             "schedule": 60.0,
+        },
+        "clips-enqueue-pending-url-imports": {
+            "task": "backend.tasks.clips.enqueue_pending_url_imports",
+            "schedule": 300.0,
         },
         "drive-extraction-enqueue-pending": {
             "task": "backend.tasks.drive_extraction.enqueue_pending",

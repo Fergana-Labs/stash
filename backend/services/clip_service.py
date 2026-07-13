@@ -23,25 +23,40 @@ async def clips_folder_id(owner_user_id: UUID, user_id: UUID) -> UUID:
     return folder["id"]
 
 
-async def save_page_clip(
+async def clips_subfolder_id(owner_user_id: UUID, user_id: UUID, name: str) -> UUID:
+    """Idempotent Clips/<name> folder (e.g. Clips/YouTube)."""
+    root_id = await clips_folder_id(owner_user_id, user_id)
+    existing = await get_pool().fetchval(
+        "SELECT id FROM folders WHERE owner_user_id = $1 AND parent_folder_id = $2 AND name = $3",
+        owner_user_id,
+        root_id,
+        name,
+    )
+    if existing:
+        return existing
+    folder = await files_tree_service.create_folder(
+        owner_user_id, name, user_id, parent_folder_id=root_id
+    )
+    return folder["id"]
+
+
+async def create_clip_page(
     *,
     owner_user_id: UUID,
     user_id: UUID,
     url: str,
-    html: str,
-    title: str | None,
+    name: str,
+    markdown: str,
+    folder_id: UUID | None,
 ) -> dict:
-    article = extract_article(html, url)
-    # The extractor's title beats the tab title (which carries "| Site" junk),
-    # but non-article metadata sometimes lacks one.
-    name = article["title"] or title
-    if not name:
-        raise ArticleExtractionError("The page has no usable title")
+    """Create the page every clip path ends in: source header + metadata,
+    unique name, default folder Clips/."""
     clipped_at = datetime.now(UTC)
     # The source header keeps the URL inside the page body — full-text search
     # and the curator index page content, not metadata.
-    content = f"> Clipped from <{url}> on {clipped_at.date().isoformat()}\n\n{article['markdown']}"
-    folder_id = await clips_folder_id(owner_user_id, user_id)
+    content = f"> Clipped from <{url}> on {clipped_at.date().isoformat()}\n\n{markdown}"
+    if folder_id is None:
+        folder_id = await clips_folder_id(owner_user_id, user_id)
     return await files_tree_service.create_page_unique(
         owner_user_id,
         name,
@@ -49,6 +64,31 @@ async def save_page_clip(
         folder_id,
         content=content,
         metadata={"source_url": url, "clipped_at": clipped_at.isoformat()},
+    )
+
+
+async def save_page_clip(
+    *,
+    owner_user_id: UUID,
+    user_id: UUID,
+    url: str,
+    html: str,
+    title: str | None,
+    folder_id: UUID | None = None,
+) -> dict:
+    article = extract_article(html, url)
+    # The extractor's title beats the tab title (which carries "| Site" junk),
+    # but non-article metadata sometimes lacks one.
+    name = article["title"] or title
+    if not name:
+        raise ArticleExtractionError("The page has no usable title")
+    return await create_clip_page(
+        owner_user_id=owner_user_id,
+        user_id=user_id,
+        url=url,
+        name=name,
+        markdown=article["markdown"],
+        folder_id=folder_id,
     )
 
 
@@ -60,13 +100,15 @@ async def save_file_clip(
     filename: str,
     content: bytes,
     content_type: str,
+    folder_id: UUID | None = None,
 ):
     """Store a binary clip (PDF etc.) in Clips and stamp its source URL."""
     from ..routers.files import ingest_bytes
 
     if files_tree_service.detect_page_kind(filename, content_type) is not None:
         raise ValueError("Markdown/HTML clips must go through the page path")
-    folder_id = await clips_folder_id(owner_user_id, user_id)
+    if folder_id is None:
+        folder_id = await clips_folder_id(owner_user_id, user_id)
     response = await ingest_bytes(
         owner_user_id=owner_user_id,
         user_id=user_id,
