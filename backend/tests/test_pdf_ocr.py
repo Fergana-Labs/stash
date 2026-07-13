@@ -128,7 +128,7 @@ async def test_pages_past_the_vision_cap_keep_their_text_layer(monkeypatch):
         return "chunk"
 
     monkeypatch.setattr(pdf_ocr, "_transcribe_chunk", fake_chunk)
-    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: "tail layer text")
+    monkeypatch.setattr(pdf_ocr, "_text_layer_tail", lambda reader, start: "tail layer text")
 
     result = await pdf_ocr.transcribe_pdf(_blank_pdf(6))
 
@@ -149,11 +149,57 @@ async def test_the_vision_cap_is_marked_not_silent(monkeypatch):
         return "chunk"
 
     monkeypatch.setattr(pdf_ocr, "_transcribe_chunk", fake_chunk)
-    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+    monkeypatch.setattr(pdf_ocr, "_text_layer_tail", lambda reader, start: "")
 
     result = await pdf_ocr.transcribe_pdf(_blank_pdf(6))
 
     assert result == "chunk\n\nchunk\n\n[transcription stopped at page 4 of 6]"
+
+
+@pytest.mark.asyncio
+async def test_ocr_holds_at_most_the_concurrency_limit_in_memory(monkeypatch):
+    """A scanned catalog sliced into N chunks, all built and sent at once, is
+    what used to blow the extraction child's 1GB RLIMIT_AS (Heavi's Timken and
+    supplier catalogs: MemoryError after 3 attempts). Peak memory must be the
+    document plus OCR_CONCURRENCY slices, so both slice construction and the
+    API call have to sit behind the semaphore."""
+    import asyncio
+
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(pdf_ocr, "MAX_VISION_PAGES", 12)
+    monkeypatch.setattr(pdf_ocr, "PAGES_PER_REQUEST", 1)
+
+    in_flight = 0
+    peak = 0
+
+    async def fake_chunk(client, chunk):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.005)
+        in_flight -= 1
+        return "chunk"
+
+    slice_calls = []
+    real_slice = pdf_ocr._slice_pdf
+
+    def counting_slice(reader, start, end):
+        # Slices must be created lazily (inside the semaphore), never
+        # all up front — laziness IS the memory fix.
+        slice_calls.append(in_flight)
+        return real_slice(reader, start, end)
+
+    monkeypatch.setattr(pdf_ocr, "_transcribe_chunk", fake_chunk)
+    monkeypatch.setattr(pdf_ocr, "_slice_pdf", counting_slice)
+
+    result = await pdf_ocr.transcribe_pdf(_blank_pdf(12))
+
+    assert result == "\n\n".join(["chunk"] * 12)
+    assert peak <= pdf_ocr.OCR_CONCURRENCY
+    # If slices were pre-built, every _slice_pdf call would happen before any
+    # request is in flight; lazy construction interleaves them.
+    assert len(slice_calls) == 12
+    assert any(n > 0 for n in slice_calls)
 
 
 class _FakeConnection:
