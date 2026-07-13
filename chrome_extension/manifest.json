@@ -1,12 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Stash Chat Sync",
-  "version": "0.2.0",
-  "description": "Automatically saves your ChatGPT and Claude conversations to Stash as agent sessions.",
-  "permissions": ["storage"],
+  "name": "Stash Sync",
+  "version": "0.3.0",
+  "description": "Saves webpages, PDFs, and your ChatGPT/Claude conversations to Stash.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "alarms",
+    "notifications",
+    "tabs"
+  ],
   "host_permissions": [
     "https://api.joinstash.ai/*",
-    "http://localhost:3456/*"
+    "http://localhost:3456/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*"
   ],
   "background": {
     "service_worker": "dist/background.js"
@@ -25,7 +36,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Stash Chat Sync",
+    "default_title": "Stash Sync",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
