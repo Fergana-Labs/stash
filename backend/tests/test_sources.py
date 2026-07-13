@@ -64,6 +64,7 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "gong_calls": "gong-source",
         "twitter": "111",
         "twitter_bookmarks": "111",
+        "instagram_saves": "saves",
     }
     return refs[source_type]
 
