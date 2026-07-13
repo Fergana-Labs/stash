@@ -4102,7 +4102,8 @@ def welcome_cmd():
 # ===========================================================================
 
 PLUGIN_DATA_DIRS = {
-    "claude": Path.home() / ".claude/plugins/data/stash",
+    # Claude Code names the data dir <plugin>-<marketplace>.
+    "claude": Path.home() / ".claude/plugins/data/stash-stash-plugins",
     "codex": Path.home() / ".stash/plugins/codex",
     "cursor": Path.home() / ".stash/plugins/cursor",
     "gemini": Path.home() / ".stash/plugins/gemini",

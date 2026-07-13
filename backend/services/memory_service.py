@@ -33,6 +33,23 @@ def _normalize_ts(ts: datetime) -> datetime:
     return ts
 
 
+def _strip_nuls(value):
+    """Postgres text/jsonb cannot store \\u0000, so scrub it from every string.
+
+    Agent payloads carry NUL bytes in practice (e.g. a tool-output preview of
+    grepping a binary). Without this, one such event 500s forever and wedges
+    the plugin's retry queue behind it — a 500 must mean "transient", never
+    "this payload".
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_strip_nuls(k): _strip_nuls(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nuls(v) for v in value]
+    return value
+
+
 # Dedup map for in-flight event embeds, keyed by event_id.
 _embed_tasks: dict[UUID, asyncio.Task] = {}
 
@@ -105,7 +122,13 @@ async def push_event(
 ) -> dict:
     """Push a single event."""
     pool = get_pool()
-    meta = metadata or {}
+    agent_name = _strip_nuls(agent_name)
+    event_type = _strip_nuls(event_type)
+    content = _strip_nuls(content)
+    session_id = _strip_nuls(session_id)
+    tool_name = _strip_nuls(tool_name)
+    attachments = _strip_nuls(attachments)
+    meta = _strip_nuls(metadata or {})
     if created_at is None:
         ts = datetime.now(UTC)
     else:
@@ -165,6 +188,7 @@ async def push_events_batch(
         return []
     pool = get_pool()
     now = datetime.now(UTC)
+    events = [_strip_nuls(e) for e in events]
 
     agent_names = [e["agent_name"] for e in events]
     event_types = [e["event_type"] for e in events]
