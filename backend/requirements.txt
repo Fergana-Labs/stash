@@ -33,3 +33,4 @@ pillow-heif>=0.19
 stripe>=12.0
 websockets>=13.0
 croniter>=2.0
+trafilatura>=2.0
