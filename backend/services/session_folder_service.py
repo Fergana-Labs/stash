@@ -23,7 +23,7 @@ _GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
 DEFAULT_FOLDER_NAME = "Default"
 
 _FOLDER_COLS = (
-    "sf.id, sf.owner_user_id, sf.slug, sf.name, "
+    "sf.id, sf.owner_user_id, sf.slug, sf.name, sf.external_key, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "CASE WHEN sf.public_permission != 'none' THEN 'public' ELSE 'private' END AS access, "
     "sf.public_permission, "
@@ -62,6 +62,7 @@ def _row(r) -> dict:
         "owner_user_id": str(r["owner_user_id"]),
         "slug": r["slug"],
         "name": r["name"],
+        "external_key": r["external_key"],
         "owner_name": r["owner_name"],
         "owner_display_name": r["owner_display_name"],
         "access": r["access"],
@@ -81,8 +82,8 @@ _INSERT_FOLDER_SQL = (
     "WITH inserted AS ("
     "  INSERT INTO session_folders "
     "    (owner_user_id, name, slug, "
-    "     public_permission, discoverable, is_default) "
-    "  VALUES ($1, $2, $3, $4, $5, $6) "
+    "     public_permission, discoverable, is_default, external_key) "
+    "  VALUES ($1, $2, $3, $4, $5, $6, $7) "
     "  RETURNING *"
     f") {_FOLDER_SELECT.replace('session_folders sf', 'inserted sf')}"
 )
@@ -105,35 +106,49 @@ async def create_folder(
         public_permission,
         discoverable,
         is_default,
+        None,
     )
     return _row(r)
 
 
-async def get_or_create_folder(owner_user_id: UUID, name: str) -> dict:
-    """Atomic get-or-create by exact name.
+async def get_or_create_folder(
+    owner_user_id: UUID, name: str, *, external_key: str | None = None
+) -> dict:
+    """Atomic get-or-create for machine callers that map an external grouping
+    onto folders — e.g. a customer's app creating one folder per org on the
+    first uploaded turn.
 
-    For machine callers that map an external grouping onto folders — e.g. a
-    customer's app creating one folder per org on the first uploaded turn.
+    With an external_key (the caller's stable id, e.g. an org id), matching is
+    by key and the name is display-only: set at creation, freely renamable in
+    the UI afterwards. Without one, matching is by exact name — renaming the
+    folder then breaks the mapping, so keyed lookup is the right call for
+    anything long-lived.
+
     Folder names are not unique, so a bare list-then-create race would mint
     duplicates; concurrent callers serialize on a transaction-scoped advisory
-    lock instead, and the oldest name match wins thereafter.
-
-    Matching is by exact name: renaming the folder breaks the mapping and the
-    next call recreates it under the original name.
+    lock (the keyed path is additionally backstopped by a unique index on
+    (owner_user_id, external_key)).
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            if external_key is not None:
+                lock_token = f"session_folder:key:{owner_user_id}:{external_key}"
+                match_sql = (
+                    f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.external_key = $2"
+                )
+                match_arg = external_key
+            else:
+                lock_token = f"session_folder:name:{owner_user_id}:{name}"
+                match_sql = (
+                    f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.name = $2 "
+                    "ORDER BY sf.created_at, sf.id LIMIT 1"
+                )
+                match_arg = name
             await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                f"session_folder:{owner_user_id}:{name}",
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", lock_token
             )
-            row = await conn.fetchrow(
-                f"{_FOLDER_SELECT} WHERE sf.owner_user_id = $1 AND sf.name = $2 "
-                "ORDER BY sf.created_at, sf.id LIMIT 1",
-                owner_user_id,
-                name,
-            )
+            row = await conn.fetchrow(match_sql, owner_user_id, match_arg)
             if row is None:
                 row = await conn.fetchrow(
                     _INSERT_FOLDER_SQL,
@@ -143,6 +158,7 @@ async def get_or_create_folder(owner_user_id: UUID, name: str) -> dict:
                     "none",
                     False,
                     False,
+                    external_key,
                 )
     return _row(row)
 

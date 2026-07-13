@@ -84,23 +84,34 @@ async def create_folder(body: CreateFolderRequest, current_user: dict = Depends(
 
 class GetOrCreateFolderRequest(BaseModel):
     name: str
+    external_key: str | None = None
 
 
 @me_router.post("/get-or-create")
 async def get_or_create_folder(
     body: GetOrCreateFolderRequest, current_user: dict = Depends(get_current_user)
 ):
-    """Idempotent folder-by-name for machine callers (e.g. one folder per
-    customer org, resolved on every uploaded turn). Concurrent calls with the
-    same name return the same folder — no list-then-create race. Always
-    creates private folders; publishing stays on the explicit routes."""
+    """Idempotent folder resolution for machine callers (e.g. one folder per
+    customer org, resolved on every uploaded turn). With external_key (the
+    caller's stable id) the folder matches on the key and the name is
+    display-only — renamable in the UI without breaking the mapping. Without
+    one, matching falls to exact name. Concurrent calls return the same
+    folder — no list-then-create race. Always creates private folders;
+    publishing stays on the explicit routes."""
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="Folder name is required")
-    return await session_folder_service.get_or_create_folder(owner_user_id, name)
+    external_key = body.external_key.strip() if body.external_key is not None else None
+    if external_key == "":
+        raise HTTPException(status_code=422, detail="external_key must not be blank")
+    if external_key is not None and len(external_key) > 128:
+        raise HTTPException(status_code=422, detail="external_key too long (max 128)")
+    return await session_folder_service.get_or_create_folder(
+        owner_user_id, name, external_key=external_key
+    )
 
 
 @me_router.get("")
