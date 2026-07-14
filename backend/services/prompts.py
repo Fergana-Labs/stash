@@ -137,6 +137,13 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - `history_has_more: true` means the history overflowed this run's cap. The
   remainder is already queued for your next run (the watermark only advances
   through what you were shown) — curate what's present, don't try to page.
+- Each history event carries its session's `folder`. Folder placement is the
+  owner's deliberate curation signal: sessions filed into a named folder share
+  a context (a customer, an org, a project) — attribute what you learn to that
+  context rather than generalizing it. A folder whose name marks it as
+  global/approved (e.g. "Global — approved for learning") holds traces an
+  expert has sanctioned: treat those as trustworthy, general knowledge and
+  weight them above unsorted activity.
 - `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
 - `stash ls /memory --json` and `stash read <page_id>` to inspect existing
   wiki pages. `stash search "<topic>" --json` to pull related source/file
