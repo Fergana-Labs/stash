@@ -68,6 +68,18 @@ async def _sync_source(source_id: UUID) -> dict:
     await source_service.mark_sync_started(source_id)
     try:
         cursor = await indexer(source)
+    except source_service.SourceSyncUserError as exc:
+        # Deliberately owner-facing: the indexer vouches the message is safe
+        # and actionable ("upgrade the X API tier"), unlike raw provider
+        # exceptions, which stay redacted below.
+        logger.error(
+            "source sync failed source=%s source_type=%s user_error=%s",
+            source_id,
+            source["source_type"],
+            exc,
+        )
+        await source_service.mark_sync_failed(source_id, str(exc)[:500])
+        return {"status": "failed"}
     except Exception as exc:
         logger.error(
             "source sync failed source=%s source_type=%s exception_type=%s",

@@ -366,6 +366,40 @@ async def integration_callback(
                         type(exc).__name__,
                     )
             # --- END Slack agent ---
+
+            # Connecting X auto-creates its sources: everything downstream
+            # (explorer sidebar, CLI `stash ls`, sources list) keys off
+            # sources, not integrations, and unlike GitHub/Notion there is
+            # nothing to pick — the account IS the source. Both rows are
+            # idempotent get-or-creates; bookmarks starts syncing on the
+            # normal schedule (next_sync_at defaults to now).
+            # Best-effort: a failure here must not break the connection.
+            if provider == "twitter":
+                from ..services import source_service
+                from .twitter.indexer import fetch_me
+
+                try:
+                    me = await fetch_me(token.access_token)
+                    username = me.get("username") or me["id"]
+                    await source_service.create_source(
+                        owner_user_id=user_id,
+                        source_type="twitter",
+                        external_ref=me["id"],
+                        display_name=f"Twitter / X (@{username})",
+                        settings={},
+                    )
+                    await source_service.create_source(
+                        owner_user_id=user_id,
+                        source_type="twitter_bookmarks",
+                        external_ref=me["id"],
+                        display_name=f"X bookmarks (@{username})",
+                        settings={},
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "twitter: failed to auto-create sources exception_type=%s",
+                        type(exc).__name__,
+                    )
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:

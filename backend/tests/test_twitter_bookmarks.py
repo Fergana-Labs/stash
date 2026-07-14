@@ -47,6 +47,8 @@ _PAYLOAD_ONE = {
 
 
 class _FakeResponse:
+    status_code = 200
+
     def __init__(self, payload: dict):
         self._payload = payload
 
@@ -172,3 +174,123 @@ async def test_add_source_resolves_account_and_names_bookmarks(
     listed = await client.get("/api/v1/me/sources", headers=headers)
     source = next(s for s in listed.json()["sources"] if s["type"] == "twitter_bookmarks")
     assert source["display_name"] == "X bookmarks (@alice)"
+
+
+# --- Connect-time auto-creation + failure surfacing ---
+
+
+class _FakeTwitterProvider:
+    name = "twitter"
+    auth_kind = "oauth"
+
+    async def exchange_code(self, code: str):
+        from datetime import UTC, datetime, timedelta
+
+        from backend.integrations.base import TokenSet
+
+        return TokenSet(
+            access_token="at",
+            refresh_token="rt",
+            expires_at=datetime.now(UTC) + timedelta(hours=2),
+            scopes=["bookmark.read"],
+        )
+
+    async def fetch_account(self, access_token: str):
+        from backend.integrations.base import AccountInfo
+
+        return AccountInfo(email=None, display_name="@alice")
+
+
+@pytest.mark.asyncio
+async def test_connect_callback_auto_creates_twitter_sources(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Everything downstream (explorer sidebar, CLI `stash ls`, sources list)
+    keys off sources, not integrations — so connecting X must create its
+    sources immediately, and bookmarks then syncs on the normal schedule."""
+    from backend.integrations import router as integration_router
+
+    monkeypatch.setattr(
+        integration_router.settings,
+        "INTEGRATIONS_ENCRYPTION_KEY",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    )
+    monkeypatch.setattr(integration_router, "get_provider", lambda name: _FakeTwitterProvider())
+
+    async def fake_me(token):
+        return {"id": "9999", "username": "alice"}
+
+    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
+
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name(), "password": "securepassword1"},
+    )
+    user_id = resp.json()["id"]
+    state = integration_router._encode_state(UUID(user_id), "twitter", "/settings")
+
+    callback = await client.get(
+        f"/api/v1/integrations/twitter/callback?code=abc&state={state}",
+        follow_redirects=False,
+    )
+    assert callback.status_code == 302
+
+    rows = await pool.fetch(
+        "SELECT source_type, external_ref, display_name, sync_enabled, next_sync_at <= now() AS due "
+        "FROM user_sources WHERE owner_user_id = $1 ORDER BY source_type",
+        UUID(user_id),
+    )
+    assert [(r["source_type"], r["external_ref"], r["display_name"]) for r in rows] == [
+        ("twitter", "9999", "Twitter / X (@alice)"),
+        ("twitter_bookmarks", "9999", "X bookmarks (@alice)"),
+    ]
+    bookmarks = rows[1]
+    assert bookmarks["sync_enabled"] is True
+    assert bookmarks["due"] is True  # the reconciler picks it up without any manual sync
+
+
+@pytest.mark.asyncio
+async def test_bookmarks_402_reports_the_tier_problem(client: AsyncClient, fake_x_api) -> None:
+    source = await _make_source(client)
+
+    class _PaymentRequired(_FakeResponse):
+        status_code = 402
+
+        def raise_for_status(self):
+            raise AssertionError("402 must be translated before raise_for_status")
+
+    fake_x_api.payload = {}
+    original_get = _FakeAsyncClient.get
+
+    async def get_402(self, url, params=None):
+        return _PaymentRequired({})
+
+    _FakeAsyncClient.get = get_402
+    try:
+        with pytest.raises(source_service.SourceSyncUserError, match="paid X API tier"):
+            await twitter_indexer.index_twitter_bookmarks(source)
+    finally:
+        _FakeAsyncClient.get = original_get
+
+
+@pytest.mark.asyncio
+async def test_user_error_lands_on_the_source_row_verbatim(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """SourceSyncUserError messages are owner-facing and stored as-is; raw
+    exceptions stay behind the redacted constant (covered in test_sources)."""
+    from backend.tasks import sources as sources_tasks
+
+    source = await _make_source(client)
+
+    async def tier_gated_indexer(src):
+        raise source_service.SourceSyncUserError("X returned 402 for the bookmarks API")
+
+    monkeypatch.setitem(sources_tasks.INDEXERS, "twitter_bookmarks", tier_gated_indexer)
+    result = await sources_tasks._sync_source(UUID(source["id"]))
+    assert result == {"status": "failed"}
+
+    sync_error = await pool.fetchval(
+        "SELECT sync_error FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert sync_error == "X returned 402 for the bookmarks API"

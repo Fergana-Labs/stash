@@ -41,6 +41,15 @@ from ..database import get_pool
 from . import permission_service, security_audit_service
 
 logger = logging.getLogger(__name__)
+
+
+class SourceSyncUserError(Exception):
+    """A sync failure the owner can act on. The message is stored verbatim in
+    user_sources.sync_error and shown in the UI, so it must never contain
+    tokens or provider payloads — raw exceptions stay behind the redacted
+    constant (see tasks/sources.py)."""
+
+
 TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.

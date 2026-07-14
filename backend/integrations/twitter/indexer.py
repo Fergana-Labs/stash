@@ -444,6 +444,14 @@ async def index_twitter_bookmarks(source: dict) -> str | None:
             BOOKMARKS_URL.format(user_id=source["external_ref"]),
             params={"max_results": BOOKMARKS_SYNC_PAGE_SIZE, **_TWEET_PARAMS},
         )
+        if resp.status_code in (402, 403):
+            # X gates the bookmarks endpoint behind paid API tiers; the app's
+            # current plan doesn't include it. Not retryable, not the user's
+            # fault — say so on the source row instead of a redacted constant.
+            raise source_service.SourceSyncUserError(
+                f"X returned {resp.status_code} for the bookmarks API — this endpoint "
+                "requires a paid X API tier (Basic or above) on the Stash developer app"
+            )
         resp.raise_for_status()
         payload = resp.json()
 
