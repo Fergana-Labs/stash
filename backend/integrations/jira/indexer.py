@@ -38,9 +38,9 @@ ACCESSIBLE_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-res
 # cloud_id -> site base url (e.g. https://acme.atlassian.net). Cached because the
 # site url never changes for a cloud and the lookup costs a network round-trip.
 _SITE_URL_CACHE: dict[str, str] = {}
-# Fields rendered for a full read (lazy fetch). Keep this in sync with
-# `_render_issue` — every field here should have a corresponding render
-# branch, or the network round-trip is wasted.
+# Fields rendered for a full issue body (lazy reads and search hits). Keep this
+# in sync with `_render_issue` — every field here should have a corresponding
+# render branch, or the network round-trip is wasted.
 ISSUE_FIELDS = ",".join(
     [
         # core
@@ -258,7 +258,9 @@ async def index_jira(source: dict) -> str | None:
 
 async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     """Federated search: run JQL `text ~` against the project, live. Returns hits
-    keyed by the index path so read_source resolves them."""
+    keyed by the index path so read_source resolves them. Requests the full
+    ISSUE_FIELDS payload so each hit's snippet is the rendered issue body —
+    same response count, callers get full text to rank on."""
     owner_user_id = UUID(source["owner_user_id"])
     cloud_id, project_key = source_service.parse_jira_project_ref(source["external_ref"])
     token = await get_valid_token(owner_user_id, "jira")
@@ -270,7 +272,7 @@ async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> li
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
         resp = await client.get(
             f"{base}/search/jql",
-            params={"jql": jql, "maxResults": min(limit, 50), "fields": "summary"},
+            params={"jql": jql, "maxResults": min(limit, 50), "fields": ISSUE_FIELDS},
         )
         resp.raise_for_status()
         issues = resp.json().get("issues", [])
@@ -280,7 +282,13 @@ async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> li
         if not key:
             continue
         summary = (issue.get("fields") or {}).get("summary") or ""
-        hits.append({"ref": _issue_path(key), "name": f"{key}: {summary}", "snippet": summary})
+        hits.append(
+            {
+                "ref": _issue_path(key),
+                "name": f"{key}: {summary}",
+                "snippet": _render_issue(issue),
+            }
+        )
     return hits
 
 

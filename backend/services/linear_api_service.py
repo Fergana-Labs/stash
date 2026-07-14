@@ -38,11 +38,24 @@ query Issues($after: String) {
 }
 """
 
-# Linear's native full-text search, used for federated source search.
+# Linear's native full-text search, used for federated source search. Selects
+# the same fields as ISSUE_QUERY so each hit carries its full body — one
+# request either way, and callers get full text to rank on.
 SEARCH_QUERY = """
 query SearchIssues($term: String!, $first: Int!) {
   searchIssues(term: $term, first: $first) {
-    nodes { identifier title }
+    nodes {
+      id
+      identifier
+      title
+      description
+      url
+      updatedAt
+      state { name }
+      assignee { name }
+      team { key name }
+      project { name }
+    }
   }
 }
 """
@@ -67,14 +80,7 @@ def is_configured() -> bool:
     return bool(settings.LINEAR_OAUTH_CLIENT_ID and settings.LINEAR_OAUTH_CLIENT_SECRET)
 
 
-async def fetch_issue(ticket_identifier: str, access_token: str) -> LinearIssue | None:
-    payload = await _graphql(ISSUE_QUERY, {"id": ticket_identifier}, access_token)
-    _raise_on_errors(payload, "issue lookup")
-
-    issue = payload.get("data", {}).get("issue")
-    if not issue:
-        return None
-
+def _issue_from_node(issue: dict[str, Any]) -> LinearIssue:
     state = issue.get("state") or {}
     assignee = issue.get("assignee") or {}
     team = issue.get("team") or {}
@@ -94,6 +100,16 @@ async def fetch_issue(ticket_identifier: str, access_token: str) -> LinearIssue 
         updated_at=_parse_datetime(updated_at) if updated_at else None,
         description=issue.get("description"),
     )
+
+
+async def fetch_issue(ticket_identifier: str, access_token: str) -> LinearIssue | None:
+    payload = await _graphql(ISSUE_QUERY, {"id": ticket_identifier}, access_token)
+    _raise_on_errors(payload, "issue lookup")
+
+    issue = payload.get("data", {}).get("issue")
+    if not issue:
+        return None
+    return _issue_from_node(issue)
 
 
 async def list_issues(
@@ -120,17 +136,13 @@ async def list_issues(
     return issues, next_cursor
 
 
-async def search_issues(access_token: str, term: str, first: int = 25) -> list[dict[str, str]]:
-    """Linear's native full-text issue search. Returns identifier/title rows."""
+async def search_issues(access_token: str, term: str, first: int = 25) -> list[LinearIssue]:
+    """Linear's native full-text issue search. Returns full issues."""
     payload = await _graphql(SEARCH_QUERY, {"term": term, "first": first}, access_token)
     _raise_on_errors(payload, "issue search")
 
     nodes = (payload.get("data", {}).get("searchIssues") or {}).get("nodes") or []
-    return [
-        {"identifier": node["identifier"], "title": node.get("title") or node["identifier"]}
-        for node in nodes
-        if node.get("identifier")
-    ]
+    return [_issue_from_node(node) for node in nodes if node.get("identifier")]
 
 
 def _raise_on_errors(payload: dict[str, Any], action: str) -> None:

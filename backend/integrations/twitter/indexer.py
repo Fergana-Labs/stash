@@ -31,10 +31,9 @@ RETWEETED_BY_URL = f"{API_BASE}/2/tweets/{{tweet_id}}/retweeted_by"
 SEARCH_LIMIT = 25
 READ_LIMIT = 25
 IDENTITY_LIMIT = 100
-SNIPPET_CHARS = 300
 CACHE_RETENTION_DAYS = 30
 
-TWEET_FIELDS = "author_id,created_at,public_metrics,conversation_id,lang"
+TWEET_FIELDS = "author_id,created_at,public_metrics,conversation_id,lang,note_tweet"
 USER_FIELDS = "name,username"
 DM_EVENT_FIELDS = "id,text,event_type,created_at,sender_id,participant_ids,dm_conversation_id"
 _TWEET_PARAMS = {
@@ -114,6 +113,13 @@ def twitter_ref_name(ref: str) -> str:
     return ref
 
 
+def _tweet_text(tweet: dict) -> str:
+    """A long-form post carries its full body in note_tweet; its `text` field is
+    the ~280-char truncation. Standard posts have no note_tweet."""
+    note = tweet.get("note_tweet") or {}
+    return note.get("text") or tweet.get("text") or ""
+
+
 def _tweet_name(tweet: dict, users: dict[str, dict]) -> str:
     user = users.get(tweet.get("author_id") or "")
     username = user.get("username") if user else None
@@ -151,7 +157,7 @@ def _render_tweet(tweet: dict, user: dict | None = None) -> str:
         parts.append(f"Likers ref: likers:{tweet_id}")
         parts.append(f"Reposters ref: reposters:{tweet_id}")
 
-    text = (tweet.get("text") or "").strip()
+    text = _tweet_text(tweet).strip()
     if text:
         quoted = "\n".join(f"> {line}" for line in text.splitlines())
         parts.append(f"\n{quoted}")
@@ -337,9 +343,7 @@ async def search_twitter(source: dict, query: str, limit: int = SEARCH_LIMIT) ->
             external_ref=tweet_id,
             external_updated_at=_parse_time(tweet.get("created_at")),
         )
-        hits.append(
-            {"ref": tweet_id, "name": name, "snippet": (tweet.get("text") or "")[:SNIPPET_CHARS]}
-        )
+        hits.append({"ref": tweet_id, "name": name, "snippet": _tweet_text(tweet)})
     await source_service.prune_index_rows(
         "twitter_posts", source_id, max_age_days=CACHE_RETENTION_DAYS
     )

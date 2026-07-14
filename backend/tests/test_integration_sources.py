@@ -19,12 +19,14 @@ import pytest
 from fastapi import HTTPException
 
 from backend.config import settings
+from backend.integrations.asana import indexer as asana_indexer
 from backend.integrations.asana.indexer import _render_task
 from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gmail.provider import GmailIntegration
 from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
+from backend.integrations.jira import indexer as jira_indexer
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.integrations.linear import provider as linear_provider
 from backend.integrations.linear.provider import LinearIntegration
@@ -669,6 +671,7 @@ async def test_search_twitter_raises_on_provider_error(monkeypatch):
 async def test_search_twitter_parses_payload_and_caches_rows(monkeypatch):
     from uuid import uuid4
 
+    long_body = "a long-form post body " * 40
     client = _FakeClient(
         {
             "data": [
@@ -677,6 +680,13 @@ async def test_search_twitter_parses_payload_and_caches_rows(monkeypatch):
                     "text": "hello world",
                     "author_id": "u1",
                     "created_at": "2026-06-08T12:00:00Z",
+                },
+                {
+                    "id": "2",
+                    "text": "a long-form post body …",
+                    "note_tweet": {"text": long_body},
+                    "author_id": "u1",
+                    "created_at": "2026-06-08T13:00:00Z",
                 },
                 {"text": "no id, skipped"},
             ],
@@ -708,17 +718,118 @@ async def test_search_twitter_parses_payload_and_caches_rows(monkeypatch):
     }
     hits = await twitter_indexer.search_twitter(source, "hello", limit=5)
 
-    assert [h["ref"] for h in hits] == ["1"]
+    assert [h["ref"] for h in hits] == ["1", "2"]
     assert hits[0]["name"] == "@stash - 2026-06-08"
+    # Snippets carry the full post text so callers can rank on it. For a
+    # long-form post X truncates `text` to ~280 chars; the full body only
+    # arrives when note_tweet is requested, and that's what the hit must carry.
+    assert hits[0]["snippet"] == "hello world"
+    assert hits[1]["snippet"] == long_body
+    assert "note_tweet" in client.requests[0][1]["tweet.fields"]
     # X rejects max_results below 10, so small limits over-fetch then slice.
     assert client.requests[0][1]["max_results"] == 10
-    assert len(upserts) == 1 and upserts[0]["table"] == "twitter_posts"
+    assert len(upserts) == 2 and upserts[0]["table"] == "twitter_posts"
     assert pruned == [("twitter_posts", twitter_indexer.CACHE_RETENTION_DAYS)]
 
     # Blank queries and non-positive limits never spend an X API request.
     assert await twitter_indexer.search_twitter(source, "   ") == []
     assert await twitter_indexer.search_twitter(source, "hello", limit=0) == []
     assert len(client.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_jira_requests_full_fields_and_renders_snippet(monkeypatch):
+    """Search hits carry the rendered issue body as the snippet — the
+    /search/jql response already includes the requested fields, so rankers get
+    full text without extra API calls."""
+    from uuid import uuid4
+
+    client = _FakeClient(
+        {
+            "issues": [
+                {
+                    "key": "PROJ-7",
+                    "fields": {
+                        "summary": "Login is broken",
+                        "status": {"name": "In Progress"},
+                        "description": {
+                            "type": "doc",
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "repro steps"}],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ]
+        }
+    )
+
+    async def fake_token(owner, provider):
+        return "tok"
+
+    monkeypatch.setattr(jira_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(jira_indexer.httpx, "AsyncClient", client)
+
+    source = {
+        "id": str(uuid4()),
+        "owner_user_id": str(uuid4()),
+        "external_ref": "cloud1:PROJ",
+    }
+    hits = await jira_indexer.search_jira(source, "login")
+
+    assert client.requests[0][1]["fields"] == jira_indexer.ISSUE_FIELDS
+    assert hits[0]["ref"] == "PROJ-00007"
+    assert hits[0]["name"] == "PROJ-7: Login is broken"
+    assert "repro steps" in hits[0]["snippet"]
+    assert "Status: In Progress" in hits[0]["snippet"]
+
+
+@pytest.mark.asyncio
+async def test_search_asana_requests_full_fields_and_renders_snippet(monkeypatch):
+    """Search hits carry the rendered task body as the snippet — Asana's
+    /tasks/search returns whatever opt_fields asks for, so full text costs no
+    extra API calls."""
+    from uuid import uuid4
+
+    client = _FakeClient(
+        [
+            {"data": {"workspace": {"gid": "W1"}}},
+            {
+                "data": [
+                    {
+                        "gid": "task-1",
+                        "name": "Ship the launch email",
+                        "notes": "Draft is in the shared doc.",
+                        "completed": False,
+                        "assignee": {"name": "Ada Lovelace"},
+                        "due_on": "2026-07-20",
+                    }
+                ]
+            },
+        ]
+    )
+
+    async def fake_token(owner, provider):
+        return "tok"
+
+    async def fake_paths(table, source_id, refs):
+        assert table == "asana_documents"
+        return {"task-1": ("00001-ship-the-launch-email", "Ship the launch email")}
+
+    monkeypatch.setattr(asana_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(asana_indexer.httpx, "AsyncClient", client)
+    monkeypatch.setattr(asana_indexer.source_service, "index_paths_for_refs", fake_paths)
+
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "P1"}
+    hits = await asana_indexer.search_asana(source, "launch")
+
+    assert client.requests[1][1]["opt_fields"] == asana_indexer.TASK_FIELDS
+    assert hits[0]["ref"] == "00001-ship-the-launch-email"
+    assert "Draft is in the shared doc." in hits[0]["snippet"]
+    assert "Assignee: Ada Lovelace" in hits[0]["snippet"]
 
 
 @pytest.mark.asyncio

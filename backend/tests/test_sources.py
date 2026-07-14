@@ -2955,7 +2955,21 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
 
     async def fake_search_issues(token, term, first=25):
         assert term == "real source"
-        return [{"identifier": "FER-199", "title": "Make Linear a real source"}]
+        return [
+            linear_api_service.LinearIssue(
+                issue_id="issue-1",
+                identifier="FER-199",
+                title="Make Linear a real source",
+                url="https://linear.app/fergana/issue/FER-199",
+                status="In Progress",
+                assignee_name=None,
+                team_key="FER",
+                team_name="Fergana",
+                project_name=None,
+                updated_at=None,
+                description="Federate search to Linear's own API.",
+            )
+        ]
 
     monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(linear_api_service, "search_issues", fake_search_issues)
@@ -2966,6 +2980,9 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
     hit = next(r for r in results if r["ref"] == "FER/FER-00199")
     assert hit["source"] == src["id"]
     assert hit["name"] == "FER-199 Make Linear a real source"
+    # The snippet is the rendered issue body, not just the title — rankers
+    # downstream need the description text without another API call.
+    assert "Federate search to Linear's own API." in hit["snippet"]
 
 
 @pytest.mark.asyncio
