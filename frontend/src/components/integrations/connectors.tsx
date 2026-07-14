@@ -17,7 +17,7 @@ import {
   TwitterIcon,
 } from "./BrandIcons";
 
-export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "twitter" | "auto";
+export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
 
 export type Connector = {
   provider: IntegrationProvider;
@@ -109,7 +109,7 @@ export const CONNECTORS: Connector[] = [
     provider: "twitter",
     label: "Twitter / X",
     sourceType: "twitter",
-    kind: "twitter",
+    kind: "auto",
     blurb: "OAuth access to X search, posts, bookmarks, likes, timelines, and DMs.",
   },
 ];

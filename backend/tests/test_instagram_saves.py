@@ -114,6 +114,7 @@ async def test_push_creates_source_and_skeleton_rows(
     sent: list = []
     from backend.routers import sources as sources_router
 
+    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
     monkeypatch.setattr(
         sources_router.celery, "send_task", lambda name, args: sent.append((name, args))
     )
@@ -151,7 +152,8 @@ async def test_push_creates_source_and_skeleton_rows(
 
 
 @pytest.mark.asyncio
-async def test_push_rejects_non_instagram_urls(client: AsyncClient) -> None:
+async def test_push_rejects_non_instagram_urls(client: AsyncClient, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
     headers, _ = await _register(client)
     resp = await client.post(
         "/api/v1/me/saved-items",
@@ -160,6 +162,29 @@ async def test_push_rejects_non_instagram_urls(client: AsyncClient) -> None:
     )
     assert resp.status_code == 400
     assert "example.com/not-instagram" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_push_refused_until_scrapecreators_key_is_configured(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """No key → no source ever gets created, so Instagram saves stay
+    invisible everywhere until the server can actually hydrate them."""
+    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", None)
+    headers, owner_id = await _register(client)
+
+    resp = await client.post(
+        "/api/v1/me/saved-items",
+        json=_push_body(["https://www.instagram.com/reel/ABC123xyz/"]),
+        headers=headers,
+    )
+    assert resp.status_code == 503
+    assert "SCRAPECREATORS_API_KEY" in resp.json()["detail"]
+
+    count = await pool.fetchval(
+        "SELECT count(*) FROM user_sources WHERE owner_user_id = $1", UUID(owner_id)
+    )
+    assert count == 0
 
 
 @pytest.mark.asyncio

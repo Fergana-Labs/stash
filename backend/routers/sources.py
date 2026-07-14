@@ -457,6 +457,16 @@ async def push_saved_items(
     instagram_saves source (no setup ordering between connector card and
     extension), inserts pending skeleton rows, and kicks a sync so
     hydration starts immediately."""
+    from ..config import settings as app_settings
+
+    # Without the hydration key, accepting pushes would create a source whose
+    # every sync fails — refuse up front so Instagram saves stay invisible
+    # until the server is actually configured for them.
+    if not app_settings.SCRAPECREATORS_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Instagram saves are not enabled on this server (SCRAPECREATORS_API_KEY is not set)",
+        )
     owner_user_id = current_user["id"]
     if not body.items:
         raise HTTPException(status_code=400, detail="No items given")
