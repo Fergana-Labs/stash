@@ -538,3 +538,30 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         fork_page["id"],
     )
     assert fork_content == "External Stash source"
+
+
+def test_trim_snippet_windows_around_first_match():
+    """The agent search tool serializes hits into model context, so 20K-char
+    snippets are trimmed to 400 — but a match deep in a transcript must stay
+    visible in the trimmed window, or the agent sees only the document intro."""
+    intro = "opening remarks and agenda review. " * 30
+    text = intro + "We decided the apple pie budget doubles. " + ("next steps follow. " * 60)
+
+    trimmed = agent_runtime._trim_snippet(text, "apple pie")
+    assert len(trimmed) == 400
+    assert "apple pie budget doubles" in trimmed
+
+    # Matching is case-insensitive: the query phrase is what the user typed.
+    assert "apple pie" in agent_runtime._trim_snippet(text, "APPLE PIE")
+
+    # No verbatim occurrence → the window is the snippet's head.
+    assert agent_runtime._trim_snippet(text, "pumpkin spice") == text[:400]
+
+    # Snippets already within the cap pass through untouched.
+    assert agent_runtime._trim_snippet("short snippet", "apple pie") == "short snippet"
+
+    # A match near the end still yields a full-width window inside the text.
+    tail_match = ("filler sentence here. " * 50) + "closing apple pie note"
+    trimmed_tail = agent_runtime._trim_snippet(tail_match, "apple pie")
+    assert len(trimmed_tail) == 400
+    assert "closing apple pie note" in trimmed_tail

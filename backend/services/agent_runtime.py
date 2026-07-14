@@ -541,16 +541,39 @@ async def _read_source(args: dict) -> dict:
     },
 )
 async def _search(args: dict) -> dict:
+    query = args.get("query", "")
     results = await source_service.search_all(
         _current_scope(),
         _current_user(),
-        args.get("query", ""),
+        query,
         source=args.get("source"),
         limit=int(args.get("limit", 20)),
     )
     if results is None:
         return _text_result(json.dumps({"error": "source not found"}))
+    # Search hits carry up to SEARCH_SNIPPET_CHARS of document text so API
+    # callers can rank on it; that is far too big to serialize into model
+    # context, so each snippet is trimmed to a window around the match here.
+    # Marker rows (errors, truncation) have no snippet and pass through.
+    results = [
+        {**r, "snippet": _trim_snippet(r["snippet"], query)} if r.get("snippet") else r
+        for r in results
+    ]
     return _text_result(json.dumps(results))
+
+
+def _trim_snippet(snippet: str, query: str, cap: int = 400) -> str:
+    """A cap-sized window of the snippet that contains the first occurrence of
+    the query phrase, when the phrase appears verbatim (case-insensitively) —
+    a match 30 minutes into a transcript must show the match, not the intro.
+    Without a verbatim match, the window is the snippet's head."""
+    if len(snippet) <= cap:
+        return snippet
+    index = snippet.lower().find(query.lower()) if query else -1
+    if index == -1:
+        return snippet[:cap]
+    start = min(max(0, index - cap // 4), len(snippet) - cap)
+    return snippet[start : start + cap]
 
 
 @tool(

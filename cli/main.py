@@ -2359,7 +2359,12 @@ def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
             continue
         name = hit.get("name") or hit.get("ref") or ""
         console.print(f"  [bold]{name}[/bold]  [dim]({label}: {hit.get('ref')})[/dim]")
+        # Snippets can carry the whole document (up to ~20K chars) for
+        # programmatic ranking; the human listing shows just the head — use
+        # --json for the full text.
         snippet = (hit.get("snippet") or "").replace("\n", " ").strip()
+        if len(snippet) > 300:
+            snippet = snippet[:300] + "…"
         if snippet:
             console.print(f"    {snippet}")
 

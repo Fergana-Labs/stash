@@ -538,6 +538,43 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
     assert other_hits == []
 
 
+@pytest.mark.asyncio
+async def test_search_documents_snippet_carries_capped_full_text(client: AsyncClient):
+    """Search hits carry the document's full text, capped at
+    SEARCH_SNIPPET_CHARS — rankers downstream score hits on this blob, so a
+    match deep in a long transcript must arrive in the snippet, not be cut by
+    a head-of-document preview."""
+    owner_key, owner_id = await _register(client, "owner")
+    ws = await _user_scope(client, owner_key)
+
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="granola",
+        external_ref="granola-account",
+        display_name="Granola",
+    )
+    intro = "meeting small talk. " * 60
+    match = "the quarterly forecast needs revision. "
+    tail = "closing remarks. " * 1500
+    await source_service.upsert_content_document(
+        table="granola_notes",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="2026/07/planning.md",
+        name="Planning sync",
+        kind="note",
+        content=intro + match + tail,
+    )
+
+    hits = await source_service.search_documents(user_id=owner_id, query="quarterly forecast")
+    assert len(hits) == 1
+    snippet = hits[0]["snippet"]
+    # The matched phrase sits ~1,200 chars in — beyond the old 400-char preview.
+    assert match in snippet
+    # The document is longer than the cap; the snippet is exactly the cap.
+    assert len(snippet) == source_service.SEARCH_SNIPPET_CHARS
+
+
 # --- copied-content idempotent re-sync --------------------------------------
 
 

@@ -497,6 +497,12 @@ CONTENT_TABLES = {
     "drive_documents",
 }
 
+# Per-hit snippet cap for FTS search over CONTENT_TABLES. High enough that most
+# documents come back whole (callers rank on this text), low enough that
+# pathological docs (multi-MB GitHub files, hour-long call transcripts) can't
+# bloat a response.
+SEARCH_SNIPPET_CHARS = 20_000
+
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
 # provider search coroutine, resolved lazily to avoid an import cycle.
@@ -1319,7 +1325,7 @@ async def search_documents(
     source_readable = permission_service.readable_content_condition("source", "s", 1)
     parts = [
         f"""
-        SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
+        SELECT d.source_id, d.path, d.name, LEFT(d.content, {SEARCH_SNIPPET_CHARS}) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
                        websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
