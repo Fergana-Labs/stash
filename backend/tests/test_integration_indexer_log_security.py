@@ -183,7 +183,7 @@ async def test_gmail_index_success_logs_internal_source_id_only(monkeypatch):
     async def list_refs(client, query, limit):
         return [{"id": "msg-webflow-secret"}], None, 1
 
-    async def get_metadata(client, message_id):
+    async def get_message(client, message_id, message_format):
         return {
             "id": message_id,
             "internalDate": "1751812200000",
@@ -193,7 +193,7 @@ async def test_gmail_index_success_logs_internal_source_id_only(monkeypatch):
     monkeypatch.setattr(gmail_indexer, "get_valid_token", gmail_token)
     monkeypatch.setattr(gmail_indexer.httpx, "AsyncClient", lambda *args, **kwargs: GmailClient())
     monkeypatch.setattr(gmail_indexer, "_list_message_refs", list_refs)
-    monkeypatch.setattr(gmail_indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(gmail_indexer, "_get_message", get_message)
     monkeypatch.setattr(gmail_indexer.source_service, "upsert_index_row", _noop)
     monkeypatch.setattr(gmail_indexer.source_service, "remove_missing_documents", _noop)
 

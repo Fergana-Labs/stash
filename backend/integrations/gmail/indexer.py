@@ -1,9 +1,10 @@
 """Gmail → gmail_index indexer (index only; search/read federated).
 
 Sync stores recent message metadata only. Search runs Gmail's native query live,
-upserts returned metadata so the result can be opened, and lazy reads fetch the
-full message body with the owner's token. Stash never copies message bodies
-during scheduled sync.
+fetches each hit in full so the snippet carries the rendered message body
+(format=full costs the same quota as metadata), and upserts the hit's metadata
+so the result can be opened. Lazy reads fetch the full message body with the
+owner's token. Stash never copies message bodies during scheduled sync.
 
 Messages are keyed by a date-foldered path — "YYYY/MM/DD HHMM subject (id)" —
 so the mailbox lists chronologically instead of as a flat pile of opaque ids
@@ -116,10 +117,10 @@ async def _list_message_refs(
     )
 
 
-async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> dict:
+async def _get_message(client: httpx.AsyncClient, message_id: str, message_format: str) -> dict:
     resp = await client.get(
         MESSAGE_URL.format(message_id=message_id),
-        params=_metadata_params("metadata"),
+        params=_metadata_params(message_format),
     )
     resp.raise_for_status()
     return resp.json()
@@ -152,7 +153,7 @@ async def index_gmail(source: dict) -> str | None:
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         refs, _, _ = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
         messages = await asyncio.gather(
-            *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
+            *(_get_message(client, ref["id"], "metadata") for ref in refs if ref.get("id"))
         )
         for message in messages:
             path = await _upsert_message_metadata(source, message)
@@ -165,7 +166,9 @@ async def index_gmail(source: dict) -> str | None:
 
 
 async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> dict:
-    """Live-search the mailbox, capped at SEARCH_LIMIT. Returns
+    """Live-search the mailbox, capped at SEARCH_LIMIT. Each hit is fetched in
+    full and its snippet is the rendered message body — same request count and
+    quota as a metadata fetch, and callers get full text to rank on. Returns
     {hits, truncated, estimated_total}: `truncated` is true when Gmail matched
     more than the cap, so callers can disclose the cut instead of passing the
     top slice off as the whole result."""
@@ -177,7 +180,7 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
             client, query, min(limit, SEARCH_LIMIT)
         )
         messages = await asyncio.gather(
-            *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
+            *(_get_message(client, ref["id"], "full") for ref in refs if ref.get("id"))
         )
 
     hits: list[dict] = []
@@ -189,7 +192,7 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
             {
                 "ref": path,
                 "name": _message_name(message),
-                "snippet": message.get("snippet") or "",
+                "snippet": _render_message(message),
             }
         )
     return {
@@ -253,9 +256,4 @@ def _render_message(message: dict) -> str:
 async def fetch_gmail_content(owner_user_id: UUID, account_key: str, message_id: str) -> str:
     token = await get_valid_token(owner_user_id, "gmail", account_key)
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
-        resp = await client.get(
-            MESSAGE_URL.format(message_id=message_id),
-            params=_metadata_params("full"),
-        )
-        resp.raise_for_status()
-        return _render_message(resp.json())
+        return _render_message(await _get_message(client, message_id, "full"))

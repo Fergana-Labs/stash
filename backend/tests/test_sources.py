@@ -2228,7 +2228,7 @@ async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch)
     async def token(*args, **kwargs):
         return "tok"
 
-    async def get_metadata(client, message_id):
+    async def get_message(client, message_id, message_format):
         return {"id": message_id, "payload": {"headers": [{"name": "Subject", "value": "hi"}]}}
 
     async def upsert(source, message):
@@ -2236,7 +2236,7 @@ async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch)
 
     monkeypatch.setattr(indexer, "get_valid_token", token)
     monkeypatch.setattr(indexer.httpx, "AsyncClient", lambda *a, **k: GmailClient())
-    monkeypatch.setattr(indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(indexer, "_get_message", get_message)
     monkeypatch.setattr(indexer, "_upsert_message_metadata", upsert)
     source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "e@x.com"}
 
@@ -2255,6 +2255,69 @@ async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch)
     monkeypatch.setattr(indexer, "_list_message_refs", last_page)
     result = await indexer.search_gmail(source, "q", 25)
     assert result["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_gmail_hits_carry_full_message_text(monkeypatch):
+    """Search fetches each hit with format=full and renders the whole message
+    into the snippet — rankers get the full email text, not Gmail's ~150-char
+    preview — while still upserting only the hit's metadata into the index."""
+    import base64
+
+    from backend.integrations.gmail import indexer
+
+    class GmailClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def token(*args, **kwargs):
+        return "tok"
+
+    body = base64.urlsafe_b64encode(b"Please review the Q3 budget before Friday.").decode()
+    fetched_formats = []
+
+    async def get_message(client, message_id, message_format):
+        fetched_formats.append(message_format)
+        return {
+            "id": message_id,
+            "snippet": "Please review the Q3 budget…",
+            "internalDate": "1751900000000",
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "Q3 budget"},
+                    {"name": "From", "value": "cfo@example.com"},
+                ],
+                "mimeType": "text/plain",
+                "body": {"data": body},
+            },
+        }
+
+    async def refs(client, query, limit):
+        return [{"id": "m1"}], None, 1
+
+    upserted = []
+
+    async def upsert(source, message):
+        upserted.append(message["id"])
+        return "2026/07/07 1533 Q3 budget (m1)"
+
+    monkeypatch.setattr(indexer, "get_valid_token", token)
+    monkeypatch.setattr(indexer.httpx, "AsyncClient", lambda *a, **k: GmailClient())
+    monkeypatch.setattr(indexer, "_get_message", get_message)
+    monkeypatch.setattr(indexer, "_list_message_refs", refs)
+    monkeypatch.setattr(indexer, "_upsert_message_metadata", upsert)
+
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "e@x.com"}
+    result = await indexer.search_gmail(source, "budget", 25)
+
+    assert fetched_formats == ["full"]
+    hit = result["hits"][0]
+    assert hit["name"] == "Q3 budget (cfo@example.com)"
+    assert "Please review the Q3 budget before Friday." in hit["snippet"]
+    assert upserted == ["m1"]
 
 
 @pytest.mark.asyncio
