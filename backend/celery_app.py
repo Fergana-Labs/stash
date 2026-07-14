@@ -31,6 +31,7 @@ celery = Celery(
         "backend.tasks.viz",
         "backend.tasks.demo_janitor",
         "backend.tasks.cli_auth",
+        "backend.tasks.auth0_sessions",
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
         "backend.integrations.google.exporters.slides",
@@ -101,5 +102,17 @@ celery.conf.update(
             "task": "backend.tasks.cli_auth.cleanup_expired_sessions",
             "schedule": 300.0,
         },
+        # The auth0_sessions table only exists in managed deployments
+        # (managed migration m0002), so only schedule its cleanup there.
+        **(
+            {
+                "auth0-sessions-cleanup-expired": {
+                    "task": "backend.tasks.auth0_sessions.delete_expired",
+                    "schedule": 3600.0,
+                }
+            }
+            if settings.AUTH0_ENABLED
+            else {}
+        ),
     },
 )

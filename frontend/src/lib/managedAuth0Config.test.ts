@@ -33,12 +33,40 @@ describe("managed Auth0 config", () => {
     ).toThrow("APP_BASE_URL must be an HTTPS origin");
   });
 
-  it("accepts managed Auth0 HTTPS origin config", () => {
+  it("requires AUTH0_SECRET for the session store", () => {
+    expect(() =>
+      requireManagedAuth0Config({
+        AUTH0_AUDIENCE: "https://api.example.com",
+        APP_BASE_URL: "https://app.example.com/",
+        DATABASE_URL: "postgresql://localhost/stash",
+      } as NodeJS.ProcessEnv),
+    ).toThrow("AUTH0_SECRET must be set");
+  });
+
+  it("requires DATABASE_URL for the session store", () => {
+    expect(() =>
+      requireManagedAuth0Config({
+        AUTH0_AUDIENCE: "https://api.example.com",
+        APP_BASE_URL: "https://app.example.com/",
+        AUTH0_SECRET: "secret",
+      } as NodeJS.ProcessEnv),
+    ).toThrow("DATABASE_URL must be set");
+  });
+
+  it("accepts complete managed Auth0 config", () => {
     expect(
       requireManagedAuth0Config({
         AUTH0_AUDIENCE: "https://api.example.com",
         APP_BASE_URL: "https://app.example.com/",
+        AUTH0_SECRET: "secret",
+        DATABASE_URL: "postgresql://localhost/stash",
+        DATABASE_SSL: "true",
       } as NodeJS.ProcessEnv),
-    ).toEqual({ audience: "https://api.example.com" });
+    ).toEqual({
+      audience: "https://api.example.com",
+      auth0Secret: "secret",
+      databaseUrl: "postgresql://localhost/stash",
+      databaseSsl: true,
+    });
   });
 });
