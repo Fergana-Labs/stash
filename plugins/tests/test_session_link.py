@@ -55,7 +55,6 @@ def _run_hook(mod, monkeypatch, capsys):
     monkeypatch.setattr(mod, "shadow_install_warning", lambda: None)
     watchers = []
     monkeypatch.setattr(mod, "spawn_session_watcher", lambda **kw: watchers.append(kw))
-    monkeypatch.setattr(mod, "spawn_skills_sync", lambda cfg: None)
     mod.main()
     output = json.loads(capsys.readouterr().out)
     return output["hookSpecificOutput"]["additionalContext"], watchers

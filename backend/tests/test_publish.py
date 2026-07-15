@@ -31,7 +31,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
+async def test_publish_uses_current_user_scope(client: AsyncClient):
     """A new user can call /publish without supplying owner_user_id."""
     key = await _register(client)
 
@@ -39,6 +39,7 @@ async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
         "/api/v1/publish",
         json={
             "title": "Untitled HTML",
+            "description": "Render a shared HTML page.",
             "content_type": "html",
             "content": "<h1>hi</h1>",
         },
@@ -64,6 +65,7 @@ async def test_publish_with_explicit_scope(client: AsyncClient):
         json={
             "owner_user_id": owner_user_id,
             "title": "Explicit-WS publish",
+            "description": "Publish into an explicit scope.",
             "content_type": "markdown",
             "content": "# hello",
         },
@@ -87,6 +89,7 @@ async def test_publish_rejects_non_owner_scope(client: AsyncClient):
         json={
             "owner_user_id": foreign_owner,
             "title": "Foreign publish",
+            "description": "This request must be rejected.",
             "content_type": "markdown",
             "content": "# nope",
         },
@@ -128,6 +131,7 @@ async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
         json={
             "owner_user_id": owner_user_id,
             "title": "Sharee draft",
+            "description": "This request must be rejected.",
             "content": "# should not persist",
         },
         headers=_auth(sharee_key),

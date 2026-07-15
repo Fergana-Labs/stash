@@ -36,7 +36,7 @@ from stashai.plugin.hooks import (
     uploads_disabled_warning,
     uploads_enabled,
 )
-from stashai.plugin.session_upload import spawn_session_watcher, spawn_skills_sync
+from stashai.plugin.session_upload import spawn_session_watcher
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 CONTEXT = (
@@ -114,8 +114,6 @@ def main():
             session_url = create_session_record(client, cfg, state, event, DATA_DIR)
     except Exception:
         session_url = None
-
-    spawn_skills_sync(cfg)
 
     if session_url:
         # The link instruction is its own toggle (`stash settings` → Session

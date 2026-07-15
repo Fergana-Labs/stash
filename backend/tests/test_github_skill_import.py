@@ -23,7 +23,9 @@ FAKE_REPO = {
     "cooking/SKILL.md": COOKING_SKILL_MD,
     "cooking/references/guide.md": b"# Techniques\n",
     "cooking/logo.png": b"\x89PNG fake bytes",
-    "baking/SKILL.md": b"Just a body, no frontmatter.\n",
+    "baking/SKILL.md": (
+        b"---\nname: Baking Wizard\ndescription: Plan and bake a full menu.\n---\n\nBake.\n"
+    ),
 }
 
 
@@ -51,7 +53,6 @@ async def _import_repo(repo_url: str) -> list[str]:
                 owner_user_id,
                 owner_id,
                 source_url=skill["source_url"],
-                fallback_title=skill["fallback_title"],
                 files=skill["files"],
             )
         )
@@ -89,7 +90,8 @@ async def test_import_publishes_discoverable_skills(client: AsyncClient, pool, m
     cooking = by_title["Cooking Wizard"]
     assert cooking["description"] == "Plan and cook a full menu."
     assert cooking["source_github_url"] == "https://github.com/acme/skills/tree/main/cooking"
-    baking = by_title["baking"]
+    baking = by_title["Baking Wizard"]
+    assert baking["description"] == "Plan and bake a full menu."
     assert baking["source_github_url"] == "https://github.com/acme/skills/tree/main/baking"
 
     # SKILL.md keeps its exact filename (skill detection depends on it) and
@@ -163,6 +165,17 @@ async def test_import_requires_skill_md(pool):
             owner_user_id,
             owner_id,
             source_url="https://github.com/acme/empty",
-            fallback_title="empty",
             files=[("README.md", b"hi")],
+        )
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_invalid_skill_metadata(pool):
+    owner_user_id, owner_id = await gsi.ensure_curator()
+    with pytest.raises(ValueError, match="non-empty `description`"):
+        await gsi.import_skill(
+            owner_user_id,
+            owner_id,
+            source_url="https://github.com/acme/invalid",
+            files=[("SKILL.md", b"---\nname: invalid\ndescription:\n---\n")],
         )

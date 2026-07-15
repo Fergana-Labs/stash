@@ -2,6 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from stashai.skill_validation import render_skill_md
+
 from ..auth import get_current_user
 from ..config import settings
 from ..models import PublishRequest, PublishResponse
@@ -51,6 +53,13 @@ async def publish(
                 name = f"{req.title} ({n})"
                 n += 1
 
+    await files_tree_service.create_page(
+        owner_user_id=owner_user_id,
+        name="SKILL.md",
+        created_by=current_user["id"],
+        folder_id=target_folder["id"],
+        content=render_skill_md(req.title, req.description),
+    )
     page = await files_tree_service.create_page(
         owner_user_id=owner_user_id,
         name=req.title,
@@ -67,7 +76,6 @@ async def publish(
             owner_user_id,
             current_user["id"],
             target_folder["id"],
-            title=req.title,
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))

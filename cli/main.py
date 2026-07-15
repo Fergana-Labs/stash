@@ -21,6 +21,7 @@ from rich.text import Text
 
 from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
+from stashai.skill_validation import render_skill_md, validate_skill_md
 
 from . import __version__, telemetry
 from .client import StashClient, StashError
@@ -1300,6 +1301,11 @@ def skills_add(
     if not skill_md_path.exists():
         console.print(f"[red]Missing SKILL.md in {folder}[/red]")
         raise typer.Exit(1)
+    try:
+        validate_skill_md(skill_md_path.read_text())
+    except ValueError as error:
+        console.print(f"[red]Invalid SKILL.md:[/red] {error}")
+        raise typer.Exit(1) from error
 
     folder_name = src.name
     with _client() as c:
@@ -1322,7 +1328,7 @@ def skills_add(
 @skills_app.command("create")
 def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
-    description: str = typer.Option("", "--description"),
+    description: str = typer.Option(..., "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
@@ -1331,7 +1337,7 @@ def skills_create(
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
-    skill_md = f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+    skill_md = render_skill_md(name, description)
     with _client() as c:
         try:
             folder = c.create_folder(name)
@@ -1444,6 +1450,12 @@ def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Pa
     is allowed only when the target already looks like a skill (has a
     SKILL.md) — never delete an arbitrary directory on a name collision."""
     contents = detail["contents"]
+    skill_pages = [
+        page for page in contents["pages"] if not page["folder_path"] and page["name"] == "SKILL.md"
+    ]
+    if len(skill_pages) != 1:
+        raise ValueError("A skill must contain exactly one root SKILL.md")
+    validate_skill_md(skill_pages[0]["content_markdown"] or "")
     target = skills_root / _safe_skill_dirname(detail["folder_name"])
     if target.exists():
         if not (target / "SKILL.md").exists():
@@ -1625,6 +1637,7 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
         summary["pulled"].append(name)
 
     def push(name: str, folder_id: str) -> None:
+        validate_skill_md((local[name] / "SKILL.md").read_text())
         c.replace_skill_contents(folder_id, _collect_local_files(local[name]))
         record(name, c.get_skill_contents(folder_id))
         summary["pushed"].append(name)

@@ -14,6 +14,8 @@ from uuid import UUID
 import asyncpg
 import nh3
 
+from stashai.skill_validation import validate_skill_md
+
 from ..database import get_pool
 from . import page_events, permission_service, security_audit_service, skill_service
 
@@ -596,6 +598,10 @@ async def create_page(
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
 ) -> dict:
+    if name == skill_service.SKILL_MD_NAME:
+        if content_type != "markdown":
+            raise ValueError("SKILL.md must be Markdown")
+        validate_skill_md(content)
     pool = get_pool()
     if folder_id is not None:
         folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
@@ -729,6 +735,20 @@ async def update_page(
     event to open viewers and invalidates any persisted collab doc so a reopened
     editor reloads the fresh content instead of stale Yjs state."""
     pool = get_pool()
+    if name == skill_service.SKILL_MD_NAME or content is not None:
+        current_skill = await pool.fetchrow(
+            f"SELECT name, content_markdown FROM pages WHERE id = $1 "
+            f"AND owner_user_id = $2 AND {_PAGE_FILTER}",
+            page_id,
+            owner_user_id,
+        )
+        if current_skill is not None:
+            final_name = name if name is not None else current_skill["name"]
+            if final_name == skill_service.SKILL_MD_NAME:
+                final_content = (
+                    content if content is not None else current_skill["content_markdown"]
+                )
+                validate_skill_md(final_content)
     if content_html is not None:
         content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
@@ -1583,6 +1603,11 @@ async def write_folder_files(
     import mimetypes
 
     from . import storage_service
+
+    skill_files = [blob for path, blob in files if path == skill_service.SKILL_MD_NAME]
+    if len(skill_files) != 1:
+        raise ValueError("A skill must contain exactly one root SKILL.md")
+    validate_skill_md(skill_files[0].decode("utf-8", errors="replace"))
 
     pool = get_pool()
     folder_ids: dict[str, UUID] = {"": root_folder_id}

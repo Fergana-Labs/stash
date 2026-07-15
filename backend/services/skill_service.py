@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from stashai.skill_validation import parse_frontmatter
+
 from ..database import get_pool
 from . import permission_service
 
@@ -42,36 +44,6 @@ async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
         owner_user_id,
     )
     return {r["id"] for r in rows}
-
-
-def parse_frontmatter(md: str) -> tuple[dict, str]:
-    """Tiny YAML-ish frontmatter parser. Supports `key: value` only — no nested
-    structures, lists, or quoted-with-escapes. That's deliberate: skill metadata
-    is supposed to be flat. Returns (metadata, body)."""
-    if not md.startswith("---"):
-        return {}, md
-    end = md.find("\n---", 3)
-    if end == -1:
-        return {}, md
-    raw = md[3:end].strip("\n")
-    body = md[end + 4 :].lstrip("\n")
-    meta: dict = {}
-    for line in raw.splitlines():
-        line = line.rstrip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key = key.strip()
-        val = val.strip()
-        if val.lower() in ("true", "false"):
-            meta[key] = val.lower() == "true"
-        elif val.startswith('"') and val.endswith('"'):
-            meta[key] = val[1:-1]
-        else:
-            meta[key] = val
-    return meta, body
 
 
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:

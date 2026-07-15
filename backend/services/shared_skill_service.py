@@ -16,6 +16,8 @@ from uuid import UUID
 
 import asyncpg
 
+from stashai.skill_validation import validate_skill_md
+
 from ..database import get_pool
 from . import (
     files_tree_service,
@@ -113,29 +115,6 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
-def skill_md_template(name: str, description: str = "") -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
-
-
-async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
-    pool = get_pool()
-    existing = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
-        "AND deleted_at IS NULL LIMIT 1",
-        folder_id,
-    )
-    if existing:
-        return
-    await files_tree_service.create_page(
-        owner_user_id,
-        "SKILL.md",
-        user_id,
-        folder_id=folder_id,
-        content=skill_md_template(title),
-        content_type="markdown",
-    )
-
-
 # --- Publish lifecycle ---
 
 
@@ -144,16 +123,13 @@ async def publish_folder(
     owner_id: UUID,
     folder_id: UUID,
     *,
-    title: str | None = None,
-    description: str = "",
     discoverable: bool = False,
     cover_image_url: str | None = None,
     icon_url: str | None = None,
     source_github_url: str | None = None,
 ) -> dict:
     """Mint the publish record for a skill folder — the folder becomes
-    publicly readable at /skills/<slug>. Creates the SKILL.md template if the
-    folder doesn't have one yet."""
+    publicly readable at /skills/<slug>."""
     pool = get_pool()
     folder = await pool.fetchrow(
         "SELECT id, name, owner_user_id FROM folders WHERE id = $1", folder_id
@@ -167,17 +143,16 @@ async def publish_folder(
     ):
         raise PermissionError("Not allowed to publish this folder")
 
-    if not title:
-        skill_md = await pool.fetchval(
-            "SELECT content_markdown FROM pages WHERE folder_id = $1 "
-            "AND name = 'SKILL.md' AND deleted_at IS NULL LIMIT 1",
-            folder_id,
-        )
-        meta, _body = skill_service.parse_frontmatter(skill_md or "")
-        title = meta.get("name") or folder["name"]
-        description = description or meta.get("description", "")
-
-    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title)
+    skill_md = await pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id = $1 "
+        "AND name = 'SKILL.md' AND deleted_at IS NULL LIMIT 1",
+        folder_id,
+    )
+    if skill_md is None:
+        raise ValueError("Skill folder must contain a valid SKILL.md")
+    metadata = validate_skill_md(skill_md)
+    title = metadata["name"]
+    description = metadata["description"]
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "

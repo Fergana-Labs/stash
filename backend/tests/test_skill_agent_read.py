@@ -56,13 +56,24 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
             headers=_auth(api_key),
         )
     ).json()
+    skill_md = await client.post(
+        "/api/v1/me/pages/new",
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder["id"],
+            "content": (
+                "---\nname: Auth 401 spike\n"
+                "description: Clock skew investigation\n---\n\n# Auth 401 spike"
+            ),
+        },
+        headers=_auth(api_key),
+    )
+    assert skill_md.status_code == 201
 
     published = await client.post(
         "/api/v1/me/skills",
         json={
             "folder_id": folder["id"],
-            "title": "Auth 401 spike",
-            "description": "Clock skew investigation",
         },
         headers=_auth(api_key),
     )
@@ -75,7 +86,7 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     text = resp.text
     assert "# Auth 401 spike" in text
     # The SKILL.md body renders first (the skill's own instructions), then the
-    # live folder counts: SKILL.md (auto-minted on publish) + the page.
+    # live folder counts: SKILL.md + the page.
     assert "This is a public Skill with 2 pages." in text
     assert text.index("# Auth 401 spike") < text.index("This is a public Skill")
     assert "This page is the Skill homepage" in text
@@ -110,6 +121,7 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
         json={
             "owner_user_id": scope["id"],
             "title": "HTML strategy memo",
+            "description": "Share the HTML strategy memo.",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",
         },

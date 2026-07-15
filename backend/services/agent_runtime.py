@@ -16,6 +16,8 @@ from uuid import UUID
 
 from claude_agent_sdk import tool
 
+from stashai.skill_validation import validate_skill_md
+
 from ..config import settings
 from . import (
     files_tree_service,
@@ -356,6 +358,7 @@ async def _read_skill(args: dict) -> dict:
     },
 )
 async def _create_skill(args: dict) -> dict:
+    validate_skill_md(args["skill_md"])
     owner_user_id = _current_scope()
     user_id = _current_user()
     folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)

@@ -490,11 +490,18 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         "External Stash source",
         owner_id,
     )
+    await _db_pool.execute(
+        "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by) "
+        "VALUES ($1, $2, 'SKILL.md', $3, $4)",
+        scope,
+        folder_id,
+        "---\nname: Fork source Stash\ndescription: Test skill forking.\n---\n",
+        owner_id,
+    )
     source = await shared_skill_service.publish_folder(
         scope,
         owner_id,
         folder_id,
-        title="Fork source Stash",
     )
 
     attached = await shared_skill_service.fork_skill(

@@ -75,7 +75,14 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     docs = await _folder(client, api_key, scope, "Docs")
     skill_folder = await _folder(client, api_key, scope, "my-skill", parent_folder_id=docs)
     nested = await _folder(client, api_key, scope, "refs", parent_folder_id=skill_folder)
-    skill_md = await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
+    skill_md = await _page(
+        client,
+        api_key,
+        scope,
+        "SKILL.md",
+        folder_id=skill_folder,
+        content="---\nname: my-skill\ndescription: Test the skill UI.\n---\n",
+    )
     nested_page = await _page(client, api_key, scope, "notes", folder_id=nested)
 
     # /tree hides the whole skill subtree (the SKILL.md folder + descendants).
@@ -146,13 +153,14 @@ async def _make_folder(pool, scope, created_by, name, parent_folder_id=None):
     )
 
 
-async def _make_page(pool, scope, created_by, folder_id, name="page"):
+async def _make_page(pool, scope, created_by, folder_id, name="page", content="body"):
     return await pool.fetchval(
         "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by) "
-        "VALUES ($1, $2, $3, 'body', $4) RETURNING id",
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         scope,
         folder_id,
         name,
+        content,
         created_by,
     )
 
@@ -170,7 +178,15 @@ async def test_published_skill_grants_subtree_read_never_write(pool):
     # Unpublished: a skill folder on its own grants nothing to outsiders.
     assert not await permission_service.check_access("page", page, stranger)
 
-    await shared_skill_service.publish_folder(scope, owner, root, title="Subtree skill")
+    await _make_page(
+        pool,
+        scope,
+        owner,
+        root,
+        name="SKILL.md",
+        content="---\nname: Subtree skill\ndescription: Test subtree access.\n---\n",
+    )
+    await shared_skill_service.publish_folder(scope, owner, root)
 
     # The publish record grants READ on the whole subtree — anonymous included.
     assert await permission_service.check_access("page", page, stranger)
@@ -214,7 +230,14 @@ async def test_materialize_session_creates_transcript_page_in_folder(client: Asy
     assert pushed.status_code == 201
 
     skill_folder = await _folder(client, api_key, scope, "session-skill")
-    await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
+    await _page(
+        client,
+        api_key,
+        scope,
+        "SKILL.md",
+        folder_id=skill_folder,
+        content="---\nname: session-skill\ndescription: Preserve a session.\n---\n",
+    )
 
     materialized = await client.post(
         "/api/v1/me/sessions/mat-sess-1/materialize",
@@ -247,22 +270,38 @@ async def test_materialize_unknown_session_404(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
+async def test_publish_requires_valid_skill_md_and_rejects_double_publish(
     client: AsyncClient,
 ):
     api_key, _ = await _register(client)
     scope = await _scope(client, api_key)
     folder = await _folder(client, api_key, scope, "bare-folder")
 
+    missing = await client.post(
+        "/api/v1/me/skills",
+        json={"folder_id": folder},
+        headers=_auth(api_key),
+    )
+    assert missing.status_code == 400
+    assert missing.json()["detail"] == "Skill folder must contain a valid SKILL.md"
+
+    await _page(
+        client,
+        api_key,
+        scope,
+        "SKILL.md",
+        folder_id=folder,
+        content="---\nname: Minted skill\ndescription: A valid skill.\n---\n",
+    )
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder, "title": "Minted skill"},
+        json={"folder_id": folder},
         headers=_auth(api_key),
     )
     assert published.status_code == 201, published.text
     assert published.json()["folder_id"] == folder
 
-    # Publishing turned the bare folder into a skill by minting SKILL.md.
+    # Publishing preserves the valid SKILL.md as the metadata source of truth.
     contents = (
         await client.get(f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key))
     ).json()
@@ -272,7 +311,7 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
     # The publish record is 1:1 with the folder — a second publish must 400.
     again = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder, "title": "Minted skill"},
+        json={"folder_id": folder},
         headers=_auth(api_key),
     )
     assert again.status_code == 400
@@ -313,7 +352,7 @@ async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client:
     )
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": skill_folder, "title": "Partner Playbook"},
+        json={"folder_id": skill_folder},
         headers=_auth(owner_key),
     )
     assert published.status_code == 201

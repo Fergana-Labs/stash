@@ -573,16 +573,19 @@ async def create_page(
             current_user["id"],
             require="write",
         )
-    page = await files_tree_service.create_page_unique(
-        owner_user_id,
-        req.name,
-        current_user["id"],
-        req.folder_id,
-        content=req.content,
-        content_type=req.content_type,
-        content_html=req.content_html,
-        html_layout=req.html_layout,
-    )
+    try:
+        page = await files_tree_service.create_page_unique(
+            owner_user_id,
+            req.name,
+            current_user["id"],
+            req.folder_id,
+            content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
+            html_layout=req.html_layout,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     return PageResponse(**page)
 
 
@@ -754,6 +757,8 @@ async def update_page(
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
+from stashai.skill_validation import validate_skill_md
+
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..models import (
@@ -50,8 +52,6 @@ async def publish_skill(
             owner_user_id,
             current_user["id"],
             req.folder_id,
-            title=req.title,
-            description=req.description,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,
@@ -155,6 +155,11 @@ async def replace_skill_contents(
         payload.append((rel_path, await f.read()))
     if not any(path == "SKILL.md" for path, _blob in payload):
         raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
+    skill_md = next(blob for path, blob in payload if path == "SKILL.md")
+    try:
+        validate_skill_md(skill_md.decode("utf-8", errors="replace"))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
     await files_tree_service.clear_folder_contents(folder_id)
     written = await files_tree_service.write_folder_files(

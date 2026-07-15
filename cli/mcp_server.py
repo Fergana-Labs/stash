@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 
 from cli.client import StashClient
 from cli.config import load_config
+from stashai.skill_validation import validate_skill_md
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
 
@@ -439,15 +440,14 @@ def stash_delete_file(file_id: str) -> str:
 @mcp.tool()
 def stash_create_skill(
     name: str,
-    skill_md: str = "",
+    skill_md: str,
 ) -> str:
-    """Create a skill: a folder with a SKILL.md. Pass skill_md as the full
-    SKILL.md content (frontmatter + body); a template is used when omitted."""
+    """Create a skill from a complete, valid SKILL.md."""
+    validate_skill_md(skill_md)
     client = _client()
     folder = client.create_folder(name)
-    content = skill_md or f"---\nname: {name}\ndescription: \n---\n\n# {name}\n"
     client.create_page(
-        name="SKILL.md", content=content, folder_id=folder["id"], content_type="markdown"
+        name="SKILL.md", content=skill_md, folder_id=folder["id"], content_type="markdown"
     )
     return _json({"folder_id": folder["id"], "name": name})
 

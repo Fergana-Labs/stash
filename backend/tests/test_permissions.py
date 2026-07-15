@@ -357,7 +357,15 @@ async def test_published_skill_grants_read_only(pool):
     scope = await _make_scope(pool, owner)
     folder = await _make_folder(pool, scope, owner, name="public-skill")
     page = await _make_page(pool, scope, owner, folder_id=folder)
-    await shared_skill_service.publish_folder(scope, owner, folder, title="Public Skill")
+    await _make_page(
+        pool,
+        scope,
+        owner,
+        folder_id=folder,
+        name="SKILL.md",
+        content="---\nname: Public Skill\ndescription: Test public access.\n---\n",
+    )
+    await shared_skill_service.publish_folder(scope, owner, folder)
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -694,10 +702,20 @@ async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient
             headers=_auth(owner_key),
         )
     ).json()["id"]
+    skill_page = await client.post(
+        "/api/v1/me/pages/new",
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": "---\nname: Handbook\ndescription: Team handbook.\n---\n",
+        },
+        headers=_auth(owner_key),
+    )
+    assert skill_page.status_code == 201
     skill_id = (
         await client.post(
             "/api/v1/me/skills",
-            json={"folder_id": folder_id, "title": "Handbook"},
+            json={"folder_id": folder_id},
             headers=_auth(owner_key),
         )
     ).json()["id"]
@@ -1307,7 +1325,15 @@ async def test_predicate_and_check_access_agree(pool):
     # into the one predicate, so it gets an explicit equivalence check.
     pub_folder = await _make_folder(pool, scope, owner, name="pub-skill")
     pub_page = await _make_page(pool, scope, owner, folder_id=pub_folder)
-    await shared_skill_service.publish_folder(scope, owner, pub_folder, title="Pub")
+    await _make_page(
+        pool,
+        scope,
+        owner,
+        folder_id=pub_folder,
+        name="SKILL.md",
+        content="---\nname: Pub\ndescription: Test public access.\n---\n",
+    )
+    await shared_skill_service.publish_folder(scope, owner, pub_folder)
     for viewer in (stranger, None):
         for require in ("read", "write"):
             boolean = await permission_service.check_access(
