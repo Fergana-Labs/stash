@@ -56,7 +56,7 @@ Design boundary:
 ## Authentication
 All endpoints (except registration and a few public lookups) require an API key:
 ```
-Authorization: Bearer mc_xxxxxxxxxxxxx
+Authorization: Bearer st_xxxxxxxxxxxxx
 ```
 
 Your account is the scope. `GET /api/v1/users/me` returns the authenticated

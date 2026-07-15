@@ -169,7 +169,7 @@ async def test_managed_auth0_allows_manual_api_key_creation(client, monkeypatch)
 
     assert created.status_code == 201
     api_key = created.json()["api_key"]
-    assert api_key.startswith("mc_")
+    assert api_key.startswith("st_")
 
     me = await client.get(
         "/api/v1/users/me",
@@ -226,7 +226,7 @@ async def test_managed_auth0_allows_approved_cli_device_keys(client, monkeypatch
     assert polled.status_code == 200
     body = polled.json()
     assert body["status"] == "complete"
-    assert body["api_key"].startswith("mc_")
+    assert body["api_key"].startswith("st_")
 
     me = await client.get(
         "/api/v1/users/me",
