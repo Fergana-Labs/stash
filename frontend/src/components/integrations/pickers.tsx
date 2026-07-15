@@ -240,6 +240,39 @@ export function AddSourceControls({
     );
   }
 
+  if (connector.kind === "twitter") {
+    // Two source flavors off one connection: live search/feeds ("auto"-style)
+    // and the synced bookmarks archive. The backend resolves both refs.
+    return (
+      <div className="space-y-2">
+        {!connected && (
+          <div className="text-[11.5px] text-muted-foreground">
+            Connect {connector.label} first to add it.
+          </div>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void add()}
+            disabled={busy || !connected}
+            className={secondaryButton()}
+          >
+            {busy ? "Adding..." : "Add account"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void add({ source_type: "twitter_bookmarks" })}
+            disabled={busy || !connected}
+            className={secondaryButton()}
+          >
+            {busy ? "Adding..." : "Sync bookmarks"}
+          </button>
+        </div>
+        {errorRow}
+      </div>
+    );
+  }
+
   // kind "auto" — granola/gong. The backend resolves the ref.
   return (
     <div className="space-y-2">

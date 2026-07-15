@@ -177,6 +177,38 @@ async def test_curate_sessions_do_not_consume_feed_slots(
 
 
 @pytest.mark.asyncio
+async def test_feed_events_carry_session_folder(client: AsyncClient, _db_pool):
+    """Folder placement is the owner's curation signal — 'mark this trace as
+    sanctioned' is a move into a designated folder, so the feed must show each
+    event's folder for the curator to honor the mark."""
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+
+    folder = await client.post(
+        "/api/v1/me/session-folders/get-or-create",
+        json={"name": "Global — approved for learning", "external_key": "global"},
+        headers=_auth(key),
+    )
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "heavi-chat",
+                "event_type": "user_message",
+                "content": "sanctioned trace",
+                "session_id": "conv-global",
+                "session_folder_id": folder.json()["id"],
+            }
+        ],
+    )
+
+    feed = await curation_service.changes_since(uid, uid, old)
+    marked = next(h for h in feed["history"] if h["content"] == "sanctioned trace")
+    assert marked["folder"] == "Global — approved for learning"
+
+
+@pytest.mark.asyncio
 async def test_has_changes_false_after_watermark(client: AsyncClient, _db_pool):
     key, uid = await _register(client)
     await client.post(

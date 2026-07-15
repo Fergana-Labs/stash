@@ -319,6 +319,10 @@ class Settings:
         os.getenv("INTERNAL_DOMAINS_FREE_PRO", "true").lower() == "true"
     )
 
+    # ScrapeCreators (public social-content scraping, product-level key —
+    # hydrates Instagram saves server-side; users never bring their own).
+    SCRAPECREATORS_API_KEY: str | None = os.getenv("SCRAPECREATORS_API_KEY")
+
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")

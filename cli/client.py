@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -535,6 +537,54 @@ class StashClient:
         Big scopes take a while to package server-side, so this call gets a
         much longer timeout than the client default."""
         return self._request("GET", "/api/v1/me/export", timeout=600).content
+
+    # --- Cloud agents (chat turns executing on the user's cloud computer) ---
+
+    def _sse(self, method: str, path: str, payload: dict) -> Iterator[dict]:
+        """Stream a turn's SSE events as dicts. A turn runs until the harness
+        exits, so the read timeout is disabled."""
+        with self._http.stream(
+            method,
+            path,
+            json=payload,
+            headers=self._headers(),
+            timeout=httpx.Timeout(30, read=None),
+        ) as resp:
+            if not resp.is_success:
+                resp.read()
+                try:
+                    detail = resp.json().get("detail", resp.text)
+                except Exception:
+                    detail = resp.text
+                raise StashError(resp.status_code, detail)
+            for line in resp.iter_lines():
+                if line.startswith("data:"):
+                    yield json.loads(line[len("data:") :].strip())
+
+    def list_agents(self) -> list:
+        return self._list("/api/v1/me/agents", "agents")
+
+    def agent_chat_events(
+        self, message: str, session_id: str | None = None, agent_id: str | None = None
+    ) -> Iterator[dict]:
+        payload: dict = {"message": message}
+        if session_id:
+            payload["session_id"] = session_id
+        if agent_id:
+            payload["agent_id"] = agent_id
+        return self._sse("POST", "/api/v1/me/agent-chat", payload)
+
+    def agent_run_events(self, agent_id: str) -> Iterator[dict]:
+        return self._sse("POST", "/api/v1/me/agent-chat/run", {"agent_id": agent_id})
+
+    def get_agent_chat(self, session_id: str) -> dict:
+        return self._get(f"/api/v1/me/agent-chat/{session_id}")
+
+    def agent_turn_status(self, session_id: str) -> dict:
+        return self._get(f"/api/v1/me/agent-chat/{session_id}/status")
+
+    def stop_agent_turn(self, session_id: str) -> dict:
+        return self._post(f"/api/v1/me/agent-chat/{session_id}/stop")
 
     # --- The user's cloud computer (read-through machine filesystem) ---
 

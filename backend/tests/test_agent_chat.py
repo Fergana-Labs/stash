@@ -233,3 +233,79 @@ async def test_tool_calls_persist_as_history_events(client: AsyncClient, sprite_
     assert len(tool_rows) == 1
     assert tool_rows[0]["tool_name"] == "Bash"
     assert tool_rows[0]["metadata"]["command"] == "stash changes --json"
+
+
+@pytest.mark.asyncio
+async def test_stop_kills_a_running_turn(client: AsyncClient, sprite_exec, monkeypatch):
+    """A stop must end the run itself (the harness exec), not just the SSE
+    stream — otherwise a runaway cloud turn burns the user's box and tokens
+    with no off switch. The stored session must close with the stop note so
+    the chat isn't a dangling prompt."""
+    import asyncio
+
+    from backend.services import sprite_agent_service, sprite_service
+
+    key, _ = await _register(client)
+
+    started = asyncio.Event()
+
+    async def hanging_exec(sprite, argv, *, env, cwd=None):
+        started.set()
+        await asyncio.sleep(60)
+        yield {"exit_code": 0}
+
+    monkeypatch.setattr(sprite_service, "exec_stream", hanging_exec)
+    monkeypatch.setattr(sprite_agent_service, "_STOP_POLL_SECONDS", 0.05)
+
+    session_id = "agent-stoptest"
+    turn = asyncio.create_task(
+        client.post(
+            "/api/v1/me/agent-chat",
+            json={"message": "run forever", "session_id": session_id},
+            headers=_auth(key),
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=5)
+
+    st = await client.get(f"/api/v1/me/agent-chat/{session_id}/status", headers=_auth(key))
+    assert st.status_code == 200
+    assert st.json()["running"] is True
+
+    stop = await client.post(f"/api/v1/me/agent-chat/{session_id}/stop", headers=_auth(key))
+    assert stop.status_code == 200
+    assert stop.json() == {"stopping": True}
+
+    r = await asyncio.wait_for(turn, timeout=10)
+    evts = _events(r.text)
+    assert evts[-1]["type"] == "end"
+    stop_note = sprite_agent_service.STOPPED_NOTE
+    assert any(e["type"] == "text" and e["delta"] == stop_note for e in evts)
+
+    got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
+    assert got.json()["messages"][-1] == {"role": "assistant", "content": stop_note}
+
+    st2 = await client.get(f"/api/v1/me/agent-chat/{session_id}/status", headers=_auth(key))
+    assert st2.json()["running"] is False
+
+
+@pytest.mark.asyncio
+async def test_stop_and_status_require_an_owned_session(client: AsyncClient, sprite_exec):
+    """Stop is a real action on another process's run — a caller must not be
+    able to stop (or probe) a session that isn't theirs or doesn't exist."""
+    key, _ = await _register(client)
+
+    r = await client.get("/api/v1/me/agent-chat/agent-nope/status", headers=_auth(key))
+    assert r.status_code == 404
+    r = await client.post("/api/v1/me/agent-chat/agent-nope/stop", headers=_auth(key))
+    assert r.status_code == 404
+
+    # Another user's session reads as nonexistent, not as forbidden.
+    r1 = await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
+    session_id = _events(r1.text)[0]["session_id"]
+    other_key, _ = await _register(client)
+    r = await client.post(f"/api/v1/me/agent-chat/{session_id}/stop", headers=_auth(other_key))
+    assert r.status_code == 404
+
+    # Own session with no turn running: stop is a 409, not a silent no-op.
+    r = await client.post(f"/api/v1/me/agent-chat/{session_id}/stop", headers=_auth(key))
+    assert r.status_code == 409

@@ -421,3 +421,43 @@ async def fetch_twitter_content(owner_user_id: UUID, account_id: str, ref: str) 
             return _render_users(f"People who reposted {tweet_id}", resp.json())
 
     raise ValueError(f"invalid twitter ref {ref!r}")
+
+
+BOOKMARKS_SYNC_PAGE_SIZE = 100
+
+
+async def index_twitter_bookmarks(source: dict) -> str | None:
+    """Archive the connected account's X bookmarks.
+
+    One API page per sync — the X free tier allows a single bookmarks call
+    per 15 minutes, so paging deeper would blow the owner's quota. Upsert
+    only, never delete: a bookmark stays archived after it's un-bookmarked
+    or ages past the first page (commonplace-book semantics)."""
+    from ...services import source_service as _source_service
+
+    source_id = UUID(source["id"])
+    owner_user_id = UUID(source["owner_user_id"])
+    token = await get_valid_token(owner_user_id, "twitter")
+
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
+        resp = await client.get(
+            BOOKMARKS_URL.format(user_id=source["external_ref"]),
+            params={"max_results": BOOKMARKS_SYNC_PAGE_SIZE, **_TWEET_PARAMS},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+
+    users = _users_by_id(payload)
+    for tweet in payload.get("data") or []:
+        await _source_service.upsert_content_document(
+            table="twitter_bookmark_docs",
+            source_id=source_id,
+            owner_user_id=owner_user_id,
+            path=tweet["id"],
+            name=_tweet_name(tweet, users),
+            kind="post",
+            content=_render_tweet(tweet, users.get(tweet.get("author_id") or "")),
+            external_ref=tweet["id"],
+            external_updated_at=_parse_time(tweet.get("created_at")),
+        )
+    return None

@@ -25,6 +25,7 @@ from .routers import (
     batch,
     billing,
     bulk_export,
+    clips,
     collab,
     demo,
     discover,
@@ -124,6 +125,8 @@ app.include_router(tables.me_router)
 app.include_router(tables.router)
 app.include_router(files.me_router)
 app.include_router(files.canonical_router)
+app.include_router(clips.router)
+app.include_router(clips.imports_router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)
 app.include_router(aggregate.router)
@@ -140,6 +143,7 @@ app.include_router(security_audit.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
+app.include_router(sources.saved_items_router)
 app.include_router(vfs.router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)

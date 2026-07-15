@@ -381,7 +381,14 @@ export async function getSourceEntries(
 export async function readSourceDoc(
   source: string,
   ref: string,
-): Promise<{ name?: string; content?: string; url?: string | null }> {
+): Promise<{
+  name?: string;
+  content?: string;
+  url?: string | null;
+  // Archived save media (Instagram) served via a fresh presigned URL.
+  media_url?: string | null;
+  media_content_type?: string | null;
+}> {
   return apiFetch(`${ME}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`);
 }
 

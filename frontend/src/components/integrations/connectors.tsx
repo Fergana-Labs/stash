@@ -16,7 +16,7 @@ import {
   TwitterIcon,
 } from "./BrandIcons";
 
-export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
+export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "twitter" | "auto";
 
 export type Connector = {
   provider: IntegrationProvider;
@@ -101,7 +101,7 @@ export const CONNECTORS: Connector[] = [
     provider: "twitter",
     label: "Twitter / X",
     sourceType: "twitter",
-    kind: "auto",
+    kind: "twitter",
     blurb: "OAuth access to X search, posts, bookmarks, likes, timelines, and DMs.",
   },
 ];
@@ -121,6 +121,7 @@ export const providerForSourceType: Record<string, string> = {
   granola: "granola",
   gong_calls: "gong",
   twitter: "twitter",
+  twitter_bookmarks: "twitter",
 };
 
 export function connectorForProvider(provider: string): Connector | undefined {
@@ -173,5 +174,7 @@ export function labelForSourceType(type: string): string {
   if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
   if (type === "twitter") return "Twitter / X";
+  if (type === "twitter_bookmarks") return "X bookmarks";
+  if (type === "instagram_saves") return "Instagram saves";
   return type;
 }

@@ -69,6 +69,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "event_type": e.get("event_type"),
             "content": (e.get("content") or "")[:_SNIPPET],
             "created_at": _iso(e.get("created_at")),
+            "folder": e.get("folder"),
         }
         for e in events
     ]
@@ -156,20 +157,29 @@ async def _feed_events(
     The curator's own run transcripts (`agent-curate-%` sessions) are excluded
     in SQL — feeding them back would echo-loop the daily gate and pollute the
     wiki, and filtering after the query would let them consume feed slots that
-    belong to real activity."""
+    belong to real activity.
+
+    Each event carries its session's folder name: folder placement is the
+    owner's curation signal (e.g. one folder per customer org, or a designated
+    folder of expert-sanctioned traces), so the curator must see it."""
     pool = get_pool()
     args: list = [owner_user_id]
-    where = "owner_user_id = $1 AND (session_id IS NULL OR session_id NOT LIKE 'agent-curate-%')"
+    where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
     if since is not None:
         args.append(since)
-        where += f" AND created_at > ${len(args)}"
+        where += f" AND he.created_at > ${len(args)}"
     if until is not None:
         args.append(until)
-        where += f" AND created_at <= ${len(args)}"
+        where += f" AND he.created_at <= ${len(args)}"
     rows = await pool.fetch(
-        f"SELECT session_id, agent_name, event_type, content, created_at "
-        f"FROM history_events WHERE {where} "
-        f"ORDER BY created_at, id LIMIT {limit + 1}",
+        f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
+        f"sf.name AS folder "
+        f"FROM history_events he "
+        f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
+        f"  AND s.session_id = he.session_id "
+        f"LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
+        f"WHERE {where} "
+        f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",
         *args,
     )
     has_more = len(rows) > limit

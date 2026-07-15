@@ -59,7 +59,7 @@ _last_seen_written = _LastSeenCache(_LAST_SEEN_CACHE_SIZE)
 
 
 def generate_api_key() -> str:
-    return "mc_" + secrets.token_urlsafe(32)
+    return "st_" + secrets.token_urlsafe(32)
 
 
 def hash_api_key(key: str) -> str:
@@ -160,13 +160,16 @@ async def _get_user_from_jwt(token: str) -> dict:
 
 
 async def authenticate_token(token: str) -> dict:
-    """Resolve a raw bearer token (mc_ API key or Auth0 JWT) to a user.
+    """Resolve a raw bearer token (st_ API key or Auth0 JWT) to a user.
 
     For surfaces that can't carry an Authorization header, e.g. browser
     WebSockets passing the token as a query parameter."""
     from .config import settings
 
-    if token.startswith("mc_"):
+    # mc_ is the pre-rename (moltchat) prefix. Keys are stored hashed and the
+    # raw values live with users, so issued mc_ keys can never be rewritten —
+    # both prefixes stay valid for as long as those keys exist.
+    if token.startswith(("st_", "mc_")):
         return await _get_user_from_api_key(token, managed_auth_enabled=settings.AUTH0_ENABLED)
 
     if settings.AUTH0_ENABLED:

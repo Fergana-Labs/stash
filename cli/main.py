@@ -2320,6 +2320,178 @@ def hist_import(
 
 
 # ===========================================================================
+# Cloud agents — chat turns executing on your cloud computer
+# ===========================================================================
+
+agent_app = typer.Typer(
+    help="Cloud agents — start, monitor, and stop agent turns on your cloud computer."
+)
+app.add_typer(agent_app, name="agent")
+
+
+def _resolve_agent_id(c: StashClient, ref: str) -> str:
+    """An agent id or (case-insensitive) name → its id."""
+    agents = c.list_agents()
+    matches = [a for a in agents if ref in (a["id"], a["name"]) or a["name"].lower() == ref.lower()]
+    if not matches:
+        console.print(f"[red]No agent named '{ref}'. See [bold]stash agent list[/bold].[/red]")
+        raise typer.Exit(1)
+    if len(matches) > 1:
+        console.print(f"[red]'{ref}' matches multiple agents — pass an id instead.[/red]")
+        raise typer.Exit(1)
+    return matches[0]["id"]
+
+
+def _render_tool_event(event: dict) -> str:
+    name = event.get("name") or "tool"
+    args = event.get("args") or {}
+    if name == "Bash" and args.get("command"):
+        return f"⚙ Ran: {str(args['command'])[:200]}"
+    if args.get("file_path"):
+        return f"⚙ {name} {args['file_path']}"
+    return f"⚙ {name}"
+
+
+def _stream_turn(events) -> str | None:
+    """Render a turn's SSE events live; returns the session id (chat streams
+    open with a session event; run streams don't carry one)."""
+    session_id: str | None = None
+    for event in events:
+        kind = event.get("type")
+        if kind == "session":
+            session_id = event["session_id"]
+        elif kind == "status":
+            console.print(f"[dim]· {event.get('stage', 'working')}…[/dim]")
+        elif kind == "text":
+            print(event.get("delta", ""), end="", flush=True)
+        elif kind == "tool":
+            console.print(f"\n[dim]{_render_tool_event(event)}[/dim]")
+        elif kind == "error":
+            console.print(f"\n[red]Error: {event.get('message')}[/red]")
+        elif kind == "end":
+            print()
+    return session_id
+
+
+@agent_app.command("list")
+def agent_list(as_json: bool = typer.Option(False, "--json")):
+    """List your configured agents (personas, models, schedules)."""
+    with _client() as c:
+        try:
+            agents = c.list_agents()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(agents)
+        return
+    for a in agents:
+        schedule = f"  cron {a['schedule_cron']}" if a.get("schedule_cron") else ""
+        model = a.get("model_provider") or "auto"
+        console.print(
+            f"  [bold]{a['name']}[/bold]  [dim]{a['run_mode']}  {model}{schedule}  ({a['id']})[/dim]"
+        )
+
+
+@agent_app.command("chat")
+def agent_chat(
+    message: str = typer.Argument(..., help="The message to send."),
+    session: str = typer.Option(None, "--session", "-s", help="Continue an existing chat session."),
+    agent: str = typer.Option(
+        None, "--agent", "-a", help="Agent name or id. Default agent if omitted."
+    ),
+):
+    """Start (or continue) a cloud agent chat and stream the turn live.
+
+    Ctrl-C disconnects the stream, which stops the turn on the box."""
+    with _client() as c:
+        try:
+            agent_id = _resolve_agent_id(c, agent) if agent else None
+            session_id = _stream_turn(
+                c.agent_chat_events(message, session_id=session, agent_id=agent_id)
+            )
+        except StashError as e:
+            _err(e)
+    if session_id:
+        console.print(
+            f"[dim]session {session_id} — continue with "
+            f'[bold]stash agent chat -s {session_id} "…"[/bold][/dim]'
+        )
+
+
+@agent_app.command("run")
+def agent_run(
+    agent: str = typer.Argument(..., help="Scheduled agent name or id."),
+):
+    """Run a prompt-scheduled agent now and stream the run live."""
+    with _client() as c:
+        try:
+            agent_id = _resolve_agent_id(c, agent)
+            _stream_turn(c.agent_run_events(agent_id))
+        except StashError as e:
+            _err(e)
+
+
+@agent_app.command("status")
+def agent_status(
+    session_id: str = typer.Argument(..., help="The chat session to check."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Whether a turn is currently running in a chat session."""
+    with _client() as c:
+        try:
+            data = c.agent_turn_status(session_id)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    state = "[green]running[/green]" if data["running"] else "[dim]idle[/dim]"
+    console.print(f"  {session_id}: {state}")
+
+
+@agent_app.command("watch")
+def agent_watch(
+    session_id: str = typer.Argument(..., help="The chat session to follow."),
+    poll_seconds: float = typer.Option(2.0, "--poll", help="Poll interval in seconds."),
+):
+    """Follow a chat session live — works for turns started anywhere
+    (web, Slack, a schedule, or another terminal). Exits when the turn ends."""
+    role_style = {"user": "[bold]you:[/bold] ", "assistant": "", "tool": "[dim]", "": ""}
+    with _client() as c:
+        seen = 0
+        while True:
+            try:
+                # Status before messages: a turn that ends between the two
+                # calls still gets its final message printed this pass.
+                status = c.agent_turn_status(session_id)
+                messages = c.get_agent_chat(session_id)["messages"]
+            except StashError as e:
+                _err(e)
+            for m in messages[seen:]:
+                prefix = role_style.get(m["role"], "")
+                suffix = "[/dim]" if m["role"] == "tool" else ""
+                console.print(f"{prefix}{m['content']}{suffix}\n")
+            seen = len(messages)
+            if not status["running"]:
+                break
+            time.sleep(poll_seconds)
+    console.print("[dim]Turn finished — chat is idle.[/dim]")
+
+
+@agent_app.command("stop")
+def agent_stop(
+    session_id: str = typer.Argument(..., help="The chat session whose turn to stop."),
+):
+    """Stop the turn running in a chat session (kills the run on the box)."""
+    with _client() as c:
+        try:
+            c.stop_agent_turn(session_id)
+        except StashError as e:
+            _err(e)
+    console.print("⏹ Stop requested — the turn will end shortly.")
+
+
+# ===========================================================================
 # Sources — unified VFS over native files/sessions + connected sources
 # ===========================================================================
 

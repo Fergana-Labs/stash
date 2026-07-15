@@ -129,6 +129,44 @@ async def run_now(
     )
 
 
+async def _require_own_session(session_id: str, current_user: dict) -> None:
+    """A running turn always has at least its user_message event, so an empty
+    read means the session isn't this user's (or doesn't exist)."""
+    events = await memory_service.read_session_events(
+        current_user["id"], session_id, current_user["id"]
+    )
+    if not events:
+        raise HTTPException(status_code=404, detail="No such chat.")
+
+
+@router.get("/{session_id}/status")
+async def turn_status(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Whether a turn is currently executing in this chat — lets a client
+    (the CLI's watch/stop) monitor runs started anywhere, web or Slack or
+    a schedule."""
+    await _require_own_session(session_id, current_user)
+    return {
+        "session_id": session_id,
+        "running": await sprite_agent_service.turn_running(session_id),
+    }
+
+
+@router.post("/{session_id}/stop")
+async def stop_turn(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Stop the session's running turn. The flag is picked up by the turn's
+    stream loop, which kills the harness exec on the box."""
+    await _require_own_session(session_id, current_user)
+    if not await sprite_agent_service.request_stop(session_id):
+        raise HTTPException(status_code=409, detail="No turn is running in this chat.")
+    return {"stopping": True}
+
+
 @router.get("/{session_id}")
 async def get_chat(
     session_id: str,
