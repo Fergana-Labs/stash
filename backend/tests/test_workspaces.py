@@ -353,3 +353,69 @@ async def test_member_sees_workspace_session_folders(client: AsyncClient, pool):
     # Listing lazily provisions the workspace's Default folder and the member
     # can see it.
     assert "Default" in [f["name"] for f in resp.json()["folders"]]
+
+
+# --- Workspace sources: members read the hopper, only the owner wires it ---
+
+
+async def _connect_workspace_drive(scope_user_id: str, name: str = "Org KB") -> None:
+    from backend.services import source_service
+
+    await source_service.create_source(
+        owner_user_id=uuid.UUID(scope_user_id),
+        source_type="google_drive_folder",
+        external_ref=f"folder-{unique_name('gd')}",
+        display_name=name,
+    )
+
+
+@pytest.mark.asyncio
+async def test_member_sees_workspace_sources_in_scope(client: AsyncClient, pool):
+    """The org hopper (a Drive source connected on the workspace) is visible to
+    members in workspace scope — sources list, tree, and native entries all
+    root on the scope, not the caller."""
+    domain = _domain()
+    key, body = await _register_with_email(client, f"m@{domain}")
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+    await _connect_workspace_drive(ws["scope_user_id"])
+    await _workspace_page(pool, ws["scope_user_id"], name="org-doc")
+
+    scoped = {**_auth(key), "X-Stash-Scope": ws["scope_user_id"]}
+    resp = await client.get("/api/v1/me/sources", headers=scoped)
+    assert resp.status_code == 200
+    assert "Org KB" in [s["display_name"] for s in resp.json()["sources"]]
+
+    # Native 'files' entries re-root on the workspace too.
+    resp = await client.get("/api/v1/me/sources/files/entries", headers=scoped)
+    assert resp.status_code == 200
+    assert "org-doc" in [e["name"] for e in resp.json()["entries"]]
+
+    # An outsider sending the scope header is rejected outright.
+    outsider_key, _ = await _register_with_email(client, f"{unique_name('o')}@other.io")
+    resp = await client.get(
+        "/api/v1/me/sources", headers={**_auth(outsider_key), "X-Stash-Scope": ws["scope_user_id"]}
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_manage_workspace_sources(client: AsyncClient, pool):
+    """Wiring the hopper is an owner power. A member's connect attempt in
+    workspace scope must fail loud — never silently create the source in
+    their personal scope instead."""
+    domain = _domain()
+    key, body = await _register_with_email(client, f"m@{domain}")
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+
+    scoped = {**_auth(key), "X-Stash-Scope": ws["scope_user_id"]}
+    resp = await client.post(
+        "/api/v1/me/sources",
+        json={"source_type": "google_drive_folder", "external_ref": "f1", "display_name": "x"},
+        headers=scoped,
+    )
+    assert resp.status_code == 404
+
+    personal = await client.get("/api/v1/me/sources", headers=_auth(key))
+    assert "x" not in [s["display_name"] for s in personal.json()["sources"]]

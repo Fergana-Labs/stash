@@ -1358,8 +1358,10 @@ async def search_documents(
 
 
 async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every source visible to this user: the two native sources plus the
-    connected sources they own or have been shared with."""
+    """Every source in this scope's view: the two native sources plus the
+    scope's connected sources. In personal scope (owner == user) that is the
+    caller's own view; in a workspace scope it is the workspace's connections
+    (the org Drive etc.), readable by every member."""
     sources = [
         {
             "source": NATIVE_FILES,
@@ -1374,7 +1376,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "display_name": "Session transcripts",
         },
     ]
-    for s in await list_connected_sources(user_id):
+    for s in await list_connected_sources(owner_user_id):
         item = {
             "source": s["id"],
             "provider": SOURCE_TYPE_PROVIDER[s["source_type"]],
@@ -1701,7 +1703,7 @@ async def sources_tree(
     # filesystem. The provider folder is the unit ("github", "granola"); the
     # individual connections (repos, accounts) live inside it.
     by_provider: dict[str, list[dict]] = {}
-    for source in await list_connected_sources(user_id):
+    for source in await list_connected_sources(owner_user_id):
         provider = SOURCE_TYPE_PROVIDER[source["source_type"]]
         by_provider.setdefault(provider, []).append(source)
 
@@ -1981,7 +1983,7 @@ async def search_all(
             for p in pages
         ]
 
-    # Connected sources: all of the user's own when unscoped, else the one named.
+    # Connected sources: all of the scope's own when unscoped, else the one named.
     connected: dict | None = None
     if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
         connected = await _resolve_connected(source, owner_user_id, user_id)
@@ -1989,7 +1991,7 @@ async def search_all(
             return None
     if source is None or connected is not None:
         searched_sources = (
-            [connected] if connected is not None else await list_connected_sources(user_id)
+            [connected] if connected is not None else await list_connected_sources(owner_user_id)
         )
 
         # A query that IS a provider id (a Drive file id, a Gmail message id, …)

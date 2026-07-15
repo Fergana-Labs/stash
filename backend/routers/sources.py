@@ -1,10 +1,12 @@
 """Connected-source registry endpoints.
 
-A source is added per scope and per user. It belongs to the user who
-connects it (`owner_user_id = current_user`) inside that scope, and only they
-can list, read, or remove it there. The agent reaches a source's indexed content
-through the source tools; these endpoints just manage the registry. Indexing
-(sync tasks) is wired per source type in later phases.
+A source belongs to the scope that connected it (`owner_user_id`). Reads run
+in the active scope (the X-Stash-Scope header): a workspace member browsing
+the workspace sees the workspace's connections — the org Drive hopper — while
+personal scope shows their own. Mutations (connect, sync, remove, history)
+stay owner-only: members read the hopper, only the scope owner wires it up.
+The agent reaches a source's indexed content through the source tools; these
+endpoints just manage the registry.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..celery_app import celery
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
@@ -29,11 +31,13 @@ router = APIRouter(prefix="/api/v1/me/sources", tags=["sources"])
 
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    """Read gate: the scope owner, or a member of the workspace it belongs to."""
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
 
 async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
+    """Mutation gate: owner only — members never manage the scope's sources."""
     if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
@@ -128,10 +132,13 @@ async def _resolve_linear_source(user_id) -> tuple[str, str]:
 
 
 @router.get("")
-async def list_sources(current_user: dict = Depends(get_current_user)):
-    """Sources this user can see here: native files + sessions, plus their own
-    connected sources."""
-    owner_user_id = current_user["id"]
+async def list_sources(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Sources in the active scope's view: native files + sessions, plus the
+    scope's connected sources."""
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     return {"sources": await source_service.list_sources(owner_user_id, current_user["id"])}
 
@@ -142,10 +149,11 @@ async def search_sources(
     source: str | None = None,
     limit: int = 20,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    """Unified search. Omit `source` to search everything the user can see
-    (files + sessions + their connected sources), or pass a handle to scope."""
-    owner_user_id = current_user["id"]
+    """Unified search. Omit `source` to search everything in the active scope
+    (files + sessions + its connected sources), or pass a handle to scope."""
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     results = await source_service.search_all(
         owner_user_id, current_user["id"], q, source=source, limit=limit
@@ -159,10 +167,11 @@ async def search_sources(
 async def sources_tree(
     depth: int = 3,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    """The whole scope as one filesystem: every source the user can see,
+    """The whole active scope as one filesystem: every source in its view,
     each with a nested entry tree trimmed to `depth` levels."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     return {
         "sources": await source_service.sources_tree(owner_user_id, current_user["id"], depth=depth)
@@ -176,13 +185,14 @@ async def list_source_entries(
     limit: int = source_service.ENTRIES_LIMIT,
     after: str = "",
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """List a source's entries like a file system. `source` is 'files',
     'sessions', or a connected-source id; `path` scopes connected sources.
     `limit` caps the rows returned; callers detect truncation by requesting one
     extra row and checking whether it comes back. `after` is a keyset cursor
     (the last path of the previous page) for paging through big sources."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     entries = await source_service.source_entries(
         owner_user_id, current_user["id"], source, prefix=path, limit=limit, after=after
@@ -197,10 +207,11 @@ async def read_source_doc(
     source: str,
     ref: str,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Read one document. `ref` is a page id (files), a session id (sessions),
     or a document path (connected sources)."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     source_ok, doc = await source_service.source_document(
         owner_user_id, current_user["id"], source, ref
@@ -263,8 +274,12 @@ async def fetch_source_history(
 async def add_source(
     body: AddSourceRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    # Honors the scope header so a member's connect attempt in workspace mode
+    # fails loud (owner-only) instead of silently landing in their personal
+    # scope. Connecting as the workspace itself goes through its own API key.
+    owner_user_id = scope_user_id
     await _require_write(owner_user_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
