@@ -204,7 +204,7 @@ describe("SkillsPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
 
-    await waitFor(() => expect(createFolder).toHaveBeenCalledWith("My Skill"));
+    await waitFor(() => expect(createFolder).toHaveBeenCalledWith("My Skill", null, true));
     expect(createPage).toHaveBeenCalledWith(
       "SKILL.md",
       "folder-9",

@@ -1,11 +1,8 @@
-"""Skill service — skills are special folders containing a SKILL.md file.
+"""Skill service — skills are folders explicitly marked as skills.
 
-Detection rule: any folder whose immediate children include a page named
-``SKILL.md``. Skill-ness is derived, never stored; reads/writes go through
-the Files API. Files and Skills are MECE: skill subtrees are filtered out of
-every Files surface (see ``skill_subtree_folder_ids``) and surfaced in the
-Skills area instead. Publishing/sharing attaches a 1:1 ``skills`` row to the
-folder (shared_skill_service).
+``SKILL.md`` is the manifest inside a skill, not its type discriminator.
+Files and Skills are MECE: explicit skill subtrees are filtered out of Files
+and surfaced in the Skills area instead.
 """
 
 from __future__ import annotations
@@ -21,23 +18,18 @@ SKILL_MD_NAME = "SKILL.md"
 
 
 def not_skill_folder_pred(alias: str) -> str:
-    """SQL fragment: folder ``alias`` has no live SKILL.md child."""
-    return (
-        f"NOT EXISTS (SELECT 1 FROM pages skp WHERE skp.folder_id = {alias}.id "
-        "AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL)"
-    )
+    """SQL fragment: folder ``alias`` is not an explicit skill root."""
+    return f"NOT {alias}.is_skill"
 
 
 async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
-    """Every folder inside any skill subtree: the SKILL.md folders themselves
+    """Every folder inside any skill subtree: the explicit skill roots
     plus all their descendants. Used to keep Files surfaces skill-free."""
     pool = get_pool()
     rows = await pool.fetch(
         "WITH RECURSIVE skill_tree AS ("
         "  SELECT f.id FROM folders f "
-        "  WHERE f.owner_user_id = $1 "
-        "    AND EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
-        "                AND p.name = 'SKILL.md' AND p.deleted_at IS NULL)"
+        "  WHERE f.owner_user_id = $1 AND f.is_skill"
         "  UNION"
         "  SELECT f.id FROM folders f JOIN skill_tree st ON f.parent_folder_id = st.id"
         ") SELECT id FROM skill_tree",
@@ -61,7 +53,7 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "FROM folders f "
         "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "LEFT JOIN skills s ON s.folder_id = f.id "
-        f"WHERE f.owner_user_id = $1 AND {readable} "
+        f"WHERE f.owner_user_id = $1 AND f.is_skill AND {readable} "
         "ORDER BY f.name",
         owner_user_id,
         user_id,

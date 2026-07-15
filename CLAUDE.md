@@ -38,7 +38,7 @@ Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see com
 
 ### What a Skill is
 
-A Skill is a *special folder* — one containing a SKILL.md — holding related artifacts (pages, files, tables) that shares like any folder and gains a public URL when published. Reach for one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
+A Skill is an explicitly created folder under the `/skills` VFS root. Its `SKILL.md` is the agent manifest, not what determines the folder's type. Skills hold related artifacts (pages, files, tables), share like folders, and gain a public URL when published. Reach for one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
 
 A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills clutter Discover and defeat the model. Pick the right tool:
 

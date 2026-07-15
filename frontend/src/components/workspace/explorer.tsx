@@ -274,9 +274,9 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
     const skills = await listSkills();
     return skills.map((s) => ({ kind: "skill" as const, id: s.folder_id, name: s.name }));
   }, []);
-  // A skill is a folder + SKILL.md — the Skills root's "create native item" action.
+  // Create an explicit skill folder, then add its agent manifest.
   const createSkill = useCallback(async () => {
-    const folder = await createFolder("New skill", null);
+    const folder = await createFolder("New skill", null, true);
     await createPage(SKILL_MD, folder.id, skillMdTemplate("New skill"));
   }, []);
 

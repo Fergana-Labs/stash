@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   name: string;
+  is_skill: boolean;
   display_name: string;
   email?: string | null;
   description: string;

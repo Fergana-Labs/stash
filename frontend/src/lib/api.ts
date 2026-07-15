@@ -507,13 +507,15 @@ export async function getMemoryTree(): Promise<Tree> {
 
 export async function createFolder(
   name: string,
-  parentFolderId?: string | null
+  parentFolderId?: string | null,
+  isSkill = false,
 ): Promise<Folder> {
   return apiFetch(`${ME}/folders`, {
     method: "POST",
     body: JSON.stringify({
       name,
       parent_folder_id: parentFolderId || null,
+      is_skill: isSkill,
     }),
   });
 }
@@ -1324,7 +1326,7 @@ export async function recordRecent(
   });
 }
 
-// --- Skills (special folders with a SKILL.md, plus their publish records) ---
+// --- Skills (explicit skill folders plus their publish records) ---
 
 // The publish record on a skill folder. Published means publicly readable;
 // null for skills that have never been published.
@@ -1353,6 +1355,16 @@ export interface Skill {
 export async function listSkills(): Promise<Skill[]> {
   const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills`);
   return data.skills;
+}
+
+export async function setFolderIsSkill(
+  folderId: string,
+  isSkill: boolean,
+): Promise<Folder> {
+  return apiFetch(`${ME}/skills/${folderId}/type`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_skill: isSkill }),
+  });
 }
 
 // Import a public GitHub repo's SKILL.md folders as private skills in your scope.
@@ -1404,8 +1416,7 @@ export async function publishSkillFolder(
   return skill;
 }
 
-// A skill folder someone shared with me person-to-person (a folder share on
-// a folder that contains a SKILL.md). slug is set when it's also published.
+// An explicit skill folder someone shared with me person-to-person.
 export interface SharedSkill {
   folder_id: string;
   name: string;

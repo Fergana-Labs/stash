@@ -221,7 +221,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
     pool = get_pool()
 
     folder = await files_tree_service.create_folder(
-        owner_user_id, _unique_page_name(req.title), owner_id
+        owner_user_id, _unique_page_name(req.title), owner_id, is_skill=True
     )
 
     for item in req.items:

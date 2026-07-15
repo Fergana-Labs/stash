@@ -94,7 +94,7 @@ async def test_import_publishes_discoverable_skills(client: AsyncClient, pool, m
     assert baking["description"] == "Plan and bake a full menu."
     assert baking["source_github_url"] == "https://github.com/acme/skills/tree/main/baking"
 
-    # SKILL.md keeps its exact filename (skill detection depends on it) and
+    # SKILL.md keeps its exact filename because agent harnesses require it and
     # nested reference docs land in a child folder, not the scope root.
     skill_folder = await pool.fetchval(
         "SELECT folder_id FROM skills WHERE id = $1::uuid", cooking["id"]

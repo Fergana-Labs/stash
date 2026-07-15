@@ -29,7 +29,7 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
     owner_user_id = me.json()["id"]
     folder = await client.post(
         "/api/v1/me/folders",
-        json={"name": "my-skill"},
+        json={"name": "my-skill", "is_skill": True},
         headers=_auth(api_key),
     )
     folder_id = folder.json()["id"]

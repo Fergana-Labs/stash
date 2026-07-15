@@ -52,6 +52,12 @@ async def _publish_skill(
     name: str,
     description: str,
 ):
+    typed = await client.patch(
+        f"/api/v1/me/skills/{folder_id}/type",
+        json={"is_skill": True},
+        headers=_auth(api_key),
+    )
+    assert typed.status_code == 200
     skill_md = await client.post(
         "/api/v1/me/pages/new",
         json={

@@ -59,7 +59,7 @@ def test_install_writes_skill_folder(tmp_path) -> None:
     target, written = main._materialize_skill(_detail(), tmp_path, _fetch)
 
     assert target == tmp_path / "hivemind-memory"
-    # SKILL.md keeps its exact name — that's what makes the folder a skill.
+    # SKILL.md keeps its exact name because agent harnesses require it.
     assert (target / "SKILL.md").read_text().startswith("---\nname: hivemind-memory")
     # Extensionless pages gain .md so they're readable files on disk.
     assert (target / "Notes.md").read_text() == "# notes"

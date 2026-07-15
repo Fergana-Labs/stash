@@ -473,7 +473,8 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
     )
     folder_id = uuid4()
     await _db_pool.execute(
-        "INSERT INTO folders (id, owner_user_id, name, created_by) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO folders (id, owner_user_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $3, $4, true)",
         folder_id,
         scope,
         "Fork source",

@@ -45,7 +45,7 @@ async def test_public_skill_text_is_agent_homepage(client: AsyncClient):
     folder = (
         await client.post(
             "/api/v1/me/folders",
-            json={"name": "Auth 401 spike"},
+            json={"name": "Auth 401 spike", "is_skill": True},
             headers=_auth(api_key),
         )
     ).json()

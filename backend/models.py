@@ -158,6 +158,7 @@ class ForkSkillRequest(BaseModel):
 class FolderCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     parent_folder_id: UUID | None = None
+    is_skill: bool = False
 
 
 class FolderUpdateRequest(BaseModel):
@@ -171,6 +172,7 @@ class FolderResponse(BaseModel):
     owner_user_id: UUID
     parent_folder_id: UUID | None = None
     name: str
+    is_skill: bool
     created_by: UUID
     created_at: datetime
     updated_at: datetime

@@ -21,7 +21,7 @@ class _FakeSyncClient:
         self._next = 0
 
     def add_remote_skill(self, name: str, files: dict[str, bytes]) -> str:
-        folder_id = self.create_folder(name)["id"]
+        folder_id = self.create_folder(name, is_skill=True)["id"]
         self.skills[folder_id]["files"] = dict(files)
         return folder_id
 
@@ -63,7 +63,8 @@ class _FakeSyncClient:
         self.skills[folder_id]["files"] = dict(files)
         return {"folder_id": folder_id, "items": len(files)}
 
-    def create_folder(self, name):
+    def create_folder(self, name, *, is_skill=False):
+        assert is_skill
         folder_id = f"folder-{self._next}"
         self._next += 1
         self.skills[folder_id] = {"folder_name": name, "files": {}}

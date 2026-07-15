@@ -1,6 +1,6 @@
-"""Tests for folder-shaped skills.
+"""Tests for explicitly typed skill folders.
 
-A skill is a folder containing a SKILL.md page. Two properties matter:
+Two properties matter:
 
 - MECE: skill subtrees are *moved* out of every Files surface (tree, sidebar,
   parent folder contents) and into the Skills area — never shown twice.
@@ -36,8 +36,8 @@ async def _scope(client: AsyncClient, api_key: str) -> str:
     return resp.json()["id"]
 
 
-async def _folder(client, api_key, scope, name, parent_folder_id=None) -> str:
-    body = {"name": name}
+async def _folder(client, api_key, scope, name, parent_folder_id=None, is_skill=False) -> str:
+    body = {"name": name, "is_skill": is_skill}
     if parent_folder_id:
         body["parent_folder_id"] = parent_folder_id
     resp = await client.post("/api/v1/me/folders", json=body, headers=_auth(api_key))
@@ -66,14 +66,22 @@ def _all_tree_folder_ids(node: dict) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted(
+async def test_skill_type_is_explicit_and_independent_of_skill_md(
     client: AsyncClient,
 ):
     api_key, _ = await _register(client)
     scope = await _scope(client, api_key)
 
     docs = await _folder(client, api_key, scope, "Docs")
-    skill_folder = await _folder(client, api_key, scope, "my-skill", parent_folder_id=docs)
+    ordinary_skill_md = await _page(
+        client,
+        api_key,
+        scope,
+        "SKILL.md",
+        folder_id=docs,
+        content="arbitrary file with a reserved-looking name",
+    )
+    skill_folder = await _folder(client, api_key, scope, "my-skill", is_skill=True)
     nested = await _folder(client, api_key, scope, "refs", parent_folder_id=skill_folder)
     skill_md = await _page(
         client,
@@ -85,7 +93,8 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     )
     nested_page = await _page(client, api_key, scope, "notes", folder_id=nested)
 
-    # /tree hides the whole skill subtree (the SKILL.md folder + descendants).
+    # Filename alone does not reclassify Docs; explicit skill state hides only
+    # the skill subtree from Files.
     tree = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     tree_folder_ids = _all_tree_folder_ids(tree)
     assert docs in tree_folder_ids
@@ -97,6 +106,7 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     sidebar_folder_ids = {f["id"] for f in sidebar["files"]["folders"]}
     sidebar_page_ids = {p["id"] for p in sidebar["files"]["pages"]}
     assert docs in sidebar_folder_ids
+    assert ordinary_skill_md in sidebar_page_ids
     assert skill_folder not in sidebar_folder_ids
     assert nested not in sidebar_folder_ids
     assert skill_md not in sidebar_page_ids
@@ -104,11 +114,11 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     # ...and the sidebar surfaces it as a skill instead.
     assert skill_folder in {s["folder_id"] for s in sidebar["skills"]}
 
-    # The parent folder's contents skip the skill subfolder.
-    docs_contents = (
-        await client.get(f"/api/v1/me/folders/{docs}/contents", headers=_auth(api_key))
-    ).json()
-    assert [f["id"] for f in docs_contents["subfolders"]] == []
+    # The ordinary folder still owns its SKILL.md page.
+    docs_response = await client.get(f"/api/v1/me/folders/{docs}/contents", headers=_auth(api_key))
+    assert docs_response.status_code == 200, docs_response.text
+    docs_contents = docs_response.json()
+    assert ordinary_skill_md in [p["id"] for p in docs_contents["pages"]]
 
     # Opening the skill folder directly still works and is flagged as a skill.
     skill_contents = await client.get(
@@ -121,11 +131,21 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     assert "SKILL.md" in [p["name"] for p in body["pages"]]
     assert nested in [f["id"] for f in body["subfolders"]]
 
-    # Deleting SKILL.md ends skill-ness: the folder rejoins the Files tree.
+    # Deleting the manifest does not change the explicit folder type.
     deleted = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
     assert deleted.status_code == 204
     tree_after = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
-    assert skill_folder in _all_tree_folder_ids(tree_after)
+    assert skill_folder not in _all_tree_folder_ids(tree_after)
+
+    converted = await client.patch(
+        f"/api/v1/me/skills/{skill_folder}/type",
+        json={"is_skill": False},
+        headers=_auth(api_key),
+    )
+    assert converted.status_code == 200
+    assert converted.json()["is_skill"] is False
+    tree_converted = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
+    assert skill_folder in _all_tree_folder_ids(tree_converted)
 
 
 # --- Published skill = read grant on the whole folder subtree ---
@@ -142,14 +162,15 @@ async def _make_scope(pool, creator_id):
     return creator_id
 
 
-async def _make_folder(pool, scope, created_by, name, parent_folder_id=None):
+async def _make_folder(pool, scope, created_by, name, parent_folder_id=None, is_skill=False):
     return await pool.fetchval(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         scope,
         parent_folder_id,
         name,
         created_by,
+        is_skill,
     )
 
 
@@ -170,7 +191,7 @@ async def test_published_skill_grants_subtree_read_never_write(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     scope = await _make_scope(pool, owner)
-    root = await _make_folder(pool, scope, owner, "skill-root")
+    root = await _make_folder(pool, scope, owner, "skill-root", is_skill=True)
     mid = await _make_folder(pool, scope, owner, "mid", parent_folder_id=root)
     deep = await _make_folder(pool, scope, owner, "deep", parent_folder_id=mid)
     page = await _make_page(pool, scope, owner, deep, name="deep page")
@@ -201,7 +222,7 @@ async def test_unpublished_skill_folder_page_not_readable_by_stranger(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     scope = await _make_scope(pool, owner)
-    folder = await _make_folder(pool, scope, owner, "private-skill")
+    folder = await _make_folder(pool, scope, owner, "private-skill", is_skill=True)
     await _make_page(pool, scope, owner, folder, name="SKILL.md")
     page = await _make_page(pool, scope, owner, folder, name="secret")
 
@@ -229,7 +250,7 @@ async def test_materialize_session_creates_transcript_page_in_folder(client: Asy
     )
     assert pushed.status_code == 201
 
-    skill_folder = await _folder(client, api_key, scope, "session-skill")
+    skill_folder = await _folder(client, api_key, scope, "session-skill", is_skill=True)
     await _page(
         client,
         api_key,
@@ -275,7 +296,7 @@ async def test_publish_requires_valid_skill_md_and_rejects_double_publish(
 ):
     api_key, _ = await _register(client)
     scope = await _scope(client, api_key)
-    folder = await _folder(client, api_key, scope, "bare-folder")
+    folder = await _folder(client, api_key, scope, "bare-folder", is_skill=True)
 
     missing = await client.post(
         "/api/v1/me/skills",
@@ -302,9 +323,11 @@ async def test_publish_requires_valid_skill_md_and_rejects_double_publish(
     assert published.json()["folder_id"] == folder
 
     # Publishing preserves the valid SKILL.md as the metadata source of truth.
-    contents = (
-        await client.get(f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key))
-    ).json()
+    contents_response = await client.get(
+        f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key)
+    )
+    assert contents_response.status_code == 200, contents_response.text
+    contents = contents_response.json()
     assert contents["folder"]["is_skill"] is True
     assert "SKILL.md" in [p["name"] for p in contents["pages"]]
 
@@ -338,7 +361,7 @@ async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client:
     (with the publish slug when the owner has also published)."""
     owner_key, _ = await _register(client)
     scope = await _scope(client, owner_key)
-    skill_folder = await _folder(client, owner_key, scope, "partner-skill")
+    skill_folder = await _folder(client, owner_key, scope, "partner-skill", is_skill=True)
     await _page(
         client,
         owner_key,

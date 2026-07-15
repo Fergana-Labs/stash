@@ -46,12 +46,17 @@ async def publish(
         while True:
             try:
                 target_folder = await files_tree_service.create_folder(
-                    owner_user_id, name, current_user["id"]
+                    owner_user_id, name, current_user["id"], is_skill=True
                 )
                 break
             except files_tree_service.DuplicateFolderName:
                 name = f"{req.title} ({n})"
                 n += 1
+
+    if not target_folder["is_skill"]:
+        target_folder = await files_tree_service.set_folder_is_skill(
+            target_folder["id"], owner_user_id, True
+        )
 
     await files_tree_service.create_page(
         owner_user_id=owner_user_id,

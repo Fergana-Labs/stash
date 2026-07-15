@@ -37,7 +37,7 @@ async def _create_skill_folder(
 ) -> str:
     folder = await client.post(
         "/api/v1/me/folders",
-        json={"name": folder_name},
+        json={"name": folder_name, "is_skill": True},
         headers=_auth(api_key),
     )
     assert folder.status_code == 201

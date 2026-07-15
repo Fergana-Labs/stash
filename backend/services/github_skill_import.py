@@ -207,7 +207,10 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
     for n in range(2, 50):
         try:
             folder = await files_tree_service.create_folder(
-                owner_user_id=owner_user_id, name=name, created_by=owner_id
+                owner_user_id=owner_user_id,
+                name=name,
+                created_by=owner_id,
+                is_skill=True,
             )
             return folder["id"]
         except files_tree_service.DuplicateFolderName:
@@ -220,8 +223,8 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
 
 async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
     """Import every SKILL.md folder in a repo into a user's OWN scope as private
-    skills — a skill is just a folder containing SKILL.md, so we create the
-    folder and write the repo files; no publish/discover record. Returns
+    skills — we create explicit skill folders and write the repo files; no
+    publish/discover record. Returns
     {skills, imported}. A user is their own scope (owner_user_id == created_by)."""
     skills = await fetch_repo_skills(repo_url)
     imported = 0

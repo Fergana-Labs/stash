@@ -445,7 +445,7 @@ def stash_create_skill(
     """Create a skill from a complete, valid SKILL.md."""
     validate_skill_md(skill_md)
     client = _client()
-    folder = client.create_folder(name)
+    folder = client.create_folder(name, is_skill=True)
     client.create_page(
         name="SKILL.md", content=skill_md, folder_id=folder["id"], content_type="markdown"
     )

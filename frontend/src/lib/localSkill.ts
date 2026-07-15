@@ -6,8 +6,7 @@ import type {
   PublicSkillTable,
 } from "./api";
 
-// A skill IS a folder containing a SKILL.md page. Creating that page is what
-// converts a plain folder into a skill.
+// SKILL.md is the agent manifest inside an explicitly typed skill folder.
 export const SKILL_MD = "SKILL.md";
 
 export function skillMdTemplate(name: string): string {
