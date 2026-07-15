@@ -40,7 +40,7 @@ async function render(): Promise<void> {
   if (!status.connected) {
     app.append(
       el('p', { className: 'muted' }, [
-        'Open conversations on chatgpt.com or claude.ai are saved to Stash automatically. Connect once to start.',
+        'Saves webpages, PDFs, and your ChatGPT/Claude conversations to Stash. Connect once to start.',
       ]),
       el('div', { className: 'row' }, [
         el('button', {
