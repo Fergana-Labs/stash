@@ -23,7 +23,7 @@ async def test_register_success(client: AsyncClient):
     assert resp.status_code == 201
     body = resp.json()
     assert body["name"] == name
-    assert body["api_key"].startswith("mc_")
+    assert body["api_key"].startswith("st_")
 
 
 @pytest.mark.asyncio
@@ -62,7 +62,7 @@ async def test_login_success(client: AsyncClient):
 
     login = await client.post("/api/v1/users/login", json={"name": name, "password": password})
     assert login.status_code == 200
-    assert login.json()["api_key"].startswith("mc_")
+    assert login.json()["api_key"].startswith("st_")
 
 
 @pytest.mark.asyncio
@@ -150,7 +150,7 @@ async def test_cli_auth_approve_then_poll_returns_usable_device_key(client: Asyn
     assert polled.status_code == 200
     body = polled.json()
     assert body["status"] == "complete"
-    assert body["api_key"].startswith("mc_")
+    assert body["api_key"].startswith("st_")
 
     assert (
         await pool.fetchval(
@@ -248,7 +248,7 @@ async def test_expired_cli_auth_approval_revokes_unclaimed_device_key(
         "SELECT api_key FROM cli_auth_sessions WHERE session_id = $1",
         session_id,
     )
-    assert unclaimed_key.startswith("mc_")
+    assert unclaimed_key.startswith("st_")
 
     await pool.execute(
         "UPDATE cli_auth_sessions "
@@ -328,9 +328,39 @@ async def test_scheduled_cleanup_revokes_expired_unclaimed_cli_keys(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_invalid_api_key_rejected(client: AsyncClient):
-    resp = await client.get("/api/v1/users/me", headers={"Authorization": "Bearer mc_fakekeyxxxx"})
+@pytest.mark.parametrize("prefix", ["st_", "mc_"])
+async def test_invalid_api_key_rejected(client: AsyncClient, prefix: str):
+    """Both prefixes route to API-key auth: st_ is current, mc_ is the
+    pre-rename prefix that issued keys still carry."""
+    resp = await client.get(
+        "/api/v1/users/me", headers={"Authorization": f"Bearer {prefix}fakekeyxxxx"}
+    )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_issued_mc_key_still_authenticates(client: AsyncClient, pool):
+    """Keys minted before the st_ rename are hashed server-side and held raw
+    by users (including customer prod deployments) — they must keep working."""
+    from backend.auth import hash_api_key
+
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("legacy_key"), "password": "securepassword1"},
+    )
+    user_id = reg.json()["id"]
+    legacy_key = "mc_legacy_key_from_before_the_rename"
+    await pool.execute(
+        "INSERT INTO user_api_keys (user_id, key_hash, name, key_type) VALUES ($1, $2, $3, $4)",
+        UUID(user_id),
+        hash_api_key(legacy_key),
+        "legacy",
+        "manual",
+    )
+
+    me = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {legacy_key}"})
+    assert me.status_code == 200
+    assert me.json()["id"] == user_id
 
 
 @pytest.mark.asyncio

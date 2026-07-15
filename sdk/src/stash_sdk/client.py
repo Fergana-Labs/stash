@@ -22,7 +22,7 @@ class Stash:
     """Client for the Stash API.
 
     Args:
-        api_key: Stash API key (``mc_...``). Falls back to ``STASH_API_KEY`` env var.
+        api_key: Stash API key (``st_...``). Falls back to ``STASH_API_KEY`` env var.
         base_url: API base URL. Falls back to ``STASH_URL`` env var, then production.
         timeout: Default request timeout in seconds.
     """
