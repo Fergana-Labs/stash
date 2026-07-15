@@ -41,6 +41,32 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 # How long a `state` blob is valid between /connect and /callback.
 STATE_TTL = timedelta(minutes=10)
+
+
+async def _twitter_client_id(provider: str, user_id: UUID) -> str | None:
+    """The user's own X app client id, if they brought one; else None (use
+    Stash's shared app). Only twitter supports bring-your-own-app."""
+    if provider != "twitter":
+        return None
+    from .twitter import app_credentials
+
+    creds = await app_credentials.get(user_id)
+    return creds["client_id"] if creds else None
+
+
+async def _twitter_app_creds(provider: str, user_id: UUID) -> dict:
+    """kwargs (client_id/client_secret) for the twitter provider's OAuth
+    calls, empty for the shared app or any other provider."""
+    if provider != "twitter":
+        return {}
+    from .twitter import app_credentials
+
+    creds = await app_credentials.get(user_id)
+    if not creds:
+        return {}
+    return {"client_id": creds["client_id"], "client_secret": creds["client_secret"]}
+
+
 SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
 SLACK_CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
 SLACK_CHANNEL_LIMIT = 100
@@ -297,7 +323,12 @@ async def integration_connect(
             return_path,
             extra={"code_verifier": code_verifier},
         )
-        return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
+        # Bring-your-own X app: authorize against the user's own client id so
+        # bookmark reads bill to their app, not Stash's shared one.
+        client_id = await _twitter_client_id(provider, current_user["id"])
+        return ConnectStartResponse(
+            authorize_url=p.authorize_url(state, code_verifier, client_id=client_id)
+        )
 
     state = _encode_state(current_user["id"], provider, return_path)
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
@@ -326,7 +357,8 @@ async def integration_callback(
                 code_verifier = (payload.get("x") or {}).get("code_verifier")
                 if not code_verifier:
                     raise HTTPException(status_code=400, detail="missing PKCE verifier in state")
-                token = await p.exchange_code(code, code_verifier)
+                app = await _twitter_app_creds(provider, user_id)
+                token = await p.exchange_code(code, code_verifier, **app)
             else:
                 token = await p.exchange_code(code)
             # The account profile is display-only — a failure fetching it must
@@ -371,8 +403,9 @@ async def integration_callback(
             # (explorer sidebar, CLI `stash ls`, sources list) keys off
             # sources, not integrations, and unlike GitHub/Notion there is
             # nothing to pick — the account IS the source. Both rows are
-            # idempotent get-or-creates; bookmarks starts syncing on the
-            # normal schedule (next_sync_at defaults to now).
+            # idempotent get-or-creates. Bookmarks are extension-fed by
+            # default (the browser captures them for $0); server-side sync
+            # turns on only for a bring-your-own-app user.
             # Best-effort: a failure here must not break the connection.
             if provider == "twitter":
                 from ..services import source_service
@@ -395,6 +428,10 @@ async def integration_callback(
                         display_name=f"X bookmarks (@{username})",
                         settings={},
                     )
+                    # A user who connected with their own app pays for the
+                    # bookmarks API, so run server-side sync for them.
+                    if await _twitter_app_creds(provider, user_id):
+                        await source_service.set_twitter_bookmarks_server_sync(user_id, True)
                 except Exception as exc:
                     logger.warning(
                         "twitter: failed to auto-create sources exception_type=%s",
@@ -444,7 +481,54 @@ async def integration_disconnect(
             source_type=source["source_type"],
             metadata={"reason": "integration_disconnect"},
         )
+    if provider == "twitter":
+        from .twitter import app_credentials
+
+        await app_credentials.delete(current_user["id"])
     return {"ok": True, "removed_sources": len(removed)}
+
+
+class TwitterAppRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=200)
+    client_secret: str | None = Field(default=None, max_length=200)
+
+
+@router.get("/twitter/app")
+async def get_twitter_app(current_user: dict = Depends(get_current_user)):
+    """Whether the user has stored their own X app (never returns the secret)."""
+    from .twitter import app_credentials
+
+    creds = await app_credentials.get(current_user["id"])
+    return {"configured": creds is not None, "client_id": creds["client_id"] if creds else None}
+
+
+@router.post("/twitter/app")
+async def set_twitter_app(
+    body: TwitterAppRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Store the user's own X developer-app OAuth credentials so bookmark
+    reads bill to their paid quota. They must then (re)connect X so the
+    token is issued by their app; if X is already connected, server-side
+    bookmark sync is switched on."""
+    from .twitter import app_credentials
+
+    await app_credentials.store(current_user["id"], body.client_id, body.client_secret)
+    # If X is already connected, turn on server-side bookmark sync now.
+    existing = await source_service.get_source_by_type(current_user["id"], "twitter_bookmarks")
+    if existing is not None:
+        await source_service.set_twitter_bookmarks_server_sync(current_user["id"], True)
+    return {"ok": True, "reconnect_required": existing is None}
+
+
+@router.delete("/twitter/app")
+async def clear_twitter_app(current_user: dict = Depends(get_current_user)):
+    """Remove the user's own X app and revert bookmarks to extension capture."""
+    from .twitter import app_credentials
+
+    await app_credentials.delete(current_user["id"])
+    await source_service.set_twitter_bookmarks_server_sync(current_user["id"], False)
+    return {"ok": True}
 
 
 class CredentialConnectResponse(BaseModel):

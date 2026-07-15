@@ -511,3 +511,52 @@ async def push_saved_items(
     if new:
         celery.send_task("backend.tasks.sources.sync_source", args=[str(source_id)])
     return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}
+
+
+# ===== X bookmarks push (browser extension) =====
+
+twitter_bookmarks_router = APIRouter(prefix="/api/v1/me/twitter-bookmarks", tags=["sources"])
+
+MAX_BOOKMARKS_PER_PUSH = 500
+
+
+class CapturedBookmark(BaseModel):
+    id: str
+    text: str = ""
+    author_username: str | None = None
+    author_name: str | None = None
+    created_at: str | None = None
+
+
+class BookmarksPush(BaseModel):
+    items: list[CapturedBookmark]
+
+
+@twitter_bookmarks_router.post("")
+async def push_twitter_bookmarks(
+    body: BookmarksPush,
+    current_user: dict = Depends(get_current_user),
+):
+    """The extension captures the user's X bookmarks from x.com (full tweet
+    content, no X API) and pushes them here. Unlike Instagram there is no
+    hydration — the content is already complete, so this upserts directly
+    into the archive. The twitter_bookmarks source is created when the user
+    connects X, so a push before connecting is a clear 400."""
+    from ..integrations.twitter.indexer import store_captured_bookmarks
+
+    owner_user_id = current_user["id"]
+    if len(body.items) > MAX_BOOKMARKS_PER_PUSH:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many items ({len(body.items)}, max {MAX_BOOKMARKS_PER_PUSH})",
+        )
+
+    source = await source_service.get_source_by_type(owner_user_id, "twitter_bookmarks")
+    if source is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Twitter / X in Stash first, then the extension can save your bookmarks.",
+        )
+
+    stored = await store_captured_bookmarks(source, [item.model_dump() for item in body.items])
+    return {"accepted": len(body.items), "stored": stored}

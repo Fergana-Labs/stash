@@ -154,7 +154,19 @@ async def get_valid_token(
                 detail=f"{provider} token expired; reconnect required",
             )
 
-        new_token = await provider_impl.refresh(refresh_token)
+        # A bring-your-own-app X user's token was issued by their app, so it
+        # must be refreshed with their client credentials (Stash's would 401).
+        refresh_kwargs: dict = {}
+        if provider == "twitter":
+            from .twitter import app_credentials
+
+            creds = await app_credentials.get(user_id)
+            if creds:
+                refresh_kwargs = {
+                    "client_id": creds["client_id"],
+                    "client_secret": creds["client_secret"],
+                }
+        new_token = await provider_impl.refresh(refresh_token, **refresh_kwargs)
         await conn.execute(
             """
             UPDATE user_integrations SET

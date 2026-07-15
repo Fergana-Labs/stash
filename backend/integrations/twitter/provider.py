@@ -38,12 +38,18 @@ class TwitterIntegration(Integration):
     supports_refresh = True
     uses_pkce = True
 
-    def _client_id(self) -> str:
+    def _client_id(self, override: str | None = None) -> str:
+        # A bring-your-own-app user supplies their own client id (so bookmark
+        # reads hit their paid quota); everyone else uses Stash's app.
+        if override:
+            return override
         if not settings.TWITTER_OAUTH_CLIENT_ID:
             raise RuntimeError("TWITTER_OAUTH_CLIENT_ID is not set")
         return settings.TWITTER_OAUTH_CLIENT_ID
 
-    def _client_secret(self) -> str | None:
+    def _client_secret(self, override: str | None = None) -> str | None:
+        if override:
+            return override
         return settings.TWITTER_OAUTH_CLIENT_SECRET
 
     def _redirect_uri(self) -> str:
@@ -54,12 +60,12 @@ class TwitterIntegration(Integration):
     def new_code_verifier(self) -> str:
         return secrets.token_urlsafe(64)
 
-    def authorize_url(self, state: str, code_verifier: str) -> str:
+    def authorize_url(self, state: str, code_verifier: str, *, client_id: str | None = None) -> str:
         digest = hashlib.sha256(code_verifier.encode()).digest()
         challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
         params = {
             "response_type": "code",
-            "client_id": self._client_id(),
+            "client_id": self._client_id(client_id),
             "redirect_uri": self._redirect_uri(),
             "scope": " ".join(self.scopes),
             "state": state,
@@ -68,16 +74,23 @@ class TwitterIntegration(Integration):
         }
         return f"{AUTHORIZE_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, code_verifier: str) -> TokenSet:
+    async def exchange_code(
+        self,
+        code: str,
+        code_verifier: str,
+        *,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+    ) -> TokenSet:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 TOKEN_URL,
-                auth=self._token_auth(),
+                auth=self._token_auth(client_id, client_secret),
                 data={
                     "grant_type": "authorization_code",
                     "code": code,
                     "redirect_uri": self._redirect_uri(),
-                    "client_id": self._client_id(),
+                    "client_id": self._client_id(client_id),
                     "code_verifier": code_verifier,
                 },
             )
@@ -85,15 +98,21 @@ class TwitterIntegration(Integration):
             payload = resp.json()
         return _payload_to_tokenset(payload)
 
-    async def refresh(self, refresh_token: str) -> TokenSet:
+    async def refresh(
+        self,
+        refresh_token: str,
+        *,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+    ) -> TokenSet:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 TOKEN_URL,
-                auth=self._token_auth(),
+                auth=self._token_auth(client_id, client_secret),
                 data={
                     "grant_type": "refresh_token",
                     "refresh_token": refresh_token,
-                    "client_id": self._client_id(),
+                    "client_id": self._client_id(client_id),
                 },
             )
             resp.raise_for_status()
@@ -128,11 +147,13 @@ class TwitterIntegration(Integration):
         display_name = f"@{username}" if username else user.get("name")
         return AccountInfo(email=None, display_name=display_name)
 
-    def _token_auth(self) -> tuple[str, str] | None:
-        secret = self._client_secret()
+    def _token_auth(
+        self, client_id: str | None = None, client_secret: str | None = None
+    ) -> tuple[str, str] | None:
+        secret = self._client_secret(client_secret)
         if not secret:
             return None
-        return (self._client_id(), secret)
+        return (self._client_id(client_id), secret)
 
 
 def _payload_to_tokenset(payload: dict) -> TokenSet:

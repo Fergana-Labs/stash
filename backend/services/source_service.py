@@ -74,11 +74,19 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
-    "twitter_bookmarks": 21600,
+    # NB: twitter_bookmarks is intentionally absent — a source is
+    # extension-fed by default (the browser captures bookmarks for $0, no X
+    # API), so it enrolls in server-side sync only when the owner brings
+    # their own paid X app (see enable_twitter_bookmarks_server_sync).
     # Freshness comes from extension pushes (which kick a sync); the interval
     # is the retry pass for failed hydrations.
     "instagram_saves": 1800,
 }
+
+# The cadence used when a twitter_bookmarks source is switched to server-side
+# sync (bring-your-own X app). Kept out of DEFAULT_SYNC_INTERVAL_S so the
+# default stays extension-fed.
+TWITTER_BOOKMARKS_SYNC_INTERVAL_S = 21600
 
 # Which capability each connected source type exposes.
 SOURCE_CAPABILITY = {
@@ -372,6 +380,38 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
         user_id,
     )
     return _source_row(row) if row else None
+
+
+async def get_source_by_type(owner_user_id: UUID, source_type: str) -> dict | None:
+    """The owner's source of a given type, or None. Used for the single-per-user
+    source types (twitter_bookmarks, instagram_saves) that the extension pushes
+    to without knowing the source id."""
+    row = await get_pool().fetchrow(
+        "SELECT * FROM user_sources WHERE owner_user_id = $1 AND source_type = $2",
+        owner_user_id,
+        source_type,
+    )
+    return _source_row(row) if row else None
+
+
+async def set_twitter_bookmarks_server_sync(owner_user_id: UUID, enabled: bool) -> None:
+    """Flip a twitter_bookmarks source between extension-fed (default) and
+    server-side sync via the owner's own X app. Enabling makes it due now so
+    the first sync runs immediately."""
+    if enabled:
+        await get_pool().execute(
+            "UPDATE user_sources SET sync_enabled = TRUE, sync_interval_s = $2, "
+            "next_sync_at = now(), updated_at = now() "
+            "WHERE owner_user_id = $1 AND source_type = 'twitter_bookmarks'",
+            owner_user_id,
+            TWITTER_BOOKMARKS_SYNC_INTERVAL_S,
+        )
+    else:
+        await get_pool().execute(
+            "UPDATE user_sources SET sync_enabled = FALSE, updated_at = now() "
+            "WHERE owner_user_id = $1 AND source_type = 'twitter_bookmarks'",
+            owner_user_id,
+        )
 
 
 async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:

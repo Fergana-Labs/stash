@@ -7,6 +7,8 @@ const options = {
     claude: 'src/content/claude.ts',
     clipper: 'src/content/clipper.ts',
     instagram: 'src/content/instagram.ts',
+    twitter: 'src/content/twitter.ts',
+    twitter_main: 'src/content/twitter_main.ts',
     popup: 'src/popup/popup.ts',
   },
   bundle: true,
