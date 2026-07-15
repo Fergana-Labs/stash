@@ -144,12 +144,17 @@ function SectionHeading({ children, className = "" }: { children: ReactNode; cla
   return <h2 className={`text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground ${className}`}>{children}</h2>;
 }
 
+// Public pages live on the marketing site (www/app/pages), not this app —
+// a relative /pages link 404s here. Same origin convention as landingAuthCheck.ts.
+const WWW_BASE =
+  process.env.NODE_ENV === "development" ? "http://localhost:3100" : "https://joinstash.ai";
+
 // A community page (pastebin) card — opens the public page in a new tab.
 function PageCard({ page }: { page: PublicPageCard }) {
   const Icon = page.content_type === "html" ? Code2 : FileText;
   return (
     <a
-      href={`/pages/${page.slug}`}
+      href={`${WWW_BASE}/pages/${page.slug}`}
       target="_blank"
       rel="noopener noreferrer"
       className="group flex flex-col gap-3 rounded-xl border border-border bg-base p-4 transition hover:border-brand-300 hover:shadow-sm"
