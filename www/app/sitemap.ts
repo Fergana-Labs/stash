@@ -7,8 +7,6 @@ const BASE = "https://joinstash.ai";
 const ROUTES = [
   "",
   "/company-brain",
-  "/agent-drive",
-  "/token-monitoring",
   "/memory",
   "/discover",
   "/docs",

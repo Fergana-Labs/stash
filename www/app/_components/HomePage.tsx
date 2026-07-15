@@ -1143,9 +1143,7 @@ export function Footer() {
       h: "Product",
       links: [
         ["Company Brain", "/company-brain"],
-        ["Agent Drive", "/agent-drive"],
-        ["Token Monitoring", "/token-monitoring"],
-        ["Memory", "/memory"],
+        ["Memory & Observability", "/memory"],
         ["Discover", "/discover"],
         ["Pricing", "/#pricing"],
         ["Docs", "/docs"],

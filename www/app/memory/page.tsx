@@ -6,10 +6,29 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
-  title: "Memory · Stash",
+  title: "Memory & Observability · Stash",
   description:
-    "Best-in-class agent memory: a three-way hybrid index of curated wiki, vector search, and grep, so your agents retrieve the right thing every time. Every index has blind spots, so Stash runs all three.",
+    "Best-in-class agent memory — a three-way hybrid index of curated wiki, vector search, and grep — plus observability over every agent session your team runs: onboarding, coaching, monitoring, and automations.",
 };
+
+const OBSERVABILITY = [
+  [
+    "Onboarding",
+    "New teammates learn from real sessions, not stale docs. Search how others solved the same problem and ramp on your codebase and tools in days, not weeks.",
+  ],
+  [
+    "Coaching for your team",
+    "See how each person prompts, where they get stuck, and what good looks like. Turn your best sessions into shared playbooks the whole team can learn from.",
+  ],
+  [
+    "Monitoring",
+    "Every session streams in automatically and is indexed full-text. Spot failures, dead ends, and risky patterns across the team without asking anyone for a recap.",
+  ],
+  [
+    "Automations & workflows",
+    "Mine recurring patterns into reusable Skills, prompts, and automations, so the lessons from one session compound into improvement for everyone.",
+  ],
+];
 
 const METHODS = [
   {
@@ -129,7 +148,35 @@ export default function MemoryPage() {
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-surface py-28 text-center">
+      <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
+        <div className="mx-auto max-w-[1200px] px-7">
+          <p className="kicker">Observability</p>
+          <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+            See how your team really works with agents.
+          </h2>
+          <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-foreground">
+            The same memory that answers your agents&apos; questions records how
+            they work. Every session your team runs streams into Stash
+            automatically and is indexed full-text — Granola or Gong, but for
+            coding agents.
+          </p>
+          <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {OBSERVABILITY.map(([name, blurb]) => (
+              <div
+                key={name}
+                className="rounded-[12px] border border-border bg-background p-5 transition-colors hover:border-brand"
+              >
+                <div className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">
+                  {name}
+                </div>
+                <p className="mt-1.5 text-[14px] leading-[1.55] text-dim">{blurb}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden py-28 text-center">
         <Texture className="opacity-70" fade="center" />
         <div className="relative z-10 mx-auto max-w-[1200px] px-7">
           <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
@@ -139,10 +186,10 @@ export default function MemoryPage() {
             <CtaPair align="center" />
           </div>
           <Link
-            href="/agent-drive"
+            href="/company-brain"
             className="mt-6 inline-flex font-mono text-[13px] text-dim transition hover:text-brand"
           >
-            See the Agent Drive →
+            See the Company Brain →
           </Link>
         </div>
       </section>

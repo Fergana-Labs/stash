@@ -65,10 +65,8 @@ function NavLink({
 }
 
 const USE_CASES = [
-  ["Company Brain", "/company-brain", "All your tools as one source of truth"],
-  ["Agent Drive", "/agent-drive", "An agent-native VFS for files and Skills"],
-  ["Token Monitoring", "/token-monitoring", "See every agent session, like Gong"],
-  ["Memory", "/memory", "Three-way retrieval that doesn't miss"],
+  ["Company Brain", "/company-brain", "All your tools as one agent-native source of truth"],
+  ["Memory & Observability", "/memory", "Retrieval that doesn't miss, plus every agent session"],
   ["For SMBs", "/smb", "Find the hours AI can give back"],
 ];
 
