@@ -1,20 +1,19 @@
+from contextlib import asynccontextmanager
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
-import httpx
 import pytest
 
-from backend.integrations.posthog import indexer
-from backend.integrations.posthog.provider import normalize_host
+from backend.integrations.posthog import indexer, oauth
+
+TEST_FERNET_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 
-def test_posthog_host_requires_a_bare_https_origin():
-    assert normalize_host(" https://eu.posthog.com/ ") == "https://eu.posthog.com"
-    with pytest.raises(ValueError):
-        normalize_host("http://posthog.internal")
-    with pytest.raises(ValueError):
-        normalize_host("https://posthog.example.com/api")
-    with pytest.raises(ValueError):
-        normalize_host("https://127.0.0.1")
+def _async(value):
+    async def result(*args, **kwargs):
+        return value
+
+    return result
 
 
 def test_posthog_paths_group_objects_and_keep_duplicate_names_distinct():
@@ -25,51 +24,58 @@ def test_posthog_paths_group_objects_and_keep_duplicate_names_distinct():
 
 
 @pytest.mark.asyncio
-async def test_posthog_indexer_indexes_each_product_collection(monkeypatch):
+async def test_connect_builds_read_only_pkce_authorize_url(monkeypatch):
+    monkeypatch.setattr(oauth.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
+    monkeypatch.setattr(oauth.settings, "PUBLIC_URL", "https://app.example.com")
+    monkeypatch.setattr(
+        oauth,
+        "_discover",
+        _async(
+            {
+                "authorization_endpoint": "https://oauth.posthog.com/oauth/authorize/",
+                "registration_endpoint": "https://oauth.posthog.com/oauth/register/",
+            }
+        ),
+    )
+    monkeypatch.setattr(oauth, "_register_client", _async({"client_id": "client_abc"}))
+
+    url = await oauth.start_authorization(UUID(int=1), "/onboarding")
+    params = {key: values[0] for key, values in parse_qs(urlparse(url).query).items()}
+
+    assert params["resource"] == "https://mcp.posthog.com"
+    assert params["code_challenge_method"] == "S256"
+    assert "dashboard:read" in params["scope"]
+    assert "dashboard:write" not in params["scope"]
+    assert oauth._decode_state(params["state"])["r"] == "/onboarding"
+
+
+@pytest.mark.asyncio
+async def test_posthog_indexer_uses_each_mcp_collection(monkeypatch):
     captured: list[dict] = []
-    removed: list[list[str]] = []
     responses = {
-        "dashboards": {"id": 1, "name": "Company KPI", "created_at": "2026-07-01T00:00:00Z"},
-        "insights": {"id": 2, "name": "Activation", "updated_at": "2026-07-02T00:00:00Z"},
-        "feature_flags": {"id": 3, "key": "new-nav", "updated_at": "2026-07-03T00:00:00Z"},
-        "experiments": {"id": 4, "name": "Better onboarding", "updated_at": "2026-07-04T00:00:00Z"},
+        "dashboards-get-all": {"results": [{"id": 1, "name": "Company KPI"}]},
+        "insights-list": {"results": [{"id": 2, "name": "Activation"}]},
+        "feature-flag-get-all": {"results": [{"id": 3, "key": "new-nav"}]},
+        "experiment-list": {"results": [{"id": 4, "name": "Onboarding"}]},
     }
 
-    class FakeResponse:
-        def __init__(self, payload):
-            self.payload = payload
+    @asynccontextmanager
+    async def fake_session(token):
+        assert token == "access_token"
+        yield object()
 
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self.payload
-
-    class FakeClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        async def get(self, path, params=None):
-            kind = path.rstrip("/").rsplit("/", 1)[-1]
-            return FakeResponse({"results": [responses[kind]]})
-
-    async def fake_client(owner_user_id):
-        assert owner_user_id == UUID("00000000-0000-0000-0000-000000000002")
-        return FakeClient(), {"project_id": "42"}
+    async def fake_call_tool(session, name, arguments):
+        assert arguments == {"limit": 100, "offset": 0}
+        return responses[name]
 
     async def capture_upsert(**kwargs):
         captured.append(kwargs)
 
-    async def capture_remove(table, source_id, paths):
-        assert table == "posthog_index"
-        removed.append(paths)
-
-    monkeypatch.setattr(indexer, "_client", fake_client)
+    monkeypatch.setattr(indexer, "get_valid_token", _async("access_token"))
+    monkeypatch.setattr(indexer, "posthog_session", fake_session)
+    monkeypatch.setattr(indexer, "call_tool", fake_call_tool)
     monkeypatch.setattr(indexer.source_service, "upsert_index_row", capture_upsert)
-    monkeypatch.setattr(indexer.source_service, "remove_missing_documents", capture_remove)
+    monkeypatch.setattr(indexer.source_service, "remove_missing_documents", _async(None))
 
     await indexer.index_posthog(
         {
@@ -85,43 +91,3 @@ async def test_posthog_indexer_indexes_each_product_collection(monkeypatch):
         "experiments:4",
     ]
     assert captured[2]["path"] == "feature_flags/new-nav (3)"
-    assert removed == [[row["path"] for row in captured]]
-
-
-@pytest.mark.asyncio
-async def test_posthog_provider_validates_project_before_storing_credentials(monkeypatch):
-    from backend.integrations.posthog import provider
-
-    request = httpx.Request("GET", "https://us.posthog.com/api/projects/42/")
-
-    class FakeResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"id": 42, "name": "Acme Product"}
-
-    class FakeClient:
-        def __init__(self, **kwargs):
-            assert kwargs["headers"] == {"Authorization": "Bearer phx_secret"}
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        async def get(self, url):
-            assert url == str(request.url)
-            return FakeResponse()
-
-    monkeypatch.setattr(provider.httpx, "AsyncClient", FakeClient)
-    token, account = await provider.PostHogIntegration().connect_with_credentials(
-        {
-            "instance_url": "https://us.posthog.com",
-            "project_id": "42",
-            "personal_api_key": "phx_secret",
-        }
-    )
-    assert account.display_name == "Acme Product"
-    assert provider.decode_credentials(token.access_token)["project_id"] == "42"

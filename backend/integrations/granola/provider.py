@@ -39,6 +39,9 @@ class GranolaIntegration:
         # Granola tokens are revoked by signing out in Granola; we drop our copy.
         return None
 
+    async def get_valid_access_token(self, user_id: UUID) -> str:
+        return await oauth.get_valid_access_token(user_id)
+
     # --- Unused generic OAuth surface (the mcp_oauth branch bypasses these) ---
 
     def authorize_url(self, state: str) -> str:

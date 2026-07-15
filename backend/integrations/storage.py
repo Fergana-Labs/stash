@@ -113,6 +113,10 @@ async def get_valid_token(
     account_key: str = DEFAULT_ACCOUNT_KEY,
 ) -> str:
     """Return a usable access token, refreshing if expired."""
+    provider_impl = get_provider(provider)
+    if getattr(provider_impl, "auth_kind", "oauth") == "mcp_oauth":
+        return await provider_impl.get_valid_access_token(user_id)
+
     pool = get_pool()
     row = await pool.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
     if row is None:
@@ -150,7 +154,7 @@ async def get_valid_token(
                 detail=f"{provider} token expired; reconnect required",
             )
 
-        new_token = await get_provider(provider).refresh(refresh_token)
+        new_token = await provider_impl.refresh(refresh_token)
         await conn.execute(
             """
             UPDATE user_integrations SET
