@@ -25,7 +25,6 @@ type Report = {
 
 type ApiReply = {
   message: string;
-  options?: string[];
   done?: boolean;
   report?: Report;
 };
@@ -102,7 +101,6 @@ export default function AssessmentChat() {
     const { reply, raw } = (await res.json()) as { reply: ApiReply; raw: string };
     setApiMessages([...messages, { role: "assistant", content: raw }]);
     setBubbles((b) => [...b, { kind: "text", from: "agent", text: reply.message }]);
-    setOptions(reply.options ?? []);
     setTyping(false);
     if (reply.done && reply.report) {
       setPendingReport(sanitizeReport(reply.report));
@@ -113,7 +111,6 @@ export default function AssessmentChat() {
   function sendToChat(text: string) {
     setBubbles((b) => [...b, { kind: "text", from: "you", text }]);
     setDraft("");
-    setOptions([]);
     const messages: ApiMessage[] = [...apiMessages, { role: "user", content: text }];
     setApiMessages(messages);
     void callChat(messages);
@@ -189,12 +186,6 @@ export default function AssessmentChat() {
 
   return (
     <div className="overflow-hidden rounded-[14px] border border-border bg-background shadow-[var(--shadow-card)]">
-      <div className="flex items-center gap-2 border-b border-border-subtle bg-surface px-5 py-3">
-        <span className="live-pulse inline-block h-2 w-2 rounded-full bg-brand" />
-        <span className="text-[13px] font-medium text-ink">Free snapshot</span>
-        <span className="ml-auto text-[12px] text-muted">~3 min</span>
-      </div>
-
       <div ref={scrollRef} className="max-h-[460px] space-y-3 overflow-y-auto p-5">
         {bubbles.map((b, i) =>
           b.kind === "skill" ? (
@@ -254,19 +245,6 @@ export default function AssessmentChat() {
 
       {mode === "chat" && (
         <div className="space-y-2.5 border-t border-border-subtle p-5">
-          {options.length > 0 && !typing && (
-            <div className="flex flex-wrap gap-2">
-              {options.map((o) => (
-                <button
-                  key={o}
-                  onClick={() => sendToChat(o)}
-                  className="rounded-full border border-border bg-background px-4 py-2 text-[13.5px] text-ink transition hover:border-brand hover:text-brand"
-                >
-                  {o}
-                </button>
-              ))}
-            </div>
-          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -345,6 +323,8 @@ export default function AssessmentChat() {
 
 const INSTALL_COMMAND = `curl -fsSL https://joinstash.ai/smb/SKILL.md --create-dirs -o ~/.claude/skills/ai-assessment-interview/SKILL.md && curl -fsSL https://joinstash.ai/smb/report-template.html -o ~/.claude/skills/ai-assessment-interview/report-template.html`;
 
+const BOOK_CALL_URL = "https://calendly.com/sam-ferganalabs/30min";
+
 // The lead magnet for people already running an agent: a friendly three-step
 // card — no terminal styling, one copy button hides the command.
 function SkillDrop({ tool }: { tool: string }) {
@@ -399,7 +379,7 @@ function SkillDrop({ tool }: { tool: string }) {
           </button>
         )}
         <a
-          href="/contact-sales"
+          href={BOOK_CALL_URL}
           className="inline-flex h-10 items-center rounded-lg bg-brand px-4 text-[13.5px] font-medium text-white transition hover:bg-brand-hover"
         >
           Or just book a call →
@@ -530,7 +510,7 @@ function SnapshotReport({
 
       <div className="mt-5 flex flex-wrap items-center gap-3 print:hidden">
         <a
-          href="/contact-sales"
+          href={BOOK_CALL_URL}
           className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white transition hover:bg-brand-hover"
         >
           Book the full assessment →

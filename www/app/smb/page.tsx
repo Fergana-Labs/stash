@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import ScrollLink from "../_components/ScrollLink";
 import SiteHeader from "../_components/SiteHeader";
@@ -11,9 +10,6 @@ export const metadata: Metadata = {
   description:
     "Three minutes of questions, one page of answers: where your hours are going, the one tool to start with, and what those hours are worth — from your own numbers.",
 };
-
-// Drop the explainer video's YouTube ID here when it's published.
-const YOUTUBE_VIDEO_ID = "";
 
 const PAINS = [
   {
@@ -63,8 +59,9 @@ export default function SmbPage() {
             <span className="text-brand">leaving hours on the table.</span>
           </h1>
           <p className="mt-7 max-w-[560px] text-[18px] leading-[1.55] text-foreground">
-            A few questions, one page: where your hours go, what they&apos;re
-            worth, and the one tool to start with.
+            We can help you figure out the best way to organize all your
+            information so that you can automate the repetitive work and get
+            time back.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <ScrollLink
@@ -73,23 +70,20 @@ export default function SmbPage() {
             >
               Get my free snapshot →
             </ScrollLink>
-            <Link
-              href="/contact-sales"
+            <a
+              href="https://calendly.com/sam-ferganalabs/30min"
               className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
             >
               Book a call
-            </Link>
+            </a>
           </div>
-          <p className="mt-4 text-[13px] text-muted">
-            3 minutes · no signup · the report is yours either way
-          </p>
         </div>
       </section>
 
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="max-w-[720px] font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Sound familiar?
+            Common problems we see our customers facing
           </h2>
           <p className="mt-4 max-w-[560px] text-[16px] leading-[1.6] text-dim">
             If two or more of these hit home, the snapshot will find you hours.
@@ -118,42 +112,12 @@ export default function SmbPage() {
         </div>
       </section>
 
-      <section className="border-b border-border-subtle py-20 md:py-28">
-        <div className="mx-auto max-w-[1200px] px-7">
-          <h2 className="max-w-[720px] font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            What we do, in two minutes.
-          </h2>
-          <div className="mt-10 aspect-video max-w-[860px] overflow-hidden rounded-[14px] border border-border shadow-[var(--shadow-terminal)]">
-            {YOUTUBE_VIDEO_ID ? (
-              <iframe
-                className="h-full w-full"
-                src={`https://www.youtube-nocookie.com/embed/${YOUTUBE_VIDEO_ID}`}
-                title="What we do, in two minutes"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-inverted">
-                <p className="text-[14px] text-on-inverted-dim">
-                  Explainer video coming soon
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section id="snapshot" className="border-b border-border-subtle bg-surface py-20 md:py-28">
+      <section id="snapshot" className="border-b border-border-subtle py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="max-w-[760px] font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
             Answer a few questions. Walk away with{" "}
             <span className="text-brand">the report.</span>
           </h2>
-          <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-dim">
-            The same interview we run on paid engagements, self-serve. Already
-            using an AI agent like Claude Code? Say so — we&apos;ll hand you the
-            interview itself to run at home.
-          </p>
           <div className="mt-10 max-w-[760px]">
             <AssessmentChat />
           </div>
