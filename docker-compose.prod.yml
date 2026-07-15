@@ -1,4 +1,9 @@
-# Stash — production / self-hosting deployment
+# Stash — SELF-HOSTING deployment (community / on-prem).
+#
+# This is NOT how joinstash.ai runs. Our hosted prod is on Render, building
+# from the repo Dockerfiles and auto-deploying on every commit to main (see
+# CLAUDE.md → Deployment). This compose file + the GHCR images below exist
+# only so third parties can self-host Stash. Editing it does not affect prod.
 #
 # Usage:
 #   cp .env.example .env        # fill in required values
