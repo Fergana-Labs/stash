@@ -1794,6 +1794,322 @@ async def test_slack_projects_day_transcripts_with_authors(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_slack_day_transcript_groups_threads(client: AsyncClient):
+    """Coherent conversations are the point of thread sync: same-day replies
+    render indented under their parent (not shredded into channel chronology),
+    and a cross-day thread opens with one context line quoting the parent from
+    its own day, truncated to ~80 chars."""
+    from datetime import UTC, datetime
+
+    api_key, owner_id = await _register(client, "slack_threads")
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_THREADS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+
+    def ts_of(*args) -> str:
+        return f"{datetime(*args, tzinfo=UTC).timestamp():.6f}"
+
+    parent_ts = ts_of(2026, 7, 13, 22, 53)
+    parent_text = (
+        "FYI — I put up a draft PR (#687) that syncs Slack thread replies into "
+        "Stash so incident timelines stay searchable"
+    )
+    messages = [
+        (parent_ts, None, "henry", parent_text),
+        (ts_of(2026, 7, 13, 23, 0), None, "sam", "unrelated message"),
+        (ts_of(2026, 7, 13, 23, 10), parent_ts, "michael", "taking a look tomorrow"),
+        (ts_of(2026, 7, 13, 23, 12), parent_ts, "henry", "no rush"),
+        (ts_of(2026, 7, 14, 9, 2), parent_ts, "michael", "merged already? let's talk"),
+    ]
+    for ts, thread_ts, author, text in messages:
+        await source_service.upsert_content_document(
+            table="slack_messages",
+            source_id=UUID(src["id"]),
+            owner_user_id=ws,
+            path=f"general/{ts}",
+            name="#general",
+            kind="message",
+            content=text,
+            external_ref=f"C1:{ts}",
+            extra={
+                "channel_id": "C1",
+                "channel_name": "general",
+                "ts": ts,
+                "thread_ts": thread_ts,
+                "author_id": f"U_{author}",
+                "author": author,
+            },
+        )
+
+    day_one = await source_service.read_document(src, "general/2026-07-13")
+    assert day_one["content"].splitlines()[2:] == [
+        f"22:53 henry: {parent_text}",
+        "  ↳ 23:10 michael: taking a look tomorrow",
+        "  ↳ 23:12 henry: no rush",
+        "23:00 sam: unrelated message",
+    ]
+
+    day_two = await source_service.read_document(src, "general/2026-07-14")
+    quote = parent_text[:80] + "…"
+    assert day_two["content"].splitlines()[2:] == [
+        f'09:02 (thread from 2026-07-13 22:53 henry: "{quote}")',
+        "  ↳ 09:02 michael: merged already? let's talk",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slack_backfill_fetches_thread_replies(client: AsyncClient, monkeypatch, pool):
+    """conversations.history omits thread replies, so a parent with
+    reply_count must trigger a paged conversations.replies fetch whose rows
+    land with thread_ts linkage. Re-running is idempotent."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_replies")
+    await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_REPLIES",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    replies_calls: list[dict] = []
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.CONVERSATIONS_REPLIES_URL:
+            replies_calls.append(dict(params))
+            if "cursor" not in params:
+                return {
+                    "messages": [
+                        # Slack returns the parent as the thread's first message.
+                        {"type": "message", "ts": "1000.000100", "text": "parent"},
+                        {
+                            "type": "message",
+                            "ts": "1000.000200",
+                            "text": "first reply",
+                            "thread_ts": "1000.000100",
+                        },
+                    ],
+                    "response_metadata": {"next_cursor": "page2"},
+                }
+            return {
+                "messages": [
+                    {
+                        "type": "message",
+                        "ts": "1000.000300",
+                        "text": "second reply",
+                        "thread_ts": "1000.000100",
+                    }
+                ]
+            }
+        return {
+            "messages": [
+                {"type": "message", "ts": "1000.000100", "text": "parent", "reply_count": 2},
+                {"type": "message", "ts": "1000.000050", "text": "no thread"},
+            ]
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+
+    assert [c.get("cursor") for c in replies_calls] == [None, "page2"]
+    assert all(c["channel"] == "C1" and c["ts"] == "1000.000100" for c in replies_calls)
+    rows = await pool.fetch(
+        "SELECT ts, thread_ts FROM slack_messages WHERE source_id = $1 ORDER BY ts",
+        UUID(src["id"]),
+    )
+    assert [(r["ts"], r["thread_ts"]) for r in rows] == [
+        ("1000.000050", None),
+        ("1000.000100", None),
+        ("1000.000200", "1000.000100"),
+        ("1000.000300", "1000.000100"),
+    ]
+
+    await indexer.index_slack(src)
+    count = await pool.fetchval(
+        "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", UUID(src["id"])
+    )
+    assert count == 4
+
+
+@pytest.mark.asyncio
+async def test_slack_backfill_discloses_thread_cap(client: AsyncClient, monkeypatch, pool):
+    """A thread whose replies exceed the per-thread cap must say so in the
+    channel's listing, like the channel history cap does — and the notice
+    clears once the thread fits."""
+    from backend.integrations.slack import indexer
+
+    monkeypatch.setattr(indexer, "MAX_MESSAGES_PER_CHANNEL", 2)
+    api_key, owner_id = await _register(client, "slack_thread_cap")
+    await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_THREAD_CAP",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    reply_count = 3
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.CONVERSATIONS_REPLIES_URL:
+            replies = [
+                {
+                    "type": "message",
+                    "ts": f"1000.00020{i}",
+                    "text": f"reply {i}",
+                    "thread_ts": "1000.000100",
+                }
+                for i in range(reply_count)
+            ]
+            return {"messages": replies}
+        return {
+            "messages": [
+                {
+                    "type": "message",
+                    "ts": "1000.000100",
+                    "text": "parent",
+                    "reply_count": reply_count,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+    docs = await source_service.list_documents(src)
+    notices = [d["path"] for d in docs if d["kind"] == "notice"]
+    assert notices == ["general/1000.000100-thread-cap"]
+    notice = await source_service.read_document(src, notices[0])
+    assert "not searchable here" in notice["content"]
+    # The capped third reply was dropped, not silently stored.
+    stored = await pool.fetchval(
+        "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND thread_ts IS NOT NULL",
+        UUID(src["id"]),
+    )
+    assert stored == 2
+
+    # The thread now fits — the stale notice must disappear.
+    reply_count = 2
+    await indexer.index_slack(src)
+    docs = await source_service.list_documents(src)
+    assert [d["kind"] for d in docs] == ["transcript"]
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_keeps_thread_linkage(client: AsyncClient, pool):
+    """A live reply keeps its parent linkage, and thread_broadcast — a reply
+    also sent to the channel — is ingested rather than dropped. A thread
+    parent (thread_ts == ts) stays top-level."""
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    _, owner_id = await _register(client, "slack_thread_ingest")
+    source = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_THREAD_INGEST",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+
+    events = [
+        {
+            "type": "message",
+            "channel": "C1",
+            "ts": "1717.0001",
+            "thread_ts": "1717.0001",
+            "text": "the parent",
+        },
+        {
+            "type": "message",
+            "channel": "C1",
+            "ts": "1717.0002",
+            "thread_ts": "1717.0001",
+            "text": "a plain reply",
+        },
+        {
+            "type": "message",
+            "subtype": "thread_broadcast",
+            "channel": "C1",
+            "ts": "1717.0003",
+            "thread_ts": "1717.0001",
+            "text": "broadcast reply",
+        },
+    ]
+    for event in events:
+        assert await ingest_slack_message("T_THREAD_INGEST", event) == 1
+
+    rows = await pool.fetch(
+        "SELECT ts, thread_ts FROM slack_messages WHERE source_id = $1 ORDER BY ts",
+        UUID(source["id"]),
+    )
+    assert [(r["ts"], r["thread_ts"]) for r in rows] == [
+        ("1717.0001", None),
+        ("1717.0002", "1717.0001"),
+        ("1717.0003", "1717.0001"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slack_get_honors_rate_limit_retry_after():
+    """A 429 must not abort the channel: _slack_get sleeps out Retry-After and
+    retries, and only a persistently rate-limited call fails loud."""
+    from backend.integrations.slack import indexer
+
+    class FakeResponse:
+        def __init__(self, status_code, payload=None, headers=None):
+            self.status_code = status_code
+            self._payload = payload
+            self.headers = headers or {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, responses):
+            self.responses = list(responses)
+            self.calls = 0
+
+        async def get(self, url, params):
+            self.calls += 1
+            return self.responses.pop(0)
+
+    limited = FakeResponse(429, headers={"Retry-After": "0"})
+    ok = FakeResponse(200, payload={"ok": True, "messages": []})
+    recovering = FakeClient([limited, ok])
+    payload = await indexer._slack_get(recovering, "https://slack.test/api", {})
+    assert payload["ok"] is True
+    assert recovering.calls == 2
+
+    exhausted = FakeClient(
+        [FakeResponse(429, headers={"Retry-After": "0"})] * indexer.RATE_LIMIT_MAX_RETRIES
+    )
+    with pytest.raises(RuntimeError, match="rate limit"):
+        await indexer._slack_get(exhausted, "https://slack.test/api", {})
+
+
+@pytest.mark.asyncio
 async def test_slack_backfill_resolves_authors_and_caches_lookups(
     client: AsyncClient, monkeypatch, pool
 ):
@@ -1895,8 +2211,9 @@ async def test_slack_event_ingest_drops_edits_of_subtyped_messages(
     client: AsyncClient,
     pool,
 ):
-    """Fresh subtyped messages (bot_message, thread_broadcast, ...) are never
-    ingested, so editing one must not sneak it in via message_changed either."""
+    """Fresh subtyped messages (bot_message, channel_join, ...) are never
+    ingested, so editing one must not sneak it in via message_changed either.
+    (thread_broadcast is the exception — it's a normal reply, tested above.)"""
     from backend.integrations.slack.indexer import ingest_slack_message
 
     api_key, owner_id = await _register(client, "slack_bot_edit")

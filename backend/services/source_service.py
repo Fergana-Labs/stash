@@ -923,7 +923,7 @@ async def _render_slack_day(
 ) -> dict | None:
     rows = await get_pool().fetch(
         """
-        SELECT ts, author, content FROM slack_messages
+        SELECT ts, thread_ts, author, content FROM slack_messages
         WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'message'
           AND channel_id = ANY($2::text[]) AND channel_name = $3
           AND to_char(to_timestamp(ts::float8) AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $4
@@ -936,20 +936,100 @@ async def _render_slack_day(
     )
     if not rows:
         return None
+    groups = _group_slack_threads(rows)
+    cross_day_parents = await _slack_thread_parents(
+        source,
+        channel,
+        allowed_channel_ids,
+        [g["parent_ts"] for g in groups if g["parent"] is None],
+    )
     lines = [f"# #{channel} — {day} (UTC)", ""]
-    for row in rows:
-        clock = datetime.fromtimestamp(float(row["ts"]), UTC).strftime("%H:%M")
-        # Continuation lines are indented so a line-leading HH:MM always means
-        # a new message.
-        text = (row["content"] or "").replace("\n", "\n    ")
-        author = row["author"] or ""
-        lines.append(f"{clock} {author}: {text}" if author else f"{clock} {text}")
+    for group in groups:
+        if group["parent"] is not None:
+            lines.append(_slack_message_line(group["parent"]))
+        else:
+            lines.append(
+                _slack_thread_context_line(
+                    group["replies"][0]["ts"],
+                    group["parent_ts"],
+                    cross_day_parents.get(group["parent_ts"]),
+                )
+            )
+        for reply in group["replies"]:
+            lines.append("  ↳ " + _slack_message_line(reply))
     return {
         "path": f"{channel}/{day}",
         "name": f"#{channel} {day}",
         "kind": "transcript",
         "content": "\n".join(lines) + "\n",
     }
+
+
+def _group_slack_threads(rows) -> list[dict]:
+    """Group a day's message rows into render units, in chronological order:
+    one group per top-level message (carrying its same-day replies), plus one
+    group per cross-day thread — replies whose parent lives in an earlier
+    day's transcript — anchored where the day's first reply lands. Rows are ts
+    ordered, so a same-day parent is always seen before its replies."""
+    groups: list[dict] = []
+    by_parent_ts: dict[str, dict] = {}
+    for row in rows:
+        parent_ts = row["thread_ts"]
+        if parent_ts is None:
+            group = {"parent": row, "parent_ts": row["ts"], "replies": []}
+            groups.append(group)
+            by_parent_ts[row["ts"]] = group
+            continue
+        group = by_parent_ts.get(parent_ts)
+        if group is None:
+            group = {"parent": None, "parent_ts": parent_ts, "replies": []}
+            groups.append(group)
+            by_parent_ts[parent_ts] = group
+        group["replies"].append(row)
+    return groups
+
+
+async def _slack_thread_parents(
+    source: dict, channel: str, allowed_channel_ids: list[str], parent_ts: list[str]
+) -> dict[str, dict]:
+    """Rows of cross-day thread parents, keyed by ts, for context lines."""
+    if not parent_ts:
+        return {}
+    rows = await get_pool().fetch(
+        "SELECT ts, author, content FROM slack_messages "
+        "WHERE source_id = $1 AND deleted_at IS NULL AND kind = 'message' "
+        "AND channel_id = ANY($2::text[]) AND channel_name = $3 AND ts = ANY($4::text[])",
+        UUID(source["id"]),
+        allowed_channel_ids,
+        channel,
+        parent_ts,
+    )
+    return {r["ts"]: r for r in rows}
+
+
+def _slack_message_line(row) -> str:
+    clock = datetime.fromtimestamp(float(row["ts"]), UTC).strftime("%H:%M")
+    # Continuation lines are indented so a line-leading HH:MM always means
+    # a new message.
+    text = (row["content"] or "").replace("\n", "\n    ")
+    author = row["author"] or ""
+    return f"{clock} {author}: {text}" if author else f"{clock} {text}"
+
+
+def _slack_thread_context_line(first_reply_ts: str, parent_ts: str, parent_row) -> str:
+    """One line of context before a cross-day thread's first reply, quoting
+    the parent from its own day. The parent row can be absent (older than the
+    backfill window), in which case only its timestamp is known."""
+    clock = datetime.fromtimestamp(float(first_reply_ts), UTC).strftime("%H:%M")
+    stamp = datetime.fromtimestamp(float(parent_ts), UTC).strftime("%Y-%m-%d %H:%M")
+    if parent_row is None:
+        return f"{clock} (thread from {stamp})"
+    quote = " ".join((parent_row["content"] or "").split())
+    if len(quote) > 80:
+        quote = quote[:80] + "…"
+    author = parent_row["author"] or ""
+    attribution = f"{author}: " if author else ""
+    return f'{clock} (thread from {stamp} {attribution}"{quote}")'
 
 
 async def _read_twitter_live_ref(source: dict, ref: str) -> dict:

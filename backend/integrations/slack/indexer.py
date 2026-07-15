@@ -1,8 +1,9 @@
 """Slack → slack_messages: one-time backfill + per-event ingest.
 
 `index_slack` backfills recent history for the source's explicit channel
-allowlist. Live updates arrive via the Events API webhook, which enqueues
-`ingest_slack_message` per message. Each message is a row at `{channel}/{ts}`
+allowlist, including thread replies (conversations.history omits them, so each
+threaded parent gets a conversations.replies fetch). Live updates arrive via
+the Events API webhook, which enqueues `ingest_slack_message` per message. Each message is a row at `{channel}/{ts}`
 (with native channel_id/channel_name/ts and author columns); the *document
 projection* over these rows is one transcript per channel per UTC day (see
 source_service.list_documents/read_document), so agents read coherent,
@@ -11,6 +12,7 @@ attributed conversations instead of one-line files.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from uuid import UUID
 
@@ -24,11 +26,13 @@ logger = logging.getLogger(__name__)
 
 CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
 CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history"
+CONVERSATIONS_REPLIES_URL = "https://slack.com/api/conversations.replies"
 USERS_INFO_URL = "https://slack.com/api/users.info"
 
 CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
 MAX_CHANNELS = 100
 MAX_MESSAGES_PER_CHANNEL = 200
+RATE_LIMIT_MAX_RETRIES = 5
 
 # Sorts before any real YYYY-MM-DD transcript, so the cap disclosure is the
 # first entry an agent sees when listing a capped channel.
@@ -36,12 +40,20 @@ CAP_MARKER_LEAF = "0000-history-cap"
 
 
 async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
-    resp = await client.get(url, params=params)
-    resp.raise_for_status()
-    payload = resp.json()
-    if not payload.get("ok"):
-        raise RuntimeError("Slack API returned ok=false")
-    return payload
+    # conversations.replies is Tier 3 (~50 req/min), so a threaded backfill can
+    # legitimately hit 429s; honoring Retry-After keeps the sync alive instead
+    # of aborting the channel.
+    for _ in range(RATE_LIMIT_MAX_RETRIES):
+        resp = await client.get(url, params=params)
+        if resp.status_code == 429:
+            await asyncio.sleep(float(resp.headers["Retry-After"]))
+            continue
+        resp.raise_for_status()
+        payload = resp.json()
+        if not payload.get("ok"):
+            raise RuntimeError("Slack API returned ok=false")
+        return payload
+    raise RuntimeError("Slack API kept rate limiting after retries")
 
 
 async def _author_of(
@@ -130,7 +142,18 @@ async def index_slack(source: dict) -> str | None:
                     text=msg.get("text") or "",
                     author_id=author_id,
                     author=author,
+                    thread_ts=_thread_ts_of(msg),
                 )
+                if msg.get("reply_count"):
+                    await _index_thread_replies(
+                        client=client,
+                        source_id=source_id,
+                        owner_user_id=owner_user_id,
+                        channel_id=channel_id,
+                        channel_name=channel_name,
+                        parent_ts=msg["ts"],
+                        names=names,
+                    )
             await _sync_cap_marker(
                 source_id=source_id,
                 owner_user_id=owner_user_id,
@@ -202,10 +225,24 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
                     text=msg.get("text") or "",
                     author_id=author_id,
                     author=author,
+                    thread_ts=_thread_ts_of(msg),
                 )
                 refs.append(f"{channel_name}/{msg['ts']}")
                 if len(refs) >= limit:
                     break
+                if msg.get("reply_count"):
+                    reply_ts = await _index_thread_replies(
+                        client=client,
+                        source_id=source_id,
+                        owner_user_id=owner_user_id,
+                        channel_id=channel_id,
+                        channel_name=channel_name,
+                        parent_ts=msg["ts"],
+                        names=names,
+                    )
+                    refs.extend(f"{channel_name}/{ts}" for ts in reply_ts)
+                    if len(refs) >= limit:
+                        break
 
     return {
         "fetched": len(refs),
@@ -213,6 +250,72 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
         "until": until.isoformat() if until else None,
         "results": [{"ref": r} for r in refs[:25]],
     }
+
+
+def _thread_ts_of(msg: dict) -> str | None:
+    """The parent ts if `msg` is a thread reply, else None. Slack marks thread
+    parents with thread_ts == ts, and `thread_broadcast` copies in history
+    carry the real parent's thread_ts."""
+    thread_ts = msg.get("thread_ts")
+    if not thread_ts or thread_ts == msg.get("ts"):
+        return None
+    return thread_ts
+
+
+async def _index_thread_replies(
+    *,
+    client: httpx.AsyncClient,
+    source_id: UUID,
+    owner_user_id: UUID,
+    channel_id: str,
+    channel_name: str,
+    parent_ts: str,
+    names: dict[str, str],
+) -> list[str]:
+    """Page conversations.replies for one thread and upsert every reply with
+    its parent linkage. Replies beyond MAX_MESSAGES_PER_CHANNEL are dropped;
+    a capped thread gets a notice document, an uncapped one gets any stale
+    notice removed. Returns the upserted reply ts values."""
+    reply_ts: list[str] = []
+    capped = False
+    cursor = None
+    while True:
+        params = {"channel": channel_id, "ts": parent_ts, "limit": MAX_MESSAGES_PER_CHANNEL}
+        if cursor:
+            params["cursor"] = cursor
+        payload = await _slack_get(client, CONVERSATIONS_REPLIES_URL, params)
+        for msg in payload.get("messages", []):
+            # conversations.replies returns the parent as its first message.
+            if msg.get("type") != "message" or not msg.get("ts") or msg["ts"] == parent_ts:
+                continue
+            if len(reply_ts) >= MAX_MESSAGES_PER_CHANNEL:
+                capped = True
+                break
+            author_id, author = await _author_of(client, names, msg)
+            await _upsert_message(
+                source_id=source_id,
+                owner_user_id=owner_user_id,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                ts=msg["ts"],
+                text=msg.get("text") or "",
+                author_id=author_id,
+                author=author,
+                thread_ts=parent_ts,
+            )
+            reply_ts.append(msg["ts"])
+        cursor = (payload.get("response_metadata") or {}).get("next_cursor")
+        if capped or not cursor:
+            break
+    await _sync_thread_cap_marker(
+        source_id=source_id,
+        owner_user_id=owner_user_id,
+        channel_id=channel_id,
+        channel_name=channel_name,
+        parent_ts=parent_ts,
+        capped=capped,
+    )
+    return reply_ts
 
 
 async def _upsert_message(
@@ -225,6 +328,7 @@ async def _upsert_message(
     text: str,
     author_id: str | None,
     author: str,
+    thread_ts: str | None,
 ) -> None:
     existing = await get_pool().fetchrow(
         "SELECT path, name FROM slack_messages "
@@ -248,6 +352,7 @@ async def _upsert_message(
             "channel_id": channel_id,
             "channel_name": channel_name,
             "ts": ts,
+            "thread_ts": thread_ts,
             "author_id": author_id,
             "author": author,
         },
@@ -292,6 +397,43 @@ async def _sync_cap_marker(
     )
 
 
+async def _sync_thread_cap_marker(
+    *,
+    source_id: UUID,
+    owner_user_id: UUID,
+    channel_id: str,
+    channel_name: str,
+    parent_ts: str,
+    capped: bool,
+) -> None:
+    """Per-thread analogue of _sync_cap_marker: a thread whose replies exceeded
+    the per-thread cap gets a notice document; one that fit gets any stale
+    notice removed."""
+    path = f"{channel_name}/{parent_ts}-thread-cap"
+    if not capped:
+        await get_pool().execute(
+            "DELETE FROM slack_messages WHERE source_id = $1 AND path = $2",
+            source_id,
+            path,
+        )
+        return
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        owner_user_id=owner_user_id,
+        path=path,
+        name=f"#{channel_name} thread {parent_ts} is NOT fully indexed",
+        kind="notice",
+        content=(
+            f"Only the {MAX_MESSAGES_PER_CHANNEL} oldest replies of the thread started at "
+            f"{parent_ts} in #{channel_name} are indexed. Later replies exist in Slack "
+            "but are not searchable here."
+        ),
+        external_ref=None,
+        extra={"channel_id": channel_id, "channel_name": channel_name, "ts": None},
+    )
+
+
 async def ingest_slack_message(team_id: str, event: dict) -> int:
     """Upsert one Events-API message into matching Slack sources for this team.
     Each source is user-scoped and channel-scoped, so the same message lands
@@ -322,12 +464,13 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         message = event.get("message") or {}
         if message.get("type") != "message" or not message.get("ts"):
             return 0
-        # Edits of subtyped messages (bot_message, thread_broadcast, ...) carry
-        # the subtype inside the nested message; drop them like fresh ones.
-        if message.get("subtype"):
+        # Edits of subtyped messages (bot_message, ...) carry the subtype inside
+        # the nested message; drop them like fresh ones — except thread_broadcast,
+        # which is just a reply that was also sent to the channel.
+        if message.get("subtype") not in (None, "thread_broadcast"):
             return 0
         event = {**message, "channel": channel_id, "type": "message"}
-    elif subtype:
+    elif subtype not in (None, "thread_broadcast"):
         return 0
 
     if not event.get("ts"):
@@ -360,6 +503,7 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
             text=event.get("text") or "",
             author_id=author_id,
             author=author,
+            thread_ts=_thread_ts_of(event),
         )
         ingested += 1
     return ingested
