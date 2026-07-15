@@ -180,9 +180,10 @@ class WorkspaceKeyRequest(BaseModel):
 
 @router.post("/workspaces", dependencies=[Depends(require_admin_token)])
 async def create_workspace(req: WorkspaceRequest):
-    """Create a workspace and its login-less scope user; backfill-enroll
-    existing verified users on the domain. Returns a bootstrap full-access
-    key for ops to connect agent credentials and sources as the workspace."""
+    """Create a workspace and its login-less scope user. Verified users on
+    the domain are members immediately (membership is derived). Returns a
+    bootstrap full-access key for ops to connect agent credentials and
+    sources as the workspace."""
     from ..auth import create_api_key
     from ..services import workspace_service
 
@@ -218,15 +219,23 @@ async def list_workspaces():
 
 @router.post("/workspaces/{workspace_id}/members", dependencies=[Depends(require_admin_token)])
 async def add_workspace_member(workspace_id: UUID, req: MemberRequest):
-    """Explicitly add a member by email — the path for people outside the
-    workspace's domain (contractors etc.)."""
+    """Explicitly add an off-domain member by email (contractors etc.).
+    On-domain users are members automatically — adding them is rejected so
+    `workspace_members` stays purely off-domain and removal always sticks."""
     from ..services import user_service, workspace_service
 
-    if not await workspace_service.get_workspace(workspace_id):
+    workspace = await workspace_service.get_workspace(workspace_id)
+    if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     user = await user_service.get_user_by_email(req.email)
     if not user:
         raise HTTPException(status_code=404, detail=f"No user with email {req.email}")
+    if workspace_service.email_domain(req.email) == workspace["domain"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{req.email} is on the workspace domain — on-domain users with a "
+            "verified email are members automatically and cannot be added or removed",
+        )
     await workspace_service.add_member(workspace_id, user["id"])
     return {"workspace_id": str(workspace_id), "user_id": str(user["id"])}
 

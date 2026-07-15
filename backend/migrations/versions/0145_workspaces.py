@@ -1,10 +1,10 @@
-"""Workspaces: an org-owned scope with stored membership.
+"""Workspaces: an org-owned scope with derived membership.
 
 A workspace's knowledge base is the scope of a dedicated login-less users row
-(`scope_user_id`). Membership is the single source of truth the permission
-predicate reads; rows arrive via domain auto-enroll (verified email domain
-matches `domain`) or an explicit admin add. `users.email_verified` is the
-trust anchor for auto-enroll — unverified emails must never grant membership.
+(`scope_user_id`). On-domain membership is derived: a *verified* email on
+`domain` is a member, with `users.email_verified` as the trust anchor —
+unverified emails must never grant membership. `workspace_members` holds only
+explicit admin adds for off-domain people (contractors).
 
 Revision ID: 0145
 Revises: 0144

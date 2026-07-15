@@ -1,11 +1,13 @@
-"""Workspaces: an org-owned scope with stored membership.
+"""Workspaces: an org-owned scope with derived membership.
 
 A workspace's knowledge base is the scope of a dedicated login-less users row
-(`workspaces.scope_user_id`). `workspace_members` is the single source of
-truth for membership; the permission predicate grants members read+write on
-the workspace scope's content. Rows arrive two ways: domain auto-enroll (a
-user whose *verified* email domain matches `workspaces.domain`) and explicit
-admin adds (any user, any domain).
+(`workspaces.scope_user_id`). Membership is a pure function of two inputs:
+on-domain users (a *verified* email on `workspaces.domain`) are members by
+definition — there is nothing to enroll, backfill, or revoke — and
+`workspace_members` holds only explicit admin adds for off-domain people
+(contractors). `users.email_verified` is the trust anchor for the domain rule:
+an unverified `fake@customer.com` signup must never see the customer's KB.
+The single SQL predicate is `permission_service.workspace_member_condition`.
 """
 
 import re
@@ -32,8 +34,9 @@ async def _unique_scope_user_name(domain: str) -> str:
 
 
 async def create_workspace(name: str, domain: str) -> dict:
-    """Create a workspace: its login-less scope user, the workspaces row, and
-    membership backfill for existing verified users on the domain.
+    """Create a workspace and its login-less scope user. Verified users on the
+    domain are members immediately — membership is derived, so there is no
+    backfill step and signup order never matters.
 
     The scope user has no password and no auth0_sub, so nobody can log in as
     it — it is reached only through API keys minted by the admin endpoints.
@@ -54,14 +57,6 @@ async def create_workspace(name: str, domain: str) -> dict:
         domain,
         scope_user["id"],
     )
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id) "
-        "SELECT $1, u.id FROM users u "
-        "WHERE u.email_verified AND lower(split_part(u.email, '@', 2)) = $2 "
-        "ON CONFLICT DO NOTHING",
-        workspace["id"],
-        domain,
-    )
     await user_scope_service.seed_user_scope(scope_user["id"])
     return dict(workspace)
 
@@ -79,14 +74,19 @@ async def list_workspaces() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT w.id, w.name, w.domain, w.scope_user_id, w.created_at, "
-        "       count(m.user_id) AS member_count "
-        "FROM workspaces w LEFT JOIN workspace_members m ON m.workspace_id = w.id "
-        "GROUP BY w.id ORDER BY w.created_at",
+        "       (SELECT count(*) FROM users u "
+        "        WHERE u.email_verified AND lower(split_part(u.email, '@', 2)) = w.domain) "
+        "       + (SELECT count(*) FROM workspace_members m WHERE m.workspace_id = w.id) "
+        "       AS member_count "
+        "FROM workspaces w ORDER BY w.created_at",
     )
     return [dict(row) for row in rows]
 
 
 async def add_member(workspace_id: UUID, user_id: UUID) -> None:
+    """Explicitly add an off-domain member. On-domain users are members by
+    the domain rule and must never get a row here — the admin router rejects
+    them, keeping this table off-domain-only."""
     pool = get_pool()
     await pool.execute(
         "INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2) "
@@ -97,6 +97,9 @@ async def add_member(workspace_id: UUID, user_id: UUID) -> None:
 
 
 async def remove_member(workspace_id: UUID, user_id: UUID) -> bool:
+    """Remove an explicit (off-domain) member. On-domain members have no row,
+    so removal correctly reports not-found — their access rides on the domain
+    rule and ends only when the account is deactivated."""
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
@@ -106,28 +109,14 @@ async def remove_member(workspace_id: UUID, user_id: UUID) -> bool:
     return result.endswith(" 1")
 
 
-async def enroll_by_domain(user_id: UUID, email: str) -> None:
-    """Enroll a user into the workspace matching their email domain, if any.
-
-    Callers must only pass verified emails — verification is the trust anchor
-    that keeps `fake@customer.com` signups out of the customer's KB.
-    """
-    pool = get_pool()
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id) "
-        "SELECT w.id, $1 FROM workspaces w WHERE w.domain = $2 "
-        "ON CONFLICT DO NOTHING",
-        user_id,
-        email_domain(email),
-    )
-
-
 async def list_for_user(user_id: UUID) -> list[dict]:
+    from . import permission_service
+
+    membership = permission_service.workspace_member_condition("w", 1)
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT w.id, w.name, w.domain, w.scope_user_id FROM workspaces w "
-        "JOIN workspace_members m ON m.workspace_id = w.id "
-        "WHERE m.user_id = $1 ORDER BY w.name",
+        f"SELECT w.id, w.name, w.domain, w.scope_user_id FROM workspaces w "
+        f"WHERE {membership} ORDER BY w.name",
         user_id,
     )
     return [dict(row) for row in rows]

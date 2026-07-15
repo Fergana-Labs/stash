@@ -1,9 +1,12 @@
-"""Workspaces: org-owned scopes with stored membership.
+"""Workspaces: org-owned scopes with derived membership.
 
 What matters here:
-- Membership (not email text) grants access to the workspace KB, and email
-  verification is the trust anchor for domain auto-enroll — an unverified
-  `fake@customer.com` signup must never see the customer's knowledge base.
+- On-domain membership is derived: a *verified* email on the workspace domain
+  is a member, always — no enroll step, no signup-order dependence. Email
+  verification is the trust anchor: an unverified `fake@customer.com` signup
+  must never see the customer's knowledge base.
+- `workspace_members` rows are off-domain-only (explicit admin adds), so
+  admin removal always sticks — a login can never re-derive a removed row.
 - The X-Stash-Scope header re-roots content routes for members only.
 - Owner-only powers (sharing, key minting) never leak to members.
 - A read-access workspace key can feed the KB (transcripts) but not destroy it.
@@ -13,8 +16,6 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-
-from backend.services import workspace_service
 
 from .conftest import unique_name
 from .test_permissions import _auth, _register_with_email
@@ -94,11 +95,13 @@ async def test_domain_must_be_bare_and_lowercase(client: AsyncClient):
         assert resp.status_code == 400, bad
 
 
-# --- Membership: verified-domain backfill, explicit adds, removal ---
+# --- Membership: derived from verified domain, explicit off-domain adds ---
 
 
 @pytest.mark.asyncio
-async def test_verified_domain_user_is_backfilled_and_reads_kb(client: AsyncClient, pool):
+async def test_verified_domain_user_is_member_regardless_of_signup_order(client: AsyncClient, pool):
+    """Membership is derived, so a user who existed before the workspace is a
+    member the moment it's created — no backfill step to run or forget."""
     domain = _domain()
     key, body = await _register_with_email(client, f"alice@{domain}")
     await _verify_email(pool, uuid.UUID(body["id"]))
@@ -132,20 +135,18 @@ async def test_unverified_same_domain_email_gets_nothing(client: AsyncClient, po
 
 
 @pytest.mark.asyncio
-async def test_enroll_by_domain_on_login_joins_existing_workspace(client: AsyncClient, pool):
-    """Auto-enroll also runs for users who sign up after the workspace exists
-    (the Auth0 login path calls enroll_by_domain with verified emails)."""
+async def test_late_signup_is_member_the_moment_email_verifies(client: AsyncClient, pool):
+    """The other signup order: workspace first, user later. Verification alone
+    makes them a member — there is no enroll step in between to go stale."""
     domain = _domain()
     ws = await _create_workspace(client, domain)
 
     key, body = await _register_with_email(client, f"late@{domain}")
-    user_id = uuid.UUID(body["id"])
-    await _verify_email(pool, user_id)
-    await workspace_service.enroll_by_domain(user_id, f"late@{domain}")
-
     page_id = await _workspace_page(pool, ws["scope_user_id"])
-    resp = await client.get(f"/api/v1/pages/{page_id}", headers=_auth(key))
-    assert resp.status_code == 200
+    assert (await client.get(f"/api/v1/pages/{page_id}", headers=_auth(key))).status_code == 404
+
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    assert (await client.get(f"/api/v1/pages/{page_id}", headers=_auth(key))).status_code == 200
 
 
 @pytest.mark.asyncio
@@ -168,8 +169,36 @@ async def test_admin_adds_and_removes_off_domain_member(client: AsyncClient, poo
         headers=ADMIN,
     )
     assert resp.status_code == 200
-    # Removal revokes access immediately — membership is the single source of truth.
+    # Removal revokes access immediately and permanently: off-domain members
+    # exist only as explicit rows, so nothing can re-derive this membership.
     assert (await client.get(f"/api/v1/pages/{page_id}", headers=_auth(key))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_add_or_remove_on_domain_member(client: AsyncClient, pool):
+    """On-domain users are members by the domain rule alone. Adding them is
+    rejected (workspace_members stays off-domain-only) and removing them
+    404s — there is no row to delete, and no admin action can revoke a
+    derived membership."""
+    domain = _domain()
+    email = f"employee@{domain}"
+    _, body = await _register_with_email(client, email)
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+
+    resp = await client.post(
+        f"/api/v1/admin/workspaces/{ws['workspace_id']}/members",
+        json={"email": email},
+        headers=ADMIN,
+    )
+    assert resp.status_code == 400
+    assert "on-domain" in resp.json()["detail"]
+
+    resp = await client.delete(
+        f"/api/v1/admin/workspaces/{ws['workspace_id']}/members/{body['id']}",
+        headers=ADMIN,
+    )
+    assert resp.status_code == 404
 
 
 # --- Member read+write ---

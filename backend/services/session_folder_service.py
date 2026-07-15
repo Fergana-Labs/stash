@@ -193,9 +193,8 @@ async def list_folders(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "  ) "
         "  OR EXISTS ("
         "    SELECT 1 FROM workspaces member_ws "
-        "    JOIN workspace_members member_row ON member_row.workspace_id = member_ws.id "
         "    WHERE member_ws.scope_user_id = sf.owner_user_id "
-        "      AND member_row.user_id = $2"
+        f"     AND {permission_service.workspace_member_condition('member_ws', 2)}"
         "  )) "
         "ORDER BY sf.is_default DESC, sf.name",
         owner_user_id,
