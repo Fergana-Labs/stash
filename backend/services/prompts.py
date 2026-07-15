@@ -116,9 +116,9 @@ def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
 
     Reading is recursive, RLM-style (arXiv:2512.24601): the corpus can exceed
     one context window, so the root agent peeks at documents to triage but
-    never accumulates their bodies — each artifact is fully read inside a
-    disposable reader subagent that writes the page and returns a
-    constant-size digest.
+    never accumulates their bodies — each artifact (document or session
+    transcript) is fully read inside a disposable reader subagent that writes
+    the page and returns a constant-size digest.
     A bootstrap run once skimmed transcripts with `head -20` and published
     confident-looking pages whose "facts" were inferred from byte sizes —
     this structure exists so that can't recur."""
@@ -141,12 +141,16 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Read the inputs
 - `{changes_cmd}` — the delta to curate: recent
-  history/chats, changed pages, new files, and connected sources. This IS your
-  work set; do not re-scan the whole corpus.
-- `history_has_more: true` means the history overflowed this run's cap. The
-  remainder is already queued for your next run (the watermark only advances
-  through what you were shown) — curate what's present, don't try to page.
-- Each history event carries its session's `folder`. Folder placement is the
+  session activity, changed pages, new files, and connected sources. This IS
+  your work set; do not re-scan the whole corpus.
+- `session_digests` is the chat inventory: one line per conversation
+  (`session_id`, `agent_name`, `folder`, `event_count`, `first_at`, `last_at`,
+  `opening`) — never the transcript itself.
+- `sessions_has_more: true` means the inventory overflowed this run's cap.
+  The remainder is already queued for your next run (the watermark only
+  advances through what you were shown) — curate what's present, don't try
+  to page.
+- Each session digest carries its session's `folder`. Folder placement is the
   owner's deliberate curation signal: sessions filed into a named folder share
   a context (a customer, an org, a project) — attribute what you learn to that
   context rather than generalizing it. A folder whose name marks it as
@@ -186,13 +190,41 @@ Peek at documents to triage; ingest them through subagents:
   exception: write its page yourself. Everything you only peeked at gets
   dispatched. Your job is inventory → dispatch → weave: categories,
   cross-page links, the index, and `Log`, built from the digests — the
-  global view only you have. (Chat history arrives inline via
-  `stash changes` and you curate it directly; the subagent rule is for
-  documents.)
+  global view only you have.
 
 Example — a bootstrap delta with 40 documents: inventory the 40 paths;
 dispatch reader subagents in batches of 5; collect 40 digests; write the
 categories, cross-links, index, and `Log`; log any INCOMPLETEs.
+
+## Reading sessions (one reader subagent per session)
+Conversations get the same treatment as documents. `session_digests` is your
+inventory — you never see transcripts inline, and you never fetch one into
+your own context. Triage each digest, then dispatch:
+
+- **Triage from the digest alone**: `folder` tells you whose context it is,
+  `event_count` and `opening` tell you whether it's substantive. A trivial
+  session (a two-turn "thanks!" exchange) is a `skipped` line in `Log` with a
+  one-line reason, not a dispatch. Rank the rest and dispatch a reader
+  subagent per session worth curating, a few in parallel — at most ~50
+  dispatches per run; anything you triage out for budget gets a `skipped`
+  Log line naming the budget, so nothing is silently dropped.
+- The reader finds its transcript by session id and reads the ENTIRE
+  transcript in its own context before writing a single fact:
+  `stash vfs "grep '<session_id>' /sessions/_index.jsonl"` names the session
+  directory, then `stash vfs "cat '/sessions/<dir>/transcript.md'"` — in
+  chunks (`sed -n '1,400p'`, …) when it is long. It updates or creates the
+  wiki pages for the session's folder/org itself and returns ONLY
+  `page_id | one-line digest | topic tags`.
+- No facts from partial reads. A page must never say what a conversation was
+  "likely about" from `event_count` or `opening` — those exist for triage
+  only. A session the reader couldn't fully ingest is an INCOMPLETE line in
+  `Log`, re-presented as next-run work — never a confident summary.
+
+Example — a maintenance delta with 14 session digests: triage from the
+inventory (3 trivial → `skipped` lines); dispatch 11 readers in batches of 5,
+each with its session id, its folder's category folder id, and any existing
+page id for that org; collect 11 digests; weave cross-links, the org pages,
+the index, and `Log`.
 
 ## Wiki anatomy (under the Memory folder)
 - **`Memory Wiki`** — the root index page: a catalog of every page with a
@@ -219,7 +251,7 @@ pages themselves.
 
 ## Ingest principles
 - **Bootstrap vs. maintain — know which mode you're in.** If the Memory folder
-  has no pages, you are bootstrapping: cluster the history into 3-7 coherent
+  has no pages, you are bootstrapping: cluster the delta into 3-7 coherent
   categories and seed the index, the Log, and the first pages in one pass. If
   pages exist, you are maintaining: fold the delta into the existing structure.
 - **Maintain, don't regenerate.** Once the wiki exists, fold in new information;
@@ -227,8 +259,8 @@ pages themselves.
 - **Scope by diff, not by corpus.** Only touch pages whose topic appears in this
   delta. Leave untouched pages alone.
 - **Category-first, pages-second.** A concept from chat history gets its own
-  page only when it appears in >=2 distinct events; one-shot mentions stay as
-  bullets on the category index page.
+  page only when it appears in >=2 distinct sessions; one-shot mentions stay
+  as bullets on the category index page.
 - **Uploaded documents are content, not context.** The changed pages and new
   files in the delta are material the user deliberately added — represent every
   distinct document or document set in the wiki: a topic page, or bullets under
@@ -269,9 +301,10 @@ in `Log` so a future run picks it up.
 
 ## Report
 One line per action: created / updated / merged / skipped, with page titles —
-and append the same lines to the `Log` page. Account for every changed page
-and new file in the delta — anything you chose not to represent in the wiki
-gets a `skipped` line with a one-line reason, never a silent drop.
+and append the same lines to the `Log` page. Account for every session
+digest, changed page, and new file in the delta — anything you chose not
+to represent in the wiki gets a `skipped` line with a one-line reason,
+never a silent drop.
 
 Begin now.
 """

@@ -2631,7 +2631,7 @@ def changes(
     counts = data.get("counts", {})
     console.print(
         f"Changes since {data.get('since') or 'the beginning'}: "
-        f"{counts.get('history', 0)} events, {counts.get('pages', 0)} pages, "
+        f"{counts.get('sessions', 0)} sessions, {counts.get('pages', 0)} pages, "
         f"{counts.get('files', 0)} files, {counts.get('sources', 0)} sources"
     )
 

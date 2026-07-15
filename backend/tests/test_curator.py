@@ -90,12 +90,47 @@ async def _push_events(client: AsyncClient, key: str, events: list[dict]) -> Non
 
 
 @pytest.mark.asyncio
-async def test_feed_overflow_never_drops_events(client: AsyncClient, _db_pool, monkeypatch):
-    """A busy account can produce more events than one delta holds. The feed
-    truncates, but the watermark bound stops at the last event that fit — so
-    the next run picks up exactly where this one left off, and every event is
-    eventually curated."""
-    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 3)
+async def test_feed_groups_session_events_into_digests(client: AsyncClient, _db_pool):
+    """The session is the event feed's document: a busy conversation is one
+    inventory line (count, window, opening), never per-event snippets — root
+    context scales with sessions/day, not events/day. Reader subagents pull
+    the transcript; the feed never carries it."""
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "heavi-chat",
+                "event_type": "user_message" if i % 2 == 0 else "assistant_message",
+                "content": f"turn {i}",
+                "session_id": "conv-busy",
+                "created_at": (base + timedelta(minutes=i)).isoformat(),
+            }
+            for i in range(6)
+        ],
+    )
+
+    feed = await curation_service.changes_since(uid, uid, old)
+    (digest,) = feed["session_digests"]
+    assert digest["session_id"] == "conv-busy"
+    assert digest["agent_name"] == "heavi-chat"
+    assert digest["event_count"] == 6
+    assert digest["first_at"] == base.isoformat()
+    assert digest["last_at"] == (base + timedelta(minutes=5)).isoformat()
+    assert digest["opening"] == "turn 0"  # first user message, not first event
+
+
+@pytest.mark.asyncio
+async def test_feed_overflow_never_drops_sessions(client: AsyncClient, _db_pool, monkeypatch):
+    """A busy account can produce more sessions than one inventory holds. The
+    feed truncates, but the watermark stops at the last session that fit — so
+    the next run picks up exactly where this one left off, and every session
+    is eventually curated."""
+    monkeypatch.setattr(curation_service, "_MAX_SESSIONS", 3)
     key, uid = await _register(client)
     old = datetime(2020, 1, 1, tzinfo=UTC)
     base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -116,21 +151,25 @@ async def test_feed_overflow_never_drops_events(client: AsyncClient, _db_pool, m
     )
 
     feed = await curation_service.changes_since(uid, uid, old)
-    assert feed["history_has_more"] is True
-    assert [h["content"] for h in feed["history"]] == ["turn 0", "turn 1", "turn 2"]
+    assert feed["sessions_has_more"] is True
+    assert [d["session_id"] for d in feed["session_digests"]] == ["conv-0", "conv-1", "conv-2"]
 
     until = base + timedelta(hours=1)
     through = await curation_service.complete_through(uid, old, until)
-    # Complete only through the last event that fit, not through `until`.
+    # Complete only through the last session that fit, not through `until`.
     assert through < base + timedelta(minutes=3)
 
     # The next run's feed starts where this one stopped: nothing was lost.
-    # The boundary event re-appears by design — the watermark backs off a
-    # microsecond so events sharing its timestamp can never be skipped; a
-    # duplicated boundary event is the cheap side of that trade.
+    # The boundary session re-appears by design — the watermark backs off a
+    # microsecond so sessions sharing its timestamp can never be skipped; a
+    # duplicated boundary session is the cheap side of that trade.
     next_feed = await curation_service.changes_since(uid, uid, through)
-    assert [h["content"] for h in next_feed["history"]] == ["turn 2", "turn 3", "turn 4"]
-    assert next_feed["history_has_more"] is False
+    assert [d["session_id"] for d in next_feed["session_digests"]] == [
+        "conv-2",
+        "conv-3",
+        "conv-4",
+    ]
+    assert next_feed["sessions_has_more"] is False
     assert await curation_service.complete_through(uid, through, until) == until
 
 
@@ -139,9 +178,9 @@ async def test_curate_sessions_do_not_consume_feed_slots(
     client: AsyncClient, _db_pool, monkeypatch
 ):
     """The curator's own run transcripts are excluded in SQL. If they were
-    filtered after the query they would eat delta slots and could crowd real
-    activity out of the feed entirely."""
-    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 3)
+    filtered after the query they would eat inventory slots and could crowd
+    real activity out of the feed entirely."""
+    monkeypatch.setattr(curation_service, "_MAX_SESSIONS", 2)
     key, uid = await _register(client)
     old = datetime(2020, 1, 1, tzinfo=UTC)
     base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -151,7 +190,7 @@ async def test_curate_sessions_do_not_consume_feed_slots(
             "agent_name": "curator",
             "event_type": "assistant_message",
             "content": f"curator step {i}",
-            "session_id": "agent-curate-abc-202601011200",
+            "session_id": f"agent-curate-abc-20260101120{i}",
             "created_at": (base + timedelta(seconds=i)).isoformat(),
         }
         for i in range(4)
@@ -169,18 +208,18 @@ async def test_curate_sessions_do_not_consume_feed_slots(
     await _push_events(client, key, curate_noise + real)
 
     feed = await curation_service.changes_since(uid, uid, old)
-    assert [h["content"] for h in feed["history"]] == ["real 0", "real 1"]
-    assert feed["history_has_more"] is False
+    assert [d["session_id"] for d in feed["session_digests"]] == ["conv-0", "conv-1"]
+    assert feed["sessions_has_more"] is False
     assert await curation_service.complete_through(
         uid, old, base + timedelta(hours=1)
     ) == base + timedelta(hours=1)
 
 
 @pytest.mark.asyncio
-async def test_feed_events_carry_session_folder(client: AsyncClient, _db_pool):
+async def test_session_digests_carry_folder(client: AsyncClient, _db_pool):
     """Folder placement is the owner's curation signal — 'mark this trace as
-    sanctioned' is a move into a designated folder, so the feed must show each
-    event's folder for the curator to honor the mark."""
+    sanctioned' is a move into a designated folder, so the digest must show
+    the session's folder for the curator to honor the mark."""
     key, uid = await _register(client)
     old = datetime(2020, 1, 1, tzinfo=UTC)
 
@@ -204,7 +243,7 @@ async def test_feed_events_carry_session_folder(client: AsyncClient, _db_pool):
     )
 
     feed = await curation_service.changes_since(uid, uid, old)
-    marked = next(h for h in feed["history"] if h["content"] == "sanctioned trace")
+    marked = next(d for d in feed["session_digests"] if d["session_id"] == "conv-global")
     assert marked["folder"] == "Global — approved for learning"
 
 
@@ -225,7 +264,7 @@ async def test_changes_endpoint(client: AsyncClient):
     r = await client.get("/api/v1/me/changes?since=2020-01-01T00:00:00", headers=_auth(key))
     assert r.status_code == 200
     body = r.json()
-    assert "counts" in body and "history" in body and "pages" in body
+    assert "counts" in body and "session_digests" in body and "pages" in body
 
 
 def test_curator_prompt_embeds_folder_and_window():
@@ -259,6 +298,23 @@ def test_curator_prompt_reads_documents_via_subagents():
     # The root may peek at document content to triage, but must not fill its
     # window with document bodies — that pressure is what caused the skim.
     assert "accumulate document bodies" in boot
+
+
+def test_curator_prompt_reads_sessions_via_subagents():
+    """Sessions get the same RLM discipline as documents: the feed hands the
+    root a per-session inventory, never transcripts, and per-turn uploads
+    (Heavi: 429 events on day one) would otherwise pressure the root into
+    skim-and-infer pages. The prompt must force whole-transcript reads inside
+    reader subagents, allow triage skips only as loud Log lines, and forbid
+    writing facts from digest metadata."""
+    boot = prompts.render_curator_prompt("folder-123", None)
+    flat = " ".join(boot.split())  # collapse hard-wrapped lines
+    assert "one reader subagent per session" in flat
+    assert "session_digests" in flat
+    assert "ENTIRE transcript" in flat
+    # Triage happens on the digest; the digest is never a source of facts.
+    assert "No facts from partial reads" in flat
+    assert "`skipped` line" in flat
 
 
 async def _make_due(pool, agent_id: str, watermark: datetime) -> None:
@@ -320,7 +376,7 @@ async def test_curator_run_does_not_echo_loop(client: AsyncClient, sprite_exec, 
     # doesn't re-trigger the gate or appear in the feed.
     assert await curation_service.has_changes_since(uid, uid, after) is False
     feed = await curation_service.changes_since(uid, uid, after)
-    assert all(not str(e["session_id"] or "").startswith("agent-curate-") for e in feed["history"])
+    assert all(not d["session_id"].startswith("agent-curate-") for d in feed["session_digests"])
 
 
 @pytest.mark.asyncio
