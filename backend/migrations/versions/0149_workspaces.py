@@ -6,14 +6,14 @@ A workspace's knowledge base is the scope of a dedicated login-less users row
 unverified emails must never grant membership. `workspace_members` holds only
 explicit admin adds for off-domain people (contractors).
 
-Revision ID: 0145
-Revises: 0144
+Revision ID: 0149
+Revises: 0148
 """
 
 from alembic import op
 
-revision = "0145"
-down_revision = "0144"
+revision = "0149"
+down_revision = "0148"
 branch_labels = None
 depends_on = None
 
