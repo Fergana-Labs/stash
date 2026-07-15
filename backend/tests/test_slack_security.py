@@ -7,6 +7,8 @@ from backend.integrations.slack import indexer
 
 
 class _SlackErrorResponse:
+    status_code = 200
+
     def raise_for_status(self):
         return None
 
