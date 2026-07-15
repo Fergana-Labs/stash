@@ -69,6 +69,7 @@ const USE_CASES = [
   ["Agent Drive", "/agent-drive", "An agent-native VFS for files and Skills"],
   ["Token Monitoring", "/token-monitoring", "See every agent session, like Gong"],
   ["Memory", "/memory", "Three-way retrieval that doesn't miss"],
+  ["For SMBs", "/smb", "Find the hours AI can give back"],
 ];
 
 // CSS-only dropdown (no client JS): opens on hover and on keyboard focus of
