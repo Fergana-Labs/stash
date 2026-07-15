@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Opportunity Snapshot — {{BUSINESS_NAME}}</title>
+<style>
+/* Design tokens matched to the AI Tools Assessment deck (swap for your brand) */
+:root{
+  --orange:#F06000;--orange-bright:#FF7A1A;--slate:#8090A0;
+  --black:#000;--charcoal:#1A1A1A;--charcoal-2:#242424;
+  --white:#FFF;--cream:#F0E0D0;--cream-dim:rgba(240,224,208,.65);
+  --border-subtle:rgba(240,224,208,.10);--border-strong:rgba(240,224,208,.25);
+  --font-display:'Montserrat',system-ui,-apple-system,sans-serif;
+  --font-body:'Inter',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--black);color:var(--cream);font:15px/1.6 var(--font-body)}
+.page{max-width:820px;margin:0 auto;padding:48px 32px 64px}
+.eyebrow{font-family:var(--font-body);text-transform:uppercase;letter-spacing:.14em;
+  font-size:11px;color:var(--slate);margin:0 0 8px}
+h1{font-family:var(--font-display);font-weight:800;color:var(--white);
+  font-size:40px;line-height:1.05;letter-spacing:.01em;margin:0}
+h1 .accent{color:var(--orange)}
+h2{font-family:var(--font-display);font-weight:800;color:var(--white);font-size:20px;margin:0 0 12px}
+.meta{display:flex;gap:32px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border-subtle)}
+.meta div span{display:block}
+.meta .l{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--slate)}
+.meta .v{color:var(--white);font-weight:600;margin-top:2px}
+.section{margin-top:40px}
+.card{background:var(--charcoal);border:1px solid var(--border-subtle);padding:20px 22px;margin:10px 0}
+.score-row{display:flex;align-items:center;gap:20px}
+.score-num{font-family:var(--font-display);font-weight:800;font-size:56px;color:var(--orange);line-height:1}
+.score-num small{font-size:18px;color:var(--slate);font-weight:400}
+.meter{flex:1;height:10px;background:var(--charcoal-2);position:relative}
+.meter .fill{position:absolute;inset:0 auto 0 0;width:{{SCORE}}%;background:linear-gradient(90deg,var(--orange),var(--orange-bright))}
+.finding{display:grid;grid-template-columns:34px 1fr;gap:14px}
+.finding .n{font-family:var(--font-display);font-weight:800;color:var(--orange);font-size:20px}
+.finding h3{margin:0 0 6px;color:var(--white);font-size:15.5px;font-family:var(--font-display);font-weight:800}
+.ba{margin:6px 0 0;padding-left:12px;border-left:2px solid var(--border-strong)}
+.ba .before{color:var(--cream-dim)}
+.ba .after{color:var(--white)}
+.ba .after b{color:var(--orange-bright)}
+.tool{display:grid;grid-template-columns:1fr auto auto auto;gap:18px;align-items:center}
+.tool .stat span{display:block}
+.tool .stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--slate)}
+.tool .stat .v{color:var(--white);font-weight:600}
+.bignums{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bignum{background:var(--charcoal);border:1px solid var(--border-subtle);padding:22px;text-align:center}
+.bignum .v{font-family:var(--font-display);font-weight:800;font-size:34px;color:var(--orange)}
+.bignum .l{color:var(--cream-dim);font-size:12.5px;margin-top:4px}
+.cta{margin-top:48px;background:var(--charcoal);border:1px solid var(--orange);padding:28px;text-align:center}
+.cta h2{font-size:24px}
+.cta p{color:var(--cream-dim);max-width:52ch;margin:8px auto 0}
+.cta .btn{display:inline-block;margin-top:18px;background:var(--orange);color:var(--white);
+  padding:13px 30px;text-decoration:none;font-family:var(--font-display);font-weight:800;letter-spacing:.02em}
+.foot{margin-top:28px;color:var(--slate);font-size:12px;text-align:center}
+.pagenum{margin-top:40px;color:var(--slate);font-size:11px;letter-spacing:.14em;text-align:right}
+@media print{body{background:#000}.page{padding:24px}}
+@media(max-width:640px){.tool{grid-template-columns:1fr 1fr}.meta{flex-wrap:wrap;gap:16px}.bignums{grid-template-columns:1fr}}
+</style></head><body><div class="page">
+
+<p class="eyebrow">AI Opportunity Snapshot · Free Preview</p>
+<h1>Where <span class="accent">{{BUSINESS_NAME}}</span> is leaving hours on the table</h1>
+<div class="meta">
+  <div><span class="l">Prepared for</span><span class="v">{{OWNER_NAME}}</span></div>
+  <div><span class="l">Date</span><span class="v">{{DATE}}</span></div>
+  <div><span class="l">Business type</span><span class="v">{{BUSINESS_TYPE}}</span></div>
+</div>
+
+<div class="section">
+  <h2>Your AI-readiness score</h2>
+  <div class="card score-row">
+    <div class="score-num">{{SCORE}}<small>/100</small></div>
+    <div style="flex:1">
+      <div class="meter"><div class="fill"></div></div>
+      <p style="margin:10px 0 0;color:var(--cream-dim);font-size:13.5px">{{SCORE_NOTE}}</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Three places your hours are going</h2>
+  <div class="card finding">
+    <div class="n">01</div>
+    <div><h3>{{FINDING_1_TITLE}}</h3>
+      <div class="ba"><div class="before">{{FINDING_1_BEFORE}}</div>
+      <div class="after">→ {{FINDING_1_AFTER}} <b>{{FINDING_1_HOURS}}</b></div></div></div>
+  </div>
+  <div class="card finding">
+    <div class="n">02</div>
+    <div><h3>{{FINDING_2_TITLE}}</h3>
+      <div class="ba"><div class="before">{{FINDING_2_BEFORE}}</div>
+      <div class="after">→ {{FINDING_2_AFTER}} <b>{{FINDING_2_HOURS}}</b></div></div></div>
+  </div>
+  <div class="card finding">
+    <div class="n">03</div>
+    <div><h3>{{FINDING_3_TITLE}}</h3>
+      <div class="ba"><div class="before">{{FINDING_3_BEFORE}}</div>
+      <div class="after">→ {{FINDING_3_AFTER}} <b>{{FINDING_3_HOURS}}</b></div></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Start here: one tool, this week</h2>
+  <div class="card tool">
+    <div><h3 style="margin:0;color:var(--white);font-family:var(--font-display)">{{TOOL_NAME}}</h3>
+      <p style="margin:4px 0 0;color:var(--cream-dim);font-size:13.5px">{{TOOL_WHY}}</p></div>
+    <div class="stat"><span class="l">Cost</span><span class="v">{{TOOL_COST}}</span></div>
+    <div class="stat"><span class="l">Setup</span><span class="v">{{TOOL_SETUP}}</span></div>
+    <div class="stat"><span class="l">Saves</span><span class="v">{{TOOL_SAVES}}</span></div>
+  </div>
+</div>
+
+{{USAGE_SECTION}}
+<!-- If the local usage audit was consented to and ran, replace the marker above with:
+<div class="section">
+  <h2>What your own AI history shows</h2>
+  <div class="card">
+    <p style="margin:0 0 12px;color:var(--cream-dim)">With your permission, we analyzed your
+    local agent sessions (read-only, nothing uploaded — aggregate numbers only).</p>
+    <div class="bignums" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="bignum"><div class="v">{{AU_SESSIONS}}</div><div class="l">agent sessions</div></div>
+      <div class="bignum"><div class="v">{{AU_REREADS}}</div><div class="l">times context was re-explained</div></div>
+      <div class="bignum"><div class="v">{{AU_STAT3_V}}</div><div class="l">{{AU_STAT3_L}}</div></div>
+    </div>
+    <p style="margin:12px 0 0;color:var(--cream)">{{AU_INSIGHT}}</p>
+  </div>
+</div>
+Otherwise delete the marker entirely. -->
+
+<div class="section">
+  <h2>The bottom line</h2>
+  <div class="bignums">
+    <div class="bignum"><div class="v">{{HOURS_WEEK}} hrs</div><div class="l">reclaimable every week — from your own numbers</div></div>
+    <div class="bignum"><div class="v">{{VALUE_MONTH}}</div><div class="l">per month, at the hourly value you gave me</div></div>
+  </div>
+</div>
+
+<div class="cta">
+  <h2>{{CTA_HEAD}}</h2>
+  <p>{{CTA_BODY}}</p>
+  <a class="btn" href="{{CTA_LINK}}">{{CTA_BUTTON}} →</a>
+</div>
+
+<p class="foot">This snapshot was built from a {{INTERVIEW_MINUTES}}-minute conversation.
+Every number above came from your answers — nothing was invented.</p>
+<p class="pagenum">1 / 1 · PREVIEW</p>
+
+</div></body></html>
