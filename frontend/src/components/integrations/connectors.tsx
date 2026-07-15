@@ -12,6 +12,7 @@ import {
   JiraIcon,
   LinearIcon,
   NotionIcon,
+  PostHogIcon,
   SlackIcon,
   TwitterIcon,
 } from "./BrandIcons";
@@ -98,6 +99,13 @@ export const CONNECTORS: Connector[] = [
     blurb: "Call transcripts, kept in sync.",
   },
   {
+    provider: "posthog",
+    label: "PostHog",
+    sourceType: "posthog_project",
+    kind: "auto",
+    blurb: "Browse dashboards, insights, feature flags, and experiments.",
+  },
+  {
     provider: "twitter",
     label: "Twitter / X",
     sourceType: "twitter",
@@ -120,6 +128,7 @@ export const providerForSourceType: Record<string, string> = {
   slack: "slack",
   granola: "granola",
   gong_calls: "gong",
+  posthog_project: "posthog",
   twitter: "twitter",
   twitter_bookmarks: "twitter",
 };
@@ -154,6 +163,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <GranolaIcon />;
     case "gong":
       return <GongIcon />;
+    case "posthog":
+      return <PostHogIcon />;
     case "twitter":
       return <TwitterIcon />;
     default:
@@ -173,6 +184,7 @@ export function labelForSourceType(type: string): string {
   if (type === "asana_project") return "Asana";
   if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
+  if (type === "posthog_project") return "PostHog";
   if (type === "twitter") return "Twitter / X";
   if (type === "twitter_bookmarks") return "X bookmarks";
   if (type === "instagram_saves") return "Instagram saves";

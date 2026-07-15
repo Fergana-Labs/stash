@@ -118,6 +118,27 @@ export function GongIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function PostHogIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M3.2 14.6 5.6 10 4.7 5.4l4.6 1.4L12 3l2.7 3.8 4.6-1.4-.9 4.6 2.4 4.6-4.4 1.8L14.7 21 12 18.1 9.3 21l-1.7-4.6z"
+        fill="#F54E00"
+      />
+      <circle cx="9.3" cy="11.7" r="1.1" fill="white" />
+      <circle cx="14.7" cy="11.7" r="1.1" fill="white" />
+      <path d="M9.2 15.1c1.8 1.2 3.8 1.2 5.6 0" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function JiraIcon({ className, size = defaultSize }: Props) {
   // Official Jira mark — interlocking chevrons in Jira blue.
   return (

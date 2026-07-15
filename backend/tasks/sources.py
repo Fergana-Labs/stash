@@ -26,6 +26,7 @@ from ..integrations.granola.indexer import index_granola
 from ..integrations.jira.indexer import index_jira
 from ..integrations.linear.indexer import index_linear
 from ..integrations.notion.indexer import index_notion
+from ..integrations.posthog.indexer import index_posthog
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..integrations.social_saves.indexer import index_instagram_saves
 from ..integrations.twitter.indexer import index_twitter_bookmarks
@@ -43,6 +44,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "google_drive": index_google_drive,
     "google_drive_folder": index_google_drive_folder,
     "notion": index_notion,
+    "posthog_project": index_posthog,
     "slack": index_slack,
     "granola": index_granola,
     "jira_project": index_jira,

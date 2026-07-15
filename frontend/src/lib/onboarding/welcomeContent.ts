@@ -20,7 +20,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola, Twitter / X. Your agent reads across everything you connect.</li>
+      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Gmail, Notion, Slack, Granola, PostHog, Twitter / X. Your agent reads across everything you connect.</li>
       <li><strong>Share a folder or page</strong> — give a link or invite specific people, so teammates and their agents work from the same docs.</li>
       <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>bash -c "$(curl -fsSL https://joinstash.ai/install)"</code></li>
     </ul>`,

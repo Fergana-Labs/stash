@@ -24,6 +24,7 @@ from . import (
     jira,  # noqa: F401
     linear,  # noqa: F401
     notion,  # noqa: F401
+    posthog,  # noqa: F401
     slack,  # noqa: F401
     twitter,  # noqa: F401
 )

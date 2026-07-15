@@ -79,3 +79,20 @@ describe("SourceConnectorList disconnect", () => {
     expect(disconnectIntegration).not.toHaveBeenCalled();
   });
 });
+
+describe("SourceConnectorList providers", () => {
+  it("offers PostHog as a product analytics source", async () => {
+    listIntegrations.mockResolvedValue({ providers: [] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText("PostHog")).toBeInTheDocument();
+    expect(
+      screen.getByText("Browse dashboards, insights, feature flags, and experiments.")
+    ).toBeInTheDocument();
+  });
+});

@@ -63,6 +63,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "jira_project": 1800,
     "asana_project": 1800,
     "linear": 1800,
+    "posthog_project": 1800,
     "gong_calls": 21600,
     "twitter_bookmarks": 21600,
     # Freshness comes from extension pushes (which kick a sync); the interval
@@ -82,6 +83,7 @@ SOURCE_CAPABILITY = {
     "jira_project": "searchable",
     "asana_project": "navigable",
     "linear": "navigable",
+    "posthog_project": "navigable",
     "gong_calls": "searchable",
     "twitter": "searchable",
     "twitter_bookmarks": "searchable",
@@ -98,6 +100,7 @@ PROVIDER_SOURCE_TYPES = {
     "jira": ("jira_project",),
     "asana": ("asana_project",),
     "linear": ("linear",),
+    "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
     "twitter": ("twitter", "twitter_bookmarks"),
     # Provider-less grouping: there is no Instagram OAuth integration — the
@@ -132,6 +135,8 @@ def validate_source_external_ref(source_type: str, external_ref: str) -> None:
     # there is one canonical ref; the router resolves it before we get here.
     if source_type == "linear" and external_ref != "me":
         raise ValueError("Linear external_ref must be 'me'")
+    if source_type == "posthog_project" and external_ref != "project":
+        raise ValueError("PostHog external_ref must be 'project'")
 
 
 def _clean_string_list(value, field_name: str) -> list[str]:
@@ -484,6 +489,7 @@ SOURCE_TABLE = {
     "jira_project": "jira_documents",
     "asana_project": "asana_documents",
     "linear": "linear_index",
+    "posthog_project": "posthog_index",
     "gong_calls": "gong_documents",
     "twitter": "twitter_posts",
     "twitter_bookmarks": "twitter_bookmark_docs",
@@ -521,6 +527,7 @@ FEDERATED_SEARCH_TYPES = {
     "jira_project",
     "asana_project",
     "linear",
+    "posthog_project",
     "twitter",
 }
 
@@ -1200,6 +1207,10 @@ async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
         from ..integrations.linear.indexer import fetch_linear_content
 
         return await fetch_linear_content(owner_user_id, external_ref)
+    if source_type == "posthog_project":
+        from ..integrations.posthog.indexer import fetch_posthog_content
+
+        return await fetch_posthog_content(owner_user_id, external_ref)
     # twitter never reaches here: every cached path is a numeric post id, which
     # read_document already routes through the live-ref path.
     return ""
@@ -1272,6 +1283,8 @@ async def _federated_search(
             from ..integrations.asana.indexer import search_asana as fn
         elif source_type == "linear":
             from ..integrations.linear.indexer import search_linear as fn
+        elif source_type == "posthog_project":
+            from ..integrations.posthog.indexer import search_posthog as fn
         elif source_type == "twitter":
             from ..integrations.twitter.indexer import search_twitter as fn
         else:
