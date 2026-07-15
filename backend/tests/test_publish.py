@@ -142,3 +142,47 @@ async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
         "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", owner_user_id
     )
     assert page_count == 0
+
+
+@pytest.mark.asyncio
+async def test_publish_reuses_existing_skill_md(client: AsyncClient):
+    """Publishing into a folder that already carries a SKILL.md must not try to
+    mint a second one (which would collide); the existing manifest is the
+    metadata source of truth."""
+    key = await _register(client)
+
+    folder = await client.post(
+        "/api/v1/me/folders",
+        json={"name": "Prewritten skill", "is_skill": True},
+        headers=_auth(key),
+    )
+    assert folder.status_code == 201
+    folder_id = folder.json()["id"]
+    skill_md = await client.post(
+        "/api/v1/me/pages/new",
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": "---\nname: Hand-written skill\ndescription: Authored by the user.\n---\n",
+        },
+        headers=_auth(key),
+    )
+    assert skill_md.status_code == 201
+
+    resp = await client.post(
+        "/api/v1/publish",
+        json={
+            "title": "Ignored title",
+            "description": "Ignored description.",
+            "content": "# body",
+            "folder_id": folder_id,
+        },
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["folder_id"] == folder_id
+
+    skill = await client.get(f"/api/v1/me/skills/{folder_id}/contents", headers=_auth(key))
+    md_pages = [p for p in skill.json()["contents"]["pages"] if p["name"] == "SKILL.md"]
+    assert len(md_pages) == 1
+    assert "Authored by the user." in md_pages[0]["content_markdown"]

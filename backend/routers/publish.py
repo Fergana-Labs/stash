@@ -58,13 +58,16 @@ async def publish(
             target_folder["id"], owner_user_id, True
         )
 
-    await files_tree_service.create_page(
-        owner_user_id=owner_user_id,
-        name="SKILL.md",
-        created_by=current_user["id"],
-        folder_id=target_folder["id"],
-        content=render_skill_md(req.title, req.description),
-    )
+    # A reused folder may already carry its manifest; publish_folder reads it as
+    # the source of truth. Only mint one when the folder has none.
+    if not await files_tree_service.folder_has_page(target_folder["id"], "SKILL.md"):
+        await files_tree_service.create_page(
+            owner_user_id=owner_user_id,
+            name="SKILL.md",
+            created_by=current_user["id"],
+            folder_id=target_folder["id"],
+            content=render_skill_md(req.title, req.description),
+        )
     page = await files_tree_service.create_page(
         owner_user_id=owner_user_id,
         name=req.title,

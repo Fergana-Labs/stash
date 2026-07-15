@@ -9,8 +9,10 @@ import type {
 // SKILL.md is the agent manifest inside an explicitly typed skill folder.
 export const SKILL_MD = "SKILL.md";
 
+// The backend rejects a SKILL.md whose description is empty, so the scaffold
+// seeds description with the name; the user edits it before publishing.
 export function skillMdTemplate(name: string): string {
-  return `---\nname: ${name}\ndescription: \n---\n\n# ${name}\n`;
+  return `---\nname: ${name}\ndescription: ${name}\n---\n\n# ${name}\n`;
 }
 
 // Strip YAML frontmatter from a SKILL.md body for rendering.

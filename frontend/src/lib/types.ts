@@ -1,7 +1,6 @@
 export interface User {
   id: string;
   name: string;
-  is_skill: boolean;
   display_name: string;
   email?: string | null;
   description: string;
@@ -25,6 +24,7 @@ export interface Folder {
   owner_user_id: string;
   parent_folder_id: string | null;
   name: string;
+  is_skill: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;

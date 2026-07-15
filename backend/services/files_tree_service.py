@@ -743,6 +743,17 @@ async def get_page(
     return page
 
 
+async def folder_has_page(folder_id: UUID, name: str) -> bool:
+    """True when the folder holds a live page with this exact name."""
+    pool = get_pool()
+    found = await pool.fetchval(
+        f"SELECT 1 FROM pages WHERE folder_id = $1 AND name = $2 AND {_PAGE_FILTER} LIMIT 1",
+        folder_id,
+        name,
+    )
+    return found is not None
+
+
 async def get_sync_manifest(owner_user_id: UUID) -> list[dict]:
     """Lightweight page info for sync diffing (no content)."""
     pool = get_pool()
