@@ -72,6 +72,59 @@ async def test_repeat_session_provision_reports_not_created(pool):
 
 
 @pytest.mark.asyncio
+async def test_google_login_is_trusted_as_verified(pool):
+    """A Google connection means Google vouched for the email, so the row must
+    be email_verified even when the /userinfo claim didn't come through."""
+    sub = f"google-oauth2|{unique_name()}"
+    user, _created = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub,
+        email=f"{unique_name('g')}@example.com",
+        name="Google Person",
+        email_verified=False,
+    )
+    verified = await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", user["id"])
+    assert verified is True
+
+
+@pytest.mark.asyncio
+async def test_returning_google_login_reverifies_stuck_account(pool):
+    """An existing Google account left unverified (e.g. predating this fix)
+    must flip to verified on the next login even when the returning session's
+    /userinfo returns no email."""
+    sub = f"google-oauth2|{unique_name()}"
+    user, _created = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=None, name="Stuck Google", email_verified=False
+    )
+    await pool.execute("UPDATE users SET email_verified = false WHERE id = $1", user["id"])
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=None, name="Stuck Google", email_verified=False
+    )
+    verified = await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", user["id"])
+    assert verified is True
+
+
+@pytest.mark.asyncio
+async def test_returning_password_login_without_email_does_not_downgrade(pool):
+    """A non-Google account that is already verified must not be silently
+    downgraded when a later login arrives with no email in the profile."""
+    sub = f"auth0|{unique_name()}"
+    user, _created = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub,
+        email=f"{unique_name('p')}@example.com",
+        name="Password Person",
+        email_verified=True,
+    )
+    assert await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", user["id"]) is True
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=None, name="Password Person", email_verified=False
+    )
+    verified = await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", user["id"])
+    assert verified is True
+
+
+@pytest.mark.asyncio
 async def test_immediate_duplicate_session_provision_still_reports_created(pool):
     sub = f"google-oauth2|{unique_name()}"
     await get_or_create_user_row_from_auth0(auth0_sub=sub, email=None, name="Strict Mode Person")

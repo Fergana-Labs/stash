@@ -42,6 +42,13 @@ async def get_or_create_user_row_from_auth0(
     """
     pool = get_pool()
 
+    # A Google login is Google itself vouching that the user controls this
+    # address, so trust the connection. The /userinfo email_verified claim is
+    # dropped on returning sessions, which would otherwise leave returning
+    # Google users permanently unverified.
+    if auth0_sub.startswith("google-oauth2|"):
+        email_verified = True
+
     row = await pool.fetchrow(
         "SELECT id, name, display_name, description, created_at, last_seen, "
         f"created_at >= now() - interval '{_NEW_USER_WINDOW_SQL}' AS is_new_user "
@@ -61,6 +68,14 @@ async def get_or_create_user_row_from_auth0(
             # An invite may have been addressed to this email after the account
             # existed (e.g. before its email was recorded) — convert on login.
             await share_service.convert_pending_invites(row["id"], email)
+        elif email_verified:
+            # Returning login with no email in the sparse /userinfo payload but
+            # a positive verification signal (Google) — persist it, never
+            # downgrade an already-verified account.
+            await pool.execute(
+                "UPDATE users SET last_seen = now(), email_verified = true WHERE id = $1",
+                row["id"],
+            )
         else:
             await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
         user = dict(row)
