@@ -135,6 +135,16 @@ async def _resolve_linear_source(user_id) -> tuple[str, str]:
     return "me", "Linear"
 
 
+async def _resolve_posthog_source(user_id) -> tuple[str, str]:
+    """One connected PostHog credential bundle represents one project."""
+    await integration_storage.get_valid_token(user_id, "posthog")
+    status = await integration_storage.status(user_id, "posthog")
+    display_name = status.get("account_display_name")
+    if not display_name:
+        raise HTTPException(status_code=409, detail="Reconnect PostHog before adding it.")
+    return "project", f"PostHog ({display_name})"
+
+
 @router.get("")
 async def list_sources(
     current_user: dict = Depends(get_current_user),
@@ -314,6 +324,9 @@ async def add_source(
         display_name = f"X bookmarks (@{username})"
     elif body.source_type == "linear":
         external_ref, resolved_name = await _resolve_linear_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "posthog_project":
+        external_ref, resolved_name = await _resolve_posthog_source(current_user["id"])
         display_name = display_name or resolved_name
 
     if not external_ref:

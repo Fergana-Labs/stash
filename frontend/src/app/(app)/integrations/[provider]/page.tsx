@@ -394,6 +394,7 @@ const ITEM_NOUN: Record<string, string> = {
   notion: "page",
   jira_project: "project",
   asana_project: "project",
+  posthog_project: "project",
 };
 
 function relativeTime(iso: string | null | undefined): string {
