@@ -63,6 +63,17 @@ async function autoVisit(): Promise<void> {
   chrome.alarms.create(VISIT_TIMEOUT_ALARM, { delayInMinutes: 2 });
 }
 
+/** "Sync now" for X: open the bookmarks page in the background and harvest. */
+export async function syncXNow(): Promise<{ ok: boolean }> {
+  await autoVisit();
+  return { ok: true };
+}
+
+export async function xLastSyncAt(): Promise<number | null> {
+  const { xBookmarksFetchedAt } = await chrome.storage.local.get(['xBookmarksFetchedAt']);
+  return xBookmarksFetchedAt || null;
+}
+
 async function visitTimedOut(): Promise<void> {
   const { xVisitTabId } = await chrome.storage.session.get(['xVisitTabId']);
   if (xVisitTabId == null) return;

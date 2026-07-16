@@ -10,7 +10,8 @@
     "contextMenus",
     "alarms",
     "notifications",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "https://api.joinstash.ai/*",

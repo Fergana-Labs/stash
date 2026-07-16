@@ -20,6 +20,7 @@ import {
   shouldFetchSaves,
 } from './background/instagram';
 import { initTwitter, receiveBookmarks } from './background/twitter';
+import { platformStatus, syncNow } from './background/status';
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
@@ -62,6 +63,14 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
       return savedItemsFailed(message.error, sender);
     case 'X_BOOKMARKS':
       return receiveBookmarks(message.items, sender);
+    case 'CLIP_FAILED':
+      await chrome.storage.local.set({ lastError: `Save failed: ${message.error}` });
+      await setBadge('!', 'Save failed — click for details');
+      return { ok: false, error: message.error };
+    case 'PLATFORM_STATUS':
+      return platformStatus();
+    case 'SYNC_NOW':
+      return syncNow(message.platform);
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':

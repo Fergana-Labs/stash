@@ -1,9 +1,8 @@
-// Daily tab-less chat poll: the visible-tab content scripts only see
-// conversations the user has open, so once a day the worker lists recent
-// ChatGPT/Claude conversations directly (cookie-attached fetches — the
-// origins are in host_permissions) and syncs anything updated since the
-// last successful pass. The watermark only advances on a fully successful
-// pass; a failed platform surfaces on the badge and retries next alarm.
+// Tab-less chat sync: the visible-tab content scripts only see conversations
+// the user has open, so once a day (and on demand via "Sync now") the worker
+// lists recent ChatGPT/Claude conversations directly (cookie-attached fetches
+// — the origins are in host_permissions) and syncs anything updated since the
+// last successful pass. Each platform tracks its own watermark.
 
 import {
   chatgptAccessToken,
@@ -20,13 +19,22 @@ const ALARM_NAME = 'chat-poll';
 const POLL_PERIOD_MINUTES = 24 * 60;
 const MAX_CONVERSATIONS_PER_PLATFORM = 50;
 
+export type ChatPlatform = 'chatgpt' | 'claude';
 type SyncFn = (snapshot: ConversationSnapshot) => Promise<any>;
 
+const WATERMARK_KEY: Record<ChatPlatform, string> = {
+  chatgpt: 'lastChatgptSyncAt',
+  claude: 'lastClaudeSyncAt',
+};
+
+let syncFn: SyncFn | null = null;
+
 export function initChatPoll(sync: SyncFn): void {
+  syncFn = sync;
   chrome.runtime.onInstalled.addListener(schedule);
   chrome.runtime.onStartup.addListener(schedule);
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === ALARM_NAME) void pollAll(sync);
+    if (alarm.name === ALARM_NAME) void pollAll();
   });
 }
 
@@ -34,32 +42,60 @@ function schedule(): void {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: POLL_PERIOD_MINUTES });
 }
 
-async function pollAll(sync: SyncFn): Promise<void> {
-  const { apiKey, lastChatPollAt } = await chrome.storage.local.get(['apiKey', 'lastChatPollAt']);
+async function pollAll(): Promise<void> {
+  const { apiKey } = await chrome.storage.local.get(['apiKey']);
   if (!apiKey) return;
-  const since = lastChatPollAt || 0;
-
-  const errors: string[] = [];
-  await pollChatgpt(sync, since).catch((e) => errors.push(`ChatGPT: ${e?.message || e}`));
-  await pollClaude(sync, since).catch((e) => errors.push(`Claude: ${e?.message || e}`));
-
+  const results = await Promise.all([syncChat('chatgpt'), syncChat('claude')]);
+  const errors = results.filter((r) => !r.ok);
   if (errors.length > 0) {
     // No notification — a logged-out site would nag daily. Badge + popup error.
-    await chrome.storage.local.set({ lastError: `Daily chat poll failed — ${errors.join('; ')}` });
-    await setBadge('!', 'Stash daily poll failed — click for details');
-    return;
+    await chrome.storage.local.set({
+      lastError: `Daily chat sync failed — ${errors.map((e) => e.error).join('; ')}`,
+    });
+    await setBadge('!', 'Stash daily sync failed — click for details');
   }
-  await chrome.storage.local.set({ lastChatPollAt: Date.now(), lastError: null });
+}
+
+/** Sync one chat platform now; advances its watermark on success. */
+export async function syncChat(platform: ChatPlatform): Promise<{ ok: boolean; error?: string }> {
+  if (!syncFn) return { ok: false, error: 'not ready' };
+  const key = WATERMARK_KEY[platform];
+  const stored = await chrome.storage.local.get([key]);
+  const since = stored[key] || 0;
+  try {
+    if (platform === 'chatgpt') await pollChatgpt(syncFn, since);
+    else await pollClaude(syncFn, since);
+    await chrome.storage.local.set({ [key]: Date.now() });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: `${platform}: ${e?.message || e}` };
+  }
+}
+
+/** Whether the user is signed in to the platform (so a sync would work). */
+export async function chatSignedIn(platform: ChatPlatform): Promise<boolean> {
+  try {
+    if (platform === 'chatgpt') {
+      const ctx = { origin: 'https://chatgpt.com', init: { credentials: 'include' as const } };
+      return Boolean(await chatgptAccessToken(ctx));
+    }
+    const ctx = { origin: 'https://claude.ai', init: { credentials: 'include' as const } };
+    return (await claudeOrgIds(ctx)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function chatLastSyncAt(platform: ChatPlatform): Promise<number | null> {
+  const key = WATERMARK_KEY[platform];
+  const stored = await chrome.storage.local.get([key]);
+  return stored[key] || null;
 }
 
 async function pollChatgpt(sync: SyncFn, since: number): Promise<void> {
-  const ctx = {
-    origin: 'https://chatgpt.com',
-    init: { credentials: 'include' as RequestCredentials },
-  };
+  const ctx = { origin: 'https://chatgpt.com', init: { credentials: 'include' as const } };
   const token = await chatgptAccessToken(ctx);
   if (!token) throw new Error('not signed in to chatgpt.com');
-
   const conversations = await chatgptListConversations(ctx, token, MAX_CONVERSATIONS_PER_PLATFORM);
   for (const conv of conversations) {
     if (new Date(conv.updatedAt).getTime() <= since) continue;
@@ -69,13 +105,9 @@ async function pollChatgpt(sync: SyncFn, since: number): Promise<void> {
 }
 
 async function pollClaude(sync: SyncFn, since: number): Promise<void> {
-  const ctx = {
-    origin: 'https://claude.ai',
-    init: { credentials: 'include' as RequestCredentials },
-  };
+  const ctx = { origin: 'https://claude.ai', init: { credentials: 'include' as const } };
   const orgIds = await claudeOrgIds(ctx);
   if (orgIds.length === 0) throw new Error('not signed in to claude.ai');
-
   for (const orgId of orgIds) {
     const conversations = (await claudeListConversations(ctx, orgId)).slice(
       0,

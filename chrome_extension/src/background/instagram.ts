@@ -75,9 +75,27 @@ export async function savedItemsFailed(
 async function autoVisit(): Promise<void> {
   const { fetch: due } = await shouldFetchSaves();
   if (!due) return;
+  await openVisitTab();
+}
+
+async function openVisitTab(): Promise<void> {
+  const { apiKey } = await chrome.storage.local.get(['apiKey']);
+  if (!apiKey) return;
   const tab = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: false });
   await chrome.storage.session.set({ igVisitTabId: tab.id });
   chrome.alarms.create(VISIT_TIMEOUT_ALARM, { delayInMinutes: 2 });
+}
+
+/** "Sync now" for Instagram: open the site in the background and harvest
+ *  saves immediately, ignoring the daily throttle. */
+export async function syncInstagramNow(): Promise<{ ok: boolean }> {
+  await openVisitTab();
+  return { ok: true };
+}
+
+export async function instagramLastSyncAt(): Promise<number | null> {
+  const { igFetchedAt } = await chrome.storage.local.get(['igFetchedAt']);
+  return igFetchedAt || null;
 }
 
 async function visitTimedOut(): Promise<void> {
