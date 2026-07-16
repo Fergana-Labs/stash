@@ -1,8 +1,8 @@
-"""X (Twitter) saves: extension-captured links, hydrated via ScrapeCreators.
+"""X (Twitter) saves: extension-captured links, hydrated via twitterapi.io.
 
 Replaces the OAuth/bring-your-own-app X integration. The browser extension
 captures the links of your bookmarks / posts / replies / articles on x.com;
-the indexer hydrates each via ScrapeCreators — storing the full tweet text,
+the indexer hydrates each via twitterapi.io — storing the full tweet text,
 the conversation root for reply context, and archiving the images/video into
 object storage so the save survives the tweet being deleted.
 

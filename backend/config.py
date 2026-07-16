@@ -317,6 +317,10 @@ class Settings:
     # hydrates Instagram saves server-side; users never bring their own).
     SCRAPECREATORS_API_KEY: str | None = os.getenv("SCRAPECREATORS_API_KEY")
 
+    # twitterapi.io (public X/Twitter read API, product-level key — hydrates X
+    # saves server-side from the tweet links the extension pushes).
+    TWITTERAPI_IO_KEY: str | None = os.getenv("TWITTERAPI_IO_KEY")
+
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
