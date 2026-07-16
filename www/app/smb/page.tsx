@@ -112,7 +112,21 @@ export default function SmbPage() {
         </div>
       </section>
 
-      <section id="snapshot" className="border-b border-border-subtle py-20 md:py-28">
+      <section className="border-b border-border-subtle py-20 md:py-28">
+        <div className="mx-auto max-w-[1200px] px-7">
+          <div className="mx-auto aspect-video max-w-[860px] overflow-hidden rounded-[14px] border border-border shadow-[var(--shadow-terminal)]">
+            <iframe
+              className="h-full w-full"
+              src="https://www.youtube-nocookie.com/embed/GPYzqp2gctU"
+              title="Stash for small and medium businesses"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      </section>
+
+      <section id="snapshot" className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="max-w-[760px] font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
             Answer a few questions. Walk away with{" "}
