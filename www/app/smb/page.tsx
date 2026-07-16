@@ -92,7 +92,7 @@ export default function SmbPage() {
             {PAINS.map((p) => (
               <div
                 key={p.title}
-                className="rounded-[12px] border border-border bg-background p-6 transition-colors hover:border-brand"
+                className="rounded-[12px] border border-border bg-background p-6"
               >
                 <h3 className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">
                   {p.title}
@@ -129,8 +129,8 @@ export default function SmbPage() {
       <section id="snapshot" className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="max-w-[760px] font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Answer a few questions. Walk away with{" "}
-            <span className="text-brand">the report.</span>
+            Get a quick diagnostic in a few minutes,{" "}
+            <span className="text-brand">right now.</span>
           </h2>
           <div className="mt-10 max-w-[760px]">
             <AssessmentChat />
@@ -150,13 +150,19 @@ export default function SmbPage() {
             table. The full engagement goes further: a complete audit, then one
             organized system for everything your business knows — that you own.
           </p>
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <ScrollLink
               to="#snapshot"
               className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
             >
               Get my free snapshot →
             </ScrollLink>
+            <a
+              href="https://calendly.com/sam-ferganalabs/30min"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+            >
+              Book a call
+            </a>
           </div>
         </div>
       </section>
