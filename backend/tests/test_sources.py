@@ -65,6 +65,7 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "twitter": "111",
         "twitter_bookmarks": "111",
         "instagram_saves": "saves",
+        "posthog_project": "project",
     }
     return refs[source_type]
 

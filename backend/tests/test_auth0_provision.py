@@ -409,7 +409,9 @@ async def test_returning_login_grants_membership_once_verified(pool):
     from backend.services import permission_service, workspace_service
 
     domain = f"{unique_name('corp')}.com".lower()
-    sub = f"google-oauth2|{unique_name()}"
+    # A database-connection sub: google-oauth2 subs are force-verified on
+    # every login, so only a non-Google user can exist unverified.
+    sub = f"auth0|{unique_name()}"
     email = f"late@{domain}"
 
     user, _ = await get_or_create_user_row_from_auth0(
