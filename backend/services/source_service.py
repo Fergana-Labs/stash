@@ -66,7 +66,10 @@ DEFAULT_SYNC_INTERVAL_S = {
     "google_drive": 1800,
     "google_drive_folder": 1800,
     "notion": 1800,
-    "slack": 21600,
+    # The Events-API webhook is Slack's live path; this backfill is the safety
+    # net for when it stops delivering, so it stays tight enough to bound
+    # staleness to minutes rather than the 6h it was.
+    "slack": 1800,
     "granola": 21600,
     "jira_project": 1800,
     "asana_project": 1800,
@@ -447,6 +450,35 @@ async def due_sources(limit: int = 50) -> list[dict]:
             "external_ref": r["external_ref"],
             "sync_cursor": r["sync_cursor"],
             "settings": r["settings"] or {},
+        }
+        for r in rows
+    ]
+
+
+async def stale_sources(overdue_factor: int = 3) -> list[dict]:
+    """Enabled sources whose sync has silently stopped keeping up: currently
+    failing, never completed, or last succeeded more than `overdue_factor` sync
+    intervals ago. A dead token or a wedged reconciler surfaces here instead of
+    rotting unnoticed (the way one Slack source sat failing for a month)."""
+    rows = await get_pool().fetch(
+        "SELECT id, owner_user_id, source_type, display_name, "
+        "last_synced_at, sync_error "
+        "FROM user_sources "
+        "WHERE sync_enabled AND ("
+        "  sync_error IS NOT NULL "
+        "  OR last_synced_at IS NULL "
+        "  OR last_synced_at < now() - ($1 * sync_interval_s || ' seconds')::interval"
+        ") ORDER BY last_synced_at NULLS FIRST",
+        overdue_factor,
+    )
+    return [
+        {
+            "id": str(r["id"]),
+            "owner_user_id": str(r["owner_user_id"]),
+            "source_type": r["source_type"],
+            "display_name": r["display_name"],
+            "last_synced_at": r["last_synced_at"],
+            "sync_error": r["sync_error"],
         }
         for r in rows
     ]

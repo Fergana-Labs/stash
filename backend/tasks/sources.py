@@ -141,6 +141,28 @@ def reconcile_github_sync_all() -> int:
     return run_async(_reconcile_github_sync_all())
 
 
+async def _warn_stale_sources() -> int:
+    """Log a warning for every source whose sync has silently fallen behind, so a
+    dead token or a webhook that stopped delivering surfaces in the logs instead
+    of going unnoticed for weeks."""
+    stale = await source_service.stale_sources()
+    for s in stale:
+        logger.warning(
+            "stale source: id=%s type=%s owner=%s last_synced_at=%s sync_error=%s",
+            s["id"],
+            s["source_type"],
+            s["owner_user_id"],
+            s["last_synced_at"],
+            s["sync_error"],
+        )
+    return len(stale)
+
+
+@celery.task(name="backend.tasks.sources.warn_stale_sources")
+def warn_stale_sources() -> int:
+    return run_async(_warn_stale_sources())
+
+
 @celery.task(name="backend.tasks.sources.ingest_slack_event")
 def ingest_slack_event(team_id: str, event: dict) -> int:
     """Upsert a single Slack Events-API message (enqueued by the webhook)."""

@@ -285,6 +285,35 @@ async def test_source_sync_resolves_via_owner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_stale_sources_flags_failing_and_overdue(client: AsyncClient):
+    """A source that is currently failing or hasn't succeeded in many intervals
+    surfaces to the stale-source warner; a freshly-synced one does not."""
+    _, owner_id = await _register(client, "src_stale")
+    from backend.database import get_pool
+
+    async def _mk(external_ref: str, last_synced_sql: str, sync_error: str | None) -> str:
+        row = await get_pool().fetchrow(
+            "INSERT INTO user_sources (owner_user_id, source_type, external_ref, "
+            "display_name, capability, sync_interval_s, sync_enabled, settings, "
+            f"last_synced_at, sync_error) VALUES ($1, 'slack', $2, 'Slack', "
+            f"'searchable', 1800, true, '{{}}'::jsonb, {last_synced_sql}, $3) RETURNING id",
+            owner_id,
+            external_ref,
+            sync_error,
+        )
+        return str(row["id"])
+
+    fresh_id = await _mk("TFRESH", "now()", None)
+    overdue_id = await _mk("TOVERDUE", "now() - interval '3 hours'", None)
+    failing_id = await _mk("TFAIL", "now()", "boom")
+
+    stale_ids = {s["id"] for s in await source_service.stale_sources()}
+    assert overdue_id in stale_ids
+    assert failing_id in stale_ids
+    assert fresh_id not in stale_ids
+
+
+@pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
     resp = await client.post(
