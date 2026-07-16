@@ -181,24 +181,90 @@ def _stub_heavi_endpoint(monkeypatch, rules: list[dict]):
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
 
 
-@pytest.mark.asyncio
-async def test_connect_add_source_then_ls_and_cat_read_live(client, monkeypatch):
-    from cryptography.fernet import Fernet
-
-    from backend.config import settings
-
+async def _register_user(client, pool=None, email: str | None = None) -> dict:
+    """Register a user; with `email`, stamp it verified (the gate's trust
+    anchor — registration itself has no email step)."""
     from .conftest import unique_name
-
-    monkeypatch.setattr(settings, "INTEGRATIONS_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    rules = [_rule("learning_1_a", "Prefer OEM brake calipers")]
-    _stub_heavi_endpoint(monkeypatch, rules)
 
     register = await client.post(
         "/api/v1/users/register",
         json={"name": unique_name("heavi"), "password": "securepassword1"},
     )
     assert register.status_code == 201
-    headers = {"Authorization": f"Bearer {register.json()['api_key']}"}
+    body = register.json()
+    if email is not None:
+        await pool.execute(
+            "UPDATE users SET email = $1, email_verified = TRUE WHERE id = $2",
+            email,
+            UUID(body["id"]),
+        )
+    return body
+
+
+@pytest.mark.asyncio
+async def test_provider_hidden_and_connect_rejected_for_non_heavi_users(client, pool, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "INTEGRATIONS_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    body = await _register_user(client)  # no email at all
+    headers = {"Authorization": f"Bearer {body['api_key']}"}
+
+    listing = await client.get("/api/v1/integrations", headers=headers)
+    assert "heavi" not in [p["provider"] for p in listing.json()["providers"]]
+
+    rejected = await client.post(
+        "/api/v1/integrations/heavi/credentials",
+        json={"base_url": BASE_URL, "api_token": "tok"},
+        headers=headers,
+    )
+    assert rejected.status_code == 403
+
+    # A verified email on the wrong domain is still rejected.
+    outsider = await _register_user(client, pool, email="alice@example.com")
+    outsider_headers = {"Authorization": f"Bearer {outsider['api_key']}"}
+    listing = await client.get("/api/v1/integrations", headers=outsider_headers)
+    assert "heavi" not in [p["provider"] for p in listing.json()["providers"]]
+
+
+@pytest.mark.asyncio
+async def test_provider_visible_for_heavi_domain_and_workspace_scope(client, pool):
+    body = await _register_user(client, pool, email="mike@heaviai.com")
+    headers = {"Authorization": f"Bearer {body['api_key']}"}
+    listing = await client.get("/api/v1/integrations", headers=headers)
+    assert "heavi" in [p["provider"] for p in listing.json()["providers"]]
+
+    # An unverified email on the right domain does NOT qualify.
+    await pool.execute("UPDATE users SET email_verified = FALSE WHERE id = $1", UUID(body["id"]))
+    listing = await client.get("/api/v1/integrations", headers=headers)
+    assert "heavi" not in [p["provider"] for p in listing.json()["providers"]]
+
+    # The Heavi workspace's scope user qualifies through workspaces.domain.
+    from backend.auth import create_api_key
+    from backend.services import workspace_service
+
+    workspace = await workspace_service.create_workspace("Heavi", "heaviai.com")
+    scope_key = await create_api_key(
+        workspace["scope_user_id"], name="test", key_type="machine", access="full"
+    )
+    scope_headers = {"Authorization": f"Bearer {scope_key}"}
+    listing = await client.get("/api/v1/integrations", headers=scope_headers)
+    assert "heavi" in [p["provider"] for p in listing.json()["providers"]]
+
+
+@pytest.mark.asyncio
+async def test_connect_add_source_then_ls_and_cat_read_live(client, pool, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "INTEGRATIONS_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    rules = [_rule("learning_1_a", "Prefer OEM brake calipers")]
+    _stub_heavi_endpoint(monkeypatch, rules)
+
+    body = await _register_user(client, pool, email="mike@heaviai.com")
+    headers = {"Authorization": f"Bearer {body['api_key']}"}
 
     connected = await client.post(
         "/api/v1/integrations/heavi/credentials",

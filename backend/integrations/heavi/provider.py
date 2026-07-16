@@ -21,6 +21,10 @@ class HeaviIntegration:
     scopes: list[str] = []
     supports_refresh = False
     auth_kind = "api_key"
+    # Customer-specific integration: only Heavi accounts see or connect it —
+    # verified @heaviai.com emails and the Heavi workspace's scope user
+    # (enforced by _user_may_use_provider in the integrations router).
+    allowed_email_domains = ("heaviai.com",)
     credential_fields = [
         CredentialField(
             name="base_url",

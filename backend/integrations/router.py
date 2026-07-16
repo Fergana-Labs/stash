@@ -236,6 +236,28 @@ def _ensure_provider_enabled(provider: str) -> None:
         raise HTTPException(status_code=503, detail=disabled_reason)
 
 
+async def _user_may_use_provider(p, user_id: UUID) -> bool:
+    """Customer-specific providers declare `allowed_email_domains` (e.g. Heavi);
+    providers without it are open to everyone. Allowed = a verified email on
+    one of the domains, or being the scope user of a workspace on one — the
+    same trust anchor as workspace membership (users.email_verified)."""
+    domains = getattr(p, "allowed_email_domains", None)
+    if domains is None:
+        return True
+    from ..database import get_pool
+
+    return bool(
+        await get_pool().fetchval(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND email_verified "
+            "               AND lower(split_part(email, '@', 2)) = ANY($2::text[])) "
+            "    OR EXISTS (SELECT 1 FROM workspaces "
+            "               WHERE scope_user_id = $1 AND domain = ANY($2::text[]))",
+            user_id,
+            list(domains),
+        )
+    )
+
+
 @router.get("", response_model=IntegrationsListResponse)
 async def list_integrations(current_user: dict = Depends(get_current_user)):
     user_connections = {
@@ -243,6 +265,8 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
     }
     items = []
     for p in list_providers():
+        if not await _user_may_use_provider(p, current_user["id"]):
+            continue
         conn = user_connections.get(p.name)
         disabled_reason = _provider_disabled_reason(p.name)
         items.append(
@@ -308,6 +332,10 @@ async def integration_connect(
     """
     p = get_provider(provider)
     _ensure_provider_enabled(provider)
+    if not await _user_may_use_provider(p, current_user["id"]):
+        raise HTTPException(
+            status_code=403, detail=f"{p.display_name} is not available for your account"
+        )
     await billing_service.ensure_can_connect(current_user["id"])
     # MCP OAuth providers (Granola) register a client + carry PKCE through their
     # own state, so they own the connect step end-to-end.
@@ -550,6 +578,10 @@ async def integration_connect_with_credentials(
     _ensure_provider_enabled(provider)
     if getattr(p, "auth_kind", "oauth") != "api_key":
         raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
+    if not await _user_may_use_provider(p, current_user["id"]):
+        raise HTTPException(
+            status_code=403, detail=f"{p.display_name} is not available for your account"
+        )
     await billing_service.ensure_can_connect(current_user["id"])
     # Both handlers redact the exception message — provider errors can embed
     # the pasted secrets, so only the exception type is logged.

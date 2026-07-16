@@ -35,6 +35,7 @@ export default function SourceConnectorList({
   onObsidianUploaded,
 }: Props) {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus>>({});
+  const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState<IntegrationProvider | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export default function SourceConnectorList({
       nextStatuses[provider.provider] = provider;
     }
     setStatuses(nextStatuses);
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -130,6 +132,9 @@ export default function SourceConnectorList({
 
       {CONNECTORS.map((connector) => {
         const status = statuses[connector.provider];
+        // The server omits providers this user may not use (customer-specific
+        // integrations like Heavi) — don't render a card for them.
+        if (loaded && !status) return null;
         const connected = !!status?.connected;
         const enabled = status?.enabled ?? true;
         return (
