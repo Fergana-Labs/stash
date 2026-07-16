@@ -2083,9 +2083,7 @@ async def search_all(
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
                 results += await _federated_search(connected, query, limit, swallow_errors=False)
         else:
-            federated = [
-                s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES
-            ]
+            federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
             for hits in await asyncio.gather(
                 *(_federated_search(s, query, limit) for s in federated)
             ):
