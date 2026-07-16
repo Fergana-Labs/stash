@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
+import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
 
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "memory" | "tools" | "computer";
@@ -27,12 +28,13 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
 ];
 const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
 
-/** Open any item as a workbench tab and sync the URL. */
+/** Open any item as a workbench tab and sync the URL. A plain click navigates
+ *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
 function useOpenTab() {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
-  return (kind: TabKind, refId: string, title: string) => {
-    openTab(kind, refId, title);
+  return (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => {
+    openTab(kind, refId, title, { newTab: opts?.newTab ?? opensNewTab() });
     router.replace(urlForTab({ kind, refId }));
   };
 }
@@ -188,7 +190,7 @@ function AgentsExplorer() {
     reloadAgents();
     // A fresh agent wants configuring first — open its tab on the Config side.
     requestAgentConfigView(a.id);
-    open("agent", `agent-${a.id}`, a.name);
+    open("agent", `agent-${a.id}`, a.name, { newTab: true });
   }
 
   // The curator has no chat — its settings are their own tab. Every other
@@ -229,7 +231,7 @@ function AgentsExplorer() {
               <span className="min-w-0 flex-1 truncate">{a.name}</span>
             </button>
             {!a.is_curator && (
-              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
+              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name, { newTab: true })} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
                 <Plus className="h-3.5 w-3.5" />
               </button>
             )}
