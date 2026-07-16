@@ -130,11 +130,13 @@ export default function SourceConnectorList({
         </div>
       )}
 
-      {CONNECTORS.map((connector) => {
+      {/* Visibility is server-driven: the server omits providers this user may
+          not use (customer-specific integrations like Heavi), so no card
+          renders until the list has loaded — a card must never flash in and
+          then disappear. */}
+      {loaded && CONNECTORS.map((connector) => {
         const status = statuses[connector.provider];
-        // The server omits providers this user may not use (customer-specific
-        // integrations like Heavi) — don't render a card for them.
-        if (loaded && !status) return null;
+        if (!status) return null;
         const connected = !!status?.connected;
         const enabled = status?.enabled ?? true;
         return (
