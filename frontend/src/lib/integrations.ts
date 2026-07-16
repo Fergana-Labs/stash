@@ -19,6 +19,7 @@ export type IntegrationProvider =
   | "linear"
   | "asana"
   | "gong"
+  | "attio"
   | "posthog"
   | "twitter";
 

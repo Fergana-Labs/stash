@@ -65,6 +65,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
+    "attio_calls": 21600,
     "twitter_bookmarks": 21600,
     # Freshness comes from extension pushes (which kick a sync); the interval
     # is the retry pass for failed hydrations.
@@ -85,6 +86,7 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "posthog_project": "navigable",
     "gong_calls": "searchable",
+    "attio_calls": "searchable",
     "twitter": "searchable",
     "twitter_bookmarks": "searchable",
     "instagram_saves": "searchable",
@@ -102,6 +104,7 @@ PROVIDER_SOURCE_TYPES = {
     "linear": ("linear",),
     "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
+    "attio": ("attio_calls",),
     "twitter": ("twitter", "twitter_bookmarks"),
     # Provider-less grouping: there is no Instagram OAuth integration — the
     # extension pushes the save list and ScrapeCreators hydrates it.
@@ -491,6 +494,7 @@ SOURCE_TABLE = {
     "linear": "linear_index",
     "posthog_project": "posthog_index",
     "gong_calls": "gong_documents",
+    "attio_calls": "attio_documents",
     "twitter": "twitter_posts",
     "twitter_bookmarks": "twitter_bookmark_docs",
     "instagram_saves": "instagram_save_docs",
@@ -508,6 +512,7 @@ CONTENT_TABLES = {
     "slack_messages",
     "granola_notes",
     "gong_documents",
+    "attio_documents",
     "notion_index",
     # A picked Drive folder is bounded, so its bodies are extracted once at sync
     # (OCR included) and stored. A whole-Drive source is not, and stays index-only.

@@ -118,6 +118,26 @@ export function GongIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function AttioIcon({ className, size = defaultSize }: Props) {
+  // Attio mark — a dark rounded square with a white "A".
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <rect width="24" height="24" rx="6" fill="#1A1A1A" />
+      <path
+        d="M12 5.5 17.5 18h-2.4l-1.1-2.7H10l-1.1 2.7H6.5L12 5.5Zm0 4.2-1.3 3.2h2.6L12 9.7Z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
 export function PostHogIcon({ className, size = defaultSize }: Props) {
   return (
     <svg

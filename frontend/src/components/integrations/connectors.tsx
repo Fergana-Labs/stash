@@ -4,6 +4,7 @@ import type { IntegrationProvider } from "@/lib/integrations";
 
 import {
   AsanaIcon,
+  AttioIcon,
   GmailIcon,
   GitHubIcon,
   GongIcon,
@@ -99,6 +100,13 @@ export const CONNECTORS: Connector[] = [
     blurb: "Call transcripts, kept in sync.",
   },
   {
+    provider: "attio",
+    label: "Attio",
+    sourceType: "attio_calls",
+    kind: "auto",
+    blurb: "Call recording transcripts, kept in sync.",
+  },
+  {
     provider: "posthog",
     label: "PostHog",
     sourceType: "posthog_project",
@@ -128,6 +136,7 @@ export const providerForSourceType: Record<string, string> = {
   slack: "slack",
   granola: "granola",
   gong_calls: "gong",
+  attio_calls: "attio",
   posthog_project: "posthog",
   twitter: "twitter",
   twitter_bookmarks: "twitter",
@@ -163,6 +172,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <GranolaIcon />;
     case "gong":
       return <GongIcon />;
+    case "attio":
+      return <AttioIcon />;
     case "posthog":
       return <PostHogIcon />;
     case "twitter":
@@ -184,6 +195,7 @@ export function labelForSourceType(type: string): string {
   if (type === "asana_project") return "Asana";
   if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
+  if (type === "attio_calls") return "Attio";
   if (type === "posthog_project") return "PostHog";
   if (type === "twitter") return "Twitter / X";
   if (type === "twitter_bookmarks") return "X bookmarks";

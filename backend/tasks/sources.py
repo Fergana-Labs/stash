@@ -18,6 +18,7 @@ from uuid import UUID
 
 from ..celery_app import celery
 from ..integrations.asana.indexer import index_asana
+from ..integrations.attio.indexer import index_attio
 from ..integrations.github.indexer import index_github_repo
 from ..integrations.gmail.indexer import index_gmail
 from ..integrations.gong.indexer import index_gong
@@ -51,6 +52,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "asana_project": index_asana,
     "linear": index_linear,
     "gong_calls": index_gong,
+    "attio_calls": index_attio,
     "twitter_bookmarks": index_twitter_bookmarks,
     "instagram_saves": index_instagram_saves,
 }

@@ -16,6 +16,7 @@ for a new provider — only the explicit list of providers grows.
 
 from . import (
     asana,  # noqa: F401
+    attio,  # noqa: F401
     github,  # noqa: F401 — import for side-effect (provider self-registration)
     gmail,  # noqa: F401
     gong,  # noqa: F401

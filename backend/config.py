@@ -268,6 +268,12 @@ class Settings:
         "GONG_OAUTH_REDIRECT_URI", AUTH0_ENABLED
     )
 
+    ATTIO_OAUTH_CLIENT_ID: str | None = os.getenv("ATTIO_OAUTH_CLIENT_ID")
+    ATTIO_OAUTH_CLIENT_SECRET: str | None = os.getenv("ATTIO_OAUTH_CLIENT_SECRET")
+    ATTIO_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "ATTIO_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
+
     SLACK_OAUTH_CLIENT_ID: str | None = os.getenv("SLACK_OAUTH_CLIENT_ID")
     SLACK_OAUTH_CLIENT_SECRET: str | None = os.getenv("SLACK_OAUTH_CLIENT_SECRET")
     SLACK_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(

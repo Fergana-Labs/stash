@@ -109,6 +109,13 @@ async def _resolve_gong_source(user_id) -> tuple[str, str]:
     return "calls", "Gong"
 
 
+async def _resolve_attio_source(user_id) -> tuple[str, str]:
+    """Attio is one connection per user (all call recordings); external_ref is
+    constant. Confirm the credentials exist (raises 401 if not connected)."""
+    await integration_storage.get_valid_token(user_id, "attio")
+    return "calls", "Attio"
+
+
 async def _resolve_twitter_source(user_id) -> tuple[str, str]:
     """Twitter source external_ref is the connected X account's numeric user
     id, resolved once here so reads never depend on /users/me (X's most
@@ -315,6 +322,9 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "attio_calls" and not external_ref:
+        external_ref, resolved_name = await _resolve_attio_source(current_user["id"])
         display_name = display_name or resolved_name
     elif body.source_type == "twitter":
         external_ref, username = await _resolve_twitter_source(current_user["id"])
