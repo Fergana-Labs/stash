@@ -1,4 +1,4 @@
-"""X (Twitter) saves: extension push + ScrapeCreators hydration.
+"""X (Twitter) saves: extension push + twitterapi.io hydration.
 
 The push endpoint get-or-creates the source, parses tweet ids from links
 loudly, and dedupes. The indexer hydrates the full text from the link, pulls
@@ -19,27 +19,23 @@ from backend.services import source_service, storage_service
 
 from .conftest import unique_name
 
+# twitterapi.io returns tweets in the native Twitter media shape under
+# extendedEntities; a reply carries conversationId = the thread root's id.
 _REPLY = {
-    "rest_id": "1001",
-    "core": {"user_results": {"result": {"legacy": {"screen_name": "alice", "name": "Alice"}}}},
-    "legacy": {
-        "full_text": "totally agree with this",
-        "created_at": "Wed Jul 01 12:00:00 +0000 2025",
-        "conversation_id_str": "1000",
-        "extended_entities": {
-            "media": [{"type": "photo", "media_url_https": "https://cdn.x/img.jpg"}]
-        },
-    },
+    "id": "1001",
+    "text": "totally agree with this",
+    "author": {"userName": "alice", "name": "Alice"},
+    "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
+    "conversationId": "1000",
+    "extendedEntities": {"media": [{"type": "photo", "media_url_https": "https://cdn.x/img.jpg"}]},
 }
 
 _ROOT = {
-    "rest_id": "1000",
-    "core": {"user_results": {"result": {"legacy": {"screen_name": "bob", "name": "Bob"}}}},
-    "legacy": {
-        "full_text": "here is a hot take",
-        "created_at": "Wed Jul 01 11:00:00 +0000 2025",
-        "conversation_id_str": "1000",
-    },
+    "id": "1000",
+    "text": "here is a hot take",
+    "author": {"userName": "bob", "name": "Bob"},
+    "createdAt": "Wed Jul 01 11:00:00 +0000 2025",
+    "conversationId": "1000",
 }
 
 
@@ -56,9 +52,9 @@ class _FakeResponse:
         return self._payload
 
 
-class _FakeScrapeCreators:
-    """Answers the SC tweet endpoint (keyed by the ?url= param) and the CDN
-    media URL for _archive_media's separate client."""
+class _FakeTwitterApi:
+    """Answers the twitterapi.io tweets endpoint (keyed by ?tweet_ids=) and the
+    CDN media URL for _archive_media's separate client."""
 
     media_bytes = b"fake image bytes"
 
@@ -72,10 +68,9 @@ class _FakeScrapeCreators:
         return False
 
     async def get(self, url, params=None):
-        if url == x_indexer.SC_TWEET_URL:
-            tweet_url = params["url"]
-            payload = _REPLY if tweet_url.endswith("/1001") else _ROOT
-            return _FakeResponse(payload=payload)
+        if url == x_indexer.TAPI_TWEETS_URL:
+            tweet = _REPLY if params["tweet_ids"] == "1001" else _ROOT
+            return _FakeResponse(payload={"tweets": [tweet], "status": "success"})
         if url == "https://cdn.x/img.jpg":
             return _FakeResponse(content=type(self).media_bytes)
         raise AssertionError(f"unexpected URL {url}")
@@ -92,11 +87,11 @@ def fake_hydration(monkeypatch):
     async def _url(key):
         return f"https://blob.example/{key}"
 
-    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
+    monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", "tapi-key")
     monkeypatch.setattr(storage_service, "is_configured", lambda: True)
     monkeypatch.setattr(storage_service, "upload_file", _upload)
     monkeypatch.setattr(storage_service, "get_file_url", _url)
-    monkeypatch.setattr(x_indexer, "httpx", SimpleNamespace(AsyncClient=_FakeScrapeCreators))
+    monkeypatch.setattr(x_indexer, "httpx", SimpleNamespace(AsyncClient=_FakeTwitterApi))
     return uploads
 
 
@@ -120,7 +115,7 @@ async def test_push_creates_source_and_skeleton_rows(
     sent: list = []
     from backend.routers import sources as sources_router
 
-    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
+    monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", "tapi-key")
     monkeypatch.setattr(
         sources_router.celery, "send_task", lambda name, args: sent.append((name, args))
     )
@@ -162,7 +157,7 @@ async def test_push_creates_source_and_skeleton_rows(
 
 @pytest.mark.asyncio
 async def test_push_rejects_non_x_urls(client: AsyncClient, monkeypatch) -> None:
-    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
+    monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", "tapi-key")
     headers, _ = await _register(client)
     resp = await client.post(
         "/api/v1/me/x-items",
@@ -174,10 +169,10 @@ async def test_push_rejects_non_x_urls(client: AsyncClient, monkeypatch) -> None
 
 
 @pytest.mark.asyncio
-async def test_push_refused_until_scrapecreators_key_is_configured(
+async def test_push_refused_until_twitterapi_key_is_configured(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
-    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", None)
+    monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", None)
     headers, owner_id = await _register(client)
 
     resp = await client.post(
@@ -186,7 +181,7 @@ async def test_push_refused_until_scrapecreators_key_is_configured(
         headers=headers,
     )
     assert resp.status_code == 503
-    assert "SCRAPECREATORS_API_KEY" in resp.json()["detail"]
+    assert "TWITTERAPI_IO_KEY" in resp.json()["detail"]
 
     count = await pool.fetchval(
         "SELECT count(*) FROM user_sources WHERE owner_user_id = $1", UUID(owner_id)

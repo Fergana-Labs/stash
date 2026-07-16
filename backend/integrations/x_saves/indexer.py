@@ -1,9 +1,9 @@
-"""Hydrate X (Twitter) saves via ScrapeCreators.
+"""Hydrate X (Twitter) saves via twitterapi.io.
 
 Skeleton rows arrive from the extension push (routers/sources.py
-x_items_router) as tweet URLs + a kind (Bookmark/Post/Reply/Article). Each
+x_items_router) as tweet ids + a kind (Bookmark/Post/Reply/Article). Each
 sync pass fills a bounded batch: the full tweet text + author from
-ScrapeCreators, the conversation root for reply context, and the tweet's
+twitterapi.io, the conversation root for reply context, and the tweet's
 images/video archived into object storage — so the save survives the tweet
 being deleted or the account going private. Per-item failures land on the
 row, loudly; rows are never deleted by sync (archive semantics).
@@ -23,8 +23,8 @@ from ...services import source_service, storage_service
 
 logger = logging.getLogger(__name__)
 
-SC_TWEET_URL = "https://api.scrapecreators.com/v1/twitter/tweet"
-SC_TIMEOUT = 60
+TAPI_TWEETS_URL = "https://api.twitterapi.io/twitter/tweets"
+TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_PER_TWEET = 4
 HYDRATION_BATCH = 25
@@ -36,8 +36,8 @@ def tweet_url(tweet_id: str) -> str:
 
 
 async def index_x_saves(source: dict) -> str | None:
-    if not settings.SCRAPECREATORS_API_KEY:
-        raise RuntimeError("SCRAPECREATORS_API_KEY is not set")
+    if not settings.TWITTERAPI_IO_KEY:
+        raise RuntimeError("TWITTERAPI_IO_KEY is not set")
     if not storage_service.is_configured():
         raise RuntimeError("File storage is not configured; cannot archive save media")
 
@@ -58,7 +58,7 @@ async def index_x_saves(source: dict) -> str | None:
     )
 
     async with httpx.AsyncClient(
-        timeout=SC_TIMEOUT, headers={"x-api-key": settings.SCRAPECREATORS_API_KEY}
+        timeout=TAPI_TIMEOUT, headers={"X-API-Key": settings.TWITTERAPI_IO_KEY}
     ) as client:
         for row in rows:
             try:
@@ -88,7 +88,7 @@ async def _hydrate_one(
     tweet_id: str,
     kind: str,
 ) -> None:
-    tweet = await _fetch_tweet(client, tweet_url(tweet_id))
+    tweet = await _fetch_tweet(client, tweet_id)
 
     # A reply shows only its own text out of context, so pull the root of the
     # conversation and keep it as "In reply to:" above the reply.
@@ -96,7 +96,7 @@ async def _hydrate_one(
     root_id = tweet.get("conversation_id")
     if root_id and root_id != tweet_id:
         try:
-            root = await _fetch_tweet(client, tweet_url(root_id))
+            root = await _fetch_tweet(client, root_id)
         except Exception:
             root = None  # thread context is best-effort; the reply itself matters
 
@@ -145,33 +145,27 @@ def _quote(text: str) -> str:
     return "\n".join(f"> {line}" for line in (text or "").splitlines())
 
 
-async def _fetch_tweet(client: httpx.AsyncClient, url: str) -> dict:
-    response = await client.get(SC_TWEET_URL, params={"url": url})
+async def _fetch_tweet(client: httpx.AsyncClient, tweet_id: str) -> dict:
+    response = await client.get(TAPI_TWEETS_URL, params={"tweet_ids": tweet_id})
     response.raise_for_status()
-    return _normalize(response.json())
+    tweets = response.json().get("tweets") or []
+    # twitterapi.io returns an object with empty fields (rather than 404) for a
+    # deleted / suspended / protected tweet — treat that as unavailable so it
+    # fails loud onto the row instead of archiving a blank save.
+    if not tweets or not tweets[0].get("id"):
+        raise RuntimeError(f"tweet {tweet_id} is unavailable (deleted, private, or suspended)")
+    return _normalize(tweets[0])
 
 
-def _normalize(payload: dict) -> dict:
-    """Pull the fields we need out of ScrapeCreators' tweet response, tolerant
-    of the exact envelope (data/tweet wrapper, legacy shape)."""
-    t = payload.get("data") or payload.get("tweet") or payload
-    t = t.get("tweet") or t
-    legacy = t.get("legacy") or t
-    tweet_id = t.get("rest_id") or legacy.get("id_str") or str(legacy.get("id") or "")
-    user = (
-        (t.get("core") or {}).get("user_results", {}).get("result", {}).get("legacy")
-        or t.get("user")
-        or legacy.get("user")
-        or {}
-    )
-    created = legacy.get("created_at")
+def _normalize(t: dict) -> dict:
+    """Pull the fields we need out of a twitterapi.io tweet object."""
     return {
-        "id": tweet_id,
-        "text": legacy.get("full_text") or legacy.get("text") or "",
-        "author": user.get("screen_name") or user.get("username") or "unknown",
-        "created_at": _parse_time(created),
-        "conversation_id": legacy.get("conversation_id_str") or legacy.get("conversation_id"),
-        "media": _media_urls(legacy),
+        "id": t.get("id") or "",
+        "text": t.get("text") or "",
+        "author": (t.get("author") or {}).get("userName") or "unknown",
+        "created_at": _parse_time(t.get("createdAt")),
+        "conversation_id": t.get("conversationId"),
+        "media": _media_urls(t),
     }
 
 
@@ -189,9 +183,10 @@ def _parse_time(value) -> datetime | None:
         return None
 
 
-def _media_urls(legacy: dict) -> list[dict]:
-    """[{url, is_video}] for each image/video on the tweet (best variant)."""
-    entities = legacy.get("extended_entities") or legacy.get("entities") or {}
+def _media_urls(tweet: dict) -> list[dict]:
+    """[{url, is_video}] for each image/video on the tweet (best variant).
+    twitterapi.io carries the native Twitter media shape under extendedEntities."""
+    entities = tweet.get("extendedEntities") or tweet.get("entities") or {}
     out: list[dict] = []
     for m in (entities.get("media") or [])[:MAX_MEDIA_PER_TWEET]:
         if m.get("type") in ("video", "animated_gif"):

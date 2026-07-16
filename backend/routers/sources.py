@@ -516,14 +516,14 @@ async def push_x_items(
     """The extension (logged into x.com) pushes the links of the user's
     bookmarks / posts / replies / articles. Get-or-creates the x_saves source,
     inserts pending skeleton rows keyed by tweet id, and kicks a sync so
-    ScrapeCreators hydration (full text + thread root + archived media) starts
+    twitterapi.io hydration (full text + thread root + archived media) starts
     immediately. Mirrors the Instagram saved-items flow."""
     from ..config import settings as app_settings
 
-    if not app_settings.SCRAPECREATORS_API_KEY:
+    if not app_settings.TWITTERAPI_IO_KEY:
         raise HTTPException(
             status_code=503,
-            detail="X saves are not enabled on this server (SCRAPECREATORS_API_KEY is not set)",
+            detail="X saves are not enabled on this server (TWITTERAPI_IO_KEY is not set)",
         )
     owner_user_id = current_user["id"]
     if not body.items:
