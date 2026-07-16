@@ -1,7 +1,6 @@
 """Clips router: save webpages and files from the browser extension,
 plus bulk imports (bookmarks.html, clip-all-tabs)."""
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
@@ -23,6 +22,8 @@ MAX_TAB_URLS = 200
 
 class ClipPageRequest(BaseModel):
     url: HttpUrl
+    # The extension runs Mozilla Readability and sends the readable article as
+    # HTML (images kept, links absolute), so the server stores it as-is.
     html: str
     title: str | None = None
 
@@ -47,12 +48,12 @@ async def clip_page(
         dispatch_url_imports(ids)
         return JSONResponse(status_code=202, content={"import_id": str(ids[0])})
     try:
-        page = await clip_service.save_page_clip(
+        page = await clip_service.store_html_clip(
             owner_user_id=current_user["id"],
             user_id=current_user["id"],
             url=str(body.url),
+            title=body.title or "",
             html=body.html,
-            title=body.title,
         )
     except ArticleExtractionError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -145,9 +146,8 @@ async def import_bookmarks(
     file: UploadFile,
     current_user: dict = Depends(get_current_user),
 ):
-    """Import a Netscape-format bookmarks.html export. The bookmark folder
-    tree is mirrored under Clips/Bookmarks and every URL becomes a
-    url_imports row fetched out-of-band."""
+    """Import a Netscape-format bookmarks.html export. Every URL is fetched
+    out-of-band, stored in Clips/raw, and indexed in the Bookmarks table."""
     owner_user_id = current_user["id"]
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
@@ -162,16 +162,7 @@ async def import_bookmarks(
             detail=f"Import has {len(bookmarks)} bookmarks (max {MAX_IMPORT_URLS})",
         )
 
-    folder_ids = await clip_service.ensure_clips_subtree(
-        owner_user_id,
-        owner_user_id,
-        "Bookmarks",
-        {b["folder_path"] for b in bookmarks},
-    )
-    items = [
-        {"url": b["url"], "title": b["title"], "folder_id": folder_ids[b["folder_path"]]}
-        for b in bookmarks
-    ]
+    items = [{"url": b["url"], "title": b["title"]} for b in bookmarks]
     return await _create_import(
         owner_user_id=owner_user_id,
         kind="bookmarks",
@@ -189,8 +180,8 @@ async def import_tabs(
     body: TabsImportRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Clip every open tab: URLs land under Clips/Tabs/<date> and are
-    fetched out-of-band."""
+    """Save every open tab: URLs are fetched out-of-band, stored in Clips/raw,
+    and indexed in the Bookmarks table."""
     owner_user_id = current_user["id"]
     if not body.urls:
         raise HTTPException(status_code=400, detail="No URLs given")
@@ -199,10 +190,6 @@ async def import_tabs(
             status_code=413, detail=f"Too many tabs ({len(body.urls)}, max {MAX_TAB_URLS})"
         )
 
-    date_name = datetime.now(UTC).date().isoformat()
-    folder_ids = await clip_service.ensure_clips_subtree(
-        owner_user_id, owner_user_id, "Tabs", {(date_name,)}
-    )
     seen: set[str] = set()
     items = []
     for url in body.urls:
@@ -210,7 +197,7 @@ async def import_tabs(
         if url_str in seen:
             continue
         seen.add(url_str)
-        items.append({"url": url_str, "folder_id": folder_ids[(date_name,)]})
+        items.append({"url": url_str})
     return await _create_import(
         owner_user_id=owner_user_id,
         kind="tabs",

@@ -158,7 +158,7 @@ async def test_worker_turns_html_url_into_clip_page(client: AsyncClient, pool, m
         row["result_page_id"],
     )
     assert page["name"] == "Why Simplicity Wins"
-    assert page["folder_name"] == "Clips"
+    assert page["folder_name"] == "raw"
 
 
 @pytest.mark.asyncio
@@ -218,7 +218,7 @@ async def test_worker_turns_youtube_url_into_transcript_page(
         row["result_page_id"],
     )
     assert page["name"] == "A Great Talk"
-    assert page["folder_name"] == "YouTube"
+    assert page["folder_name"] == "raw"
     assert "words words" in page["content_markdown"]
 
 
