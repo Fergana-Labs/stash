@@ -14,7 +14,6 @@ import {
   NotionIcon,
   PostHogIcon,
   SlackIcon,
-  TwitterIcon,
 } from "./BrandIcons";
 
 export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
@@ -105,13 +104,6 @@ export const CONNECTORS: Connector[] = [
     kind: "auto",
     blurb: "Browse dashboards, insights, feature flags, and experiments.",
   },
-  {
-    provider: "twitter",
-    label: "Twitter / X",
-    sourceType: "twitter",
-    kind: "auto",
-    blurb: "OAuth access to X search, posts, bookmarks, likes, timelines, and DMs.",
-  },
 ];
 
 // Maps a connected-source row's `type` back to the integration provider that
@@ -129,8 +121,6 @@ export const providerForSourceType: Record<string, string> = {
   granola: "granola",
   gong_calls: "gong",
   posthog_project: "posthog",
-  twitter: "twitter",
-  twitter_bookmarks: "twitter",
 };
 
 export function connectorForProvider(provider: string): Connector | undefined {
@@ -165,8 +155,6 @@ export function connectorIcon(provider: string): ReactNode {
       return <GongIcon />;
     case "posthog":
       return <PostHogIcon />;
-    case "twitter":
-      return <TwitterIcon />;
     default:
       return null;
   }
@@ -185,8 +173,7 @@ export function labelForSourceType(type: string): string {
   if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
   if (type === "posthog_project") return "PostHog";
-  if (type === "twitter") return "Twitter / X";
-  if (type === "twitter_bookmarks") return "X bookmarks";
+  if (type === "x_saves") return "X saves";
   if (type === "instagram_saves") return "Instagram saves";
   return type;
 }

@@ -29,7 +29,7 @@ from ..integrations.notion.indexer import index_notion
 from ..integrations.posthog.indexer import index_posthog
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..integrations.social_saves.indexer import index_instagram_saves
-from ..integrations.twitter.indexer import index_twitter_bookmarks
+from ..integrations.x_saves.indexer import index_x_saves
 from ..services import source_service
 from ._celery_helpers import run_async
 
@@ -51,8 +51,8 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "asana_project": index_asana,
     "linear": index_linear,
     "gong_calls": index_gong,
-    "twitter_bookmarks": index_twitter_bookmarks,
     "instagram_saves": index_instagram_saves,
+    "x_saves": index_x_saves,
 }
 
 

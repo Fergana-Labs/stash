@@ -6,19 +6,19 @@
 // companion via window.postMessage (main-world scripts can't use
 // chrome.runtime).
 
-import { parseBookmarks } from '../lib/x_bookmarks';
+import { parseBookmarkIds } from '../lib/x_bookmarks';
 
 const BOOKMARKS_RE = /\/graphql\/[^/]+\/Bookmarks/;
 
-function post(tweets: unknown[]): void {
-  if (tweets.length === 0) return;
-  window.postMessage({ source: 'stash-x-bookmarks', tweets }, window.location.origin);
+function post(ids: string[]): void {
+  if (ids.length === 0) return;
+  window.postMessage({ source: 'stash-x-bookmarks', ids }, window.location.origin);
 }
 
 function handleBody(url: string, body: string): void {
   if (!BOOKMARKS_RE.test(url)) return;
   try {
-    post(parseBookmarks(JSON.parse(body)));
+    post(parseBookmarkIds(JSON.parse(body)));
   } catch {
     // A non-JSON or shape-changed response is not fatal — the next page load
     // tries again. Staying silent avoids console noise on every x.com fetch.

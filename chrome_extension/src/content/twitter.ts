@@ -6,6 +6,6 @@
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   const data = event.data;
-  if (data?.source !== 'stash-x-bookmarks' || !Array.isArray(data.tweets)) return;
-  void chrome.runtime.sendMessage({ type: 'X_BOOKMARKS', items: data.tweets });
+  if (data?.source !== 'stash-x-bookmarks' || !Array.isArray(data.ids)) return;
+  void chrome.runtime.sendMessage({ type: 'X_BOOKMARKS', ids: data.ids });
 });

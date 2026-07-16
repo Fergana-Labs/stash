@@ -1,11 +1,11 @@
-// X bookmarks: receive captured tweets, push to Stash, daily auto-visit.
+// X bookmarks: capture bookmark links, push to Stash, daily auto-visit.
 //
-// The content scripts on x.com capture the user's Bookmarks response
-// whenever they visit the bookmarks page; a daily alarm also opens a
-// background (non-active) tab to x.com/i/bookmarks so capture happens
-// without a manual visit. Pushed tweets go to POST /me/twitter-bookmarks
-// (full content, no X API). The Stash source is created when the user
-// connects X, so a push before that returns 400 and we surface it.
+// The content scripts on x.com read the user's Bookmarks response whenever
+// they visit the bookmarks page; a daily alarm also opens a background
+// (non-active) tab to x.com/i/bookmarks so capture happens without a manual
+// visit. We push only the tweet LINKS to POST /me/x-items — the server
+// hydrates the full content, thread, and media from each link via
+// ScrapeCreators, and get-or-creates the x_saves source on first push.
 
 import { setBadge, stashConfig } from '../lib/stash';
 
@@ -27,17 +27,18 @@ function schedule(): void {
 }
 
 export async function receiveBookmarks(
-  items: unknown[],
+  ids: unknown[],
   sender: chrome.runtime.MessageSender
 ): Promise<any> {
   await chrome.storage.local.set({ xBookmarksFetchedAt: Date.now() });
   await closeVisitTab(sender.tab?.id);
 
-  if (!Array.isArray(items) || items.length === 0) return { ok: true, stored: 0 };
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: true, new: 0 };
   const cfg = await stashConfig();
   if (!cfg.apiKey) return { ok: false, error: 'not_connected' };
 
-  const response = await fetch(`${cfg.apiBase}/api/v1/me/twitter-bookmarks`, {
+  const items = ids.map((id) => ({ url: `https://x.com/i/status/${id}`, kind: 'Bookmark' }));
+  const response = await fetch(`${cfg.apiBase}/api/v1/me/x-items`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ items }),

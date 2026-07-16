@@ -24,15 +24,11 @@ import {
   type SourceStatus,
 } from "@/lib/api";
 import {
-  clearTwitterApp,
   disconnectIntegration,
-  getTwitterApp,
   listIntegrations,
-  setTwitterApp,
   startConnect,
   submitCredentials,
   type IntegrationStatus,
-  type TwitterAppStatus,
 } from "@/lib/integrations";
 import { connectorForProvider, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
 import {
@@ -317,11 +313,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
 
         {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
 
-        {/* X sources auto-create on connect; bookmarks get their own panel. */}
-        {connected && connector.provider === "twitter" && <TwitterBookmarksPanel />}
-
         {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser) */}
-        {connected && connector.provider !== "twitter" && (
+        {connected && (
           <section className="mt-6">
             <SectionLabel>
               {connector.kind === "github" ? "Repository access" : `Add a ${itemNoun}`}
@@ -399,125 +392,6 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// X bookmarks are captured by the browser extension for free. Server-side
-// sync (via the X API) is opt-in and requires the user's own paid X app,
-// because X bills bookmark reads to the app, not the user.
-function TwitterBookmarksPanel() {
-  const [status, setStatus] = useState<TwitterAppStatus | null>(null);
-  const [open, setOpen] = useState(false);
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  const load = useCallback(() => {
-    getTwitterApp()
-      .then(setStatus)
-      .catch(() => setStatus({ configured: false, client_id: null }));
-  }, []);
-  useEffect(() => load(), [load]);
-
-  async function save() {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const result = await setTwitterApp(clientId.trim(), clientSecret.trim());
-      setClientSecret("");
-      setOpen(false);
-      setNotice(
-        result.reconnect_required
-          ? "Saved. Reconnect Twitter / X so the token is issued by your app."
-          : "Saved. Server-side bookmark sync is on.",
-      );
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save your X app");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await clearTwitterApp();
-      setNotice("Removed. Bookmarks revert to browser-extension capture.");
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove your X app");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="mt-6">
-      <SectionLabel>Bookmarks</SectionLabel>
-      <div className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[12.5px]">
-        <p className="text-muted-foreground">
-          The Stash browser extension captures your X bookmarks automatically — no X API, no cost.
-          Install it and your bookmarks appear here.
-        </p>
-        <div className="mt-2 border-t border-border pt-2">
-          {status?.configured ? (
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-foreground">
-                Server-side sync via your own X app{" "}
-                <span className="text-muted-foreground">({status.client_id})</span>
-              </span>
-              <button type="button" onClick={() => void remove()} disabled={busy} className={secondaryButton()}>
-                Remove
-              </button>
-            </div>
-          ) : (
-            <div>
-              <button type="button" onClick={() => setOpen((v) => !v)} className={secondaryButton()}>
-                {open ? "Cancel" : "Use my own X app for server-side sync"}
-              </button>
-              {open && (
-                <div className="mt-2 space-y-2">
-                  <p className="text-[11.5px] text-muted-foreground">
-                    X bills bookmark reads to the developer app, so server-side sync needs your own
-                    paid X app. Paste its OAuth 2.0 Client ID and Secret (Client ID alone works if
-                    your app is public).
-                  </p>
-                  <input
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    placeholder="Client ID"
-                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground"
-                  />
-                  <input
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                    placeholder="Client Secret (optional)"
-                    type="password"
-                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void save()}
-                    disabled={busy || !clientId.trim()}
-                    className={primaryButton()}
-                  >
-                    {busy ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {notice && <div className="mt-2 text-[11.5px] text-muted-foreground">{notice}</div>}
-        {error && <div className="mt-2 text-[11.5px] text-error">{error}</div>}
-      </div>
-    </section>
-  );
-}
-
 // The noun used in the "Add a <thing>" / "<things>" section labels.
 const ITEM_NOUN: Record<string, string> = {
   github_repo: "repo",
@@ -567,10 +441,8 @@ function shortRef(source: Source): string | null {
   if (!ref) return null;
   if (source.type === "jira_project") return ref.split(":")[1] ?? ref;
   if (source.type === "gmail") return null;
-  // X sources key on the numeric account id; the @handle in the display name
-  // already identifies the account, so the raw id is just noise (and made the
-  // two X sources look like duplicates).
-  if (source.type === "twitter" || source.type === "twitter_bookmarks") return null;
+  // X / Instagram saves key on a constant "saves" ref — not worth showing.
+  if (source.type === "x_saves" || source.type === "instagram_saves") return null;
   return ref;
 }
 
@@ -645,19 +517,14 @@ function SourceRow({
     // user clicks Sync, which flips sync_status back to "syncing").
   }, [source.source, source.sync_status, source.last_synced_at]);
 
-  // Search-driven sources (twitter account, gmail, drive, …) have no local
-  // index — search hits the provider live — so there's nothing to sync and no
-  // item count to show.
+  // Search-driven sources (gmail, drive, …) have no local index — search hits
+  // the provider live — so there's nothing to sync and no item count to show.
   const searchedLive =
     source.type === "gmail" ||
     source.type === "google_drive" ||
     source.type === "jira_project" ||
-    source.type === "asana_project" ||
-    source.type === "twitter";
+    source.type === "asana_project";
   const syncs = source.sync_enabled !== false;
-  // X bookmarks (and other capture sources) are filled by the browser
-  // extension, not a server sync, when server sync is off.
-  const extensionFed = source.type === "twitter_bookmarks" && !syncs;
   const ref = shortRef(source);
 
   return (
@@ -682,8 +549,6 @@ function SourceRow({
               </>
             ) : searchedLive ? (
               "Searched live"
-            ) : extensionFed ? (
-              <>Saved from your browser{status.item_count ? ` · ${status.item_count} saved` : ""}</>
             ) : (
               "live"
             )}

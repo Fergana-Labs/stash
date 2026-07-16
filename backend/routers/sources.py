@@ -109,24 +109,6 @@ async def _resolve_gong_source(user_id) -> tuple[str, str]:
     return "calls", "Gong"
 
 
-async def _resolve_twitter_source(user_id) -> tuple[str, str]:
-    """Twitter source external_ref is the connected X account's numeric user
-    id, resolved once here so reads never depend on /users/me (X's most
-    rate-limited endpoint). Caller-supplied refs are ignored — there are no
-    saved-query sources (they would burn the owner's X quota on a schedule)."""
-    from ..integrations.twitter.indexer import fetch_me
-
-    token = await integration_storage.get_valid_token(user_id, "twitter")
-    me = await fetch_me(token)
-    username = me.get("username")
-    if not username:
-        raise HTTPException(
-            status_code=400,
-            detail="Reconnect Twitter / X before adding it as a source.",
-        )
-    return me["id"], username
-
-
 async def _resolve_linear_source(user_id) -> tuple[str, str]:
     """A Linear source covers every issue the connected user can read, so there
     is one canonical ref ('me'). Confirm the token exists (raises 401 if not
@@ -316,12 +298,6 @@ async def add_source(
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
         display_name = display_name or resolved_name
-    elif body.source_type == "twitter":
-        external_ref, username = await _resolve_twitter_source(current_user["id"])
-        display_name = f"Twitter / X (@{username})"
-    elif body.source_type == "twitter_bookmarks":
-        external_ref, username = await _resolve_twitter_source(current_user["id"])
-        display_name = f"X bookmarks (@{username})"
     elif body.source_type == "linear":
         external_ref, resolved_name = await _resolve_linear_source(current_user["id"])
         display_name = display_name or resolved_name
@@ -513,50 +489,84 @@ async def push_saved_items(
     return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}
 
 
-# ===== X bookmarks push (browser extension) =====
+# ===== X saves push (browser extension) =====
 
-twitter_bookmarks_router = APIRouter(prefix="/api/v1/me/twitter-bookmarks", tags=["sources"])
+x_items_router = APIRouter(prefix="/api/v1/me/x-items", tags=["sources"])
 
-MAX_BOOKMARKS_PER_PUSH = 500
-
-
-class CapturedBookmark(BaseModel):
-    id: str
-    text: str = ""
-    author_username: str | None = None
-    author_name: str | None = None
-    created_at: str | None = None
+_X_STATUS_RE = re.compile(r"(?:twitter|x)\.com/(?:[^/]+/status|i/(?:web/)?status)/(\d+)")
+MAX_X_ITEMS_PER_PUSH = 500
+_X_KINDS = ("Bookmark", "Post", "Reply", "Article")
 
 
-class BookmarksPush(BaseModel):
-    items: list[CapturedBookmark]
+class XItem(BaseModel):
+    url: str
+    kind: Literal["Bookmark", "Post", "Reply", "Article"] = "Bookmark"
+    saved_at: datetime | None = None
 
 
-@twitter_bookmarks_router.post("")
-async def push_twitter_bookmarks(
-    body: BookmarksPush,
+class XItemsPush(BaseModel):
+    items: list[XItem]
+
+
+@x_items_router.post("")
+async def push_x_items(
+    body: XItemsPush,
     current_user: dict = Depends(get_current_user),
 ):
-    """The extension captures the user's X bookmarks from x.com (full tweet
-    content, no X API) and pushes them here. Unlike Instagram there is no
-    hydration — the content is already complete, so this upserts directly
-    into the archive. The twitter_bookmarks source is created when the user
-    connects X, so a push before connecting is a clear 400."""
-    from ..integrations.twitter.indexer import store_captured_bookmarks
+    """The extension (logged into x.com) pushes the links of the user's
+    bookmarks / posts / replies / articles. Get-or-creates the x_saves source,
+    inserts pending skeleton rows keyed by tweet id, and kicks a sync so
+    ScrapeCreators hydration (full text + thread root + archived media) starts
+    immediately. Mirrors the Instagram saved-items flow."""
+    from ..config import settings as app_settings
 
+    if not app_settings.SCRAPECREATORS_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="X saves are not enabled on this server (SCRAPECREATORS_API_KEY is not set)",
+        )
     owner_user_id = current_user["id"]
-    if len(body.items) > MAX_BOOKMARKS_PER_PUSH:
+    if not body.items:
+        raise HTTPException(status_code=400, detail="No items given")
+    if len(body.items) > MAX_X_ITEMS_PER_PUSH:
         raise HTTPException(
             status_code=413,
-            detail=f"Too many items ({len(body.items)}, max {MAX_BOOKMARKS_PER_PUSH})",
+            detail=f"Too many items ({len(body.items)}, max {MAX_X_ITEMS_PER_PUSH})",
         )
 
-    source = await source_service.get_source_by_type(owner_user_id, "twitter_bookmarks")
-    if source is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Connect Twitter / X in Stash first, then the extension can save your bookmarks.",
-        )
+    parsed: list[tuple[str, XItem]] = []
+    for item in body.items:
+        match = _X_STATUS_RE.search(item.url)
+        if not match:
+            raise HTTPException(status_code=400, detail=f"Not an X post URL: {item.url}")
+        parsed.append((match.group(1), item))
 
-    stored = await store_captured_bookmarks(source, [item.model_dump() for item in body.items])
-    return {"accepted": len(body.items), "stored": stored}
+    source = await source_service.create_source(
+        owner_user_id=owner_user_id,
+        source_type="x_saves",
+        external_ref="saves",
+        display_name="X saves",
+        settings={},
+    )
+    source_id = UUID(source["id"])
+
+    pool = get_pool()
+    new = 0
+    for tweet_id, item in parsed:
+        inserted = await pool.fetchval(
+            "INSERT INTO x_save_docs "
+            "(owner_user_id, source_id, path, name, kind, external_ref, saved_at) "
+            "VALUES ($1, $2, $3, $3, $4, $3, $5) "
+            "ON CONFLICT (source_id, path) DO NOTHING RETURNING 1",
+            owner_user_id,
+            source_id,
+            tweet_id,
+            item.kind,
+            item.saved_at,
+        )
+        if inserted:
+            new += 1
+
+    if new:
+        celery.send_task("backend.tasks.sources.sync_source", args=[str(source_id)])
+    return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}

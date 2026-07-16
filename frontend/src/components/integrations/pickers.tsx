@@ -240,9 +240,7 @@ export function AddSourceControls({
     );
   }
 
-  // kind "auto" — granola/gong/twitter. The backend resolves the ref.
-  // Twitter needs no per-source buttons at all: connecting the OAuth
-  // integration auto-creates both its sources (account + bookmarks).
+  // kind "auto" — granola/gong/etc. The backend resolves the ref.
   return (
     <div className="space-y-2">
       {!connected && (

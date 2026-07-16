@@ -62,7 +62,7 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
     case 'SAVED_ITEMS_FAILED':
       return savedItemsFailed(message.error, sender);
     case 'X_BOOKMARKS':
-      return receiveBookmarks(message.items, sender);
+      return receiveBookmarks(message.ids, sender);
     case 'CLIP_FAILED':
       await chrome.storage.local.set({ lastError: `Save failed: ${message.error}` });
       await setBadge('!', 'Save failed — click for details');

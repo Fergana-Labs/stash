@@ -50,7 +50,6 @@ class SourceSyncUserError(Exception):
     constant (see tasks/sources.py)."""
 
 
-TWITTER_HANDLE_RE = re.compile(r"@([A-Za-z0-9_]{1,15})")
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -74,19 +73,11 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
-    # NB: twitter_bookmarks is intentionally absent — a source is
-    # extension-fed by default (the browser captures bookmarks for $0, no X
-    # API), so it enrolls in server-side sync only when the owner brings
-    # their own paid X app (see enable_twitter_bookmarks_server_sync).
     # Freshness comes from extension pushes (which kick a sync); the interval
     # is the retry pass for failed hydrations.
     "instagram_saves": 1800,
+    "x_saves": 1800,
 }
-
-# The cadence used when a twitter_bookmarks source is switched to server-side
-# sync (bring-your-own X app). Kept out of DEFAULT_SYNC_INTERVAL_S so the
-# default stays extension-fed.
-TWITTER_BOOKMARKS_SYNC_INTERVAL_S = 21600
 
 # Which capability each connected source type exposes.
 SOURCE_CAPABILITY = {
@@ -102,9 +93,8 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "posthog_project": "navigable",
     "gong_calls": "searchable",
-    "twitter": "searchable",
-    "twitter_bookmarks": "searchable",
     "instagram_saves": "searchable",
+    "x_saves": "searchable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -119,10 +109,10 @@ PROVIDER_SOURCE_TYPES = {
     "linear": ("linear",),
     "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
-    "twitter": ("twitter", "twitter_bookmarks"),
-    # Provider-less grouping: there is no Instagram OAuth integration — the
-    # extension pushes the save list and ScrapeCreators hydrates it.
+    # Provider-less groupings: no OAuth integration — the extension pushes the
+    # saved-item links and ScrapeCreators hydrates them.
     "instagram": ("instagram_saves",),
+    "x": ("x_saves",),
 }
 
 SOURCE_TYPE_PROVIDER = {
@@ -248,22 +238,7 @@ def _source_row(row) -> dict:
 
 
 def _source_search_hint(source: dict) -> str | None:
-    if source["source_type"] != "twitter":
-        return None
-
-    personal = (
-        "Use list_source on this source to read home, my-posts, bookmarks, likes, and dms. "
-        "Post reads also advertise thread:<id>, likers:<id>, and reposters:<id> refs. "
-        "For You is not exposed by the official X API."
-    )
-    match = TWITTER_HANDLE_RE.search(source["display_name"] or "")
-    if not match:
-        return f"Twitter / X source. Scope search to this source before querying X. {personal}"
-    username = match.group(1)
-    return (
-        "Twitter / X source. To search this user's recent public posts, scope search "
-        f"to this source and add `from:{username}` to the query. {personal}"
-    )
+    return None
 
 
 # --- user_sources registry --------------------------------------------
@@ -384,34 +359,14 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
 
 async def get_source_by_type(owner_user_id: UUID, source_type: str) -> dict | None:
     """The owner's source of a given type, or None. Used for the single-per-user
-    source types (twitter_bookmarks, instagram_saves) that the extension pushes
-    to without knowing the source id."""
+    source types (x_saves, instagram_saves) that the extension pushes to without
+    knowing the source id."""
     row = await get_pool().fetchrow(
         "SELECT * FROM user_sources WHERE owner_user_id = $1 AND source_type = $2",
         owner_user_id,
         source_type,
     )
     return _source_row(row) if row else None
-
-
-async def set_twitter_bookmarks_server_sync(owner_user_id: UUID, enabled: bool) -> None:
-    """Flip a twitter_bookmarks source between extension-fed (default) and
-    server-side sync via the owner's own X app. Enabling makes it due now so
-    the first sync runs immediately."""
-    if enabled:
-        await get_pool().execute(
-            "UPDATE user_sources SET sync_enabled = TRUE, sync_interval_s = $2, "
-            "next_sync_at = now(), updated_at = now() "
-            "WHERE owner_user_id = $1 AND source_type = 'twitter_bookmarks'",
-            owner_user_id,
-            TWITTER_BOOKMARKS_SYNC_INTERVAL_S,
-        )
-    else:
-        await get_pool().execute(
-            "UPDATE user_sources SET sync_enabled = FALSE, updated_at = now() "
-            "WHERE owner_user_id = $1 AND source_type = 'twitter_bookmarks'",
-            owner_user_id,
-        )
 
 
 async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
@@ -540,9 +495,8 @@ SOURCE_TABLE = {
     "linear": "linear_index",
     "posthog_project": "posthog_index",
     "gong_calls": "gong_documents",
-    "twitter": "twitter_posts",
-    "twitter_bookmarks": "twitter_bookmark_docs",
     "instagram_saves": "instagram_save_docs",
+    "x_saves": "x_save_docs",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -561,10 +515,10 @@ CONTENT_TABLES = {
     # A picked Drive folder is bounded, so its bodies are extracted once at sync
     # (OCR included) and stored. A whole-Drive source is not, and stays index-only.
     "drive_documents",
-    # Bookmarks are an archive: posts vanish from X but never from here.
-    "twitter_bookmark_docs",
-    # Same archive semantics for Instagram saves.
+    # Extension-captured saves are an archive: content is hydrated once and
+    # stored, so it survives the post being deleted or the account going private.
     "instagram_save_docs",
+    "x_save_docs",
 }
 
 # Index-only source types whose `search` is federated live to the provider's
@@ -577,14 +531,7 @@ FEDERATED_SEARCH_TYPES = {
     "asana_project",
     "linear",
     "posthog_project",
-    "twitter",
 }
-
-# Federated types excluded from UNSCOPED search fan-out: the owner's API quota
-# is metered (X free tier: one recent-search per 15 minutes), too scarce to
-# spend on searches that weren't aimed at the provider. Agents search these
-# only by explicitly scoping to the source handle.
-SCOPED_ONLY_SEARCH_TYPES = {"twitter"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
@@ -813,22 +760,6 @@ async def remove_missing_documents(table: str, source_id: UUID, present_paths: l
     return int(result.split()[-1]) if result.startswith("UPDATE") else 0
 
 
-async def prune_index_rows(table: str, source_id: UUID, *, max_age_days: int) -> int:
-    """Hard-delete cache rows whose last write is older than the window.
-    Search-backed caches (twitter) grow per-query and have no re-sync pass to
-    reconcile them, so age is the only retention signal. Immutable rows never
-    bump updated_at when re-seen, so this is age-since-first-cached — fine,
-    because a pruned post simply reappears the next time a search returns it.
-    Returns the number removed."""
-    result = await get_pool().execute(
-        f"DELETE FROM {table} "
-        f"WHERE source_id = $1 AND updated_at < now() - make_interval(days => $2)",
-        source_id,
-        max_age_days,
-    )
-    return int(result.split()[-1]) if result.startswith("DELETE") else 0
-
-
 ENTRIES_LIMIT = 200
 
 
@@ -1001,29 +932,6 @@ async def _render_slack_day(
     }
 
 
-async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
-    from ..integrations.twitter.indexer import fetch_twitter_content, twitter_ref_name
-
-    owner_user_id = UUID(source["owner_user_id"])
-    is_post = (ref.isascii() and ref.isdigit()) or ref.startswith("post:")
-    doc = {
-        "path": ref,
-        "name": twitter_ref_name(ref),
-        "kind": "post" if is_post else "feed",
-    }
-    try:
-        content = await fetch_twitter_content(owner_user_id, source["external_ref"], ref)
-    except Exception as exc:
-        logger.warning(
-            "source document fetch failed source=%s source_type=%s exception_type=%s",
-            source["id"],
-            source["source_type"],
-            type(exc).__name__,
-        )
-        return {**doc, "content": "", "error": "source document fetch failed"}
-    return {**doc, "content": content, "external_ref": ref}
-
-
 async def _read_linear_live_ref(source: dict, identifier: str) -> dict | None:
     from ..integrations.linear.indexer import fetch_linear_content
 
@@ -1047,12 +955,6 @@ async def _read_linear_live_ref(source: dict, identifier: str) -> dict | None:
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables fetch it lazily from the provider with the owner's token."""
-    if source["source_type"] == "twitter":
-        from ..integrations.twitter.indexer import is_twitter_live_ref
-
-        if is_twitter_live_ref(path):
-            return await _read_twitter_live_ref(source, path)
-
     # Any Linear identifier is readable live, even one not yet in the index.
     if source["source_type"] == "linear" and LINEAR_IDENTIFIER_RE.match(path):
         return await _read_linear_live_ref(source, path)
@@ -1092,6 +994,9 @@ async def read_document(source: dict, path: str) -> dict | None:
 
         if table == "instagram_save_docs":
             return await _read_instagram_save(UUID(source["id"]), path)
+
+        if table == "x_save_docs":
+            return await _read_x_save(UUID(source["id"]), path)
 
         row = await get_pool().fetchrow(
             f"SELECT path, name, kind, content, external_ref FROM {table} "
@@ -1229,6 +1134,49 @@ async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     return doc
 
 
+async def _read_x_save(source_id: UUID, path: str) -> dict | None:
+    """A saved tweet, or a loud explanation while hydration is pending. Hydrated
+    docs carry fresh presigned URLs for the archived images/video."""
+    from . import storage_service
+
+    row = await get_pool().fetchrow(
+        "SELECT path, name, kind, content, external_ref, media, "
+        "hydration_status, hydration_error "
+        "FROM x_save_docs WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        source_id,
+        path,
+    )
+    if not row:
+        return None
+    if row["content"] is None:
+        status = row["hydration_status"]
+        return {
+            "path": row["path"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "content": "",
+            "error": row["hydration_error"] or f"hydration {status}",
+            "http_status": 422 if status == "failed" else 409,
+        }
+    doc = {
+        "path": row["path"],
+        "name": row["name"],
+        "kind": row["kind"],
+        "content": row["content"],
+        "external_ref": row["external_ref"],
+    }
+    media = row["media"] or []
+    if media:
+        doc["media"] = [
+            {
+                "url": await storage_service.get_file_url(m["storage_key"]),
+                "content_type": m.get("content_type"),
+            }
+            for m in media
+        ]
+    return doc
+
+
 async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
     """Fetch an index-only document's body from the provider. Local import keeps
     the integration indexers (which import this module) free of a cycle."""
@@ -1260,8 +1208,6 @@ async def _lazy_fetch(source: dict, external_ref: str | None) -> str:
         from ..integrations.posthog.indexer import fetch_posthog_content
 
         return await fetch_posthog_content(owner_user_id, external_ref)
-    # twitter never reaches here: every cached path is a numeric post id, which
-    # read_document already routes through the live-ref path.
     return ""
 
 
@@ -1334,8 +1280,6 @@ async def _federated_search(
             from ..integrations.linear.indexer import search_linear as fn
         elif source_type == "posthog_project":
             from ..integrations.posthog.indexer import search_posthog as fn
-        elif source_type == "twitter":
-            from ..integrations.twitter.indexer import search_twitter as fn
         else:
             return []
         result = await fn(source, query, limit)
@@ -1623,7 +1567,7 @@ async def source_entries(
     `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
     scopes connected sources to a path. `after` pages through path-ordered
     document listings (see list_documents); listings that aren't path-ordered
-    (native files/sessions, twitter's live refs) return everything on the first
+    (native files/sessions) return everything on the first
     page, so any later page is empty for them.
     Returns None for an unknown source."""
     connected = None
@@ -1644,15 +1588,7 @@ async def source_entries(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
-        if connected["source_type"] == "twitter":
-            from ..integrations.twitter.indexer import twitter_live_entries
-
-            live = [] if after else twitter_live_entries(prefix)
-            entries = live + await list_documents(
-                connected, prefix=prefix, limit=limit, after=after
-            )
-        else:
-            entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
+        entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 
     await _audit_source_read(
         action="source.entries_listed",
@@ -1868,11 +1804,10 @@ def source_document_url(
     if source_type == "gmail":
         mailbox = quote(external_ref or "0", safe="")
         return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
-    if source_type == "twitter":
-        post_id = path.removeprefix("post:")
-        if post_id.isascii() and post_id.isdigit():
-            return f"https://x.com/i/web/status/{post_id}"
-        return None
+    if source_type == "x_saves":
+        return f"https://x.com/i/status/{path}"
+    if source_type == "instagram_saves":
+        return f"https://www.instagram.com/p/{path}/"
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
     return None
 
@@ -2143,17 +2078,13 @@ async def search_all(
         # one source, raising on provider errors so a dead connection is never
         # mistaken for "no matches"; unscoped → fan out across the user's
         # federated sources (each call keeps search alive by returning its own
-        # error as a marker instead of raising, and scoped-only types are
-        # skipped — see SCOPED_ONLY_SEARCH_TYPES).
+        # error as a marker instead of raising).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
                 results += await _federated_search(connected, query, limit, swallow_errors=False)
         else:
             federated = [
-                s
-                for s in searched_sources
-                if s["source_type"] in FEDERATED_SEARCH_TYPES
-                and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
+                s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES
             ]
             for hits in await asyncio.gather(
                 *(_federated_search(s, query, limit) for s in federated)
