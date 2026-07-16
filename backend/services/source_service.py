@@ -74,6 +74,9 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
+    # Rules of the road change rarely, and VFS reads are live against the
+    # customer endpoint anyway — the sync only refreshes the search cache.
+    "heavi_learnings": 21600,
     # NB: twitter_bookmarks is intentionally absent — a source is
     # extension-fed by default (the browser captures bookmarks for $0, no X
     # API), so it enrolls in server-side sync only when the owner brings
@@ -102,6 +105,7 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "posthog_project": "navigable",
     "gong_calls": "searchable",
+    "heavi_learnings": "navigable",
     "twitter": "searchable",
     "twitter_bookmarks": "searchable",
     "instagram_saves": "searchable",
@@ -119,6 +123,7 @@ PROVIDER_SOURCE_TYPES = {
     "linear": ("linear",),
     "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
+    "heavi": ("heavi_learnings",),
     "twitter": ("twitter", "twitter_bookmarks"),
     # Provider-less grouping: there is no Instagram OAuth integration — the
     # extension pushes the save list and ScrapeCreators hydrates it.
@@ -540,6 +545,7 @@ SOURCE_TABLE = {
     "linear": "linear_index",
     "posthog_project": "posthog_index",
     "gong_calls": "gong_documents",
+    "heavi_learnings": "heavi_learning_docs",
     "twitter": "twitter_posts",
     "twitter_bookmarks": "twitter_bookmark_docs",
     "instagram_saves": "instagram_save_docs",
@@ -565,6 +571,9 @@ CONTENT_TABLES = {
     "twitter_bookmark_docs",
     # Same archive semantics for Instagram saves.
     "instagram_save_docs",
+    # Copied purely as a search/embedding cache: VFS ls/cat for heavi are
+    # live against the customer endpoint and never read this table.
+    "heavi_learning_docs",
 }
 
 # Index-only source types whose `search` is federated live to the provider's
@@ -1044,9 +1053,32 @@ async def _read_linear_live_ref(source: dict, identifier: str) -> dict | None:
     return {**doc, "content": content, "external_ref": identifier}
 
 
+async def _read_heavi_live(source: dict, path: str) -> dict | None:
+    """Every heavi read is live: the customer's endpoint is the source of
+    truth, so we refetch the rules and resolve `path` (a rule path or a raw
+    rule id) against them — never the cached copy."""
+    from ..integrations.heavi.client import fetch_learnings
+    from ..integrations.heavi.indexer import find_rule, rule_content, rule_name, rule_path
+
+    rules = await fetch_learnings(UUID(source["owner_user_id"]))
+    rule = find_rule(rules, path)
+    if rule is None:
+        return None
+    return {
+        "path": rule_path(rule),
+        "name": rule_name(rule),
+        "kind": "rule",
+        "content": rule_content(rule),
+        "external_ref": rule["id"],
+    }
+
+
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables fetch it lazily from the provider with the owner's token."""
+    if source["source_type"] == "heavi_learnings":
+        return await _read_heavi_live(source, path)
+
     if source["source_type"] == "twitter":
         from ..integrations.twitter.indexer import is_twitter_live_ref
 
@@ -1651,6 +1683,15 @@ async def source_entries(
             entries = live + await list_documents(
                 connected, prefix=prefix, limit=limit, after=after
             )
+        elif connected["source_type"] == "heavi_learnings":
+            # Fully live: the listing comes from the customer's endpoint, not
+            # the cached table, so a rule added or deleted upstream shows up
+            # on the next ls. Everything fits one page (dozens of rules).
+            from ..integrations.heavi.client import fetch_learnings
+            from ..integrations.heavi.indexer import rule_entries
+
+            rules = [] if after else await fetch_learnings(UUID(connected["owner_user_id"]))
+            entries = rule_entries(rules, prefix)
         else:
             entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 

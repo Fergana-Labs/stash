@@ -11,6 +11,7 @@ endpoints just manage the registry.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from typing import Literal
@@ -133,6 +134,14 @@ async def _resolve_linear_source(user_id) -> tuple[str, str]:
     connected) before creating the source."""
     await integration_storage.get_valid_token(user_id, "linear")
     return "me", "Linear"
+
+
+async def _resolve_heavi_source(user_id) -> tuple[str, str]:
+    """One connected Heavi credential bundle is one learnings endpoint;
+    external_ref is its base_url. Confirms the credentials exist (raises 401
+    if not connected)."""
+    token = await integration_storage.get_valid_token(user_id, "heavi")
+    return json.loads(token)["base_url"], "Heavi — Rules of the Road"
 
 
 async def _resolve_posthog_source(user_id) -> tuple[str, str]:
@@ -327,6 +336,9 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "posthog_project":
         external_ref, resolved_name = await _resolve_posthog_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "heavi_learnings":
+        external_ref, resolved_name = await _resolve_heavi_source(current_user["id"])
         display_name = display_name or resolved_name
 
     if not external_ref:

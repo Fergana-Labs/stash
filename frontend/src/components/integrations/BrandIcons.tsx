@@ -221,3 +221,25 @@ export function TwitterIcon({ className, size = defaultSize }: Props) {
     </svg>
   );
 }
+
+export function HeaviIcon({ className, size = defaultSize }: Props) {
+  // Heavi mark — a bold H in the brand's dark slate.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#1E293B" />
+      <path
+        d="M8 6.5v11M16 6.5v11M8 12h8"
+        stroke="#fff"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

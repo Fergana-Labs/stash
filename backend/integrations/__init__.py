@@ -21,6 +21,7 @@ from . import (
     gong,  # noqa: F401
     google,  # noqa: F401
     granola,  # noqa: F401
+    heavi,  # noqa: F401
     jira,  # noqa: F401
     linear,  # noqa: F401
     notion,  # noqa: F401
