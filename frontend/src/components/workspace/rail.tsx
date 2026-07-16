@@ -18,8 +18,8 @@ const PRIMARY: RailItem[] = [
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "memory", label: "Memory", icon: Brain, match: (p) => p.startsWith("/memory") },
-  { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") },
-  { key: "computer", label: "Computer", icon: Monitor, match: () => false },
+  { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
+  { key: "computer", label: "VM", icon: Monitor, match: () => false },
 ];
 
 function RailButton({

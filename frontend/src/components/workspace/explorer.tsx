@@ -23,9 +23,9 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "memory", label: "Memory", route: "/memory", icon: <Brain className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
-  { key: "computer", label: "Computer", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
+  { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "Computer" };
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
 
 /** Open any item as a workbench tab and sync the URL. */
 function useOpenTab() {
@@ -74,7 +74,7 @@ function ToolsSection() {
               {connected.has(c.provider) ? "Connected" : "Connect"}
             </span>
           }
-          onOpen={() => open("tool", "integrations", "Tools")}
+          onOpen={() => open("tool", c.provider, c.label)}
         />
       ))}
     </div>
@@ -118,7 +118,7 @@ function ComputerSection() {
           </span>
         ))}
       </div>
-      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your computer… {error.includes("502") ? "" : error}</div>}
+      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your VM… {error.includes("502") ? "" : error}</div>}
       {!entries && !error && <LoadingRow />}
       {entries?.map((e) => (
         <LeafRow

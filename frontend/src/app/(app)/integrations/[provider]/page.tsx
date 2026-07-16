@@ -57,12 +57,18 @@ import type { User } from "@/lib/types";
 const SYNC_POLL_INTERVAL_MS = 3000;
 const SYNC_POLL_MAX_ATTEMPTS = 100;
 
-export default function IntegrationPage() {
+export default function IntegrationRoute() {
   const params = useParams();
+  return <IntegrationDetail provider={params.provider as string} />;
+}
+
+// The integration manager for one provider. Rendered both as the
+// /integrations/[provider] route and inside a workbench "tool" tab (clicking
+// a connector in the Tools sidebar), so the provider comes in as a prop.
+export function IntegrationDetail({ provider }: { provider: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const provider = params.provider as string;
   const highlightSourceId = searchParams.get("source");
   const { user, loading } = useAuth();
   const confirm = useConfirm();
@@ -561,6 +567,10 @@ function shortRef(source: Source): string | null {
   if (!ref) return null;
   if (source.type === "jira_project") return ref.split(":")[1] ?? ref;
   if (source.type === "gmail") return null;
+  // X sources key on the numeric account id; the @handle in the display name
+  // already identifies the account, so the raw id is just noise (and made the
+  // two X sources look like duplicates).
+  if (source.type === "twitter" || source.type === "twitter_bookmarks") return null;
   return ref;
 }
 
@@ -635,10 +645,19 @@ function SourceRow({
     // user clicks Sync, which flips sync_status back to "syncing").
   }, [source.source, source.sync_status, source.last_synced_at]);
 
-  const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project" || source.type === "twitter";
-  // Search-driven sources (twitter) have no indexer; the backend rejects sync
-  // for them, so don't offer it.
+  // Search-driven sources (twitter account, gmail, drive, …) have no local
+  // index — search hits the provider live — so there's nothing to sync and no
+  // item count to show.
+  const searchedLive =
+    source.type === "gmail" ||
+    source.type === "google_drive" ||
+    source.type === "jira_project" ||
+    source.type === "asana_project" ||
+    source.type === "twitter";
   const syncs = source.sync_enabled !== false;
+  // X bookmarks (and other capture sources) are filled by the browser
+  // extension, not a server sync, when server sync is off.
+  const extensionFed = source.type === "twitter_bookmarks" && !syncs;
   const ref = shortRef(source);
 
   return (
@@ -656,9 +675,18 @@ function SourceRow({
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
           {syncs && <SyncStatusMark syncStatus={status.sync_status} />}
           <span>
-            {syncs ? relativeTime(status.last_synced_at) : "live"}
-            {status.item_count !== null && ` · ${status.item_count} items`}
-            {federated && " · federated"}
+            {syncs ? (
+              <>
+                {relativeTime(status.last_synced_at)}
+                {status.item_count !== null && ` · ${status.item_count} items`}
+              </>
+            ) : searchedLive ? (
+              "Searched live"
+            ) : extensionFed ? (
+              <>Saved from your browser{status.item_count ? ` · ${status.item_count} saved` : ""}</>
+            ) : (
+              "live"
+            )}
           </span>
         </div>
         {status.sync_status === "failed" && status.sync_error && (

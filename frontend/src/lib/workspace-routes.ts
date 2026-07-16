@@ -20,7 +20,8 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
     case "agent":
       return `/agents`;
     case "tool":
-      return `/tools`;
+      // A provider slug deep-links to its manager; the legacy list stays /tools.
+      return tab.refId === "integrations" ? `/tools` : `/integrations/${tab.refId}`;
     case "machine-file":
       // Machine files have no permanent route — they live on the box.
       return `/agents`;
@@ -47,5 +48,7 @@ export function tabFromPath(pathname: string): { kind: TabKind; refId: string } 
   if (skillFolder) return { kind: "skill", refId: decodeURIComponent(skillFolder[1]) };
   const folder = pathname.match(/^\/folders\/([^/?#]+)/);
   if (folder) return { kind: "folder", refId: decodeURIComponent(folder[1]) };
+  const integration = pathname.match(/^\/integrations\/([^/?#]+)/);
+  if (integration) return { kind: "tool", refId: decodeURIComponent(integration[1]) };
   return null;
 }

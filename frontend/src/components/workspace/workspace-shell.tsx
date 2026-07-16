@@ -68,7 +68,7 @@ function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
   if (pathname === "/memory" || pathname.startsWith("/memory/")) return "memory";
-  if (pathname === "/tools") return "tools";
+  if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
   return null;
 }
 

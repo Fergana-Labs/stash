@@ -10,6 +10,8 @@ import SkillFolderClient from "@/app/(app)/skills/folder/[folderId]/SkillFolderC
 import FolderClient from "@/app/(app)/folders/[folderId]/FolderClient";
 import ChatPanel from "@/components/agents/ChatPanel";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
+import { IntegrationDetail } from "@/app/(app)/integrations/[provider]/page";
+import { connectorForProvider } from "@/components/integrations/connectors";
 import MachineFileView from "@/components/workspace/machine-file-view";
 import TerminalPanel from "@/components/agents/TerminalPanel";
 import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
@@ -103,9 +105,15 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "tool")
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-6">
-          <IntegrationsSettings embedded />
-        </div>
+        {/* refId is a provider slug (clicked a specific tool) → its detail;
+            the legacy "integrations" refId shows the whole list. */}
+        {connectorForProvider(tab.refId) ? (
+          <IntegrationDetail provider={tab.refId} />
+        ) : (
+          <div className="mx-auto w-full max-w-3xl px-6 py-6">
+            <IntegrationsSettings embedded />
+          </div>
+        )}
       </div>
     );
   if (tab.kind === "agent-config")
