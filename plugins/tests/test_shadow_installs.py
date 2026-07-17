@@ -50,7 +50,7 @@ def test_two_distinct_installs_warn_with_both_paths(tmp_path, monkeypatch):
     assert str(stale) in warning
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permissions")
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="requires POSIX permissions and non-root user")
 def test_unreadable_path_entry_is_skipped(tmp_path, monkeypatch):
     # WSL appends the Windows PATH to $PATH, and some of those directories
     # (e.g. /mnt/c/WINDOWS/system32/config/systemprofile/.../WindowsApps)
