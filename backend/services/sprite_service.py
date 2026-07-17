@@ -83,6 +83,20 @@ def _sprite_name(user_id: UUID) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def existing(user_id: UUID) -> Sprite | None:
+    """The user's sprite if one has been provisioned, else None — never
+    provisions. Read-only surfaces (fs browsing, the VFS /computer mount) use
+    this so that *looking* for a computer can't conjure one; only real usage
+    (agent turns, the terminal) goes through acquire."""
+    if settings.AGENT_EXEC_MODE == "local":
+        return Sprite(name="local") if _local_workdir().exists() else None
+
+    row = await get_pool().fetchrow(
+        "SELECT sprite_name FROM user_sprites WHERE user_id = $1 AND status = 'ready'", user_id
+    )
+    return Sprite(name=row["sprite_name"]) if row else None
+
+
 async def acquire(user_id: UUID) -> Sprite:
     """The user's sprite, provisioning it on first use.
 

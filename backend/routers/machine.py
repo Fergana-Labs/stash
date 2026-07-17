@@ -33,11 +33,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/me/machine", tags=["machine"])
 
 
+async def _existing_sprite(user_id) -> sprite_service.Sprite:
+    """The user's provisioned computer, or 404. Browsing must never provision
+    a VM — only agent turns and the terminal do."""
+    sprite = await sprite_service.existing(user_id)
+    if sprite is None:
+        raise HTTPException(status_code=404, detail="No cloud computer provisioned")
+    return sprite
+
+
 @router.get("/fs")
 async def list_machine_dir(path: str = "", current_user: dict = Depends(get_current_user)):
     """Directory listing on the user's computer, path relative to the agent's
     working folder."""
-    sprite = await sprite_service.acquire(current_user["id"])
+    sprite = await _existing_sprite(current_user["id"])
     try:
         entries = await sprite_service.fs_list(sprite, path)
     except sprite_service.FsPathError as e:
@@ -50,7 +59,7 @@ async def list_machine_dir(path: str = "", current_user: dict = Depends(get_curr
 @router.get("/fs/file")
 async def read_machine_file(path: str, current_user: dict = Depends(get_current_user)):
     """A file's content from the user's computer (capped; read-only)."""
-    sprite = await sprite_service.acquire(current_user["id"])
+    sprite = await _existing_sprite(current_user["id"])
     try:
         content = await sprite_service.fs_read(sprite, path)
     except sprite_service.FsPathError as e:
@@ -78,7 +87,7 @@ async def save_machine_file_to_stash(
     req: SaveToStashRequest, current_user: dict = Depends(get_current_user)
 ):
     """Copy-on-share: the only way bytes leave the machine for the DB."""
-    sprite = await sprite_service.acquire(current_user["id"])
+    sprite = await _existing_sprite(current_user["id"])
     try:
         content = await sprite_service.fs_read(sprite, req.path)
     except sprite_service.FsPathError as e:

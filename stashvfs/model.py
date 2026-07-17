@@ -91,7 +91,7 @@ class StashVfsModel:
                 "- `computer` is a live, read-only view of the agent's "
                 "working folder on your cloud computer (browsing may wake it).",
             ]
-            if self.include_computer
+            if "/computer" in self.nodes
             else []
         )
         self._add_static_file(
@@ -216,7 +216,10 @@ class StashVfsModel:
         self._add_sessions(overview.get("sessions", []))
         self._add_tables()
         self._add_sources()
-        if self.include_computer:
+        # /computer appears only for users whose cloud computer actually
+        # exists — the overview flag is a DB lookup, so deciding this never
+        # provisions or wakes a machine.
+        if self.include_computer and overview["machine"]["provisioned"]:
             self._add_computer()
 
     def _add_computer(self) -> None:
