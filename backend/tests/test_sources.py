@@ -905,6 +905,47 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_github_indexer_skips_files_too_big_to_index(client, monkeypatch):
+    # Postgres caps a row's tsvector at 1MB and github_documents is FTS-indexed
+    # on content, so an oversized text file (minified bundle, lockfile) must be
+    # skipped like a binary — not abort the whole repo's sync at insert time.
+    from backend.integrations.github import indexer
+    from backend.tasks import sources as sources_task
+
+    api_key, owner_id = await _register(client)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/bundled",
+        display_name="acme/bundled",
+    )
+
+    bundle = b"var x=1;" * (indexer.MAX_INDEXED_TEXT_BYTES // 8 + 1)
+    repo_zip = _make_repo_zip(
+        {
+            "README.md": b"# Bundled",
+            "dist/bundle.min.js": bundle,
+        }
+    )
+
+    async def fake_head_sha(url, headers):
+        return "d" * 40
+
+    async def fake_download(url, headers, dest):
+        Path(dest).write_bytes(repo_zip)
+        return len(repo_zip)
+
+    monkeypatch.setattr(indexer, "_github_head_sha", fake_head_sha)
+    monkeypatch.setattr(indexer, "_download_archive", fake_download)
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+    assert result["status"] == "done"
+
+    paths = {d["path"] for d in await source_service.list_documents(src)}
+    assert paths == {"README.md"}
+
+
+@pytest.mark.asyncio
 async def test_sync_source_unknown_type_is_noop(client: AsyncClient, monkeypatch):
     from backend.tasks import sources as sources_task
 

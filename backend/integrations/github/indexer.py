@@ -26,13 +26,19 @@ from ..storage import get_valid_token
 from .archive import UnsupportedHostError, _parse_owner_repo, resolve_archive_url
 from .importers.repo import (
     MAX_FILES,
-    MAX_PER_FILE_BYTES,
     _download_archive,
     _is_skipped_path,
     _strip_top_level_prefix,
 )
 
 logger = logging.getLogger(__name__)
+
+# Postgres caps a row's tsvector at 1MB, and github_documents carries a
+# full-text index on content — a bigger file aborts the whole repo's sync
+# at insert time. Text files over this cap (minified bundles, lockfiles,
+# data dumps) are skipped like binaries; 512KB keeps the vector safely
+# under the limit.
+MAX_INDEXED_TEXT_BYTES = 512 * 1024
 
 
 async def _github_head_sha(url: str, headers: dict) -> str:
@@ -74,7 +80,7 @@ async def _crawl_archive(
                 if not rel or _is_skipped_path(Path(rel)):
                     continue
                 info = zf.getinfo(member)
-                if info.file_size > MAX_PER_FILE_BYTES:
+                if info.file_size > MAX_INDEXED_TEXT_BYTES:
                     continue
                 with zf.open(info) as src:
                     raw = src.read()
