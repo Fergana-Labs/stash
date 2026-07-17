@@ -28,7 +28,13 @@
       font-weight: 600;
       cursor: pointer;
     }
-    button:not(.secondary):hover { background: #EA580C; }
+    button:not(.secondary):not(.outline):hover { background: #EA580C; }
+    button.outline {
+      background: none;
+      color: #EA580C;
+      border: 1px solid #F97316;
+    }
+    button.outline:hover { background: #fff7ed; }
     button.secondary {
       background: none;
       color: #6b7280;

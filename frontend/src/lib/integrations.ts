@@ -19,7 +19,11 @@ export type IntegrationProvider =
   | "linear"
   | "asana"
   | "gong"
-  | "posthog";
+  | "posthog"
+  // Extension-fed connectors — no OAuth integration, "connected" once the
+  // browser extension has pushed a source.
+  | "x"
+  | "instagram";
 
 export type CredentialField = {
   name: string;

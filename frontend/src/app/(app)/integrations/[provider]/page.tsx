@@ -126,7 +126,10 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     );
   }
 
-  const connected = !!status?.connected;
+  // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
+  // "connected" once the browser extension has pushed at least one source.
+  const isExtension = connector.kind === "extension";
+  const connected = isExtension ? sources.length > 0 : !!status?.connected;
   const account = connectedAccountLabel(status);
   const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
   const staleAccounts = status?.accounts.filter((a) => a.needs_reconnect) ?? [];
@@ -239,7 +242,11 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 {account}
               </span>
             )}
-            {connected ? (
+            {isExtension ? (
+              <span className="text-[12.5px] text-muted-foreground">
+                {connected ? "Synced from the browser extension" : "Save items with the browser extension"}
+              </span>
+            ) : connected ? (
               <>
                 {canConnectAnother && (
                   <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={secondaryButton()}>
@@ -313,8 +320,10 @@ export function IntegrationDetail({ provider }: { provider: string }) {
 
         {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
 
-        {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser) */}
-        {connected && (
+        {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser).
+            Extension-fed connectors have nothing to add by hand — the extension
+            pushes their sources. */}
+        {connected && !isExtension && (
           <section className="mt-6">
             <SectionLabel>
               {connector.kind === "github" ? "Repository access" : `Add a ${itemNoun}`}
@@ -334,7 +343,11 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
           {sources.length === 0 ? (
             <div className="py-3 text-[12.5px] text-muted-foreground">
-              {connected ? "Nothing added yet." : "Connect to add sources."}
+              {isExtension
+                ? `Install the Stash browser extension and save on ${connector.label} — your items will appear here.`
+                : connected
+                  ? "Nothing added yet."
+                  : "Connect to add sources."}
             </div>
           ) : (
             <div>

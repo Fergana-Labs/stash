@@ -11,12 +11,21 @@ import {
   GranolaIcon,
   JiraIcon,
   LinearIcon,
+  InstagramIcon,
   NotionIcon,
   PostHogIcon,
   SlackIcon,
+  XIcon,
 } from "./BrandIcons";
 
-export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
+export type ConnectorKind =
+  | "github"
+  | "drive"
+  | "notion"
+  | "jira"
+  | "asana"
+  | "auto"
+  | "extension";
 
 export type Connector = {
   provider: IntegrationProvider;
@@ -104,6 +113,20 @@ export const CONNECTORS: Connector[] = [
     kind: "auto",
     blurb: "Browse dashboards, insights, feature flags, and experiments.",
   },
+  {
+    provider: "x",
+    label: "X",
+    sourceType: "x_saves",
+    kind: "extension",
+    blurb: "Your X bookmarks, saved automatically by the Stash browser extension.",
+  },
+  {
+    provider: "instagram",
+    label: "Instagram",
+    sourceType: "instagram_saves",
+    kind: "extension",
+    blurb: "Your Instagram saves, captured by the Stash browser extension.",
+  },
 ];
 
 // Maps a connected-source row's `type` back to the integration provider that
@@ -121,6 +144,8 @@ export const providerForSourceType: Record<string, string> = {
   granola: "granola",
   gong_calls: "gong",
   posthog_project: "posthog",
+  x_saves: "x",
+  instagram_saves: "instagram",
 };
 
 export function connectorForProvider(provider: string): Connector | undefined {
@@ -155,6 +180,10 @@ export function connectorIcon(provider: string): ReactNode {
       return <GongIcon />;
     case "posthog":
       return <PostHogIcon />;
+    case "x":
+      return <XIcon />;
+    case "instagram":
+      return <InstagramIcon />;
     default:
       return null;
   }

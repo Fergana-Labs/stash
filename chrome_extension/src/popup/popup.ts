@@ -77,7 +77,7 @@ async function render(): Promise<void> {
     ]),
     el('div', { className: 'row' }, [
       el('button', {
-        className: 'secondary',
+        className: 'outline',
         textContent: 'Save all open tabs',
         onclick: async () => {
           const result = await send({ type: 'CLIP_ALL_TABS' });
