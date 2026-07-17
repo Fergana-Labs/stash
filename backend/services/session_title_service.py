@@ -22,6 +22,18 @@ _USER_EVENT_TYPES = (
 )
 _ASSISTANT_EVENT_TYPES = ("assistant_message", "assistant")
 
+# Generated output that converses with the transcript instead of naming the
+# task — a reply ("You're right—…") or a refusal ("I need more context…").
+# The 2026-05 backfill cached hundreds of these as titles; reject them so a
+# conversational LLM response is never stored again.
+_REPLY_SHAPED = re.compile(
+    r"^(you're |you are |i'll |i've |i'd |i'm |i am |i need |i don't |i do not |"
+    r"i cannot |i can't |i apologize|i appreciate |unable to |yes[,—. ]|no[,—. ]|"
+    r"sure[,. ]|okay[,. ]|thanks|great question|your |"
+    r"(perfect|pong|done|great)[.!]?$)",
+    re.IGNORECASE,
+)
+
 
 def source_hash(session: dict) -> str:
     last_at = session.get("last_at") or session.get("last_event_at") or session.get("updated_at")
@@ -141,7 +153,7 @@ def clean_generated_title(text: str) -> str:
     title = re.sub(r"\s+", " ", text).strip("`\"' ")
     title = re.sub(r"^\s*title:\s*", "", title, flags=re.IGNORECASE)
     title = _strip_markdown(title)
-    if not title:
+    if not title or _REPLY_SHAPED.match(title):
         return ""
     return _truncate(_first_clause(title))
 
