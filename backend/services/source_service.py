@@ -1164,6 +1164,7 @@ async def _read_x_save(source_id: UUID, path: str) -> dict | None:
         "kind": row["kind"],
         "content": row["content"],
         "external_ref": row["external_ref"],
+        "url": f"https://x.com/i/status/{row['path']}",
     }
     media = row["media"] or []
     if media:

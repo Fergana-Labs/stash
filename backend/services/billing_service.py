@@ -23,7 +23,7 @@ from ..database import get_pool
 # Stripe statuses that grant Pro. Everything else (past_due, canceled,
 # unpaid, incomplete) means free-tier enforcement.
 ACTIVE_STATUSES = {"active", "trialing"}
-FREE_CONNECTION_LIMIT = 1
+FREE_CONNECTION_LIMIT = 5
 
 # Internal team accounts get Pro without a subscription — no card, no Stripe row.
 INTERNAL_EMAIL_DOMAINS = {"ferganalabs.com", "joinstash.ai"}
@@ -76,9 +76,10 @@ async def connection_count(user_id: UUID) -> int:
 
 
 async def ensure_can_connect(user_id: UUID) -> None:
-    """Connect-time pay gate. The free plan includes one connected account; a
-    second account — another provider or another mailbox on the same one —
-    requires Pro. Sources added under a connection are unlimited."""
+    """Connect-time pay gate. The free plan includes a handful of connected
+    accounts (FREE_CONNECTION_LIMIT); beyond that requires Pro. Sources added
+    under a connection are unlimited, and extension-fed sources (X, Instagram)
+    aren't accounts so they never count against this."""
     if not billing_enabled():
         return
     if await is_pro(user_id):
@@ -86,7 +87,10 @@ async def ensure_can_connect(user_id: UUID) -> None:
     if await connection_count(user_id) >= FREE_CONNECTION_LIMIT:
         raise HTTPException(
             status_code=402,
-            detail="The free plan includes 1 connected account. Upgrade to Pro to connect more.",
+            detail=(
+                f"The free plan includes {FREE_CONNECTION_LIMIT} connected accounts. "
+                "Upgrade to Pro to connect more."
+            ),
         )
 
 

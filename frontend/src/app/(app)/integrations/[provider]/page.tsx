@@ -676,22 +676,25 @@ function DocViewer({
   const [content, setContent] = useState<string | null>(null);
   const [title, setTitle] = useState(name ?? "");
   const [url, setUrl] = useState<string | null>(null);
-  const [media, setMedia] = useState<{ url: string; contentType: string } | null>(null);
+  const [media, setMedia] = useState<{ url: string; contentType: string }[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setContent(null);
     setUrl(null);
-    setMedia(null);
+    setMedia([]);
     setError("");
     readSourceDoc(source, refValue)
       .then((doc) => {
         if (cancelled) return;
         setContent(doc.content ?? "");
         setUrl(doc.url ?? null);
-        if (doc.media_url) {
-          setMedia({ url: doc.media_url, contentType: doc.media_content_type ?? "" });
+        // X carries up to 4 media items (media[]); Instagram a single blob.
+        if (doc.media?.length) {
+          setMedia(doc.media.map((m) => ({ url: m.url, contentType: m.content_type ?? "" })));
+        } else if (doc.media_url) {
+          setMedia([{ url: doc.media_url, contentType: doc.media_content_type ?? "" }]);
         }
         if (doc.name) setTitle(doc.name);
       })
@@ -731,16 +734,17 @@ function DocViewer({
         <div className="bg-base px-3 py-3 text-[12px] text-muted-foreground">Loading…</div>
       ) : (
         <>
-          {media &&
-            (media.contentType.startsWith("video/") ? (
+          {media.map((m, i) =>
+            m.contentType.startsWith("video/") ? (
               // eslint-disable-next-line jsx-a11y/media-has-caption -- archived
               // social video; the transcript is in the document body below.
-              <video src={media.url} controls className="max-h-72 w-full bg-black" />
+              <video key={i} src={m.url} controls className="max-h-72 w-full bg-black" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element -- presigned
               // blob URL, not an optimizable static asset.
-              <img src={media.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
-            ))}
+              <img key={i} src={m.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
+            ),
+          )}
           <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
             {content}
           </pre>

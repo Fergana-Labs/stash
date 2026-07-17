@@ -40,7 +40,7 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
           Upgrade to Pro
         </div>
         <div className="mt-1.5 text-[12.5px] leading-[1.55] text-muted-foreground">
-          The free plan includes 1 connected account. Pro unlocks unlimited
+          The free plan includes a few connected accounts. Pro unlocks unlimited
           integrations — GitHub, Slack, Gmail, Drive, Notion, and more —
           for $20/month.
         </div>
