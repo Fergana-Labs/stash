@@ -62,11 +62,27 @@ export async function receiveBookmarks(
 async function autoVisit(): Promise<void> {
   const { apiKey } = await chrome.storage.local.get(['apiKey']);
   if (!apiKey) return;
+  await pushXAccount();
   const tab = await chrome.tabs.create({ url: BOOKMARKS_URL, active: false });
   await chrome.storage.session.set({ xVisitTabId: tab.id });
   // Scrolling the whole list can take a few minutes on large accounts; the
   // content script closes the tab sooner when it hits the end.
   chrome.alarms.create(VISIT_TIMEOUT_ALARM, { delayInMinutes: 5 });
+}
+
+/** Report the signed-in X account's numeric id (from the twid cookie) so the
+ *  server can pull the user's own posts + replies from their timeline. */
+async function pushXAccount(): Promise<void> {
+  const cfg = await stashConfig();
+  if (!cfg.apiKey) return;
+  const cookie = await chrome.cookies.get({ url: 'https://x.com', name: 'twid' });
+  const match = cookie?.value && decodeURIComponent(cookie.value).match(/u=(\d+)/);
+  if (!match) return;
+  await fetch(`${cfg.apiBase}/api/v1/me/x-items/account`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: match[1] }),
+  }).catch(() => undefined);
 }
 
 /** Whether the asking content script is running in our background harvest tab

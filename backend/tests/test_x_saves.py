@@ -266,3 +266,81 @@ async def test_hydration_failure_lands_on_the_row(
     )
     assert ok and doc["http_status"] == 422
     assert "scrapecreators exploded" in doc["error"]
+
+
+_USER_TIMELINE = {
+    "data": {
+        "tweets": [
+            {"id": "200", "isReply": False, "isRetweet": False},
+            {"id": "201", "isReply": True, "isRetweet": False},
+            {"id": "202", "isReply": False, "isRetweet": True},  # retweet — skipped
+        ]
+    },
+    "has_next_page": False,
+}
+
+
+class _FakeTimelineApi:
+    """Answers the user-timeline endpoint and, for hydration, the tweet-by-id
+    endpoint (a self-contained tweet, no thread root or media)."""
+
+    def __init__(self, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, url, params=None):
+        if url == x_indexer.TAPI_USER_TWEETS_URL:
+            return _FakeResponse(payload=_USER_TIMELINE)
+        if url == x_indexer.TAPI_TWEETS_URL:
+            tid = params["tweet_ids"]
+            return _FakeResponse(
+                payload={
+                    "tweets": [
+                        {
+                            "id": tid,
+                            "text": f"my tweet {tid}",
+                            "author": {"userName": "me"},
+                            "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
+                            "conversationId": tid,
+                        }
+                    ]
+                }
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+
+@pytest.mark.asyncio
+async def test_backfill_pulls_own_posts_and_replies(client, pool, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", "tapi-key")
+    monkeypatch.setattr(storage_service, "is_configured", lambda: True)
+    monkeypatch.setattr(x_indexer, "httpx", SimpleNamespace(AsyncClient=_FakeTimelineApi))
+    from backend.routers import sources as sources_router
+
+    monkeypatch.setattr(sources_router.celery, "send_task", lambda name, args: None)
+    headers, owner_id = await _register(client)
+
+    # The extension reports the signed-in account id; posts/replies come from
+    # the timeline (bookmarks would be pushed separately).
+    resp = await client.post("/api/v1/me/x-items/account", json={"user_id": "999"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    source = await pool.fetchrow(
+        "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = 'x_saves'",
+        UUID(owner_id),
+    )
+    await x_indexer.index_x_saves(await source_service.get_source_for_sync(source["id"]))
+
+    rows = await pool.fetch(
+        "SELECT path, kind, hydration_status FROM x_save_docs WHERE source_id = $1 ORDER BY path",
+        source["id"],
+    )
+    # The retweet (202) is skipped; the post + reply are captured and hydrated.
+    assert [(r["path"], r["kind"], r["hydration_status"]) for r in rows] == [
+        ("200", "Post", "done"),
+        ("201", "Reply", "done"),
+    ]
