@@ -168,3 +168,42 @@ async def test_document_read_budget_aborts_the_command(client: AsyncClient, monk
     resp = await _vfs(client, api_key, "grep -ri 'alpha' /files")
 
     assert resp.status_code == 413
+
+
+async def test_concurrency_cap_rejects_immediately_with_429(client: AsyncClient, monkeypatch):
+    """Concurrent shells each hold a full filesystem model in memory; a burst
+    of them OOM'd prod on 2026-07-09. Over the cap, the caller must get an
+    immediate retry signal — never a server-side queue that holds the memory."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_CONCURRENT_SCRIPTS", 0)
+    api_key, _ = await _register(client)
+
+    resp = await _vfs(client, api_key, "ls /")
+
+    assert resp.status_code == 429
+    assert resp.headers["retry-after"]
+
+
+async def test_concurrency_slot_is_released_after_a_run(client: AsyncClient, monkeypatch):
+    """The slot must free on completion (success or failure), or the cap
+    ratchets down to a permanently bricked endpoint."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_CONCURRENT_SCRIPTS", 1)
+    api_key, _ = await _register(client)
+
+    first = await _vfs(client, api_key, "ls /")
+    second = await _vfs(client, api_key, "ls /")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+
+async def test_wall_clock_budget_aborts_the_command(client: AsyncClient, monkeypatch):
+    """Long-running scans are what turn a few concurrent scripts into a
+    pile-up: they hold their slot and their memory while requests stack behind
+    them. Past the deadline the command must die, not run to completion."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_SCRIPT_SECONDS", 0)
+    api_key, _ = await _register(client)
+
+    resp = await _vfs(client, api_key, "ls /")
+
+    assert resp.status_code == 413
+    assert "longer than" in resp.json()["detail"]

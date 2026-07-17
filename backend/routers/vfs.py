@@ -11,7 +11,7 @@ from stashvfs import MountError
 
 from ..auth import get_current_user
 from ..services import vfs_service
-from ..services.vfs_service import VfsBudgetExceeded
+from ..services.vfs_service import VfsBudgetExceeded, VfsBusy
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
 
@@ -47,3 +47,5 @@ async def run_vfs(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except VfsBudgetExceeded as e:
         raise HTTPException(status_code=413, detail=str(e)) from e
+    except VfsBusy as e:
+        raise HTTPException(status_code=429, detail=str(e), headers={"Retry-After": "2"}) from e
