@@ -847,15 +847,29 @@ function SearchablePanel({
             {realHits.length === 0 ? (
               <div className="px-1.5 py-1 text-[12.5px] text-muted-foreground">No matches.</div>
             ) : (
-              realHits.map((hit) => (
-                <HitRow
-                  key={hit.ref}
-                  hitKey={hit.ref!}
-                  label={hit.name}
-                  snippet={hit.snippet}
-                  onOpen={() => setOpenDoc({ ref: hit.ref!, name: hit.name })}
-                />
-              ))
+              realHits.map((hit) => {
+                const isOpen = openDoc?.ref === hit.ref;
+                return (
+                  <div key={hit.ref}>
+                    <HitRow
+                      hitKey={hit.ref!}
+                      label={hit.name}
+                      snippet={hit.snippet}
+                      open={isOpen}
+                      onOpen={() => setOpenDoc(isOpen ? null : { ref: hit.ref!, name: hit.name })}
+                    />
+                    {isOpen && (
+                      <DocViewer
+                        source={source.source}
+                        providerLabel={providerLabel}
+                        refValue={hit.ref!}
+                        name={hit.name}
+                        onClose={() => setOpenDoc(null)}
+                      />
+                    )}
+                  </div>
+                );
+              })
             )}
             {truncation && (
               <div className="px-1.5 py-1 text-[12px] text-muted-foreground">
@@ -872,26 +886,29 @@ function SearchablePanel({
         <div className="mb-2">
           {recent.map((entry) => {
             const ref = entry.id ?? entry.path ?? entry.name;
+            const isOpen = openDoc?.ref === ref;
             return (
-              <HitRow
-                key={ref}
-                hitKey={ref}
-                label={entry.name}
-                onOpen={() => setOpenDoc({ ref, name: entry.name })}
-              />
+              <div key={ref}>
+                <HitRow
+                  hitKey={ref}
+                  label={entry.name}
+                  snippet={entry.snippet ?? undefined}
+                  open={isOpen}
+                  onOpen={() => setOpenDoc(isOpen ? null : { ref, name: entry.name })}
+                />
+                {isOpen && (
+                  <DocViewer
+                    source={source.source}
+                    providerLabel={providerLabel}
+                    refValue={ref}
+                    name={entry.name}
+                    onClose={() => setOpenDoc(null)}
+                  />
+                )}
+              </div>
             );
           })}
         </div>
-      )}
-
-      {openDoc && (
-        <DocViewer
-          source={source.source}
-          providerLabel={providerLabel}
-          refValue={openDoc.ref}
-          name={openDoc.name}
-          onClose={() => setOpenDoc(null)}
-        />
       )}
 
       {showHistory && (
@@ -907,11 +924,13 @@ function HitRow({
   hitKey,
   label,
   snippet,
+  open,
   onOpen,
 }: {
   hitKey: string;
   label?: string;
   snippet?: string;
+  open?: boolean;
   onOpen: () => void;
 }) {
   // An X save that hasn't hydrated yet has no title — its name is still the raw
@@ -922,7 +941,10 @@ function HitRow({
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full cursor-pointer rounded-md px-1.5 py-1.5 text-left hover:bg-raised"
+      className={
+        "block w-full cursor-pointer rounded-md px-1.5 py-1.5 text-left hover:bg-raised " +
+        (open ? "bg-raised" : "")
+      }
     >
       <div className="flex items-baseline gap-2.5">
         {showKey && <span className="font-mono text-[12px] text-muted-foreground">{hitKey}</span>}

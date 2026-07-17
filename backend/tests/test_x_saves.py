@@ -193,6 +193,11 @@ async def test_hydrates_content_thread_root_and_media(client, pool, fake_sync) -
         {"url": "https://blob.example/store/x-1001-0.jpg", "content_type": "image/jpeg"}
     ]
 
+    # The browse list previews the tweet text (not the raw id).
+    entries = await source_service.source_entries(UUID(owner_id), UUID(owner_id), str(source["id"]))
+    entry = next(e for e in entries if e["path"] == "1001")
+    assert entry["snippet"] == "totally agree with this"
+
 
 @pytest.mark.asyncio
 async def test_hydration_failure_lands_on_the_row(client, pool, fake_sync, monkeypatch) -> None:
