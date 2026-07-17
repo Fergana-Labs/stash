@@ -13,10 +13,6 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PIDS=()
-# Keep local dev ports aligned with backend defaults and docker compose when free.
-DEFAULT_BACKEND_PORT=3456
-DEFAULT_FRONTEND_PORT=3457
-DEFAULT_COLLAB_PORT=3458
 DEV_DB_IMAGE="pgvector/pgvector:pg16"
 # Containers carry this label (set to the absolute worktree path) so databases
 # of deleted worktrees can be garbage-collected on every start.
@@ -170,9 +166,13 @@ ensure_node_deps() {
     done
 }
 
-BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
-FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
-COLLAB_PORT="${COLLAB_PORT:-$DEFAULT_COLLAB_PORT}"
+# App ports are fixed, not configurable: OAuth redirect URIs registered with
+# providers (Google, Linear, GitHub, ...) point at the backend on 3456, so a
+# stack on any other port has silently broken integrations. One local stack
+# per machine; if a port is taken, we fail loud instead of shifting.
+BACKEND_PORT=3456
+FRONTEND_PORT=3457
+COLLAB_PORT=3458
 
 database_is_ready() {
     python - <<'PY' >/dev/null 2>&1
@@ -391,35 +391,29 @@ PY
 
 find_free_port() {
     local candidate="$1"
-    local avoid="${2:-}"
 
-    while [[ ",${avoid}," == *",${candidate},"* ]] || ! port_is_free "$candidate"; do
+    while ! port_is_free "$candidate"; do
         candidate=$((candidate + 1))
     done
 
     echo "$candidate"
 }
 
-choose_dev_ports() {
-    local requested_backend_port="$BACKEND_PORT"
-    local requested_frontend_port="$FRONTEND_PORT"
-    local requested_collab_port="$COLLAB_PORT"
+ensure_app_ports_free() {
+    local port
+    for port in "$BACKEND_PORT" "$FRONTEND_PORT" "$COLLAB_PORT"; do
+        if port_is_free "$port"; then
+            continue
+        fi
 
-    BACKEND_PORT="$(find_free_port "$requested_backend_port")"
-    FRONTEND_PORT="$(find_free_port "$requested_frontend_port" "$BACKEND_PORT")"
-    COLLAB_PORT="$(find_free_port "$requested_collab_port" "${BACKEND_PORT},${FRONTEND_PORT}")"
-
-    if [ "$BACKEND_PORT" != "$requested_backend_port" ]; then
-        echo "[ports]   Backend port ${requested_backend_port} is busy; using ${BACKEND_PORT}."
-    fi
-
-    if [ "$FRONTEND_PORT" != "$requested_frontend_port" ]; then
-        echo "[ports]   Frontend port ${requested_frontend_port} is busy; using ${FRONTEND_PORT}."
-    fi
-
-    if [ "$COLLAB_PORT" != "$requested_collab_port" ]; then
-        echo "[ports]   Collab port ${requested_collab_port} is busy; using ${COLLAB_PORT}."
-    fi
+        echo "[ports]   Port ${port} is already in use:"
+        lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | sed 's/^/[ports]     /' || true
+        echo "[ports]   App ports are fixed (backend ${BACKEND_PORT}, frontend ${FRONTEND_PORT}, collab ${COLLAB_PORT}):"
+        echo "[ports]   OAuth redirect URIs are registered against them, so running elsewhere"
+        echo "[ports]   silently breaks integrations. One local stack at a time — stop the"
+        echo "[ports]   process above (kill <pid>) if it's yours or a zombie, or wait your turn."
+        exit 1
+    done
 }
 
 # Next.js allows one dev server per checkout: `next dev` holds an exclusive
@@ -512,6 +506,7 @@ echo "================================"
 
 # --- Preflight ---
 ensure_frontend_dev_server_not_running
+ensure_app_ports_free
 
 # --- Dependencies ---
 ensure_python_deps
@@ -522,9 +517,6 @@ ensure_local_database
 
 # --- Redis ---
 ensure_local_redis
-
-# --- Ports ---
-choose_dev_ports
 
 # --- Migrations ---
 cd "$PROJECT_ROOT"

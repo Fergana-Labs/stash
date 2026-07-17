@@ -107,7 +107,8 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Lint: `cd www && npm run lint`
 
 ### Local stack
-- One-shot start (migrations + backend + frontend): `./start.sh`
+- One-shot start (db + redis + backend + celery + collab + frontend): `./start.sh`
+- App ports are fixed and exclusive per machine: backend 3456, frontend 3457, collab 3458. OAuth redirect URIs are registered against 3456, so there is no way to run the stack on other ports. If a port is taken, `start.sh` fails and prints the holding process: one local stack at a time — kill the holder only if it's yours or a zombie, otherwise wait. Tests, lint, and most dev work don't need the live stack.
 - Docker compose: `docker compose up`
 
 ### Deployment (hosted prod — joinstash.ai)
