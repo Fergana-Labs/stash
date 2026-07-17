@@ -16,7 +16,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, HTTPStatusError
 
 from backend.routers import sources as sources_router
 from backend.services import agent_runtime, source_service
@@ -2494,6 +2494,77 @@ async def test_search_gmail_hits_carry_full_message_text(monkeypatch):
     assert hit["name"] == "Q3 budget (cfo@example.com)"
     assert "Please review the Q3 budget before Friday." in hit["snippet"]
     assert upserted == ["m1"]
+
+
+@pytest.mark.asyncio
+async def test_gmail_message_fetches_are_concurrency_capped(monkeypatch):
+    """An unbounded gather of ~25+ messages.get calls overshoots Gmail's
+    per-user quota (250 units/sec, 5 per get) instantly and 429s the whole
+    sync — fetches must never exceed FETCH_CONCURRENCY in flight."""
+    import asyncio
+
+    from backend.integrations.gmail import indexer
+
+    in_flight = 0
+    max_in_flight = 0
+
+    async def get_message(client, message_id, message_format):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0)
+        in_flight -= 1
+        return {"id": message_id}
+
+    monkeypatch.setattr(indexer, "_get_message", get_message)
+
+    refs = [{"id": f"m{i}"} for i in range(20)]
+    messages = await indexer._get_messages(None, refs, "metadata")
+
+    assert len(messages) == 20
+    assert max_in_flight <= indexer.FETCH_CONCURRENCY
+
+
+@pytest.mark.asyncio
+async def test_gmail_get_message_retries_429_then_fails_loud(monkeypatch):
+    """Gmail 429s are pacing signals, not errors: honor Retry-After a bounded
+    number of times, then let the final 429 fail the sync loudly."""
+    from types import SimpleNamespace
+
+    from backend.integrations.gmail import indexer
+
+    sleeps = []
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(indexer.asyncio, "sleep", sleep)
+
+    def response(status_code):
+        def raise_for_status():
+            if status_code >= 400:
+                raise HTTPStatusError("429", request=None, response=None)
+
+        return SimpleNamespace(
+            status_code=status_code,
+            headers={"Retry-After": "2"},
+            raise_for_status=raise_for_status,
+            json=lambda: {"id": "m1"},
+        )
+
+    class Client:
+        def __init__(self, statuses):
+            self.statuses = list(statuses)
+
+        async def get(self, url, params=None):
+            return response(self.statuses.pop(0))
+
+    message = await indexer._get_message(Client([429, 200]), "m1", "metadata")
+    assert message == {"id": "m1"}
+    assert sleeps == [2.0]
+
+    with pytest.raises(HTTPStatusError):
+        await indexer._get_message(Client([429, 429, 429]), "m1", "metadata")
 
 
 @pytest.mark.asyncio

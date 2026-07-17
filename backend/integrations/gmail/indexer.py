@@ -34,6 +34,8 @@ HEADER_NAMES = ("Subject", "From", "To", "Date")
 DEFAULT_INDEX_QUERY = "newer_than:30d -in:spam -in:trash"
 MAX_INDEX_MESSAGES = 100
 SEARCH_LIMIT = 25
+FETCH_CONCURRENCY = 5
+GET_MESSAGE_ATTEMPTS = 3
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -118,12 +120,34 @@ async def _list_message_refs(
 
 
 async def _get_message(client: httpx.AsyncClient, message_id: str, message_format: str) -> dict:
-    resp = await client.get(
-        MESSAGE_URL.format(message_id=message_id),
-        params=_metadata_params(message_format),
-    )
-    resp.raise_for_status()
-    return resp.json()
+    # Gmail's per-user quota (250 units/sec, 5 per messages.get) throttles
+    # bursts with 429s; that's a pacing signal per its protocol, so honor
+    # Retry-After a bounded number of times before failing the sync.
+    for attempt in range(GET_MESSAGE_ATTEMPTS):
+        resp = await client.get(
+            MESSAGE_URL.format(message_id=message_id),
+            params=_metadata_params(message_format),
+        )
+        if resp.status_code == 429 and attempt < GET_MESSAGE_ATTEMPTS - 1:
+            await asyncio.sleep(float(resp.headers.get("Retry-After", "1")) + attempt)
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    raise AssertionError("unreachable")
+
+
+async def _get_messages(
+    client: httpx.AsyncClient, refs: list[dict], message_format: str
+) -> list[dict]:
+    """Fetch every ref's message with bounded concurrency — an unbounded
+    gather of even ~25 fetches overshoots the per-user quota instantly."""
+    semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+
+    async def fetch(message_id: str) -> dict:
+        async with semaphore:
+            return await _get_message(client, message_id, message_format)
+
+    return await asyncio.gather(*(fetch(ref["id"]) for ref in refs if ref.get("id")))
 
 
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
@@ -152,9 +176,7 @@ async def index_gmail(source: dict) -> str | None:
     present: list[str] = []
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         refs, _, _ = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
-        messages = await asyncio.gather(
-            *(_get_message(client, ref["id"], "metadata") for ref in refs if ref.get("id"))
-        )
+        messages = await _get_messages(client, refs, "metadata")
         for message in messages:
             path = await _upsert_message_metadata(source, message)
             if path:
@@ -179,9 +201,7 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
         refs, next_page_token, estimated_total = await _list_message_refs(
             client, query, min(limit, SEARCH_LIMIT)
         )
-        messages = await asyncio.gather(
-            *(_get_message(client, ref["id"], "full") for ref in refs if ref.get("id"))
-        )
+        messages = await _get_messages(client, refs, "full")
 
     hits: list[dict] = []
     for message in messages:
