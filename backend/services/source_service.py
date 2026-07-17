@@ -94,7 +94,9 @@ SOURCE_CAPABILITY = {
     "posthog_project": "navigable",
     "gong_calls": "searchable",
     "instagram_saves": "searchable",
-    "x_saves": "searchable",
+    # Navigable so the browse UI shows the Bookmarks/Posts/Replies/Articles
+    # folders; FTS still works (search keys off CONTENT_TABLES, not capability).
+    "x_saves": "navigable",
 }
 
 PROVIDER_SOURCE_TYPES = {
@@ -1182,7 +1184,7 @@ async def _read_x_save(source_id: UUID, path: str) -> dict | None:
         "kind": row["kind"],
         "content": row["content"],
         "external_ref": row["external_ref"],
-        "url": f"https://x.com/i/status/{row['path']}",
+        "url": f"https://x.com/i/status/{row['path'].rsplit('/', 1)[-1]}",
     }
     media = row["media"] or []
     if media:
@@ -1824,7 +1826,7 @@ def source_document_url(
         mailbox = quote(external_ref or "0", safe="")
         return f"https://mail.google.com/mail/u/{mailbox}/#all/{path}"
     if source_type == "x_saves":
-        return f"https://x.com/i/status/{path}"
+        return f"https://x.com/i/status/{path.rsplit('/', 1)[-1]}"
     if source_type == "instagram_saves":
         return f"https://www.instagram.com/p/{path}/"
     # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
