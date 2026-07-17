@@ -53,6 +53,8 @@ async def _noop_purge(source):
 async def _fake_slack_get_with_sensitive_channel(client, url, params):
     if url == indexer.CONVERSATIONS_LIST_URL:
         return {"channels": [{"id": "C_SECRET", "name": "webflow-acquisition"}]}
+    if url == indexer.AUTH_TEST_URL:
+        return {"user_id": "U_SELF"}
     raise RuntimeError("token=secret-token customer transcript")
 
 

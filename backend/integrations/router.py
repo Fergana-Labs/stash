@@ -34,6 +34,7 @@ from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
 from .github import account_sync as github_account_sync
 from .registry import get_provider, list_providers
+from .slack import indexer as slack_indexer
 
 logger = logging.getLogger(__name__)
 
@@ -487,24 +488,31 @@ async def slack_list_channels(current_user: dict = Depends(get_current_user)):
         resp.raise_for_status()
         payload = resp.json()
 
-    if not payload.get("ok"):
-        raise HTTPException(
-            status_code=502,
-            detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
-        )
-
-    channels: list[SlackChannelSummary] = []
-    for channel in payload.get("channels", []):
-        channel_id = channel.get("id")
-        if not channel_id:
-            continue
-        channels.append(
-            SlackChannelSummary(
-                id=channel_id,
-                name=channel.get("name") or channel.get("user") or channel_id,
-                is_private=bool(channel.get("is_private")),
+        if not payload.get("ok"):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
             )
-        )
+
+        # DMs carry no name in Slack's API — resolve them to the humans in the
+        # conversation, exactly as the indexer names them, so the picker shows
+        # what the source tree will show.
+        self_user_id = await slack_indexer.authed_user_id(client)
+        names: dict[str, str] = {}
+        channels: list[SlackChannelSummary] = []
+        for channel in payload.get("channels", []):
+            channel_id = channel.get("id")
+            if not channel_id:
+                continue
+            channels.append(
+                SlackChannelSummary(
+                    id=channel_id,
+                    name=await slack_indexer.channel_display_name(
+                        client, names, channel, self_user_id
+                    ),
+                    is_private=bool(channel.get("is_private")),
+                )
+            )
     return channels
 
 

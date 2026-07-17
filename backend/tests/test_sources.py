@@ -359,6 +359,7 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
 @pytest.mark.asyncio
 async def test_slack_channel_picker_lists_conversations(client: AsyncClient, monkeypatch):
     from backend.integrations import router as integrations_router
+    from backend.integrations.slack import indexer
 
     api_key, _ = await _register(client)
 
@@ -367,18 +368,14 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
         return "slack-token"
 
     class FakeSlackResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
         def raise_for_status(self):
             return None
 
         def json(self):
-            return {
-                "ok": True,
-                "channels": [
-                    {"id": "C1", "name": "general", "is_private": False},
-                    {"id": "G1", "name": "leadership", "is_private": True},
-                    {"id": "D1", "user": "U1"},
-                ],
-            }
+            return self._payload
 
     class FakeSlackClient:
         def __init__(self, *, timeout, headers):
@@ -392,12 +389,27 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
             return None
 
         async def get(self, url, params):
-            assert url == integrations_router.SLACK_CONVERSATIONS_LIST_URL
-            assert params == {
-                "types": integrations_router.SLACK_CHANNEL_TYPES,
-                "limit": integrations_router.SLACK_CHANNEL_LIMIT,
-            }
-            return FakeSlackResponse()
+            if url == integrations_router.SLACK_CONVERSATIONS_LIST_URL:
+                assert params == {
+                    "types": integrations_router.SLACK_CHANNEL_TYPES,
+                    "limit": integrations_router.SLACK_CHANNEL_LIMIT,
+                }
+                return FakeSlackResponse(
+                    {
+                        "ok": True,
+                        "channels": [
+                            {"id": "C1", "name": "general", "is_private": False},
+                            {"id": "G1", "name": "leadership", "is_private": True},
+                            {"id": "D1", "is_im": True, "user": "U1"},
+                        ],
+                    }
+                )
+            if url == indexer.AUTH_TEST_URL:
+                return FakeSlackResponse({"ok": True, "user_id": "U_SELF"})
+            assert url == indexer.USERS_INFO_URL and params == {"user": "U1"}
+            return FakeSlackResponse(
+                {"ok": True, "user": {"name": "sam", "profile": {"display_name": "Sam Liu"}}}
+            )
 
     monkeypatch.setattr(integrations_router.storage, "get_valid_token", fake_get_valid_token)
     monkeypatch.setattr(integrations_router.httpx, "AsyncClient", FakeSlackClient)
@@ -405,10 +417,11 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
     resp = await client.get("/api/v1/integrations/slack/channels", headers=_auth(api_key))
 
     assert resp.status_code == 200
+    # The DM surfaces as the human it's with — never the raw D…/U… id.
     assert resp.json() == [
         {"id": "C1", "name": "general", "is_private": False},
         {"id": "G1", "name": "leadership", "is_private": True},
-        {"id": "D1", "name": "U1", "is_private": False},
+        {"id": "D1", "name": "dm-sam-liu", "is_private": False},
     ]
 
 
@@ -1263,6 +1276,8 @@ async def test_slack_indexer_backfills_only_allowed_channels(
                     {"id": "C_BLOCKED", "name": "exec"},
                 ]
             }
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
         requested_history.append(params["channel"])
         return {"messages": [{"type": "message", "ts": "1", "text": "ship safely"}]}
 
@@ -1304,10 +1319,29 @@ async def test_slack_sync_without_channels_records_sync_error(client: AsyncClien
     assert slack["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
 
 
+def _fake_webhook_channel_resolution(monkeypatch, channel_name="general"):
+    """A live event for a never-synced channel resolves its name against Slack
+    with the owner's token — fake that seam for webhook tests."""
+    from backend.integrations.slack import indexer
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
+        assert url == indexer.CONVERSATIONS_INFO_URL
+        return {"channel": {"id": params["channel"], "name": channel_name}}
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+
 @pytest.mark.asyncio
-async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
+async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient, monkeypatch):
     from backend.integrations.slack.indexer import ingest_slack_message
 
+    _fake_webhook_channel_resolution(monkeypatch)
     # Two users each connect the same Slack team, but only the source that
     # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
@@ -1346,9 +1380,11 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
 async def test_slack_event_ingest_requires_enabled_source(
     client: AsyncClient,
     pool,
+    monkeypatch,
 ):
     from backend.integrations.slack.indexer import ingest_slack_message
 
+    _fake_webhook_channel_resolution(monkeypatch)
     _, active_owner = await _register(client, "active_slack")
     _, disabled_owner = await _register(client, "disabled_slack")
     active_source = await source_service.create_source(
@@ -1577,6 +1613,8 @@ async def test_slack_backfill_resolves_authors_and_caches_lookups(
     async def fake_slack_get(client_, url, params):
         if url == indexer.CONVERSATIONS_LIST_URL:
             return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
         if url == indexer.USERS_INFO_URL:
             users_info_calls.append(params["user"])
             return {"ok": True, "user": {"name": "hdowling", "profile": {"display_name": "henry"}}}
@@ -1627,6 +1665,8 @@ async def test_slack_backfill_discloses_history_cap(client: AsyncClient, monkeyp
     async def fake_slack_get(client_, url, params):
         if url == indexer.CONVERSATIONS_LIST_URL:
             return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
         return {
             "messages": [{"type": "message", "ts": "1783362000.1", "text": "hi"}],
             "has_more": has_more,
@@ -1647,6 +1687,80 @@ async def test_slack_backfill_discloses_history_cap(client: AsyncClient, monkeyp
     await indexer.index_slack(src)
     docs = await source_service.list_documents(src)
     assert [d["kind"] for d in docs] == ["transcript"]
+
+
+@pytest.mark.asyncio
+async def test_slack_dms_are_named_after_their_humans(client: AsyncClient, monkeypatch, pool):
+    """A DM carries no name in Slack's API — it must surface as the person
+    you're talking to (dm-sam-liu), and a group DM as everyone except
+    yourself. Rows ingested before the name was known (webhook rows stamped
+    with the raw channel id) must migrate onto the resolved name at sync."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_dms")
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_DMS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["D1", "G1"]},
+    )
+    # A pre-fix webhook row, stamped with the raw channel id as its name.
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="D1/1783362000.0",
+        name="#D1",
+        kind="message",
+        content="pre-fix webhook message",
+        external_ref="D1:1783362000.0",
+        extra={"channel_id": "D1", "channel_name": "D1", "ts": "1783362000.0"},
+    )
+
+    user_names = {"U_SAM": "Sam Liu", "U_JANE": "Jane Doe"}
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {
+                "channels": [
+                    {"id": "D1", "is_im": True, "user": "U_SAM"},
+                    {"id": "G1", "is_mpim": True},
+                ]
+            }
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
+        if url == indexer.CONVERSATIONS_MEMBERS_URL:
+            assert params["channel"] == "G1"
+            return {"members": ["U_SELF", "U_SAM", "U_JANE"]}
+        if url == indexer.USERS_INFO_URL:
+            return {"user": {"name": "n", "profile": {"display_name": user_names[params["user"]]}}}
+        return {
+            "messages": [{"type": "message", "ts": "1783362001.0", "text": "hey", "user": "U_SAM"}]
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+
+    docs = await source_service.list_documents(src)
+    assert sorted(d["path"] for d in docs) == [
+        "dm-jane-doe--sam-liu/2026-07-06",
+        "dm-sam-liu/2026-07-06",
+    ]
+    migrated = await pool.fetchrow(
+        "SELECT path, name, channel_name FROM slack_messages "
+        "WHERE source_id = $1 AND ts = '1783362000.0'",
+        UUID(src["id"]),
+    )
+    assert migrated["path"] == "dm-sam-liu/1783362000.0"
+    assert migrated["name"] == "#dm-sam-liu"
+    assert migrated["channel_name"] == "dm-sam-liu"
 
 
 @pytest.mark.asyncio
