@@ -317,9 +317,18 @@ class Settings:
     # hydrates Instagram saves server-side; users never bring their own).
     SCRAPECREATORS_API_KEY: str | None = os.getenv("SCRAPECREATORS_API_KEY")
 
-    # twitterapi.io (public X/Twitter read API, product-level key — hydrates X
-    # saves server-side from the tweet links the extension pushes).
+    # twitterapi.io (public X/Twitter read API, product-level key) hydrates X
+    # saves — full text, reply thread root, and media — plus the user's own
+    # posts/replies by account id.
     TWITTERAPI_IO_KEY: str | None = os.getenv("TWITTERAPI_IO_KEY")
+
+    # X OAuth app: the user connects X so the indexer can read their bookmarks
+    # (bookmark.read). Reads the same credentials the standalone X app has used.
+    TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
+    TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
+    TWITTER_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "TWITTER_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")

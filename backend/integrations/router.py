@@ -168,6 +168,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GONG_OAUTH_REDIRECT_URI",
         ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
+        "x": ["TWITTER_OAUTH_CLIENT_ID", "TWITTER_OAUTH_REDIRECT_URI"],
         "jira": [
             "JIRA_OAUTH_CLIENT_ID",
             "JIRA_OAUTH_CLIENT_SECRET",
@@ -193,6 +194,7 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "notion": "Notion",
             "slack": "Slack",
             "gong": "Gong",
+            "x": "X",
             "granola": "Granola",
             "jira": "Jira",
             "linear": "Linear",
@@ -287,6 +289,15 @@ async def integration_connect(
         url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
         return ConnectStartResponse(authorize_url=url)
     return_path = _safe_return_to(return_to)
+    # PKCE providers (X) carry a per-connect code verifier through the encrypted
+    # state so the callback can complete the token exchange.
+    if getattr(p, "uses_pkce", False):
+        code_verifier = p.new_code_verifier()
+        state = _encode_state(
+            current_user["id"], provider, return_path, extra={"code_verifier": code_verifier}
+        )
+        return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
+
     state = _encode_state(current_user["id"], provider, return_path)
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
@@ -310,7 +321,13 @@ async def integration_callback(
             payload = _decode_state_payload(state, expected_provider=provider)
             user_id = UUID(payload["u"])
             return_to = payload.get("r")
-            token = await p.exchange_code(code)
+            if getattr(p, "uses_pkce", False):
+                code_verifier = (payload.get("x") or {}).get("code_verifier")
+                if not code_verifier:
+                    raise HTTPException(status_code=400, detail="missing PKCE verifier in state")
+                token = await p.exchange_code(code, code_verifier)
+            else:
+                token = await p.exchange_code(code)
             # The account profile is display-only — a failure fetching it must
             # NOT block the connection (the token is what matters). Degrade to
             # an empty identity instead.
@@ -348,6 +365,35 @@ async def integration_callback(
                         type(exc).__name__,
                     )
             # --- END Slack agent ---
+
+            # Connecting X auto-creates its x_saves source and records the
+            # account id, which the indexer needs to read bookmarks (X API) and
+            # the user's own posts/replies (twitterapi.io). Best-effort: a
+            # failure here must not break the connection.
+            if provider == "x":
+                from ..database import get_pool
+                from ..services import source_service
+                from .x_saves.provider import fetch_me
+
+                try:
+                    me = await fetch_me(token.access_token)
+                    source = await source_service.create_source(
+                        owner_user_id=user_id,
+                        source_type="x_saves",
+                        external_ref=me["id"],
+                        display_name=f"X (@{me.get('username')})" if me.get("username") else "X",
+                        settings={},
+                    )
+                    await get_pool().execute(
+                        "UPDATE user_sources SET settings = "
+                        "coalesce(settings, '{}'::jsonb) || $2::jsonb WHERE id = $1",
+                        UUID(source["id"]),
+                        {"x_user_id": me["id"]},
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "x: failed to auto-create source exception_type=%s", type(exc).__name__
+                    )
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:
