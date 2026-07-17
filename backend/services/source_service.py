@@ -431,11 +431,17 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
 
 
 async def due_sources(limit: int = 50) -> list[dict]:
-    """Pull sources whose scheduled sync is due (for the Beat reconciler)."""
+    """Pull sources whose scheduled sync is due (for the Beat reconciler). Also
+    reclaims sources stuck in 'syncing' for over 10 minutes: a sync killed
+    mid-run (e.g. a worker redeploy) never reaches mark_sync_done, so without
+    this the source would sit 'syncing' forever and never re-sync."""
     rows = await get_pool().fetch(
         "SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings "
         "FROM user_sources "
-        "WHERE sync_enabled AND next_sync_at <= now() "
+        "WHERE sync_enabled AND ("
+        "  next_sync_at <= now() "
+        "  OR (sync_status = 'syncing' AND updated_at < now() - interval '10 minutes')"
+        ") "
         "ORDER BY next_sync_at LIMIT $1",
         limit,
     )

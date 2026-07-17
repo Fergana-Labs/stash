@@ -285,6 +285,37 @@ async def test_source_sync_resolves_via_owner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_due_sources_reclaims_stuck_syncing(client: AsyncClient, _db_pool):
+    """A sync killed mid-run leaves the source 'syncing'; due_sources reclaims it
+    once it's been stuck past the threshold, but leaves a fresh one alone."""
+    _, owner_id = await _register(client, "src_stuck")
+    source = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="TSTUCK",
+        display_name="Stuck",
+        settings={"allowed_channel_ids": ["CSTUCK"]},
+    )
+    sid = UUID(source["id"])
+
+    # Currently syncing and not due by schedule, freshly started -> left alone.
+    await _db_pool.execute(
+        "UPDATE user_sources SET sync_status = 'syncing', "
+        "next_sync_at = now() + interval '1 hour', updated_at = now() WHERE id = $1",
+        sid,
+    )
+    due = {UUID(s["id"]) for s in await source_service.due_sources(limit=50)}
+    assert sid not in due
+
+    # Stuck syncing past the threshold -> reclaimed even though not schedule-due.
+    await _db_pool.execute(
+        "UPDATE user_sources SET updated_at = now() - interval '15 minutes' WHERE id = $1", sid
+    )
+    due = {UUID(s["id"]) for s in await source_service.due_sources(limit=50)}
+    assert sid in due
+
+
+@pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
     resp = await client.post(
