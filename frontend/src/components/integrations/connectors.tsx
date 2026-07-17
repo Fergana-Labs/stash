@@ -102,13 +102,16 @@ export const CONNECTORS: Connector[] = [
     kind: "auto",
     blurb: "Meeting notes and transcripts.",
   },
-  {
-    provider: "gong",
-    label: "Gong",
-    sourceType: "gong_calls",
-    kind: "auto",
-    blurb: "Call transcripts, kept in sync.",
-  },
+  // Gong is hidden until an OAuth app exists: no GONG_OAUTH_* creds are
+  // registered anywhere (2026-07), so the card only ever showed users a
+  // "not configured" error. Re-enable once the creds land in Render + .env.
+  // {
+  //   provider: "gong",
+  //   label: "Gong",
+  //   sourceType: "gong_calls",
+  //   kind: "auto",
+  //   blurb: "Call transcripts, kept in sync.",
+  // },
   {
     provider: "posthog",
     label: "PostHog",
