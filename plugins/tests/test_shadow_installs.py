@@ -6,6 +6,8 @@ install that caused it. These tests pin the triggering conditions."""
 import os
 from pathlib import Path
 
+import pytest
+
 from stashai.plugin.doctor import find_stash_installs, shadow_install_warning
 
 
@@ -46,6 +48,26 @@ def test_two_distinct_installs_warn_with_both_paths(tmp_path, monkeypatch):
     assert warning is not None
     assert str(first) in warning
     assert str(stale) in warning
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permissions")
+def test_unreadable_path_entry_is_skipped(tmp_path, monkeypatch):
+    # WSL appends the Windows PATH to $PATH, and some of those directories
+    # (e.g. /mnt/c/WINDOWS/system32/config/systemprofile/.../WindowsApps)
+    # raise PermissionError on stat(). That escaped find_stash_installs() and
+    # crashed every SessionStart hook before it could emit its context — a
+    # silent failure, since the session record is created earlier.
+    denied = tmp_path / "denied"
+    denied.mkdir()
+    denied.chmod(0o000)
+    real = _make_stash(tmp_path / "bin")
+    monkeypatch.setenv("PATH", f"{denied}{os.pathsep}{real.parent}")
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    try:
+        assert find_stash_installs() == [real]
+        assert shadow_install_warning() is None
+    finally:
+        denied.chmod(0o755)  # let tmp_path cleanup remove it
 
 
 def test_activated_dev_venv_suppresses_warning(tmp_path, monkeypatch):
