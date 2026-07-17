@@ -774,6 +774,7 @@ async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncCl
     empty = await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"])
     assert empty == {"results": [], "has_more": False}
 
+
 @pytest.mark.asyncio
 async def test_upsert_index_row_updates_on_name_change(client: AsyncClient):
     """name is part of the freshness check: an index row's name can change

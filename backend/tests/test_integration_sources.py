@@ -18,14 +18,12 @@ import httpx
 import pytest
 
 from backend.config import settings
-from backend.integrations.asana import indexer as asana_indexer
 from backend.integrations.asana.indexer import _render_task
 from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gmail.provider import GmailIntegration
 from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
-from backend.integrations.jira import indexer as jira_indexer
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.integrations.linear import provider as linear_provider
 from backend.integrations.linear.provider import LinearIntegration

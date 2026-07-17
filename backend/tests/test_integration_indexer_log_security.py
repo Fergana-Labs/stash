@@ -101,6 +101,12 @@ async def test_github_index_success_logs_internal_source_id_only(monkeypatch):
     async def head_sha(url, headers):
         return "a" * 40
 
+    async def snapshot_tree(url, headers, head_sha):
+        return {
+            "truncated": False,
+            "tree": [{"type": "blob", "path": "webflow/secret.md", "size": 10}],
+        }
+
     monkeypatch.setattr(github_indexer, "get_valid_token", _token)
     monkeypatch.setattr(
         github_indexer,
@@ -110,6 +116,7 @@ async def test_github_index_success_logs_internal_source_id_only(monkeypatch):
         ),
     )
     monkeypatch.setattr(github_indexer, "_github_head_sha", head_sha)
+    monkeypatch.setattr(github_indexer, "_github_snapshot_tree", snapshot_tree)
     monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
     monkeypatch.setattr(github_indexer.source_service, "upsert_content_document", _noop)
     monkeypatch.setattr(github_indexer.source_service, "remove_missing_documents", _noop)
