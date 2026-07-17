@@ -88,8 +88,8 @@ class StashVfsModel:
         self._add_root()
         computer_lines = (
             [
-                "- `computer` is a live, read-only view of your cloud "
-                "computer's disk (browsing may wake it).",
+                "- `computer` is a live, read-only view of the agent's "
+                "working folder on your cloud computer (browsing may wake it).",
             ]
             if self.include_computer
             else []
@@ -220,7 +220,8 @@ class StashVfsModel:
             self._add_computer()
 
     def _add_computer(self) -> None:
-        """The user's cloud computer, projected read-through at /computer.
+        """The agent's working folder on the user's cloud computer, projected
+        read-through at /computer.
 
         Directories expand lazily one level at a time (a workspace can hold a
         cloned repo — materializing the whole tree would be pathological), and

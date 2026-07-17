@@ -83,8 +83,8 @@ function ToolsSection() {
   );
 }
 
-// Computer = a read-through view of the user's cloud machine's filesystem
-// (relative to its home). Browsing wakes a sleeping machine; nothing here is
+// Computer = a read-through view of the agent's working folder on the user's
+// cloud machine. Browsing wakes a sleeping machine; nothing here is
 // synced — "Save to Stash" on an open file is the only copy path.
 function ComputerSection() {
   const open = useOpenTab();

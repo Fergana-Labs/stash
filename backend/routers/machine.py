@@ -35,7 +35,8 @@ router = APIRouter(prefix="/api/v1/me/machine", tags=["machine"])
 
 @router.get("/fs")
 async def list_machine_dir(path: str = "", current_user: dict = Depends(get_current_user)):
-    """Directory listing on the user's computer, path relative to its home."""
+    """Directory listing on the user's computer, path relative to the agent's
+    working folder."""
     sprite = await sprite_service.acquire(current_user["id"])
     try:
         entries = await sprite_service.fs_list(sprite, path)
