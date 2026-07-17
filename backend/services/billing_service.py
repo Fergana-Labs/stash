@@ -23,7 +23,7 @@ from ..database import get_pool
 # Stripe statuses that grant Pro. Everything else (past_due, canceled,
 # unpaid, incomplete) means free-tier enforcement.
 ACTIVE_STATUSES = {"active", "trialing"}
-FREE_CONNECTION_LIMIT = 5
+FREE_CONNECTION_LIMIT = 2
 
 # Internal team accounts get Pro without a subscription — no card, no Stripe row.
 INTERNAL_EMAIL_DOMAINS = {"ferganalabs.com", "joinstash.ai"}
