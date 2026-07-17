@@ -19,7 +19,6 @@ import {
   savedItemsFailed,
   shouldFetchSaves,
 } from './background/instagram';
-import { finishHarvest, initTwitter, isHarvestTab, receiveBookmarks } from './background/twitter';
 import { platformStatus, syncNow } from './background/status';
 import type { ConversationSnapshot } from './content/sync';
 
@@ -28,7 +27,6 @@ const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 initClipper();
 initChatPoll(syncConversation);
 initInstagram();
-initTwitter();
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).
@@ -61,12 +59,6 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
       return receiveSavedItems(message.items, sender);
     case 'SAVED_ITEMS_FAILED':
       return savedItemsFailed(message.error, sender);
-    case 'X_BOOKMARKS':
-      return receiveBookmarks(message.ids, sender);
-    case 'IS_HARVEST_TAB':
-      return isHarvestTab(sender);
-    case 'X_HARVEST_DONE':
-      return finishHarvest(sender);
     case 'CLIP_FAILED':
       await chrome.storage.local.set({ lastError: `Save failed: ${message.error}` });
       await setBadge('!', 'Save failed — click for details');

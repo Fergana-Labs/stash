@@ -117,8 +117,8 @@ export const CONNECTORS: Connector[] = [
     provider: "x",
     label: "X",
     sourceType: "x_saves",
-    kind: "extension",
-    blurb: "Your X bookmarks, saved automatically by the Stash browser extension.",
+    kind: "auto",
+    blurb: "Connect X to sync your bookmarks, posts, and replies.",
   },
   {
     provider: "instagram",

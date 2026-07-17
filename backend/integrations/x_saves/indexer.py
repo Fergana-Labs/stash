@@ -19,12 +19,14 @@ import httpx
 
 from ...config import settings
 from ...database import get_pool
+from ...integrations import storage as integration_storage
 from ...services import source_service, storage_service
 
 logger = logging.getLogger(__name__)
 
 TAPI_TWEETS_URL = "https://api.twitterapi.io/twitter/tweets"
 TAPI_USER_TWEETS_URL = "https://api.twitterapi.io/twitter/user/last_tweets"
+X_BOOKMARKS_URL = "https://api.x.com/2/users/{user_id}/bookmarks"
 TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_PER_TWEET = 4
@@ -33,6 +35,8 @@ MAX_HYDRATION_ATTEMPTS = 3
 # Pages of the user's own timeline pulled per sync (20 tweets/page). Bounded so
 # one sync doesn't run away; older tweets keep arriving over subsequent syncs.
 MAX_USER_TWEET_PAGES = 5
+# Pages of bookmarks pulled per sync (100/page via the X API).
+MAX_BOOKMARK_PAGES = 5
 
 
 def tweet_url(tweet_id: str) -> str:
@@ -53,9 +57,11 @@ async def index_x_saves(source: dict) -> str | None:
     async with httpx.AsyncClient(
         timeout=TAPI_TIMEOUT, headers={"X-API-Key": settings.TWITTERAPI_IO_KEY}
     ) as client:
-        # The extension pushes bookmark links directly; the user's own
-        # posts/replies come from their timeline once we know their id.
+        # Bookmarks come from the X API (OAuth token); the user's own
+        # posts/replies come from twitterapi.io. Both just enqueue ids — every
+        # tweet is hydrated below through the same path.
         if x_user_id:
+            await _backfill_bookmarks(source_id, owner_user_id, str(x_user_id))
             await _backfill_user_tweets(client, source_id, owner_user_id, str(x_user_id))
 
         rows = await pool.fetch(
@@ -89,6 +95,49 @@ async def index_x_saves(source: dict) -> str | None:
                     f"{type(exc).__name__}: {exc}"[:2000],
                 )
     return None
+
+
+async def _backfill_bookmarks(source_id: UUID, owner_user_id: UUID, x_user_id: str) -> None:
+    """Insert pending Bookmark rows from the X API (OAuth token). Best-effort:
+    the bookmarks endpoint sits behind a paid X API tier, so a 402/403/429 is
+    expected and logged rather than fatal — it must not stop the user's
+    posts/replies from syncing. Idempotent per tweet."""
+    token = await integration_storage.get_valid_token(owner_user_id, "x")
+    pool = get_pool()
+    next_token: str | None = None
+    async with httpx.AsyncClient(
+        timeout=30.0, headers={"Authorization": f"Bearer {token}"}
+    ) as client:
+        for _ in range(MAX_BOOKMARK_PAGES):
+            params = {"max_results": 100}
+            if next_token:
+                params["pagination_token"] = next_token
+            response = await client.get(X_BOOKMARKS_URL.format(user_id=x_user_id), params=params)
+            if response.status_code in (401, 402, 403, 429):
+                logger.warning(
+                    "x bookmarks unavailable status=%s (X API tier/quota) source=%s",
+                    response.status_code,
+                    source_id,
+                )
+                return
+            response.raise_for_status()
+            payload = response.json()
+            for tweet in payload.get("data") or []:
+                tweet_id = tweet.get("id")
+                if not tweet_id:
+                    continue
+                await pool.execute(
+                    "INSERT INTO x_save_docs "
+                    "(owner_user_id, source_id, path, name, kind, external_ref) "
+                    "VALUES ($1, $2, $3, $3, 'Bookmark', $3) "
+                    "ON CONFLICT (source_id, path) DO NOTHING",
+                    owner_user_id,
+                    source_id,
+                    tweet_id,
+                )
+            next_token = (payload.get("meta") or {}).get("next_token")
+            if not next_token:
+                break
 
 
 async def _backfill_user_tweets(

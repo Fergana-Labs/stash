@@ -19,9 +19,7 @@
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",
-    "https://www.instagram.com/*",
-    "https://x.com/*",
-    "https://twitter.com/*"
+    "https://www.instagram.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js"
@@ -41,17 +39,6 @@
       "matches": ["https://www.instagram.com/*"],
       "js": ["dist/instagram.js"],
       "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["dist/twitter_main.js"],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["dist/twitter.js"],
-      "run_at": "document_start"
     }
   ],
   "action": {

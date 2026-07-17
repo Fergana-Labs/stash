@@ -26,4 +26,5 @@ from . import (
     notion,  # noqa: F401
     posthog,  # noqa: F401
     slack,  # noqa: F401
+    x_saves,  # noqa: F401
 )

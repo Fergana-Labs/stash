@@ -32,7 +32,6 @@ const PLATFORMS: { key: string; label: string }[] = [
   { key: 'chatgpt', label: 'ChatGPT' },
   { key: 'claude', label: 'Claude' },
   { key: 'instagram', label: 'Instagram' },
-  { key: 'x', label: 'X' },
 ];
 
 async function render(): Promise<void> {

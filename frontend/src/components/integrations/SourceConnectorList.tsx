@@ -55,8 +55,7 @@ export default function SourceConnectorList({
     setStatuses(nextStatuses);
     const extension: Record<string, Source> = {};
     for (const source of sources) {
-      const provider = providerForSourceType[source.type];
-      if (provider === "x" || provider === "instagram") extension[provider] = source;
+      if (providerForSourceType[source.type] === "instagram") extension.instagram = source;
     }
     setExtensionSources(extension);
   }, []);
