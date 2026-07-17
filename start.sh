@@ -2,11 +2,13 @@
 set -euo pipefail
 
 # -------------------------------------------------------
-# start.sh — Start all Stash services locally
-# Each worktree gets its own pgvector database container,
-# created on demand and garbage-collected after the
-# worktree is deleted. Set DATABASE_URL to use your own
-# database instead.
+# start.sh — Start all Stash services locally:
+# database, redis, backend, celery worker, celery beat,
+# collab, and frontend.
+# Each worktree gets its own pgvector database and redis
+# containers, created on demand and garbage-collected
+# after the worktree is deleted. Set DATABASE_URL /
+# REDIS_URL to use your own instances instead.
 # -------------------------------------------------------
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -26,6 +28,18 @@ DEV_DB_USER="stash"
 DEV_DB_PASSWORD="stash"
 DEV_DB_NAME="stash"
 STARTED_DEV_DB=false
+DEV_REDIS_IMAGE="redis:7-alpine"
+DEV_REDIS_CONTAINER="stash-dev-redis-$(basename "$PROJECT_ROOT")-$(printf '%s' "$PROJECT_ROOT" | shasum | cut -c1-6)"
+STARTED_DEV_REDIS=false
+
+kill_tree() {
+    local pid="$1"
+    local child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        kill_tree "$child"
+    done
+    kill -9 "$pid" 2>/dev/null || true
+}
 
 cleanup() {
     local exit_code="${1:-0}"
@@ -35,10 +49,25 @@ cleanup() {
     for pid in "${PIDS[@]}"; do
         kill "$pid" 2>/dev/null || true
     done
+    # Bounded wait, then force-kill: celery's warm shutdown can wedge on a
+    # stuck pool process, and a hung child must not block Ctrl+C forever.
+    for _ in {1..15}; do
+        if ! jobs -pr | grep -q .; then
+            break
+        fi
+        sleep 1
+    done
+    for pid in "${PIDS[@]}"; do
+        kill_tree "$pid"
+    done
     wait 2>/dev/null
     if [ "$STARTED_DEV_DB" = "true" ]; then
         echo "[db]      Stopping dev database container..."
         docker stop "$DEV_DB_CONTAINER" >/dev/null 2>&1 || true
+    fi
+    if [ "$STARTED_DEV_REDIS" = "true" ]; then
+        echo "[redis]   Stopping dev redis container..."
+        docker stop "$DEV_REDIS_CONTAINER" >/dev/null 2>&1 || true
     fi
     echo "All services stopped."
     exit "$exit_code"
@@ -105,7 +134,7 @@ ensure_integrations_encryption_key() {
 ensure_integrations_encryption_key
 
 ensure_python_deps() {
-    if python -c 'import uvicorn, alembic, asyncpg' >/dev/null 2>&1; then
+    if python -c 'import uvicorn, alembic, asyncpg, celery, redis' >/dev/null 2>&1; then
         return
     fi
 
@@ -162,6 +191,34 @@ asyncio.run(main())
 PY
 }
 
+ensure_docker() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "[docker]  Docker is required for the local dev database and redis."
+        echo "[docker]  Install Docker Desktop, then rerun ./start.sh."
+        exit 1
+    fi
+
+    if docker info >/dev/null 2>&1; then
+        return
+    fi
+
+    if [ "$(uname)" = "Darwin" ]; then
+        echo "[docker]  Docker daemon is not running; starting Docker Desktop..."
+        open -a Docker
+        for _ in {1..60}; do
+            if docker info >/dev/null 2>&1; then
+                echo "[docker]  Docker daemon is ready."
+                return
+            fi
+            sleep 1
+        done
+    fi
+
+    echo "[docker]  Docker daemon is not running and did not come up."
+    echo "[docker]  Start it manually, then rerun ./start.sh."
+    exit 1
+}
+
 container_exists() {
     docker container inspect "$DEV_DB_CONTAINER" >/dev/null 2>&1
 }
@@ -170,12 +227,12 @@ container_is_running() {
     [ "$(docker inspect -f '{{.State.Running}}' "$DEV_DB_CONTAINER" 2>/dev/null)" = "true" ]
 }
 
-remove_orphaned_dev_databases() {
+remove_orphaned_dev_containers() {
     docker ps -a --filter "label=$DEV_DB_WORKTREE_LABEL" \
         --format "{{.Names}} {{.Label \"$DEV_DB_WORKTREE_LABEL\"}}" |
     while read -r container worktree; do
         if [ ! -d "$worktree" ]; then
-            echo "[db]      Removing dev database of deleted worktree ${worktree}..."
+            echo "[docker]  Removing dev container of deleted worktree ${worktree}..."
             docker rm -f "$container" >/dev/null
             docker volume rm "${container}-data" >/dev/null 2>&1 || true
         fi
@@ -199,17 +256,8 @@ ensure_local_database() {
         exit 1
     fi
 
-    if ! command -v docker >/dev/null 2>&1; then
-        echo "[db]      Docker is required to start the local dev database."
-        exit 1
-    fi
-
-    if ! docker info >/dev/null 2>&1; then
-        echo "[db]      Docker is installed, but the daemon is not running."
-        exit 1
-    fi
-
-    remove_orphaned_dev_databases
+    ensure_docker
+    remove_orphaned_dev_containers
 
     # The host port is baked in at creation time, and another process can grab
     # it while the container is stopped. Recreate the container on a fresh port
@@ -253,6 +301,60 @@ ensure_local_database() {
     done
 
     echo "[db]      Dev database did not become ready in time."
+    exit 1
+}
+
+redis_is_ready() {
+    python - <<'PY' >/dev/null 2>&1
+import os
+
+import redis
+
+redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=2).ping()
+PY
+}
+
+ensure_local_redis() {
+    # An explicit REDIS_URL means the caller owns redis; never substitute a
+    # local container for it.
+    if [ -n "${REDIS_URL:-}" ]; then
+        if redis_is_ready; then
+            echo "[redis]   Using REDIS_URL from the environment."
+            return
+        fi
+        echo "[redis]   REDIS_URL is set but not reachable."
+        echo "[redis]   Start that redis (or unset REDIS_URL for a local dev container), then rerun ./start.sh."
+        exit 1
+    fi
+
+    ensure_docker
+
+    # The broker and result store are disposable in dev, so recreate the
+    # container fresh each run instead of managing stopped-container state.
+    docker rm -f "$DEV_REDIS_CONTAINER" >/dev/null 2>&1 || true
+
+    echo "[redis]   Creating a dev redis container for this worktree..."
+    local redis_port
+    redis_port="$(find_free_port 6379)"
+    docker run -d --rm \
+        --name "$DEV_REDIS_CONTAINER" \
+        --label "${DEV_DB_WORKTREE_LABEL}=${PROJECT_ROOT}" \
+        -p "${redis_port}:6379" \
+        "$DEV_REDIS_IMAGE" >/dev/null
+    STARTED_DEV_REDIS=true
+
+    export REDIS_URL="redis://localhost:${redis_port}/0"
+
+    echo "[redis]   Waiting for Redis..."
+    for _ in {1..30}; do
+        if redis_is_ready; then
+            echo "[redis]   Redis is ready."
+            return
+        fi
+        sleep 1
+    done
+
+    echo "[redis]   Dev redis did not become ready in time."
     exit 1
 }
 
@@ -418,6 +520,9 @@ ensure_node_deps
 # --- Database ---
 ensure_local_database
 
+# --- Redis ---
+ensure_local_redis
+
 # --- Ports ---
 choose_dev_ports
 
@@ -437,6 +542,17 @@ PUBLIC_URL="http://localhost:${FRONTEND_PORT}" \
 CORS_ORIGINS="http://localhost:${FRONTEND_PORT},http://localhost:${BACKEND_PORT},http://localhost:3000" \
 uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
     --proxy-headers --forwarded-allow-ips '*' &
+PIDS+=($!)
+
+# --- Celery worker + beat ---
+# Same commands as docker-compose.yml; beat must run as exactly one instance.
+echo "[worker]   Starting celery worker..."
+celery -A backend.celery_app worker --loglevel=info --concurrency=4 &
+PIDS+=($!)
+
+echo "[beat]     Starting celery beat..."
+celery -A backend.celery_app beat --loglevel=info \
+    --schedule "$PROJECT_ROOT/.celerybeat-schedule" &
 PIDS+=($!)
 
 # --- Collab (Hocuspocus) ---
@@ -463,6 +579,7 @@ echo "  Backend  -> http://localhost:${BACKEND_PORT}"
 echo "  Collab   -> ws://localhost:${COLLAB_PORT}"
 echo "  Frontend -> http://localhost:${FRONTEND_PORT}"
 echo "  Database -> ${DATABASE_URL}"
+echo "  Redis    -> ${REDIS_URL}"
 echo "================================"
 
 # Wait for both app processes; if either exits, stop the other one too.
