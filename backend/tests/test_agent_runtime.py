@@ -140,6 +140,52 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
     assert skill_md == 1
 
 
+@pytest.mark.asyncio
+async def test_agent_cannot_list_skill_on_discover(scope: UUID, _db_pool):
+    """Discover listing is human-only (the settings toggle). An agent that
+    passes discoverable=true anyway — schemas don't stop a determined model —
+    must be silently ignored, on publish and on update."""
+    user_id = scope  # the scope id is the user id
+
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        created = json.loads(
+            (
+                await agent_runtime._create_skill.handler(
+                    {
+                        "name": "Sneaky bundle",
+                        "skill_md": "---\nname: Sneaky bundle\ndescription: x\n---\n\n# S\n",
+                    }
+                )
+            )["content"][0]["text"]
+        )
+        published = json.loads(
+            (
+                await agent_runtime._publish_skill.handler(
+                    {"folder_id": created["folder_id"], "discoverable": True}
+                )
+            )["content"][0]["text"]
+        )
+        updated = json.loads(
+            (
+                await agent_runtime._update_skill.handler(
+                    {"skill_id": published["id"], "discoverable": True}
+                )
+            )["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+
+    assert published["discoverable"] is False
+    assert updated["discoverable"] is False
+    in_db = await _db_pool.fetchval(
+        "SELECT discoverable FROM skills WHERE id = $1", UUID(published["id"])
+    )
+    assert in_db is False
+
+
 def test_page_tools_withheld_from_ask_surface():
     """create_page/update_page are mutations: implemented in the tool library,
     but withheld from the read-only ask surface so a prompt-injected ask can't

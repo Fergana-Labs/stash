@@ -386,7 +386,6 @@ async def _create_skill(args: dict) -> dict:
         "type": "object",
         "properties": {
             "folder_id": {"type": "string"},
-            "discoverable": {"type": "boolean", "default": False},
         },
         "required": ["folder_id"],
     },
@@ -399,7 +398,6 @@ async def _publish_skill(args: dict) -> dict:
             owner_user_id,
             user_id,
             UUID(args["folder_id"]),
-            discoverable=bool(args.get("discoverable", False)),
         )
     except (ValueError, PermissionError) as e:
         return _text_result(json.dumps({"error": str(e)}))
@@ -410,14 +408,13 @@ async def _publish_skill(args: dict) -> dict:
 
 @tool(
     "update_skill",
-    "Update a published skill's share settings (title, description, access, Discover listing).",
+    "Update a published skill's title or description.",
     {
         "type": "object",
         "properties": {
             "skill_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
-            "discoverable": {"type": "boolean"},
         },
         "required": ["skill_id"],
     },
@@ -428,7 +425,9 @@ async def _update_skill(args: dict) -> dict:
     if not await shared_skill_service.user_can_manage(skill_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
-    updates = {key: args[key] for key in ("title", "description", "discoverable") if key in args}
+    # Discover listing is deliberately not agent-settable: putting content on
+    # the public Discover feed must be a human clicking the settings toggle.
+    updates = {key: args[key] for key in ("title", "description") if key in args}
     skill = await shared_skill_service.update_skill(skill_id, user_id, updates)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
