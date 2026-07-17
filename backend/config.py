@@ -1,7 +1,7 @@
 """Centralised settings loaded from environment variables.
 
 All configuration that the backend touches must be declared here.
-Defaults are chosen for local development with the bundled docker-compose.yml.
+Defaults are chosen for local development with ./start.sh.
 """
 
 import os

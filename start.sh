@@ -555,7 +555,7 @@ uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
 PIDS+=($!)
 
 # --- Celery worker + beat ---
-# Same commands as docker-compose.yml; beat must run as exactly one instance.
+# Same commands as docker-compose.prod.yml; beat must run as exactly one instance.
 echo "[worker]   Starting celery worker..."
 celery -A backend.celery_app worker --loglevel=info --concurrency=4 &
 PIDS+=($!)

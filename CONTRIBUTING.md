@@ -23,8 +23,12 @@ development environment, run the test suite, and submit a pull request.
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 
-# 2. Start Postgres (pgvector)
-docker compose up -d postgres
+# 2. Start Postgres (pgvector) on the default port
+docker run -d --name stash-pg -p 5432:5432 \
+  -e POSTGRES_USER=stash -e POSTGRES_PASSWORD=stash -e POSTGRES_DB=stash \
+  pgvector/pgvector:pg16
+# (./start.sh manages its own per-worktree database automatically; this
+# standalone container is only needed for running the backend or tests by hand.)
 
 # 3. Backend dependencies (includes test tooling)
 pip install -r backend/requirements-dev.txt
@@ -70,8 +74,11 @@ Both suites must pass before a PR can be merged.
 ### Backend
 
 ```bash
-# Start a test Postgres instance (separate DB from dev)
-docker compose up -d postgres
+# Start the standalone Postgres container from Getting started (a separate
+# test database is created inside the same instance)
+docker start stash-pg 2>/dev/null || docker run -d --name stash-pg -p 5432:5432 \
+  -e POSTGRES_USER=stash -e POSTGRES_PASSWORD=stash -e POSTGRES_DB=stash \
+  pgvector/pgvector:pg16
 
 # Create the test database if it doesn't exist
 psql postgresql://stash:stash@localhost:5432/postgres -c "CREATE DATABASE stash_test"
