@@ -19,7 +19,7 @@ import {
   savedItemsFailed,
   shouldFetchSaves,
 } from './background/instagram';
-import { initTwitter, receiveBookmarks } from './background/twitter';
+import { finishHarvest, initTwitter, isHarvestTab, receiveBookmarks } from './background/twitter';
 import { platformStatus, syncNow } from './background/status';
 import type { ConversationSnapshot } from './content/sync';
 
@@ -63,6 +63,10 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
       return savedItemsFailed(message.error, sender);
     case 'X_BOOKMARKS':
       return receiveBookmarks(message.ids, sender);
+    case 'IS_HARVEST_TAB':
+      return isHarvestTab(sender);
+    case 'X_HARVEST_DONE':
+      return finishHarvest(sender);
     case 'CLIP_FAILED':
       await chrome.storage.local.set({ lastError: `Save failed: ${message.error}` });
       await setBadge('!', 'Save failed — click for details');

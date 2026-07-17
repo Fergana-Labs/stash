@@ -10,15 +10,17 @@ import { parseBookmarkIds } from '../lib/x_bookmarks';
 
 const BOOKMARKS_RE = /\/graphql\/[^/]+\/Bookmarks/;
 
-function post(ids: string[]): void {
-  if (ids.length === 0) return;
-  window.postMessage({ source: 'stash-x-bookmarks', ids }, window.location.origin);
+// `done` = this Bookmarks page carried no tweets, i.e. we've scrolled past the
+// end of the list — the companion uses it to stop auto-scrolling.
+function post(ids: string[], done: boolean): void {
+  window.postMessage({ source: 'stash-x-bookmarks', ids, done }, window.location.origin);
 }
 
 function handleBody(url: string, body: string): void {
   if (!BOOKMARKS_RE.test(url)) return;
   try {
-    post(parseBookmarkIds(JSON.parse(body)));
+    const ids = parseBookmarkIds(JSON.parse(body));
+    post(ids, ids.length === 0);
   } catch {
     // A non-JSON or shape-changed response is not fatal — the next page load
     // tries again. Staying silent avoids console noise on every x.com fetch.
