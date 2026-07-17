@@ -570,3 +570,44 @@ async def push_x_items(
     if new:
         celery.send_task("backend.tasks.sources.sync_source", args=[str(source_id)])
     return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}
+
+
+class XAccount(BaseModel):
+    user_id: str
+
+
+@x_items_router.post("/account")
+async def set_x_account(
+    body: XAccount,
+    current_user: dict = Depends(get_current_user),
+):
+    """The extension reports the signed-in X account's numeric id (from the
+    twid cookie). We store it on the x_saves source so the indexer can pull the
+    user's own posts + replies from their timeline via twitterapi.io — bookmarks
+    stay extension-fed, everything else is scraped by handle."""
+    from ..config import settings as app_settings
+
+    if not app_settings.TWITTERAPI_IO_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="X saves are not enabled on this server (TWITTERAPI_IO_KEY is not set)",
+        )
+    if not body.user_id.isdigit():
+        raise HTTPException(status_code=400, detail="user_id must be the numeric X account id")
+
+    source = await source_service.create_source(
+        owner_user_id=current_user["id"],
+        source_type="x_saves",
+        external_ref="saves",
+        display_name="X saves",
+        settings={},
+    )
+    source_id = UUID(source["id"])
+    await get_pool().execute(
+        "UPDATE user_sources SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb "
+        "WHERE id = $1",
+        source_id,
+        {"x_user_id": body.user_id},
+    )
+    celery.send_task("backend.tasks.sources.sync_source", args=[str(source_id)])
+    return {"ok": True}

@@ -24,11 +24,15 @@ from ...services import source_service, storage_service
 logger = logging.getLogger(__name__)
 
 TAPI_TWEETS_URL = "https://api.twitterapi.io/twitter/tweets"
+TAPI_USER_TWEETS_URL = "https://api.twitterapi.io/twitter/user/last_tweets"
 TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_PER_TWEET = 4
 HYDRATION_BATCH = 25
 MAX_HYDRATION_ATTEMPTS = 3
+# Pages of the user's own timeline pulled per sync (20 tweets/page). Bounded so
+# one sync doesn't run away; older tweets keep arriving over subsequent syncs.
+MAX_USER_TWEET_PAGES = 5
 
 
 def tweet_url(tweet_id: str) -> str:
@@ -44,22 +48,28 @@ async def index_x_saves(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
     pool = get_pool()
-    rows = await pool.fetch(
-        f"""
-        SELECT id, path, kind FROM x_save_docs
-        WHERE source_id = $1 AND (
-              hydration_status = 'pending'
-           OR (hydration_status = 'failed' AND hydration_attempts < {MAX_HYDRATION_ATTEMPTS})
-        )
-        ORDER BY created_at
-        LIMIT {HYDRATION_BATCH}
-        """,
-        source_id,
-    )
+    x_user_id = (source.get("settings") or {}).get("x_user_id")
 
     async with httpx.AsyncClient(
         timeout=TAPI_TIMEOUT, headers={"X-API-Key": settings.TWITTERAPI_IO_KEY}
     ) as client:
+        # The extension pushes bookmark links directly; the user's own
+        # posts/replies come from their timeline once we know their id.
+        if x_user_id:
+            await _backfill_user_tweets(client, source_id, owner_user_id, str(x_user_id))
+
+        rows = await pool.fetch(
+            f"""
+            SELECT id, path, kind FROM x_save_docs
+            WHERE source_id = $1 AND (
+                  hydration_status = 'pending'
+               OR (hydration_status = 'failed' AND hydration_attempts < {MAX_HYDRATION_ATTEMPTS})
+            )
+            ORDER BY created_at
+            LIMIT {HYDRATION_BATCH}
+            """,
+            source_id,
+        )
         for row in rows:
             try:
                 await _hydrate_one(client, source_id, owner_user_id, row["path"], row["kind"])
@@ -79,6 +89,44 @@ async def index_x_saves(source: dict) -> str | None:
                     f"{type(exc).__name__}: {exc}"[:2000],
                 )
     return None
+
+
+async def _backfill_user_tweets(
+    client: httpx.AsyncClient, source_id: UUID, owner_user_id: UUID, x_user_id: str
+) -> None:
+    """Insert pending rows for the user's own posts + replies (from their
+    timeline), which then hydrate through the same path as bookmarks. Retweets
+    are skipped — they aren't the user's own writing. Idempotent per tweet."""
+    pool = get_pool()
+    cursor: str | None = None
+    for _ in range(MAX_USER_TWEET_PAGES):
+        params = {"userId": x_user_id}
+        if cursor:
+            params["cursor"] = cursor
+        response = await client.get(TAPI_USER_TWEETS_URL, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        tweets = (payload.get("data") or {}).get("tweets") or []
+        for tweet in tweets:
+            tweet_id = tweet.get("id")
+            if not tweet_id or tweet.get("isRetweet"):
+                continue
+            kind = "Reply" if tweet.get("isReply") else "Post"
+            await pool.execute(
+                "INSERT INTO x_save_docs "
+                "(owner_user_id, source_id, path, name, kind, external_ref) "
+                "VALUES ($1, $2, $3, $3, $4, $3) "
+                "ON CONFLICT (source_id, path) DO NOTHING",
+                owner_user_id,
+                source_id,
+                tweet_id,
+                kind,
+            )
+        if not payload.get("has_next_page"):
+            break
+        cursor = payload.get("next_cursor")
+        if not cursor:
+            break
 
 
 async def _hydrate_one(
