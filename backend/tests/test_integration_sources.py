@@ -606,6 +606,9 @@ async def test_github_sync_crawls_and_returns_new_head_sha(monkeypatch):
         crawled.append(archive_url)
         return []
 
+    async def snapshot_tree(url, headers, sha):
+        return {"truncated": False, "tree": [{"type": "blob", "size": 10}]}
+
     async def noop(*args, **kwargs):
         return None
 
@@ -618,8 +621,88 @@ async def test_github_sync_crawls_and_returns_new_head_sha(monkeypatch):
         ),
     )
     monkeypatch.setattr(github_indexer, "_github_head_sha", head_sha)
+    monkeypatch.setattr(github_indexer, "_github_snapshot_tree", snapshot_tree)
     monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
     monkeypatch.setattr(github_indexer.source_service, "remove_missing_documents", noop)
 
     assert await github_indexer.index_github_repo(source) == new_sha
     assert crawled == ["archive-url"]
+
+
+def test_check_tree_indexable_enforces_caps_before_download():
+    # The whole value of the pre-check is refusing BEFORE the zipball
+    # download: an over-cap repo used to download ~100MB every cycle just to
+    # fail on the same in-crawl caps, which is what kept OOM-ing the worker.
+    from backend.integrations.github.indexer import (
+        MAX_FILES,
+        MAX_SNAPSHOT_BYTES,
+        _check_tree_indexable,
+    )
+    from backend.services.source_service import SourceSyncUserError
+
+    def tree(blobs, truncated=False):
+        return {"truncated": truncated, "tree": blobs}
+
+    blob = {"type": "blob", "size": 100}
+
+    # Under every cap: passes. Non-blob entries (trees, submodules) don't count.
+    _check_tree_indexable(tree([blob] * 10 + [{"type": "tree"}, {"type": "commit"}]))
+
+    with pytest.raises(SourceSyncUserError, match="truncated"):
+        _check_tree_indexable(tree([blob], truncated=True))
+
+    with pytest.raises(SourceSyncUserError, match=f"cap is {MAX_FILES}"):
+        _check_tree_indexable(tree([blob] * (MAX_FILES + 1)))
+
+    over = {"type": "blob", "size": MAX_SNAPSHOT_BYTES + 1}
+    with pytest.raises(SourceSyncUserError, match="cap is 100MB"):
+        _check_tree_indexable(tree([over]))
+
+
+@pytest.mark.asyncio
+async def test_github_sync_refuses_oversized_repo_without_downloading(monkeypatch):
+    # An over-cap repo must be refused with the owner-facing reason and no
+    # download attempt. The refusal repeats each cycle at the cost of two API
+    # calls, and clears on its own if the repo shrinks under the caps.
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from backend.integrations.github import indexer as github_indexer
+    from backend.services.source_service import SourceSyncUserError
+
+    source = {
+        "id": str(uuid4()),
+        "owner_user_id": str(uuid4()),
+        "external_ref": "octocat/hello-world",
+        "sync_cursor": None,
+    }
+
+    async def token(user_id, provider=None):
+        return "tok"
+
+    async def head_sha(url, headers):
+        return "f" * 40
+
+    async def snapshot_tree(url, headers, sha):
+        return {
+            "truncated": False,
+            "tree": [{"type": "blob", "size": 1}] * (github_indexer.MAX_FILES + 1),
+        }
+
+    async def crawl_archive(*args, **kwargs):
+        raise AssertionError("an over-cap repo must not be downloaded")
+
+    monkeypatch.setattr(github_indexer, "get_valid_token", token)
+    monkeypatch.setattr(
+        github_indexer,
+        "resolve_archive_url",
+        lambda *args, **kwargs: SimpleNamespace(
+            archive_url="archive-url", headers={}, host_kind="github"
+        ),
+    )
+    monkeypatch.setattr(github_indexer, "_github_head_sha", head_sha)
+    monkeypatch.setattr(github_indexer, "_github_snapshot_tree", snapshot_tree)
+    monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
+
+    with pytest.raises(SourceSyncUserError, match=f"cap is {github_indexer.MAX_FILES}"):
+        await github_indexer.index_github_repo(source)

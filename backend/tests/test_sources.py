@@ -878,7 +878,11 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
     async def fake_head_sha(url, headers):
         return next(shas)
 
+    async def fake_snapshot_tree(url, headers, sha):
+        return {"truncated": False, "tree": [{"type": "blob", "size": 10}]}
+
     monkeypatch.setattr(indexer, "_github_head_sha", fake_head_sha)
+    monkeypatch.setattr(indexer, "_github_snapshot_tree", fake_snapshot_tree)
     monkeypatch.setattr(indexer, "_download_archive", fake_download)
 
     result = await sources_task._sync_source(UUID(src["id"]))
@@ -935,7 +939,11 @@ async def test_github_indexer_skips_files_too_big_to_index(client, monkeypatch):
         Path(dest).write_bytes(repo_zip)
         return len(repo_zip)
 
+    async def fake_snapshot_tree(url, headers, sha):
+        return {"truncated": False, "tree": [{"type": "blob", "size": 10}]}
+
     monkeypatch.setattr(indexer, "_github_head_sha", fake_head_sha)
+    monkeypatch.setattr(indexer, "_github_snapshot_tree", fake_snapshot_tree)
     monkeypatch.setattr(indexer, "_download_archive", fake_download)
 
     result = await sources_task._sync_source(UUID(src["id"]))

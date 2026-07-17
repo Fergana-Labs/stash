@@ -40,6 +40,15 @@ logger = logging.getLogger(__name__)
 # under the limit.
 MAX_INDEXED_TEXT_BYTES = 512 * 1024
 
+# Cap on a snapshot's total content size, enforced against the git tree
+# BEFORE the zipball download. Repos over this cap (or over MAX_FILES) used
+# to download up to 100MB just to fail on the in-crawl caps — every cycle,
+# forever, because a failed sync stores no cursor. That hourly re-download
+# churn is what kept OOM-ing the celery worker; now an over-cap repo costs
+# two API calls per cycle and heals on its own if the repo shrinks. The
+# in-crawl caps stay as the enforcement for non-GitHub hosts.
+MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024
+
 
 async def _github_head_sha(url: str, headers: dict) -> str:
     """Latest commit SHA on the default branch — one cheap API call, used to
@@ -53,6 +62,40 @@ async def _github_head_sha(url: str, headers: dict) -> str:
         )
         resp.raise_for_status()
         return resp.json()[0]["sha"]
+
+
+async def _github_snapshot_tree(url: str, headers: dict, head_sha: str) -> dict:
+    """The repo's full file listing at `head_sha` — one API call, no download."""
+    owner, repo = _parse_owner_repo(urlparse(url).path)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{head_sha}",
+            params={"recursive": "1"},
+            headers=headers,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+def _check_tree_indexable(tree: dict) -> None:
+    """Refuse a snapshot the crawler would give up on anyway, before paying
+    for the download. Messages are owner-facing (SourceSyncUserError)."""
+    if tree["truncated"]:
+        # GitHub truncates the listing past ~100k entries — far over MAX_FILES.
+        raise source_service.SourceSyncUserError(
+            "Repo is too large to index: GitHub truncated its file listing"
+        )
+    blobs = [e for e in tree["tree"] if e["type"] == "blob"]
+    if len(blobs) > MAX_FILES:
+        raise source_service.SourceSyncUserError(
+            f"Repo has {len(blobs)} files; the indexing cap is {MAX_FILES}"
+        )
+    total_bytes = sum(e["size"] for e in blobs)
+    if total_bytes > MAX_SNAPSHOT_BYTES:
+        raise source_service.SourceSyncUserError(
+            f"Repo content is {total_bytes // (1024 * 1024)}MB; "
+            f"the indexing cap is {MAX_SNAPSHOT_BYTES // (1024 * 1024)}MB"
+        )
 
 
 async def _crawl_archive(
@@ -113,13 +156,15 @@ async def index_github_repo(source: dict) -> str | None:
     except UnsupportedHostError as e:
         raise RuntimeError(str(e))
 
-    # Change detection is GitHub-only; other hosts always crawl.
+    # Change detection + size pre-check are GitHub-only; other hosts always
+    # crawl and rely on the in-crawl caps.
     head_sha = None
     if resolved.host_kind == "github":
         head_sha = await _github_head_sha(url, resolved.headers)
         if head_sha == source["sync_cursor"]:
             logger.info("github source %s: HEAD unchanged, skipping crawl", source_id)
             return head_sha
+        _check_tree_indexable(await _github_snapshot_tree(url, resolved.headers, head_sha))
 
     async def _on_text_file(rel: str, text: str) -> None:
         await source_service.upsert_content_document(
