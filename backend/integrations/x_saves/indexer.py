@@ -224,22 +224,18 @@ async def _hydrate_one(
 
 
 def _render(tweet: dict, root: dict | None) -> str:
-    parts: list[str] = []
-    if root is not None:
-        parts.append(f"# In reply to @{root['author']}")
-        parts.append(_quote(root["text"]))
-        parts.append("\n---\n")
-    parts.append(f"# @{tweet['author']}")
+    # Tweet text first so the listing's preview (first paragraph of content) is
+    # the tweet itself, not metadata. Everything after the blank line is the
+    # byline, reply context, and link.
+    parts: list[str] = [tweet["text"] or "", ""]
+    byline = f"— @{tweet['author']}"
     if tweet["created_at"]:
-        parts.append(f"Posted: {tweet['created_at'].isoformat()}")
-    parts.append(f"URL: {tweet_url(tweet['id'])}")
-    parts.append("")
-    parts.append(_quote(tweet["text"]))
+        byline += f" · {tweet['created_at'].date().isoformat()}"
+    parts.append(byline)
+    if root is not None:
+        parts.append(f"In reply to @{root['author']}: {root['text']}")
+    parts.append(tweet_url(tweet["id"]))
     return "\n".join(parts)
-
-
-def _quote(text: str) -> str:
-    return "\n".join(f"> {line}" for line in (text or "").splitlines())
 
 
 async def _fetch_tweet(client: httpx.AsyncClient, tweet_id: str) -> dict:

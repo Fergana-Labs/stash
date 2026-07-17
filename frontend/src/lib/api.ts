@@ -321,6 +321,8 @@ export interface SourceEntry {
   name: string;
   kind: string;
   external_ref?: string | null;
+  // One-line preview of the copied content (e.g. the tweet text).
+  snippet?: string | null;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);

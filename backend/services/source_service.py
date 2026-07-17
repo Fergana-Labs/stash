@@ -836,10 +836,21 @@ async def list_documents(
         )
         return [_entry_row(r) for r in rows]
 
-    size_column = "length(coalesce(content, ''))" if table in CONTENT_TABLES else "NULL::bigint"
+    is_content = table in CONTENT_TABLES
+    size_column = "length(coalesce(content, ''))" if is_content else "NULL::bigint"
+    # First paragraph of the copied content, whitespace-collapsed — a one-line
+    # preview for the browse list (e.g. the tweet text for an X save).
+    # E'\n\n' is a real double-newline; '\s+' must be a *standard* string literal
+    # so the backslash reaches the regex engine (in an E-string \s isn't an
+    # escape and silently collapses to 's').
+    snippet_column = (
+        "left(regexp_replace(split_part(coalesce(content, ''), E'\\n\\n', 1), '\\s+', ' ', 'g'), 200)"
+        if is_content
+        else "NULL::text"
+    )
     rows = await get_pool().fetch(
         f"SELECT path, name, kind, external_ref, external_updated_at, "
-        f"{size_column} AS size FROM {table} "
+        f"{size_column} AS size, {snippet_column} AS snippet FROM {table} "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
         f"ORDER BY path LIMIT $3",
         UUID(source["id"]),
@@ -859,6 +870,7 @@ def _entry_row(r) -> dict:
         "external_ref": r["external_ref"],
         "external_updated_at": (external_updated_at.isoformat() if external_updated_at else None),
         "size": r["size"],
+        "snippet": r["snippet"] if "snippet" in r.keys() else None,
     }
 
 
