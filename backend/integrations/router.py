@@ -200,7 +200,8 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "linear": "Linear",
             "asana": "Asana",
         }
-        return f"{display_names.get(provider, provider)} OAuth is not configured for this server."
+        display = display_names.get(provider, provider)
+        return f"{display} OAuth is not configured for this server. Missing: {', '.join(missing)}"
     return None
 
 

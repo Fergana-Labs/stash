@@ -50,6 +50,27 @@ cd frontend && npm ci && cd ..
 #   Frontend → http://localhost:3457
 ```
 
+### Connecting integrations locally (OAuth)
+
+Integrations show "…OAuth is not configured for this server. Missing: <vars>"
+until every listed env var is set in the repo-root `.env`. Each OAuth provider
+needs **three** vars: `<PROVIDER>_OAUTH_CLIENT_ID`, `<PROVIDER>_OAUTH_CLIENT_SECRET`,
+and `<PROVIDER>_OAUTH_REDIRECT_URI` (X/Twitter uses the `TWITTER_` prefix;
+Granola needs only its redirect URI). There are deliberately no defaults for
+redirect URIs — set them explicitly:
+
+```bash
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3456/api/v1/integrations/google/callback
+# ...same pattern for gmail, github, notion, slack, jira, linear, asana,
+# granola, and x (TWITTER_OAUTH_REDIRECT_URI → .../integrations/x/callback)
+```
+
+Client IDs/secrets come from each provider's developer console (or ask a
+teammate for the shared dev OAuth apps). The provider's OAuth app must have
+the `http://localhost:3456/...` callback registered as a redirect URI, or the
+consent screen will reject the flow with a redirect_uri mismatch. Ports are
+fixed (backend 3456) precisely so these registrations stay valid.
+
 ---
 
 ## CLI development
