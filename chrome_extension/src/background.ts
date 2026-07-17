@@ -27,6 +27,14 @@ const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 initClipper();
 initChatPoll(syncConversation);
 initInstagram();
+
+// The X bookmark harvest was removed (X syncs server-side over OAuth now); clear
+// any stale harvest error it left behind so the popup doesn't keep showing it.
+void chrome.storage.local.get('lastError').then(({ lastError }) => {
+  if (typeof lastError === 'string' && lastError.includes('X bookmarks')) {
+    void chrome.storage.local.set({ lastError: null });
+  }
+});
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).

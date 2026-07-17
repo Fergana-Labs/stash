@@ -106,6 +106,14 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
+  useEffect(() => {
+    // X auto-creates one source; open it straight into browse so the page
+    // reads as "connected + your saves", not a source picker.
+    if (connector?.singleSource && sources.length === 1 && !openSourceId) {
+      setOpenSourceId(sources[0].source);
+    }
+  }, [connector, sources, openSourceId]);
+
   if (loading) return null;
   if (!user) return null;
 
@@ -129,6 +137,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
   // "connected" once the browser extension has pushed at least one source.
   const isExtension = connector.kind === "extension";
+  const singleSource = !!connector.singleSource;
   const connected = isExtension ? sources.length > 0 : !!status?.connected;
   const account = connectedAccountLabel(status);
   const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
@@ -321,9 +330,9 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
 
         {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser).
-            Extension-fed connectors have nothing to add by hand — the extension
-            pushes their sources. */}
-        {connected && !isExtension && (
+            Extension-fed and single-source connectors (X) have nothing to add by
+            hand — their one source is created on connect. */}
+        {connected && !isExtension && !singleSource && (
           <section className="mt-6">
             <SectionLabel>
               {connector.kind === "github" ? "Repository access" : `Add a ${itemNoun}`}
@@ -338,9 +347,12 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           </section>
         )}
 
-        {/* <Things> */}
+        {/* <Things>. Single-source connectors (X) skip the "Sources" heading —
+            there's just the one, shown as the connection's sync status. */}
         <section className="mt-7">
-          <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
+          {!singleSource && (
+            <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
+          )}
           {sources.length === 0 ? (
             <div className="py-3 text-[12.5px] text-muted-foreground">
               {isExtension
@@ -902,7 +914,10 @@ function HitRow({
   snippet?: string;
   onOpen: () => void;
 }) {
-  const showKey = !!label && label !== hitKey && !label.startsWith(hitKey);
+  // An X save that hasn't hydrated yet has no title — its name is still the raw
+  // numeric tweet id. Show "Loading…" instead of a wall of numbers.
+  const pending = !!label && /^\d+$/.test(label);
+  const showKey = !pending && !!label && label !== hitKey && !label.startsWith(hitKey);
   return (
     <button
       type="button"
@@ -911,7 +926,11 @@ function HitRow({
     >
       <div className="flex items-baseline gap-2.5">
         {showKey && <span className="font-mono text-[12px] text-muted-foreground">{hitKey}</span>}
-        <span className="min-w-0 truncate text-[13px] text-foreground">{label || hitKey}</span>
+        {pending ? (
+          <span className="min-w-0 truncate text-[13px] italic text-muted-foreground">Loading…</span>
+        ) : (
+          <span className="min-w-0 truncate text-[13px] text-foreground">{label || hitKey}</span>
+        )}
       </div>
       {snippet && <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{snippet}</div>}
     </button>
