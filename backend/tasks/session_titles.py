@@ -99,9 +99,6 @@ async def _generate_title(source: str) -> str:
 
 
 async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
-    if not settings.ANTHROPIC_API_KEY:
-        return "unconfigured"
-
     stats = await _session_stats(owner_user_id, session_id)
     if not stats:
         return "missing"
@@ -114,6 +111,9 @@ async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
         owner_user_id,
         session_id,
     )
+    # A user-set (or already-fresh) title needs no LLM, so decide that before the
+    # API-key gate — otherwise a manual rename gets clobbered / reported as
+    # "unconfigured" on a server without an Anthropic key.
     if cached and cached["user_set"]:
         return "user-set"
     if cached and cached["source_hash"] == source_hash:
@@ -123,6 +123,9 @@ async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
     source = _source_text(events)
     if not source:
         return "empty"
+
+    if not settings.ANTHROPIC_API_KEY:
+        return "unconfigured"
 
     status = "generated"
     title = await _generate_title(source)
