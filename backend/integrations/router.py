@@ -34,6 +34,7 @@ from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
 from .github import account_sync as github_account_sync
 from .registry import get_provider, list_providers
+from .slack import indexer as slack_indexer
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 # How long a `state` blob is valid between /connect and /callback.
 STATE_TTL = timedelta(minutes=10)
+
+
 SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
 SLACK_CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
 SLACK_CHANNEL_LIMIT = 100
@@ -164,11 +167,8 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GONG_OAUTH_CLIENT_SECRET",
             "GONG_OAUTH_REDIRECT_URI",
         ],
-        "twitter": [
-            "TWITTER_OAUTH_CLIENT_ID",
-            "TWITTER_OAUTH_REDIRECT_URI",
-        ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
+        "x": ["TWITTER_OAUTH_CLIENT_ID", "TWITTER_OAUTH_REDIRECT_URI"],
         "jira": [
             "JIRA_OAUTH_CLIENT_ID",
             "JIRA_OAUTH_CLIENT_SECRET",
@@ -194,13 +194,14 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "notion": "Notion",
             "slack": "Slack",
             "gong": "Gong",
-            "twitter": "Twitter / X",
+            "x": "X",
             "granola": "Granola",
             "jira": "Jira",
             "linear": "Linear",
             "asana": "Asana",
         }
-        return f"{display_names.get(provider, provider)} OAuth is not configured for this server."
+        display = display_names.get(provider, provider)
+        return f"{display} OAuth is not configured for this server. Missing: {', '.join(missing)}"
     return None
 
 
@@ -289,13 +290,12 @@ async def integration_connect(
         url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
         return ConnectStartResponse(authorize_url=url)
     return_path = _safe_return_to(return_to)
+    # PKCE providers (X) carry a per-connect code verifier through the encrypted
+    # state so the callback can complete the token exchange.
     if getattr(p, "uses_pkce", False):
         code_verifier = p.new_code_verifier()
         state = _encode_state(
-            current_user["id"],
-            provider,
-            return_path,
-            extra={"code_verifier": code_verifier},
+            current_user["id"], provider, return_path, extra={"code_verifier": code_verifier}
         )
         return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
 
@@ -366,6 +366,35 @@ async def integration_callback(
                         type(exc).__name__,
                     )
             # --- END Slack agent ---
+
+            # Connecting X auto-creates its x_saves source and records the
+            # account id, which the indexer needs to read bookmarks (X API) and
+            # the user's own posts/replies (twitterapi.io). Best-effort: a
+            # failure here must not break the connection.
+            if provider == "x":
+                from ..database import get_pool
+                from ..services import source_service
+                from .x_saves.provider import fetch_me
+
+                try:
+                    me = await fetch_me(token.access_token)
+                    source = await source_service.create_source(
+                        owner_user_id=user_id,
+                        source_type="x_saves",
+                        external_ref=me["id"],
+                        display_name=f"X (@{me.get('username')})" if me.get("username") else "X",
+                        settings={},
+                    )
+                    await get_pool().execute(
+                        "UPDATE user_sources SET settings = "
+                        "coalesce(settings, '{}'::jsonb) || $2::jsonb WHERE id = $1",
+                        UUID(source["id"]),
+                        {"x_user_id": me["id"]},
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "x: failed to auto-create source exception_type=%s", type(exc).__name__
+                    )
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:
@@ -506,24 +535,31 @@ async def slack_list_channels(current_user: dict = Depends(get_current_user)):
         resp.raise_for_status()
         payload = resp.json()
 
-    if not payload.get("ok"):
-        raise HTTPException(
-            status_code=502,
-            detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
-        )
-
-    channels: list[SlackChannelSummary] = []
-    for channel in payload.get("channels", []):
-        channel_id = channel.get("id")
-        if not channel_id:
-            continue
-        channels.append(
-            SlackChannelSummary(
-                id=channel_id,
-                name=channel.get("name") or channel.get("user") or channel_id,
-                is_private=bool(channel.get("is_private")),
+        if not payload.get("ok"):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
             )
-        )
+
+        # DMs carry no name in Slack's API — resolve them to the humans in the
+        # conversation, exactly as the indexer names them, so the picker shows
+        # what the source tree will show.
+        self_user_id = await slack_indexer.authed_user_id(client)
+        names: dict[str, str] = {}
+        channels: list[SlackChannelSummary] = []
+        for channel in payload.get("channels", []):
+            channel_id = channel.get("id")
+            if not channel_id:
+                continue
+            channels.append(
+                SlackChannelSummary(
+                    id=channel_id,
+                    name=await slack_indexer.channel_display_name(
+                        client, names, channel, self_user_id
+                    ),
+                    is_private=bool(channel.get("is_private")),
+                )
+            )
     return channels
 
 

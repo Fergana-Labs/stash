@@ -16,7 +16,7 @@ the same conversation. Each conversation becomes one Stash session
   transcript as JSONL to `POST /api/v1/workspaces/{id}/transcripts` with
   `replace=true`, so re-syncs update the session instead of duplicating it.
 - Auth reuses the CLI device flow: the extension opens `/connect-token`,
-  you sign in once, and it receives its own revocable `mc_` API key.
+  you sign in once, and it receives its own revocable `st_` API key.
 
 ## Development
 

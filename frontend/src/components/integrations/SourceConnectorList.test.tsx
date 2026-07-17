@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IntegrationStatus } from "../../lib/integrations";
 import { ConfirmDialogProvider } from "../ConfirmDialog";
 import SourceConnectorList from "./SourceConnectorList";
 
 const listIntegrations = vi.fn();
 const disconnectIntegration = vi.fn();
+const listSources = vi.fn();
 
 vi.mock("@/lib/integrations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/integrations")>();
@@ -13,6 +14,16 @@ vi.mock("@/lib/integrations", async (importOriginal) => {
     ...actual,
     listIntegrations: () => listIntegrations(),
     disconnectIntegration: (...args: unknown[]) => disconnectIntegration(...args),
+  };
+});
+
+// The connector list also fetches sources to mark extension-fed connectors
+// (X / Instagram) connected; default to none so OAuth connectors render.
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api")>();
+  return {
+    ...actual,
+    listSources: () => listSources(),
   };
 });
 
@@ -33,6 +44,10 @@ function connectedGithub(connected: boolean): IntegrationStatus {
     credential_fields: null,
   };
 }
+
+beforeEach(() => {
+  listSources.mockResolvedValue([]);
+});
 
 afterEach(() => {
   cleanup();
@@ -77,5 +92,22 @@ describe("SourceConnectorList disconnect", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
 
     expect(disconnectIntegration).not.toHaveBeenCalled();
+  });
+});
+
+describe("SourceConnectorList providers", () => {
+  it("offers PostHog as a product analytics source", async () => {
+    listIntegrations.mockResolvedValue({ providers: [] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText("PostHog")).toBeInTheDocument();
+    expect(
+      screen.getByText("Browse dashboards, insights, feature flags, and experiments.")
+    ).toBeInTheDocument();
   });
 });

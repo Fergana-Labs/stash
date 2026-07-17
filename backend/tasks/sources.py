@@ -26,7 +26,10 @@ from ..integrations.granola.indexer import index_granola
 from ..integrations.jira.indexer import index_jira
 from ..integrations.linear.indexer import index_linear
 from ..integrations.notion.indexer import index_notion
+from ..integrations.posthog.indexer import index_posthog
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
+from ..integrations.social_saves.indexer import index_instagram_saves
+from ..integrations.x_saves.indexer import index_x_saves
 from ..services import source_service
 from ._celery_helpers import run_async
 
@@ -41,12 +44,15 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "google_drive": index_google_drive,
     "google_drive_folder": index_google_drive_folder,
     "notion": index_notion,
+    "posthog_project": index_posthog,
     "slack": index_slack,
     "granola": index_granola,
     "jira_project": index_jira,
     "asana_project": index_asana,
     "linear": index_linear,
     "gong_calls": index_gong,
+    "instagram_saves": index_instagram_saves,
+    "x_saves": index_x_saves,
 }
 
 
@@ -62,6 +68,18 @@ async def _sync_source(source_id: UUID) -> dict:
     await source_service.mark_sync_started(source_id)
     try:
         cursor = await indexer(source)
+    except source_service.SourceSyncUserError as exc:
+        # Deliberately owner-facing: the indexer vouches the message is safe
+        # and actionable ("upgrade the X API tier"), unlike raw provider
+        # exceptions, which stay redacted below.
+        logger.error(
+            "source sync failed source=%s source_type=%s user_error=%s",
+            source_id,
+            source["source_type"],
+            exc,
+        )
+        await source_service.mark_sync_failed(source_id, str(exc)[:500])
+        return {"status": "failed"}
     except Exception as exc:
         logger.error(
             "source sync failed source=%s source_type=%s exception_type=%s",

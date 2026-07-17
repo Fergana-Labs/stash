@@ -15,7 +15,9 @@ import {
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
+  Workspace,
 } from "./types";
+import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
 
 const TOKEN_KEY = "stash_token";
 export const API_BASE = "";
@@ -119,6 +121,8 @@ export async function fetchAuthed(path: string): Promise<Response> {
   const token = await getAuthToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) headers[SCOPE_HEADER] = scopeUserId;
   return fetch(`${API_BASE}${path}`, { headers });
 }
 
@@ -138,6 +142,10 @@ export async function apiFetch<T>(
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) {
+    headers[SCOPE_HEADER] = scopeUserId;
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -198,6 +206,14 @@ export async function getMe(): Promise<User> {
   return _meInflight;
 }
 
+// The workspaces the signed-in user belongs to — empty for most users. Sending
+// a workspace's scope_user_id as X-Stash-Scope switches every scoped read and
+// write to that workspace's shared knowledge base.
+export async function listMyWorkspaces(): Promise<Workspace[]> {
+  const data = await apiFetch<{ workspaces: Workspace[] }>(`${ME}/workspaces`);
+  return data.workspaces;
+}
+
 export async function updateMe(data: {
   display_name?: string;
   description?: string;
@@ -214,9 +230,14 @@ export async function updateMe(data: {
   });
 }
 
+// 'read' keys can read/search everything and upload session transcripts,
+// nothing else — intended for production agents.
+export type ApiKeyAccess = "read" | "full";
+
 export interface ApiKeyInfo {
   id: string;
   name: string;
+  access: ApiKeyAccess;
   created_at: string;
   last_used_at: string | null;
 }
@@ -232,14 +253,15 @@ export async function revokeMyKey(keyId: string): Promise<void> {
 export interface ApiKeyCreated {
   id: string;
   name: string;
+  access: ApiKeyAccess;
   api_key: string; // raw key — shown exactly once
   created_at: string;
 }
 
-export async function createMyKey(name: string): Promise<ApiKeyCreated> {
+export async function createMyKey(name: string, access: ApiKeyAccess): Promise<ApiKeyCreated> {
   return apiFetch("/api/v1/users/me/keys", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, access }),
   });
 }
 
@@ -299,6 +321,8 @@ export interface SourceEntry {
   name: string;
   kind: string;
   external_ref?: string | null;
+  // One-line preview of the copied content (e.g. the tweet text).
+  snippet?: string | null;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
@@ -359,7 +383,16 @@ export async function getSourceEntries(
 export async function readSourceDoc(
   source: string,
   ref: string,
-): Promise<{ name?: string; content?: string; url?: string | null }> {
+): Promise<{
+  name?: string;
+  content?: string;
+  url?: string | null;
+  // Archived save media served via fresh presigned URLs. Instagram carries a
+  // single blob (media_url); X can carry up to 4 (media[]).
+  media_url?: string | null;
+  media_content_type?: string | null;
+  media?: { url: string; content_type?: string | null }[] | null;
+}> {
   return apiFetch(`${ME}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`);
 }
 

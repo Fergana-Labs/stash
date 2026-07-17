@@ -67,6 +67,7 @@ class FakeClient:
                     "updated_at": "2026-05-03T08:15:00Z",
                 }
             ],
+            "machine": {"provisioned": True},
         }
 
     def get_page(self, page_id):
@@ -182,6 +183,22 @@ def test_vfs_exposes_user_sections():
     assert "Welcome email" in model.list_dir(gmail)
     assert model.read_file(f"{gmail}/Welcome email") == b"BODY of msg-1"
     assert model.read_file(f"{gmail}/threads/Nested note") == b"BODY of threads/msg-2"
+
+
+class UnprovisionedMachineClient(FakeClient):
+    def get_overview(self):
+        return {**super().get_overview(), "machine": {"provisioned": False}}
+
+
+def test_vfs_hides_computer_without_a_provisioned_machine():
+    """A user who never ran a cloud agent has no machine — /computer must not
+    appear, and deciding that must not touch the machine API (the overview
+    flag alone drives it)."""
+    model = StashVfsModel(UnprovisionedMachineClient(), include_computer=True)
+    model.refresh()
+
+    assert "computer" not in model.list_dir("/")
+    assert b"computer" not in model.read_file("/README.md")
 
 
 def test_vfs_loads_source_entries_lazily():

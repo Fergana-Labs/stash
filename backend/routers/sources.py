@@ -1,21 +1,27 @@
 """Connected-source registry endpoints.
 
-A source is added per scope and per user. It belongs to the user who
-connects it (`owner_user_id = current_user`) inside that scope, and only they
-can list, read, or remove it there. The agent reaches a source's indexed content
-through the source tools; these endpoints just manage the registry. Indexing
-(sync tasks) is wired per source type in later phases.
+A source belongs to the scope that connected it (`owner_user_id`). Reads run
+in the active scope (the X-Stash-Scope header): a workspace member browsing
+the workspace sees the workspace's connections — the org Drive hopper — while
+personal scope shows their own. Mutations (connect, sync, remove, history)
+stay owner-only: members read the hopper, only the scope owner wires it up.
+The agent reaches a source's indexed content through the source tools; these
+endpoints just manage the registry.
 """
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..celery_app import celery
+from ..database import get_pool
 from ..integrations import storage as integration_storage
 from ..integrations.registry import get_provider
 from ..services import (
@@ -29,11 +35,13 @@ router = APIRouter(prefix="/api/v1/me/sources", tags=["sources"])
 
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    """Read gate: the scope owner, or a member of the workspace it belongs to."""
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
 
 async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
+    """Mutation gate: owner only — members never manage the scope's sources."""
     if not await user_scope_service.is_owner(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
@@ -101,24 +109,6 @@ async def _resolve_gong_source(user_id) -> tuple[str, str]:
     return "calls", "Gong"
 
 
-async def _resolve_twitter_source(user_id) -> tuple[str, str]:
-    """Twitter source external_ref is the connected X account's numeric user
-    id, resolved once here so reads never depend on /users/me (X's most
-    rate-limited endpoint). Caller-supplied refs are ignored — there are no
-    saved-query sources (they would burn the owner's X quota on a schedule)."""
-    from ..integrations.twitter.indexer import fetch_me
-
-    token = await integration_storage.get_valid_token(user_id, "twitter")
-    me = await fetch_me(token)
-    username = me.get("username")
-    if not username:
-        raise HTTPException(
-            status_code=400,
-            detail="Reconnect Twitter / X before adding it as a source.",
-        )
-    return me["id"], f"Twitter / X (@{username})"
-
-
 async def _resolve_linear_source(user_id) -> tuple[str, str]:
     """A Linear source covers every issue the connected user can read, so there
     is one canonical ref ('me'). Confirm the token exists (raises 401 if not
@@ -127,11 +117,24 @@ async def _resolve_linear_source(user_id) -> tuple[str, str]:
     return "me", "Linear"
 
 
+async def _resolve_posthog_source(user_id) -> tuple[str, str]:
+    """One connected PostHog credential bundle represents one project."""
+    await integration_storage.get_valid_token(user_id, "posthog")
+    status = await integration_storage.status(user_id, "posthog")
+    display_name = status.get("account_display_name")
+    if not display_name:
+        raise HTTPException(status_code=409, detail="Reconnect PostHog before adding it.")
+    return "project", f"PostHog ({display_name})"
+
+
 @router.get("")
-async def list_sources(current_user: dict = Depends(get_current_user)):
-    """Sources this user can see here: native files + sessions, plus their own
-    connected sources."""
-    owner_user_id = current_user["id"]
+async def list_sources(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Sources in the active scope's view: native files + sessions, plus the
+    scope's connected sources."""
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     return {"sources": await source_service.list_sources(owner_user_id, current_user["id"])}
 
@@ -143,11 +146,12 @@ async def search_sources(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Unified search, merged onto one relevance scale and paginated. Omit
-    `source` to search everything the user can see (files + sessions + their
+    `source` to search everything in the active scope (files + sessions + its
     connected sources), or pass a handle to scope."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     result = await source_service.search_all(
         owner_user_id, current_user["id"], q, source=source, limit=limit, offset=offset
@@ -161,10 +165,11 @@ async def search_sources(
 async def sources_tree(
     depth: int = 3,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    """The whole scope as one filesystem: every source the user can see,
+    """The whole active scope as one filesystem: every source in its view,
     each with a nested entry tree trimmed to `depth` levels."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     return {
         "sources": await source_service.sources_tree(owner_user_id, current_user["id"], depth=depth)
@@ -178,13 +183,14 @@ async def list_source_entries(
     limit: int = source_service.ENTRIES_LIMIT,
     after: str = "",
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """List a source's entries like a file system. `source` is 'files',
     'sessions', or a connected-source id; `path` scopes connected sources.
     `limit` caps the rows returned; callers detect truncation by requesting one
     extra row and checking whether it comes back. `after` is a keyset cursor
     (the last path of the previous page) for paging through big sources."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     entries = await source_service.source_entries(
         owner_user_id, current_user["id"], source, prefix=path, limit=limit, after=after
@@ -199,10 +205,11 @@ async def read_source_doc(
     source: str,
     ref: str,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Read one document. `ref` is a page id (files), a session id (sessions),
     or a document path (connected sources)."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     source_ok, doc = await source_service.source_document(
         owner_user_id, current_user["id"], source, ref
@@ -265,8 +272,12 @@ async def fetch_source_history(
 async def add_source(
     body: AddSourceRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    # Honors the scope header so a member's connect attempt in workspace mode
+    # fails loud (owner-only) instead of silently landing in their personal
+    # scope. Connecting as the workspace itself goes through its own API key.
+    owner_user_id = scope_user_id
     await _require_write(owner_user_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
@@ -289,11 +300,11 @@ async def add_source(
     elif body.source_type == "gong_calls" and not external_ref:
         external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
         display_name = display_name or resolved_name
-    elif body.source_type == "twitter":
-        external_ref, resolved_name = await _resolve_twitter_source(current_user["id"])
-        display_name = resolved_name
     elif body.source_type == "linear":
         external_ref, resolved_name = await _resolve_linear_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "posthog_project":
+        external_ref, resolved_name = await _resolve_posthog_source(current_user["id"])
         display_name = display_name or resolved_name
 
     if not external_ref:
@@ -395,3 +406,86 @@ async def remove_source(
         source_type=source["source_type"],
     )
     return {"deleted": True, "source_id": str(source_id)}
+
+
+# ===== Saved-items push (browser extension) =====
+
+saved_items_router = APIRouter(prefix="/api/v1/me/saved-items", tags=["sources"])
+
+_IG_SHORTCODE_RE = re.compile(r"instagram\.com/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)")
+MAX_SAVED_ITEMS_PER_PUSH = 500
+
+
+class SavedItem(BaseModel):
+    url: str
+    saved_at: datetime | None = None
+
+
+class SavedItemsPush(BaseModel):
+    platform: Literal["instagram"]
+    items: list[SavedItem]
+
+
+@saved_items_router.post("")
+async def push_saved_items(
+    body: SavedItemsPush,
+    current_user: dict = Depends(get_current_user),
+):
+    """The extension pushes the user's saved-post URLs. Get-or-creates the
+    instagram_saves source (no setup ordering between connector card and
+    extension), inserts pending skeleton rows, and kicks a sync so
+    hydration starts immediately."""
+    from ..config import settings as app_settings
+
+    # Without the hydration key, accepting pushes would create a source whose
+    # every sync fails — refuse up front so Instagram saves stay invisible
+    # until the server is actually configured for them.
+    if not app_settings.SCRAPECREATORS_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Instagram saves are not enabled on this server (SCRAPECREATORS_API_KEY is not set)",
+        )
+    owner_user_id = current_user["id"]
+    if not body.items:
+        raise HTTPException(status_code=400, detail="No items given")
+    if len(body.items) > MAX_SAVED_ITEMS_PER_PUSH:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many items ({len(body.items)}, max {MAX_SAVED_ITEMS_PER_PUSH})",
+        )
+
+    parsed: list[tuple[str, SavedItem]] = []
+    for item in body.items:
+        match = _IG_SHORTCODE_RE.search(item.url)
+        if not match:
+            raise HTTPException(status_code=400, detail=f"Not an Instagram post URL: {item.url}")
+        parsed.append((match.group(1), item))
+
+    source = await source_service.create_source(
+        owner_user_id=owner_user_id,
+        source_type="instagram_saves",
+        external_ref="saves",
+        display_name="Instagram saves",
+        settings={},
+    )
+    source_id = UUID(source["id"])
+
+    pool = get_pool()
+    new = 0
+    for shortcode, item in parsed:
+        inserted = await pool.fetchval(
+            "INSERT INTO instagram_save_docs "
+            "(owner_user_id, source_id, path, name, kind, external_ref, saved_at) "
+            "VALUES ($1, $2, $3, $3, 'post', $3, $4) "
+            "ON CONFLICT (source_id, path) DO NOTHING RETURNING 1",
+            owner_user_id,
+            source_id,
+            shortcode,
+            item.saved_at,
+        )
+        if inserted:
+            new += 1
+
+    if new:
+        celery.send_task("backend.tasks.sources.sync_source", args=[str(source_id)])
+    return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}

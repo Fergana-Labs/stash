@@ -62,7 +62,9 @@ def _external_ref_for_source_type(source_type: str) -> str:
         "asana_project": "asana-project-1",
         "linear": "me",
         "gong_calls": "gong-source",
-        "twitter": "111",
+        "x_saves": "saves",
+        "instagram_saves": "saves",
+        "posthog_project": "project",
     }
     return refs[source_type]
 
@@ -283,6 +285,37 @@ async def test_source_sync_resolves_via_owner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_due_sources_reclaims_stuck_syncing(client: AsyncClient, _db_pool):
+    """A sync killed mid-run leaves the source 'syncing'; due_sources reclaims it
+    once it's been stuck past the threshold, but leaves a fresh one alone."""
+    _, owner_id = await _register(client, "src_stuck")
+    source = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="TSTUCK",
+        display_name="Stuck",
+        settings={"allowed_channel_ids": ["CSTUCK"]},
+    )
+    sid = UUID(source["id"])
+
+    # Currently syncing and not due by schedule, freshly started -> left alone.
+    await _db_pool.execute(
+        "UPDATE user_sources SET sync_status = 'syncing', "
+        "next_sync_at = now() + interval '1 hour', updated_at = now() WHERE id = $1",
+        sid,
+    )
+    due = {UUID(s["id"]) for s in await source_service.due_sources(limit=50)}
+    assert sid not in due
+
+    # Stuck syncing past the threshold -> reclaimed even though not schedule-due.
+    await _db_pool.execute(
+        "UPDATE user_sources SET updated_at = now() - interval '15 minutes' WHERE id = $1", sid
+    )
+    due = {UUID(s["id"]) for s in await source_service.due_sources(limit=50)}
+    assert sid in due
+
+
+@pytest.mark.asyncio
 async def test_unknown_source_type_rejected(client: AsyncClient):
     api_key, _ = await _register(client)
     resp = await client.post(
@@ -357,6 +390,7 @@ async def test_add_slack_source_stores_channel_allowlist(client: AsyncClient, mo
 @pytest.mark.asyncio
 async def test_slack_channel_picker_lists_conversations(client: AsyncClient, monkeypatch):
     from backend.integrations import router as integrations_router
+    from backend.integrations.slack import indexer
 
     api_key, _ = await _register(client)
 
@@ -365,18 +399,14 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
         return "slack-token"
 
     class FakeSlackResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
         def raise_for_status(self):
             return None
 
         def json(self):
-            return {
-                "ok": True,
-                "channels": [
-                    {"id": "C1", "name": "general", "is_private": False},
-                    {"id": "G1", "name": "leadership", "is_private": True},
-                    {"id": "D1", "user": "U1"},
-                ],
-            }
+            return self._payload
 
     class FakeSlackClient:
         def __init__(self, *, timeout, headers):
@@ -390,12 +420,27 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
             return None
 
         async def get(self, url, params):
-            assert url == integrations_router.SLACK_CONVERSATIONS_LIST_URL
-            assert params == {
-                "types": integrations_router.SLACK_CHANNEL_TYPES,
-                "limit": integrations_router.SLACK_CHANNEL_LIMIT,
-            }
-            return FakeSlackResponse()
+            if url == integrations_router.SLACK_CONVERSATIONS_LIST_URL:
+                assert params == {
+                    "types": integrations_router.SLACK_CHANNEL_TYPES,
+                    "limit": integrations_router.SLACK_CHANNEL_LIMIT,
+                }
+                return FakeSlackResponse(
+                    {
+                        "ok": True,
+                        "channels": [
+                            {"id": "C1", "name": "general", "is_private": False},
+                            {"id": "G1", "name": "leadership", "is_private": True},
+                            {"id": "D1", "is_im": True, "user": "U1"},
+                        ],
+                    }
+                )
+            if url == indexer.AUTH_TEST_URL:
+                return FakeSlackResponse({"ok": True, "user_id": "U_SELF"})
+            assert url == indexer.USERS_INFO_URL and params == {"user": "U1"}
+            return FakeSlackResponse(
+                {"ok": True, "user": {"name": "sam", "profile": {"display_name": "Sam Liu"}}}
+            )
 
     monkeypatch.setattr(integrations_router.storage, "get_valid_token", fake_get_valid_token)
     monkeypatch.setattr(integrations_router.httpx, "AsyncClient", FakeSlackClient)
@@ -403,10 +448,11 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
     resp = await client.get("/api/v1/integrations/slack/channels", headers=_auth(api_key))
 
     assert resp.status_code == 200
+    # The DM surfaces as the human it's with — never the raw D…/U… id.
     assert resp.json() == [
         {"id": "C1", "name": "general", "is_private": False},
         {"id": "G1", "name": "leadership", "is_private": True},
-        {"id": "D1", "name": "U1", "is_private": False},
+        {"id": "D1", "name": "dm-sam-liu", "is_private": False},
     ]
 
 
@@ -728,275 +774,35 @@ async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncCl
     empty = await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"])
     assert empty == {"results": [], "has_more": False}
 
-
-# --- search-driven sources (twitter) -----------------------------------------
-
-
-async def _create_twitter_source(ws: UUID, owner_id: UUID) -> dict:
-    # external_ref is the connected X account's numeric user id (see
-    # _resolve_twitter_source) — reads address personal feeds with it directly.
-    return await source_service.create_source(
-        owner_user_id=owner_id,
-        source_type="twitter",
-        external_ref="111",
-        display_name="Twitter / X (@stash)",
-    )
-
-
-@pytest.mark.asyncio
-async def test_twitter_source_stores_account_id_and_handle(monkeypatch):
-    from backend.integrations.twitter import indexer as twitter_indexer
-
-    async def fake_token(user_id, provider):
-        return "tok"
-
-    async def fake_me(token):
-        return {"id": "111", "username": "henry_dowling"}
-
-    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
-    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
-
-    external_ref, display_name = await sources_router._resolve_twitter_source(uuid4())
-
-    assert external_ref == "111"
-    assert display_name == "Twitter / X (@henry_dowling)"
-
-
-@pytest.mark.asyncio
-async def test_twitter_source_requires_connected_handle(monkeypatch):
-    from backend.integrations.twitter import indexer as twitter_indexer
-
-    async def fake_token(user_id, provider):
-        return "tok"
-
-    async def fake_me(token):
-        return {"id": "111"}
-
-    monkeypatch.setattr(sources_router.integration_storage, "get_valid_token", fake_token)
-    monkeypatch.setattr(twitter_indexer, "fetch_me", fake_me)
-
-    with pytest.raises(sources_router.HTTPException, match="Reconnect Twitter"):
-        await sources_router._resolve_twitter_source(uuid4())
-
-
-@pytest.mark.asyncio
-async def test_prune_index_rows_removes_only_stale_rows(client: AsyncClient):
-    from backend.database import get_pool
-
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-    sid = UUID(src["id"])
-
-    for path in ("1", "2"):
-        await source_service.upsert_index_row(
-            table="twitter_posts",
-            source_id=sid,
-            owner_user_id=ws,
-            path=path,
-            name=f"@stash - post {path}",
-            kind="post",
-            external_ref=path,
-        )
-    await get_pool().execute(
-        "UPDATE twitter_posts SET updated_at = now() - interval '31 days' "
-        "WHERE source_id = $1 AND path = '2'",
-        sid,
-    )
-
-    removed = await source_service.prune_index_rows("twitter_posts", sid, max_age_days=30)
-    assert removed == 1
-    live = await source_service.list_documents(src)
-    assert {d["path"] for d in live} == {"1"}
-
-
-@pytest.mark.asyncio
-async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient):
-    """A source type with no indexer must not enroll in the sync schedule: the
-    reconciler skips it WITHOUT advancing next_sync_at, so an enabled row would
-    sit "due" forever at the front of the due_sources window and starve every
-    real sync behind it."""
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    assert src["sync_enabled"] is False
-    assert src["id"] not in {s["id"] for s in await source_service.due_sources()}
-
-    # Manual sync-now is refused too — the queued task would silently no-op.
-    resp = await client.post(f"/api/v1/me/sources/{src['id']}/sync", headers=_auth(api_key))
-    assert resp.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_unscoped_search_includes_twitter_in_the_fan_out(client, monkeypatch):
-    """Twitter fans out like every other federated source; an explicitly scoped
-    search surfaces provider errors instead of swallowing them into a
-    misleading "no results"."""
-    from backend.integrations.twitter import indexer as twitter_indexer
-
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    queries: list[str] = []
-
-    async def fake_search(source, query, limit):
-        queries.append(query)
-        return [{"ref": "1", "name": "@stash - 2026-06-08", "snippet": "hello"}]
-
-    monkeypatch.setattr(twitter_indexer, "search_twitter", fake_search)
-    await source_service.search_all(ws, owner_id, "anything at all")
-    assert queries == ["anything at all"]
-
-    scoped = await source_service.search_all(ws, owner_id, "hello", source=src["id"])
-    assert queries == ["anything at all", "hello"]
-    assert any(h.get("ref") == "1" for h in scoped["results"])
-
-    async def dead_connection(source, query, limit):
-        raise RuntimeError("X said 401")
-
-    monkeypatch.setattr(twitter_indexer, "search_twitter", dead_connection)
-    with pytest.raises(RuntimeError):
-        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
-
-
-@pytest.mark.asyncio
-async def test_twitter_list_sources_exposes_my_posts_search_hint(client):
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    sources = await source_service.list_sources(ws, owner_id)
-    twitter = next(s for s in sources if s["source"] == src["id"])
-
-    assert twitter["display_name"] == "Twitter / X (@stash)"
-    assert "from:stash" in twitter["search_hint"]
-    assert "bookmarks" in twitter["search_hint"]
-    assert "dms" in twitter["search_hint"]
-    assert "For You is not exposed" in twitter["search_hint"]
-
-
-@pytest.mark.asyncio
-async def test_twitter_source_lists_live_personal_refs(client):
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    entries = await source_service.source_entries(ws, owner_id, src["id"])
-    paths = {entry["path"] for entry in entries}
-
-    assert {"home", "my-posts", "bookmarks", "likes", "dms"} <= paths
-
-
-@pytest.mark.asyncio
-async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
-    from backend.integrations.twitter import indexer as twitter_indexer
-
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    fetched: list[tuple[str, str]] = []
-
-    async def fake_fetch(owner, account_id, ref):
-        fetched.append((account_id, ref))
-        return "# Bookmarks\n\n> saved post"
-
-    monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fake_fetch)
-
-    doc = await source_service.read_document(src, "bookmarks")
-
-    assert doc["path"] == "bookmarks"
-    assert doc["name"] == "Bookmarks"
-    assert "> saved post" in doc["content"]
-    # The stored account id rides along so the read never re-resolves /users/me.
-    assert fetched == [("111", "bookmarks")]
-
-
-@pytest.mark.asyncio
-async def test_twitter_live_read_failure_returns_generic_error_doc(client, monkeypatch):
-    """A Twitter provider failure gets the same redaction as every other lazy
-    source read: a generic error document, never a raw exception/500 that
-    could leak provider details."""
-    from backend.integrations.twitter import indexer as twitter_indexer
-
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    async def fail_fetch(owner, account_id, ref):
-        raise RuntimeError("token=secret-token X API exploded")
-
-    monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fail_fetch)
-
-    doc = await source_service.read_document(src, "bookmarks")
-
-    assert doc == {
-        "path": "bookmarks",
-        "name": "Bookmarks",
-        "kind": "feed",
-        "content": "",
-        "error": "source document fetch failed",
-    }
-    assert "secret-token" not in json.dumps(doc)
-
-
-@pytest.mark.asyncio
-async def test_scoped_search_maps_provider_errors_to_http_errors(client, monkeypatch):
-    """Scoped provider failures must become structured HTTP errors: an X 429
-    is a 429 (not an opaque 500), and a provider 401 must NOT surface as OUR
-    401 — clients read that as Stash session expiry."""
-    import httpx
-    from fastapi import HTTPException
-
-    from backend.integrations.twitter import indexer as twitter_indexer
-
-    api_key, owner_id = await _register(client)
-    ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
-
-    async def rate_limited(source, query, limit):
-        raise httpx.HTTPStatusError("HTTP 429", request=None, response=httpx.Response(429))
-
-    monkeypatch.setattr(twitter_indexer, "search_twitter", rate_limited)
-    with pytest.raises(HTTPException) as exc:
-        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
-    assert exc.value.status_code == 429
-
-    async def disconnected(source, query, limit):
-        raise HTTPException(status_code=401, detail="not connected to twitter")
-
-    monkeypatch.setattr(twitter_indexer, "search_twitter", disconnected)
-    with pytest.raises(HTTPException) as exc:
-        await source_service.search_all(ws, owner_id, "hello", source=src["id"])
-    assert exc.value.status_code == 409
-
-
 @pytest.mark.asyncio
 async def test_upsert_index_row_updates_on_name_change(client: AsyncClient):
-    """name is part of the freshness check: a tweet's name embeds the author's
-    mutable username, which can change without external_updated_at changing.
-    Dropping the comparison would leave stale names in list/search forever."""
+    """name is part of the freshness check: an index row's name can change
+    without external_updated_at moving. Dropping the comparison would leave
+    stale names in list/search forever."""
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
-    src = await _create_twitter_source(ws, owner_id)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="linear",
+        external_ref="me",
+        display_name="Linear",
+    )
     sid = UUID(src["id"])
 
     kwargs = dict(
-        table="twitter_posts",
+        table="linear_index",
         source_id=sid,
         owner_user_id=ws,
-        path="1",
-        kind="post",
-        external_ref="1",
+        path="ISS-1",
+        kind="issue",
+        external_ref="ISS-1",
         external_updated_at=None,
     )
-    assert await source_service.upsert_index_row(name="@old - 2026-06-08", **kwargs) == "inserted"
-    assert await source_service.upsert_index_row(name="@old - 2026-06-08", **kwargs) == "unchanged"
-    assert await source_service.upsert_index_row(name="@new - 2026-06-08", **kwargs) == "updated"
+    assert await source_service.upsert_index_row(name="Old title", **kwargs) == "inserted"
+    assert await source_service.upsert_index_row(name="Old title", **kwargs) == "unchanged"
+    assert await source_service.upsert_index_row(name="New title", **kwargs) == "updated"
     live = await source_service.list_documents(src)
-    assert [d["name"] for d in live] == ["@new - 2026-06-08"]
+    assert [d["name"] for d in live] == ["New title"]
 
 
 # --- source-aware agent tools -----------------------------------------------
@@ -1103,6 +909,17 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
         Path(dest).write_bytes(zip_v1)
         return len(zip_v1)
 
+    # HEAD moves between the two syncs, so both crawl.
+    shas = iter(["a" * 40, "b" * 40])
+
+    async def fake_head_sha(url, headers):
+        return next(shas)
+
+    async def fake_snapshot_tree(url, headers, sha):
+        return {"truncated": False, "tree": [{"type": "blob", "size": 10}]}
+
+    monkeypatch.setattr(indexer, "_github_head_sha", fake_head_sha)
+    monkeypatch.setattr(indexer, "_github_snapshot_tree", fake_snapshot_tree)
     monkeypatch.setattr(indexer, "_download_archive", fake_download)
 
     result = await sources_task._sync_source(UUID(src["id"]))
@@ -1126,6 +943,51 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
     await sources_task._sync_source(UUID(src["id"]))
     paths_after = {d["path"] for d in await source_service.list_documents(src)}
     assert paths_after == {"README.md"}
+
+
+@pytest.mark.asyncio
+async def test_github_indexer_skips_files_too_big_to_index(client, monkeypatch):
+    # Postgres caps a row's tsvector at 1MB and github_documents is FTS-indexed
+    # on content, so an oversized text file (minified bundle, lockfile) must be
+    # skipped like a binary — not abort the whole repo's sync at insert time.
+    from backend.integrations.github import indexer
+    from backend.tasks import sources as sources_task
+
+    api_key, owner_id = await _register(client)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/bundled",
+        display_name="acme/bundled",
+    )
+
+    bundle = b"var x=1;" * (indexer.MAX_INDEXED_TEXT_BYTES // 8 + 1)
+    repo_zip = _make_repo_zip(
+        {
+            "README.md": b"# Bundled",
+            "dist/bundle.min.js": bundle,
+        }
+    )
+
+    async def fake_head_sha(url, headers):
+        return "d" * 40
+
+    async def fake_download(url, headers, dest):
+        Path(dest).write_bytes(repo_zip)
+        return len(repo_zip)
+
+    async def fake_snapshot_tree(url, headers, sha):
+        return {"truncated": False, "tree": [{"type": "blob", "size": 10}]}
+
+    monkeypatch.setattr(indexer, "_github_head_sha", fake_head_sha)
+    monkeypatch.setattr(indexer, "_github_snapshot_tree", fake_snapshot_tree)
+    monkeypatch.setattr(indexer, "_download_archive", fake_download)
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+    assert result["status"] == "done"
+
+    paths = {d["path"] for d in await source_service.list_documents(src)}
+    assert paths == {"README.md"}
 
 
 @pytest.mark.asyncio
@@ -1538,6 +1400,8 @@ async def test_slack_indexer_backfills_only_allowed_channels(
                     {"id": "C_BLOCKED", "name": "exec"},
                 ]
             }
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
         requested_history.append(params["channel"])
         return {"messages": [{"type": "message", "ts": "1", "text": "ship safely"}]}
 
@@ -1579,10 +1443,29 @@ async def test_slack_sync_without_channels_records_sync_error(client: AsyncClien
     assert slack["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
 
 
+def _fake_webhook_channel_resolution(monkeypatch, channel_name="general"):
+    """A live event for a never-synced channel resolves its name against Slack
+    with the owner's token — fake that seam for webhook tests."""
+    from backend.integrations.slack import indexer
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
+        assert url == indexer.CONVERSATIONS_INFO_URL
+        return {"channel": {"id": params["channel"], "name": channel_name}}
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+
 @pytest.mark.asyncio
-async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
+async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient, monkeypatch):
     from backend.integrations.slack.indexer import ingest_slack_message
 
+    _fake_webhook_channel_resolution(monkeypatch)
     # Two users each connect the same Slack team, but only the source that
     # explicitly allowed the event channel stores the message.
     owner_a_key, owner_a = await _register(client, "a")
@@ -1621,9 +1504,11 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
 async def test_slack_event_ingest_requires_enabled_source(
     client: AsyncClient,
     pool,
+    monkeypatch,
 ):
     from backend.integrations.slack.indexer import ingest_slack_message
 
+    _fake_webhook_channel_resolution(monkeypatch)
     _, active_owner = await _register(client, "active_slack")
     _, disabled_owner = await _register(client, "disabled_slack")
     active_source = await source_service.create_source(
@@ -1852,6 +1737,8 @@ async def test_slack_backfill_resolves_authors_and_caches_lookups(
     async def fake_slack_get(client_, url, params):
         if url == indexer.CONVERSATIONS_LIST_URL:
             return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
         if url == indexer.USERS_INFO_URL:
             users_info_calls.append(params["user"])
             return {"ok": True, "user": {"name": "hdowling", "profile": {"display_name": "henry"}}}
@@ -1902,6 +1789,8 @@ async def test_slack_backfill_discloses_history_cap(client: AsyncClient, monkeyp
     async def fake_slack_get(client_, url, params):
         if url == indexer.CONVERSATIONS_LIST_URL:
             return {"channels": [{"id": "C1", "name": "general"}]}
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
         return {
             "messages": [{"type": "message", "ts": "1783362000.1", "text": "hi"}],
             "has_more": has_more,
@@ -1922,6 +1811,80 @@ async def test_slack_backfill_discloses_history_cap(client: AsyncClient, monkeyp
     await indexer.index_slack(src)
     docs = await source_service.list_documents(src)
     assert [d["kind"] for d in docs] == ["transcript"]
+
+
+@pytest.mark.asyncio
+async def test_slack_dms_are_named_after_their_humans(client: AsyncClient, monkeypatch, pool):
+    """A DM carries no name in Slack's API — it must surface as the person
+    you're talking to (dm-sam-liu), and a group DM as everyone except
+    yourself. Rows ingested before the name was known (webhook rows stamped
+    with the raw channel id) must migrate onto the resolved name at sync."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client, "slack_dms")
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_DMS",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["D1", "G1"]},
+    )
+    # A pre-fix webhook row, stamped with the raw channel id as its name.
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="D1/1783362000.0",
+        name="#D1",
+        kind="message",
+        content="pre-fix webhook message",
+        external_ref="D1:1783362000.0",
+        extra={"channel_id": "D1", "channel_name": "D1", "ts": "1783362000.0"},
+    )
+
+    user_names = {"U_SAM": "Sam Liu", "U_JANE": "Jane Doe"}
+
+    async def fake_get_valid_token(user_id, provider):
+        return "slack-token"
+
+    async def fake_slack_get(client_, url, params):
+        if url == indexer.CONVERSATIONS_LIST_URL:
+            return {
+                "channels": [
+                    {"id": "D1", "is_im": True, "user": "U_SAM"},
+                    {"id": "G1", "is_mpim": True},
+                ]
+            }
+        if url == indexer.AUTH_TEST_URL:
+            return {"user_id": "U_SELF"}
+        if url == indexer.CONVERSATIONS_MEMBERS_URL:
+            assert params["channel"] == "G1"
+            return {"members": ["U_SELF", "U_SAM", "U_JANE"]}
+        if url == indexer.USERS_INFO_URL:
+            return {"user": {"name": "n", "profile": {"display_name": user_names[params["user"]]}}}
+        return {
+            "messages": [{"type": "message", "ts": "1783362001.0", "text": "hey", "user": "U_SAM"}]
+        }
+
+    monkeypatch.setattr(indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(indexer, "_slack_get", fake_slack_get)
+
+    await indexer.index_slack(src)
+
+    docs = await source_service.list_documents(src)
+    assert sorted(d["path"] for d in docs) == [
+        "dm-jane-doe--sam-liu/2026-07-06",
+        "dm-sam-liu/2026-07-06",
+    ]
+    migrated = await pool.fetchrow(
+        "SELECT path, name, channel_name FROM slack_messages "
+        "WHERE source_id = $1 AND ts = '1783362000.0'",
+        UUID(src["id"]),
+    )
+    assert migrated["path"] == "dm-sam-liu/1783362000.0"
+    assert migrated["name"] == "#dm-sam-liu"
+    assert migrated["channel_name"] == "dm-sam-liu"
 
 
 @pytest.mark.asyncio

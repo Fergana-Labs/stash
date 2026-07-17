@@ -1,9 +1,14 @@
 # Render blueprint for the Aspose.Slides REST service that the native-export
 # sandbox (backend/exports/native/) talks to for per-element PPTX construction.
 #
-# This is the only Render-managed piece of the repo today — the rest of
-# moltchat still deploys via docker-compose.prod.yml. The sandbox CLI hits
-# the public URL of this service directly.
+# This is the only hosted service DEFINED as a render.yaml blueprint. It is
+# NOT the only Render-managed service: our whole hosted prod (backend →
+# api.joinstash.ai, frontend, collab, celery worker + beat) also runs on
+# Render, auto-deploying on every commit to main — those services are
+# configured in the Render dashboard, not in this file, so the repo has no
+# blueprint for them. docker-compose.prod.yml is for SELF-HOSTERS only and is
+# not how joinstash.ai deploys. The sandbox CLI hits this service's public URL
+# directly.
 services:
   - type: web
     name: aspose-pptx

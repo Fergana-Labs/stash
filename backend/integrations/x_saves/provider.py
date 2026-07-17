@@ -1,7 +1,9 @@
-"""Twitter / X OAuth provider.
+"""X (Twitter) OAuth provider.
 
-X's OAuth 2.0 user flow requires PKCE. The router stores the code verifier in
-our encrypted state blob, then passes it back for the token exchange.
+X's OAuth 2.0 user flow requires PKCE — the router stores the code verifier in
+our encrypted state blob and passes it back for the token exchange. We ask for
+`bookmark.read` so the indexer can read the user's own bookmarks; posts/replies
+come from twitterapi.io by handle, so no timeline scopes are needed here.
 """
 
 from __future__ import annotations
@@ -24,17 +26,10 @@ REVOKE_URL = f"{API_BASE}/2/oauth2/revoke"
 ME_URL = f"{API_BASE}/2/users/me"
 
 
-class TwitterIntegration(Integration):
-    name = "twitter"
-    display_name = "Twitter / X"
-    scopes = [
-        "tweet.read",
-        "users.read",
-        "bookmark.read",
-        "like.read",
-        "dm.read",
-        "offline.access",
-    ]
+class XIntegration(Integration):
+    name = "x"
+    display_name = "X"
+    scopes = ["tweet.read", "users.read", "bookmark.read", "offline.access"]
     supports_refresh = True
     uses_pkce = True
 
@@ -43,13 +38,14 @@ class TwitterIntegration(Integration):
             raise RuntimeError("TWITTER_OAUTH_CLIENT_ID is not set")
         return settings.TWITTER_OAUTH_CLIENT_ID
 
-    def _client_secret(self) -> str | None:
-        return settings.TWITTER_OAUTH_CLIENT_SECRET
-
     def _redirect_uri(self) -> str:
         if not settings.TWITTER_OAUTH_REDIRECT_URI:
             raise RuntimeError("TWITTER_OAUTH_REDIRECT_URI is not set")
         return settings.TWITTER_OAUTH_REDIRECT_URI
+
+    def _token_auth(self) -> tuple[str, str] | None:
+        secret = settings.TWITTER_OAUTH_CLIENT_SECRET
+        return (self._client_id(), secret) if secret else None
 
     def new_code_verifier(self) -> str:
         return secrets.token_urlsafe(64)
@@ -103,36 +99,25 @@ class TwitterIntegration(Integration):
             token.refresh_token = refresh_token
         return token
 
-    async def revoke(self, access_token: str) -> None:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                REVOKE_URL,
-                auth=self._token_auth(),
-                data={
-                    "token": access_token,
-                    "client_id": self._client_id(),
-                    "token_type_hint": "access_token",
-                },
-            )
-            if resp.status_code not in (200, 400):
-                resp.raise_for_status()
-
     async def fetch_account(self, access_token: str) -> AccountInfo:
-        headers = {"Authorization": f"Bearer {access_token}"}
-        async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
-            resp = await client.get(ME_URL, params={"user.fields": "username,name"})
-            resp.raise_for_status()
-            payload = resp.json()
-        user = payload.get("data") or {}
+        user = await fetch_me(access_token)
         username = user.get("username")
         display_name = f"@{username}" if username else user.get("name")
         return AccountInfo(email=None, display_name=display_name)
 
-    def _token_auth(self) -> tuple[str, str] | None:
-        secret = self._client_secret()
-        if not secret:
-            return None
-        return (self._client_id(), secret)
+
+async def fetch_me(access_token: str) -> dict:
+    """The connected X account (id, username). /users/me is X's most
+    rate-limited endpoint, so this is called once at connect time; the id is
+    stored on the source afterwards."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+        resp = await client.get(ME_URL, params={"user.fields": "username,name"})
+    resp.raise_for_status()
+    user = resp.json().get("data") or {}
+    if not user.get("id"):
+        raise RuntimeError("X did not return the connected user id")
+    return user
 
 
 def _payload_to_tokenset(payload: dict) -> TokenSet:

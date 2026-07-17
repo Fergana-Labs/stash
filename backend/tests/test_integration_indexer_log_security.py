@@ -45,6 +45,7 @@ def _source(external_ref: str) -> dict:
         "id": str(uuid4()),
         "owner_user_id": str(uuid4()),
         "external_ref": external_ref,
+        "sync_cursor": None,
     }
 
 
@@ -97,12 +98,18 @@ async def test_github_index_success_logs_internal_source_id_only(monkeypatch):
         await on_text_file("webflow/secret.md", "customer transcript")
         return ["webflow/secret.md"]
 
+    async def head_sha(url, headers):
+        return "a" * 40
+
     monkeypatch.setattr(github_indexer, "get_valid_token", _token)
     monkeypatch.setattr(
         github_indexer,
         "resolve_archive_url",
-        lambda *args, **kwargs: SimpleNamespace(archive_url="archive-url", headers={}),
+        lambda *args, **kwargs: SimpleNamespace(
+            archive_url="archive-url", headers={}, host_kind="github"
+        ),
     )
+    monkeypatch.setattr(github_indexer, "_github_head_sha", head_sha)
     monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
     monkeypatch.setattr(github_indexer.source_service, "upsert_content_document", _noop)
     monkeypatch.setattr(github_indexer.source_service, "remove_missing_documents", _noop)

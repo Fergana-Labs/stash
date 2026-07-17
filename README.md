@@ -25,9 +25,9 @@
 </p>
 
 
-<!-- GIF #1 — Visualizations of the knowledge base -->
+<!-- Screenshot #1 — The Memory page: wiki graph, knowledge map, recent edits -->
 <p align="center">
-  <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, file tree, agent activity" width="900" />
+  <img src="docs/assets/memory.png" alt="Stash Memory — wiki knowledge graph, file system, and recent agent activity" width="900" />
 </p>
 <!-- GIF #2 — The product in action: agent runs `stash search`, gets a cited answer -->
 

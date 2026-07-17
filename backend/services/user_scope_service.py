@@ -1,9 +1,10 @@
 """Per-user content scope.
 
 Each user IS their own scope. Everything a user owns is keyed by
-`owner_user_id` = their user id; there is no separate scope entity.
-A user can read their own content, plus anything shared with them (the `shares`
-table) and anything published (skills). Writing is owner-only.
+`owner_user_id` = their user id. A workspace is a scope owned by a dedicated
+login-less user; its members can read and write that scope's content like
+their own. Owner-only powers (sharing, sources, publishing, public links)
+stay with the scope user itself — `is_owner` never matches a member.
 """
 
 import logging
@@ -18,18 +19,24 @@ def _is_owner(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
     return owner_user_id is not None and owner_user_id == user_id
 
 
-# Access helpers kept async with stable names so call sites stay `await ...(owner, user)`.
-# Every one reduces to "is this your own scope?" — non-owners get access via shares.
 async def is_owner(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
     return _is_owner(owner_user_id, user_id)
 
 
 async def can_read(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
-    return _is_owner(owner_user_id, user_id)
+    from . import permission_service
+
+    if _is_owner(owner_user_id, user_id):
+        return True
+    return await permission_service.is_workspace_member(owner_user_id, user_id)
 
 
 async def can_write(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
-    return _is_owner(owner_user_id, user_id)
+    from . import permission_service
+
+    if _is_owner(owner_user_id, user_id):
+        return True
+    return await permission_service.is_workspace_member(owner_user_id, user_id)
 
 
 async def seed_user_scope(user_id: UUID) -> None:

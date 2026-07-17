@@ -190,6 +190,11 @@ async def list_folders(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "    SELECT 1 FROM shares sh "
         "    WHERE sh.object_type = 'session_folder' AND sh.object_id = sf.id "
         "      AND sh.principal_type = 'user' AND sh.principal_id = $2"
+        "  ) "
+        "  OR EXISTS ("
+        "    SELECT 1 FROM workspaces member_ws "
+        "    WHERE member_ws.scope_user_id = sf.owner_user_id "
+        f"     AND {permission_service.workspace_member_condition('member_ws', 2)}"
         "  )) "
         "ORDER BY sf.is_default DESC, sf.name",
         owner_user_id,

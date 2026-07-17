@@ -51,6 +51,20 @@ jobs:
       - run: ruff check backend/ cli/
       - run: ruff format --check backend/ cli/
 
+  migration-graph:
+    name: Migration graph (single head)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "$(grep '^alembic' backend/requirements.txt)"
+      # Two PRs merging migrations onto the same parent leave alembic with two
+      # heads and break every deploy (#712 + #713 both shipped "0125"). PR CI
+      # runs against the merge ref, so this reds the second PR before merge.
+      - run: python backend/migrations/check_heads.py
+
   plugin-test:
     name: Plugin tests
     runs-on: ubuntu-latest

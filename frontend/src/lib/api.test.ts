@@ -186,3 +186,64 @@ describe("self-hosted agent key", () => {
     expect(getAgentApiKey()).toBe("self-hosted-key");
   });
 });
+
+// Every scoped read and write carries the selected workspace's scope_user_id;
+// the backend reads it to serve the org knowledge base instead of the personal
+// one. Personal scope must send no header at all — an empty/absent header is
+// what keeps today's behavior the default.
+describe("workspace scope header", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    localStorage.clear();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function okResponse() {
+    return { ok: true, status: 200, json: () => Promise.resolve({}) } as Response;
+  }
+
+  it("apiFetch sends X-Stash-Scope when a workspace scope is selected", async () => {
+    const { listMyWorkspaces } = await import("./api");
+    const { setScope } = await import("./scope-store");
+    vi.mocked(fetch).mockResolvedValue(okResponse());
+
+    setScope({ scope_user_id: "ws-scope-user", name: "Acme" });
+    await listMyWorkspaces();
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/me/workspaces",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-Stash-Scope": "ws-scope-user" }),
+      }),
+    );
+  });
+
+  it("apiFetch omits X-Stash-Scope in personal scope", async () => {
+    const { listMyWorkspaces } = await import("./api");
+    const { setScope } = await import("./scope-store");
+    vi.mocked(fetch).mockResolvedValue(okResponse());
+
+    setScope(null);
+    await listMyWorkspaces();
+
+    const headers = vi.mocked(fetch).mock.calls[0][1]?.headers as Record<string, string>;
+    expect(headers["X-Stash-Scope"]).toBeUndefined();
+  });
+
+  it("fetchAuthed sends X-Stash-Scope when a workspace scope is selected", async () => {
+    const { fetchAuthed } = await import("./api");
+    const { setScope } = await import("./scope-store");
+    vi.mocked(fetch).mockResolvedValue(okResponse());
+
+    setScope({ scope_user_id: "ws-scope-user", name: "Acme" });
+    await fetchAuthed("/api/v1/me/files");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me/files", {
+      headers: expect.objectContaining({ "X-Stash-Scope": "ws-scope-user" }),
+    });
+  });
+});

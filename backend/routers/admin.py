@@ -161,6 +161,115 @@ async def remove_discover_skill(req: RepoRequest):
     return {"repo_url": req.repo_url, "removed": removed}
 
 
+# --- Workspaces: org-owned scopes, managed by ops (like plans) ---
+
+
+class WorkspaceRequest(BaseModel):
+    name: str
+    domain: str
+
+
+class MemberRequest(BaseModel):
+    email: str
+
+
+class WorkspaceKeyRequest(BaseModel):
+    name: str
+    access: str
+
+
+@router.post("/workspaces", dependencies=[Depends(require_admin_token)])
+async def create_workspace(req: WorkspaceRequest):
+    """Create a workspace and its login-less scope user. Verified users on
+    the domain are members immediately (membership is derived). Returns a
+    bootstrap full-access key for ops to connect agent credentials and
+    sources as the workspace."""
+    from ..auth import create_api_key
+    from ..services import workspace_service
+
+    domain = req.domain.strip()
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="name is required")
+    if not domain or domain != domain.lower() or "@" in domain or "." not in domain:
+        raise HTTPException(
+            status_code=400, detail="domain must be a bare lowercase domain like 'example.com'"
+        )
+    try:
+        workspace = await workspace_service.create_workspace(req.name.strip(), domain)
+    except Exception as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail=f"workspace for {domain} already exists")
+        raise
+    bootstrap_key = await create_api_key(
+        workspace["scope_user_id"], name="workspace bootstrap", key_type="machine", access="full"
+    )
+    return {
+        "workspace_id": str(workspace["id"]),
+        "scope_user_id": str(workspace["scope_user_id"]),
+        "bootstrap_api_key": bootstrap_key,
+    }
+
+
+@router.get("/workspaces", dependencies=[Depends(require_admin_token)])
+async def list_workspaces():
+    from ..services import workspace_service
+
+    return {"workspaces": await workspace_service.list_workspaces()}
+
+
+@router.post("/workspaces/{workspace_id}/members", dependencies=[Depends(require_admin_token)])
+async def add_workspace_member(workspace_id: UUID, req: MemberRequest):
+    """Explicitly add an off-domain member by email (contractors etc.).
+    On-domain users are members automatically — adding them is rejected so
+    `workspace_members` stays purely off-domain and removal always sticks."""
+    from ..services import user_service, workspace_service
+
+    workspace = await workspace_service.get_workspace(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    user = await user_service.get_user_by_email(req.email)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"No user with email {req.email}")
+    if workspace_service.email_domain(req.email) == workspace["domain"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{req.email} is on the workspace domain — on-domain users with a "
+            "verified email are members automatically and cannot be added or removed",
+        )
+    await workspace_service.add_member(workspace_id, user["id"])
+    return {"workspace_id": str(workspace_id), "user_id": str(user["id"])}
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/members/{user_id}",
+    dependencies=[Depends(require_admin_token)],
+)
+async def remove_workspace_member(workspace_id: UUID, user_id: UUID):
+    from ..services import workspace_service
+
+    if not await workspace_service.remove_member(workspace_id, user_id):
+        raise HTTPException(status_code=404, detail="Membership not found")
+    return {"workspace_id": str(workspace_id), "user_id": str(user_id)}
+
+
+@router.post("/workspaces/{workspace_id}/keys", dependencies=[Depends(require_admin_token)])
+async def mint_workspace_key(workspace_id: UUID, req: WorkspaceKeyRequest):
+    """Mint an API key on the workspace's scope user. Production agents get
+    access='read': full read + transcript upload, no destructive power."""
+    from ..auth import API_KEY_ACCESS_LEVELS, create_api_key
+    from ..services import workspace_service
+
+    if req.access not in API_KEY_ACCESS_LEVELS:
+        raise HTTPException(status_code=400, detail=f"unknown access level: {req.access}")
+    workspace = await workspace_service.get_workspace(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    key = await create_api_key(
+        workspace["scope_user_id"], name=req.name, key_type="machine", access=req.access
+    )
+    return {"workspace_id": str(workspace_id), "api_key": key, "access": req.access}
+
+
 class PlanRequest(BaseModel):
     plan: str
 

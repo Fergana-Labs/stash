@@ -39,7 +39,7 @@ export interface WorkspaceState {
   /** VFS folder the Files explorer is showing (null = root). */
   explorerFolderId: string | null;
 
-  openTab: (kind: TabKind, refId: string, title: string) => void;
+  openTab: (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   splitTab: (id: string) => void;
@@ -77,14 +77,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   railSection: "files",
   explorerFolderId: null,
 
-  openTab: (kind, refId, title) => {
-    const existing = get().tabs.find((t) => t.kind === kind && t.refId === refId);
+  openTab: (kind, refId, title, opts) => {
+    const s = get();
+    const existing = s.tabs.find((t) => t.kind === kind && t.refId === refId);
     if (existing) {
-      set(focusTab(get(), existing.id));
+      set(focusTab(s, existing.id));
       return;
     }
-    const id = `${kind}-${nanoid(5)}`;
-    set(placeTab(get(), { id, kind, refId, title }));
+    // Default is a new tab (deep-links, "new chat", etc. rely on it). Navigation
+    // clicks pass newTab:false to replace the current tab in place — unless
+    // there's nothing to replace, in which case a new tab is the only option.
+    const newTab = opts?.newTab ?? true;
+    const activeId = s.focusedPane === 0 ? s.activeTabId : s.activeTab1;
+    if (newTab || !activeId) {
+      const id = `${kind}-${nanoid(5)}`;
+      set(placeTab(s, { id, kind, refId, title }));
+      return;
+    }
+    set({ tabs: s.tabs.map((t) => (t.id === activeId ? { ...t, kind, refId, title } : t)) });
   },
 
   closeTab: (id) => {

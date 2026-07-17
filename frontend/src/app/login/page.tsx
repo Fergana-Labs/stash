@@ -8,6 +8,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import { API_BASE, getToken, setToken } from "../../lib/api";
 import { consumeManualAuth0Logout } from "../../lib/authLogout";
+import { hasSignedInBefore } from "../../lib/returningUser";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
@@ -207,7 +208,7 @@ function LoginPageInner() {
 
   return (
     <AuthShell
-      title={mode === "login" ? "Welcome back" : "Create your stash"}
+      title={mode === "login" ? signInTitle() : "Create your stash"}
       subtitle={
         mode === "login"
           ? "Sign in to the stash you share with your agents."
@@ -220,6 +221,12 @@ function LoginPageInner() {
       </p>
     </AuthShell>
   );
+}
+
+// Safe to read localStorage here: every caller renders behind the useAuth
+// loading gate, so this only runs client-side after mount.
+function signInTitle(): string {
+  return hasSignedInBefore() ? "Welcome back" : "Welcome";
 }
 
 function localNextPath(value: string | null): string {
@@ -357,7 +364,7 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
 
   return (
     <AuthShell
-      title="Welcome back"
+      title={signInTitle()}
       subtitle="Sign in to the stash you share with your agents."
     >
       <FormCard>{body}</FormCard>

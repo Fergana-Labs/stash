@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { FileText, Code2 } from "lucide-react";
+import Link from "next/link";
 import { CardGridSkeleton } from "@/components/SkeletonStates";
 import { GitHubIcon } from "@/components/integrations/BrandIcons";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
@@ -144,14 +145,12 @@ function SectionHeading({ children, className = "" }: { children: ReactNode; cla
   return <h2 className={`text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground ${className}`}>{children}</h2>;
 }
 
-// A community page (pastebin) card — opens the public page in a new tab.
+// A community page (pastebin) card — opens the in-app viewer at /pages/[slug].
 function PageCard({ page }: { page: PublicPageCard }) {
   const Icon = page.content_type === "html" ? Code2 : FileText;
   return (
-    <a
+    <Link
       href={`/pages/${page.slug}`}
-      target="_blank"
-      rel="noopener noreferrer"
       className="group flex flex-col gap-3 rounded-xl border border-border bg-base p-4 transition hover:border-brand-300 hover:shadow-sm"
     >
       <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
@@ -162,7 +161,7 @@ function PageCard({ page }: { page: PublicPageCard }) {
         <span className="rounded bg-surface px-1.5 py-0.5 font-medium uppercase tracking-wide">{page.content_type}</span>
         <span>{page.view_count} view{page.view_count === 1 ? "" : "s"}</span>
       </span>
-    </a>
+    </Link>
   );
 }
 

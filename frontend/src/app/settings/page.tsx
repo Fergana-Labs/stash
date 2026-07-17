@@ -12,6 +12,7 @@ import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/Skele
 import { useAuth } from "../../hooks/useAuth";
 import {
   ApiError,
+  ApiKeyAccess,
   ApiKeyCreated,
   ApiKeyInfo,
   createMyKey,
@@ -157,6 +158,7 @@ function ActiveSessions() {
   const [error, setError] = useState("");
   const [revoking, setRevoking] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyAccess, setNewKeyAccess] = useState<ApiKeyAccess>("full");
   const [creating, setCreating] = useState(false);
   const [minted, setMinted] = useState<ApiKeyCreated | null>(null);
 
@@ -197,9 +199,10 @@ function ActiveSessions() {
     setCreating(true);
     setError("");
     try {
-      const k = await createMyKey(newKeyName.trim() || "Personal token");
+      const k = await createMyKey(newKeyName.trim() || "Personal token", newKeyAccess);
       setMinted(k);
       setNewKeyName("");
+      setNewKeyAccess("full");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create key");
@@ -229,22 +232,49 @@ function ActiveSessions() {
 
       {minted && <MintedKey minted={minted} onDismiss={() => setMinted(null)} />}
 
-      <form onSubmit={handleCreate} className="flex gap-2">
-        <input
-          type="text"
-          value={newKeyName}
-          onChange={(e) => setNewKeyName(e.target.value)}
-          placeholder="Key name (e.g. laptop, ci-runner, production-agent)"
-          maxLength={128}
-          className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
-        />
-        <button
-          type="submit"
-          disabled={creating}
-          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-        >
-          {creating ? "Creating…" : "Create key"}
-        </button>
+      <form onSubmit={handleCreate} className="space-y-2">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            placeholder="Key name (e.g. laptop, ci-runner, production-agent)"
+            maxLength={128}
+            className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+          />
+          <button
+            type="submit"
+            disabled={creating}
+            className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+          >
+            {creating ? "Creating…" : "Create key"}
+          </button>
+        </div>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+            <input
+              type="radio"
+              name="key-access"
+              checked={newKeyAccess === "full"}
+              onChange={() => setNewKeyAccess("full")}
+              className="accent-brand"
+            />
+            Full access
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+            <input
+              type="radio"
+              name="key-access"
+              checked={newKeyAccess === "read"}
+              onChange={() => setNewKeyAccess("read")}
+              className="accent-brand"
+            />
+            Read + transcripts
+            <span className="text-muted-foreground">
+              — for production agents: can search, read, and upload transcripts, nothing else
+            </span>
+          </label>
+        </div>
       </form>
 
       {error && <p className="text-xs text-error">{error}</p>}
@@ -257,7 +287,14 @@ function ActiveSessions() {
           {keys.map((k) => (
             <li key={k.id} className="flex items-center gap-3 p-3">
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-foreground truncate">{k.name || "(unnamed)"}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="text-sm text-foreground truncate">{k.name || "(unnamed)"}</div>
+                  {k.access === "read" && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border border-border rounded px-1.5 py-0.5 whitespace-nowrap">
+                      read + transcripts
+                    </span>
+                  )}
+                </div>
                 <div className="text-[11px] text-muted-foreground font-mono">
                   created {formatDate(k.created_at)}
                   {k.last_used_at ? ` · last used ${formatRelative(k.last_used_at)}` : " · never used"}

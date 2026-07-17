@@ -4,10 +4,12 @@ Write extremely easy to consume code. Optimize for readability: skimmable, no cl
 
 ### Write simple code
 We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
- - Add backwards compatibility support of any kind. This includes migrations, compatibility shims, aliases, legacy format support, and fallback code paths.
+ - Add backwards compatibility support of any kind. This includes compatibility shims, aliases, legacy format support, and fallback code paths.
  - Attempt to preserve backwards compatibility when making an edit.
  - Use fallbacks of ANY kind, ANYWHERE, under ANY circumstance. There are no exceptions. This includes UX-saving fallbacks when a primary path fails, default values papered over a missing input (`x or DEFAULT`, `x or stored_value()`), `try/except` that swallows an error and continues, and "if the real source is empty, use this other source" chains. When a required input is absent or a path fails, FAIL LOUD (raise/exit with a clear message) — never silently substitute. A single source of truth with one codepath, always.
  - Support old formats. If a format changes, change it everywhere in one shot.
+
+**Data migrations are allowed** (updated 2026-07: we have real users now). When a schema or format changes, you may — and should — write a one-time migration that carries existing user data forward to the new format, so nobody loses data. This is not a license for backwards compatibility: migrate the data forward in one shot, then delete the old path. The end state is still a single format and one codepath — the migration is just how you get there without stranding what users already have. Everything else above stands: no compatibility shims, no fallbacks, no dual code paths.
 
 Here are some common code patterns that we need you to avoid:
  - Excessive try/catch: only use try/catch when there's a reasonable expectation that the code within might fail during normal usage. Every try/catch that we add adds another codepath that we need to maintain (the catch) and balloons complexity. In general, we follow the concept of "parse, don't validate" from TDD whenever possible. That is, we validate inputs at module boundaries, and within a module, we don't randomly add try/catch everywhere.
@@ -105,8 +107,19 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Lint: `cd www && npm run lint`
 
 ### Local stack
-- One-shot start (migrations + backend + frontend): `./start.sh`
-- Docker compose: `docker compose up`
+- One-shot start (db + redis + backend + celery + collab + frontend): `./start.sh`
+- App ports are fixed and exclusive per machine: backend 3456, frontend 3457, collab 3458. OAuth redirect URIs are registered against 3456, so there is no way to run the stack on other ports. If a port is taken, `start.sh` fails and prints the holding process: one local stack at a time — kill the holder only if it's yours or a zombie, otherwise wait. Tests, lint, and most dev work don't need the live stack.
+- There is no dev docker compose. `./start.sh` is the only local dev path; `docker-compose.prod.yml` is for self-hosters only.
+
+### Deployment (hosted prod — joinstash.ai)
+**Merging to `main` deploys to production. There is no separate release step for the hosted app.**
+
+- Hosted prod runs on **Render** (team `Stash`, region oregon), building directly from this repo's Dockerfiles. Every service has `autoDeploy: yes` on `branch: main`, so a commit to `main` triggers a build + deploy within a couple of minutes. Confirm/inspect via the Render MCP (`list_services`, `list_deploys`, `list_logs`) — do not infer deploy state from repo files.
+- Services (all `Fergana-Labs/stash`, branch `main`): `stash_backend` (slug `moltchat`, → api.joinstash.ai, `backend/Dockerfile`), `stash_app_frontend`, `stash_collab`, `stash-celery-worker`, `stash-celery-beat`. `aspose-pptx` is the one service defined in `render.yaml`; the rest are configured in the Render dashboard, so the repo holds no blueprint for them.
+- **Migrations run automatically at backend boot** (`backend/database.py` runs `alembic upgrade head`), so a merged migration applies to the prod DB on the next deploy — no manual `alembic` step.
+- Prod DB is **Neon** (`stash-prod`, id `little-scene-08473932`), not Render Postgres. Query read-only via the Neon MCP.
+- `docker-compose.prod.yml` and the **GHCR images are for self-hosters only** — they are NOT how joinstash.ai deploys. Editing them does not affect prod.
+- `publish.yml` (on push to `main`) publishes the **`stashai` CLI to PyPI** on a version bump and builds GHCR release images — this is CLI/self-host distribution, separate from the Render app deploy.
 
 # 12-rule template
 

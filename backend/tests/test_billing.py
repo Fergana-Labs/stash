@@ -50,6 +50,13 @@ async def _connect_account(pool, user_id: UUID, provider: str, account_key: str 
     )
 
 
+async def _fill_to_free_limit(pool, user_id: UUID):
+    """Connect exactly FREE_CONNECTION_LIMIT accounts, so the next connect gates.
+    Each row is a distinct account, which is what the counter keys on."""
+    for i in range(billing_service.FREE_CONNECTION_LIMIT):
+        await _connect_account(pool, user_id, "gmail", account_key=f"acct{i}@x.com")
+
+
 def _stripe_signature(payload: bytes, secret: str) -> str:
     ts = int(time.time())
     sig = hmac.new(secret.encode(), f"{ts}.".encode() + payload, hashlib.sha256).hexdigest()
@@ -73,13 +80,13 @@ def github_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_free_user_gated_at_second_connection(client, pool, billing_on):
+async def test_free_user_gated_past_the_free_limit(client, pool, billing_on):
     _, user_id = await _register(client)
 
-    # No connections yet — the first one is free.
+    # Nothing connected yet — connecting is allowed.
     await billing_service.ensure_can_connect(user_id)
 
-    await _connect_account(pool, user_id, "github")
+    await _fill_to_free_limit(pool, user_id)
     with pytest.raises(HTTPException) as exc:
         await billing_service.ensure_can_connect(user_id)
     assert exc.value.status_code == 402
@@ -96,12 +103,12 @@ async def test_free_user_gated_at_second_connection(client, pool, billing_on):
 
 @pytest.mark.asyncio
 async def test_each_account_counts(client, pool, billing_on):
-    """A second mailbox on an already-connected provider is a second account,
-    so it gates just like a brand-new provider would."""
+    """Each account row counts on its own — two mailboxes on one provider are
+    two connections — so filling the free limit with mailboxes gates the next."""
     _, user_id = await _register(client)
-    await _connect_account(pool, user_id, "gmail", account_key="a@x.com")
+    await _fill_to_free_limit(pool, user_id)
 
-    assert await billing_service.connection_count(user_id) == 1
+    assert await billing_service.connection_count(user_id) == billing_service.FREE_CONNECTION_LIMIT
     with pytest.raises(HTTPException) as exc:
         await billing_service.ensure_can_connect(user_id)
     assert exc.value.status_code == 402
@@ -112,7 +119,7 @@ async def test_internal_email_gets_pro_without_subscription(client, pool, billin
     """Team accounts on an internal domain bypass the pay gate with no Stripe row."""
     api_key, user_id = await _register(client)
     await pool.execute("UPDATE users SET email = 'dev@joinstash.ai' WHERE id = $1", user_id)
-    await _connect_account(pool, user_id, "github")
+    await _fill_to_free_limit(pool, user_id)
 
     # A free user would be gated here; the internal account is not.
     await billing_service.ensure_can_connect(user_id)
@@ -129,7 +136,7 @@ async def test_internal_bypass_can_be_disabled(client, pool, billing_on, monkeyp
     monkeypatch.setattr(settings, "INTERNAL_DOMAINS_FREE_PRO", False)
     _, user_id = await _register(client)
     await pool.execute("UPDATE users SET email = 'dev@joinstash.ai' WHERE id = $1", user_id)
-    await _connect_account(pool, user_id, "github")
+    await _fill_to_free_limit(pool, user_id)
 
     with pytest.raises(HTTPException) as exc:
         await billing_service.ensure_can_connect(user_id)
@@ -147,14 +154,14 @@ async def test_gate_off_when_billing_disabled(client, pool, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_endpoint_gates_second_connection(client, pool, billing_on, github_enabled):
+async def test_connect_endpoint_gates_past_the_free_limit(client, pool, billing_on, github_enabled):
     api_key, user_id = await _register(client)
 
     first = await client.get("/api/v1/integrations/github/connect", headers=_auth(api_key))
     assert first.status_code == 200
     assert "github.com/login/oauth/authorize" in first.json()["authorize_url"]
 
-    await _connect_account(pool, user_id, "github")
+    await _fill_to_free_limit(pool, user_id)
 
     blocked = await client.get("/api/v1/integrations/github/connect", headers=_auth(api_key))
     assert blocked.status_code == 402
@@ -172,7 +179,7 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
         "plan": "free",
         "status": None,
         "connection_count": 1,
-        "connection_limit": 1,
+        "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
     }
 
     await pool.execute(

@@ -118,6 +118,27 @@ export function GongIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function PostHogIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M3.2 14.6 5.6 10 4.7 5.4l4.6 1.4L12 3l2.7 3.8 4.6-1.4-.9 4.6 2.4 4.6-4.4 1.8L14.7 21 12 18.1 9.3 21l-1.7-4.6z"
+        fill="#F54E00"
+      />
+      <circle cx="9.3" cy="11.7" r="1.1" fill="white" />
+      <circle cx="14.7" cy="11.7" r="1.1" fill="white" />
+      <path d="M9.2 15.1c1.8 1.2 3.8 1.2 5.6 0" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function JiraIcon({ className, size = defaultSize }: Props) {
   // Official Jira mark — interlocking chevrons in Jira blue.
   return (
@@ -186,7 +207,7 @@ export function SlackIcon({ className, size = defaultSize }: Props) {
   );
 }
 
-export function TwitterIcon({ className, size = defaultSize }: Props) {
+export function XIcon({ className, size = defaultSize }: Props) {
   return (
     <svg
       className={className}
@@ -197,6 +218,27 @@ export function TwitterIcon({ className, size = defaultSize }: Props) {
       aria-hidden
     >
       <path d="M13.9 10.47 22.04 1h-1.93l-7.07 8.23L7.4 1H.9l8.53 12.44L.9 23.37h1.93l7.46-8.68 5.96 8.68h6.5zm-2.64 3.07-.86-1.24L3.52 2.45h2.95l5.55 7.94.86 1.24 7.23 10.35h-2.95z" />
+    </svg>
+  );
+}
+
+export function InstagramIcon({ className, size = defaultSize }: Props) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="2" width="20" height="20" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="0.6" fill="currentColor" />
     </svg>
   );
 }

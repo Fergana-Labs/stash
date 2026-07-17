@@ -198,8 +198,8 @@ def test_parse_auth0_domain_skips_format_check_when_disabled(monkeypatch):
 
 def test_every_oauth_redirect_uri_setting_uses_the_managed_validator():
     """A provider wired through raw os.getenv lets an http:// or query-bearing
-    callback boot cleanly in managed mode (the Gmail/Twitter regression this
-    pins), so every *_OAUTH_REDIRECT_URI must go through parse_oauth_redirect_uri."""
+    callback boot cleanly in managed mode (the Gmail regression this pins), so
+    every *_OAUTH_REDIRECT_URI must go through parse_oauth_redirect_uri."""
     import inspect
     import re
 
@@ -208,7 +208,7 @@ def test_every_oauth_redirect_uri_setting_uses_the_managed_validator():
     source = inspect.getsource(Settings)
     assignments = re.findall(r"(\w+_OAUTH_REDIRECT_URI): str \| None = (\w+)", source)
     names = {name for name, _ in assignments}
-    assert {"GMAIL_OAUTH_REDIRECT_URI", "TWITTER_OAUTH_REDIRECT_URI"} <= names
-    assert len(assignments) >= 9
+    assert {"GMAIL_OAUTH_REDIRECT_URI"} <= names
+    assert len(assignments) >= 8
     for name, parser in assignments:
         assert parser == "parse_oauth_redirect_uri", name

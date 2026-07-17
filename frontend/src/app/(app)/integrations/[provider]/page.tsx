@@ -53,12 +53,18 @@ import type { User } from "@/lib/types";
 const SYNC_POLL_INTERVAL_MS = 3000;
 const SYNC_POLL_MAX_ATTEMPTS = 100;
 
-export default function IntegrationPage() {
+export default function IntegrationRoute() {
   const params = useParams();
+  return <IntegrationDetail provider={params.provider as string} />;
+}
+
+// The integration manager for one provider. Rendered both as the
+// /integrations/[provider] route and inside a workbench "tool" tab (clicking
+// a connector in the Tools sidebar), so the provider comes in as a prop.
+export function IntegrationDetail({ provider }: { provider: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const provider = params.provider as string;
   const highlightSourceId = searchParams.get("source");
   const { user, loading } = useAuth();
   const confirm = useConfirm();
@@ -100,6 +106,14 @@ export default function IntegrationPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
+  useEffect(() => {
+    // X auto-creates one source; open it straight into browse so the page
+    // reads as "connected + your saves", not a source picker.
+    if (connector?.singleSource && sources.length === 1 && !openSourceId) {
+      setOpenSourceId(sources[0].source);
+    }
+  }, [connector, sources, openSourceId]);
+
   if (loading) return null;
   if (!user) return null;
 
@@ -120,7 +134,11 @@ export default function IntegrationPage() {
     );
   }
 
-  const connected = !!status?.connected;
+  // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
+  // "connected" once the browser extension has pushed at least one source.
+  const isExtension = connector.kind === "extension";
+  const singleSource = !!connector.singleSource;
+  const connected = isExtension ? sources.length > 0 : !!status?.connected;
   const account = connectedAccountLabel(status);
   const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
   const staleAccounts = status?.accounts.filter((a) => a.needs_reconnect) ?? [];
@@ -233,7 +251,11 @@ export default function IntegrationPage() {
                 {account}
               </span>
             )}
-            {connected ? (
+            {isExtension ? (
+              <span className="text-[12.5px] text-muted-foreground">
+                {connected ? "Synced from the browser extension" : "Save items with the browser extension"}
+              </span>
+            ) : connected ? (
               <>
                 {canConnectAnother && (
                   <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={secondaryButton()}>
@@ -307,8 +329,10 @@ export default function IntegrationPage() {
 
         {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
 
-        {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser) */}
-        {connected && (
+        {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser).
+            Extension-fed and single-source connectors (X) have nothing to add by
+            hand — their one source is created on connect. */}
+        {connected && !isExtension && !singleSource && (
           <section className="mt-6">
             <SectionLabel>
               {connector.kind === "github" ? "Repository access" : `Add a ${itemNoun}`}
@@ -323,12 +347,19 @@ export default function IntegrationPage() {
           </section>
         )}
 
-        {/* <Things> */}
+        {/* <Things>. Single-source connectors (X) skip the "Sources" heading —
+            there's just the one, shown as the connection's sync status. */}
         <section className="mt-7">
-          <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
+          {!singleSource && (
+            <SectionLabel>{itemNoun === "source" ? "Sources" : `${capitalize(itemNoun)}s`}</SectionLabel>
+          )}
           {sources.length === 0 ? (
             <div className="py-3 text-[12.5px] text-muted-foreground">
-              {connected ? "Nothing added yet." : "Connect to add sources."}
+              {isExtension
+                ? `Install the Stash browser extension and save on ${connector.label} — your items will appear here.`
+                : connected
+                  ? "Nothing added yet."
+                  : "Connect to add sources."}
             </div>
           ) : (
             <div>
@@ -394,6 +425,7 @@ const ITEM_NOUN: Record<string, string> = {
   notion: "page",
   jira_project: "project",
   asana_project: "project",
+  posthog_project: "project",
 };
 
 function relativeTime(iso: string | null | undefined): string {
@@ -434,6 +466,8 @@ function shortRef(source: Source): string | null {
   if (!ref) return null;
   if (source.type === "jira_project") return ref.split(":")[1] ?? ref;
   if (source.type === "gmail") return null;
+  // X / Instagram saves key on a constant "saves" ref — not worth showing.
+  if (source.type === "x_saves" || source.type === "instagram_saves") return null;
   return ref;
 }
 
@@ -508,9 +542,13 @@ function SourceRow({
     // user clicks Sync, which flips sync_status back to "syncing").
   }, [source.source, source.sync_status, source.last_synced_at]);
 
-  const federated = source.type === "gmail" || source.type === "google_drive" || source.type === "jira_project" || source.type === "asana_project" || source.type === "twitter";
-  // Search-driven sources (twitter) have no indexer; the backend rejects sync
-  // for them, so don't offer it.
+  // Search-driven sources (gmail, drive, …) have no local index — search hits
+  // the provider live — so there's nothing to sync and no item count to show.
+  const searchedLive =
+    source.type === "gmail" ||
+    source.type === "google_drive" ||
+    source.type === "jira_project" ||
+    source.type === "asana_project";
   const syncs = source.sync_enabled !== false;
   const ref = shortRef(source);
 
@@ -529,9 +567,16 @@ function SourceRow({
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
           {syncs && <SyncStatusMark syncStatus={status.sync_status} />}
           <span>
-            {syncs ? relativeTime(status.last_synced_at) : "live"}
-            {status.item_count !== null && ` · ${status.item_count} items`}
-            {federated && " · federated"}
+            {syncs ? (
+              <>
+                {relativeTime(status.last_synced_at)}
+                {status.item_count !== null && ` · ${status.item_count} items`}
+              </>
+            ) : searchedLive ? (
+              "Searched live"
+            ) : (
+              "live"
+            )}
           </span>
         </div>
         {status.sync_status === "failed" && status.sync_error && (
@@ -627,6 +672,116 @@ function BrowsePanel({
 
 // Shows the full content of one document/entry inside a browse panel, with a
 // bordered header that deep-links back to the provider when a url is available.
+// Hydrated saves lead with the tweet text, then a blank line, then the byline /
+// reply-context / link meta. Show the tweet prominently and mute the rest.
+function TweetBody({ content }: { content: string }) {
+  const [body, ...rest] = content.split("\n\n");
+  const meta = rest.join("\n\n").trim();
+  return (
+    <div className="scroll-thin max-h-96 space-y-3 overflow-auto bg-base px-4 py-4">
+      <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
+        {body}
+      </p>
+      {meta && (
+        <p className="whitespace-pre-wrap break-words text-[11.5px] leading-relaxed text-muted-foreground">
+          {meta}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DocViewer({
+  source,
+  providerLabel,
+  refValue,
+  name,
+  onClose,
+}: {
+  source: string;
+  providerLabel: string;
+  refValue: string;
+  name?: string;
+  onClose: () => void;
+}) {
+  const [content, setContent] = useState<string | null>(null);
+  const [title, setTitle] = useState(name ?? "");
+  const [url, setUrl] = useState<string | null>(null);
+  const [media, setMedia] = useState<{ url: string; contentType: string }[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setContent(null);
+    setUrl(null);
+    setMedia([]);
+    setError("");
+    readSourceDoc(source, refValue)
+      .then((doc) => {
+        if (cancelled) return;
+        setContent(doc.content ?? "");
+        setUrl(doc.url ?? null);
+        // X carries up to 4 media items (media[]); Instagram a single blob.
+        if (doc.media?.length) {
+          setMedia(doc.media.map((m) => ({ url: m.url, contentType: m.content_type ?? "" })));
+        } else if (doc.media_url) {
+          setMedia([{ url: doc.media_url, contentType: doc.media_content_type ?? "" }]);
+        }
+        if (doc.name) setTitle(doc.name);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not read document");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source, refValue]);
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2.5">
+        <div className="min-w-0 truncate font-mono text-[12.5px] font-semibold text-foreground">
+          {title || refValue}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[12px] font-semibold text-brand hover:underline"
+            >
+              Open in {providerLabel} ↗
+            </a>
+          )}
+          <button type="button" onClick={onClose} className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground">
+            Close
+          </button>
+        </div>
+      </div>
+      {error ? (
+        <div className="bg-base px-3 py-3 text-[12px] text-error">{error}</div>
+      ) : content === null ? (
+        <div className="bg-base px-3 py-3 text-[12px] text-muted-foreground">Loading…</div>
+      ) : (
+        <>
+          {media.map((m, i) =>
+            m.contentType.startsWith("video/") ? (
+              // Archived social video; its transcript is in the body below.
+              <video key={i} src={m.url} controls className="max-h-72 w-full bg-black" />
+            ) : (
+              // Presigned blob URL, not an optimizable static asset.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={m.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
+            ),
+          )}
+          <TweetBody content={content} />
+        </>
+      )}
+    </div>
+  );
+}
+
 function SearchablePanel({
   source,
   providerLabel,
@@ -708,15 +863,29 @@ function SearchablePanel({
             {realHits.length === 0 ? (
               <div className="px-1.5 py-1 text-[12.5px] text-muted-foreground">No matches.</div>
             ) : (
-              realHits.map((hit) => (
-                <HitRow
-                  key={hit.ref}
-                  hitKey={hit.ref!}
-                  label={hit.name}
-                  snippet={hit.snippet}
-                  onOpen={() => setOpenDoc({ ref: hit.ref!, name: hit.name })}
-                />
-              ))
+              realHits.map((hit) => {
+                const isOpen = openDoc?.ref === hit.ref;
+                return (
+                  <div key={hit.ref}>
+                    <HitRow
+                      hitKey={hit.ref!}
+                      label={hit.name}
+                      snippet={hit.snippet}
+                      open={isOpen}
+                      onOpen={() => setOpenDoc(isOpen ? null : { ref: hit.ref!, name: hit.name })}
+                    />
+                    {isOpen && (
+                      <DocViewer
+                        source={source.source}
+                        providerLabel={providerLabel}
+                        refValue={hit.ref!}
+                        name={hit.name}
+                        onClose={() => setOpenDoc(null)}
+                      />
+                    )}
+                  </div>
+                );
+              })
             )}
             {truncation && (
               <div className="px-1.5 py-1 text-[12px] text-muted-foreground">
@@ -733,26 +902,29 @@ function SearchablePanel({
         <div className="mb-2">
           {recent.map((entry) => {
             const ref = entry.id ?? entry.path ?? entry.name;
+            const isOpen = openDoc?.ref === ref;
             return (
-              <HitRow
-                key={ref}
-                hitKey={ref}
-                label={entry.name}
-                onOpen={() => setOpenDoc({ ref, name: entry.name })}
-              />
+              <div key={ref}>
+                <HitRow
+                  hitKey={ref}
+                  label={entry.name}
+                  snippet={entry.snippet ?? undefined}
+                  open={isOpen}
+                  onOpen={() => setOpenDoc(isOpen ? null : { ref, name: entry.name })}
+                />
+                {isOpen && (
+                  <DocViewer
+                    source={source.source}
+                    providerLabel={providerLabel}
+                    refValue={ref}
+                    name={entry.name}
+                    onClose={() => setOpenDoc(null)}
+                  />
+                )}
+              </div>
             );
           })}
         </div>
-      )}
-
-      {openDoc && (
-        <SourceDocViewer
-          source={source.source}
-          providerLabel={providerLabel}
-          refValue={openDoc.ref}
-          name={openDoc.name}
-          onClose={() => setOpenDoc(null)}
-        />
       )}
 
       {showHistory && (
@@ -768,23 +940,35 @@ function HitRow({
   hitKey,
   label,
   snippet,
+  open,
   onOpen,
 }: {
   hitKey: string;
   label?: string;
   snippet?: string;
+  open?: boolean;
   onOpen: () => void;
 }) {
-  const showKey = !!label && label !== hitKey && !label.startsWith(hitKey);
+  // An X save that hasn't hydrated yet has no title — its name is still the raw
+  // numeric tweet id. Show "Loading…" instead of a wall of numbers.
+  const pending = !!label && /^\d+$/.test(label);
+  const showKey = !pending && !!label && label !== hitKey && !label.startsWith(hitKey);
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full cursor-pointer rounded-md px-1.5 py-1.5 text-left hover:bg-raised"
+      className={
+        "block w-full cursor-pointer rounded-md px-1.5 py-1.5 text-left hover:bg-raised " +
+        (open ? "bg-raised" : "")
+      }
     >
       <div className="flex items-baseline gap-2.5">
         {showKey && <span className="font-mono text-[12px] text-muted-foreground">{hitKey}</span>}
-        <span className="min-w-0 truncate text-[13px] text-foreground">{label || hitKey}</span>
+        {pending ? (
+          <span className="min-w-0 truncate text-[13px] italic text-muted-foreground">Loading…</span>
+        ) : (
+          <span className="min-w-0 truncate text-[13px] text-foreground">{label || hitKey}</span>
+        )}
       </div>
       {snippet && <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{snippet}</div>}
     </button>
@@ -941,19 +1125,47 @@ function NavigablePanel({
         <div className="space-y-0.5">
           {visibleEntries.map((entry) => {
             const folder = isFolder(entry);
-            const key = `${folder ? "dir" : "doc"}:${entry.id ?? entry.path ?? entry.name}`;
+            const ref = entry.id ?? entry.path ?? entry.name;
+            const isOpen = !folder && openDoc?.ref === ref;
+            // An un-hydrated save still has its raw numeric tweet id as its name.
+            const pending = !folder && /^\d+$/.test(entry.name);
+            const key = `${folder ? "dir" : "doc"}:${ref}`;
             return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => openEntry(entry)}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
-              >
-                <span aria-hidden className="text-[13px]">
-                  {folder ? "📁" : "📄"}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground">{entry.name}</span>
-              </button>
+              <div key={key}>
+                <button
+                  type="button"
+                  onClick={() => openEntry(entry)}
+                  className={
+                    "flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised " +
+                    (isOpen ? "bg-raised" : "")
+                  }
+                >
+                  <span aria-hidden className="text-[13px] leading-5">
+                    {folder ? "📁" : "📄"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    {pending ? (
+                      <span className="truncate text-[12.5px] italic text-muted-foreground">Loading…</span>
+                    ) : (
+                      <span className="block truncate text-[12.5px] text-foreground">{entry.name}</span>
+                    )}
+                    {entry.snippet && !pending && (
+                      <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
+                        {entry.snippet}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                {isOpen && (
+                  <DocViewer
+                    source={source.source}
+                    providerLabel={providerLabel}
+                    refValue={ref}
+                    name={entry.name}
+                    onClose={() => setOpenDoc(null)}
+                  />
+                )}
+              </div>
             );
           })}
           {hasMore && (

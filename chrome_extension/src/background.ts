@@ -4,29 +4,81 @@
 // rest as replace-mode transcripts so a growing chat keeps updating the
 // same Stash session.
 
+import { initChatPoll } from './background/chat_poll';
+import {
+  clipActiveTab,
+  clipAllTabs,
+  importBookmarks,
+  importProgress,
+  initClipper,
+  uploadPageClip,
+} from './background/clip';
+import {
+  initInstagram,
+  receiveSavedItems,
+  savedItemsFailed,
+  shouldFetchSaves,
+} from './background/instagram';
+import { platformStatus, syncNow } from './background/status';
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
+
+initClipper();
+initChatPoll(syncConversation);
+initInstagram();
+
+// The X bookmark harvest was removed (X syncs server-side over OAuth now); clear
+// any stale harvest error it left behind so the popup doesn't keep showing it.
+void chrome.storage.local.get('lastError').then(({ lastError }) => {
+  if (typeof lastError === 'string' && lastError.includes('X bookmarks')) {
+    void chrome.storage.local.set({ lastError: null });
+  }
+});
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).
 const CONNECT_POLL_TIMEOUT_MS = 600_000;
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handle(message)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handle(message, sender)
     .then(sendResponse)
     .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
   return true;
 });
 
-async function handle(message: any): Promise<any> {
+async function handle(message: any, sender: chrome.runtime.MessageSender): Promise<any> {
   switch (message.type) {
     case 'SYNC_CONVERSATION':
       return syncConversation(message.snapshot);
+    case 'CLIP_TAB':
+      return clipActiveTab();
+    case 'CLIP_PAGE':
+      return uploadPageClip(message.clip);
+    case 'CLIP_ALL_TABS':
+      return clipAllTabs();
+    case 'IMPORT_BOOKMARKS':
+      return importBookmarks(message.name, message.content);
+    case 'IMPORT_PROGRESS':
+      return importProgress(message.id);
+    case 'SHOULD_FETCH_SAVES':
+      return shouldFetchSaves();
+    case 'SAVED_ITEMS':
+      return receiveSavedItems(message.items, sender);
+    case 'SAVED_ITEMS_FAILED':
+      return savedItemsFailed(message.error, sender);
+    case 'CLIP_FAILED':
+      await chrome.storage.local.set({ lastError: `Save failed: ${message.error}` });
+      await setBadge('!', 'Save failed — click for details');
+      return { ok: false, error: message.error };
+    case 'PLATFORM_STATUS':
+      return platformStatus();
+    case 'SYNC_NOW':
+      return syncNow(message.platform);
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':
-      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastError']);
+      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastClip', 'lastImport', 'lastError']);
       return { ok: true };
     case 'GET_STATUS':
       return getStatus();
@@ -238,6 +290,8 @@ async function getStatus(): Promise<any> {
     'folderName',
     'folders',
     'lastSync',
+    'lastClip',
+    'lastImport',
     'lastError',
   ]);
   return {
@@ -248,6 +302,8 @@ async function getStatus(): Promise<any> {
     folderId: cfg.folderId || null,
     folders: cfg.folders || [],
     lastSync: cfg.lastSync || null,
+    lastClip: cfg.lastClip || null,
+    lastImport: cfg.lastImport || null,
     lastError: cfg.lastError || null,
   };
 }

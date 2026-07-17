@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..models import (
     HistoryEventBatchRequest,
@@ -29,7 +29,7 @@ _TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_messag
 
 
 async def _check_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=403, detail="Not the scope owner")
 
 
@@ -99,8 +99,9 @@ async def query_events(
     limit: int = Query(50, ge=1, le=200),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_member(owner_user_id, current_user["id"])
     events, has_more = await memory_service.query_scope_events(
         owner_user_id,
@@ -124,8 +125,9 @@ async def search_events(
     q: str = Query(..., min_length=1),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_member(owner_user_id, current_user["id"])
     events = await memory_service.search_scope_events(
         owner_user_id,
@@ -143,8 +145,9 @@ async def search_events(
 async def get_event(
     event_id: UUID,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_member(owner_user_id, current_user["id"])
     event = await memory_service.get_scope_event(event_id, owner_user_id, current_user["id"])
     if not event:
@@ -156,19 +159,21 @@ async def get_event(
 async def delete_agent(
     agent_name: str,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Delete all events for an agent in this scope."""
-    owner_user_id = current_user["id"]
-    await _check_member(owner_user_id, current_user["id"])
+    owner_user_id = scope_user_id
+    await _check_write(owner_user_id, current_user["id"])
     await memory_service.delete_scope_agent_events(agent_name, owner_user_id)
 
 
 @me_router.get("/agent-names")
 async def list_agent_names(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """List distinct agent names in this scope."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_member(owner_user_id, current_user["id"])
     from ..database import get_pool
 

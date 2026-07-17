@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..auth import get_current_user, get_current_user_optional
+from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..services import session_folder_service, user_scope_service
 
 me_router = APIRouter(prefix="/api/v1/me/session-folders", tags=["session-folders"])
@@ -23,7 +23,7 @@ GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
 
 
 async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    if not await user_scope_service.can_read(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
 
@@ -66,8 +66,12 @@ class AssignRequest(BaseModel):
 
 
 @me_router.post("")
-async def create_folder(body: CreateFolderRequest, current_user: dict = Depends(get_current_user)):
-    owner_user_id = current_user["id"]
+async def create_folder(
+    body: CreateFolderRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
     await _require_owner_for_folder_visibility(owner_user_id, current_user["id"], body)
@@ -89,7 +93,9 @@ class GetOrCreateFolderRequest(BaseModel):
 
 @me_router.post("/get-or-create")
 async def get_or_create_folder(
-    body: GetOrCreateFolderRequest, current_user: dict = Depends(get_current_user)
+    body: GetOrCreateFolderRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Idempotent folder resolution for machine callers (e.g. one folder per
     customer org, resolved on every uploaded turn). With external_key (the
@@ -98,7 +104,7 @@ async def get_or_create_folder(
     one, matching falls to exact name. Concurrent calls return the same
     folder — no list-then-create race. Always creates private folders;
     publishing stays on the explicit routes."""
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
     name = body.name.strip()
@@ -115,11 +121,15 @@ async def get_or_create_folder(
 
 
 @me_router.get("")
-async def list_folders(current_user: dict = Depends(get_current_user)):
-    owner_user_id = current_user["id"]
+async def list_folders(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    owner_user_id = scope_user_id
     # Non-owners may still see folders shared with them, so this isn't gated on
-    # ownership. Owners get a Default folder lazily ensured on first listing.
-    if await user_scope_service.is_owner(owner_user_id, current_user["id"]):
+    # ownership. Anyone who can write the scope (its owner, or a workspace
+    # member) gets a Default folder lazily ensured on first listing.
+    if await user_scope_service.can_write(owner_user_id, current_user["id"]):
         await session_folder_service.ensure_default_folder(owner_user_id)
     return {"folders": await session_folder_service.list_folders(owner_user_id, current_user["id"])}
 
@@ -151,8 +161,12 @@ async def delete_folder(folder_id: UUID, current_user: dict = Depends(get_curren
 
 
 @me_router.post("/assign")
-async def assign_sessions(body: AssignRequest, current_user: dict = Depends(get_current_user)):
-    owner_user_id = current_user["id"]
+async def assign_sessions(
+    body: AssignRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     await _require_write(owner_user_id, current_user["id"])
     assigned = await session_folder_service.assign_sessions(

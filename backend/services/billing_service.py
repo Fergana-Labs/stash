@@ -23,7 +23,7 @@ from ..database import get_pool
 # Stripe statuses that grant Pro. Everything else (past_due, canceled,
 # unpaid, incomplete) means free-tier enforcement.
 ACTIVE_STATUSES = {"active", "trialing"}
-FREE_CONNECTION_LIMIT = 1
+FREE_CONNECTION_LIMIT = 2
 
 # Internal team accounts get Pro without a subscription — no card, no Stripe row.
 INTERNAL_EMAIL_DOMAINS = {"ferganalabs.com", "joinstash.ai"}
@@ -51,30 +51,44 @@ async def get_subscription(user_id: UUID) -> dict | None:
 
 async def is_pro(user_id: UUID) -> bool:
     row = await get_pool().fetchrow(
-        "SELECT u.email, s.status FROM users u "
+        "SELECT u.email, u.plan, s.status FROM users u "
         "LEFT JOIN user_subscriptions s ON s.user_id = u.id "
         "WHERE u.id = $1",
         user_id,
     )
     if row is None:
         return False
+    # Enterprise is an admin-granted entitlement (no Stripe subscription) —
+    # workspace scope users rely on it to connect more than one source.
+    if row["plan"] == "enterprise":
+        return True
     if is_internal_email(row["email"]):
         return True
     return row["status"] in ACTIVE_STATUSES
 
 
+# Providers that don't count against the free limit. X is a social-saves
+# source (like Instagram, which has no OAuth row at all) — connecting it is
+# part of the commonplace-book feature, not a "data integration" seat.
+UNMETERED_PROVIDERS = ("x",)
+
+
 async def connection_count(user_id: UUID) -> int:
-    """How many integration accounts the user has connected. Each account row
-    counts on its own, so two Gmail mailboxes are two connections."""
+    """How many metered integration accounts the user has connected. Each
+    account row counts on its own, so two Gmail mailboxes are two connections;
+    UNMETERED_PROVIDERS (X) are excluded."""
     return await get_pool().fetchval(
-        "SELECT count(*) FROM user_integrations WHERE user_id = $1", user_id
+        "SELECT count(*) FROM user_integrations WHERE user_id = $1 AND provider != ALL($2)",
+        user_id,
+        list(UNMETERED_PROVIDERS),
     )
 
 
 async def ensure_can_connect(user_id: UUID) -> None:
-    """Connect-time pay gate. The free plan includes one connected account; a
-    second account — another provider or another mailbox on the same one —
-    requires Pro. Sources added under a connection are unlimited."""
+    """Connect-time pay gate. The free plan includes a handful of connected
+    accounts (FREE_CONNECTION_LIMIT); beyond that requires Pro. Sources added
+    under a connection are unlimited, and extension-fed sources (X, Instagram)
+    aren't accounts so they never count against this."""
     if not billing_enabled():
         return
     if await is_pro(user_id):
@@ -82,7 +96,10 @@ async def ensure_can_connect(user_id: UUID) -> None:
     if await connection_count(user_id) >= FREE_CONNECTION_LIMIT:
         raise HTTPException(
             status_code=402,
-            detail="The free plan includes 1 connected account. Upgrade to Pro to connect more.",
+            detail=(
+                f"The free plan includes {FREE_CONNECTION_LIMIT} connected accounts. "
+                "Upgrade to Pro to connect more."
+            ),
         )
 
 

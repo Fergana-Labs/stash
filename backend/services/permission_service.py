@@ -9,7 +9,12 @@ A skill is a published folder: publishing makes its folder subtree publicly
 readable — never writable.
 
 Scope is the user: every content row carries an `owner_user_id`, and the owner
-can do anything in their own scope.
+can do anything in their own scope. A workspace is a scope owned by a dedicated
+login-less user; members get read+write on that scope's content (never owner
+powers: shares, sources, publishing stay with the workspace user itself).
+Membership is derived for on-domain users (verified email on the workspace's
+domain) plus stored `workspace_members` rows for explicit off-domain adds —
+`workspace_member_condition` is the one predicate both kinds flow through.
 """
 
 from uuid import UUID
@@ -171,6 +176,22 @@ def _public_read_container_condition(
     return None
 
 
+def workspace_member_condition(workspace_alias: str, user_arg: int) -> str:
+    """SQL predicate: is user ${user_arg} a member of the workspace row at
+    `workspace_alias`? The single definition of membership: derived for
+    on-domain users (verified email on the workspace's domain — nothing to
+    enroll or revoke) plus stored `workspace_members` rows (explicit admin
+    adds, off-domain only)."""
+    return (
+        f"(EXISTS (SELECT 1 FROM workspace_members member_row "
+        f"WHERE member_row.workspace_id = {workspace_alias}.id "
+        f"AND member_row.user_id = ${user_arg}) "
+        f"OR EXISTS (SELECT 1 FROM users member_u "
+        f"WHERE member_u.id = ${user_arg} AND member_u.email_verified "
+        f"AND lower(split_part(member_u.email, '@', 2)) = {workspace_alias}.domain))"
+    )
+
+
 def readable_content_condition(
     object_type: str, object_alias: str, user_arg: int, require: str = "read"
 ) -> str:
@@ -188,6 +209,11 @@ def readable_content_condition(
         f"AND content_share.principal_id = ${user_arg} "
         f"AND (content_share.expires_at IS NULL OR content_share.expires_at > now()) "
         f"AND {share_target}{_LEVEL_SHARE_FILTER[require]})",
+        # Workspace members have read+write on the workspace scope's content,
+        # like a 'write' share — so this branch applies at every require level.
+        f"EXISTS (SELECT 1 FROM workspaces member_ws "
+        f"WHERE member_ws.scope_user_id = {object_alias}.owner_user_id "
+        f"AND {workspace_member_condition('member_ws', user_arg)})",
     ]
     # The per-object public link grants read/comment/write to everyone, so it
     # applies at every require level — unlike publishing, which is read-only.
@@ -211,6 +237,9 @@ def accessible_scope_ids_sql(user_arg: int) -> str:
         UNION
         SELECT owner_user_id AS id FROM shares
         WHERE principal_type = 'user' AND principal_id = ${user_arg}
+        UNION
+        SELECT member_ws.scope_user_id AS id FROM workspaces member_ws
+        WHERE {workspace_member_condition("member_ws", user_arg)}
     )"""
 
 
@@ -346,17 +375,34 @@ async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+async def is_workspace_member(scope_user_id: UUID | None, user_id: UUID | None) -> bool:
+    """Is `user_id` a member of the workspace whose scope is `scope_user_id`?"""
+    if scope_user_id is None or user_id is None:
+        return False
+    pool = get_pool()
+    return bool(
+        await pool.fetchval(
+            f"SELECT EXISTS (SELECT 1 FROM workspaces w "
+            f"WHERE w.scope_user_id = $1 AND {workspace_member_condition('w', 2)})",
+            scope_user_id,
+            user_id,
+        )
+    )
+
+
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
     """Can the user access this session folder? Public link (read-only),
-    owner, or an explicit user share."""
+    owner, workspace member, or an explicit user share."""
     public = folder["public_permission"]
     if require == "read" and public != "none":
         return True
     if user_id is None:
         return False
     if folder["owner_user_id"] == user_id:
+        return True
+    if await is_workspace_member(folder["owner_user_id"], user_id):
         return True
     return await _user_share_grants("session_folder", folder_id, user_id, require)
 

@@ -921,7 +921,7 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_events_cte(scope_idx=event_fetch_scope_idx)
             + """
-            SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
+            SELECT me.id, me.content, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
@@ -931,10 +931,13 @@ async def get_embedding_projection(
             *event_fetch_args,
         )
         for r in rows:
+            # Label with the content the embedding was computed from, not the
+            # event-type enum — every tool call labeled "user: tool_use" made
+            # the map unreadable.
             all_items.append(
                 {
                     "id": str(r["id"]),
-                    "label": f"{r['agent_name'] or 'agent'}: {r['event_type'] or 'event'}",
+                    "label": " ".join(r["content"].split())[:80],
                     "source": "history_events",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),

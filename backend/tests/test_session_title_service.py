@@ -71,6 +71,28 @@ def test_title_from_text_falls_back_to_session_id_for_empty_text():
     assert title_from_text("", "session-1") == "session-1"
 
 
+def test_clean_generated_title_rejects_replies_to_the_transcript():
+    # The 2026-05 backfill cached these verbatim as titles; the model was
+    # conversing with the transcript instead of naming the task.
+    assert clean_generated_title("You're right—I apologize for the confusion") == ""
+    assert clean_generated_title("Yes—the proxy won't help here") == ""
+    assert clean_generated_title("Your design is solid") == ""
+    assert clean_generated_title("Perfect!") == ""
+
+
+def test_clean_generated_title_rejects_refusals():
+    assert clean_generated_title("I need more context to generate a title") == ""
+    assert clean_generated_title("I'll help you explore this codebase") == ""
+    assert clean_generated_title("I don't have access to your previous sessions") == ""
+
+
+def test_clean_generated_title_keeps_task_shaped_titles():
+    assert clean_generated_title("Fix session title generation") == ("Fix session title generation")
+    assert clean_generated_title("Investigate stream closed errors") == (
+        "Investigate stream closed errors"
+    )
+
+
 def test_clean_generated_title_strips_markdown_heading_prefixes():
     assert clean_generated_title("# Update CLI API Shape for Stash Publishing") == (
         "Update CLI API Shape for Stash Publishing"

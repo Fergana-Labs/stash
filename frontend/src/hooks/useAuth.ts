@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, clearToken, getMe, getToken, revokeStoredApiKey } from "../lib/api";
 import { auth0LogoutUrl, markManualAuth0Logout } from "../lib/authLogout";
+import { markSignedInBefore } from "../lib/returningUser";
 import { User } from "../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -27,6 +28,7 @@ export function useAuth() {
     try {
       const me = await getMe();
       setUser(me);
+      markSignedInBefore();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         clearToken();

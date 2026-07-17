@@ -9,8 +9,39 @@ import Texture from "../_components/Texture";
 export const metadata: Metadata = {
   title: "Company Brain · Stash",
   description:
-    "All your company's context in one place every agent can read. Stash connects your tools into a permission-aware source of truth, surfaced as a filesystem any agent can navigate across GitHub, Drive, Gmail, Notion, Slack, and more.",
+    "All your company's context in one place every agent can read. Stash connects your tools into a permission-aware source of truth, mounted as an agent-native Drive — Markdown, HTML, and Skills your agents ls, find, and rg.",
 };
+
+const DRIVE_FEATURES = [
+  [
+    "Markdown & HTML, natively",
+    "Pages are real Markdown and HTML, plus CSV, PDF, and images. The formats your agent already reads and writes, not a proprietary block format.",
+  ],
+  [
+    "A virtual filesystem",
+    "The whole Drive mounts as a filesystem your agent can ls, find, and rg. Pages, files, Skills, and session transcripts sit side by side, addressed by path.",
+  ],
+  [
+    "Skills are just folders",
+    "A Skill is a folder with a SKILL.md and the pages, files, and sessions it needs. No new format to learn; your agent reads it like a repo.",
+  ],
+  [
+    "WYSIWYG HTML editing",
+    "When your agent builds an HTML page, a report, a dashboard, or a deck, you edit it visually in a WYSIWYG editor. Adjust the result by hand without touching the markup.",
+  ],
+  [
+    "Real-time collaboration",
+    "You and your agent edit the same page at the same time, two cursors at once. Edits save automatically.",
+  ],
+  [
+    "Reachable everywhere",
+    "Through the CLI, the Stash MCP server, or the HTTP API. Point Claude Code, Cursor, Codex, or OpenCode at it and they read and write directly.",
+  ],
+  [
+    "Sessions land here too",
+    "Every coding-agent session streams in automatically, indexed alongside your docs. No manual upload, no copy-paste.",
+  ],
+];
 
 export default function CompanyBrainPage() {
   return (
@@ -72,6 +103,49 @@ export default function CompanyBrainPage() {
       </section>
 
       <section className="border-b border-border-subtle py-20 md:py-28">
+        <div className="mx-auto max-w-[1200px] px-7">
+          <p className="kicker">Agent.drive</p>
+          <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+            A Drive that speaks your agent&apos;s language.
+          </h2>
+          <p className="mt-5 max-w-[640px] text-[16px] leading-[1.6] text-foreground">
+            Your brain isn&apos;t just readable — it&apos;s a place agents work.
+            Pages are real Markdown and HTML, mounted as a virtual filesystem
+            your agent can ls, find, and rg, the same way it works in a repo.
+            Package repeatable processes as Skills — folders with a SKILL.md —
+            and share them with a link.
+          </p>
+          <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {DRIVE_FEATURES.map(([name, blurb]) => (
+              <div
+                key={name}
+                className="rounded-[12px] border border-border bg-background p-5 transition-colors hover:border-brand"
+              >
+                <div className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">
+                  {name}
+                </div>
+                <p className="mt-1.5 text-[14px] leading-[1.55] text-dim">{blurb}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-10 flex flex-wrap gap-3">
+            <Link
+              href="/discover"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+            >
+              Browse Discover →
+            </Link>
+            <Link
+              href="/pages"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+            >
+              Share a doc →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-8 px-7 md:grid-cols-3 md:gap-12">
           <Point title="Connect">
             OAuth in and permissions are inherited automatically. No tokens to
@@ -91,7 +165,7 @@ export default function CompanyBrainPage() {
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-surface py-28 text-center">
+      <section className="relative overflow-hidden py-28 text-center">
         <Texture className="opacity-70" fade="center" />
         <div className="relative z-10 mx-auto max-w-[1200px] px-7">
           <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
@@ -101,10 +175,10 @@ export default function CompanyBrainPage() {
             <CtaPair align="center" />
           </div>
           <Link
-            href="/agent-drive"
+            href="/memory"
             className="mt-6 inline-flex font-mono text-[13px] text-dim transition hover:text-brand"
           >
-            See the Agent Drive →
+            See Memory & Observability →
           </Link>
         </div>
       </section>

@@ -75,6 +75,29 @@ async def complete_text(
     return "".join(getattr(b, "text", "") for b in msg.content)
 
 
+async def complete_chat(
+    *,
+    messages: list[dict],
+    system: str | None = None,
+    tier: ModelTier = ModelTier.FAST,
+    max_tokens: int = 1024,
+) -> str:
+    """Multi-turn Claude completion over a full message transcript.
+
+    Same contract as complete_text but the caller supplies the whole
+    conversation ([{"role": "user"|"assistant", "content": str}, ...])."""
+    client = _get_client()
+    kwargs: dict = {
+        "model": _model_for(tier),
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+    if system:
+        kwargs["system"] = system
+    msg = await client.messages.create(**kwargs)
+    return "".join(getattr(b, "text", "") for b in msg.content)
+
+
 _JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 
 

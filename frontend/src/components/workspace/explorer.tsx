@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
+import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
 
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "memory" | "tools" | "computer";
@@ -23,16 +24,17 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "memory", label: "Memory", route: "/memory", icon: <Brain className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
-  { key: "computer", label: "Computer", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
+  { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "Computer" };
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
 
-/** Open any item as a workbench tab and sync the URL. */
+/** Open any item as a workbench tab and sync the URL. A plain click navigates
+ *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
 function useOpenTab() {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
-  return (kind: TabKind, refId: string, title: string) => {
-    openTab(kind, refId, title);
+  return (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => {
+    openTab(kind, refId, title, { newTab: opts?.newTab ?? opensNewTab() });
     router.replace(urlForTab({ kind, refId }));
   };
 }
@@ -74,21 +76,22 @@ function ToolsSection() {
               {connected.has(c.provider) ? "Connected" : "Connect"}
             </span>
           }
-          onOpen={() => open("tool", "integrations", "Tools")}
+          onOpen={() => open("tool", c.provider, c.label)}
         />
       ))}
     </div>
   );
 }
 
-// Computer = a read-through view of the user's cloud machine's filesystem
-// (relative to its home). Browsing wakes a sleeping machine; nothing here is
+// Computer = a read-through view of the agent's working folder on the user's
+// cloud machine. Browsing wakes a sleeping machine; nothing here is
 // synced — "Save to Stash" on an open file is the only copy path.
 function ComputerSection() {
   const open = useOpenTab();
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<MachineEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noMachine, setNoMachine] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,9 +99,22 @@ function ComputerSection() {
     setError(null);
     machineFsList(path)
       .then((rows) => { if (!cancelled) setEntries(rows); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+      .catch((e) => {
+        if (cancelled) return;
+        // 404 = no computer provisioned yet; browsing never creates one.
+        if (e instanceof ApiError && e.status === 404) setNoMachine(true);
+        else setError(e instanceof Error ? e.message : String(e));
+      });
     return () => { cancelled = true; };
   }, [path]);
+
+  if (noMachine) {
+    return (
+      <div className="px-3 py-2 text-[12px] text-muted-foreground">
+        No cloud computer yet — it&apos;s created the first time a cloud agent runs.
+      </div>
+    );
+  }
 
   const crumbs = path ? path.split("/") : [];
   return (
@@ -118,7 +134,7 @@ function ComputerSection() {
           </span>
         ))}
       </div>
-      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your computer… {error.includes("502") ? "" : error}</div>}
+      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your VM… {error.includes("502") ? "" : error}</div>}
       {!entries && !error && <LoadingRow />}
       {entries?.map((e) => (
         <LeafRow
@@ -188,7 +204,7 @@ function AgentsExplorer() {
     reloadAgents();
     // A fresh agent wants configuring first — open its tab on the Config side.
     requestAgentConfigView(a.id);
-    open("agent", `agent-${a.id}`, a.name);
+    open("agent", `agent-${a.id}`, a.name, { newTab: true });
   }
 
   // The curator has no chat — its settings are their own tab. Every other
@@ -229,7 +245,7 @@ function AgentsExplorer() {
               <span className="min-w-0 flex-1 truncate">{a.name}</span>
             </button>
             {!a.is_curator && (
-              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
+              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name, { newTab: true })} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
                 <Plus className="h-3.5 w-3.5" />
               </button>
             )}

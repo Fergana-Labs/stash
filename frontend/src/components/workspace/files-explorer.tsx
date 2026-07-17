@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
+import { opensNewTab } from "@/lib/tab-nav";
 import { FolderIcon, PageIcon, FileIcon, TableIcon } from "@/components/SkillIcons";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -146,7 +147,8 @@ export default function FilesExplorer({
   function openAsTab(item: Item) {
     if (item.kind === "session-folder") { setFolderId(item.id); return; }
     const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
-    openTab(kind, item.id, item.name);
+    // Plain click navigates the current tab; cmd/ctrl-click opens a new one.
+    openTab(kind, item.id, item.name, { newTab: opensNewTab() });
     const suffix = tabSection ? `?section=${tabSection}` : "";
     router.replace(urlForTab({ kind, refId: item.id }) + suffix);
   }

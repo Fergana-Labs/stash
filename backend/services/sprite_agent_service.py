@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import codecs
+import contextlib
 import json
 import logging
 import re
@@ -269,6 +270,64 @@ class TurnInProgress(RuntimeError):
     """Another turn is already running in this session."""
 
 
+class TurnStopped(Exception):
+    """The user requested this turn stop mid-run."""
+
+
+# The note recorded (and streamed) when a turn is stopped mid-run.
+STOPPED_NOTE = "⏹ Stopped by user."
+
+_STOP_POLL_SECONDS = 2
+
+
+def _stop_key(session_id: str) -> str:
+    return f"agent-turn-stop:{session_id}"
+
+
+async def turn_running(session_id: str) -> bool:
+    return await _get_redis().get(f"agent-turn:{session_id}") is not None
+
+
+async def request_stop(session_id: str) -> bool:
+    """Flag the session's running turn to stop. False when no turn is running."""
+    r = _get_redis()
+    if await r.get(f"agent-turn:{session_id}") is None:
+        return False
+    await r.set(_stop_key(session_id), "1", ex=settings.AGENT_TURN_TIMEOUT_SECONDS)
+    return True
+
+
+async def _stoppable(events: AsyncIterator[dict], session_id: str) -> AsyncIterator[dict]:
+    """Yield turn events until the session's stop flag appears in redis.
+
+    Closing the inner generator kills the harness exec (local mode kills the
+    subprocess; Sprites mode closes the exec websocket), so a stop ends the
+    run on the box, not just this stream."""
+    r = _get_redis()
+    key = _stop_key(session_id)
+    # A stop requested after the previous turn ended must not kill this one.
+    await r.delete(key)
+    iterator = aiter(events)
+    try:
+        while True:
+            next_event = asyncio.ensure_future(anext(iterator))
+            while not next_event.done():
+                await asyncio.wait({next_event}, timeout=_STOP_POLL_SECONDS)
+                if not next_event.done() and await r.get(key) is not None:
+                    next_event.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await next_event
+                    raise TurnStopped
+            try:
+                event = next_event.result()
+            except StopAsyncIteration:
+                return
+            yield event
+    finally:
+        await r.delete(key)
+        await iterator.aclose()
+
+
 class _TurnLock:
     def __init__(self, session_id: str) -> None:
         self._key = f"agent-turn:{session_id}"
@@ -369,23 +428,29 @@ async def stream_chat(
 
             final = ""
             error: str | None = None
-            async for event in _turn_events(
+            turn = _turn_events(
                 auth,
                 sprite,
                 history,
                 message,
                 session_id,
                 _system_prompt(owner_name, persona),
-            ):
-                if event["type"] == "end":
-                    final = event.pop("_result_text")
-                elif event["type"] == "error":
-                    error = event["message"]
-                elif event["type"] == "tool":
-                    await _record_tool_event(
-                        owner_user_id, user_id, session_id, event, auth.env, agent_name
-                    )
-                yield _sse(event)
+            )
+            try:
+                async for event in _stoppable(turn, session_id):
+                    if event["type"] == "end":
+                        final = event.pop("_result_text")
+                    elif event["type"] == "error":
+                        error = event["message"]
+                    elif event["type"] == "tool":
+                        await _record_tool_event(
+                            owner_user_id, user_id, session_id, event, auth.env, agent_name
+                        )
+                    yield _sse(event)
+            except TurnStopped:
+                final = STOPPED_NOTE
+                yield _sse({"type": "text", "delta": STOPPED_NOTE})
+                yield _sse({"type": "end"})
 
             if final:
                 await memory_service.push_event(
@@ -465,18 +530,19 @@ async def run_chat(
         final = ""
         error: str | None = None
         cause: Exception | None = None
+        turn = _turn_events(
+            auth,
+            sprite,
+            history,
+            message,
+            session_id,
+            _system_prompt(owner_name, persona),
+            # Channel messages are untrusted input; scheduled runs (curator
+            # included) execute a trusted prompt and need their full toolset.
+            disallowed_tools=SLACK_DISALLOWED_TOOLS if channel else None,
+        )
         try:
-            async for event in _turn_events(
-                auth,
-                sprite,
-                history,
-                message,
-                session_id,
-                _system_prompt(owner_name, persona),
-                # Channel messages are untrusted input; scheduled runs (curator
-                # included) execute a trusted prompt and need their full toolset.
-                disallowed_tools=SLACK_DISALLOWED_TOOLS if channel else None,
-            ):
+            async for event in _stoppable(turn, session_id):
                 if event["type"] == "end":
                     final = event.pop("_result_text")
                 elif event["type"] == "error":
@@ -485,6 +551,8 @@ async def run_chat(
                     await _record_tool_event(
                         owner_user_id, user_id, session_id, event, auth.env, agent_name
                     )
+        except TurnStopped:
+            final = STOPPED_NOTE
         except Exception as e:
             # Substrate-level failures (exec crash, sprite gone) — record them
             # like harness errors so the stored session isn't a dangling prompt.

@@ -168,3 +168,36 @@ async def test_document_read_budget_aborts_the_command(client: AsyncClient, monk
     resp = await _vfs(client, api_key, "grep -ri 'alpha' /files")
 
     assert resp.status_code == 413
+
+
+async def test_machine_fs_404s_without_provisioned_computer(client: AsyncClient, monkeypatch):
+    """Browsing must never conjure a VM: a user who never ran a cloud agent
+    gets a 404 from the machine fs, not a freshly provisioned sprite."""
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    api_key, _ = await _register(client)
+
+    resp = await client.get("/api/v1/me/machine/fs", headers=_auth(api_key))
+
+    assert resp.status_code == 404
+
+
+async def test_overview_reports_machine_provisioned_state(client: AsyncClient, monkeypatch, pool):
+    """The CLI VFS decides whether to mount /computer from this flag alone, so
+    it must flip exactly when a ready sprite row exists — no machine API call."""
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    api_key, owner_id = await _register(client)
+
+    before = await client.get("/api/v1/me/overview", headers=_auth(api_key))
+    assert before.json()["machine"] == {"provisioned": False}
+
+    await pool.execute(
+        "INSERT INTO user_sprites (user_id, sprite_name, status) VALUES ($1, $2, 'ready')",
+        owner_id,
+        "sprite-test",
+    )
+    after = await client.get("/api/v1/me/overview", headers=_auth(api_key))
+    assert after.json()["machine"] == {"provisioned": True}
