@@ -370,23 +370,32 @@ export interface SourceSearchHit {
   ref?: string;
   name?: string;
   snippet?: string;
+  // Uniform ts_rank score all hits are merged on — comparable across sources.
+  rank?: number;
   // Marker: a federated source hit its result cap — `returned` of ~`estimated_total`
   // matches are shown. `truncated` distinguishes it from a real hit.
   truncated?: boolean;
   returned?: number;
   estimated_total?: number | null;
+  // Marker: the source's provider search failed (dead token, rate limit).
+  error?: string;
+  needs_reconnect?: boolean;
+}
+
+export interface SourceSearchResponse {
+  results: SourceSearchHit[];
+  has_more: boolean;
 }
 
 export async function searchSource(
   query: string,
-  source?: string,
-): Promise<SourceSearchHit[]> {
+  opts: { source?: string; limit?: number; offset?: number } = {},
+): Promise<SourceSearchResponse> {
   const params = new URLSearchParams({ q: query });
-  if (source) params.set("source", source);
-  const data = await apiFetch<{ results: SourceSearchHit[] }>(
-    `${ME}/sources/search?${params.toString()}`,
-  );
-  return data.results;
+  if (opts.source) params.set("source", opts.source);
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  return apiFetch<SourceSearchResponse>(`${ME}/sources/search?${params.toString()}`);
 }
 
 export async function fetchSourceHistory(
@@ -1514,17 +1523,6 @@ export async function semanticSearchPages(
   return data.pages;
 }
 
-export async function searchPages(
-  query: string,
-  limit = 20
-): Promise<Page[]> {
-  const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const data = await apiFetch<{ pages: Page[] }>(
-    `${ME}/pages/search?${params}`
-  );
-  return data.pages;
-}
-
 // --- Table Embeddings ---
 
 export async function setTableEmbeddingConfig(
@@ -1648,33 +1646,6 @@ export async function getSessionEvents(sessionId: string): Promise<SessionEvent[
     if (!page.has_more || page.events.length === 0) return all;
     offset += page.events.length;
   }
-}
-
-export interface HistoryEvent {
-  id: string;
-  owner_user_id: string;
-  created_by: string;
-  created_by_name: string | null;
-  agent_name: string;
-  event_type: string;
-  session_id: string | null;
-  tool_name: string | null;
-  content: string;
-  metadata: Record<string, unknown>;
-  attachments: Record<string, unknown>[] | null;
-  created_at: string;
-  rank?: number | null;
-}
-
-export async function searchEvents(
-  query: string,
-  limit = 100
-): Promise<HistoryEvent[]> {
-  const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const res = await apiFetch<{ events: HistoryEvent[] }>(
-    `${ME}/sessions/events/search?${params}`
-  );
-  return res.events;
 }
 
 export interface UploadedTranscript {

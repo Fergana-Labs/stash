@@ -17,9 +17,12 @@ class _FakeClient:
     def __exit__(self, *_args):
         return None
 
-    def search_sources(self, query, source=None, limit=20):
-        self._calls.append(("search", query, source, limit))
-        return [{"source": "files", "ref": "p1", "name": "Runbook", "snippet": "deploy"}]
+    def search_sources(self, query, source=None, limit=20, offset=0):
+        self._calls.append(("search", query, source, limit, offset))
+        return {
+            "results": [{"source": "files", "ref": "p1", "name": "Runbook", "snippet": "deploy"}],
+            "has_more": False,
+        }
 
     def list_sources(self):
         self._calls.append(("list",))
@@ -51,13 +54,13 @@ def _wire(monkeypatch) -> list:
 def test_search_everything_passes_no_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
     main.search("migration", source="", limit=20, as_json=True)
-    assert calls == [("search", "migration", None, 20)]
+    assert calls == [("search", "migration", None, 20, 0)]
 
 
 def test_search_scoped_passes_the_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
     main.search("rotate", source="src-9", limit=5, as_json=True)
-    assert calls == [("search", "rotate", "src-9", 5)]
+    assert calls == [("search", "rotate", "src-9", 5, 0)]
 
 
 def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
@@ -93,21 +96,29 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
         def __exit__(self, *_args):
             return None
 
-        def search_sources(self, query, source=None, limit=20):
-            return [
-                {"source_name": "Gmail (a@b.com)", "ref": "m1", "name": "Hello", "snippet": "hi"},
-                {
-                    "source_name": "Gmail (a@b.com)",
-                    "truncated": True,
-                    "returned": 25,
-                    "estimated_total": 213,
-                },
-                {
-                    "source_name": "Jira (PROJ)",
-                    "error": "reconnect it in Settings",
-                    "needs_reconnect": True,
-                },
-            ]
+        def search_sources(self, query, source=None, limit=20, offset=0):
+            return {
+                "results": [
+                    {
+                        "source_name": "Gmail (a@b.com)",
+                        "ref": "m1",
+                        "name": "Hello",
+                        "snippet": "hi",
+                    },
+                    {
+                        "source_name": "Gmail (a@b.com)",
+                        "truncated": True,
+                        "returned": 25,
+                        "estimated_total": 213,
+                    },
+                    {
+                        "source_name": "Jira (PROJ)",
+                        "error": "reconnect it in Settings",
+                        "needs_reconnect": True,
+                    },
+                ],
+                "has_more": True,
+            }
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_client", lambda: _MarkerClient())
@@ -117,3 +128,4 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
     assert "Hello" in out
     assert "213" in out
     assert "reconnect it in Settings" in out
+    assert "More matches exist" in out

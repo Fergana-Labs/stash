@@ -598,11 +598,14 @@ class StashClient:
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._get(f"/api/v1/me/sources/{source}/doc", ref=ref)
 
-    def search_sources(self, query: str, source: str | None = None, limit: int = 20) -> list:
-        params: dict = {"q": query, "limit": limit}
+    def search_sources(
+        self, query: str, source: str | None = None, limit: int = 20, offset: int = 0
+    ) -> dict:
+        """Returns the search envelope: {"results": [...], "has_more": bool}."""
+        params: dict = {"q": query, "limit": limit, "offset": offset}
         if source:
             params["source"] = source
-        return self._list("/api/v1/me/sources/search", "results", **params)
+        return self._get("/api/v1/me/sources/search", **params)
 
     # --- Tables ---
 

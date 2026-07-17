@@ -227,11 +227,11 @@ def _source_search_hint(source: dict) -> str | None:
     )
     match = TWITTER_HANDLE_RE.search(source["display_name"] or "")
     if not match:
-        return f"Twitter / X source. Scope search to this source before querying X. {personal}"
+        return f"Twitter / X source. {personal}"
     username = match.group(1)
     return (
-        "Twitter / X source. To search this user's recent public posts, scope search "
-        f"to this source and add `from:{username}` to the query. {personal}"
+        "Twitter / X source. To search this user's recent public posts, "
+        f"add `from:{username}` to the query. {personal}"
     )
 
 
@@ -514,12 +514,6 @@ FEDERATED_SEARCH_TYPES = {
     "linear",
     "twitter",
 }
-
-# Federated types excluded from UNSCOPED search fan-out: the owner's API quota
-# is metered (X free tier: one recent-search per 15 minutes), too scarce to
-# spend on searches that weren't aimed at the provider. Agents search these
-# only by explicitly scoping to the source handle.
-SCOPED_ONLY_SEARCH_TYPES = {"twitter"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
@@ -1196,18 +1190,20 @@ def _scoped_search_error(source: dict, e: Exception) -> Exception:
 
 async def _federated_search(
     source: dict, query: str, limit: int, *, swallow_errors: bool = True
-) -> list[dict]:
-    """Run a federated source's native provider search. Returns unified hits
-    ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
-    provider error (revoked token, rate limit) is logged and returned as a
-    single error marker ({source, source_name, error, needs_reconnect}) so the
-    rest of the search stays alive while the dead source is still surfaced —
-    dropping it silently would read as "no matches" for that source. A SCOPED
-    search raises instead, so the API serves an explicit HTTP error.
+) -> tuple[list[dict], list[dict]]:
+    """Run a federated source's native provider search. Returns (hits, markers):
+    hits are unified ({source, source_name, ref, name, snippet}); markers ride
+    alongside instead of mixing into the hit list so callers can rank/paginate
+    hits without sniffing dict keys. In the unscoped fan-out a provider error
+    (revoked token, rate limit) is logged and returned as an error marker
+    ({source, source_name, error, needs_reconnect}) so the rest of the search
+    stays alive while the dead source is still surfaced — dropping it silently
+    would read as "no matches" for that source. A SCOPED search raises instead,
+    so the API serves an explicit HTTP error.
 
     Providers cap results (SEARCH_LIMIT); when a provider reports it matched
-    more than it returned, a trailing truncation marker ({source, source_name,
-    truncated, returned, estimated_total}) is appended so callers disclose the
+    more than it returned, a truncation marker ({source, source_name,
+    truncated, returned, estimated_total}) is emitted so callers disclose the
     cut instead of presenting the top slice as the whole result."""
     source_type = source["source_type"]
     try:
@@ -1224,7 +1220,7 @@ async def _federated_search(
         elif source_type == "twitter":
             from ..integrations.twitter.indexer import search_twitter as fn
         else:
-            return []
+            return [], []
         result = await fn(source, query, limit)
     except Exception as exc:
         if not swallow_errors:
@@ -1244,7 +1240,7 @@ async def _federated_search(
         else:
             detail = f"{source['display_name'] or source_type} search failed"
             needs_reconnect = False
-        return [
+        return [], [
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
@@ -1272,8 +1268,9 @@ async def _federated_search(
         }
         for h in hits
     ]
+    markers = []
     if truncated:
-        output.append(
+        markers.append(
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
@@ -1282,7 +1279,7 @@ async def _federated_search(
                 "estimated_total": estimated_total,
             }
         )
-    return output
+    return output, markers
 
 
 async def search_documents(
@@ -1948,27 +1945,51 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
     return hits
 
 
-async def search_all(
+async def _uniform_ranks(query: str, texts: list[str]) -> list[float]:
+    """Score every candidate's display text against the query on ONE scale.
+    Per-source ts_rank/provider orderings are not comparable across sources,
+    so the merged ordering re-scores each hit's (name + snippet) identically."""
+    if not texts:
+        return []
+    rows = await get_pool().fetch(
+        "SELECT ts_rank(to_tsvector('english', t.text),"
+        "               websearch_to_tsquery('english', $2)) AS rank "
+        "FROM unnest($1::text[]) WITH ORDINALITY AS t(text, ord) "
+        "ORDER BY t.ord",
+        texts,
+        query,
+    )
+    return [r["rank"] for r in rows]
+
+
+def _rank_text(hit: dict) -> str:
+    return f"{hit.get('name') or ''}\n{hit.get('snippet') or ''}"
+
+
+async def _gather_search_candidates(
     owner_user_id: UUID,
     user_id: UUID,
     query: str,
-    source: str | None = None,
-    limit: int = 20,
-) -> list[dict] | None:
-    """Search across sources. Omit `source` to search everything the user can
-    see (native files + sessions + their connected sources), or pass a handle to
-    scope to one. Returns None when a named source is unknown / not owned."""
-    results: list[dict] = []
+    source: str | None,
+    fetch_limit: int,
+) -> tuple[list[dict], list[dict], dict | None] | None:
+    """Collect unranked hits from every sub-search: native sessions + pages,
+    exact provider-id matches, copied-content FTS, and federated provider
+    search. Returns (hits, markers, connected), or None when a named source is
+    unknown / not owned. Sub-searches keep their own caps (sessions 200, FTS
+    docs 100, providers SEARCH_LIMIT) — paginating past those is out of scope."""
+    hits: list[dict] = []
+    markers: list[dict] = []
 
     if source in (None, NATIVE_SESSIONS):
         from .memory_service import search_scope_events
 
-        events = await search_scope_events(owner_user_id, user_id, query, limit=limit)
-        results += [
+        events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
+        hits += [
             {
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
-                "snippet": (e.get("content") or "")[:300],
+                "snippet": (e.get("content") or "")[:SEARCH_SNIPPET_CHARS],
             }
             for e in events
         ]
@@ -1976,13 +1997,15 @@ async def search_all(
     if source in (None, NATIVE_FILES):
         from .files_tree_service import search_pages_fts
 
-        pages = await search_pages_fts(owner_user_id, query, limit=limit, user_id=user_id)
-        results += [
+        pages = await search_pages_fts(owner_user_id, query, limit=fetch_limit, user_id=user_id)
+        hits += [
             {
                 "source": NATIVE_FILES,
                 "ref": str(p["id"]),
                 "name": p["name"],
-                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[:300],
+                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[
+                    :SEARCH_SNIPPET_CHARS
+                ],
             }
             for p in pages
         ]
@@ -2001,7 +2024,7 @@ async def search_all(
         # A query that IS a provider id (a Drive file id, a Gmail message id, …)
         # resolves to the indexed document directly. This is how an agent holding
         # only a provider URL finds the document's Stash path.
-        results += await _external_ref_matches(searched_sources, query, limit)
+        hits += await _external_ref_matches(searched_sources, query, fetch_limit)
 
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match).
@@ -2009,9 +2032,9 @@ async def search_all(
             user_id=user_id,
             query=query,
             source=connected,
-            limit=limit,
+            limit=fetch_limit,
         )
-        results += [
+        hits += [
             {
                 "source": d["source_id"],
                 "source_name": d["source_name"],
@@ -2026,22 +2049,60 @@ async def search_all(
         # one source, raising on provider errors so a dead connection is never
         # mistaken for "no matches"; unscoped → fan out across the user's
         # federated sources (each call keeps search alive by returning its own
-        # error as a marker instead of raising, and scoped-only types are
-        # skipped — see SCOPED_ONLY_SEARCH_TYPES).
+        # error as a marker instead of raising).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                results += await _federated_search(connected, query, limit, swallow_errors=False)
+                fed_hits, fed_markers = await _federated_search(
+                    connected, query, fetch_limit, swallow_errors=False
+                )
+                hits += fed_hits
+                markers += fed_markers
         else:
-            federated = [
-                s
-                for s in searched_sources
-                if s["source_type"] in FEDERATED_SEARCH_TYPES
-                and s["source_type"] not in SCOPED_ONLY_SEARCH_TYPES
-            ]
-            for hits in await asyncio.gather(
-                *(_federated_search(s, query, limit) for s in federated)
+            federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
+            for fed_hits, fed_markers in await asyncio.gather(
+                *(_federated_search(s, query, fetch_limit) for s in federated)
             ):
-                results += hits
+                hits += fed_hits
+                markers += fed_markers
+
+    return hits, markers, connected
+
+
+async def search_all(
+    owner_user_id: UUID,
+    user_id: UUID,
+    query: str,
+    source: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict | None:
+    """Search across sources. Omit `source` to search everything the user can
+    see (native files + sessions + their connected sources), or pass a handle to
+    scope to one. Returns {"results": [...], "has_more": bool}, or None when a
+    named source is unknown / not owned.
+
+    Every candidate is re-scored on one uniform ts_rank scale over its display
+    text, then the merged list is sorted and sliced [offset : offset + limit].
+    Each hit carries its `rank` so callers can merge these results with their
+    own scored lists (the web search page blends in tables/skills client-side).
+    Rank-0 hits sink to the bottom but are never dropped: exact provider-id
+    matches and provider-relevant name-only hits won't token-match the query.
+    Markers (provider errors, truncation) trail the page unpaginated — they
+    describe the whole search, not one slice, and must never hide behind a
+    page boundary. has_more counts hits only."""
+    # +1 sentinel: gathering exactly offset+limit hits could never prove a
+    # further page exists.
+    gathered = await _gather_search_candidates(
+        owner_user_id, user_id, query, source, fetch_limit=offset + limit + 1
+    )
+    if gathered is None:
+        return None
+    hits, markers, connected = gathered
+
+    ranks = await _uniform_ranks(query, [_rank_text(h) for h in hits])
+    ranked = sorted(zip(hits, ranks), key=lambda pair: pair[1], reverse=True)
+    page = [{**h, "rank": r} for h, r in ranked[offset : offset + limit]]
+    has_more = len(hits) > offset + limit
 
     await _audit_source_read(
         action="source.searched",
@@ -2052,7 +2113,7 @@ async def search_all(
         metadata={
             "query_hash": security_audit_service.hash_value(query),
             "limit": limit,
-            "result_count": len(results),
+            "result_count": len(page) + len(markers),
         },
     )
-    return results
+    return {"results": page + markers, "has_more": has_more}

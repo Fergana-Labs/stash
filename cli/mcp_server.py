@@ -23,14 +23,16 @@ def _json(obj: object) -> str:
 
 
 @mcp.tool()
-def stash_search(query: str, source: str = "", limit: int = 20) -> str:
+def stash_search(query: str, source: str = "", limit: int = 20, offset: int = 0) -> str:
     """Search across all your sources — native files + session transcripts +
-    connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola).
+    connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto
+    one relevance scale. Returns {"results": [...], "has_more": bool}; page
+    with `offset`.
 
     Pass `source` to scope to one (a handle from stash_list_sources: 'files',
     'sessions', or a connected-source id); omit it to search everything.
     """
-    return _json(_client().search_sources(query, source=source or None, limit=limit))
+    return _json(_client().search_sources(query, source=source or None, limit=limit, offset=offset))
 
 
 @mcp.tool()

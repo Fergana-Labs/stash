@@ -724,8 +724,9 @@ async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncCl
 
     results = await source_service.search_all(ws, owner_id, "gh-blob-1a2b3c", source=src["id"])
 
-    assert [(r["ref"], r["name"]) for r in results] == [("docs/status.md", "status.md")]
-    assert await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"]) == []
+    assert [(r["ref"], r["name"]) for r in results["results"]] == [("docs/status.md", "status.md")]
+    empty = await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"])
+    assert empty == {"results": [], "has_more": False}
 
 
 # --- search-driven sources (twitter) -----------------------------------------
@@ -828,10 +829,10 @@ async def test_search_driven_sources_stay_out_of_sync_queue(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_unscoped_search_skips_scoped_only_federated_sources(client, monkeypatch):
-    """Unscoped fan-out must not spend X's metered quota; an explicitly scoped
-    search does — and surfaces provider errors instead of swallowing them into
-    a misleading "no results"."""
+async def test_unscoped_search_includes_twitter_in_the_fan_out(client, monkeypatch):
+    """Twitter fans out like every other federated source; an explicitly scoped
+    search surfaces provider errors instead of swallowing them into a
+    misleading "no results"."""
     from backend.integrations.twitter import indexer as twitter_indexer
 
     api_key, owner_id = await _register(client)
@@ -846,11 +847,11 @@ async def test_unscoped_search_skips_scoped_only_federated_sources(client, monke
 
     monkeypatch.setattr(twitter_indexer, "search_twitter", fake_search)
     await source_service.search_all(ws, owner_id, "anything at all")
-    assert queries == []
+    assert queries == ["anything at all"]
 
     scoped = await source_service.search_all(ws, owner_id, "hello", source=src["id"])
-    assert queries == ["hello"]
-    assert any(h.get("ref") == "1" for h in scoped)
+    assert queries == ["anything at all", "hello"]
+    assert any(h.get("ref") == "1" for h in scoped["results"])
 
     async def dead_connection(source, query, limit):
         raise RuntimeError("X said 401")
@@ -1054,11 +1055,11 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
 
         # Unscoped search spans native pages + the connected source.
         hits = _tool_json(await agent_runtime._search.handler({"query": "migration"}))
-        assert any(h["source"] == source_service.NATIVE_FILES for h in hits)
+        assert any(h["source"] == source_service.NATIVE_FILES for h in hits["results"])
         scoped = _tool_json(
             await agent_runtime._search.handler({"query": "rotate tokens", "source": src["id"]})
         )
-        assert any(h["ref"] == "specs/auth.md" for h in scoped)
+        assert any(h["ref"] == "specs/auth.md" for h in scoped["results"])
     finally:
         agent_runtime._user_ctx.reset(utoken)
         agent_runtime._scope_ctx.reset(scope_token)
@@ -2035,7 +2036,7 @@ async def test_notion_is_full_text_searchable(client: AsyncClient):
 
     # And it's full-text searchable, scoped to the Notion source.
     hits = await source_service.search_all(ws, owner_id, "rotate tokens", source=src["id"])
-    assert any(h["ref"] == "Auth" for h in hits)
+    assert any(h["ref"] == "Auth" for h in hits["results"])
 
 
 @pytest.mark.asyncio
@@ -2076,7 +2077,7 @@ async def test_jira_is_index_only_with_federated_search(client: AsyncClient, mon
 
     # Search is federated (not our FTS — jira_documents holds no content).
     hits = await source_service.search_all(ws, owner_id, "login", source=src["id"])
-    assert any(h["ref"] == "PROJ-9" for h in hits)
+    assert any(h["ref"] == "PROJ-9" for h in hits["results"])
 
     # Read lazily fetches the body from the provider.
     doc = await source_service.read_document(src, "PROJ-9")
@@ -2110,14 +2111,17 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     # only failure metadata; a scoped search raises instead.
     hits = await source_service.search_all(ws, owner_id, "customer transcript")
 
-    assert hits == [
-        {
-            "source": src["id"],
-            "source_name": "PROJ",
-            "error": "PROJ search failed",
-            "needs_reconnect": False,
-        }
-    ]
+    assert hits == {
+        "results": [
+            {
+                "source": src["id"],
+                "source_name": "PROJ",
+                "error": "PROJ search failed",
+                "needs_reconnect": False,
+            }
+        ],
+        "has_more": False,
+    }
     assert captured_logs == [
         (
             "federated search failed source=%s source_type=%s exception_type=%s",
@@ -2157,7 +2161,7 @@ async def test_unscoped_search_surfaces_dead_federated_source(client: AsyncClien
 
     results = await source_service.search_all(ws, owner_id, "anything")
 
-    markers = [r for r in results if r.get("source") == src["id"]]
+    markers = [r for r in results["results"] if r.get("source") == src["id"]]
     assert markers == [
         {
             "source": src["id"],
@@ -2195,13 +2199,14 @@ async def test_search_appends_truncation_marker_when_provider_caps(
     monkeypatch.setattr(indexer, "search_gmail", capped_search)
     results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
 
-    assert [r for r in results if r.get("ref")] == [
+    assert [r for r in results["results"] if r.get("ref")] == [
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
             "ref": "m0",
             "name": "msg 0",
             "snippet": "",
+            "rank": 0.0,
         },
         {
             "source": src["id"],
@@ -2209,9 +2214,10 @@ async def test_search_appends_truncation_marker_when_provider_caps(
             "ref": "m1",
             "name": "msg 1",
             "snippet": "",
+            "rank": 0.0,
         },
     ]
-    assert [r for r in results if r.get("truncated")] == [
+    assert [r for r in results["results"] if r.get("truncated")] == [
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
@@ -2245,7 +2251,176 @@ async def test_search_omits_truncation_marker_when_not_capped(client: AsyncClien
     monkeypatch.setattr(indexer, "search_gmail", complete_search)
     results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
 
-    assert not any(r.get("truncated") for r in results)
+    assert not any(r.get("truncated") for r in results["results"])
+
+
+async def _github_source_with_docs(ws: UUID, owner_id: UUID, docs: dict[str, str]) -> dict:
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    for path, content in docs.items():
+        await source_service.upsert_content_document(
+            table="github_documents",
+            source_id=UUID(src["id"]),
+            owner_user_id=ws,
+            path=path,
+            name=path,
+            content=content,
+        )
+    return src
+
+
+@pytest.mark.asyncio
+async def test_search_merges_sources_on_one_uniform_relevance_scale(client: AsyncClient):
+    """The merged list is ordered by re-scoring every hit's text on one ts_rank
+    scale — a dense match from a source gathered LATE (github docs) must outrank
+    a thin match from a source gathered EARLY (native pages)."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+
+    thin = "token rotation " + "unrelated words about deployment pipelines " * 40
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Runbook", "content": thin},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    await _github_source_with_docs(
+        ws, owner_id, {"auth.md": "token rotation policy: token rotation happens hourly"}
+    )
+
+    results = await source_service.search_all(ws, owner_id, "token rotation")
+
+    refs = [r["ref"] for r in results["results"]]
+    assert refs.index("auth.md") < refs.index(page.json()["id"])
+
+
+@pytest.mark.asyncio
+async def test_search_paginates_the_merged_list(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _github_source_with_docs(
+        ws,
+        owner_id,
+        {
+            "a.md": "kumquat harvest notes",
+            "b.md": "kumquat pruning notes",
+            "c.md": "kumquat watering notes",
+        },
+    )
+
+    first = await source_service.search_all(ws, owner_id, "kumquat", limit=2, offset=0)
+    second = await source_service.search_all(ws, owner_id, "kumquat", limit=2, offset=2)
+    beyond = await source_service.search_all(ws, owner_id, "kumquat", limit=2, offset=10)
+
+    assert len(first["results"]) == 2 and first["has_more"] is True
+    assert len(second["results"]) == 1 and second["has_more"] is False
+    assert beyond == {"results": [], "has_more": False}
+    # The pages tile the same merged ordering with no overlap or gap.
+    refs = [r["ref"] for r in first["results"] + second["results"]]
+    assert sorted(refs) == ["a.md", "b.md", "c.md"]
+
+
+@pytest.mark.asyncio
+async def test_markers_trail_every_page(client: AsyncClient, monkeypatch):
+    """Error markers describe the whole search, not one slice — a caller on any
+    page must still learn a source is dead, so markers trail every page and are
+    never counted by has_more."""
+    from fastapi import HTTPException
+
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _github_source_with_docs(
+        ws, owner_id, {"a.md": "kumquat harvest notes", "b.md": "kumquat pruning notes"}
+    )
+    await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def dead_search(source, query, limit):
+        raise HTTPException(status_code=401, detail="gmail token expired")
+
+    monkeypatch.setattr(indexer, "search_gmail", dead_search)
+
+    for offset, expect_more in ((0, True), (1, False)):
+        page = await source_service.search_all(ws, owner_id, "kumquat", limit=1, offset=offset)
+        assert page["has_more"] is expect_more
+        assert page["results"][0]["ref"].endswith(".md")
+        assert page["results"][-1]["needs_reconnect"] is True
+
+
+@pytest.mark.asyncio
+async def test_rank_zero_hits_are_kept_at_the_bottom(client: AsyncClient, monkeypatch):
+    """A federated hit whose text doesn't token-match the query (Drive hits have
+    empty snippets; a stemming miss is enough) still came back provider-relevant,
+    so it sinks to the bottom instead of being dropped."""
+    from backend.integrations.google import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="drive-root",
+        display_name="Drive",
+    )
+
+    async def fake_search(source, query, limit):
+        return [
+            {"ref": "f1", "name": "Q3 OKRs.pdf", "snippet": ""},
+            {"ref": "f2", "name": "kumquat budget.xlsx", "snippet": ""},
+        ]
+
+    monkeypatch.setattr(indexer, "search_drive", fake_search)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"])
+
+    assert [r["ref"] for r in results["results"]] == ["f2", "f1"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_search_is_ranked_and_paginated(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _github_source_with_docs(
+        ws,
+        owner_id,
+        {
+            "dense.md": "kumquat kumquat kumquat kumquat",
+            "thin.md": "kumquat " + "filler words about something else " * 40,
+        },
+    )
+
+    first = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"], limit=1)
+    second = await source_service.search_all(
+        ws, owner_id, "kumquat", source=src["id"], limit=1, offset=1
+    )
+
+    assert [r["ref"] for r in first["results"]] == ["dense.md"]
+    assert first["has_more"] is True
+    assert [r["ref"] for r in second["results"]] == ["thin.md"]
+    assert second["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_negative_offset(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "anything", "offset": -1},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -3076,8 +3251,8 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
 
     results = await source_service.search_all(ws, owner_id, "real source", source=src["id"])
 
-    assert any(r["ref"] == "FER/FER-00199" for r in results)
-    hit = next(r for r in results if r["ref"] == "FER/FER-00199")
+    assert any(r["ref"] == "FER/FER-00199" for r in results["results"])
+    hit = next(r for r in results["results"] if r["ref"] == "FER/FER-00199")
     assert hit["source"] == src["id"]
     assert hit["name"] == "FER-199 Make Linear a real source"
     # The snippet is the rendered issue body, not just the title — rankers

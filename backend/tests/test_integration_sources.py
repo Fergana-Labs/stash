@@ -490,8 +490,6 @@ def test_twitter_is_oauth_searchable_source():
     assert source_service.SOURCE_TABLE["twitter"] == "twitter_posts"
     assert "twitter_posts" not in source_service.CONTENT_TABLES
     assert "twitter" in source_service.FEDERATED_SEARCH_TYPES
-    # Unscoped fan-out must not spend X's metered search quota.
-    assert "twitter" in source_service.SCOPED_ONLY_SEARCH_TYPES
     # Search-driven, no background sync: search results land in the cache live,
     # so a scheduled indexer would only burn the owner's X rate limit.
     assert "twitter" not in source_tasks.INDEXERS

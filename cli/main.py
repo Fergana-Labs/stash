@@ -2341,10 +2341,11 @@ def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
     if _use_json(as_json):
         output_json(data)
         return
-    if not data:
+    hits = data["results"]
+    if not hits:
         console.print("[dim]No matches.[/dim]")
         return
-    for hit in data:
+    for hit in hits:
         label = hit.get("source_name") or hit.get("source")
         if hit.get("error"):
             console.print(f"  [yellow]⚠ {label}: {hit['error']}[/yellow]")
@@ -2367,6 +2368,8 @@ def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
             snippet = snippet[:300] + "…"
         if snippet:
             console.print(f"    {snippet}")
+    if data["has_more"]:
+        console.print("  [dim]More matches exist — raise -n or refine the query.[/dim]")
 
 
 @app.command("search")

@@ -8,22 +8,24 @@ import CustomSelect from "../../components/CustomSelect";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
+import SourceDocViewer from "../../components/SourceDocViewer";
 import {
   getSidebar,
   getPublicSkill,
   getSessionEvents,
   listAllTables,
   listSkills,
-  searchEvents,
-  searchPages as searchPagesApi,
-  type HistoryEvent,
+  searchSource,
   type PublicSkillDetail,
   type SessionEvent,
   type Sidebar,
+  type SidebarSession,
   type Skill,
+  type SourceSearchHit,
   type TreeFolder,
+  type TreePage,
 } from "../../lib/api";
-import type { Page, TableWithOwner } from "../../lib/types";
+import type { TableWithOwner } from "../../lib/types";
 
 type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
 
@@ -39,12 +41,16 @@ function bucketCount(n: number): string {
 
 interface SearchResult {
   id: string;
-  kind: "Session" | "Page" | "Table" | "Skill";
+  kind: "Session" | "Page" | "Table" | "Skill" | "Source";
   title: string;
-  href: string;
+  // Connected-source hits have no internal route: they render as a row that
+  // expands an inline document viewer instead of a link.
+  href: string | null;
+  external?: { source: string; ref: string; name?: string };
   sourceName: string;
   detail: ReactNode;
-  updatedAt: string;
+  // Unified search hits don't carry timestamps; rows without one hide the time.
+  updatedAt: string | null;
   relevance: number;
 }
 
@@ -92,6 +98,9 @@ function SearchPageInner() {
     () => initialContentScope(searchParams.get("content"), initialSessionId)
   );
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [sourceNotices, setSourceNotices] = useState<string[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [openExternalId, setOpenExternalId] = useState<string | null>(null);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [fetching, setFetching] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -162,6 +171,8 @@ function SearchPageInner() {
     const q = rawQuery.trim();
     if (!q) {
       setResults([]);
+      setSourceNotices([]);
+      setHasMore(false);
       setSearchedQuery("");
       setSearching(false);
       return;
@@ -169,10 +180,12 @@ function SearchPageInner() {
 
     setSearching(true);
     setError("");
+    setSourceNotices([]);
+    setHasMore(false);
+    setOpenExternalId(null);
     setSearchedQuery(q);
     try {
       const nextResults: SearchResult[] = [];
-      const includeSessions = contentScope === "all" || contentScope === "sessions";
       const includePages = contentScope === "all" || contentScope === "pages";
       const includeTables = contentScope === "all" || contentScope === "tables";
       const includeSkills = contentScope === "all" || contentScope === "skills";
@@ -202,23 +215,33 @@ function SearchPageInner() {
         nextResults.push(...searchSkills(skills, q, sourceName));
       }
 
-      if (includeSessions && !selectedFolderId && !selectedPageId) {
-        const events = await searchEvents(q, 100);
-        nextResults.push(...searchSessionsFromEvents(events, q, sourceName));
-      }
-
-      if (includePages) {
-        const pages = await searchPagesApi(q, 50);
+      // One unified call covers sessions + pages + connected sources, merged
+      // and ranked server-side. A folder/page filter only makes sense for
+      // pages, so it narrows the call to the files source (matching the old
+      // behavior of skipping sessions/skills/tables under a filter).
+      const unifiedScope = unifiedSearchScope(contentScope, {
+        filtered: Boolean(selectedFolderId || selectedPageId),
+      });
+      if (unifiedScope !== null) {
+        const { results: hits, has_more } = await searchSource(q, {
+          source: unifiedScope,
+          limit: 50,
+        });
         const folderIds = sidebar
           ? descendantFolderIds(sidebar.files.folders, selectedFolderId)
           : new Set<string>();
         nextResults.push(
-          ...searchPages(pages, q, sourceName, {
+          ...unifiedResults(hits, q, {
+            sourceName,
+            sessionsById: new Map((sidebar?.sessions ?? []).map((s) => [s.session_id, s])),
+            pagesById: new Map((sidebar?.files.pages ?? []).map((p) => [p.id, p])),
             selectedFolderId,
             selectedPageId,
             folderIds,
           })
         );
+        setSourceNotices(markerNotices(hits));
+        setHasMore(has_more);
       }
 
       if (includeTables && !selectedFolderId && !selectedPageId) {
@@ -342,6 +365,16 @@ function SearchPageInner() {
 
             {searching && <SearchResultsSkeleton />}
 
+            {!searching && sourceNotices.length > 0 && (
+              <div className="mt-4 flex flex-col gap-1">
+                {sourceNotices.map((notice) => (
+                  <p key={notice} className="text-[12px] text-muted-foreground">
+                    ⚠ {notice}
+                  </p>
+                ))}
+              </div>
+            )}
+
             {!searching && searchedQuery && results.length === 0 && !error && (
               <p className="py-10 text-center text-[13px] text-muted-foreground">
                 No results found for &ldquo;{searchedQuery}&rdquo;.
@@ -359,34 +392,48 @@ function SearchPageInner() {
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {results.map((result) => (
-                    <Link
-                      key={`${result.kind}:${result.id}`}
-                      href={result.href}
-                      className="rounded-lg border border-border bg-base px-4 py-3 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {result.kind}
-                            </span>
-                            <h3 className="truncate text-[14px] font-semibold text-foreground">
-                              {result.title}
-                            </h3>
-                          </div>
-                          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
-                            {result.detail}
-                          </p>
+                  {results.map((result) => {
+                    const key = `${result.kind}:${result.id}`;
+                    if (result.external) {
+                      return (
+                        <div key={key}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenExternalId(openExternalId === key ? null : key)
+                            }
+                            className="w-full cursor-pointer rounded-lg border border-border bg-base px-4 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                          >
+                            <ResultCard result={result} />
+                          </button>
+                          {openExternalId === key && (
+                            <SourceDocViewer
+                              source={result.external.source}
+                              providerLabel={result.sourceName}
+                              refValue={result.external.ref}
+                              name={result.external.name}
+                              onClose={() => setOpenExternalId(null)}
+                            />
+                          )}
                         </div>
-                        <div className="shrink-0 text-right text-[11px] text-muted-foreground">
-                          <div>{result.sourceName}</div>
-                          <div>{relativeTime(result.updatedAt)}</div>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      );
+                    }
+                    return (
+                      <Link
+                        key={key}
+                        href={result.href!}
+                        className="rounded-lg border border-border bg-base px-4 py-3 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                      >
+                        <ResultCard result={result} />
+                      </Link>
+                    );
+                  })}
                 </div>
+                {hasMore && (
+                  <p className="mt-3 text-center text-[12px] text-muted-foreground">
+                    Showing the top matches — refine your query to see more.
+                  </p>
+                )}
               </section>
             )}
           </main>
@@ -394,6 +441,138 @@ function SearchPageInner() {
       </div>
     </WorkspaceShell>
   );
+}
+
+function ResultCard({ result }: { result: SearchResult }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            {result.kind}
+          </span>
+          <h3 className="truncate text-[14px] font-semibold text-foreground">
+            {result.title}
+          </h3>
+        </div>
+        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
+          {result.detail}
+        </p>
+      </div>
+      <div className="shrink-0 text-right text-[11px] text-muted-foreground">
+        <div>{result.sourceName}</div>
+        {result.updatedAt && <div>{relativeTime(result.updatedAt)}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Which unified-search scope a content filter maps to: "" searches everything
+// (sessions + pages + connected sources), a handle scopes the call, and null
+// skips the unified call entirely.
+function unifiedSearchScope(
+  scope: ContentScope,
+  opts: { filtered: boolean }
+): string | null {
+  if (scope === "tables" || scope === "skills") return null;
+  if (opts.filtered) return scope === "sessions" ? null : "files";
+  if (scope === "sessions") return "sessions";
+  if (scope === "pages") return "files";
+  return "";
+}
+
+function unifiedResults(
+  hits: SourceSearchHit[],
+  query: string,
+  ctx: {
+    sourceName: string;
+    sessionsById: Map<string, SidebarSession>;
+    pagesById: Map<string, TreePage>;
+    selectedFolderId: string;
+    selectedPageId: string;
+    folderIds: Set<string>;
+  }
+): SearchResult[] {
+  const results: SearchResult[] = [];
+  const seenSessions = new Set<string>();
+  for (const hit of hits) {
+    if (!hit.ref) continue; // markers surface as notices, not result rows
+    const snippet = hit.snippet ?? "";
+    // Server rank carries the cross-source ordering; the client term score
+    // keeps unified hits comparable with client-scored tables and skills.
+    const relevance =
+      (hit.rank ?? 0) * 1000 +
+      scoreValues(query, [
+        { value: hit.name, weight: 8 },
+        { value: snippet, weight: 1 },
+      ]);
+
+    if (hit.source === "sessions") {
+      // Several matching events can point at the same session; hits arrive
+      // rank-descending, so the first one is that session's best.
+      if (seenSessions.has(hit.ref)) continue;
+      seenSessions.add(hit.ref);
+      const session = ctx.sessionsById.get(hit.ref);
+      results.push({
+        id: hit.ref,
+        kind: "Session",
+        title: session?.title || hit.ref,
+        href: `/sessions/${encodeURIComponent(hit.ref)}`,
+        sourceName: ctx.sourceName,
+        detail: contextSnippet(snippet, query) ?? snippet.slice(0, 220),
+        updatedAt: session?.updated_at ?? null,
+        relevance,
+      });
+      continue;
+    }
+
+    if (hit.source === "files") {
+      if (ctx.selectedPageId && hit.ref !== ctx.selectedPageId) continue;
+      if (ctx.selectedFolderId) {
+        const page = ctx.pagesById.get(hit.ref);
+        if (!page?.folder_id || !ctx.folderIds.has(page.folder_id)) continue;
+      }
+      results.push({
+        id: hit.ref,
+        kind: "Page",
+        title: hit.name || hit.ref,
+        href: `/p/${hit.ref}`,
+        sourceName: ctx.sourceName,
+        detail: contextSnippet(snippet, query) ?? (snippet.slice(0, 220) || "Page"),
+        updatedAt: null,
+        relevance,
+      });
+      continue;
+    }
+
+    results.push({
+      id: `${hit.source}:${hit.ref}`,
+      kind: "Source",
+      title: hit.name || hit.ref,
+      href: null,
+      external: { source: hit.source, ref: hit.ref, name: hit.name },
+      sourceName: hit.source_name ?? "Connected source",
+      detail: contextSnippet(snippet, query) ?? (snippet.slice(0, 220) || hit.ref),
+      updatedAt: null,
+      relevance,
+    });
+  }
+  return results;
+}
+
+// Marker entries (a dead source, a provider result cap) become notice lines so
+// "reconnect me" and "there was more" never read as "no matches."
+function markerNotices(hits: SourceSearchHit[]): string[] {
+  const notices: string[] = [];
+  for (const hit of hits) {
+    const label = hit.source_name ?? hit.source;
+    if (hit.error) notices.push(`${label}: ${hit.error}`);
+    if (hit.truncated) {
+      const total = hit.estimated_total ? ` of ~${hit.estimated_total}` : "";
+      notices.push(`${label}: showing the first ${hit.returned}${total} matches.`);
+    }
+  }
+  return notices;
 }
 
 function searchSingleSession(
@@ -485,54 +664,6 @@ function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): Sear
   ];
 }
 
-function searchSessionsFromEvents(
-  events: HistoryEvent[],
-  query: string,
-  sourceName: string
-): SearchResult[] {
-  const resultsBySession = new Map<string, SearchResult>();
-  for (const event of events) {
-    if (!event.session_id) continue;
-    const id = event.session_id;
-    const existing = resultsBySession.get(id);
-    const relevance = scoreHistoryEvent(query, event);
-    if (
-      existing &&
-      (existing.relevance > relevance ||
-        (existing.relevance === relevance &&
-          new Date(existing.updatedAt) >= new Date(event.created_at)))
-    ) {
-      continue;
-    }
-    resultsBySession.set(id, {
-      id,
-      kind: "Session",
-      title: event.session_id,
-      href: `/sessions/${encodeURIComponent(event.session_id)}`,
-      sourceName,
-      detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
-      updatedAt: event.created_at,
-      relevance,
-    });
-  }
-  return [...resultsBySession.values()];
-}
-
-function sessionSearchSnippet(event: HistoryEvent, query: string): string {
-  const content = event.content.trim();
-  if (!content) return `${event.agent_name || "agent"} / ${event.event_type}`;
-
-  const lower = content.toLowerCase();
-  const index = lower.indexOf(query.toLowerCase());
-  if (index === -1) return content.slice(0, 220);
-
-  const start = Math.max(0, index - 80);
-  const end = Math.min(content.length, index + query.length + 140);
-  const prefix = start > 0 ? "..." : "";
-  const suffix = end < content.length ? "..." : "";
-  return `${prefix}${content.slice(start, end)}${suffix}`;
-}
-
 function sessionEventSnippet(event: SessionEvent, query: string): string {
   const content = event.content.trim();
   if (!content) return `${event.agent_name || "agent"} session event`;
@@ -546,43 +677,6 @@ function sessionEventSnippet(event: SessionEvent, query: string): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < content.length ? "..." : "";
   return `${prefix}${content.slice(start, end)}${suffix}`;
-}
-
-function searchPages(
-  pages: Page[],
-  query: string,
-  sourceName: string,
-  scope: {
-    selectedFolderId: string;
-    selectedPageId: string;
-    folderIds: Set<string>;
-  }
-): SearchResult[] {
-  return pages
-    .filter((page) => {
-      if (scope.selectedPageId) return page.id === scope.selectedPageId;
-      if (!scope.selectedFolderId) return true;
-      return Boolean(page.folder_id && scope.folderIds.has(page.folder_id));
-    })
-    .map((page) => ({
-      id: page.id,
-      kind: "Page" as const,
-      title: page.name,
-      href: `/p/${page.id}`,
-      sourceName,
-      detail:
-          contextSnippet(
-            page.content_type === "html"
-              ? stripHtml(page.content_html ?? "")
-              : page.content_markdown ?? "",
-            query
-          ) ??
-          (page.content_type === "html"
-            ? stripHtml(page.content_html ?? "").slice(0, 220) || "HTML page"
-            : page.content_markdown?.slice(0, 220) || "Markdown page"),
-      updatedAt: page.updated_at,
-      relevance: scorePage(query, page),
-    }));
 }
 
 function searchTables(tables: TableWithOwner[], query: string): SearchResult[] {
@@ -776,8 +870,12 @@ function pageSnippet(markdown?: string | null, html?: string | null): string {
 function sortResults(results: SearchResult[]): SearchResult[] {
   return [...results].sort((a, b) => {
     if (b.relevance !== a.relevance) return b.relevance - a.relevance;
-    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    return timeValue(b.updatedAt) - timeValue(a.updatedAt);
   });
+}
+
+function timeValue(iso: string | null): number {
+  return iso ? new Date(iso).getTime() : 0;
 }
 
 function scoreSessionEvent(query: string, sessionId: string, event: SessionEvent): number {
@@ -787,36 +885,6 @@ function scoreSessionEvent(query: string, sessionId: string, event: SessionEvent
     { value: event.tool_name, weight: 2 },
     { value: event.content, weight: 1 },
   ]);
-}
-
-function scoreHistoryEvent(query: string, event: HistoryEvent): number {
-  const rank = typeof event.rank === "number" ? event.rank * 1000 : 0;
-  return (
-    rank +
-    scoreValues(query, [
-      { value: event.session_id, weight: 6 },
-      { value: event.agent_name, weight: 3 },
-      { value: event.tool_name, weight: 2 },
-      { value: event.event_type, weight: 1 },
-      { value: event.content, weight: 1 },
-    ])
-  );
-}
-
-function scorePage(query: string, page: Page): number {
-  const rankedPage = page as Page & { rank?: number; similarity?: number };
-  const rank = typeof rankedPage.rank === "number" ? rankedPage.rank * 1000 : 0;
-  const similarity = typeof rankedPage.similarity === "number" ? rankedPage.similarity * 100 : 0;
-
-  return (
-    rank +
-    similarity +
-    scoreValues(query, [
-      { value: page.name, weight: 8 },
-      { value: page.content_markdown, weight: 2 },
-      { value: stripHtml(page.content_html ?? ""), weight: 2 },
-    ])
-  );
 }
 
 function scoreValues(

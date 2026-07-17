@@ -522,44 +522,46 @@ async def _read_source(args: dict) -> dict:
 
 @tool(
     "search",
-    "Search across sources. Omit `source` to search everything the user can see "
-    "(native files + sessions + their connected sources), or pass a source handle "
-    "to scope to one. Twitter / X is only searched when explicitly scoped — its "
-    "API quota is metered, so unscoped searches skip it. For a Twitter source, "
+    "Search across sources, merged onto one relevance scale and paginated "
+    "(`offset` + `limit`, `has_more` in the result). Omit `source` to search "
+    "everything the user can see (native files + sessions + their connected "
+    "sources), or pass a source handle to scope to one. For a Twitter source, "
     "use list_source/read_source for personal refs (home, my-posts, bookmarks, "
     "likes, dms) and post expansion refs (thread:<id>, likers:<id>, "
-    "reposters:<id>). Use scoped search with `from:handle` for recent public "
-    "post search.",
+    "reposters:<id>). Add `from:handle` to the query for a user's recent "
+    "public posts.",
     {
         "type": "object",
         "properties": {
             "query": {"type": "string"},
             "source": {"type": "string"},
             "limit": {"type": "integer", "default": 20},
+            "offset": {"type": "integer", "default": 0},
         },
         "required": ["query"],
     },
 )
 async def _search(args: dict) -> dict:
     query = args.get("query", "")
-    results = await source_service.search_all(
+    result = await source_service.search_all(
         _current_scope(),
         _current_user(),
         query,
         source=args.get("source"),
         limit=int(args.get("limit", 20)),
+        offset=int(args.get("offset", 0)),
     )
-    if results is None:
+    if result is None:
         return _text_result(json.dumps({"error": "source not found"}))
     # Search hits carry up to SEARCH_SNIPPET_CHARS of document text so API
     # callers can rank on it; that is far too big to serialize into model
     # context, so each snippet is trimmed to a window around the match here.
     # Marker rows (errors, truncation) have no snippet and pass through.
-    results = [
+    trimmed = [
         {**r, "snippet": _trim_snippet(r["snippet"], query)} if r.get("snippet") else r
-        for r in results
+        for r in result["results"]
     ]
-    return _text_result(json.dumps(results))
+    return _text_result(json.dumps({"results": trimmed, "has_more": result["has_more"]}))
 
 
 def _trim_snippet(snippet: str, query: str, cap: int = 400) -> str:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..auth import get_current_user
@@ -140,19 +140,21 @@ async def list_sources(current_user: dict = Depends(get_current_user)):
 async def search_sources(
     q: str,
     source: str | None = None,
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
 ):
-    """Unified search. Omit `source` to search everything the user can see
-    (files + sessions + their connected sources), or pass a handle to scope."""
+    """Unified search, merged onto one relevance scale and paginated. Omit
+    `source` to search everything the user can see (files + sessions + their
+    connected sources), or pass a handle to scope."""
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
-    results = await source_service.search_all(
-        owner_user_id, current_user["id"], q, source=source, limit=limit
+    result = await source_service.search_all(
+        owner_user_id, current_user["id"], q, source=source, limit=limit, offset=offset
     )
-    if results is None:
+    if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    return {"results": results}
+    return result
 
 
 @router.get("/tree")
