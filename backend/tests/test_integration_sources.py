@@ -536,3 +536,90 @@ def test_granola_parses_xml_meeting_blob():
     assert "sam@x.com" in meetings[0]["participants"]  # email preserved
     text = _render_meeting(meetings[0], "we shipped the thing")
     assert "# Standup" in text and "we shipped the thing" in text
+
+
+@pytest.mark.asyncio
+async def test_github_sync_skips_crawl_when_head_unchanged(monkeypatch):
+    # The whole point of the sync cursor: an unchanged repo must not be
+    # re-downloaded (the zipball crawls were OOM-killing the celery worker).
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from backend.integrations.github import indexer as github_indexer
+
+    sha = "b" * 40
+    source = {
+        "id": str(uuid4()),
+        "owner_user_id": str(uuid4()),
+        "external_ref": "octocat/hello-world",
+        "sync_cursor": sha,
+    }
+
+    async def token(user_id, provider=None):
+        return "tok"
+
+    async def head_sha(url, headers):
+        return sha
+
+    async def crawl_archive(*args, **kwargs):
+        raise AssertionError("unchanged repo must not be crawled")
+
+    monkeypatch.setattr(github_indexer, "get_valid_token", token)
+    monkeypatch.setattr(
+        github_indexer,
+        "resolve_archive_url",
+        lambda *args, **kwargs: SimpleNamespace(
+            archive_url="archive-url", headers={}, host_kind="github"
+        ),
+    )
+    monkeypatch.setattr(github_indexer, "_github_head_sha", head_sha)
+    monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
+
+    assert await github_indexer.index_github_repo(source) == sha
+
+
+@pytest.mark.asyncio
+async def test_github_sync_crawls_and_returns_new_head_sha(monkeypatch):
+    # A moved HEAD must crawl and hand the new SHA back as the sync cursor,
+    # so the next cycle's unchanged-check compares against it.
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from backend.integrations.github import indexer as github_indexer
+
+    new_sha = "c" * 40
+    source = {
+        "id": str(uuid4()),
+        "owner_user_id": str(uuid4()),
+        "external_ref": "octocat/hello-world",
+        "sync_cursor": "b" * 40,
+    }
+    crawled = []
+
+    async def token(user_id, provider=None):
+        return "tok"
+
+    async def head_sha(url, headers):
+        return new_sha
+
+    async def crawl_archive(archive_url, headers, on_text_file):
+        crawled.append(archive_url)
+        return []
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(github_indexer, "get_valid_token", token)
+    monkeypatch.setattr(
+        github_indexer,
+        "resolve_archive_url",
+        lambda *args, **kwargs: SimpleNamespace(
+            archive_url="archive-url", headers={}, host_kind="github"
+        ),
+    )
+    monkeypatch.setattr(github_indexer, "_github_head_sha", head_sha)
+    monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
+    monkeypatch.setattr(github_indexer.source_service, "remove_missing_documents", noop)
+
+    assert await github_indexer.index_github_repo(source) == new_sha
+    assert crawled == ["archive-url"]

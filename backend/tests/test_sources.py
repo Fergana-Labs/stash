@@ -872,6 +872,13 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
         Path(dest).write_bytes(zip_v1)
         return len(zip_v1)
 
+    # HEAD moves between the two syncs, so both crawl.
+    shas = iter(["a" * 40, "b" * 40])
+
+    async def fake_head_sha(url, headers):
+        return next(shas)
+
+    monkeypatch.setattr(indexer, "_github_head_sha", fake_head_sha)
     monkeypatch.setattr(indexer, "_download_archive", fake_download)
 
     result = await sources_task._sync_source(UUID(src["id"]))
