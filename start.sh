@@ -400,18 +400,35 @@ find_free_port() {
 }
 
 ensure_app_ports_free() {
-    local port
+    local port pid cmd cwd
     for port in "$BACKEND_PORT" "$FRONTEND_PORT" "$COLLAB_PORT"; do
         if port_is_free "$port"; then
             continue
         fi
 
-        echo "[ports]   Port ${port} is already in use:"
-        lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | sed 's/^/[ports]     /' || true
-        echo "[ports]   App ports are fixed (backend ${BACKEND_PORT}, frontend ${FRONTEND_PORT}, collab ${COLLAB_PORT}):"
-        echo "[ports]   OAuth redirect URIs are registered against them, so running elsewhere"
-        echo "[ports]   silently breaks integrations. One local stack at a time — stop the"
-        echo "[ports]   process above (kill <pid>) if it's yours or a zombie, or wait your turn."
+        # lsof exits nonzero when it finds nothing (e.g. the holder just
+        # exited); with pipefail that must not kill the script mid-message.
+        pid="$(lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+        if [ -z "$pid" ]; then
+            echo "[ports]   Port ${port} is in use, but the holder could not be identified"
+            echo "[ports]   (it may have just exited). Rerun ./start.sh."
+            exit 1
+        fi
+
+        cmd="$(ps -o command= -p "$pid" 2>/dev/null | cut -c1-120 || true)"
+        cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
+
+        echo "[ports]   Port ${port} is held by pid ${pid}: ${cmd:-unknown command}"
+        echo "[ports]   started from: ${cwd:-unknown}"
+        if [ "$cwd" = "$PROJECT_ROOT" ] || [[ "$cwd" == "$PROJECT_ROOT"/* ]]; then
+            echo "[ports]   That process belongs to THIS checkout — you already have a stack (or part"
+            echo "[ports]   of one) running here. Use it, or stop it (kill ${pid}) and rerun ./start.sh."
+        else
+            echo "[ports]   App ports are fixed (backend ${BACKEND_PORT}, frontend ${FRONTEND_PORT}, collab ${COLLAB_PORT}); OAuth"
+            echo "[ports]   redirect URIs are registered against them, so nothing may run elsewhere."
+            echo "[ports]   One local stack at a time. If that process is another checkout's live"
+            echo "[ports]   stack, wait your turn; only kill ${pid} if you know it's abandoned."
+        fi
         exit 1
     done
 }
@@ -472,7 +489,8 @@ ensure_frontend_dev_server_not_running() {
         exit 1
     fi
 
-    echo "[frontend] A dev server for this worktree is already running at ${app_url} (pid ${pid})."
+    echo "[frontend] This checkout already has a dev server at ${app_url} (pid ${pid}) —"
+    echo "[frontend] started here, possibly by another terminal or agent session."
     echo "[frontend] Use it, stop it (kill ${pid}), or rerun with START_KILL_DEV_SERVER=1 to replace it."
     exit 1
 }
