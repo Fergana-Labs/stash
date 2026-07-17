@@ -17,10 +17,13 @@ import tempfile
 import zipfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from urllib.parse import urlparse
+
+import httpx
 
 from ...services import source_service
 from ..storage import get_valid_token
-from .archive import UnsupportedHostError, resolve_archive_url
+from .archive import UnsupportedHostError, _parse_owner_repo, resolve_archive_url
 from .importers.repo import (
     MAX_FILES,
     MAX_PER_FILE_BYTES,
@@ -30,6 +33,20 @@ from .importers.repo import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _github_head_sha(url: str, headers: dict) -> str:
+    """Latest commit SHA on the default branch — one cheap API call, used to
+    skip the full zipball download when nothing changed since the last sync."""
+    owner, repo = _parse_owner_repo(urlparse(url).path)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/commits",
+            params={"per_page": 1},
+            headers=headers,
+        )
+        resp.raise_for_status()
+        return resp.json()[0]["sha"]
 
 
 async def _crawl_archive(
@@ -90,6 +107,14 @@ async def index_github_repo(source: dict) -> str | None:
     except UnsupportedHostError as e:
         raise RuntimeError(str(e))
 
+    # Change detection is GitHub-only; other hosts always crawl.
+    head_sha = None
+    if resolved.host_kind == "github":
+        head_sha = await _github_head_sha(url, resolved.headers)
+        if head_sha == source["sync_cursor"]:
+            logger.info("github source %s: HEAD unchanged, skipping crawl", source_id)
+            return head_sha
+
     async def _on_text_file(rel: str, text: str) -> None:
         await source_service.upsert_content_document(
             table="github_documents",
@@ -104,4 +129,4 @@ async def index_github_repo(source: dict) -> str | None:
     present = await _crawl_archive(resolved.archive_url, resolved.headers, _on_text_file)
     await source_service.remove_missing_documents("github_documents", source_id, present)
     logger.info("github source %s: indexed %d file(s)", source_id, len(present))
-    return None
+    return head_sha
