@@ -30,7 +30,7 @@ X_BOOKMARKS_URL = "https://api.x.com/2/users/{user_id}/bookmarks"
 TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_PER_TWEET = 4
-HYDRATION_BATCH = 25
+HYDRATION_BATCH = 200
 MAX_HYDRATION_ATTEMPTS = 3
 # Pages of the user's own timeline pulled per sync (20 tweets/page). Bounded so
 # one sync doesn't run away; older tweets keep arriving over subsequent syncs.
