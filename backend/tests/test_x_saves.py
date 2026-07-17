@@ -74,9 +74,37 @@ def _generic_tweet(tweet_id: str) -> dict:
     }
 
 
+class _FakeStreamResponse:
+    """Streaming media response: the indexer must read it chunk-wise under a
+    running byte cap, never `.content`-style all at once."""
+
+    def __init__(self, content: bytes, headers: dict):
+        self._content = content
+        self.headers = headers
+        self.reads = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    def raise_for_status(self):
+        pass
+
+    async def aiter_bytes(self, chunk_size):
+        for i in range(0, len(self._content), chunk_size):
+            self.reads += 1
+            yield self._content[i : i + chunk_size]
+
+
 class _FakeApi:
     """One fake for every HTTP the indexer makes: twitterapi.io tweet-by-id +
     user-timeline, the X API bookmarks endpoint, and the CDN media URL."""
+
+    media_bytes = b"fake image bytes"
+    media_headers = {"content-type": "image/jpeg"}
+    media_streams: list = []
 
     bookmarks_status = 200
 
@@ -100,9 +128,13 @@ class _FakeApi:
             if type(self).bookmarks_status != 200:
                 return _FakeResponse(payload={}, status_code=type(self).bookmarks_status)
             return _FakeResponse(payload=_BOOKMARKS)
-        if url == "https://cdn.x/img.jpg":
-            return _FakeResponse(content=b"fake image bytes")
         raise AssertionError(f"unexpected URL {url}")
+
+    def stream(self, method, url):
+        assert url == "https://cdn.x/img.jpg", f"unexpected media URL {url}"
+        response = _FakeStreamResponse(type(self).media_bytes, dict(type(self).media_headers))
+        type(self).media_streams.append(response)
+        return response
 
 
 @pytest.fixture
@@ -120,6 +152,9 @@ def fake_sync(monkeypatch):
         return "oauth-token"
 
     _FakeApi.bookmarks_status = 200
+    _FakeApi.media_bytes = b"fake image bytes"
+    _FakeApi.media_headers = {"content-type": "image/jpeg"}
+    _FakeApi.media_streams = []
     monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", "tapi-key")
     monkeypatch.setattr(storage_service, "is_configured", lambda: True)
     monkeypatch.setattr(storage_service, "upload_file", _upload)
@@ -197,6 +232,50 @@ async def test_hydrates_content_thread_root_and_media(client, pool, fake_sync) -
     entries = await source_service.source_entries(UUID(owner_id), UUID(owner_id), str(source["id"]))
     entry = next(e for e in entries if e["path"] == "1001")
     assert entry["snippet"] == "totally agree with this"
+
+
+@pytest.mark.asyncio
+async def test_media_over_cap_is_skipped_while_streaming(
+    client, pool, fake_sync, monkeypatch
+) -> None:
+    # The cap must abort the download mid-stream. The old code buffered the
+    # whole highest-bitrate video into memory before measuring it, which
+    # spiked the worker past its 2GB limit and OOM-killed the box.
+    monkeypatch.setattr(x_indexer, "MAX_MEDIA_BYTES", 100)
+    _FakeApi.media_bytes = b"x" * 100_000  # over the cap; no content-length header
+    _FakeApi.media_headers = {"content-type": "video/mp4"}
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
+
+    await x_indexer.index_x_saves(source)
+
+    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
+    assert row["hydration_status"] == "done"  # the save survives, minus the blob
+    assert row["media"] == []
+    assert fake_sync == []  # nothing uploaded
+    # Aborted after the first over-cap chunk, not read to the end.
+    assert _FakeApi.media_streams[0].reads == 1
+
+
+@pytest.mark.asyncio
+async def test_media_with_oversized_content_length_is_never_read(
+    client, pool, fake_sync, monkeypatch
+) -> None:
+    # When the CDN declares the size up front, skip without reading any body.
+    monkeypatch.setattr(x_indexer, "MAX_MEDIA_BYTES", 100)
+    _FakeApi.media_headers = {"content-type": "video/mp4", "content-length": "500000000"}
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
+
+    await x_indexer.index_x_saves(source)
+
+    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
+    assert row["hydration_status"] == "done"
+    assert row["media"] == []
+    assert fake_sync == []
+    assert _FakeApi.media_streams[0].reads == 0
 
 
 @pytest.mark.asyncio

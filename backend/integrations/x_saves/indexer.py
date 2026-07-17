@@ -319,17 +319,32 @@ async def _archive_media(owner_user_id: UUID, tweet_id: str, media: list[dict]) 
     stored: list[dict] = []
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
         for i, item in enumerate(media):
-            response = await client.get(item["url"])
-            response.raise_for_status()
-            content = response.content
-            if len(content) > MAX_MEDIA_BYTES:
-                continue  # skip an oversized blob rather than fail the whole save
-            content_type = response.headers.get(
-                "content-type", "video/mp4" if item["is_video"] else "image/jpeg"
-            )
-            ext = "mp4" if item["is_video"] else "jpg"
-            key = await storage_service.upload_file(
-                str(owner_user_id), f"x-{tweet_id}-{i}.{ext}", content, content_type
-            )
-            stored.append({"storage_key": key, "content_type": content_type})
+            async with client.stream("GET", item["url"]) as response:
+                response.raise_for_status()
+                # The cap must hold WHILE downloading. The old code buffered
+                # the whole highest-bitrate video into memory just to measure
+                # it — a long 1080p MP4 is hundreds of MB, which spiked the
+                # celery worker past its 2GB limit in seconds and OOM-killed
+                # the box mid-hydration.
+                declared = response.headers.get("content-length")
+                if declared is not None and int(declared) > MAX_MEDIA_BYTES:
+                    continue  # skip an oversized blob rather than fail the whole save
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes(64 * 1024):
+                    total += len(chunk)
+                    if total > MAX_MEDIA_BYTES:
+                        break
+                    chunks.append(chunk)
+                if total > MAX_MEDIA_BYTES:
+                    continue  # skip an oversized blob rather than fail the whole save
+                content = b"".join(chunks)
+                content_type = response.headers.get(
+                    "content-type", "video/mp4" if item["is_video"] else "image/jpeg"
+                )
+                ext = "mp4" if item["is_video"] else "jpg"
+                key = await storage_service.upload_file(
+                    str(owner_user_id), f"x-{tweet_id}-{i}.{ext}", content, content_type
+                )
+                stored.append({"storage_key": key, "content_type": content_type})
     return stored
