@@ -239,12 +239,13 @@ async def test_backfills_bookmarks_and_own_posts(client, pool, fake_sync) -> Non
     )
     got = [(r["path"], r["kind"], r["hydration_status"]) for r in rows]
     # bookmarks (900/901) from the X API + own post/reply (200/201) from the
-    # timeline; the retweet (202) is skipped. All hydrated in this one pass.
+    # timeline; the retweet (202) is skipped. Each lands under its kind folder,
+    # all hydrated in this one pass.
     assert got == [
-        ("200", "Post", "done"),
-        ("201", "Reply", "done"),
-        ("900", "Bookmark", "done"),
-        ("901", "Bookmark", "done"),
+        ("Bookmarks/900", "Bookmark", "done"),
+        ("Bookmarks/901", "Bookmark", "done"),
+        ("Posts/200", "Post", "done"),
+        ("Replies/201", "Reply", "done"),
     ]
 
 

@@ -672,6 +672,25 @@ function BrowsePanel({
 
 // Shows the full content of one document/entry inside a browse panel, with a
 // bordered header that deep-links back to the provider when a url is available.
+// Hydrated saves lead with the tweet text, then a blank line, then the byline /
+// reply-context / link meta. Show the tweet prominently and mute the rest.
+function TweetBody({ content }: { content: string }) {
+  const [body, ...rest] = content.split("\n\n");
+  const meta = rest.join("\n\n").trim();
+  return (
+    <div className="scroll-thin max-h-96 space-y-3 overflow-auto bg-base px-4 py-4">
+      <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
+        {body}
+      </p>
+      {meta && (
+        <p className="whitespace-pre-wrap break-words text-[11.5px] leading-relaxed text-muted-foreground">
+          {meta}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DocViewer({
   source,
   providerLabel,
@@ -748,18 +767,15 @@ function DocViewer({
         <>
           {media.map((m, i) =>
             m.contentType.startsWith("video/") ? (
-              // eslint-disable-next-line jsx-a11y/media-has-caption -- archived
-              // social video; the transcript is in the document body below.
+              // Archived social video; its transcript is in the body below.
               <video key={i} src={m.url} controls className="max-h-72 w-full bg-black" />
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element -- presigned
-              // blob URL, not an optimizable static asset.
+              // Presigned blob URL, not an optimizable static asset.
+              // eslint-disable-next-line @next/next/no-img-element
               <img key={i} src={m.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
             ),
           )}
-          <pre className="scroll-thin max-h-96 overflow-auto whitespace-pre-wrap break-words bg-base px-3 py-3 font-mono text-[12px] text-foreground">
-            {content}
-          </pre>
+          <TweetBody content={content} />
         </>
       )}
     </div>
@@ -1109,19 +1125,47 @@ function NavigablePanel({
         <div className="space-y-0.5">
           {visibleEntries.map((entry) => {
             const folder = isFolder(entry);
-            const key = `${folder ? "dir" : "doc"}:${entry.id ?? entry.path ?? entry.name}`;
+            const ref = entry.id ?? entry.path ?? entry.name;
+            const isOpen = !folder && openDoc?.ref === ref;
+            // An un-hydrated save still has its raw numeric tweet id as its name.
+            const pending = !folder && /^\d+$/.test(entry.name);
+            const key = `${folder ? "dir" : "doc"}:${ref}`;
             return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => openEntry(entry)}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
-              >
-                <span aria-hidden className="text-[13px]">
-                  {folder ? "📁" : "📄"}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground">{entry.name}</span>
-              </button>
+              <div key={key}>
+                <button
+                  type="button"
+                  onClick={() => openEntry(entry)}
+                  className={
+                    "flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised " +
+                    (isOpen ? "bg-raised" : "")
+                  }
+                >
+                  <span aria-hidden className="text-[13px] leading-5">
+                    {folder ? "📁" : "📄"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    {pending ? (
+                      <span className="truncate text-[12.5px] italic text-muted-foreground">Loading…</span>
+                    ) : (
+                      <span className="block truncate text-[12.5px] text-foreground">{entry.name}</span>
+                    )}
+                    {entry.snippet && !pending && (
+                      <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
+                        {entry.snippet}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                {isOpen && (
+                  <DocViewer
+                    source={source.source}
+                    providerLabel={providerLabel}
+                    refValue={ref}
+                    name={entry.name}
+                    onClose={() => setOpenDoc(null)}
+                  />
+                )}
+              </div>
             );
           })}
           {hasMore && (
@@ -1149,16 +1193,6 @@ function NavigablePanel({
             </div>
           )}
         </div>
-      )}
-
-      {openDoc && (
-        <DocViewer
-          source={source.source}
-          providerLabel={providerLabel}
-          refValue={openDoc.ref}
-          name={openDoc.name}
-          onClose={() => setOpenDoc(null)}
-        />
       )}
 
       {source.type === "slack" || source.type === "gong_calls" ? (

@@ -46,6 +46,18 @@ def tweet_url(tweet_id: str) -> str:
     return f"https://x.com/i/status/{tweet_id}"
 
 
+# Saves are foldered by kind in the VFS: path = "<Folder>/<tweet id>".
+KIND_FOLDER = {"Bookmark": "Bookmarks", "Post": "Posts", "Reply": "Replies", "Article": "Articles"}
+
+
+def save_path(kind: str, tweet_id: str) -> str:
+    return f"{KIND_FOLDER.get(kind, 'Other')}/{tweet_id}"
+
+
+def _tweet_id_from_path(path: str) -> str:
+    return path.rsplit("/", 1)[-1]
+
+
 async def index_x_saves(source: dict) -> str | None:
     if not settings.TWITTERAPI_IO_KEY:
         raise RuntimeError("TWITTERAPI_IO_KEY is not set")
@@ -60,13 +72,16 @@ async def index_x_saves(source: dict) -> str | None:
     async with httpx.AsyncClient(
         timeout=TAPI_TIMEOUT, headers={"X-API-Key": settings.TWITTERAPI_IO_KEY}
     ) as client:
-        # Bookmarks come from the X API (OAuth token); the user's own
-        # posts/replies come from twitterapi.io. Both just enqueue ids — every
-        # tweet is hydrated below through the same path.
+        # Enqueue newly-saved ids first: bookmarks from the X API (OAuth token),
+        # the user's own posts/replies from twitterapi.io. Both just insert
+        # pending skeleton rows — the hydration pass below fills them in.
         if x_user_id:
             await _backfill_bookmarks(source_id, owner_user_id, str(x_user_id))
             await _backfill_user_tweets(client, source_id, owner_user_id, str(x_user_id))
 
+        # Hydrate a bounded batch of pending rows. Bounding the batch is what
+        # lets a stuck account keep making progress across syncs even when the
+        # worker is under load — each sync clears HYDRATION_BATCH more.
         rows = await pool.fetch(
             f"""
             SELECT id, path, kind FROM x_save_docs
@@ -132,10 +147,11 @@ async def _backfill_bookmarks(source_id: UUID, owner_user_id: UUID, x_user_id: s
                 await pool.execute(
                     "INSERT INTO x_save_docs "
                     "(owner_user_id, source_id, path, name, kind, external_ref) "
-                    "VALUES ($1, $2, $3, $3, 'Bookmark', $3) "
+                    "VALUES ($1, $2, $3, $4, 'Bookmark', $4) "
                     "ON CONFLICT (source_id, path) DO NOTHING",
                     owner_user_id,
                     source_id,
+                    save_path("Bookmark", tweet_id),
                     tweet_id,
                 )
             next_token = (payload.get("meta") or {}).get("next_token")
@@ -167,10 +183,11 @@ async def _backfill_user_tweets(
             await pool.execute(
                 "INSERT INTO x_save_docs "
                 "(owner_user_id, source_id, path, name, kind, external_ref) "
-                "VALUES ($1, $2, $3, $3, $4, $3) "
+                "VALUES ($1, $2, $3, $4, $5, $4) "
                 "ON CONFLICT (source_id, path) DO NOTHING",
                 owner_user_id,
                 source_id,
+                save_path(kind, tweet_id),
                 tweet_id,
                 kind,
             )
@@ -185,9 +202,10 @@ async def _hydrate_one(
     client: httpx.AsyncClient,
     source_id: UUID,
     owner_user_id: UUID,
-    tweet_id: str,
+    path: str,
     kind: str,
 ) -> None:
+    tweet_id = _tweet_id_from_path(path)
     tweet = await _fetch_tweet(client, tweet_id)
 
     # A reply shows only its own text out of context, so pull the root of the
@@ -208,7 +226,7 @@ async def _hydrate_one(
         table="x_save_docs",
         source_id=source_id,
         owner_user_id=owner_user_id,
-        path=tweet_id,
+        path=path,
         name=f"@{tweet['author']} - {posted.date().isoformat()}"
         if posted
         else f"@{tweet['author']}",
@@ -221,7 +239,7 @@ async def _hydrate_one(
         "UPDATE x_save_docs SET media = $3, hydration_status = 'done', "
         "hydration_error = NULL, updated_at = now() WHERE source_id = $1 AND path = $2",
         source_id,
-        tweet_id,
+        path,
         media,
     )
 
