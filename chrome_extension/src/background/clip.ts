@@ -14,8 +14,11 @@ export interface PageClip {
 }
 
 export function initClipper(): void {
+  // Context menus persist across browser sessions and service-worker restarts,
+  // so onInstalled is the only place to (re)create them. Registering on
+  // onStartup too made two removeAll→create calls race, and the loser hit an
+  // already-created id ("Cannot create item with duplicate id stash-clip").
   chrome.runtime.onInstalled.addListener(createMenu);
-  chrome.runtime.onStartup.addListener(createMenu);
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === 'stash-clip' && tab?.id != null) void clipTab(tab);
   });
