@@ -21,7 +21,10 @@ export type IntegrationProvider =
   | "gong"
   | "heavi"
   | "posthog"
-  | "twitter";
+  // Extension-fed connectors — no OAuth integration, "connected" once the
+  // browser extension has pushed a source.
+  | "x"
+  | "instagram";
 
 export type CredentialField = {
   name: string;
@@ -107,31 +110,6 @@ export async function submitCredentials(
     method: "POST",
     body: JSON.stringify(values),
   });
-}
-
-/**
- * Bring-your-own X app: server-side bookmark sync bills X-API reads to the
- * user's own paid developer app instead of Stash's shared one. Without this
- * the browser extension captures bookmarks for free.
- */
-export type TwitterAppStatus = { configured: boolean; client_id: string | null };
-
-export async function getTwitterApp(): Promise<TwitterAppStatus> {
-  return apiFetch<TwitterAppStatus>("/api/v1/integrations/twitter/app");
-}
-
-export async function setTwitterApp(
-  clientId: string,
-  clientSecret: string,
-): Promise<{ ok: boolean; reconnect_required: boolean }> {
-  return apiFetch("/api/v1/integrations/twitter/app", {
-    method: "POST",
-    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
-  });
-}
-
-export async function clearTwitterApp(): Promise<void> {
-  await apiFetch("/api/v1/integrations/twitter/app", { method: "DELETE" });
 }
 
 export type GitHubRepoSummary = {

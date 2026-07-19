@@ -34,6 +34,7 @@ from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
 from .github import account_sync as github_account_sync
 from .registry import get_provider, list_providers
+from .slack import indexer as slack_indexer
 
 logger = logging.getLogger(__name__)
 
@@ -41,30 +42,6 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 # How long a `state` blob is valid between /connect and /callback.
 STATE_TTL = timedelta(minutes=10)
-
-
-async def _twitter_client_id(provider: str, user_id: UUID) -> str | None:
-    """The user's own X app client id, if they brought one; else None (use
-    Stash's shared app). Only twitter supports bring-your-own-app."""
-    if provider != "twitter":
-        return None
-    from .twitter import app_credentials
-
-    creds = await app_credentials.get(user_id)
-    return creds["client_id"] if creds else None
-
-
-async def _twitter_app_creds(provider: str, user_id: UUID) -> dict:
-    """kwargs (client_id/client_secret) for the twitter provider's OAuth
-    calls, empty for the shared app or any other provider."""
-    if provider != "twitter":
-        return {}
-    from .twitter import app_credentials
-
-    creds = await app_credentials.get(user_id)
-    if not creds:
-        return {}
-    return {"client_id": creds["client_id"], "client_secret": creds["client_secret"]}
 
 
 SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
@@ -190,11 +167,8 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GONG_OAUTH_CLIENT_SECRET",
             "GONG_OAUTH_REDIRECT_URI",
         ],
-        "twitter": [
-            "TWITTER_OAUTH_CLIENT_ID",
-            "TWITTER_OAUTH_REDIRECT_URI",
-        ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
+        "x": ["TWITTER_OAUTH_CLIENT_ID", "TWITTER_OAUTH_REDIRECT_URI"],
         "jira": [
             "JIRA_OAUTH_CLIENT_ID",
             "JIRA_OAUTH_CLIENT_SECRET",
@@ -220,13 +194,14 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "notion": "Notion",
             "slack": "Slack",
             "gong": "Gong",
-            "twitter": "Twitter / X",
+            "x": "X",
             "granola": "Granola",
             "jira": "Jira",
             "linear": "Linear",
             "asana": "Asana",
         }
-        return f"{display_names.get(provider, provider)} OAuth is not configured for this server."
+        display = display_names.get(provider, provider)
+        return f"{display} OAuth is not configured for this server. Missing: {', '.join(missing)}"
     return None
 
 
@@ -343,20 +318,14 @@ async def integration_connect(
         url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
         return ConnectStartResponse(authorize_url=url)
     return_path = _safe_return_to(return_to)
+    # PKCE providers (X) carry a per-connect code verifier through the encrypted
+    # state so the callback can complete the token exchange.
     if getattr(p, "uses_pkce", False):
         code_verifier = p.new_code_verifier()
         state = _encode_state(
-            current_user["id"],
-            provider,
-            return_path,
-            extra={"code_verifier": code_verifier},
+            current_user["id"], provider, return_path, extra={"code_verifier": code_verifier}
         )
-        # Bring-your-own X app: authorize against the user's own client id so
-        # bookmark reads bill to their app, not Stash's shared one.
-        client_id = await _twitter_client_id(provider, current_user["id"])
-        return ConnectStartResponse(
-            authorize_url=p.authorize_url(state, code_verifier, client_id=client_id)
-        )
+        return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
 
     state = _encode_state(current_user["id"], provider, return_path)
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
@@ -385,8 +354,7 @@ async def integration_callback(
                 code_verifier = (payload.get("x") or {}).get("code_verifier")
                 if not code_verifier:
                     raise HTTPException(status_code=400, detail="missing PKCE verifier in state")
-                app = await _twitter_app_creds(provider, user_id)
-                token = await p.exchange_code(code, code_verifier, **app)
+                token = await p.exchange_code(code, code_verifier)
             else:
                 token = await p.exchange_code(code)
             # The account profile is display-only — a failure fetching it must
@@ -427,43 +395,33 @@ async def integration_callback(
                     )
             # --- END Slack agent ---
 
-            # Connecting X auto-creates its sources: everything downstream
-            # (explorer sidebar, CLI `stash ls`, sources list) keys off
-            # sources, not integrations, and unlike GitHub/Notion there is
-            # nothing to pick — the account IS the source. Both rows are
-            # idempotent get-or-creates. Bookmarks are extension-fed by
-            # default (the browser captures them for $0); server-side sync
-            # turns on only for a bring-your-own-app user.
-            # Best-effort: a failure here must not break the connection.
-            if provider == "twitter":
+            # Connecting X auto-creates its x_saves source and records the
+            # account id, which the indexer needs to read bookmarks (X API) and
+            # the user's own posts/replies (twitterapi.io). Best-effort: a
+            # failure here must not break the connection.
+            if provider == "x":
+                from ..database import get_pool
                 from ..services import source_service
-                from .twitter.indexer import fetch_me
+                from .x_saves.provider import fetch_me
 
                 try:
                     me = await fetch_me(token.access_token)
-                    username = me.get("username") or me["id"]
-                    await source_service.create_source(
+                    source = await source_service.create_source(
                         owner_user_id=user_id,
-                        source_type="twitter",
+                        source_type="x_saves",
                         external_ref=me["id"],
-                        display_name=f"Twitter / X (@{username})",
+                        display_name=f"X (@{me.get('username')})" if me.get("username") else "X",
                         settings={},
                     )
-                    await source_service.create_source(
-                        owner_user_id=user_id,
-                        source_type="twitter_bookmarks",
-                        external_ref=me["id"],
-                        display_name=f"X bookmarks (@{username})",
-                        settings={},
+                    await get_pool().execute(
+                        "UPDATE user_sources SET settings = "
+                        "coalesce(settings, '{}'::jsonb) || $2::jsonb WHERE id = $1",
+                        UUID(source["id"]),
+                        {"x_user_id": me["id"]},
                     )
-                    # A user who connected with their own app pays for the
-                    # bookmarks API, so run server-side sync for them.
-                    if await _twitter_app_creds(provider, user_id):
-                        await source_service.set_twitter_bookmarks_server_sync(user_id, True)
                 except Exception as exc:
                     logger.warning(
-                        "twitter: failed to auto-create sources exception_type=%s",
-                        type(exc).__name__,
+                        "x: failed to auto-create source exception_type=%s", type(exc).__name__
                     )
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
@@ -509,54 +467,7 @@ async def integration_disconnect(
             source_type=source["source_type"],
             metadata={"reason": "integration_disconnect"},
         )
-    if provider == "twitter":
-        from .twitter import app_credentials
-
-        await app_credentials.delete(current_user["id"])
     return {"ok": True, "removed_sources": len(removed)}
-
-
-class TwitterAppRequest(BaseModel):
-    client_id: str = Field(min_length=1, max_length=200)
-    client_secret: str | None = Field(default=None, max_length=200)
-
-
-@router.get("/twitter/app")
-async def get_twitter_app(current_user: dict = Depends(get_current_user)):
-    """Whether the user has stored their own X app (never returns the secret)."""
-    from .twitter import app_credentials
-
-    creds = await app_credentials.get(current_user["id"])
-    return {"configured": creds is not None, "client_id": creds["client_id"] if creds else None}
-
-
-@router.post("/twitter/app")
-async def set_twitter_app(
-    body: TwitterAppRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """Store the user's own X developer-app OAuth credentials so bookmark
-    reads bill to their paid quota. They must then (re)connect X so the
-    token is issued by their app; if X is already connected, server-side
-    bookmark sync is switched on."""
-    from .twitter import app_credentials
-
-    await app_credentials.store(current_user["id"], body.client_id, body.client_secret)
-    # If X is already connected, turn on server-side bookmark sync now.
-    existing = await source_service.get_source_by_type(current_user["id"], "twitter_bookmarks")
-    if existing is not None:
-        await source_service.set_twitter_bookmarks_server_sync(current_user["id"], True)
-    return {"ok": True, "reconnect_required": existing is None}
-
-
-@router.delete("/twitter/app")
-async def clear_twitter_app(current_user: dict = Depends(get_current_user)):
-    """Remove the user's own X app and revert bookmarks to extension capture."""
-    from .twitter import app_credentials
-
-    await app_credentials.delete(current_user["id"])
-    await source_service.set_twitter_bookmarks_server_sync(current_user["id"], False)
-    return {"ok": True}
 
 
 class CredentialConnectResponse(BaseModel):
@@ -656,24 +567,31 @@ async def slack_list_channels(current_user: dict = Depends(get_current_user)):
         resp.raise_for_status()
         payload = resp.json()
 
-    if not payload.get("ok"):
-        raise HTTPException(
-            status_code=502,
-            detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
-        )
-
-    channels: list[SlackChannelSummary] = []
-    for channel in payload.get("channels", []):
-        channel_id = channel.get("id")
-        if not channel_id:
-            continue
-        channels.append(
-            SlackChannelSummary(
-                id=channel_id,
-                name=channel.get("name") or channel.get("user") or channel_id,
-                is_private=bool(channel.get("is_private")),
+        if not payload.get("ok"):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
             )
-        )
+
+        # DMs carry no name in Slack's API — resolve them to the humans in the
+        # conversation, exactly as the indexer names them, so the picker shows
+        # what the source tree will show.
+        self_user_id = await slack_indexer.authed_user_id(client)
+        names: dict[str, str] = {}
+        channels: list[SlackChannelSummary] = []
+        for channel in payload.get("channels", []):
+            channel_id = channel.get("id")
+            if not channel_id:
+                continue
+            channels.append(
+                SlackChannelSummary(
+                    id=channel_id,
+                    name=await slack_indexer.channel_display_name(
+                        client, names, channel, self_user_id
+                    ),
+                    is_private=bool(channel.get("is_private")),
+                )
+            )
     return channels
 
 

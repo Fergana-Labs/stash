@@ -45,6 +45,11 @@ celery.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
+    # CPython never returns freed heap to the OS, so a child's RSS only
+    # ratchets upward. Recycle any child above ~800MB after it finishes its
+    # current task, keeping 2 children + parent under Render's 2GB limit
+    # (the box was getting OOM-killed instead, losing in-flight tasks).
+    worker_max_memory_per_child=800_000,  # KB
     # Long-running tasks (Playwright renders, zip downloads) shouldn't be
     # cancelled by a soft timeout mid-render. Hard cap at 30 min.
     task_time_limit=1800,

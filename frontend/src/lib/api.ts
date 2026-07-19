@@ -321,6 +321,8 @@ export interface SourceEntry {
   name: string;
   kind: string;
   external_ref?: string | null;
+  // One-line preview of the copied content (e.g. the tweet text).
+  snippet?: string | null;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
@@ -385,9 +387,11 @@ export async function readSourceDoc(
   name?: string;
   content?: string;
   url?: string | null;
-  // Archived save media (Instagram) served via a fresh presigned URL.
+  // Archived save media served via fresh presigned URLs. Instagram carries a
+  // single blob (media_url); X can carry up to 4 (media[]).
   media_url?: string | null;
   media_content_type?: string | null;
+  media?: { url: string; content_type?: string | null }[] | null;
 }> {
   return apiFetch(`${ME}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`);
 }

@@ -1,7 +1,7 @@
 """Centralised settings loaded from environment variables.
 
 All configuration that the backend touches must be declared here.
-Defaults are chosen for local development with the bundled docker-compose.yml.
+Defaults are chosen for local development with ./start.sh.
 """
 
 import os
@@ -282,12 +282,6 @@ class Settings:
     # Echoed back in X-Telegram-Bot-Api-Secret-Token; verifies inbound webhooks.
     TELEGRAM_WEBHOOK_SECRET: str | None = os.getenv("TELEGRAM_WEBHOOK_SECRET")
 
-    TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
-    TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
-    TWITTER_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
-        "TWITTER_OAUTH_REDIRECT_URI", AUTH0_ENABLED
-    )
-
     # Granola connects through its official MCP server over OAuth 2.0 with
     # Dynamic Client Registration + PKCE — no pre-shared client_id/secret. We
     # only need the MCP endpoint and the backend callback URL we register as the
@@ -322,6 +316,19 @@ class Settings:
     # ScrapeCreators (public social-content scraping, product-level key —
     # hydrates Instagram saves server-side; users never bring their own).
     SCRAPECREATORS_API_KEY: str | None = os.getenv("SCRAPECREATORS_API_KEY")
+
+    # twitterapi.io (public X/Twitter read API, product-level key) hydrates X
+    # saves — full text, reply thread root, and media — plus the user's own
+    # posts/replies by account id.
+    TWITTERAPI_IO_KEY: str | None = os.getenv("TWITTERAPI_IO_KEY")
+
+    # X OAuth app: the user connects X so the indexer can read their bookmarks
+    # (bookmark.read). Reads the same credentials the standalone X app has used.
+    TWITTER_OAUTH_CLIENT_ID: str | None = os.getenv("TWITTER_OAUTH_CLIENT_ID")
+    TWITTER_OAUTH_CLIENT_SECRET: str | None = os.getenv("TWITTER_OAUTH_CLIENT_SECRET")
+    TWITTER_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
+        "TWITTER_OAUTH_REDIRECT_URI", AUTH0_ENABLED
+    )
 
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")

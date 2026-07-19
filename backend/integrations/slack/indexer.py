@@ -12,6 +12,7 @@ attributed conversations instead of one-line files.
 from __future__ import annotations
 
 import logging
+import re
 from uuid import UUID
 
 import httpx
@@ -24,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
 CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history"
+CONVERSATIONS_MEMBERS_URL = "https://slack.com/api/conversations.members"
+CONVERSATIONS_INFO_URL = "https://slack.com/api/conversations.info"
 USERS_INFO_URL = "https://slack.com/api/users.info"
+AUTH_TEST_URL = "https://slack.com/api/auth.test"
 
 CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
 MAX_CHANNELS = 100
@@ -76,6 +80,77 @@ async def _user_display_name(client: httpx.AsyncClient, names: dict[str, str], u
     return name
 
 
+def _name_slug(value: str) -> str:
+    """A display name flattened for use in channel_name (which is a path
+    segment): lowercase, runs of anything unsafe collapsed to '-'."""
+    slug = re.sub(r"[^a-z0-9._-]+", "-", value.lower()).strip("-")
+    return slug or "unknown"
+
+
+async def authed_user_id(client: httpx.AsyncClient) -> str:
+    """The Slack user id behind this token — excluded from group-DM names so a
+    DM is named after the *other* people in it."""
+    return (await _slack_get(client, AUTH_TEST_URL, {}))["user_id"]
+
+
+async def channel_display_name(
+    client: httpx.AsyncClient, names: dict[str, str], channel: dict, self_user_id: str
+) -> str:
+    """A human channel_name. Slack gives channels a name but IMs none at all,
+    so a DM is named after its counterpart (dm-jane-doe) and a group DM after
+    every member except the token's own user (dm-jane-doe--sam-liu)."""
+    if channel.get("is_im"):
+        return f"dm-{_name_slug(await _user_display_name(client, names, channel['user']))}"
+    if channel.get("is_mpim"):
+        payload = await _slack_get(
+            client, CONVERSATIONS_MEMBERS_URL, {"channel": channel["id"], "limit": 100}
+        )
+        members = [m for m in payload.get("members", []) if m != self_user_id]
+        slugs = sorted([_name_slug(await _user_display_name(client, names, m)) for m in members])
+        return "dm-" + "--".join(slugs)
+    return channel["name"]
+
+
+def _dedupe_channel_names(named: list[tuple[dict, str]]) -> list[tuple[dict, str]]:
+    """Two DMs with identically-named counterparts must not share a
+    channel_name — the day-transcript projection groups by it, so a collision
+    would silently merge two conversations. Colliding names get the channel id
+    appended; unique names stay clean."""
+    counts: dict[str, int] = {}
+    for _, name in named:
+        counts[name] = counts.get(name, 0) + 1
+    return [
+        (channel, f"{name}--{channel['id'].lower()}" if counts[name] > 1 else name)
+        for channel, name in named
+    ]
+
+
+async def _rename_channel_rows(source_id: UUID, channel_id: str, channel_name: str) -> None:
+    """One-shot migration of rows ingested before this channel's name was
+    known (webhook rows stamped with the raw id, DMs indexed pre-name-
+    resolution) onto the resolved name. Runs at sync time because names live
+    behind per-user tokens — an offline migration can't resolve them. Stale
+    notices are deleted, not renamed; _sync_cap_marker recreates them."""
+    pool = get_pool()
+    await pool.execute(
+        "DELETE FROM slack_messages "
+        "WHERE source_id = $1 AND channel_id = $2 AND kind = 'notice' AND channel_name <> $3",
+        source_id,
+        channel_id,
+        channel_name,
+    )
+    await pool.execute(
+        "UPDATE slack_messages "
+        "SET channel_name = $3, "
+        "    path = $3 || substr(path, strpos(path, '/')), "
+        "    name = '#' || $3 "
+        "WHERE source_id = $1 AND channel_id = $2 AND channel_name <> $3",
+        source_id,
+        channel_id,
+        channel_name,
+    )
+
+
 async def index_slack(source: dict) -> str | None:
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
@@ -96,11 +171,17 @@ async def index_slack(source: dict) -> str | None:
             CONVERSATIONS_LIST_URL,
             {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS},
         )
-        for channel in channels_payload.get("channels", []):
+        self_user_id = await authed_user_id(client)
+        named = _dedupe_channel_names(
+            [
+                (channel, await channel_display_name(client, names, channel, self_user_id))
+                for channel in channels_payload.get("channels", [])
+                if channel["id"] in allowed_channel_ids
+            ]
+        )
+        for channel, channel_name in named:
             channel_id = channel["id"]
-            if channel_id not in allowed_channel_ids:
-                continue
-            channel_name = channel.get("name") or channel_id
+            await _rename_channel_rows(source_id, channel_id, channel_name)
             # A channel we can't read (not a member, archived, …) must not abort
             # the whole backfill — skip it and continue. conversations.history
             # returns most-recent-first, so this bootstraps recent messages.
@@ -170,13 +251,18 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
                 client, CONVERSATIONS_LIST_URL, {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS}
             )
         ).get("channels", [])
-        for channel in channels:
+        self_user_id = await authed_user_id(client)
+        named = _dedupe_channel_names(
+            [
+                (channel, await channel_display_name(client, names, channel, self_user_id))
+                for channel in channels
+                if channel["id"] in allowed_channel_ids
+            ]
+        )
+        for channel, channel_name in named:
             if len(refs) >= limit:
                 break
             channel_id = channel["id"]
-            if channel_id not in allowed_channel_ids:
-                continue
-            channel_name = channel.get("name") or channel_id
             params = {"channel": channel_id, "oldest": oldest, "limit": MAX_MESSAGES_PER_CHANNEL}
             if latest:
                 params["latest"] = latest
@@ -339,9 +425,9 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         "AND ws.sync_enabled",
         team_id,
     )
-    # The webhook has no user token to resolve a display name with, so live
-    # messages carry the raw Slack id as their author. The next sync's
-    # freshness check sees the resolved name differs and rewrites the row.
+    # The webhook payload carries no display names, so live messages keep the
+    # raw Slack id as their author. The next sync's freshness check sees the
+    # resolved name differs and rewrites the row.
     author_id = event.get("user") or event.get("bot_id")
     author = event.get("username") or author_id or ""
 
@@ -355,7 +441,7 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
             source_id=row["id"],
             owner_user_id=row["owner_user_id"],
             channel_id=channel_id,
-            channel_name=channel_id,
+            channel_name=await _ingest_channel_name(row, channel_id),
             ts=event["ts"],
             text=event.get("text") or "",
             author_id=author_id,
@@ -363,3 +449,26 @@ async def ingest_slack_message(team_id: str, event: dict) -> int:
         )
         ingested += 1
     return ingested
+
+
+async def _ingest_channel_name(source_row: dict, channel_id: str) -> str:
+    """The channel_name for a live event. Sync already resolved it for any
+    channel with indexed rows; a channel with none yet (first message of a new
+    DM) is resolved against Slack with the owner's token, so no row is ever
+    written with a raw id as its name."""
+    known = await get_pool().fetchval(
+        "SELECT channel_name FROM slack_messages "
+        "WHERE source_id = $1 AND channel_id = $2 AND channel_name <> channel_id "
+        "LIMIT 1",
+        source_row["id"],
+        channel_id,
+    )
+    if known:
+        return known
+    token = await get_valid_token(source_row["owner_user_id"], "slack")
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        channel = (await _slack_get(client, CONVERSATIONS_INFO_URL, {"channel": channel_id}))[
+            "channel"
+        ]
+        return await channel_display_name(client, {}, channel, await authed_user_id(client))

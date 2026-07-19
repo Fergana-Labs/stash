@@ -61,7 +61,7 @@ async def test_concurrent_reads_of_expired_token_refresh_exactly_once(client, mo
     user_id = await _register(client)
     await storage.store_token(
         user_id,
-        "twitter",
+        "linear",
         TokenSet(
             access_token="at-old",
             refresh_token="rt-old",
@@ -74,7 +74,7 @@ async def test_concurrent_reads_of_expired_token_refresh_exactly_once(client, mo
     provider = _OneShotRefreshProvider()
     monkeypatch.setattr(storage, "get_provider", lambda name: provider)
 
-    tokens = await asyncio.gather(*(storage.get_valid_token(user_id, "twitter") for _ in range(4)))
+    tokens = await asyncio.gather(*(storage.get_valid_token(user_id, "linear") for _ in range(4)))
 
     assert provider.refreshes == 1
     assert tokens == ["at-new"] * 4

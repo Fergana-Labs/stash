@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ApiError } from "@/lib/api";
+import { ApiError, listSources, type Source } from "@/lib/api";
 import {
   disconnectIntegration,
   listIntegrations,
@@ -15,7 +15,7 @@ import {
 
 import { useConfirm } from "../ConfirmDialog";
 import { ObsidianIcon } from "./BrandIcons";
-import { CONNECTORS, connectorIcon, type Connector } from "./connectors";
+import { CONNECTORS, connectorIcon, providerForSourceType, type Connector } from "./connectors";
 import { CredentialForm, primaryButton, secondaryButton } from "./pickers";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 import PaywallModal from "../PaywallModal";
@@ -36,6 +36,10 @@ export default function SourceConnectorList({
 }: Props) {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus>>({});
   const [loaded, setLoaded] = useState(false);
+  // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
+  // "connected" once the browser extension has pushed a source. Keyed by
+  // provider ("x"/"instagram").
+  const [extensionSources, setExtensionSources] = useState<Record<string, Source>>({});
   const [expanded, setExpanded] = useState<IntegrationProvider | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +48,17 @@ export default function SourceConnectorList({
 
   const refresh = useCallback(async () => {
     setError(null);
-    const integrations = await listIntegrations();
+    const [integrations, sources] = await Promise.all([listIntegrations(), listSources()]);
     const nextStatuses: Record<string, IntegrationStatus> = {};
     for (const provider of integrations.providers) {
       nextStatuses[provider.provider] = provider;
     }
     setStatuses(nextStatuses);
+    const extension: Record<string, Source> = {};
+    for (const source of sources) {
+      if (providerForSourceType[source.type] === "instagram") extension.instagram = source;
+    }
+    setExtensionSources(extension);
     setLoaded(true);
   }, []);
 
@@ -133,12 +142,23 @@ export default function SourceConnectorList({
       {/* Visibility is server-driven: the server omits providers this user may
           not use (customer-specific integrations like Heavi), so no card
           renders until the list has loaded — a card must never flash in and
-          then disappear. */}
+          then disappear. Extension connectors have no provider entry and are
+          always shown. */}
       {loaded && CONNECTORS.map((connector) => {
+        const isExtension = connector.kind === "extension";
         const status = statuses[connector.provider];
-        if (!status) return null;
-        const connected = !!status?.connected;
+        if (!isExtension && !status) return null;
+        const connected = isExtension
+          ? !!extensionSources[connector.provider]
+          : !!status?.connected;
         const enabled = status?.enabled ?? true;
+        const subtitle = isExtension
+          ? connected
+            ? "Connected via the browser extension"
+            : connector.blurb
+          : connected
+            ? connectedLabel(status)
+            : connector.blurb;
         return (
           <div key={connector.provider} className="rounded-lg border border-border bg-surface px-3 py-2.5">
             <div className="flex items-center gap-3">
@@ -147,25 +167,32 @@ export default function SourceConnectorList({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] font-medium text-foreground">{connector.label}</div>
-                <div className="truncate text-[11.5px] text-muted-foreground">
-                  {connected ? connectedLabel(status) : connector.blurb}
-                </div>
+                <div className="truncate text-[11.5px] text-muted-foreground">{subtitle}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <ConnectorAction
-                  connected={connected}
-                  enabled={enabled}
-                  authKind={status?.auth_kind ?? "oauth"}
-                  disabledReason={status?.disabled_reason ?? null}
-                  provider={connector.provider}
-                  busy={busy === connector.provider}
-                  expanded={expanded === connector.provider}
-                  onConnect={() => void connect(connector)}
-                  onDisconnect={() => void disconnect(connector)}
-                  onExpand={() =>
-                    setExpanded((value) => (value === connector.provider ? null : connector.provider))
-                  }
-                />
+                {isExtension ? (
+                  // No OAuth to start — the extension pushes the saves. Always
+                  // offer "Open" so the page can show the saves or, when empty,
+                  // how to start.
+                  <Link href={`/integrations/${connector.provider}`} className={secondaryButton()}>
+                    Open
+                  </Link>
+                ) : (
+                  <ConnectorAction
+                    connected={connected}
+                    enabled={enabled}
+                    authKind={status?.auth_kind ?? "oauth"}
+                    disabledReason={status?.disabled_reason ?? null}
+                    provider={connector.provider}
+                    busy={busy === connector.provider}
+                    expanded={expanded === connector.provider}
+                    onConnect={() => void connect(connector)}
+                    onDisconnect={() => void disconnect(connector)}
+                    onExpand={() =>
+                      setExpanded((value) => (value === connector.provider ? null : connector.provider))
+                    }
+                  />
+                )}
               </div>
             </div>
 

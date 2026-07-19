@@ -88,10 +88,10 @@ class StashVfsModel:
         self._add_root()
         computer_lines = (
             [
-                "- `computer` is a live, read-only view of your cloud "
-                "computer's disk (browsing may wake it).",
+                "- `computer` is a live, read-only view of the agent's "
+                "working folder on your cloud computer (browsing may wake it).",
             ]
-            if self.include_computer
+            if "/computer" in self.nodes
             else []
         )
         self._add_static_file(
@@ -216,11 +216,15 @@ class StashVfsModel:
         self._add_sessions(overview.get("sessions", []))
         self._add_tables()
         self._add_sources()
-        if self.include_computer:
+        # /computer appears only for users whose cloud computer actually
+        # exists — the overview flag is a DB lookup, so deciding this never
+        # provisions or wakes a machine.
+        if self.include_computer and overview["machine"]["provisioned"]:
             self._add_computer()
 
     def _add_computer(self) -> None:
-        """The user's cloud computer, projected read-through at /computer.
+        """The agent's working folder on the user's cloud computer, projected
+        read-through at /computer.
 
         Directories expand lazily one level at a time (a workspace can hold a
         cloned repo — materializing the whole tree would be pathological), and

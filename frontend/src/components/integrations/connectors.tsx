@@ -12,13 +12,21 @@ import {
   HeaviIcon,
   JiraIcon,
   LinearIcon,
+  InstagramIcon,
   NotionIcon,
   PostHogIcon,
   SlackIcon,
-  TwitterIcon,
+  XIcon,
 } from "./BrandIcons";
 
-export type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
+export type ConnectorKind =
+  | "github"
+  | "drive"
+  | "notion"
+  | "jira"
+  | "asana"
+  | "auto"
+  | "extension";
 
 export type Connector = {
   provider: IntegrationProvider;
@@ -26,6 +34,9 @@ export type Connector = {
   sourceType: string;
   kind: ConnectorKind;
   blurb: string;
+  // Connecting auto-creates exactly one source (X) — there's nothing to "add",
+  // so the page hides the add-source UI and browses that source directly.
+  singleSource?: boolean;
 };
 
 export const CONNECTORS: Connector[] = [
@@ -92,13 +103,16 @@ export const CONNECTORS: Connector[] = [
     kind: "auto",
     blurb: "Meeting notes and transcripts.",
   },
-  {
-    provider: "gong",
-    label: "Gong",
-    sourceType: "gong_calls",
-    kind: "auto",
-    blurb: "Call transcripts, kept in sync.",
-  },
+  // Gong is hidden until an OAuth app exists: no GONG_OAUTH_* creds are
+  // registered anywhere (2026-07), so the card only ever showed users a
+  // "not configured" error. Re-enable once the creds land in Render + .env.
+  // {
+  //   provider: "gong",
+  //   label: "Gong",
+  //   sourceType: "gong_calls",
+  //   kind: "auto",
+  //   blurb: "Call transcripts, kept in sync.",
+  // },
   {
     provider: "heavi",
     label: "Heavi",
@@ -114,11 +128,19 @@ export const CONNECTORS: Connector[] = [
     blurb: "Browse dashboards, insights, feature flags, and experiments.",
   },
   {
-    provider: "twitter",
-    label: "Twitter / X",
-    sourceType: "twitter",
+    provider: "x",
+    label: "X",
+    sourceType: "x_saves",
     kind: "auto",
-    blurb: "OAuth access to X search, posts, bookmarks, likes, timelines, and DMs.",
+    singleSource: true,
+    blurb: "Connect X to sync your bookmarks, posts, and replies.",
+  },
+  {
+    provider: "instagram",
+    label: "Instagram",
+    sourceType: "instagram_saves",
+    kind: "extension",
+    blurb: "Your Instagram saves, captured by the Stash browser extension.",
   },
 ];
 
@@ -138,8 +160,8 @@ export const providerForSourceType: Record<string, string> = {
   gong_calls: "gong",
   heavi_learnings: "heavi",
   posthog_project: "posthog",
-  twitter: "twitter",
-  twitter_bookmarks: "twitter",
+  x_saves: "x",
+  instagram_saves: "instagram",
 };
 
 export function connectorForProvider(provider: string): Connector | undefined {
@@ -176,8 +198,10 @@ export function connectorIcon(provider: string): ReactNode {
       return <HeaviIcon />;
     case "posthog":
       return <PostHogIcon />;
-    case "twitter":
-      return <TwitterIcon />;
+    case "x":
+      return <XIcon />;
+    case "instagram":
+      return <InstagramIcon />;
     default:
       return null;
   }
@@ -197,8 +221,7 @@ export function labelForSourceType(type: string): string {
   if (type === "gong_calls") return "Gong";
   if (type === "heavi_learnings") return "Heavi rules of the road";
   if (type === "posthog_project") return "PostHog";
-  if (type === "twitter") return "Twitter / X";
-  if (type === "twitter_bookmarks") return "X bookmarks";
+  if (type === "x_saves") return "X saves";
   if (type === "instagram_saves") return "Instagram saves";
   return type;
 }

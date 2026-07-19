@@ -175,7 +175,9 @@ async def fetch_pull_request(
         headers["Authorization"] = f"Bearer {access_token}"
 
     base_url = f"{GITHUB_API_URL}/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
-    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+    # Renamed repos 301 to their new path; without following it every PR under
+    # that repo raises and floods the worker (starving other syncs).
+    async with httpx.AsyncClient(timeout=15.0, headers=headers, follow_redirects=True) as client:
         response = await client.get(base_url)
         if response.status_code == 404:
             return None

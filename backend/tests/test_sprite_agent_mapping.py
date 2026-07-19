@@ -223,8 +223,8 @@ def test_box_path_rejects_escapes(monkeypatch):
     from backend.services import sprite_service
 
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
-    assert sprite_service._box_path("") == "/home/sprite"
-    assert sprite_service._box_path("work/notes.md") == "/home/sprite/work/notes.md"
-    for bad in ("../etc/passwd", "work/../../etc", "..", "a/../../.."):
+    assert sprite_service._box_path("") == "/home/sprite/work"
+    assert sprite_service._box_path("notes.md") == "/home/sprite/work/notes.md"
+    for bad in ("../etc/passwd", "../.ssh/id_rsa", "..", "a/../../.."):
         with pytest.raises(sprite_service.FsPathError):
             sprite_service._box_path(bad)

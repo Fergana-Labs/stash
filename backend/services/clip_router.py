@@ -63,9 +63,6 @@ async def process_url_import(row: dict) -> dict:
 
     if is_youtube(url):
         video = await asyncio.to_thread(youtube_transcript.fetch_transcript, url)
-        folder_id = row["folder_id"] or await clip_service.clips_subfolder_id(
-            owner_user_id, user_id, "YouTube"
-        )
         markdown = f"**{video['channel']}**\n\n{video['transcript']}"
         page = await clip_service.create_clip_page(
             owner_user_id=owner_user_id,
@@ -73,7 +70,8 @@ async def process_url_import(row: dict) -> dict:
             url=url,
             name=video["title"],
             markdown=markdown,
-            folder_id=folder_id,
+            folder_id=row["folder_id"],
+            kind=clip_service.KIND_VIDEO,
         )
         return {"page_id": page["id"]}
 

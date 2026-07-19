@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
@@ -72,7 +72,7 @@ function ToolsSection() {
   if (allowed === null) return <LoadingRow />;
   return (
     <div className="py-1">
-      {CONNECTORS.filter((c) => allowed.has(c.provider)).map((c) => (
+      {CONNECTORS.filter((c) => c.kind === "extension" || allowed.has(c.provider)).map((c) => (
         <LeafRow
           key={c.provider}
           icon={connectorIcon(c.provider) ?? <Plug className="h-3.5 w-3.5" />}
@@ -89,14 +89,15 @@ function ToolsSection() {
   );
 }
 
-// Computer = a read-through view of the user's cloud machine's filesystem
-// (relative to its home). Browsing wakes a sleeping machine; nothing here is
+// Computer = a read-through view of the agent's working folder on the user's
+// cloud machine. Browsing wakes a sleeping machine; nothing here is
 // synced — "Save to Stash" on an open file is the only copy path.
 function ComputerSection() {
   const open = useOpenTab();
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<MachineEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noMachine, setNoMachine] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,9 +105,22 @@ function ComputerSection() {
     setError(null);
     machineFsList(path)
       .then((rows) => { if (!cancelled) setEntries(rows); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+      .catch((e) => {
+        if (cancelled) return;
+        // 404 = no computer provisioned yet; browsing never creates one.
+        if (e instanceof ApiError && e.status === 404) setNoMachine(true);
+        else setError(e instanceof Error ? e.message : String(e));
+      });
     return () => { cancelled = true; };
   }, [path]);
+
+  if (noMachine) {
+    return (
+      <div className="px-3 py-2 text-[12px] text-muted-foreground">
+        No cloud computer yet — it&apos;s created the first time a cloud agent runs.
+      </div>
+    );
+  }
 
   const crumbs = path ? path.split("/") : [];
   return (

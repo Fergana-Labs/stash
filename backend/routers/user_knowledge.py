@@ -21,6 +21,7 @@ from ..services import (
     permission_service,
     session_title_service,
     skill_service,
+    sprite_service,
     user_scope_service,
     workspace_service,
 )
@@ -318,12 +319,20 @@ async def get_scope_overview(
     owner_user_id = scope_user_id
     await _check_overview_access(owner_user_id, current_user["id"])
 
-    sessions, files, skills = await asyncio.gather(
+    sessions, files, skills, sprite = await asyncio.gather(
         _list_sessions(owner_user_id, current_user["id"]),
         _files_tree(owner_user_id, current_user["id"]),
         _list_sidebar_skills(owner_user_id, current_user["id"]),
+        sprite_service.existing(owner_user_id),
     )
-    return {"sessions": sessions, "files": files, "skills": skills}
+    # The VFS mounts /computer only when a machine exists — checking must not
+    # provision one, so this is a row lookup, never a sprites API call.
+    return {
+        "sessions": sessions,
+        "files": files,
+        "skills": skills,
+        "machine": {"provisioned": sprite is not None},
+    }
 
 
 @router.get("/sidebar")

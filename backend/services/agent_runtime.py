@@ -464,7 +464,7 @@ async def _unpublish_skill(args: dict) -> dict:
     "list_sources",
     "List every source this user can read: native 'files' and 'sessions', plus "
     "their connected sources (GitHub, Drive, Gmail, Notion, Slack, Granola, Jira, Asana, "
-    "Gong, Twitter). Each has a `capability`: 'navigable'/'searchable' sources use "
+    "Gong, X, Instagram). Each has a `capability`: 'navigable'/'searchable' sources use "
     "list_source / read_source / search. Use the returned `source` handle with those tools.",
     {"type": "object", "properties": {}},
 )
@@ -524,12 +524,7 @@ async def _read_source(args: dict) -> dict:
     "search",
     "Search across sources. Omit `source` to search everything the user can see "
     "(native files + sessions + their connected sources), or pass a source handle "
-    "to scope to one. Twitter / X is only searched when explicitly scoped — its "
-    "API quota is metered, so unscoped searches skip it. For a Twitter source, "
-    "use list_source/read_source for personal refs (home, my-posts, bookmarks, "
-    "likes, dms) and post expansion refs (thread:<id>, likers:<id>, "
-    "reposters:<id>). Use scoped search with `from:handle` for recent public "
-    "post search.",
+    "to scope to one.",
     {
         "type": "object",
         "properties": {

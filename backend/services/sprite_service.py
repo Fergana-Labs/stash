@@ -83,6 +83,20 @@ def _sprite_name(user_id: UUID) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def existing(user_id: UUID) -> Sprite | None:
+    """The user's sprite if one has been provisioned, else None — never
+    provisions. Read-only surfaces (fs browsing, the VFS /computer mount) use
+    this so that *looking* for a computer can't conjure one; only real usage
+    (agent turns, the terminal) goes through acquire."""
+    if settings.AGENT_EXEC_MODE == "local":
+        return Sprite(name="local") if _local_workdir().exists() else None
+
+    row = await get_pool().fetchrow(
+        "SELECT sprite_name FROM user_sprites WHERE user_id = $1 AND status = 'ready'", user_id
+    )
+    return Sprite(name=row["sprite_name"]) if row else None
+
+
 async def acquire(user_id: UUID) -> Sprite:
     """The user's sprite, provisioning it on first use.
 
@@ -436,17 +450,20 @@ _FS_LIST_PY = (
 
 
 class FsPathError(ValueError):
-    """A path escaped the box home or doesn't resolve."""
+    """A path escaped the agent workdir or doesn't resolve."""
 
 
 def _box_path(rel_path: str) -> str:
-    """Resolve a home-relative path to an absolute box path, refusing escapes."""
+    """Resolve a workdir-relative path to an absolute box path, refusing escapes.
+
+    The fs projection exposes only the agent's working folder — never the VM's
+    home or system internals."""
     import posixpath
 
-    home = SPRITE_HOME if settings.AGENT_EXEC_MODE == "sprites" else str(_local_workdir().parent)
-    joined = posixpath.normpath(posixpath.join(home, rel_path.lstrip("/")))
-    if joined != home and not joined.startswith(home + "/"):
-        raise FsPathError(f"path escapes the machine home: {rel_path}")
+    root = SPRITE_WORKDIR if settings.AGENT_EXEC_MODE == "sprites" else str(_local_workdir())
+    joined = posixpath.normpath(posixpath.join(root, rel_path.lstrip("/")))
+    if joined != root and not joined.startswith(root + "/"):
+        raise FsPathError(f"path escapes the agent workdir: {rel_path}")
     return joined
 
 
@@ -468,7 +485,7 @@ async def write_file(sprite: Sprite, abs_path: str, contents: str) -> None:
 
 
 async def fs_list(sprite: Sprite, rel_path: str) -> list[dict]:
-    """Directory entries at a home-relative path on the box."""
+    """Directory entries at a workdir-relative path on the box."""
     output, code = await exec_collect(
         sprite,
         ["python3", "-c", _FS_LIST_PY, _box_path(rel_path)],

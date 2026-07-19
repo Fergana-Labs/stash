@@ -9,8 +9,10 @@
 ### Running tests
 
 ```bash
-# Ensure the test database exists
-docker compose up -d postgres
+# Ensure the test database exists (standalone pgvector container on 5432)
+docker start stash-pg 2>/dev/null || docker run -d --name stash-pg -p 5432:5432 \
+  -e POSTGRES_USER=stash -e POSTGRES_PASSWORD=stash -e POSTGRES_DB=stash \
+  pgvector/pgvector:pg16
 psql postgresql://stash:stash@localhost:5432/postgres -c "CREATE DATABASE stash_test"
 
 # Run migrations and tests

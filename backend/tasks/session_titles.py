@@ -44,7 +44,7 @@ async def _session_stats(owner_user_id: UUID, session_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-async def _session_source(owner_user_id: UUID, session_id: str) -> str:
+async def _session_events(owner_user_id: UUID, session_id: str) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         """
@@ -59,21 +59,22 @@ async def _session_source(owner_user_id: UUID, session_id: str) -> str:
         owner_user_id,
         session_id,
     )
+    return [dict(row) for row in rows]
+
+
+def _source_text(events: list[dict]) -> str:
     parts: list[str] = []
-    for row in rows:
-        label = row["event_type"] or "event"
-        if row["tool_name"]:
-            label = f"{label}:{row['tool_name']}"
-        content = _clean_text(row["content"] or "")
+    for event in events:
+        label = event["event_type"] or "event"
+        if event["tool_name"]:
+            label = f"{label}:{event['tool_name']}"
+        content = _clean_text(event["content"] or "")
         if content:
             parts.append(f"{label}: {content[:600]}")
     return "\n".join(parts)[:MAX_SOURCE_CHARS]
 
 
 async def _generate_title(source: str) -> str:
-    if not settings.ANTHROPIC_API_KEY:
-        return ""
-
     from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -81,12 +82,15 @@ async def _generate_title(source: str) -> str:
         model=settings.ANTHROPIC_FAST_MODEL,
         max_tokens=48,
         system=(
-            "Generate a concise title for a coding-agent session. "
-            "Use 3 to 8 words. Name the specific task or outcome. "
-            "Do not include ticket IDs, agent names, session IDs, dates, or the word session. "
-            "Return only the title text."
+            "You are given the transcript of a coding-agent session inside "
+            "<transcript> tags. Write a concise title for it: 3 to 8 words "
+            "naming the specific task or outcome. Never reply to the "
+            "transcript or continue its conversation. If it contains little "
+            "content, title whatever is there — never ask for more context. "
+            "Do not include ticket IDs, agent names, session IDs, dates, or "
+            "the word session. Return only the title text."
         ),
-        messages=[{"role": "user", "content": source}],
+        messages=[{"role": "user", "content": f"<transcript>\n{source}\n</transcript>"}],
     )
     text = "\n".join(
         block.text for block in response.content if getattr(block, "type", "") == "text"
@@ -107,18 +111,30 @@ async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
         owner_user_id,
         session_id,
     )
+    # A user-set (or already-fresh) title needs no LLM, so decide that before the
+    # API-key gate — otherwise a manual rename gets clobbered / reported as
+    # "unconfigured" on a server without an Anthropic key.
     if cached and cached["user_set"]:
         return "user-set"
     if cached and cached["source_hash"] == source_hash:
         return "fresh"
 
-    source = await _session_source(owner_user_id, session_id)
+    events = await _session_events(owner_user_id, session_id)
+    source = _source_text(events)
     if not source:
         return "empty"
 
+    if not settings.ANTHROPIC_API_KEY:
+        return "unconfigured"
+
+    status = "generated"
     title = await _generate_title(source)
     if not title:
-        return "unconfigured"
+        # The model replied to the transcript instead of titling it and the
+        # output was rejected. Cache the deterministic event-derived title so
+        # this session isn't re-sent to the LLM on every listing.
+        title = session_title_service.title_from_events(events, session_id)
+        status = "derived"
 
     await pool.execute(
         """
@@ -134,7 +150,7 @@ async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
         title,
         source_hash,
     )
-    return "generated"
+    return status
 
 
 @celery.task(name="backend.tasks.session_titles.generate_session_title")

@@ -77,9 +77,7 @@ def _upload_kwargs(html: str = BOOKMARKS_HTML) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_bookmark_import_mirrors_tree_and_enqueues(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
+async def test_bookmark_import_enqueues_all_urls(client: AsyncClient, pool, monkeypatch) -> None:
     dispatched: list[list[str]] = []
     monkeypatch.setattr(
         clips_tasks.process_url_imports, "delay", lambda ids: dispatched.append(ids)
@@ -92,32 +90,18 @@ async def test_bookmark_import_mirrors_tree_and_enqueues(
     assert body["total"] == 3
     assert len(dispatched) == 1 and len(dispatched[0]) == 3
 
+    # Every URL is queued (deduped, junk schemes dropped); the worker files each
+    # into Clips/raw + the Bookmarks table, so no folder tree is mirrored.
     rows = await pool.fetch(
-        "SELECT ui.url, ui.title, f.name AS folder_name FROM url_imports ui "
-        "JOIN folders f ON f.id = ui.folder_id WHERE ui.owner_user_id = $1 ORDER BY ui.url",
+        "SELECT url, folder_id FROM url_imports WHERE owner_user_id = $1 ORDER BY url",
         UUID(owner_id),
     )
-    assert [(r["url"], r["folder_name"]) for r in rows] == [
-        ("https://example.com/one", "Bookmarks bar"),
-        ("https://example.com/root", "Bookmarks"),
-        ("https://example.com/two", "Research"),
+    assert [r["url"] for r in rows] == [
+        "https://example.com/one",
+        "https://example.com/root",
+        "https://example.com/two",
     ]
-
-    # The mirrored tree hangs off Clips/Bookmarks.
-    research_parents = await pool.fetchrow(
-        """
-        SELECT f1.name AS parent, f2.name AS grandparent, f3.name AS great
-        FROM folders research
-        JOIN folders f1 ON f1.id = research.parent_folder_id
-        JOIN folders f2 ON f2.id = f1.parent_folder_id
-        JOIN folders f3 ON f3.id = f2.parent_folder_id
-        WHERE research.owner_user_id = $1 AND research.name = 'Research'
-        """,
-        UUID(owner_id),
-    )
-    assert research_parents["parent"] == "Bookmarks bar"
-    assert research_parents["grandparent"] == "Bookmarks"
-    assert research_parents["great"] == "Clips"
+    assert all(r["folder_id"] is None for r in rows)
 
 
 @pytest.mark.asyncio
@@ -142,7 +126,7 @@ async def test_bookmark_import_rejects_empty_and_oversized(
 
 
 @pytest.mark.asyncio
-async def test_tabs_import_lands_under_dated_folder(client: AsyncClient, pool, monkeypatch) -> None:
+async def test_tabs_import_enqueues_deduped(client: AsyncClient, pool, monkeypatch) -> None:
     monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
     headers, owner_id = await _register(client)
 
@@ -155,14 +139,10 @@ async def test_tabs_import_lands_under_dated_folder(client: AsyncClient, pool, m
     assert resp.json()["total"] == 2  # deduped
 
     rows = await pool.fetch(
-        "SELECT f.name AS folder_name, parent.name AS parent_name FROM url_imports ui "
-        "JOIN folders f ON f.id = ui.folder_id "
-        "JOIN folders parent ON parent.id = f.parent_folder_id "
-        "WHERE ui.owner_user_id = $1",
-        UUID(owner_id),
+        "SELECT url, folder_id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
     )
     assert len(rows) == 2
-    assert all(r["parent_name"] == "Tabs" for r in rows)
+    assert all(r["folder_id"] is None for r in rows)
 
 
 @pytest.mark.asyncio

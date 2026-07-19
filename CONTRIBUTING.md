@@ -23,8 +23,12 @@ development environment, run the test suite, and submit a pull request.
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 
-# 2. Start Postgres (pgvector)
-docker compose up -d postgres
+# 2. Start Postgres (pgvector) on the default port
+docker run -d --name stash-pg -p 5432:5432 \
+  -e POSTGRES_USER=stash -e POSTGRES_PASSWORD=stash -e POSTGRES_DB=stash \
+  pgvector/pgvector:pg16
+# (./start.sh manages its own per-worktree database automatically; this
+# standalone container is only needed for running the backend or tests by hand.)
 
 # 3. Backend dependencies (includes test tooling)
 pip install -r backend/requirements-dev.txt
@@ -45,6 +49,27 @@ cd frontend && npm ci && cd ..
 #   Backend  → http://localhost:3456
 #   Frontend → http://localhost:3457
 ```
+
+### Connecting integrations locally (OAuth)
+
+Integrations show "…OAuth is not configured for this server. Missing: <vars>"
+until every listed env var is set in the repo-root `.env`. Each OAuth provider
+needs **three** vars: `<PROVIDER>_OAUTH_CLIENT_ID`, `<PROVIDER>_OAUTH_CLIENT_SECRET`,
+and `<PROVIDER>_OAUTH_REDIRECT_URI` (X/Twitter uses the `TWITTER_` prefix;
+Granola needs only its redirect URI). There are deliberately no defaults for
+redirect URIs — set them explicitly:
+
+```bash
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3456/api/v1/integrations/google/callback
+# ...same pattern for gmail, github, notion, slack, jira, linear, asana,
+# granola, and x (TWITTER_OAUTH_REDIRECT_URI → .../integrations/x/callback)
+```
+
+Client IDs/secrets come from each provider's developer console (or ask a
+teammate for the shared dev OAuth apps). The provider's OAuth app must have
+the `http://localhost:3456/...` callback registered as a redirect URI, or the
+consent screen will reject the flow with a redirect_uri mismatch. Ports are
+fixed (backend 3456) precisely so these registrations stay valid.
 
 ---
 
@@ -70,8 +95,11 @@ Both suites must pass before a PR can be merged.
 ### Backend
 
 ```bash
-# Start a test Postgres instance (separate DB from dev)
-docker compose up -d postgres
+# Start the standalone Postgres container from Getting started (a separate
+# test database is created inside the same instance)
+docker start stash-pg 2>/dev/null || docker run -d --name stash-pg -p 5432:5432 \
+  -e POSTGRES_USER=stash -e POSTGRES_PASSWORD=stash -e POSTGRES_DB=stash \
+  pgvector/pgvector:pg16
 
 # Create the test database if it doesn't exist
 psql postgresql://stash:stash@localhost:5432/postgres -c "CREATE DATABASE stash_test"
