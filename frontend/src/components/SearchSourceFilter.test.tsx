@@ -6,7 +6,7 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import SearchSourceFilter from "./SearchSourceFilter";
 
-const TOKENS = ["files", "sessions", "gmail"];
+const TOKENS = ["files", "sessions", "skills", "tables", "gmail"];
 
 function Harness({ initialDeselected = [] }: { initialDeselected?: string[] }) {
   const [deselected, setDeselected] = useState(new Set(initialDeselected));
@@ -34,7 +34,7 @@ describe("SearchSourceFilter", () => {
 
   it("shows the selected count when narrowed", () => {
     render(<Harness initialDeselected={["gmail"]} />);
-    expect(screen.getByRole("button", { name: "Sources" })).toHaveTextContent("Sources · 2/3");
+    expect(screen.getByRole("button", { name: "Sources" })).toHaveTextContent("Sources · 4/5");
   });
 
   it("renders every token checked by default and keeps the menu open on toggle", () => {
@@ -44,7 +44,13 @@ describe("SearchSourceFilter", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "Sources" }), { key: "Enter" });
 
     const items = screen.getAllByRole("menuitemcheckbox");
-    expect(items.map((i) => i.textContent)).toEqual(["Files", "Sessions", "Gmail"]);
+    expect(items.map((i) => i.textContent)).toEqual([
+      "Files",
+      "Sessions",
+      "Skills",
+      "Tables",
+      "Gmail",
+    ]);
     expect(items.every((i) => i.getAttribute("aria-checked") === "true")).toBe(true);
 
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Gmail/ }));

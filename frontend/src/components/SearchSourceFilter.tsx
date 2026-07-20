@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, FileText, TerminalSquare } from "lucide-react";
+import { ChevronDown, FileText, GraduationCap, MessagesSquare, Table2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -9,8 +9,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { connectorIcon, labelForProvider } from "@/components/integrations/connectors";
 
-// The native handles come first, then the user's connected providers.
-const NATIVE_LABELS: Record<string, string> = { files: "Files", sessions: "Sessions" };
+// Native kinds come first (files/sessions plus the client-side-searched
+// skills/tables), then the user's connected providers.
+const NATIVE_LABELS: Record<string, string> = {
+  files: "Files",
+  sessions: "Sessions",
+  skills: "Skills",
+  tables: "Tables",
+};
 
 function tokenLabel(token: string): string {
   return NATIVE_LABELS[token] ?? labelForProvider(token);
@@ -18,7 +24,9 @@ function tokenLabel(token: string): string {
 
 function tokenIcon(token: string) {
   if (token === "files") return <FileText className="size-4" />;
-  if (token === "sessions") return <TerminalSquare className="size-4" />;
+  if (token === "sessions") return <MessagesSquare className="size-4" />;
+  if (token === "skills") return <GraduationCap className="size-4" />;
+  if (token === "tables") return <Table2 className="size-4" />;
   return connectorIcon(token);
 }
 

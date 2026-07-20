@@ -7,7 +7,7 @@ import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../components/CustomSelect";
 import SearchSourceFilter from "../../components/SearchSourceFilter";
 import { providerForSourceType } from "../../components/integrations/connectors";
-import { unifiedSearchTokens, type ContentScope } from "./unified-tokens";
+import { CLIENT_SIDE_TOKENS, unifiedSearchTokens } from "./unified-tokens";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
@@ -56,22 +56,6 @@ interface SearchResult {
   relevance: number;
 }
 
-const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "sessions", label: "Sessions" },
-  { id: "pages", label: "Pages" },
-  { id: "skills", label: "Skills" },
-  { id: "tables", label: "Tables" },
-];
-
-function initialContentScope(value: string | null, sessionId: string): ContentScope {
-  if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "tables" || value === "skills") {
-    return value;
-  }
-  return "all";
-}
-
 export default function SearchPage() {
   return (
     <Suspense
@@ -96,9 +80,6 @@ function SearchPageInner() {
   const [selectedFolderId, setSelectedFolderId] = useState(searchParams.get("folder") ?? "");
   const [selectedPageId, setSelectedPageId] = useState(searchParams.get("page") ?? "");
   const [selectedSessionId] = useState(initialSessionId);
-  const [contentScope, setContentScope] = useState<ContentScope>(
-    () => initialContentScope(searchParams.get("content"), initialSessionId)
-  );
   const [connectedProviders, setConnectedProviders] = useState<string[]>([]);
   // The chip stores what's UNCHECKED, so "all selected" is the default even
   // before the connected providers load, and the default sends no filter.
@@ -179,7 +160,7 @@ function SearchPageInner() {
   const sourceName = user?.display_name ?? "You";
 
   const allSourceTokens = useMemo(
-    () => ["files", "sessions", ...connectedProviders],
+    () => ["files", "sessions", "skills", "tables", ...connectedProviders],
     [connectedProviders]
   );
 
@@ -202,9 +183,10 @@ function SearchPageInner() {
     setSearchedQuery(q);
     try {
       const nextResults: SearchResult[] = [];
-      const includePages = contentScope === "all" || contentScope === "pages";
-      const includeTables = contentScope === "all" || contentScope === "tables";
-      const includeSkills = contentScope === "all" || contentScope === "skills";
+      const selected = allSourceTokens.filter((t) => !deselectedSources.has(t));
+      const includePages = selected.includes("files");
+      const includeTables = selected.includes("tables");
+      const includeSkills = selected.includes("skills");
 
       if (selectedSessionId) {
         const events = await getSessionEvents(selectedSessionId);
@@ -232,17 +214,17 @@ function SearchPageInner() {
       }
 
       // One unified call covers sessions + pages + connected sources, merged
-      // and ranked server-side, narrowed to the tokens the content-type and
-      // sources chips agree on. All-selected sends no filter — the server's
-      // default already searches everything.
+      // and ranked server-side, narrowed to the sources chip's selection.
+      // All-selected sends no filter — the server's default already searches
+      // everything.
       const tokens = unifiedSearchTokens(
-        contentScope,
         { filtered: Boolean(selectedFolderId || selectedPageId) },
-        allSourceTokens.filter((t) => !deselectedSources.has(t))
+        selected
       );
       if (tokens !== null) {
+        const allApiTokenCount = allSourceTokens.length - CLIENT_SIDE_TOKENS.length;
         const { results: hits, has_more } = await searchSource(q, {
-          includeSources: tokens.length === allSourceTokens.length ? undefined : tokens,
+          includeSources: tokens.length === allApiTokenCount ? undefined : tokens,
           limit: 50,
         });
         const folderIds = sidebar
@@ -269,7 +251,6 @@ function SearchPageInner() {
 
       setResults(sortResults(nextResults));
       track("web.search_query", {
-        scope: contentScope,
         has_results: nextResults.length > 0,
         result_count_bucket: bucketCount(nextResults.length),
       });
@@ -281,7 +262,6 @@ function SearchPageInner() {
     }
   }, [
     allSourceTokens,
-    contentScope,
     deselectedSources,
     skills,
     selectedFolderId,
@@ -357,20 +337,6 @@ function SearchPageInner() {
               ariaLabel="Page"
               searchable
               searchPlaceholder="Filter pages…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
-              menuClassName="text-[12.5px]"
-            />
-
-            <CustomSelect
-              value={contentScope}
-              options={CONTENT_SCOPES.map((scope) => ({
-                value: scope.id,
-                label: scope.id === "all" ? "All types" : scope.label,
-              }))}
-              onChange={(next) => setContentScope(next as ContentScope)}
-              ariaLabel="Content"
-              searchable
-              searchPlaceholder="Filter types…"
               className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
