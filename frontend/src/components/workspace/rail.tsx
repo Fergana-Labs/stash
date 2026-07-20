@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, Monitor, Wrench, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { Button } from "@/components/ui/button";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 
@@ -14,13 +15,25 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
-  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
+  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/file/") || p.startsWith("/page/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "memory", label: "Memory", icon: Brain, match: (p) => p.startsWith("/memory") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
-  { key: "computer", label: "VM", icon: Monitor, match: () => false },
+  { key: "computer", label: "VM", icon: Monitor, match: (p) => p.startsWith("/computer") },
 ];
+
+const TOP_LEVEL_ROUTES = ["/files", "/sessions", "/skills", "/memory", "/tools", "/agents", "/computer"];
+
+const ROUTES: Record<RailSection, string> = {
+  agents: "/agents",
+  files: "/files",
+  sessions: "/sessions",
+  skills: "/skills",
+  memory: "/memory",
+  tools: "/tools",
+  computer: "/computer",
+};
 
 function RailButton({
   item,
@@ -33,12 +46,12 @@ function RailButton({
 }) {
   const Icon = item.icon;
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       aria-label={item.label}
       className={cn(
-        "flex w-full flex-col items-center gap-1 rounded-lg py-2 transition-colors",
+        "h-auto w-full flex-col gap-1 rounded-lg py-2 font-normal",
         active
           ? "bg-brand-500/12 text-brand-600"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
@@ -46,7 +59,7 @@ function RailButton({
     >
       <Icon className="h-[18px] w-[18px]" />
       <span className="text-[10px] font-medium leading-none">{item.label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -66,13 +79,15 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
   }, [open]);
   return (
     <div ref={ref} className="relative">
-      <button
+      <Button
+        variant="default"
+        size="icon"
         onClick={() => setOpen((o) => !o)}
         title={user.email ?? user.name}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[12px] font-semibold text-white hover:ring-2 hover:ring-brand-200"
+        className="rounded-full bg-brand-500 text-xs font-semibold text-white hover:ring-2 hover:ring-brand-200"
       >
         {user.display_name[0].toUpperCase()}
-      </button>
+      </Button>
       {open && (
         <div role="menu" className="absolute bottom-0 left-full z-40 ml-2 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg">
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
@@ -81,9 +96,9 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
           <Link href="/settings" onClick={() => setOpen(false)} className="block px-3 py-1.5 text-foreground hover:bg-raised">
             Account settings
           </Link>
-          <button onClick={() => { setOpen(false); onLogout(); }} className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised">
+          <Button variant="ghost" onClick={() => { setOpen(false); onLogout(); }} className="h-auto block w-full justify-start px-3 py-1.5 text-left text-[13px] font-normal text-foreground hover:bg-raised">
             Sign out
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -98,19 +113,34 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const setRailSection = useWorkspace((s) => s.setRailSection);
+  const setExplorerAtRoot = useWorkspace((s) => s.setExplorerAtRoot);
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Memory's landing is the brain dashboard, so it navigates; other sections
-    // just swap the explorer beside whatever's open.
-    if (section === "memory") {
-      setRailSection(section);
-      router.replace("/memory");
+    setRailSection(section);
+    setExplorerAtRoot(false);
+    const targetRoute = ROUTES[section];
+    
+    // Check if current path is a top-level route (e.g. /files, /sessions) or outside workspace
+    const isTopLevel =
+      TOP_LEVEL_ROUTES.includes(pathname) ||
+      !PRIMARY.some((item) => item.match(pathname));
+
+    if (isTopLevel) {
+      router.replace(targetRoute);
       return;
     }
+
+    // We are on a deep link like /p/123. If clicked section matches current path, strip query params.
+    const item = PRIMARY.find((s) => s.key === section);
+    if (item?.match(pathname)) {
+      router.replace(pathname);
+      return;
+    }
+
+    // Otherwise, set the explorer section query parameter.
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
-    setRailSection(section);
     router.replace(`${pathname}?${params.toString()}`);
   }
 
@@ -128,19 +158,6 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
         </Fragment>
       ))}
       <div className="mt-auto flex w-full flex-col items-center gap-1">
-        <Link
-          href="/settings"
-          aria-label="Settings"
-          className={cn(
-            "flex w-full flex-col items-center gap-1 rounded-lg py-2 transition-colors",
-            pathname.startsWith("/settings")
-              ? "bg-brand-500/12 text-brand-600"
-              : "text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-          )}
-        >
-          <Settings className="h-[18px] w-[18px]" />
-          <span className="text-[10px] font-medium leading-none">Settings</span>
-        </Link>
         <AccountMenu user={user} onLogout={onLogout} />
       </div>
     </div>

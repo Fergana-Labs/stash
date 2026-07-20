@@ -63,12 +63,13 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
  *  the tab workbench; `/sessions` keeps its full management page beside the
  *  Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
-  if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
+  if (pathname === "/files" || /^\/(page|file|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
   if (pathname === "/memory" || pathname.startsWith("/memory/")) return "memory";
   if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
+  if (pathname === "/computer") return "computer";
   return null;
 }
 

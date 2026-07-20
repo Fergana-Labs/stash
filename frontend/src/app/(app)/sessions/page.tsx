@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { Button } from "@/components/ui/button";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/api";
 import SessionFolderShareModal from "@/components/share/SessionFolderShareModal";
 import { usePins } from "@/lib/pins";
+import { routes } from "@/lib/workspace-routes";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
@@ -363,7 +365,7 @@ export default function SkillSessionsPage() {
                 if (v) void moveSelectedToFolder(v === "__none__" ? null : v);
                 e.target.value = "";
               }}
-              className="rounded-md border border-background/40 bg-foreground px-2 py-0.5 text-[12px] font-semibold text-background hover:bg-background/10"
+              className="rounded-md border border-background/40 bg-foreground px-2 py-0.5 text-xs font-semibold text-background hover:bg-background/10"
             >
               <option value="">Move to folder…</option>
               <option value="__new__">+ New folder</option>
@@ -373,21 +375,22 @@ export default function SkillSessionsPage() {
                 </option>
               ))}
             </select>
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="xs"
               onClick={() => void bulkDeleteSessions()}
-              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10"
             >
               Delete
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
               onClick={clearSelection}
-              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-lg leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -509,17 +512,17 @@ function DayGroup({
   const [open, setOpen] = useState(initialOpen);
   return (
     <section>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+        className="h-auto w-full cursor-pointer justify-start gap-2 px-1 py-1 text-left font-normal hover:bg-raised"
       >
         <Chev open={open} />
         <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {group.count}
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-4">
           {group.users.map((bucket) => (
@@ -561,17 +564,17 @@ function FlatGroup({
   const [open, setOpen] = useState(initialOpen);
   return (
     <section>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+        className="h-auto w-full cursor-pointer justify-start gap-2 px-1 py-1 text-left font-normal hover:bg-raised"
       >
         <Chev open={open} />
         <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {group.count}
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="mt-1.5">
           <SessionsTable
@@ -600,7 +603,7 @@ function SegmentedControl<T extends string>({
   onChange: (next: T) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 text-[12px]">
+    <div className="inline-flex items-center gap-1.5 text-xs">
       <span className="sys-label" style={{ fontSize: 10 }}>
         {label}
       </span>
@@ -608,19 +611,20 @@ function SegmentedControl<T extends string>({
         {options.map((opt) => {
           const active = value === opt.key;
           return (
-            <button
+            <Button
               key={opt.key}
-              type="button"
+              variant="ghost"
+              size="xs"
               onClick={() => onChange(opt.key)}
               className={
-                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
+                "cursor-pointer rounded-full px-2.5 py-1 leading-none duration-150 ease-out " +
                 (active
                   ? "bg-base font-semibold text-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
               }
             >
               {opt.label}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -716,7 +720,7 @@ function SessionTableRow({
 
   return (
     <Link
-      href={`/sessions/${encodeURIComponent(session.session_id)}`}
+      href={routes.session(session.session_id)}
       draggable={drag.canDrag && !!session.id}
       onDragStart={(e: DragEvent<HTMLAnchorElement>) => {
         if (!session.id) return;
@@ -769,15 +773,15 @@ function SessionTableRow({
       <span className="hidden min-w-0 md:block">
         {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
       </span>
-      <span className="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
+      <span className="hidden items-center gap-1 text-xs text-muted-foreground md:flex">
         <MessageIcon />
         {session.event_count}
       </span>
       <span className="hidden truncate text-muted-foreground md:block">{agent}</span>
-      <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
+      <span className="hidden whitespace-nowrap text-xs text-muted-foreground md:block">
         {formatDate(session.last_event_at || session.started_at)}
       </span>
-      <span className="justify-self-end whitespace-nowrap text-[12px] text-muted-foreground">
+      <span className="justify-self-end whitespace-nowrap text-xs text-muted-foreground">
         {formatRelative(session.last_event_at)}
       </span>
       <span
@@ -950,13 +954,13 @@ function FoldersSection({
     <section>
       <div className="mb-3 flex items-center justify-between border-b border-border pb-2.5">
         <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">Folders</h2>
-        <button
-          type="button"
+        <Button
+          variant="outline"
           onClick={onNewFolder}
-          className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+          className="h-auto cursor-pointer bg-base px-2.5 py-1 text-[12.5px] font-normal text-foreground hover:bg-raised"
         >
           + New folder
-        </button>
+        </Button>
       </div>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
         {ownFolders.map((f) => (
@@ -1018,7 +1022,7 @@ function FolderCard({
         (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
       }
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
+      <span aria-hidden className="mt-0.5 text-lg">
         {folder.is_default ? "🗃️" : "📁"}
       </span>
       <span className="min-w-0 flex-1">
@@ -1044,16 +1048,16 @@ function FolderCard({
           )}
         </span>
       </span>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={(e) => {
           e.stopPropagation();
           onShare();
         }}
-        className="shrink-0 cursor-pointer rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
+        className="h-auto cursor-pointer px-2 py-0.5 text-[11.5px] font-normal text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
       >
         Share
-      </button>
+      </Button>
     </div>
   );
 }
@@ -1068,19 +1072,19 @@ function SharedFolderCard({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
       onClick={onClick}
-      className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
+      className="h-auto w-full cursor-pointer items-start justify-start gap-2.5 bg-surface/50 px-3 py-3 text-left font-normal hover:border-[var(--color-brand-300)] hover:bg-raised/50"
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
+      <span aria-hidden className="mt-0.5 text-lg">
         🗂️
       </span>
       <span className="min-w-0">
         <span className="block truncate text-[13.5px] font-semibold text-foreground">{name}</span>
         <span className="block truncate text-[11.5px] text-muted-foreground">{subtitle}</span>
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -1190,36 +1194,36 @@ function FolderDrill({
 
   return (
     <div>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={onBack}
-        className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
+        className="mb-3 h-auto cursor-pointer gap-1 text-[12.5px] font-normal text-muted-foreground hover:text-foreground"
       >
         ← All folders
-      </button>
+      </Button>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
+        <h2 className="m-0 flex items-center gap-2 font-display text-lg font-semibold text-foreground">
           <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
           {folder.name}
           {ownFolder && <FolderAccessBadge folder={ownFolder} />}
         </h2>
         {ownFolder && (
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
+            <Button
+              variant="default"
               onClick={() => onShare(ownFolder)}
-              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="h-auto cursor-pointer bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-normal text-white hover:bg-[var(--color-brand-700)]"
             >
               Share
-            </button>
+            </Button>
             {!ownFolder.is_default && (
-              <button
-                type="button"
+              <Button
+                variant="outline"
                 onClick={() => onDelete(ownFolder)}
-                className="cursor-pointer rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted-foreground hover:text-rose-500"
+                className="h-auto cursor-pointer px-2.5 py-1 text-[12.5px] font-normal text-muted-foreground hover:text-rose-500"
               >
                 Delete
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -1273,14 +1277,14 @@ function FolderDrill({
           />
           {hasMore && (
             <div ref={sentinelRef} className="flex justify-center py-4">
-              <button
-                type="button"
+              <Button
+                variant="outline"
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                className="h-auto cursor-pointer px-3 py-1.5 text-[12.5px] font-normal text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
               >
                 {loadingMore ? "Loading…" : "Load more"}
-              </button>
+              </Button>
             </div>
           )}
         </>
@@ -1315,7 +1319,7 @@ function FolderDropChip({
         onDrop(rowIds);
       }}
       className={
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] " +
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs " +
         (over
           ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)] font-semibold text-foreground"
           : "border-border bg-base text-dim")

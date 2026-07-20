@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useConfirm } from "../../components/ConfirmDialog";
-import WorkspaceShell from "@/components/workspace/workspace-shell";
-import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
-import SubscriptionSection from "../../components/settings/SubscriptionSection";
-import AgentModelSection from "../../components/settings/AgentModelSection";
-import ExportSection from "../../components/settings/ExportSection";
-import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
-import { useAuth } from "../../hooks/useAuth";
+import { useConfirm } from "../../../components/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import IntegrationsSettings from "../../../components/integrations/IntegrationsSettings";
+import SubscriptionSection from "../../../components/settings/SubscriptionSection";
+import AgentModelSection from "../../../components/settings/AgentModelSection";
+import ExportSection from "../../../components/settings/ExportSection";
+import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../../components/SkeletonStates";
+import { useAuth } from "../../../hooks/useAuth";
 import {
   ApiError,
   ApiKeyAccess,
@@ -19,8 +21,8 @@ import {
   listMyKeys,
   revokeMyKey,
   updateMe,
-} from "../../lib/api";
-import { User } from "../../lib/types";
+} from "../../../lib/api";
+import { User } from "../../../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
@@ -37,32 +39,30 @@ export default function SettingsPage() {
   }
 
   return (
-    <WorkspaceShell user={user} onLogout={logout}>
-      <main className="flex-1 px-4 py-10">
-        <div className="w-full max-w-2xl mx-auto space-y-8">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-          >
-            <span aria-hidden>←</span> Home
-          </button>
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your profile, connected sources, sessions, and password.
-            </p>
-          </div>
-          <Profile user={user} onUpdated={refresh} />
-          <SubscriptionSection />
-          <AgentModelSection />
-          <IntegrationsSettings embedded />
-          <ActiveSessions />
-          <ExportSection />
-          {!AUTH0_ENABLED && <ChangePassword />}
+    <main className="flex-1 px-4 py-10">
+      <div className="w-full max-w-2xl mx-auto space-y-8">
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/")}
+          className="cursor-pointer gap-1.5 text-muted-foreground hover:text-foreground"
+        >
+          <span aria-hidden>←</span> Home
+        </Button>
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your profile, connected sources, sessions, and password.
+          </p>
         </div>
-      </main>
-    </WorkspaceShell>
+        <Profile user={user} onUpdated={refresh} />
+        <SubscriptionSection />
+        <AgentModelSection />
+        <IntegrationsSettings embedded />
+        <ActiveSessions />
+        <ExportSection />
+        {!AUTH0_ENABLED && <ChangePassword />}
+      </div>
+    </main>
   );
 }
 
@@ -120,13 +120,13 @@ function Profile({ user, onUpdated }: { user: User; onUpdated: () => void }) {
             {msg.text}
           </p>
         )}
-        <button
+        <Button
           type="submit"
           disabled={saving}
-          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="cursor-pointer bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-hover disabled:opacity-60"
         >
           {saving ? "Saving…" : "Save profile"}
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -142,12 +142,11 @@ function TextField({
   onChange: (v: string) => void;
 }) {
   return (
-    <input
+    <Input
       type="text"
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
     />
   );
 }
@@ -221,60 +220,53 @@ function ActiveSessions() {
             (e.g. from a production agent), and revoke anything you don&apos;t recognize.
           </p>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={load}
-          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-          type="button"
+          className="cursor-pointer text-muted-foreground hover:text-foreground"
         >
           Refresh
-        </button>
+        </Button>
       </div>
 
       {minted && <MintedKey minted={minted} onDismiss={() => setMinted(null)} />}
 
       <form onSubmit={handleCreate} className="space-y-2">
         <div className="flex gap-2">
-          <input
+          <Input
             type="text"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Key name (e.g. laptop, ci-runner, production-agent)"
             maxLength={128}
-            className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+            className="flex-1"
           />
-          <button
+          <Button
             type="submit"
             disabled={creating}
-            className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="cursor-pointer bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-hover disabled:opacity-60"
           >
             {creating ? "Creating…" : "Create key"}
-          </button>
+          </Button>
         </div>
-        <div className="flex gap-4">
+        <RadioGroup
+          value={newKeyAccess}
+          onValueChange={setNewKeyAccess}
+          className="flex gap-4"
+        >
           <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-            <input
-              type="radio"
-              name="key-access"
-              checked={newKeyAccess === "full"}
-              onChange={() => setNewKeyAccess("full")}
-              className="accent-brand"
-            />
+            <RadioGroupItem value="full" />
             Full access
           </label>
           <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-            <input
-              type="radio"
-              name="key-access"
-              checked={newKeyAccess === "read"}
-              onChange={() => setNewKeyAccess("read")}
-              className="accent-brand"
-            />
+            <RadioGroupItem value="read" />
             Read + transcripts
             <span className="text-muted-foreground">
               — for production agents: can search, read, and upload transcripts, nothing else
             </span>
           </label>
-        </div>
+        </RadioGroup>
       </form>
 
       {error && <p className="text-xs text-error">{error}</p>}
@@ -300,14 +292,15 @@ function ActiveSessions() {
                   {k.last_used_at ? ` · last used ${formatRelative(k.last_used_at)}` : " · never used"}
                 </div>
               </div>
-              <button
+              <Button
+                variant="outline"
+                size="xs"
                 onClick={() => handleRevoke(k.id)}
                 disabled={revoking === k.id}
-                className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-border hover:border-error hover:text-error disabled:opacity-60 transition-colors"
-                type="button"
+                className="cursor-pointer px-3 py-1.5 hover:border-error hover:text-error disabled:opacity-60"
               >
                 {revoking === k.id ? "Revoking…" : "Revoke"}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -343,20 +336,22 @@ function MintedKey({
         <code className="flex-1 font-mono text-xs text-foreground bg-background border border-border rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">
           {minted.api_key}
         </code>
-        <button
+        <Button
+          variant="outline"
+          size="xs"
           onClick={copy}
-          type="button"
-          className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-border hover:border-brand hover:text-brand transition-colors"
+          className="cursor-pointer px-3 py-1.5 hover:border-brand hover:text-brand"
         >
           {copied ? "Copied" : "Copy"}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={onDismiss}
-          type="button"
-          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2"
+          className="cursor-pointer px-2 text-muted-foreground hover:text-foreground"
         >
           Dismiss
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -415,13 +410,13 @@ function ChangePassword() {
             {msg.text}
           </p>
         )}
-        <button
+        <Button
           type="submit"
           disabled={submitting || !current || !next || !confirm}
-          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="cursor-pointer bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-hover disabled:opacity-60"
         >
           {submitting ? "Saving…" : "Change password"}
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -439,13 +434,12 @@ function PasswordField({
   autoComplete: string;
 }) {
   return (
-    <input
+    <Input
       type="password"
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       autoComplete={autoComplete}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
     />
   );
 }

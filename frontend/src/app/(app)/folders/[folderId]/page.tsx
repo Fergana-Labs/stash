@@ -25,7 +25,6 @@ export async function generateMetadata({
     slug,
     itemType: "folder",
     itemId: folderId,
-    path: `/folders/${folderId}?skill=${encodeURIComponent(slug)}`,
   });
 }
 

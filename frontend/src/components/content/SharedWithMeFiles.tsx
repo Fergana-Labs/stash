@@ -11,6 +11,7 @@ import {
   type RecentEntry,
   type SharedWithMeItem,
 } from "../../lib/api";
+import { routes } from "../../lib/workspace-routes";
 import { KindIcon, tintFor, type ItemKind } from "./file-browser/kind";
 
 // Shared folders/pages/files/tables surfaced inside the Files source. Session
@@ -51,10 +52,10 @@ function isDraggable(item: SharedWithMeItem): boolean {
 const GRID_COLS = "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)";
 
 function hrefFor(item: SharedWithMeItem): string {
-  if (item.object_type === "page") return `/p/${item.object_id}`;
-  if (item.object_type === "file") return `/f/${item.object_id}`;
-  if (item.object_type === "table") return `/tables/${item.object_id}`;
-  return `/folders/${item.object_id}`;
+  if (item.object_type === "page") return routes.page(item.object_id);
+  if (item.object_type === "file") return routes.file(item.object_id);
+  if (item.object_type === "table") return routes.table(item.object_id);
+  return routes.folder(item.object_id);
 }
 
 function startSharedDrag(e: DragEvent<HTMLElement>, item: SharedWithMeItem) {
@@ -220,7 +221,7 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
       onDragStart={(e: DragEvent<HTMLAnchorElement>) => startSharedDrag(e, item)}
       {...dropHandlers(item, setOver)}
       className={
-        "grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)]/50" +
+        "grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 transition-colors duration-150 ease-out hover:bg-[var(--color-brand-50)]/50" +
         (over ? " ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
       style={{ gridTemplateColumns: GRID_COLS }}
@@ -228,7 +229,7 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
       <div className="flex min-w-0 items-center gap-2.5">
         <span
           className={
-            "flex h-4 w-4 flex-shrink-0 items-center justify-center " +
+            "flex h-4 w-4 shrink-0 items-center justify-center " +
             tintFor({ kind, id: item.object_id, name: item.name, subtitle: "" })
           }
         >
@@ -236,8 +237,8 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{item.name}</span>
       </div>
-      <span className="truncate text-[12px] text-muted-foreground">{item.shared_by || "—"}</span>
-      <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <span className="truncate text-xs text-muted-foreground">{item.shared_by || "—"}</span>
+      <span className="flex items-center gap-2 text-xs text-muted-foreground">
         {LABEL[item.object_type]}
         {item.permission === "write" && (
           <span className="rounded bg-raised px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide">
@@ -261,7 +262,7 @@ function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandle
       onDragStart={(e: DragEvent<HTMLAnchorElement>) => startSharedDrag(e, item)}
       {...dropHandlers(item, setOver)}
       className={
-        "flex w-[180px] items-center gap-2.5 rounded-lg border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised " +
+        "flex w-[180px] items-center gap-2.5 rounded-lg border bg-surface px-3 py-2.5 transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)] hover:bg-raised " +
         (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
       }
     >

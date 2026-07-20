@@ -11,6 +11,7 @@ import { useShareAction } from "@/components/ShellChromeContext";
 import DownloadMenu from "@/components/DownloadMenu";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "@/components/SkeletonStates";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
@@ -25,6 +26,7 @@ import {
   type SessionEvent,
   type Skill,
 } from "@/lib/api";
+import { routes } from "@/lib/workspace-routes";
 import EditableTitle from "@/components/content/EditableTitle";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
@@ -147,7 +149,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
         objectType="session"
         objectId={sessionDetail.id}
         resourceName={sessionHeading(sessionDetail, sessionId)}
-        resourceUrlPath={`/sessions/${encodeURIComponent(sessionId)}`}
+        resourceUrlPath={routes.session(sessionId)}
         currentUser={user}
       />
     );
@@ -242,7 +244,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 />
               </h1>
               {totalTurns > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
+                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
                   {sessionDate && <span>{sessionDate}</span>}
                   {sessionDate && <span>·</span>}
                   <span>
@@ -251,11 +253,11 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 </div>
               )}
             </div>
-            <div className="flex flex-shrink-0 items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
               {sessionDetail && (
                 <SaveToSkillButton
                   sessionId={sessionId}
-                  onSaved={(pageId) => router.push(`/p/${pageId}`)}
+                  onSaved={(pageId) => router.push(routes.page(pageId))}
                 />
               )}
               {sessionId.startsWith("agent-") && (
@@ -263,7 +265,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 // continued server-side from where they left off.
                 <Link
                   href={`/agents?resume=${encodeURIComponent(sessionId)}`}
-                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white transition-colors duration-150 ease-out hover:bg-[var(--color-brand-700)]"
                 >
                   Resume in chat →
                 </Link>
@@ -340,14 +342,14 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
             })}
             {hasMore && (
               <div ref={sentinelRef} className="flex justify-center py-4">
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  className="cursor-pointer px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
                 >
                   {loadingMore ? "Loading…" : "Load more"}
-                </button>
+                </Button>
               </div>
             )}
             {!error && totalTurns === 0 && (
@@ -412,15 +414,15 @@ function SaveToSkillButton({
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <Button
+        variant="outline"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+        className="cursor-pointer bg-base px-2.5 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
       >
         Save to Skill <span aria-hidden className="text-[10px]">▾</span>
-      </button>
+      </Button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
           {skills === null && (
@@ -430,15 +432,15 @@ function SaveToSkillButton({
             <div className="px-3 py-1.5 text-muted-foreground">No skills yet.</div>
           )}
           {skills?.map((skill) => (
-            <button
+            <Button
               key={skill.folder_id}
-              type="button"
+              variant="ghost"
               disabled={busy}
               onClick={() => void save(skill)}
               className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
             >
               {skill.name}
-            </button>
+            </Button>
           ))}
           {message && <div className="px-3 py-1.5 text-red-500">{message}</div>}
         </div>
@@ -501,7 +503,7 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
             </div>
           )}
           {filesTouched.length === 0 && artifacts.length === 0 && (
-            <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+            <div className="mt-2 text-xs leading-relaxed text-muted-foreground">
               No artifacts recorded.
             </div>
           )}
@@ -576,7 +578,7 @@ function LinearTicketPill({
 
 function FileGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0 text-muted-foreground">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0 text-muted-foreground">
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
       <path d="M14 3v5h5" />
     </svg>
@@ -615,7 +617,7 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
       <div className="flex gap-3">
         <span
           className={
-            "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
             avatar.bg +
             " " +
             avatar.fg
@@ -644,7 +646,7 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
             )}
           </div>
           {turn.toolName ? (
-            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
+            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-xs leading-relaxed text-foreground">
               {turn.content}
             </div>
           ) : (

@@ -6,7 +6,10 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { getSidebar, listAllTables, semanticSearchPages, type Sidebar } from "../lib/api";
 import type { TableWithOwner } from "../lib/types";
 import type { SearchScope } from "@/lib/searchScope";
+import { routes } from "@/lib/workspace-routes";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -91,7 +94,7 @@ export default function CommandPalette({
           local.push({
             kind: "page",
             label: p.name.replace(/\.md$/, ""),
-            href: `/p/${p.id}`,
+            href: routes.page(p.id),
             detail: p.content_type === "html" ? "HTML page" : "Page",
           });
       });
@@ -100,7 +103,7 @@ export default function CommandPalette({
           local.push({
             kind: "session",
             label: `#${s.session_id}`,
-            href: `/sessions/${encodeURIComponent(s.session_id)}`,
+            href: routes.session(s.session_id),
             detail: s.agent_name,
           });
       });
@@ -109,7 +112,7 @@ export default function CommandPalette({
           local.push({
             kind: "folder",
             label: f.name,
-            href: `/folders/${f.id}`,
+            href: routes.folder(f.id),
             detail: `${f.page_count} pages · ${f.file_count} files`,
           });
       });
@@ -119,8 +122,8 @@ export default function CommandPalette({
             kind: "file",
             label: f.name,
             href: f.linked_table_id
-              ? `/tables/${f.linked_table_id}`
-              : `/f/${f.id}`,
+              ? routes.table(f.linked_table_id)
+              : routes.file(f.id),
             detail: f.content_type,
           });
       });
@@ -144,7 +147,7 @@ export default function CommandPalette({
         const remote: Result[] = pages.map((p) => ({
           kind: "page" as const,
           label: p.name.replace(/\.md$/, ""),
-          href: `/p/${p.id}`,
+          href: routes.page(p.id),
           detail: "Page",
         }));
         setResults((prev) => {
@@ -204,25 +207,26 @@ export default function CommandPalette({
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
-          <input
+          <Input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Skill or jump to a page, session, file, or table..."
-            className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 text-[14px]"
             autoFocus
           />
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onClose}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground"
+            className="cursor-pointer text-muted-foreground duration-150 ease-out hover:bg-surface hover:text-foreground"
             aria-label="Close search"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18" />
               <path d="m6 6 12 12" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         {results.length > 0 ? (
@@ -233,7 +237,7 @@ export default function CommandPalette({
                 href={r.href}
                 onClick={onClose}
                 className={
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] transition-colors " +
+                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] transition-colors duration-150 ease-out " +
                   (i === selected ? "bg-[var(--color-brand-50)] text-foreground" : "text-dim hover:bg-raised")
                 }
               >
@@ -289,7 +293,7 @@ function tableMatchesQuery(table: TableWithOwner, query: string): boolean {
 }
 
 function tableHref(table: TableWithOwner): string {
-  return `/tables/${table.id}`;
+  return routes.table(table.id);
 }
 
 function tableDetail(table: TableWithOwner): string {

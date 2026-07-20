@@ -8,6 +8,7 @@ import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
@@ -21,6 +22,7 @@ import {
 import {
   findInSkillContents,
   SKILL_MD,
+  skillItemPath,
   skillMdTemplate,
 } from "@/lib/localSkill";
 import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
@@ -143,14 +145,15 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     if (!folderName || skillSlug || !user) return null;
     return (
       <div className="flex items-center gap-1.5">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => void convertToSkill()}
           disabled={converting}
-          className="cursor-pointer rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
         >
           {converting ? "Converting…" : "Convert to Skill"}
-        </button>
+        </Button>
         <ResourceShareButton
           objectType="folder"
           objectId={folderId}
@@ -204,7 +207,6 @@ function SkillFallbackFolderView({
   const pages = contents.pages.filter((p) => inFolder(p.folder_path));
   const files = contents.files.filter((f) => inFolder(f.folder_path));
   const tables = contents.tables.filter((t) => inFolder(t.folder_path));
-  const skill = encodeURIComponent(skillSlug);
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -223,12 +225,12 @@ function SkillFallbackFolderView({
         </div>
         <div className="mt-6 flex flex-col gap-1">
           {pages.map((p) => (
-            <FallbackRow key={p.id} href={`/p/${p.id}?skill=${skill}`} name={p.name} sub="page" />
+            <FallbackRow key={p.id} href={skillItemPath("page", p.id, skillSlug)} name={p.name} sub="page" />
           ))}
           {files.map((f) => (
             <FallbackRow
               key={f.id}
-              href={`/f/${f.id}?skill=${skill}`}
+              href={skillItemPath("file", f.id, skillSlug)}
               name={f.name}
               sub={f.content_type || "file"}
             />
@@ -236,7 +238,7 @@ function SkillFallbackFolderView({
           {tables.map((t) => (
             <FallbackRow
               key={t.id}
-              href={`/tables/${t.id}?skill=${skill}`}
+              href={skillItemPath("table", t.id, skillSlug)}
               name={t.name}
               sub="table"
             />

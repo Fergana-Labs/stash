@@ -10,6 +10,7 @@ import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
@@ -24,7 +25,7 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "memory", label: "Memory", route: "/memory", icon: <Brain className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
-  { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
+  { key: "computer", label: "VM", route: "/computer", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
 const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
 
@@ -44,16 +45,16 @@ function useOpenTab() {
 // double-click so navigate and open don't collide.
 function LeafRow({ icon, label, onClick, onOpen, trailing }: { icon: React.ReactNode; label: string; onClick?: () => void; onOpen?: () => void; trailing?: React.ReactNode }) {
   return (
-    <button onClick={onClick ?? onOpen} onDoubleClick={onClick ? onOpen : undefined} className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] text-sidebar-foreground hover:bg-sidebar-accent" title={label}>
+    <Button variant="ghost" onClick={onClick ?? onOpen} onDoubleClick={onClick ? onOpen : undefined} className="group h-auto w-full justify-start gap-2 rounded px-2 py-1.5 text-left text-[13px] font-normal text-sidebar-foreground hover:bg-sidebar-accent" title={label}>
       <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {trailing}
-    </button>
+    </Button>
   );
 }
 
 function LoadingRow() {
-  return <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>;
+  return <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>;
 }
 
 // Tools = every integration/connector (Slack, Granola, GitHub, …), connected or
@@ -110,7 +111,7 @@ function ComputerSection() {
 
   if (noMachine) {
     return (
-      <div className="px-3 py-2 text-[12px] text-muted-foreground">
+      <div className="px-3 py-2 text-xs text-muted-foreground">
         No cloud computer yet — it&apos;s created the first time a cloud agent runs.
       </div>
     );
@@ -125,16 +126,16 @@ function ComputerSection() {
         onOpen={() => open("terminal", "terminal", "Terminal")}
       />
       <div className="mx-2 my-1 border-t border-sidebar-border" />
-      <div className="flex flex-wrap items-center gap-1 px-2 py-1 text-[12px] text-muted-foreground">
-        <button className="hover:text-foreground" onClick={() => setPath("")}>~</button>
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1 text-xs text-muted-foreground">
+        <Button variant="ghost" className="h-auto gap-1 px-1 py-0 font-normal text-xs hover:text-foreground" onClick={() => setPath("")}>~</Button>
         {crumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-1">
             <span className="text-muted-foreground/50">/</span>
-            <button className="hover:text-foreground" onClick={() => setPath(crumbs.slice(0, i + 1).join("/"))}>{c}</button>
+            <Button variant="ghost" className="h-auto gap-1 px-1 py-0 font-normal text-xs hover:text-foreground" onClick={() => setPath(crumbs.slice(0, i + 1).join("/"))}>{c}</Button>
           </span>
         ))}
       </div>
-      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your VM… {error.includes("502") ? "" : error}</div>}
+      {error && <div className="px-3 py-2 text-xs text-muted-foreground">Waking your VM… {error.includes("502") ? "" : error}</div>}
       {!entries && !error && <LoadingRow />}
       {entries?.map((e) => (
         <LeafRow
@@ -148,7 +149,7 @@ function ComputerSection() {
           }}
         />
       ))}
-      {entries?.length === 0 && <div className="px-3 py-2 text-[12px] text-muted-foreground">Empty</div>}
+      {entries?.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">Empty</div>}
     </div>
   );
 }
@@ -159,11 +160,13 @@ function RootSection() {
   const searchParams = useSearchParams();
   const open = useOpenTab();
   const setRailSection = useWorkspace((s) => s.setRailSection);
+  const setExplorerAtRoot = useWorkspace((s) => s.setExplorerAtRoot);
 
   function selectSection(section: ExplorerSection) {
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
     setRailSection(section);
+    setExplorerAtRoot(false);
     router.replace(`${pathname}?${params.toString()}`);
   }
 
@@ -222,36 +225,34 @@ function AgentsExplorer() {
     <div className="flex h-full flex-col bg-sidebar">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-sidebar-border px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         <span>Agents</span>
-        <button onClick={() => void newAgent()} className="cursor-pointer text-muted-foreground hover:text-foreground" title="New agent">
+        <Button variant="ghost" size="icon-sm" onClick={() => void newAgent()} className="cursor-pointer text-muted-foreground hover:text-foreground" title="New agent">
           <Plus className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {(agents ?? []).map((a) => (
           <div key={a.id} className="group flex items-center gap-1 rounded px-2 py-1.5 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent">
-            <button
-              // The curator isn't a chat agent — open its config (Run now lives
-              // there). Everyone else opens their persistent chat session: a
-              // stable per-agent session id so the row resumes one conversation.
+            <Button
+              variant="ghost"
               onClick={() =>
                 a.is_curator
                   ? open("agent-config", a.id, a.name)
                   : open("agent", `agent-${a.id}`, a.name)
               }
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left"
+              className="h-auto min-w-0 flex-1 justify-start gap-1 rounded px-0 py-0 font-normal text-left text-[13px] text-sidebar-foreground"
               title={a.is_curator ? "Open curator settings" : "Open chat"}
             >
               <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{a.name}</span>
-            </button>
+            </Button>
             {!a.is_curator && (
-              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name, { newTab: true })} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
+              <Button variant="ghost" size="icon-sm" onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name, { newTab: true })} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
                 <Plus className="h-3.5 w-3.5" />
-              </button>
+              </Button>
             )}
-            <button onClick={() => openSettings(a)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
+            <Button variant="ghost" size="icon-sm" onClick={() => openSettings(a)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
               <Settings className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </div>
         ))}
         <div className="mx-2 my-1 border-t border-sidebar-border" />
@@ -279,10 +280,11 @@ function AgentsExplorer() {
 export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const open = useOpenTab();
-  const [atRoot, setAtRoot] = useState(false);
+  const atRoot = useWorkspace((s) => s.explorerAtRoot);
+  const setAtRoot = useWorkspace((s) => s.setExplorerAtRoot);
   const memoryFolderId = useMemoryFolderId();
   // A rail-section change means we're back to viewing that section, not Home.
-  useEffect(() => { setAtRoot(false); }, [section]);
+  useEffect(() => { setAtRoot(false); }, [section, setAtRoot]);
 
   // Skills are VFS folders too — the Skills explorer roots at the list of skills
   // and drills into each skill folder like any other.
@@ -333,7 +335,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   // Files, Memory, Skills & Sessions are all file managers (own breadcrumb/toolbar).
   if ((section === "files" || section === "memory" || section === "skills" || section === "sessions") && !atRoot) {
     if (section === "memory" && !memoryFolderId) {
-      return <div className="flex h-full flex-col bg-sidebar"><div className="flex h-9 items-center border-b border-sidebar-border px-3 text-[12px] text-muted-foreground">Home / Memory</div><LoadingRow /></div>;
+      return <div className="flex h-full flex-col bg-sidebar"><div className="flex h-9 items-center border-b border-sidebar-border px-3 text-xs text-muted-foreground">Home / Memory</div><LoadingRow /></div>;
     }
     const isSessions = section === "sessions";
     return (
@@ -344,7 +346,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
-          tabSection={section === "memory" ? "memory" : undefined}
+          tabSection={section}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
           newRootItem={
@@ -368,16 +370,16 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   return (
     <div className="flex h-full flex-col bg-sidebar">
       {/* Breadcrumb + actions on one row (matches the Files explorer). */}
-      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--divider-color)] px-3 text-[12px]">
-        <button onClick={() => setAtRoot(true)} className={cn("truncate hover:text-foreground", atRoot ? "font-medium text-foreground" : "text-muted-foreground")}>
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--divider-color)] px-3 text-xs">
+        <Button variant="ghost" onClick={() => setAtRoot(true)} className={cn("h-auto gap-1 truncate px-0 py-0 font-normal hover:text-foreground", atRoot ? "font-medium text-foreground" : "text-muted-foreground")}>
           Home
-        </button>
+        </Button>
         {!atRoot && (
           <>
             <span className="text-muted-foreground/50">/</span>
-            <button onClick={() => router.push(SECTIONS.find((s) => s.key === section)?.route ?? "/files")} className="truncate font-medium text-foreground">
+            <Button variant="ghost" onClick={() => router.push(SECTIONS.find((s) => s.key === section)?.route ?? "/files")} className="h-auto gap-1 truncate px-0 py-0 font-medium text-foreground">
               {LABEL[section]}
-            </button>
+            </Button>
           </>
         )}
       </div>

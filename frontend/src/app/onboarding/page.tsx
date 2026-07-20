@@ -4,6 +4,9 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import Header from "../../components/Header";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import {
@@ -14,6 +17,7 @@ import {
   updatePage,
   type ApiKeyCreated,
 } from "../../lib/api";
+import { routes } from "../../lib/workspace-routes";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 
@@ -133,7 +137,7 @@ function OnboardingInner() {
       apiKey,
     });
     await updatePage(page.id, { content });
-    router.push(`/p/${page.id}`);
+    router.push(routes.page(page.id));
   }, [user, router]);
 
   if (loading || !user) {
@@ -283,20 +287,20 @@ function AboutStep({
       <Field label="Which plan fits you?">
         <PillGroup options={PLAN_OPTIONS} value={planIntent} onChange={onPlanIntent} />
         {planIntent === "Production agent — Enterprise" && (
-          <p className="text-[12px] text-dim">
+          <p className="text-xs text-dim">
             Your API key is free and instant. Unlimited sleep-time memory curation is part
             of Enterprise — we&rsquo;ll reach out to get you set up.
           </p>
         )}
       </Field>
       <Field label="What do you want to use Stash for?" optional>
-        <textarea
+        <Textarea
           value={useCase}
           onChange={(e) => onUseCase(e.target.value)}
           rows={3}
           maxLength={2000}
           placeholder="e.g. give my coding agents a shared knowledge base across our repos"
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+          className="bg-surface text-[13.5px]"
         />
       </Field>
     </div>
@@ -337,19 +341,19 @@ function PillGroup({
       {options.map((option) => {
         const selected = value === option;
         return (
-          <button
+          <Button
             key={option}
-            type="button"
+            variant="outline"
             aria-pressed={selected}
             onClick={() => onChange(selected ? "" : option)}
-            className={`cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
+            className={`h-auto cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] font-normal duration-150 ease-out ${
               selected
                 ? "border-brand bg-brand text-white"
                 : "border-border bg-surface text-dim hover:border-foreground/40 hover:text-foreground"
             }`}
           >
             {option}
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -366,14 +370,14 @@ function OtherInput({
   placeholder: string;
 }) {
   return (
-    <input
+    <Input
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       maxLength={200}
       autoFocus
       placeholder={placeholder}
-      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+      className="bg-surface text-[13.5px]"
     />
   );
 }
@@ -448,21 +452,21 @@ function TryItOutStep({
         badge="Create"
         lead="Just want a place to write with your agent?"
       >
-        <button
-          type="button"
+        <Button
+          variant="outline"
           onClick={onCollabDoc}
-          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
+          className="group h-auto w-full cursor-pointer justify-between gap-3 border-dashed border-border bg-surface px-4 py-3 text-left font-normal duration-150 ease-out hover:border-brand"
         >
           <div>
             <div className="text-[13.5px] font-medium text-foreground">
               Start a collaborative doc
             </div>
-            <div className="text-[12px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               You and your agent edit the same page — two cursors at once.
             </div>
           </div>
           <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
-        </button>
+        </Button>
       </TryOption>
       <TryOption
         badge="Connect"
@@ -471,13 +475,14 @@ function TryItOutStep({
         <div className="space-y-3">
           <SourceConnectorList returnTo="/onboarding?step=3" />
           <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
+            <Button
+              variant="default"
+              size="xs"
               onClick={onContinue}
-              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
+              className="cursor-pointer bg-brand px-4 py-2 text-white duration-150 ease-out hover:bg-brand-hover"
             >
               Continue
-            </button>
+            </Button>
           </div>
         </div>
       </TryOption>
@@ -537,26 +542,27 @@ function BuildOption() {
   if (!minted) {
     return (
       <div className="space-y-2">
-        <button
-          type="button"
+        <Button
+          variant="default"
+          size="xs"
           onClick={handleCreate}
           disabled={creating}
-          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60 transition-colors"
+          className="cursor-pointer bg-brand px-4 py-2 text-white duration-150 ease-out hover:bg-brand-hover disabled:opacity-60"
         >
           {creating ? "Creating…" : "Create API key"}
-        </button>
-        {error && <p className="text-[12px] text-error">{error}</p>}
+        </Button>
+        {error && <p className="text-xs text-error">{error}</p>}
       </div>
     );
   }
   return (
     <div className="space-y-2">
-      <p className="text-[12px] text-dim">
+      <p className="text-xs text-dim">
         Copy it now — this is the only time the full key will be shown. Manage keys in
         Settings.
       </p>
       <CommandBlock command={minted.api_key} />
-      <p className="text-[12px] text-dim">Write your agent&rsquo;s first memory:</p>
+      <p className="text-xs text-dim">Write your agent&rsquo;s first memory:</p>
       <CommandBlock
         command={`curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events \\
   -H "Authorization: Bearer ${minted.api_key}" -H "Content-Type: application/json" \\
@@ -632,22 +638,24 @@ function StepControls({
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="xs"
         onClick={onSkip}
-        className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+        className="cursor-pointer text-muted-foreground hover:text-foreground"
       >
         Skip onboarding
-      </button>
+      </Button>
       {!hideContinue && (
-        <button
-          type="button"
+        <Button
+          variant="default"
+          size="xs"
           onClick={onContinue}
           disabled={!canContinue}
-          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="cursor-pointer bg-brand px-4 py-2 text-white hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {continueLabel}
-        </button>
+        </Button>
       )}
     </div>
   );

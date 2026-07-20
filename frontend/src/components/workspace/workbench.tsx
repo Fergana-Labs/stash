@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createPage } from "@/lib/api";
 import { useWorkspace, type WorkbenchTab } from "@/lib/workspace-store";
@@ -47,9 +48,9 @@ function NewTabMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-raised hover:text-foreground" title="New tab">
+        <Button variant="ghost" size="icon-lg" title="New tab" className="text-muted-foreground hover:bg-raised hover:text-foreground">
           <Plus className="h-4 w-4" />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={newPage}>
@@ -117,7 +118,9 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
               >
                 <TabIcon kind={tab.kind} />
                 <span className="min-w-0 flex-1 truncate">{tab.title}</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(tab.id);
@@ -126,7 +129,7 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
                   aria-label="Close tab"
                 >
                   <X className="h-3 w-3" />
-                </button>
+                </Button>
               </div>
             );
           })}
@@ -134,22 +137,26 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
         <div className="flex shrink-0 items-center">
           {pane === 0 && <NewTabMenu />}
           {pane === 0 && !split && activeTabId && (
-            <button
+            <Button
+              variant="ghost"
+              size="icon-lg"
               onClick={() => splitTab(activeTabId)}
-              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-raised hover:text-foreground"
               title="Split right"
+              className="text-muted-foreground hover:bg-raised hover:text-foreground"
             >
               <SplitSquareHorizontal className="h-4 w-4" />
-            </button>
+            </Button>
           )}
           {pane === 1 && (
-            <button
+            <Button
+              variant="ghost"
+              size="icon-lg"
               onClick={() => paneTabs.forEach((t) => moveTabToPane(t.id, 0))}
-              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-raised hover:text-foreground"
               title="Close split"
+              className="text-muted-foreground hover:bg-raised hover:text-foreground"
             >
               <PanelRightClose className="h-4 w-4" />
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -204,6 +211,33 @@ export default function Workbench() {
   // URL → tab: opening/focusing happens off the pathname only (never off `tabs`),
   // so this can't loop with the imperative router.replace on tab clicks.
   useEffect(() => {
+    if (pathname === "/agents") {
+      // ?agent=<id> — clicked an agent in the sidebar. Open/focus its chat tab.
+      const agentId = searchParams.get("agent");
+      if (agentId) {
+        const refId = `agent-${agentId}`;
+        const existing = useWorkspace.getState().tabs.find((t) => t.kind === "agent" && t.refId === refId);
+        if (existing) setActiveTab(existing.id);
+        else openTab("agent", refId, "Chat");
+        return;
+      }
+      // ?config=<id> — clicked Memory curator (curator has settings panel). Open config tab.
+      const configId = searchParams.get("config");
+      if (configId) {
+        const existing = useWorkspace.getState().tabs.find((t) => t.kind === "agent-config" && t.refId === configId);
+        if (existing) setActiveTab(existing.id);
+        else openTab("agent-config", configId, "Config");
+        return;
+      }
+      // ?session=<id> — clicked a recent chat session in the sidebar. Open/focus session tab.
+      const sessionId = searchParams.get("session") || searchParams.get("resume");
+      if (sessionId) {
+        const existing = useWorkspace.getState().tabs.find((t) => t.kind === "agent" && t.refId === sessionId);
+        if (existing) setActiveTab(existing.id);
+        else openTab("agent", sessionId, "Chat");
+        return;
+      }
+    }
     const match = pathname === "/sessions" && searchParams.get("workspace") === "1"
       ? { kind: "sessions-home" as const, refId: "sessions" }
       : tabFromPath(pathname);

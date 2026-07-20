@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
-import CustomSelect from "../../components/CustomSelect";
-import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
-import { useAuth } from "../../hooks/useAuth";
-import { track } from "../../lib/analytics";
+import CustomSelect from "../../../components/CustomSelect";
+import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../../components/SkeletonStates";
+import { useAuth } from "../../../hooks/useAuth";
+import { track } from "../../../lib/analytics";
 import {
   getSidebar,
   getPublicSkill,
@@ -22,8 +22,10 @@ import {
   type Sidebar,
   type Skill,
   type TreeFolder,
-} from "../../lib/api";
-import type { Page, TableWithOwner } from "../../lib/types";
+} from "../../../lib/api";
+import type { Page, TableWithOwner } from "../../../lib/types";
+import { skillItemPath } from "../../../lib/localSkill";
+import { routes } from "../../../lib/workspace-routes";
 
 type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
 
@@ -277,7 +279,7 @@ function SearchPageInner() {
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-2">
             {selectedSessionId ? (
-              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-[12px] text-foreground">
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-xs text-foreground">
                 #{selectedSessionId}
               </span>
             ) : null}
@@ -296,7 +298,7 @@ function SearchPageInner() {
               ariaLabel="Folder"
               searchable
               searchPlaceholder="Filter folders…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
 
@@ -314,7 +316,7 @@ function SearchPageInner() {
               ariaLabel="Page"
               searchable
               searchPlaceholder="Filter pages…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
 
@@ -328,7 +330,7 @@ function SearchPageInner() {
               ariaLabel="Content"
               searchable
               searchPlaceholder="Filter types…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
           </div>
@@ -351,7 +353,7 @@ function SearchPageInner() {
             {!searching && results.length > 0 && (
               <section className="mt-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="font-display text-[18px] font-semibold text-foreground">
+                  <h2 className="font-display text-lg font-semibold text-foreground">
                     Results
                   </h2>
                   <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -363,7 +365,7 @@ function SearchPageInner() {
                     <Link
                       key={`${result.kind}:${result.id}`}
                       href={result.href}
-                      className="rounded-lg border border-border bg-base px-4 py-3 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                      className="rounded-lg border border-border bg-base px-4 py-3 transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -426,7 +428,7 @@ function searchSingleSession(
       id: sessionId,
       kind: "Session",
       title: sessionId,
-      href: `/sessions/${encodeURIComponent(sessionId)}`,
+      href: routes.session(sessionId),
 
       sourceName,
       detail: contextSnippet(bestMatch.content, query) ?? sessionEventSnippet(bestMatch, query),
@@ -508,7 +510,7 @@ function searchSessionsFromEvents(
       id,
       kind: "Session",
       title: event.session_id,
-      href: `/sessions/${encodeURIComponent(event.session_id)}`,
+      href: routes.session(event.session_id),
       sourceName,
       detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
       updatedAt: event.created_at,
@@ -568,7 +570,7 @@ function searchPages(
       id: page.id,
       kind: "Page" as const,
       title: page.name,
-      href: `/p/${page.id}`,
+      href: routes.page(page.id),
       sourceName,
       detail:
           contextSnippet(
@@ -600,7 +602,7 @@ function searchTables(tables: TableWithOwner[], query: string): SearchResult[] {
       id: table.id,
       kind: "Table" as const,
       title: table.name,
-      href: `/tables/${table.id}`,
+      href: routes.table(table.id),
       sourceName: table.owner_display_name ?? "Personal",
       detail:
         contextSnippet(
@@ -655,7 +657,7 @@ function searchPublicSkillItems(
   scope: { includePages: boolean; includeTables: boolean }
 ): SearchResult[] {
   const results: SearchResult[] = [];
-  const slug = encodeURIComponent(detail.skill.slug);
+  const slug = detail.skill.slug;
 
   if (scope.includePages) {
     for (const page of detail.contents.pages) {
@@ -664,7 +666,7 @@ function searchPublicSkillItems(
         id: page.id,
         kind: "Page",
         title: page.name,
-        href: `/p/${page.id}?skill=${slug}`,
+        href: skillItemPath("page", page.id, slug),
         sourceName: detail.skill.title,
         detail:
           contextSnippet(
@@ -693,7 +695,7 @@ function searchPublicSkillItems(
         id: table.id,
         kind: "Table",
         title: table.name,
-        href: `/tables/${table.id}?skill=${slug}`,
+        href: skillItemPath("table", table.id, slug),
         sourceName: detail.skill.title,
         detail:
           contextSnippet(

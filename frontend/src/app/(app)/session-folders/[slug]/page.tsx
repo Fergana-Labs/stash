@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 
 import { BasicPageSkeleton } from "@/components/SkeletonStates";
 import { getPublicSessionFolder, type PublicSessionFolder } from "@/lib/api";
+import { routes } from "@/lib/workspace-routes";
 
 // Read-only viewer for a session folder reached by slug. Renders for anyone the
 // access rules allow (a public folder needs no login); the layout exempts
@@ -41,7 +42,7 @@ export default function PublicSessionFolderPage({
 
   return (
     <div className="mx-auto max-w-[820px] px-6 py-10">
-      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
         <span>Shared session folder</span>
       </div>
@@ -62,7 +63,7 @@ export default function PublicSessionFolderPage({
           {sessions.map((s) => (
             <Link
               key={s.id}
-              href={`/sessions/${encodeURIComponent(s.session_id)}`}
+              href={routes.session(s.session_id)}
               className="group flex items-center gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0 hover:bg-[var(--color-brand-50)]"
             >
               <span className="min-w-0 flex-1">

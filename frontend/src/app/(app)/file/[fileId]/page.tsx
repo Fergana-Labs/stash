@@ -23,7 +23,6 @@ export async function generateMetadata({
     slug,
     itemType: "file",
     itemId: fileId,
-    path: `/f/${fileId}?skill=${encodeURIComponent(slug)}`,
   });
 }
 
