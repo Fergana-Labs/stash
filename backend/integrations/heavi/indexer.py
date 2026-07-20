@@ -32,7 +32,10 @@ def _path_segment(value: str) -> str:
 
 
 def rule_path(rule: dict) -> str:
-    return f"{_path_segment(rule['summary'])} ({rule['id']})"
+    # One folder per customer org: rules are org-scoped preferences, and
+    # per-org folders match how the rest of their stash is organized
+    # (session folders per org, /memory/org/<name> pages).
+    return f"{_path_segment(rule['org'])}/{_path_segment(rule['summary'])} ({rule['id']})"
 
 
 def rule_name(rule: dict) -> str:
@@ -48,6 +51,7 @@ def rule_content(rule: dict) -> str:
         rule["summary"],
         "",
         f"- id: {rule['id']}",
+        f"- org: {rule['org']}",
         f"- source: {source}",
         f"- created: {rule['created_at']}",
     ]

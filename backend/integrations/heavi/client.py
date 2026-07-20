@@ -1,11 +1,14 @@
 """HTTP client for a customer's Heavi learnings endpoint.
 
 The endpoint contract (implemented on Heavi's side, bearer-token variant of
-their existing GET /api/learnings): a GET that returns the org's learnings
+their existing GET /api/learnings): a GET that returns ALL orgs' learnings
 ("rules of the road") as a bare JSON array of
-`{id, summary, source_type, source_id?, created_at, updated_at?}`.
-Heavi's Postgres stays the source of truth — every VFS read hits this
-endpoint live; Stash only caches a copy for search/embeddings.
+`{id, org, summary, source_type, source_id?, created_at, updated_at?}`.
+`org` is the customer org's display name — rules are per-customer-org
+(learnings.organization_id) and render as one folder per org, so a row
+without it is unattributable and rejected. Heavi's Postgres stays the
+source of truth — every VFS read hits this endpoint live; Stash only
+caches a copy for search/embeddings.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import httpx
 
 from ..storage import get_valid_token
 
-REQUIRED_FIELDS = ("id", "summary", "source_type", "created_at")
+REQUIRED_FIELDS = ("id", "org", "summary", "source_type", "created_at")
 
 
 async def fetch_learnings(owner_user_id: UUID) -> list[dict]:

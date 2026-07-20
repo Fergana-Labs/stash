@@ -17,6 +17,7 @@ def _async(value):
 def _rule(rule_id="learning_1_abc", summary="Prefer OEM brake calipers", **overrides):
     rule = {
         "id": rule_id,
+        "org": "KingFleet",
         "summary": summary,
         "source_type": "manual",
         "created_at": "2026-06-10T00:00:00Z",
@@ -29,34 +30,40 @@ def _rule(rule_id="learning_1_abc", summary="Prefer OEM brake calipers", **overr
 # --- rendering ---------------------------------------------------------------
 
 
-def test_rule_paths_keep_duplicate_summaries_distinct_and_strip_slashes():
+def test_rule_paths_nest_by_org_and_keep_duplicate_summaries_distinct():
     first = indexer.rule_path(_rule("learning_1_a", "Avoid generic DEF sensors / always OEM"))
     second = indexer.rule_path(_rule("learning_2_b", "Avoid generic DEF sensors / always OEM"))
-    assert first == "Avoid generic DEF sensors - always OEM (learning_1_a)"
+    assert first == "KingFleet/Avoid generic DEF sensors - always OEM (learning_1_a)"
     assert first != second
+    other_org = indexer.rule_path(_rule("learning_1_a", "Prefer OEM", org="Kleyn / Mobile"))
+    assert other_org == "Kleyn - Mobile/Prefer OEM (learning_1_a)"
 
 
-def test_rule_content_names_the_rejected_candidate_for_feedback_rules():
+def test_rule_content_names_the_org_and_rejected_candidate():
     feedback = indexer.rule_content(_rule(source_type="user_feedback", source_id="cand_9d3k1"))
     assert "user_feedback (candidate cand_9d3k1)" in feedback
+    assert "- org: KingFleet" in feedback
     manual = indexer.rule_content(_rule(source_type="manual"))
     assert "source: manual" in manual
 
 
-def test_rule_entries_sort_newest_first_and_honor_prefix():
+def test_rule_entries_sort_newest_first_and_scope_to_an_org_folder_by_prefix():
     rules = [
         _rule("learning_1_a", "Old rule", created_at="2026-01-01T00:00:00Z"),
         _rule("learning_2_b", "New rule", created_at="2026-07-01T00:00:00Z"),
+        _rule("learning_3_c", "Other org rule", org="Kleyn Mobile"),
     ]
     entries = indexer.rule_entries(rules)
-    assert [e["name"] for e in entries] == ["New rule", "Old rule"]
+    assert [e["name"] for e in entries] == ["New rule", "Other org rule", "Old rule"]
     assert all(e["kind"] == "rule" for e in entries)
-    assert indexer.rule_entries(rules, prefix="New") == [entries[0]]
+    # ls of one org's folder = prefix filtering on the org segment.
+    kingfleet = indexer.rule_entries(rules, prefix="KingFleet/")
+    assert [e["name"] for e in kingfleet] == ["New rule", "Old rule"]
 
 
 def test_find_rule_matches_full_path_or_raw_id():
     rules = [_rule("learning_1_a", "Prefer OEM")]
-    assert indexer.find_rule(rules, "Prefer OEM (learning_1_a)") == rules[0]
+    assert indexer.find_rule(rules, "KingFleet/Prefer OEM (learning_1_a)") == rules[0]
     assert indexer.find_rule(rules, "learning_1_a") == rules[0]
     assert indexer.find_rule(rules, "nonsense") is None
 
