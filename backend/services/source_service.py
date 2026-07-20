@@ -73,9 +73,9 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
-    # Rules of the road change rarely, and VFS reads are live against the
-    # customer endpoint anyway — the sync only refreshes the search cache.
-    "heavi_learnings": 21600,
+    # NB: heavi_learnings is intentionally absent — reads are live against the
+    # customer endpoint and there is no local index yet (deferred until the
+    # unified-search work, PR #860, settles what search wants from sources).
     # Freshness comes from extension pushes (which kick a sync); the interval
     # is the retry pass for failed hydrations.
     "instagram_saves": 1800,
@@ -533,9 +533,8 @@ CONTENT_TABLES = {
     # stored, so it survives the post being deleted or the account going private.
     "instagram_save_docs",
     "x_save_docs",
-    # Copied purely as a search/embedding cache: VFS ls/cat for heavi are
-    # live against the customer endpoint and never read this table.
-    "heavi_learning_docs",
+    # NB: heavi_learning_docs is intentionally absent — the table exists but
+    # stays empty (no indexer); see the note on DEFAULT_SYNC_INTERVAL_S.
 }
 
 # Index-only source types whose `search` is federated live to the provider's
@@ -986,7 +985,7 @@ async def _read_heavi_live(source: dict, path: str) -> dict | None:
     truth, so we refetch the rules and resolve `path` (a rule path or a raw
     rule id) against them — never the cached copy."""
     from ..integrations.heavi.client import fetch_learnings
-    from ..integrations.heavi.indexer import find_rule, rule_content, rule_name, rule_path
+    from ..integrations.heavi.render import find_rule, rule_content, rule_name, rule_path
 
     rules = await fetch_learnings(UUID(source["owner_user_id"]))
     rule = find_rule(rules, path)
@@ -1646,7 +1645,7 @@ async def source_entries(
             # the cached table, so a rule added or deleted upstream shows up
             # on the next ls. Everything fits one page (dozens of rules).
             from ..integrations.heavi.client import fetch_learnings
-            from ..integrations.heavi.indexer import rule_entries
+            from ..integrations.heavi.render import rule_entries
 
             rules = [] if after else await fetch_learnings(UUID(connected["owner_user_id"]))
             entries = rule_entries(rules, prefix)

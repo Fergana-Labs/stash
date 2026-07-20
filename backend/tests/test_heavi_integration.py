@@ -3,7 +3,7 @@ from uuid import UUID
 import httpx
 import pytest
 
-from backend.integrations.heavi import client, indexer
+from backend.integrations.heavi import client, render
 from backend.integrations.heavi.provider import HeaviIntegration
 
 
@@ -31,19 +31,19 @@ def _rule(rule_id="learning_1_abc", summary="Prefer OEM brake calipers", **overr
 
 
 def test_rule_paths_nest_by_org_and_keep_duplicate_summaries_distinct():
-    first = indexer.rule_path(_rule("learning_1_a", "Avoid generic DEF sensors / always OEM"))
-    second = indexer.rule_path(_rule("learning_2_b", "Avoid generic DEF sensors / always OEM"))
+    first = render.rule_path(_rule("learning_1_a", "Avoid generic DEF sensors / always OEM"))
+    second = render.rule_path(_rule("learning_2_b", "Avoid generic DEF sensors / always OEM"))
     assert first == "KingFleet/Avoid generic DEF sensors - always OEM (learning_1_a)"
     assert first != second
-    other_org = indexer.rule_path(_rule("learning_1_a", "Prefer OEM", org="Kleyn / Mobile"))
+    other_org = render.rule_path(_rule("learning_1_a", "Prefer OEM", org="Kleyn / Mobile"))
     assert other_org == "Kleyn - Mobile/Prefer OEM (learning_1_a)"
 
 
 def test_rule_content_names_the_org_and_rejected_candidate():
-    feedback = indexer.rule_content(_rule(source_type="user_feedback", source_id="cand_9d3k1"))
+    feedback = render.rule_content(_rule(source_type="user_feedback", source_id="cand_9d3k1"))
     assert "user_feedback (candidate cand_9d3k1)" in feedback
     assert "- org: KingFleet" in feedback
-    manual = indexer.rule_content(_rule(source_type="manual"))
+    manual = render.rule_content(_rule(source_type="manual"))
     assert "source: manual" in manual
 
 
@@ -53,56 +53,19 @@ def test_rule_entries_sort_newest_first_and_scope_to_an_org_folder_by_prefix():
         _rule("learning_2_b", "New rule", created_at="2026-07-01T00:00:00Z"),
         _rule("learning_3_c", "Other org rule", org="Kleyn Mobile"),
     ]
-    entries = indexer.rule_entries(rules)
+    entries = render.rule_entries(rules)
     assert [e["name"] for e in entries] == ["New rule", "Other org rule", "Old rule"]
     assert all(e["kind"] == "rule" for e in entries)
     # ls of one org's folder = prefix filtering on the org segment.
-    kingfleet = indexer.rule_entries(rules, prefix="KingFleet/")
+    kingfleet = render.rule_entries(rules, prefix="KingFleet/")
     assert [e["name"] for e in kingfleet] == ["New rule", "Old rule"]
 
 
 def test_find_rule_matches_full_path_or_raw_id():
     rules = [_rule("learning_1_a", "Prefer OEM")]
-    assert indexer.find_rule(rules, "KingFleet/Prefer OEM (learning_1_a)") == rules[0]
-    assert indexer.find_rule(rules, "learning_1_a") == rules[0]
-    assert indexer.find_rule(rules, "nonsense") is None
-
-
-# --- indexer -----------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_index_heavi_upserts_every_rule_and_tombstones_the_rest(monkeypatch):
-    rules = [
-        _rule("learning_1_a", "Prefer OEM"),
-        _rule(
-            "learning_2_b", "Avoid generic sensors", source_type="user_feedback", source_id="cand_1"
-        ),
-    ]
-    upserts: list[dict] = []
-    removed: list = []
-
-    async def capture_upsert(**kwargs):
-        upserts.append(kwargs)
-        return "inserted"
-
-    async def capture_remove(table, source_id, present):
-        removed.append((table, source_id, present))
-
-    monkeypatch.setattr(indexer, "fetch_learnings", _async(rules))
-    monkeypatch.setattr(indexer.source_service, "upsert_content_document", capture_upsert)
-    monkeypatch.setattr(indexer.source_service, "remove_missing_documents", capture_remove)
-
-    cursor = await indexer.index_heavi({"id": str(UUID(int=1)), "owner_user_id": str(UUID(int=2))})
-
-    assert cursor is None
-    assert [u["external_ref"] for u in upserts] == ["learning_1_a", "learning_2_b"]
-    assert all(u["table"] == "heavi_learning_docs" for u in upserts)
-    assert all(u["kind"] == "rule" for u in upserts)
-    (table, source_id, present) = removed[0]
-    assert table == "heavi_learning_docs"
-    assert source_id == UUID(int=1)
-    assert present == [u["path"] for u in upserts]
+    assert render.find_rule(rules, "KingFleet/Prefer OEM (learning_1_a)") == rules[0]
+    assert render.find_rule(rules, "learning_1_a") == rules[0]
+    assert render.find_rule(rules, "nonsense") is None
 
 
 # --- client ------------------------------------------------------------------

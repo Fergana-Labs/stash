@@ -1,9 +1,11 @@
 """Heavi rules-of-the-road source docs.
 
-Copied-content table: each row mirrors one Heavi learning ("rule of the
-road") so FTS and the embedding pipeline pick it up. VFS ls/cat never read
-this table — they fetch the customer's endpoint live; this copy exists only
-for search and the wiki.
+Document table for the heavi_learnings source type. Deliberately EMPTY for
+now: VFS ls/cat fetch the customer's endpoint live, and whether rules get a
+local search index at all is deferred until the unified-search work (PR #860)
+settles. The table exists so the shared per-source codepaths (tree, item
+count, doc listing) run against zero rows instead of forking on a table-less
+source type.
 
 Revision ID: 0158
 Revises: 0157

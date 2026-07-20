@@ -23,7 +23,6 @@ from ..integrations.gmail.indexer import index_gmail
 from ..integrations.gong.indexer import index_gong
 from ..integrations.google.indexer import index_google_drive, index_google_drive_folder
 from ..integrations.granola.indexer import index_granola
-from ..integrations.heavi.indexer import index_heavi
 from ..integrations.jira.indexer import index_jira
 from ..integrations.linear.indexer import index_linear
 from ..integrations.notion.indexer import index_notion
@@ -52,7 +51,6 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "asana_project": index_asana,
     "linear": index_linear,
     "gong_calls": index_gong,
-    "heavi_learnings": index_heavi,
     "instagram_saves": index_instagram_saves,
     "x_saves": index_x_saves,
 }
