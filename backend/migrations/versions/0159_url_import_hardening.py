@@ -10,14 +10,14 @@ per-user polling endpoint.
 Existing Bookmarks tables also learn the "Link" type so imports that never
 yield readable content can still be indexed as a bare link row.
 
-Revision ID: 0158
-Revises: 0157
+Revision ID: 0159
+Revises: 0158
 """
 
 from alembic import op
 
-revision = "0158"
-down_revision = "0157"
+revision = "0159"
+down_revision = "0158"
 branch_labels = None
 depends_on = None
 
