@@ -72,6 +72,10 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const connector = connectorForProvider(provider);
 
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
+  // null until the server list loads; false when the server omitted this
+  // provider (customer-specific integrations like Heavi) — render those the
+  // same as an unknown integration.
+  const [providerAllowed, setProviderAllowed] = useState<boolean | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
   const [openSourceId, setOpenSourceId] = useState<string | null>(highlightSourceId);
   const [showCreds, setShowCreds] = useState(false);
@@ -92,6 +96,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
       listSources(),
     ]);
     setStatus(integrations.providers.find((p) => p.provider === provider) ?? null);
+    setProviderAllowed(integrations.providers.some((p) => p.provider === provider));
     // A provider can own more than one source type — a whole Drive and a
     // picked folder are different types on the same Google connector.
     setSources(allSources.filter((s) => providerForSourceType[s.type] === connector.provider));
@@ -117,7 +122,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   if (loading) return null;
   if (!user) return null;
 
-  if (!connector) {
+  if (!connector || (providerAllowed === false && connector.kind !== "extension")) {
     return (
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-12 py-8">

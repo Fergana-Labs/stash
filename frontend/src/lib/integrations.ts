@@ -19,6 +19,7 @@ export type IntegrationProvider =
   | "linear"
   | "asana"
   | "gong"
+  | "heavi"
   | "posthog"
   // Extension-fed connectors — no OAuth integration, "connected" once the
   // browser extension has pushed a source.

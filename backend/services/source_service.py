@@ -73,6 +73,9 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
+    # NB: heavi_learnings is intentionally absent — reads are live against the
+    # customer endpoint and there is no local index yet (deferred until the
+    # unified-search work, PR #860, settles what search wants from sources).
     # Freshness comes from extension pushes (which kick a sync); the interval
     # is the retry pass for failed hydrations.
     "instagram_saves": 1800,
@@ -93,6 +96,7 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "posthog_project": "navigable",
     "gong_calls": "searchable",
+    "heavi_learnings": "navigable",
     "instagram_saves": "searchable",
     # Navigable so the browse UI shows the Bookmarks/Posts/Replies/Articles
     # folders; FTS still works (search keys off CONTENT_TABLES, not capability).
@@ -111,6 +115,7 @@ PROVIDER_SOURCE_TYPES = {
     "linear": ("linear",),
     "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
+    "heavi": ("heavi_learnings",),
     # Provider-less groupings: no OAuth integration — the extension pushes the
     # saved-item links and ScrapeCreators hydrates them.
     "instagram": ("instagram_saves",),
@@ -503,6 +508,7 @@ SOURCE_TABLE = {
     "linear": "linear_index",
     "posthog_project": "posthog_index",
     "gong_calls": "gong_documents",
+    "heavi_learnings": "heavi_learning_docs",
     "instagram_saves": "instagram_save_docs",
     "x_saves": "x_save_docs",
 }
@@ -527,6 +533,8 @@ CONTENT_TABLES = {
     # stored, so it survives the post being deleted or the account going private.
     "instagram_save_docs",
     "x_save_docs",
+    # NB: heavi_learning_docs is intentionally absent — the table exists but
+    # stays empty (no indexer); see the note on DEFAULT_SYNC_INTERVAL_S.
 }
 
 # Index-only source types whose `search` is federated live to the provider's
@@ -972,9 +980,32 @@ async def _read_linear_live_ref(source: dict, identifier: str) -> dict | None:
     return {**doc, "content": content, "external_ref": identifier}
 
 
+async def _read_heavi_live(source: dict, path: str) -> dict | None:
+    """Every heavi read is live: the customer's endpoint is the source of
+    truth, so we refetch the rules and resolve `path` (a rule path or a raw
+    rule id) against them — never the cached copy."""
+    from ..integrations.heavi.client import fetch_learnings
+    from ..integrations.heavi.render import find_rule, rule_content, rule_name, rule_path
+
+    rules = await fetch_learnings(UUID(source["owner_user_id"]))
+    rule = find_rule(rules, path)
+    if rule is None:
+        return None
+    return {
+        "path": rule_path(rule),
+        "name": rule_name(rule),
+        "kind": "rule",
+        "content": rule_content(rule),
+        "external_ref": rule["id"],
+    }
+
+
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables fetch it lazily from the provider with the owner's token."""
+    if source["source_type"] == "heavi_learnings":
+        return await _read_heavi_live(source, path)
+
     # Any Linear identifier is readable live, even one not yet in the index.
     if source["source_type"] == "linear" and LINEAR_IDENTIFIER_RE.match(path):
         return await _read_linear_live_ref(source, path)
@@ -1609,7 +1640,17 @@ async def source_entries(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
-        entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
+        if connected["source_type"] == "heavi_learnings":
+            # Fully live: the listing comes from the customer's endpoint, not
+            # the cached table, so a rule added or deleted upstream shows up
+            # on the next ls. Everything fits one page (dozens of rules).
+            from ..integrations.heavi.client import fetch_learnings
+            from ..integrations.heavi.render import rule_entries
+
+            rules = [] if after else await fetch_learnings(UUID(connected["owner_user_id"]))
+            entries = rule_entries(rules, prefix)
+        else:
+            entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 
     await _audit_source_read(
         action="source.entries_listed",

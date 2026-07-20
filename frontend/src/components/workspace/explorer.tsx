@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
+import { listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
 
@@ -61,12 +62,17 @@ function LoadingRow() {
 function ToolsSection() {
   const open = useOpenTab();
   const [connected, setConnected] = useState<Set<string>>(new Set());
+  // The server omits providers this user may not use (customer-specific
+  // integrations like Heavi) — null until loaded, then the allowed set.
+  const [allowed, setAllowed] = useState<Set<string> | null>(null);
   useEffect(() => {
     listSources().then((all) => setConnected(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
+    listIntegrations().then((r) => setAllowed(new Set(r.providers.map((p) => p.provider)))).catch(() => {});
   }, []);
+  if (allowed === null) return <LoadingRow />;
   return (
     <div className="py-1">
-      {CONNECTORS.map((c) => (
+      {CONNECTORS.filter((c) => c.kind === "extension" || allowed.has(c.provider)).map((c) => (
         <LeafRow
           key={c.provider}
           icon={connectorIcon(c.provider) ?? <Plug className="h-3.5 w-3.5" />}

@@ -110,21 +110,34 @@ def test_render_task_completed_and_unassigned():
     assert "Assignee: Unassigned" in text
 
 
+# Sources served entirely by live reads against the customer's endpoint: the
+# document table exists but stays empty (no indexer, not searchable). Whether
+# heavi rules get a local search index is deferred until the unified-search
+# work (PR #860) settles.
+LIVE_READ_TYPES = {"heavi_learnings"}
+
+
 def test_connected_source_types_are_fully_wired():
     """Document sources must appear in every map that makes them syncable +
-    readable: a document table and a registered indexer."""
+    readable: a document table and a registered indexer. Live-read sources are
+    the exception: they have a table but no indexer — every read goes to the
+    customer endpoint."""
     for source_type in source_service.SOURCE_CAPABILITY:
         assert source_type in source_service.SOURCE_TABLE, source_type
+        if source_type in LIVE_READ_TYPES:
+            assert source_type not in source_tasks.INDEXERS, source_type
+            assert source_type not in source_service.DEFAULT_SYNC_INTERVAL_S, source_type
+            continue
         assert source_type in source_tasks.INDEXERS, source_type
 
     # Every document table is exactly one storage strategy: it either copies
     # content (FTS) or is index-only (lazy read). Index-only sources are either
-    # federated-searchable (drive/jira/asana) or not searchable at all.
+    # federated-searchable (drive/jira/asana), live-read, or not searchable.
     for source_type, table in source_service.SOURCE_TABLE.items():
         assert source_type in source_service.SOURCE_CAPABILITY, source_type
         is_content = table in source_service.CONTENT_TABLES
         is_index_only = source_type in source_service.FEDERATED_SEARCH_TYPES
-        assert is_content or is_index_only, table
+        assert is_content or is_index_only or source_type in LIVE_READ_TYPES, table
 
 
 def test_provider_disconnect_cleanup_mapping_covers_registered_providers():
