@@ -161,6 +161,11 @@ async def test_import_progress_reports_failures_per_url(
         return ARTICLE_HTML.encode(), "text/html"
 
     monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    # Put the dead link on its last attempt so its failure is terminal.
+    await pool.execute(
+        "UPDATE url_imports SET attempts = 2 WHERE owner_user_id = $1 AND url LIKE '%/two'",
+        UUID(owner_id),
+    )
     ids = [
         r["id"]
         for r in await pool.fetch(
@@ -174,8 +179,10 @@ async def test_import_progress_reports_failures_per_url(
     body = progress.json()
     assert body["total"] == 3
     assert body["done"] == 2
-    # attempts < 3, so the failed row still counts as retryable/pending.
-    assert body["pending"] == 1
+    # Terminal failures keep the bookmark as a link-only row and surface in
+    # the failures list — the batch drains to zero pending.
+    assert body["link_only"] == 1
+    assert body["pending"] == 0
     assert body["failures"][0]["url"] == "https://example.com/two"
     assert "dead link" in body["failures"][0]["error"]
 

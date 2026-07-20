@@ -5,6 +5,7 @@
 // also run here so credentials stay in the worker.
 
 import { flashOkBadge, setBadge, stashConfig } from '../lib/stash';
+import { drainQueue } from './import_fetch';
 
 export interface PageClip {
   url: string;
@@ -166,6 +167,12 @@ export async function clipAllTabs(): Promise<any> {
   }
   const data = await response.json();
   await chrome.storage.local.set({ lastImport: { id: data.import_id, kind: 'tabs' } });
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Saved to Stash',
+    message: `Saving ${data.total} tab${data.total === 1 ? '' : 's'} — check the popup for progress.`,
+  });
   return { ok: true, importId: data.import_id, total: data.total };
 }
 
@@ -191,6 +198,12 @@ export async function importBookmarks(name: string, content: string): Promise<an
   }
   const data = await response.json();
   await chrome.storage.local.set({ lastImport: { id: data.import_id, kind: 'bookmarks' } });
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Bookmark import started',
+    message: `Importing ${data.total} bookmarks — Stash fetches them in the background.`,
+  });
   return { ok: true, importId: data.import_id, total: data.total };
 }
 
@@ -201,5 +214,11 @@ export async function importProgress(importId: string): Promise<any> {
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
   });
   if (!response.ok) return { ok: false, error: `Progress check failed (${response.status})` };
-  return { ok: true, progress: await response.json() };
+  const progress = await response.json();
+  if (progress.needs_client > 0) {
+    // Rows are waiting on this browser's session — no need to wait for the
+    // next 5-minute alarm.
+    void drainQueue();
+  }
+  return { ok: true, progress };
 }
