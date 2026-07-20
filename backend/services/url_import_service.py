@@ -114,12 +114,14 @@ async def mark_failed(import_id: UUID, error: str) -> None:
 
 
 async def mark_rate_limited(import_id: UUID, *, retry_minutes: int = 15) -> None:
-    """A 429 is the site pushing back, not a content failure: give the
-    attempt back and park the row until the retry window passes."""
+    """A 429 parks the row until the retry window passes. The attempt is
+    kept — a site that 429s on every spaced-out retry is blocking us, and
+    after MAX_ATTEMPTS the caller escalates to needs_client instead of
+    cycling forever."""
     await get_pool().execute(
         f"""
         UPDATE url_imports
-        SET status = 'pending', attempts = greatest(attempts - 1, 0),
+        SET status = 'pending',
             retry_at = now() + INTERVAL '{retry_minutes} minutes',
             dispatched_at = NULL, locked_at = NULL, updated_at = now()
         WHERE id = $1

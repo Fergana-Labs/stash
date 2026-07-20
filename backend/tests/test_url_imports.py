@@ -364,9 +364,12 @@ def _status_error(code: int, url: str) -> httpx.HTTPStatusError:
 
 
 @pytest.mark.asyncio
-async def test_429_parks_row_without_burning_an_attempt(
+async def test_429_parks_row_then_escalates_to_client(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
+    """A rate limit parks the row for a spaced-out retry; a site that 429s
+    every retry is blocking us, so the row escalates to needs_client instead
+    of cycling forever."""
     _, owner_id = await _register(client)
     import_id = await _make_import(owner_id, "https://example.com/busy")
 
@@ -378,10 +381,19 @@ async def test_429_parks_row_without_burning_an_attempt(
 
     row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)
     assert row["status"] == "pending"
-    assert row["attempts"] == 0
+    assert row["attempts"] == 1
     assert row["retry_at"] is not None
     # Parked rows are not claimable until the retry window passes.
     assert await url_import_service.claim(import_id) is None
+
+    # Two more 429s across elapsed retry windows exhaust the attempts and
+    # hand the row to the extension.
+    for _ in range(2):
+        await pool.execute("UPDATE url_imports SET retry_at = now() WHERE id = $1", import_id)
+        await clips_tasks._process_batch([import_id])
+    row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)
+    assert row["status"] == "needs_client"
+    assert "429" in row["error"]
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,8 @@ cluster heavily (a quarter of a real export is youtube.com) and hammering
 one site from a datacenter IP is how imports get rate-limited.
 
 Failure routing, in order of preference:
-  - 429                → park the row (retry_at) without burning an attempt
+  - 429                → park the row (retry_at); a site that 429s every
+                          spaced-out retry escalates to needs_client
   - 401/403 from the   → needs_client: the browser extension refetches with
     bookmark's own host   the user's session (import_fetch.ts)
   - no usable content  → link-only bookmark, immediately (retry can't help)
