@@ -4,7 +4,7 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import StashClient
+from cli.client import StashClient, split_source_tokens
 from cli.config import load_config
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
@@ -23,7 +23,14 @@ def _json(obj: object) -> str:
 
 
 @mcp.tool()
-def stash_search(query: str, source: str = "", limit: int = 20, offset: int = 0) -> str:
+def stash_search(
+    query: str,
+    source: str = "",
+    include_sources: str = "",
+    exclude_sources: str = "",
+    limit: int = 20,
+    offset: int = 0,
+) -> str:
     """Search across all your sources — native files + session transcripts +
     connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto
     one relevance scale. Returns {"results": [...], "has_more": bool}; page
@@ -31,8 +38,19 @@ def stash_search(query: str, source: str = "", limit: int = 20, offset: int = 0)
 
     Pass `source` to scope to one (a handle from stash_list_sources: 'files',
     'sessions', or a connected-source id); omit it to search everything.
+    Or filter with comma-separated `include_sources`/`exclude_sources` (native
+    handles + provider names, e.g. "files,gmail"); not combinable with `source`.
     """
-    return _json(_client().search_sources(query, source=source or None, limit=limit, offset=offset))
+    return _json(
+        _client().search_sources(
+            query,
+            source=source or None,
+            include_sources=split_source_tokens(include_sources),
+            exclude_sources=split_source_tokens(exclude_sources),
+            limit=limit,
+            offset=offset,
+        )
+    )
 
 
 @mcp.tool()

@@ -4,7 +4,7 @@ called with the source-optional arguments, so search-everything and
 search-one-source both reach the server correctly."""
 
 from cli import main
-from cli.client import StashClient
+from cli.client import StashClient, split_source_tokens
 
 
 class _FakeClient:
@@ -17,8 +17,12 @@ class _FakeClient:
     def __exit__(self, *_args):
         return None
 
-    def search_sources(self, query, source=None, limit=20, offset=0):
-        self._calls.append(("search", query, source, limit, offset))
+    def search_sources(
+        self, query, source=None, include_sources=None, exclude_sources=None, limit=20, offset=0
+    ):
+        self._calls.append(
+            ("search", query, source, include_sources, exclude_sources, limit, offset)
+        )
         return {
             "results": [{"source": "files", "ref": "p1", "name": "Runbook", "snippet": "deploy"}],
             "has_more": False,
@@ -53,14 +57,70 @@ def _wire(monkeypatch) -> list:
 
 def test_search_everything_passes_no_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.search("migration", source="", limit=20, as_json=True)
-    assert calls == [("search", "migration", None, 20, 0)]
+    main.search(
+        "migration", source="", include_sources="", exclude_sources="", limit=20, as_json=True
+    )
+    assert calls == [("search", "migration", None, None, None, 20, 0)]
 
 
 def test_search_scoped_passes_the_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
-    main.search("rotate", source="src-9", limit=5, as_json=True)
-    assert calls == [("search", "rotate", "src-9", 5, 0)]
+    main.search(
+        "rotate", source="src-9", include_sources="", exclude_sources="", limit=5, as_json=True
+    )
+    assert calls == [("search", "rotate", "src-9", None, None, 5, 0)]
+
+
+def test_search_splits_comma_separated_source_filters(monkeypatch) -> None:
+    calls = _wire(monkeypatch)
+    main.search(
+        "migration",
+        source="",
+        include_sources="files, gmail,,jira",
+        exclude_sources="slack",
+        limit=20,
+        as_json=True,
+    )
+    assert calls == [("search", "migration", None, ["files", "gmail", "jira"], ["slack"], 20, 0)]
+
+
+def test_split_source_tokens() -> None:
+    assert split_source_tokens("") is None
+    assert split_source_tokens(" , ") is None
+    assert split_source_tokens("files") == ["files"]
+    assert split_source_tokens("files, gmail") == ["files", "gmail"]
+
+
+def test_search_sends_source_filters_as_repeated_query_params(monkeypatch) -> None:
+    """The endpoint declares list[str] Query params, which parse repeated
+    `?include_sources=a&include_sources=b` params — so the client must hand
+    httpx a list, not a joined string."""
+    requests: list = []
+
+    class _Resp:
+        def json(self):
+            return {"results": [], "has_more": False}
+
+    def fake_request(method, url, **kwargs):
+        requests.append((method, url, kwargs.get("params")))
+        return _Resp()
+
+    client = StashClient("http://test")
+    monkeypatch.setattr(client, "_request", fake_request)
+    client.search_sources("q", include_sources=["files", "gmail"], exclude_sources=["slack"])
+    assert requests == [
+        (
+            "GET",
+            "/api/v1/me/sources/search",
+            {
+                "q": "q",
+                "limit": 20,
+                "offset": 0,
+                "include_sources": ["files", "gmail"],
+                "exclude_sources": ["slack"],
+            },
+        )
+    ]
 
 
 def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
@@ -96,7 +156,9 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
         def __exit__(self, *_args):
             return None
 
-        def search_sources(self, query, source=None, limit=20, offset=0):
+        def search_sources(
+            self, query, source=None, include_sources=None, exclude_sources=None, limit=20, offset=0
+        ):
             return {
                 "results": [
                     {
@@ -122,7 +184,7 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_client", lambda: _MarkerClient())
-    main.search("q", source="", limit=30, as_json=False)
+    main.search("q", source="", include_sources="", exclude_sources="", limit=30, as_json=False)
 
     out = capsys.readouterr().out
     assert "Hello" in out

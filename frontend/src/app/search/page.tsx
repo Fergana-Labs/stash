@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../components/CustomSelect";
+import SearchSourceFilter from "../../components/SearchSourceFilter";
+import { providerForSourceType } from "../../components/integrations/connectors";
+import { unifiedSearchTokens, type ContentScope } from "./unified-tokens";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
@@ -15,6 +18,7 @@ import {
   getSessionEvents,
   listAllTables,
   listSkills,
+  listSources,
   searchSource,
   type PublicSkillDetail,
   type SessionEvent,
@@ -26,8 +30,6 @@ import {
   type TreePage,
 } from "../../lib/api";
 import type { TableWithOwner } from "../../lib/types";
-
-type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -97,6 +99,10 @@ function SearchPageInner() {
   const [contentScope, setContentScope] = useState<ContentScope>(
     () => initialContentScope(searchParams.get("content"), initialSessionId)
   );
+  const [connectedProviders, setConnectedProviders] = useState<string[]>([]);
+  // The chip stores what's UNCHECKED, so "all selected" is the default even
+  // before the connected providers load, and the default sends no filter.
+  const [deselectedSources, setDeselectedSources] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<SearchResult[]>([]);
   const [sourceNotices, setSourceNotices] = useState<string[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -110,9 +116,14 @@ function SearchPageInner() {
     setFetching(true);
     setError("");
     try {
-      const [skillList, sidebarData] = await Promise.all([listSkills(), getSidebar()]);
+      const [skillList, sidebarData, sources] = await Promise.all([
+        listSkills(),
+        getSidebar(),
+        listSources(),
+      ]);
       setSkills(skillList);
       setSidebar(sidebarData);
+      setConnectedProviders([...new Set(sources.map((s) => providerForSourceType[s.type]))]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load search data");
     } finally {
@@ -167,6 +178,11 @@ function SearchPageInner() {
 
   const sourceName = user?.display_name ?? "You";
 
+  const allSourceTokens = useMemo(
+    () => ["files", "sessions", ...connectedProviders],
+    [connectedProviders]
+  );
+
   const handleSearch = useCallback(async (rawQuery: string) => {
     const q = rawQuery.trim();
     if (!q) {
@@ -216,15 +232,17 @@ function SearchPageInner() {
       }
 
       // One unified call covers sessions + pages + connected sources, merged
-      // and ranked server-side. A folder/page filter only makes sense for
-      // pages, so it narrows the call to the files source (matching the old
-      // behavior of skipping sessions/skills/tables under a filter).
-      const unifiedScope = unifiedSearchScope(contentScope, {
-        filtered: Boolean(selectedFolderId || selectedPageId),
-      });
-      if (unifiedScope !== null) {
+      // and ranked server-side, narrowed to the tokens the content-type and
+      // sources chips agree on. All-selected sends no filter — the server's
+      // default already searches everything.
+      const tokens = unifiedSearchTokens(
+        contentScope,
+        { filtered: Boolean(selectedFolderId || selectedPageId) },
+        allSourceTokens.filter((t) => !deselectedSources.has(t))
+      );
+      if (tokens !== null) {
         const { results: hits, has_more } = await searchSource(q, {
-          source: unifiedScope,
+          includeSources: tokens.length === allSourceTokens.length ? undefined : tokens,
           limit: 50,
         });
         const folderIds = sidebar
@@ -262,7 +280,9 @@ function SearchPageInner() {
       setSearching(false);
     }
   }, [
+    allSourceTokens,
     contentScope,
+    deselectedSources,
     skills,
     selectedFolderId,
     selectedPageId,
@@ -353,6 +373,19 @@ function SearchPageInner() {
               searchPlaceholder="Filter types…"
               className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
+            />
+
+            <SearchSourceFilter
+              tokens={allSourceTokens}
+              deselected={deselectedSources}
+              onToggle={(token) =>
+                setDeselectedSources((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(token)) next.delete(token);
+                  else next.add(token);
+                  return next;
+                })
+              }
             />
           </div>
 
@@ -465,20 +498,6 @@ function ResultCard({ result }: { result: SearchResult }) {
       </div>
     </div>
   );
-}
-
-// Which unified-search scope a content filter maps to: "" searches everything
-// (sessions + pages + connected sources), a handle scopes the call, and null
-// skips the unified call entirely.
-function unifiedSearchScope(
-  scope: ContentScope,
-  opts: { filtered: boolean }
-): string | null {
-  if (scope === "tables" || scope === "skills") return null;
-  if (opts.filtered) return scope === "sessions" ? null : "files";
-  if (scope === "sessions") return "sessions";
-  if (scope === "pages") return "files";
-  return "";
 }
 
 function unifiedResults(

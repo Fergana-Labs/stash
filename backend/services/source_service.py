@@ -123,6 +123,11 @@ SOURCE_TYPE_PROVIDER = {
     for source_type in source_types
 }
 
+# The vocabulary for search's include_sources/exclude_sources filters: the two
+# native handles plus provider names. Providers, not source ids — users think
+# "gmail", not a connected-source UUID.
+SEARCH_SOURCE_TOKENS = frozenset({NATIVE_FILES, NATIVE_SESSIONS, *PROVIDER_SOURCE_TYPES})
+
 _JIRA_PROJECT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
@@ -527,6 +532,15 @@ CONTENT_TABLES = {
     # stored, so it survives the post being deleted or the account going private.
     "instagram_save_docs",
     "x_save_docs",
+}
+
+# content table -> its provider name, for provider-level FTS filtering. Each
+# content table holds exactly one provider's documents, so restricting the
+# UNION to a provider's tables filters exactly.
+CONTENT_TABLE_PROVIDER = {
+    SOURCE_TABLE[source_type]: SOURCE_TYPE_PROVIDER[source_type]
+    for source_type in SOURCE_TABLE
+    if SOURCE_TABLE[source_type] in CONTENT_TABLES
 }
 
 # Per-hit snippet cap for FTS search over CONTENT_TABLES. High enough that most
@@ -1384,11 +1398,17 @@ async def search_documents(
     user_id: UUID,
     query: str,
     source: dict | None = None,
+    providers: frozenset[str] | None = None,
     limit: int = 20,
 ) -> list[dict]:
     """FTS over copied-content sources the user can read — their own or shared
     with them (github/slack/granola), UNIONed across their tables. Pass `source`
-    to scope to one; an index-only source has nothing to FTS, so it returns []."""
+    to scope to one; an index-only source has nothing to FTS, so it returns [].
+    Pass `providers` to restrict to those providers' tables — this must happen
+    at the table level, because readability includes sources shared directly
+    with the user that no connected-source listing enumerates."""
+    if source is not None and providers is not None:
+        raise ValueError("Pass either source or providers, not both")
     limit = min(limit, 100)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
@@ -1398,6 +1418,10 @@ async def search_documents(
             return []
         tables = [table]
         source_id = UUID(source["id"])
+    if providers is not None:
+        tables = sorted(t for t in CONTENT_TABLES if CONTENT_TABLE_PROVIDER[t] in providers)
+        if not tables:
+            return []
 
     def visibility_clause(table: str) -> str:
         if table == "slack_messages":
@@ -2058,11 +2082,35 @@ def _rank_text(hit: dict) -> str:
     return f"{hit.get('name') or ''}\n{hit.get('snippet') or ''}"
 
 
+def _validated_search_tokens(tokens: list[str] | None, param: str) -> frozenset[str]:
+    cleaned = frozenset(t.strip().lower() for t in tokens or [])
+    unknown = cleaned - SEARCH_SOURCE_TOKENS
+    if unknown:
+        raise ValueError(
+            f"Unknown {param} token(s): {', '.join(sorted(unknown))}. "
+            f"Valid tokens: {', '.join(sorted(SEARCH_SOURCE_TOKENS))}"
+        )
+    return cleaned
+
+
+def resolve_search_source_filter(
+    include_sources: list[str] | None, exclude_sources: list[str] | None
+) -> frozenset[str]:
+    """The set of source tokens a search may touch: everything (or the include
+    list, when given) minus the exclude list. A token in both lists is excluded.
+    Unknown tokens raise ValueError."""
+    include = _validated_search_tokens(include_sources, "include_sources")
+    exclude = _validated_search_tokens(exclude_sources, "exclude_sources")
+    base = include if include else SEARCH_SOURCE_TOKENS
+    return base - exclude
+
+
 async def _gather_search_candidates(
     owner_user_id: UUID,
     user_id: UUID,
     query: str,
     source: str | None,
+    allowed: frozenset[str],
     fetch_limit: int,
 ) -> tuple[list[dict], list[dict], dict | None] | None:
     """Collect unranked hits from every sub-search: native sessions + pages,
@@ -2073,7 +2121,7 @@ async def _gather_search_candidates(
     hits: list[dict] = []
     markers: list[dict] = []
 
-    if source in (None, NATIVE_SESSIONS):
+    if NATIVE_SESSIONS in allowed and source in (None, NATIVE_SESSIONS):
         from .memory_service import search_scope_events
 
         events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
@@ -2086,7 +2134,7 @@ async def _gather_search_candidates(
             for e in events
         ]
 
-    if source in (None, NATIVE_FILES):
+    if NATIVE_FILES in allowed and source in (None, NATIVE_FILES):
         from .files_tree_service import search_pages_fts
 
         pages = await search_pages_fts(owner_user_id, query, limit=fetch_limit, user_id=user_id)
@@ -2110,7 +2158,13 @@ async def _gather_search_candidates(
             return None
     if source is None or connected is not None:
         searched_sources = (
-            [connected] if connected is not None else await list_connected_sources(owner_user_id)
+            [connected]
+            if connected is not None
+            else [
+                s
+                for s in await list_connected_sources(owner_user_id)
+                if SOURCE_TYPE_PROVIDER[s["source_type"]] in allowed
+            ]
         )
 
         # A query that IS a provider id (a Drive file id, a Gmail message id, …)
@@ -2119,11 +2173,15 @@ async def _gather_search_candidates(
         hits += await _external_ref_matches(searched_sources, query, fetch_limit)
 
         # Copied-content sources go through our FTS (returns [] for index-only /
-        # federated sources, which have no stored content to match).
+        # federated sources, which have no stored content to match). Unscoped
+        # search filters at the table level, not via searched_sources — FTS also
+        # reads sources shared directly with the user, which searched_sources
+        # never enumerates.
         docs = await search_documents(
             user_id=user_id,
             query=query,
             source=connected,
+            providers=None if connected is not None else allowed - {NATIVE_FILES, NATIVE_SESSIONS},
             limit=fetch_limit,
         )
         hits += [
@@ -2165,6 +2223,8 @@ async def search_all(
     user_id: UUID,
     query: str,
     source: str | None = None,
+    include_sources: list[str] | None = None,
+    exclude_sources: list[str] | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict | None:
@@ -2172,6 +2232,11 @@ async def search_all(
     see (native files + sessions + their connected sources), or pass a handle to
     scope to one. Returns {"results": [...], "has_more": bool}, or None when a
     named source is unknown / not owned.
+
+    include_sources/exclude_sources filter by SEARCH_SOURCE_TOKENS (native
+    handles + provider names): searched = (include or everything) - exclude, so
+    disjoint lists yield empty results. Unknown tokens, or combining either
+    with `source`, raise ValueError.
 
     Every candidate is re-scored on one uniform ts_rank scale over its display
     text, then the merged list is sorted and sliced [offset : offset + limit].
@@ -2182,10 +2247,14 @@ async def search_all(
     Markers (provider errors, truncation) trail the page unpaginated — they
     describe the whole search, not one slice, and must never hide behind a
     page boundary. has_more counts hits only."""
+    if source is not None and (include_sources or exclude_sources):
+        raise ValueError("Pass either source or include_sources/exclude_sources, not both")
+    allowed = resolve_search_source_filter(include_sources, exclude_sources)
+
     # +1 sentinel: gathering exactly offset+limit hits could never prove a
     # further page exists.
     gathered = await _gather_search_candidates(
-        owner_user_id, user_id, query, source, fetch_limit=offset + limit + 1
+        owner_user_id, user_id, query, source, allowed, fetch_limit=offset + limit + 1
     )
     if gathered is None:
         return None

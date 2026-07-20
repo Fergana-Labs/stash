@@ -23,7 +23,7 @@ from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
 
 from . import __version__, telemetry
-from .client import StashClient, StashError
+from .client import StashClient, StashError, split_source_tokens
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
@@ -2502,12 +2502,25 @@ sources_app = typer.Typer(
 app.add_typer(sources_app, name="sources")
 
 
-def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
+def _print_search(
+    query: str,
+    source: str,
+    include_sources: str,
+    exclude_sources: str,
+    limit: int,
+    as_json: bool,
+) -> None:
     """Shared body for `stash search`."""
     telemetry.record("sources.search")
     with _client() as c:
         try:
-            data = c.search_sources(query, source=source or None, limit=limit)
+            data = c.search_sources(
+                query,
+                source=source or None,
+                include_sources=split_source_tokens(include_sources),
+                exclude_sources=split_source_tokens(exclude_sources),
+                limit=limit,
+            )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -2550,11 +2563,22 @@ def search(
     source: str = typer.Option(
         "", "--source", help="Scope to one source handle (omit to search everything)."
     ),
+    include_sources: str = typer.Option(
+        "",
+        "--include-sources",
+        help="Comma-separated sources to search (files, sessions, gmail, jira, …). "
+        "Not combinable with --source.",
+    ),
+    exclude_sources: str = typer.Option(
+        "",
+        "--exclude-sources",
+        help="Comma-separated sources to skip. Not combinable with --source.",
+    ),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Search everything you can see — files, sessions, and connected sources."""
-    _print_search(query, source, limit, as_json)
+    _print_search(query, source, include_sources, exclude_sources, limit, as_json)
 
 
 def _poll_recompute_outcome(

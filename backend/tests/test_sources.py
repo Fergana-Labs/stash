@@ -2387,6 +2387,149 @@ async def test_search_rejects_negative_offset(client: AsyncClient):
     assert resp.status_code == 422
 
 
+async def _page_and_github_docs(client: AsyncClient, api_key, ws, owner_id) -> str:
+    """A native page and a github doc that both match "kumquat"; returns the
+    page id. The standard fixture for asserting which sources a filter reaches."""
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Kumquat runbook", "content": "kumquat harvest notes"},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    await _github_source_with_docs(ws, owner_id, {"a.md": "kumquat pruning notes"})
+    return page.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_search_include_sources_restricts_to_named_tokens(client: AsyncClient):
+    """include_sources=["files"] must silence github's copied-content FTS too —
+    FTS reads every readable source, so the filter has to hold at the table
+    level, not just the connected-source listing."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", include_sources=["files"])
+
+    assert [r["ref"] for r in results["results"]] == [page_id]
+
+
+@pytest.mark.asyncio
+async def test_search_exclude_sources_removes_tokens(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", exclude_sources=["files"])
+
+    refs = [r["ref"] for r in results["results"]]
+    assert refs == ["a.md"]
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", exclude_sources=["github"])
+
+    assert [r["ref"] for r in results["results"]] == [page_id]
+
+
+@pytest.mark.asyncio
+async def test_search_token_in_both_lists_is_excluded(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(
+        ws, owner_id, "kumquat", include_sources=["files", "github"], exclude_sources=["github"]
+    )
+
+    assert [r["ref"] for r in results["results"]] == [page_id]
+
+
+@pytest.mark.asyncio
+async def test_search_disjoint_include_exclude_returns_nothing(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(
+        ws, owner_id, "kumquat", include_sources=["files"], exclude_sources=["files"]
+    )
+
+    assert results == {"results": [], "has_more": False}
+
+
+@pytest.mark.asyncio
+async def test_search_unknown_source_token_is_400(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    for param in ("include_sources", "exclude_sources"):
+        resp = await client.get(
+            "/api/v1/me/sources/search",
+            params={"q": "anything", param: "dropbox"},
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 400
+        assert "dropbox" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_source_combined_with_filters_is_400(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "anything", "source": "files", "include_sources": "gmail"},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 400
+    assert "not both" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_repeated_include_sources_params_parse_as_list(client: AsyncClient):
+    """The wire format is repeated query params (?include_sources=a&include_sources=b),
+    which is what httpx sends for a list-valued param."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "kumquat", "include_sources": ["files", "github"]},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 200
+    assert sorted(r["ref"] for r in resp.json()["results"]) == sorted([page_id, "a.md"])
+
+
+@pytest.mark.asyncio
+async def test_search_excluded_provider_is_never_called(client: AsyncClient, monkeypatch):
+    """Excluding a federated provider must skip its live API entirely — not
+    call it and drop the hits — so excluded searches spend no provider quota."""
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+    await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def must_not_run(source, query, limit):
+        raise AssertionError("excluded provider's search API was called")
+
+    monkeypatch.setattr(indexer, "search_gmail", must_not_run)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", exclude_sources=["gmail"])
+
+    refs = sorted(r["ref"] for r in results["results"])
+    assert refs == sorted([page_id, "a.md"])
+    assert not any(r.get("error") for r in results["results"])
+
+
 @pytest.mark.asyncio
 async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch):
     """search_gmail maps Gmail's nextPageToken to truncated and surfaces the
