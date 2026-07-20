@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, listSources, type Source } from "@/lib/api";
 import {
@@ -15,7 +15,13 @@ import {
 
 import { useConfirm } from "../ConfirmDialog";
 import { ObsidianIcon } from "./BrandIcons";
-import { CONNECTORS, connectorIcon, providerForSourceType, type Connector } from "./connectors";
+import {
+  CONNECTORS,
+  connectorForProvider,
+  connectorIcon,
+  providerForSourceType,
+  type Connector,
+} from "./connectors";
 import { CredentialForm, primaryButton, secondaryButton } from "./pickers";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 import PaywallModal from "../PaywallModal";
@@ -43,6 +49,10 @@ export default function SourceConnectorList({
   const [expanded, setExpanded] = useState<IntegrationProvider | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A failed OAuth callback is a top-window navigation, so the backend can't
+  // return a JSON error — it redirects back with ?integration_error=<provider>.
+  // Held separately from `error` because refresh() clears that on every load.
+  const [callbackError, setCallbackError] = useState<string | null>(null);
   const [paymentRequired, setPaymentRequired] = useState(false);
   const confirm = useConfirm();
 
@@ -67,6 +77,38 @@ export default function SourceConnectorList({
       setError(e instanceof Error ? e.message : "Could not load sources");
     });
   }, [refresh]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const provider = params.get("integration_error");
+    if (!provider) return;
+    // The slug is URL-controlled: an unknown value must never be echoed into a
+    // first-party banner (content spoofing), so it maps to a generic message.
+    const label = connectorForProvider(provider)?.label;
+    const what = label ? `${label} connection failed` : "Connection failed";
+    setCallbackError(
+      params.get("reason") === "access_denied"
+        ? `${what} — the authorization was cancelled before finishing.`
+        : `${what} — the provider rejected the sign-in. Try again, or check the server logs for details.`
+    );
+    // Strip the params so a refresh or copied link doesn't resurrect the error.
+    params.delete("integration_error");
+    params.delete("reason");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (query ? `?${query}` : "") + window.location.hash
+    );
+  }, []);
+
+  // The error redirect lands on /settings, where this list is the fourth
+  // section — without scrolling, the banner sits below the fold and the
+  // failure stays invisible, which is the bug this banner exists to fix.
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (callbackError) bannerRef.current?.scrollIntoView({ block: "center" });
+  }, [callbackError]);
 
   const disabledReasons = useMemo(() => {
     const reasons = Object.values(statuses)
@@ -136,6 +178,17 @@ export default function SourceConnectorList({
           {disabledReasons.length === 1
             ? disabledReasons[0]
             : "Some integrations need server configuration before they can be connected."}
+        </div>
+      )}
+
+      {/* Above the cards: on a long connector list a bottom banner sits below
+          the fold, which is how OAuth callback failures went unnoticed. */}
+      {(error ?? callbackError) && (
+        <div
+          ref={bannerRef}
+          className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error"
+        >
+          {error ?? callbackError}
         </div>
       )}
 
@@ -211,12 +264,6 @@ export default function SourceConnectorList({
       })}
 
       {includeObsidian && <ObsidianSourceCard onUploaded={onObsidianUploaded} />}
-
-      {error && (
-        <div className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
-          {error}
-        </div>
-      )}
 
       {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
     </div>
