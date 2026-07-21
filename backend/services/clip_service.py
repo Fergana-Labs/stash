@@ -17,7 +17,7 @@ from uuid import UUID
 
 from ..config import settings
 from ..database import get_pool
-from . import files_tree_service, table_service
+from . import files_tree_service, image_archive_service, table_service
 from .article_extraction import ArticleExtractionError, extract_article
 
 CLIPS_FOLDER = "Clips"
@@ -189,6 +189,11 @@ async def _create_raw_page(
     folder_id: UUID | None,
 ) -> dict:
     """Create the clip page in Clips/raw and index it in the Bookmarks table."""
+    if image_archive_service.is_enabled():
+        if content:
+            content = await image_archive_service.archive_images(content)
+        if content_html:
+            content_html = await image_archive_service.archive_images(content_html)
     clipped_at = datetime.now(UTC)
     metadata = {"source_url": url, "clipped_at": clipped_at.isoformat()}
     if folder_id is None:
