@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useConfirm } from "../../components/ConfirmDialog";
+import { useConfirm } from "@/components/ConfirmDialog";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
-import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
-import SubscriptionSection from "../../components/settings/SubscriptionSection";
-import AgentModelSection from "../../components/settings/AgentModelSection";
-import ExportSection from "../../components/settings/ExportSection";
-import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
-import { useAuth } from "../../hooks/useAuth";
+import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
+import SubscriptionSection from "@/components/settings/SubscriptionSection";
+import AgentModelSection from "@/components/settings/AgentModelSection";
+import ExportSection from "@/components/settings/ExportSection";
+import { AccountSettingsSkeleton, ApiKeysSkeleton } from "@/components/SkeletonStates";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
   ApiKeyAccess,
@@ -19,8 +19,8 @@ import {
   listMyKeys,
   revokeMyKey,
   updateMe,
-} from "../../lib/api";
-import { User } from "../../lib/types";
+} from "@/lib/api";
+import { User } from "@/lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 

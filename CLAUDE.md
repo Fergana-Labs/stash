@@ -100,6 +100,13 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Lint: `cd frontend && npm run lint`
 - E2E: `cd frontend && npx playwright test` (requires `npx playwright install chromium` once)
 
+### Frontend conventions
+Enforced on every frontend change — new code and any code you touch.
+
+- **No route magic strings.** Use `routes` from `src/lib/workspace-routes.ts` (`routes.page(id)`, etc.) or `skillItemPath` from `src/lib/localSkill.ts`. Missing a route? Add it to `routes` first.
+- **No magic numbers/strings.** If a literal repeats or encodes a domain concept, name it as a constant.
+- **Don't repeat patterns.** Check `src/lib/` and `src/components/ui/` before writing a new helper/component. Copy-paste across files = extract it.
+
 ### Landing page (`www/`)
 - Install: `cd www && npm ci`
 - Dev: `cd www && npm run dev` (port 3100)

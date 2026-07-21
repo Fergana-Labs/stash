@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ActivityEvent } from "../lib/api";
+import { routes } from "@/lib/workspace-routes";
 import { FileIcon, PageIcon, SessionsIcon } from "./SkillIcons";
 
 const VERB: Record<string, string> = {
@@ -27,13 +28,13 @@ function colorFor(name: string) {
 
 function targetHref(event: ActivityEvent): string | null {
   if (event.kind === "session.uploaded") {
-    return `/sessions/${encodeURIComponent(event.target_id)}`;
+    return routes.session(event.target_id);
   }
   if (event.kind === "page.updated") {
-    return `/p/${event.target_id}`;
+    return routes.page(event.target_id);
   }
   if (event.kind === "file.uploaded") {
-    return `/f/${event.target_id}`;
+    return routes.file(event.target_id);
   }
   return null;
 }

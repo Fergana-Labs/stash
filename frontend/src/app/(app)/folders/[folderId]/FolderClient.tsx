@@ -21,6 +21,7 @@ import {
 import {
   findInSkillContents,
   SKILL_MD,
+  skillItemPath,
   skillMdTemplate,
 } from "@/lib/localSkill";
 import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
@@ -204,7 +205,6 @@ function SkillFallbackFolderView({
   const pages = contents.pages.filter((p) => inFolder(p.folder_path));
   const files = contents.files.filter((f) => inFolder(f.folder_path));
   const tables = contents.tables.filter((t) => inFolder(t.folder_path));
-  const skill = encodeURIComponent(skillSlug);
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -223,12 +223,12 @@ function SkillFallbackFolderView({
         </div>
         <div className="mt-6 flex flex-col gap-1">
           {pages.map((p) => (
-            <FallbackRow key={p.id} href={`/p/${p.id}?skill=${skill}`} name={p.name} sub="page" />
+            <FallbackRow key={p.id} href={skillItemPath("page", p.id, skillSlug)} name={p.name} sub="page" />
           ))}
           {files.map((f) => (
             <FallbackRow
               key={f.id}
-              href={`/f/${f.id}?skill=${skill}`}
+              href={skillItemPath("file", f.id, skillSlug)}
               name={f.name}
               sub={f.content_type || "file"}
             />
@@ -236,7 +236,7 @@ function SkillFallbackFolderView({
           {tables.map((t) => (
             <FallbackRow
               key={t.id}
-              href={`/tables/${t.id}?skill=${skill}`}
+              href={skillItemPath("table", t.id, skillSlug)}
               name={t.name}
               sub="table"
             />

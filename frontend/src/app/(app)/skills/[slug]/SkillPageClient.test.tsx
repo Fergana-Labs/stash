@@ -383,11 +383,11 @@ describe("SkillPageClient", () => {
 
     expect(screen.getByRole("link", { name: /Plan/ })).toHaveAttribute(
       "href",
-      "/p/page-2?skill=shared-skill",
+      "/page/page-2?skill=shared-skill",
     );
     expect(screen.getByRole("link", { name: /shot\.png/ })).toHaveAttribute(
       "href",
-      "/f/file-1?skill=shared-skill",
+      "/file/file-1?skill=shared-skill",
     );
     expect(screen.getByRole("link", { name: /Budget/ })).toHaveAttribute(
       "href",
