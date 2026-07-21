@@ -20,11 +20,22 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
 S3_REGION = os.getenv("S3_REGION", "us-east-1")
 
+# Separate bucket with public read access (R2 has no per-object ACLs, so
+# public objects can't share the private bucket). Objects are addressed by
+# 128-bit random keys — the key IS the access control. Used for archived
+# clip images, which must load from a plain <img> tag with no auth header.
+S3_PUBLIC_BUCKET = os.getenv("S3_PUBLIC_BUCKET", "")
+S3_PUBLIC_BASE_URL = os.getenv("S3_PUBLIC_BASE_URL", "")
+
 _client: httpx.AsyncClient | None = None
 
 
 def is_configured() -> bool:
     return bool(S3_BUCKET and S3_ENDPOINT and S3_ACCESS_KEY and S3_SECRET_KEY)
+
+
+def public_media_enabled() -> bool:
+    return bool(is_configured() and S3_PUBLIC_BUCKET and S3_PUBLIC_BASE_URL)
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -57,9 +68,22 @@ async def upload_file(
         raise RuntimeError("S3 storage is not configured")
 
     key = _storage_key(owner_user_id, filename)
+    await _signed_put(S3_BUCKET, key, content, content_type)
+    return key
 
-    # Use S3 PUT Object with presigned-style direct upload
-    # For simplicity, use the S3 REST API directly via httpx
+
+async def upload_public_image(filename: str, content: bytes, content_type: str) -> str:
+    """Store an archived clip image in the public media bucket. Returns the
+    stable public URL (no expiry — safe to embed in page content)."""
+    if not public_media_enabled():
+        raise RuntimeError("Public media storage is not configured")
+    key = f"{uuid4().hex}/{filename}"
+    await _signed_put(S3_PUBLIC_BUCKET, key, content, content_type)
+    return f"{S3_PUBLIC_BASE_URL.rstrip('/')}/{quote(key, safe='/')}"
+
+
+async def _signed_put(bucket: str, key: str, content: bytes, content_type: str) -> None:
+    """SigV4-signed S3 PUT via the REST API directly (no boto dependency)."""
     import hashlib
     import hmac
     from datetime import datetime
@@ -71,7 +95,7 @@ async def upload_file(
     # Canonical request components
     host = S3_ENDPOINT.replace("https://", "").replace("http://", "").rstrip("/")
     scheme = "https" if S3_ENDPOINT.startswith("https") else "http"
-    uri = _object_uri(key)
+    uri = f"/{bucket}/{quote(key, safe='/')}"
 
     payload_hash = hashlib.sha256(content).hexdigest()
 
@@ -124,7 +148,6 @@ async def upload_file(
         },
     )
     resp.raise_for_status()
-    return key
 
 
 async def get_file_url(key: str, expires_in: int = 3600) -> str:
