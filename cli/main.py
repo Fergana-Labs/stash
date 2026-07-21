@@ -3719,7 +3719,7 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 - `stash vfs ls /`
 - `stash vfs "find / -maxdepth 3 -type f"`
 - `stash vfs "rg 'query' /"`
-- `stash vfs "cat '/files/README.md' | sed -n '1,80p'"`
+- `stash vfs "cat '/files/README.md'"`
 
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
@@ -4672,7 +4672,7 @@ virtual Stash tree:
 - `stash vfs ls /`
 - `stash vfs "find / -maxdepth 3 -type f"`
 - `stash vfs "rg 'query' /"`
-- `stash vfs "cat '/files/README.md' | sed -n '1,80p'"`
+- `stash vfs "cat '/files/README.md'"`
 
 Anti-pattern: minting one Stash per file you happen to share. Skills
 exist to group related things; one item per Stash defeats the model and

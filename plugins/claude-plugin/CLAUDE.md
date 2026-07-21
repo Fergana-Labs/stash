@@ -43,7 +43,7 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 stash vfs ls /
 stash vfs "find /me -maxdepth 3 -type f"
 stash vfs "rg \"query\" /me"
-stash vfs "cat '/me/README.md' | sed -n '1,80p'"
+stash vfs "cat '/me/README.md'"
 ```
 
 ### Plugin control
