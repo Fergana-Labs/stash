@@ -70,8 +70,7 @@ CONTEXT = (
     "Browse Stash through the virtual filesystem first when you need "
     'context: `stash vfs ls /me`, `stash vfs "find /me -maxdepth 3 '
     '-type f"`, `stash vfs "rg \\"query\\" /me"`, or '
-    "`stash vfs \"cat '/me/files/README.md' | sed -n "
-    "'1,80p'\"`.\n\n"
+    "`stash vfs \"cat '/me/files/README.md'\"`.\n\n"
     "Common direct reads: "
     '`stash search "<query>"`, '
     "`stash vfs \"cat '/me/sessions/_index.jsonl'\"`, "

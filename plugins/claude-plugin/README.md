@@ -89,7 +89,7 @@ The plugin also gives Claude access to the rest of the `stash` CLI. Key commands
 ```bash
 stash vfs "find /me -maxdepth 3 -type f"               # Browse Stash like a filesystem without an OS mount
 stash vfs "rg \"database migration\" /me"              # Search the virtual Stash tree
-stash vfs "cat '/me/README.md' | sed -n '1,80p'"
+stash vfs "cat '/me/README.md'"
 stash search "database migration"                       # Full-text search events
 stash vfs "cat '/me/sessions/_index.jsonl'"            # Recent events
 stash vfs "find /me -name '*.md'"                      # List all pages

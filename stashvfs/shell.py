@@ -503,7 +503,14 @@ class SkillAppVfsShell:
             start = int(match.group(1))
             end = int(match.group(2))
         lines = text.splitlines(keepends=True)
-        return "".join(lines[start - 1 : end])
+        selected = lines[start - 1 : end]
+        dropped = len(lines) - len(selected)
+        if dropped > 0:
+            self._warn(
+                f"sed: showing lines {start}-{min(end, len(lines))} of {len(lines)}; "
+                f"{dropped} lines were NOT shown."
+            )
+        return "".join(selected)
 
     def _head_or_tail(self, args: list[str], stdin: str | None, *, from_tail: bool) -> str:
         count = 10
@@ -527,6 +534,14 @@ class SkillAppVfsShell:
         text = stdin if not paths and stdin is not None else self._cat(paths)
         lines = text.splitlines(keepends=True)
         selected = lines[-count:] if from_tail else lines[:count]
+        dropped = len(lines) - len(selected)
+        if dropped > 0:
+            name = "tail" if from_tail else "head"
+            which = "last" if from_tail else "first"
+            self._warn(
+                f"{name}: showing the {which} {len(selected)} of {len(lines)} lines; "
+                f"{dropped} lines were NOT shown."
+            )
         return "".join(selected)
 
     def _wc(self, args: list[str], stdin: str | None) -> str:
