@@ -1,9 +1,10 @@
 """Hydrate X (Twitter) saves via twitterapi.io.
 
-Skeleton rows arrive from the extension push (routers/sources.py
-x_items_router) as tweet ids + a kind (Bookmark/Post/Reply/Article). Each
-sync pass fills a bounded batch: the full tweet text + author from
-twitterapi.io, the conversation root for reply context, and the tweet's
+Each sync enqueues skeleton rows (tweet ids + a kind): Bookmarks from the X
+API with the OAuth token, the user's own Posts/Replies/Articles from
+twitterapi.io by account id. A bounded hydration batch then fills them in:
+the full tweet text + author (or, for an Article, the full long-form body)
+from twitterapi.io, the conversation root for reply context, and the tweet's
 images/video archived into object storage — so the save survives the tweet
 being deleted or the account going private. Per-item failures land on the
 row, loudly; rows are never deleted by sync (archive semantics).
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 TAPI_TWEETS_URL = "https://api.twitterapi.io/twitter/tweets"
 TAPI_USER_TWEETS_URL = "https://api.twitterapi.io/twitter/user/last_tweets"
+TAPI_ARTICLE_URL = "https://api.twitterapi.io/twitter/article"
 X_BOOKMARKS_URL = "https://api.x.com/2/users/{user_id}/bookmarks"
 TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
@@ -35,9 +37,14 @@ MAX_MEDIA_PER_TWEET = 4
 # usually finishes before that happens; the reconciler re-runs for the rest.
 HYDRATION_BATCH = 50
 MAX_HYDRATION_ATTEMPTS = 3
-# Pages of the user's own timeline pulled per sync (20 tweets/page). Bounded so
-# one sync doesn't run away; older tweets keep arriving over subsequent syncs.
+# Pages of the user's own timeline pulled from the top each sync (20/page),
+# catching activity since the last sync. Stops early once a page brings
+# nothing new; the page cap bounds a burst.
 MAX_USER_TWEET_PAGES = 5
+# Pages per sync spent walking the rest of the timeline history. The walk
+# resumes from a cursor stored in source settings and runs until the entire
+# reachable timeline has been ingested once (x_timeline_complete).
+MAX_TIMELINE_BACKFILL_PAGES = 25
 # Pages of bookmarks pulled per sync (100/page via the X API).
 MAX_BOOKMARK_PAGES = 5
 
@@ -77,7 +84,9 @@ async def index_x_saves(source: dict) -> str | None:
         # pending skeleton rows — the hydration pass below fills them in.
         if x_user_id:
             await _backfill_bookmarks(source_id, owner_user_id, str(x_user_id))
-            await _backfill_user_tweets(client, source_id, owner_user_id, str(x_user_id))
+            await _backfill_user_tweets(
+                client, source_id, owner_user_id, str(x_user_id), source.get("settings") or {}
+            )
 
         # Hydrate a bounded batch of pending rows. Bounding the batch is what
         # lets a stuck account keep making progress across syncs even when the
@@ -132,19 +141,29 @@ async def _backfill_bookmarks(source_id: UUID, owner_user_id: UUID, x_user_id: s
                 params["pagination_token"] = next_token
             response = await client.get(X_BOOKMARKS_URL.format(user_id=x_user_id), params=params)
             if response.status_code in (401, 402, 403, 429):
+                # The body carries X's actual reason (e.g. UsageCapExceeded vs
+                # no enrolled credits) — the status alone can't distinguish.
                 logger.warning(
-                    "x bookmarks unavailable status=%s (X API tier/quota) source=%s",
+                    "x bookmarks unavailable status=%s (X API tier/quota) source=%s body=%s",
                     response.status_code,
                     source_id,
+                    response.text[:300],
+                )
+                await source_service.set_sync_warning(
+                    source_id,
+                    f"X bookmarks are unavailable (HTTP {response.status_code}): the X API "
+                    "bookmarks endpoint needs a paid tier with remaining monthly quota. "
+                    "Posts, replies, and articles still sync.",
                 )
                 return
             response.raise_for_status()
             payload = response.json()
+            inserted = 0
             for tweet in payload.get("data") or []:
                 tweet_id = tweet.get("id")
                 if not tweet_id:
                     continue
-                await pool.execute(
+                status = await pool.execute(
                     "INSERT INTO x_save_docs "
                     "(owner_user_id, source_id, path, name, kind, external_ref) "
                     "VALUES ($1, $2, $3, $4, 'Bookmark', $4) "
@@ -154,48 +173,119 @@ async def _backfill_bookmarks(source_id: UUID, owner_user_id: UUID, x_user_id: s
                     save_path("Bookmark", tweet_id),
                     tweet_id,
                 )
+                if status == "INSERT 0 1":
+                    inserted += 1
+            # Bookmarks come newest-first, so a page of already-known ids means
+            # the rest is known too. Every page read counts against the X API's
+            # paid read allowance — stop as early as possible.
+            if payload.get("data") and not inserted:
+                return
             next_token = (payload.get("meta") or {}).get("next_token")
             if not next_token:
                 break
 
 
 async def _backfill_user_tweets(
-    client: httpx.AsyncClient, source_id: UUID, owner_user_id: UUID, x_user_id: str
+    client: httpx.AsyncClient,
+    source_id: UUID,
+    owner_user_id: UUID,
+    x_user_id: str,
+    source_settings: dict,
 ) -> None:
-    """Insert pending rows for the user's own posts + replies (from their
-    timeline), which then hydrate through the same path as bookmarks. Retweets
-    are skipped — they aren't the user's own writing. Idempotent per tweet."""
-    pool = get_pool()
+    """Insert pending rows for the user's own posts + replies + articles (from
+    their timeline), which then hydrate through the same path as bookmarks.
+    Two passes, both idempotent per tweet:
+    - a fresh pass from the top of the timeline that stops once a page brings
+      nothing new, catching activity since the last sync;
+    - a history walk that resumes from a cursor stored in source settings, a
+      bounded number of pages per sync, until the whole reachable timeline has
+      been ingested once — then never runs again (x_timeline_complete)."""
     cursor: str | None = None
     for _ in range(MAX_USER_TWEET_PAGES):
-        params = {"userId": x_user_id}
-        if cursor:
-            params["cursor"] = cursor
-        response = await client.get(TAPI_USER_TWEETS_URL, params=params)
-        response.raise_for_status()
-        payload = response.json()
-        tweets = (payload.get("data") or {}).get("tweets") or []
-        for tweet in tweets:
-            tweet_id = tweet.get("id")
-            if not tweet_id or tweet.get("isRetweet"):
-                continue
-            kind = "Reply" if tweet.get("isReply") else "Post"
-            await pool.execute(
-                "INSERT INTO x_save_docs "
-                "(owner_user_id, source_id, path, name, kind, external_ref) "
-                "VALUES ($1, $2, $3, $4, $5, $4) "
-                "ON CONFLICT (source_id, path) DO NOTHING",
-                owner_user_id,
-                source_id,
-                save_path(kind, tweet_id),
-                tweet_id,
-                kind,
-            )
-        if not payload.get("has_next_page"):
-            break
+        payload = await _fetch_timeline_page(client, x_user_id, cursor)
+        inserted, considered = await _insert_timeline_page(payload, source_id, owner_user_id)
         cursor = payload.get("next_cursor")
-        if not cursor:
+        # A page of already-known tweets means we've reached familiar
+        # territory. An all-retweet page proves nothing — keep going.
+        if (considered and not inserted) or not payload.get("has_next_page") or not cursor:
             break
+
+    if source_settings.get("x_timeline_complete"):
+        return
+    cursor = source_settings.get("x_timeline_cursor")
+    for _ in range(MAX_TIMELINE_BACKFILL_PAGES):
+        payload = await _fetch_timeline_page(client, x_user_id, cursor)
+        await _insert_timeline_page(payload, source_id, owner_user_id)
+        cursor = payload.get("next_cursor")
+        if not payload.get("has_next_page") or not cursor:
+            await _merge_source_settings(source_id, {"x_timeline_complete": True})
+            return
+    await _merge_source_settings(source_id, {"x_timeline_cursor": cursor})
+
+
+async def _fetch_timeline_page(
+    client: httpx.AsyncClient, x_user_id: str, cursor: str | None
+) -> dict:
+    # `includeReplies` is required: twitterapi.io omits replies from
+    # last_tweets by default.
+    params = {"userId": x_user_id, "includeReplies": "true"}
+    if cursor:
+        params["cursor"] = cursor
+    response = await client.get(TAPI_USER_TWEETS_URL, params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+async def _insert_timeline_page(
+    payload: dict, source_id: UUID, owner_user_id: UUID
+) -> tuple[int, int]:
+    """Insert a skeleton row per tweet on the page; returns (newly inserted,
+    total considered). Retweets are skipped — they aren't the user's own
+    writing — and don't count as considered."""
+    pool = get_pool()
+    inserted = 0
+    considered = 0
+    for tweet in (payload.get("data") or {}).get("tweets") or []:
+        tweet_id = tweet.get("id")
+        if not tweet_id or tweet.get("isRetweet"):
+            continue
+        considered += 1
+        if tweet.get("article"):
+            kind = "Article"
+            # Articles synced before article detection existed landed as
+            # Posts; drop the stale row so the save doesn't appear twice.
+            await pool.execute(
+                "DELETE FROM x_save_docs WHERE source_id = $1 AND path = $2",
+                source_id,
+                save_path("Post", tweet_id),
+            )
+        elif tweet.get("isReply"):
+            kind = "Reply"
+        else:
+            kind = "Post"
+        status = await pool.execute(
+            "INSERT INTO x_save_docs "
+            "(owner_user_id, source_id, path, name, kind, external_ref) "
+            "VALUES ($1, $2, $3, $4, $5, $4) "
+            "ON CONFLICT (source_id, path) DO NOTHING",
+            owner_user_id,
+            source_id,
+            save_path(kind, tweet_id),
+            tweet_id,
+            kind,
+        )
+        if status == "INSERT 0 1":
+            inserted += 1
+    return inserted, considered
+
+
+async def _merge_source_settings(source_id: UUID, patch: dict) -> None:
+    await get_pool().execute(
+        "UPDATE user_sources SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb, "
+        "updated_at = now() WHERE id = $1",
+        source_id,
+        patch,
+    )
 
 
 async def _hydrate_one(
@@ -206,6 +296,9 @@ async def _hydrate_one(
     kind: str,
 ) -> None:
     tweet_id = _tweet_id_from_path(path)
+    if kind == "Article":
+        await _hydrate_article(client, source_id, owner_user_id, path)
+        return
     tweet = await _fetch_tweet(client, tweet_id)
 
     # A reply shows only its own text out of context, so pull the root of the
@@ -242,6 +335,90 @@ async def _hydrate_one(
         path,
         media,
     )
+
+
+async def _hydrate_article(
+    client: httpx.AsyncClient, source_id: UUID, owner_user_id: UUID, path: str
+) -> None:
+    """Articles are long-form X posts. The regular tweet lookup only carries a
+    title + preview, so the full body comes from twitterapi.io's article
+    endpoint; the cover image and any body images are archived like tweet
+    media."""
+    tweet_id = _tweet_id_from_path(path)
+    response = await client.get(TAPI_ARTICLE_URL, params={"tweet_id": tweet_id})
+    response.raise_for_status()
+    payload = response.json()
+    article = payload.get("article") or {}
+    if payload.get("status") != "success" or not article.get("title"):
+        raise RuntimeError(f"article {tweet_id} is unavailable (deleted, private, or suspended)")
+
+    author = (article.get("author") or {}).get("userName") or "unknown"
+    posted = _parse_time(article.get("createdAt"))
+    media = await _archive_media(owner_user_id, tweet_id, _article_media(article))
+
+    byline = f"— @{author}"
+    if posted:
+        byline += f" · {posted.date().isoformat()}"
+    content = "\n".join(
+        [
+            article["title"],
+            "",
+            _render_article_blocks(article.get("contents") or []),
+            "",
+            byline,
+            tweet_url(tweet_id),
+        ]
+    )
+    await source_service.upsert_content_document(
+        table="x_save_docs",
+        source_id=source_id,
+        owner_user_id=owner_user_id,
+        path=path,
+        name=article["title"],
+        kind="Article",
+        content=content,
+        external_ref=tweet_id,
+        external_updated_at=posted,
+    )
+    await get_pool().execute(
+        "UPDATE x_save_docs SET media = $3, hydration_status = 'done', "
+        "hydration_error = NULL, updated_at = now() WHERE source_id = $1 AND path = $2",
+        source_id,
+        path,
+        media,
+    )
+
+
+# Draft.js-style block types twitterapi.io uses for article bodies.
+_ARTICLE_HEADINGS = {"header-one": "# ", "header-two": "## ", "header-three": "### "}
+_ARTICLE_LIST_ITEMS = ("unordered-list-item", "ordered-list-item")
+
+
+def _render_article_blocks(blocks: list[dict]) -> str:
+    lines: list[str] = []
+    for block in blocks:
+        block_type = block.get("type") or ""
+        text = (block.get("text") or "").strip()
+        if block_type in _ARTICLE_HEADINGS and text:
+            lines.append(_ARTICLE_HEADINGS[block_type] + text)
+        elif block_type in _ARTICLE_LIST_ITEMS and text:
+            lines.append("- " + text)
+        elif block_type == "divider":
+            lines.append("---")
+        elif text:
+            lines.append(text)
+    return "\n\n".join(lines)
+
+
+def _article_media(article: dict) -> list[dict]:
+    """Cover image + any image/gif blocks in the body, in _archive_media shape."""
+    urls: list[str] = []
+    if article.get("cover_media_img_url"):
+        urls.append(article["cover_media_img_url"])
+    for block in article.get("contents") or []:
+        if block.get("type") in ("image", "gif") and block.get("url"):
+            urls.append(block["url"])
+    return [{"url": u, "is_video": False} for u in urls]
 
 
 def _render(tweet: dict, root: dict | None) -> str:
