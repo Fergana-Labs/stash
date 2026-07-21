@@ -151,6 +151,33 @@ def test_app_vfs_grep_no_match_stops_and_chain():
     assert result.stderr == ""
 
 
+def test_app_vfs_grep_rejects_bre_escapes_loudly():
+    """Patterns compile as extended regex, where BRE's `\\|` means a literal pipe —
+    a default-grep caller writing `foo\\|bar` would silently match nothing (this
+    burned Heavi's agent in prod). The shell must refuse with a correction, never
+    return a clean no-match exit 1."""
+    shell, _client = _shell()
+
+    result = shell.run("grep -ri 'hello\\|missing' /")
+
+    assert result.exit_code == 2
+    assert "extended" in result.stderr
+
+    # The same intent written as extended regex works.
+    assert shell.run("grep -ri 'hello|missing' /").exit_code == 0
+
+
+def test_app_vfs_grep_accepts_extended_and_fixed_string_flags():
+    shell, _client = _shell()
+
+    # -E is a no-op: patterns are already extended regex.
+    assert shell.run("grep -rE 'hello|missing' /").exit_code == 0
+
+    # -F matches the pattern as literal text, regex metacharacters included.
+    assert shell.run("printf 'a|b\\n' | grep -F 'a|b'").stdout == "a|b\n"
+    assert shell.run("printf 'ab\\n' | grep -F 'a|b'").exit_code == 1
+
+
 def test_app_vfs_printf_supports_string_formats():
     shell, _client = _shell()
 
