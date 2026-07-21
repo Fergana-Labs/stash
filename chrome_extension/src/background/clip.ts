@@ -171,9 +171,13 @@ export async function clipAllTabs(): Promise<any> {
     type: 'basic',
     iconUrl: 'icons/icon128.png',
     title: 'Saved to Stash',
-    message: `Saving ${data.total} tab${data.total === 1 ? '' : 's'} — check the popup for progress.`,
+    message: `Saving ${data.total} tab${data.total === 1 ? '' : 's'}${skippedNote(data.skipped)} — check the popup for progress.`,
   });
   return { ok: true, importId: data.import_id, total: data.total };
+}
+
+function skippedNote(skipped: number): string {
+  return skipped > 0 ? ` (${skipped} already in your Stash)` : '';
 }
 
 export async function importBookmarks(name: string, content: string): Promise<any> {
@@ -202,7 +206,7 @@ export async function importBookmarks(name: string, content: string): Promise<an
     type: 'basic',
     iconUrl: 'icons/icon128.png',
     title: 'Bookmark import started',
-    message: `Importing ${data.total} bookmarks — Stash fetches them in the background.`,
+    message: `Importing ${data.total} bookmarks${skippedNote(data.skipped)} — Stash fetches them in the background.`,
   });
   return { ok: true, importId: data.import_id, total: data.total };
 }

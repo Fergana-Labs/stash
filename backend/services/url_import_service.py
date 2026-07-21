@@ -38,6 +38,18 @@ async def create_url_imports(
     return [r["id"] for r in rows]
 
 
+async def existing_urls(owner_user_id: UUID, urls: list[str]) -> set[str]:
+    """URLs this owner has already imported, in any state. Failed and
+    needs_client rows count too — they are still on their way to a clip or
+    a link-only bookmark, and re-importing must not double them."""
+    rows = await get_pool().fetch(
+        "SELECT DISTINCT url FROM url_imports WHERE owner_user_id = $1 AND url = ANY($2)",
+        owner_user_id,
+        urls,
+    )
+    return {r["url"] for r in rows}
+
+
 async def create_batch(
     *,
     owner_user_id: UUID,
