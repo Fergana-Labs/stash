@@ -8,6 +8,7 @@ Bookmarks sit behind a paid X API tier, so a 402/403 is best-effort (an
 owner-facing warning, never fatal) and must not stop posts/replies/articles.
 """
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -137,6 +138,8 @@ class _FakeApi:
     # cursor/token (None = first page) -> payload; overridable per test.
     timeline_pages: dict = {}
     bookmarks_pages: dict = {}
+    # (pagination_token, max_results) per bookmarks request, for read-cost asserts.
+    bookmarks_calls: list = []
 
     def __init__(self, **kwargs):
         pass
@@ -163,6 +166,9 @@ class _FakeApi:
         if url.startswith("https://api.x.com/2/users/") and url.endswith("/bookmarks"):
             if type(self).bookmarks_status != 200:
                 return _FakeResponse(payload={}, status_code=type(self).bookmarks_status)
+            type(self).bookmarks_calls.append(
+                (params.get("pagination_token"), params["max_results"])
+            )
             return _FakeResponse(payload=type(self).bookmarks_pages[params.get("pagination_token")])
         raise AssertionError(f"unexpected URL {url}")
 
@@ -189,6 +195,7 @@ def fake_sync(monkeypatch):
 
     _FakeApi.bookmarks_status = 200
     _FakeApi.bookmarks_pages = {None: _BOOKMARKS}
+    _FakeApi.bookmarks_calls = []
     _FakeApi.timeline_pages = {None: _TIMELINE}
     _FakeApi.media_bytes = b"fake image bytes"
     _FakeApi.media_headers = {"content-type": "image/jpeg"}
@@ -409,10 +416,11 @@ async def test_article_previously_synced_as_post_is_rekinded(client, pool, fake_
 
 
 @pytest.mark.asyncio
-async def test_bookmark_backfill_stops_at_known_ids(client, pool, fake_sync) -> None:
-    # Every bookmarks page read costs paid X API reads. Bookmarks come
-    # newest-first, so once a page brings nothing new the rest of the list is
-    # already saved — deeper pages must not be fetched.
+async def test_bookmark_probe_is_small_and_history_walk_runs_once(client, pool, fake_sync) -> None:
+    # Every bookmark returned costs paid X API reads, so the steady-state
+    # check must be one small probe page (bookmarks are newest-first — a probe
+    # with nothing new proves the rest is known). Deeper history is ingested
+    # exactly once by the walk, then never refetched.
     _FakeApi.bookmarks_pages = {
         None: {"data": [{"id": "900"}, {"id": "901"}], "meta": {"next_token": "b2"}},
         "b2": {"data": [{"id": "902"}], "meta": {}},
@@ -424,11 +432,61 @@ async def test_bookmark_backfill_stops_at_known_ids(client, pool, fake_sync) -> 
 
     await x_indexer.index_x_saves(source)
 
+    assert _FakeApi.bookmarks_calls[0] == (None, 10)  # the probe page is small
     count = await pool.fetchval(
         "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND path = 'Bookmarks/902'",
         UUID(source["id"]),
     )
-    assert count == 0  # page 2 was never fetched
+    assert count == 1  # the walk reached the deep page
+    settings_ = await pool.fetchval(
+        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert settings_["x_bookmarks_complete"] is True
+    deep_fetches = [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"]
+    assert len(deep_fetches) == 1
+
+    # Next-day check (the daily gate would skip a same-day one): one 10-item
+    # probe, no history refetch.
+    await _age_bookmark_check(pool, source["id"])
+    source = await source_service.get_source_for_sync(UUID(source["id"]))
+    await x_indexer.index_x_saves(source)
+
+    assert _FakeApi.bookmarks_calls[-1] == (None, 10)
+    assert [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"] == deep_fetches
+
+
+async def _age_bookmark_check(pool, source_id: str) -> None:
+    """Backdate x_bookmarks_checked_at so the daily gate lets the next
+    check through."""
+    stale = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    await pool.execute(
+        "UPDATE user_sources SET settings = settings || $2::jsonb WHERE id = $1",
+        UUID(source_id),
+        {"x_bookmarks_checked_at": stale},
+    )
+
+
+@pytest.mark.asyncio
+async def test_bookmarks_checked_at_most_daily(client, pool, fake_sync) -> None:
+    # Bookmark reads cost paid X API credits, so a sync inside the daily
+    # window must not touch the bookmarks endpoint at all — while the
+    # twitterapi.io timeline keeps syncing at the source's normal cadence.
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+    calls_after_first = len(_FakeApi.bookmarks_calls)
+    assert calls_after_first > 0
+
+    source = await source_service.get_source_for_sync(UUID(source["id"]))
+    await x_indexer.index_x_saves(source)
+
+    assert len(_FakeApi.bookmarks_calls) == calls_after_first  # gate held
+    replies = await pool.fetchval(
+        "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND kind = 'Reply'",
+        UUID(source["id"]),
+    )
+    assert replies > 0  # the timeline side still synced
 
 
 @pytest.mark.asyncio
