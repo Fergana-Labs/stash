@@ -1383,6 +1383,8 @@ async def _federated_search(
             # Providers return whole rendered bodies (a full email, a full
             # issue) — cap them like every other candidate.
             "snippet": _centered_window(h.get("snippet", ""), query, SEARCH_SNIPPET_CHARS),
+            # Not every provider's search response carries a timestamp.
+            "date_modified": h.get("date_modified"),
         }
         for h in hits
     ]
@@ -1450,7 +1452,7 @@ async def search_documents(
     source_readable = permission_service.readable_content_condition("source", "s", 1)
     parts = [
         f"""
-        SELECT d.source_id, d.path, d.name,
+        SELECT d.source_id, d.path, d.name, d.external_updated_at,
                substr(d.content,
                       GREATEST(1, LEAST(strpos(lower(d.content), lower(btrim($2)))
                                           - {SEARCH_SNIPPET_CHARS // 2},
@@ -1470,7 +1472,8 @@ async def search_documents(
     ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
-        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
+        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, "
+        f"u.external_updated_at, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
         f"ORDER BY u.rank DESC LIMIT $4",
         user_id,
@@ -1485,6 +1488,7 @@ async def search_documents(
             "path": r["path"],
             "name": r["name"],
             "snippet": r["snippet"] or "",
+            "date_modified": r["external_updated_at"],
         }
         for r in rows
     ]
@@ -2056,7 +2060,7 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
         if table is None:
             continue
         rows = await get_pool().fetch(
-            f"SELECT path, name FROM {table} "
+            f"SELECT path, name, external_updated_at FROM {table} "
             f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL "
             f"LIMIT $3",
             UUID(s["id"]),
@@ -2070,6 +2074,7 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
                 "ref": r["path"],
                 "name": r["name"],
                 "snippet": "",
+                "date_modified": r["external_updated_at"],
                 "exact_ref": True,
             }
             for r in rows
@@ -2164,6 +2169,7 @@ async def _gather_search_candidates(
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
                 "snippet": _centered_window(e.get("content") or "", query, SEARCH_SNIPPET_CHARS),
+                "date_modified": e.get("created_at"),
             }
             for e in events
         ]
@@ -2182,6 +2188,7 @@ async def _gather_search_candidates(
                     query,
                     SEARCH_SNIPPET_CHARS,
                 ),
+                "date_modified": p.get("updated_at"),
             }
             for p in pages
         ]
@@ -2227,6 +2234,7 @@ async def _gather_search_candidates(
                 "ref": d["path"],
                 "name": d["name"],
                 "snippet": d["snippet"],
+                "date_modified": d["date_modified"],
             }
             for d in docs
         ]
@@ -2277,7 +2285,10 @@ async def search_all(
     Every candidate is re-scored on one uniform ts_rank scale over its display
     text, then the merged list is sorted and sliced [offset : offset + limit].
     Each hit's `snippet` is a SEARCH_RESULT_SNIPPET_CHARS window centered on
-    the first query occurrence, its clipped edges marked with "…".
+    the first query occurrence, its clipped edges marked with "…". Each hit
+    carries `date_modified` (the document's provider-side modification time,
+    the page's update time, or the event's creation time) — None when the
+    integration doesn't provide one.
     Each hit carries its `rank` so callers can merge these results with their
     own scored lists (the web search page blends in tables/skills client-side).
     Hits whose provider id contains the query (`exact_ref`) pin above all

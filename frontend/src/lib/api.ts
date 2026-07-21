@@ -408,6 +408,9 @@ export interface SourceSearchHit {
   // The query is a substring of the document's provider id — a lookup, not a
   // relevance guess; such hits rank above everything else.
   exact_ref?: boolean;
+  // When the document was last modified (ISO 8601). Null when the integration
+  // doesn't provide one.
+  date_modified?: string | null;
   // Marker: a federated source hit its result cap — `returned` of ~`estimated_total`
   // matches are shown. `truncated` distinguishes it from a real hit.
   truncated?: boolean;

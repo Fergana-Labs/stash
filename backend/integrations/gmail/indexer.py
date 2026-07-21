@@ -213,6 +213,7 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
                 "ref": path,
                 "name": _message_name(message),
                 "snippet": _render_message(message),
+                "date_modified": _message_time(message),
             }
         )
     return {

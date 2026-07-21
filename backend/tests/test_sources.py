@@ -12,6 +12,7 @@ import io
 import json
 import time
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -604,6 +605,7 @@ async def test_search_documents_snippet_centers_on_the_match(client: AsyncClient
     intro = "meeting small talk. " * 1200
     match = "the quarterly forecast needs revision. "
     tail = "closing remarks. " * 1500
+    modified = datetime(2026, 7, 7, 15, 33, tzinfo=UTC)
     await source_service.upsert_content_document(
         table="granola_notes",
         source_id=UUID(src["id"]),
@@ -612,6 +614,7 @@ async def test_search_documents_snippet_centers_on_the_match(client: AsyncClient
         name="Planning sync",
         kind="note",
         content=intro + match + tail,
+        external_updated_at=modified,
     )
 
     hits = await source_service.search_documents(user_id=owner_id, query="quarterly forecast")
@@ -620,6 +623,7 @@ async def test_search_documents_snippet_centers_on_the_match(client: AsyncClient
     assert match in snippet
     # The document is longer than the cap; the snippet is exactly the cap.
     assert len(snippet) == source_service.SEARCH_SNIPPET_CHARS
+    assert hits[0]["date_modified"] == modified
 
     # End to end, the API returns a small display window of that blob, still
     # centered on the match, with the clipped edges marked — so every consumer
@@ -634,6 +638,8 @@ async def test_search_documents_snippet_centers_on_the_match(client: AsyncClient
     assert match in hit["snippet"]
     assert len(hit["snippet"]) <= source_service.SEARCH_RESULT_SNIPPET_CHARS + 2
     assert hit["snippet"].startswith("…") and hit["snippet"].endswith("…")
+    # The provider-side modification time rides along, ISO-serialized.
+    assert hit["date_modified"] == "2026-07-07T15:33:00+00:00"
 
 
 def test_centered_window_semantics():
@@ -2267,6 +2273,7 @@ async def test_search_appends_truncation_marker_when_provider_caps(
             "ref": "m0",
             "name": "msg 0",
             "snippet": "",
+            "date_modified": None,
             "rank": 0.0,
         },
         {
@@ -2275,6 +2282,7 @@ async def test_search_appends_truncation_marker_when_provider_caps(
             "ref": "m1",
             "name": "msg 1",
             "snippet": "",
+            "date_modified": None,
             "rank": 0.0,
         },
     ]
@@ -3533,6 +3541,8 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
     # The snippet is the rendered issue body, not just the title — rankers
     # downstream need the description text without another API call.
     assert "Federate search to Linear's own API." in hit["snippet"]
+    # This provider response carried no timestamp — the optional field is None.
+    assert hit["date_modified"] is None
 
 
 @pytest.mark.asyncio
@@ -3573,7 +3583,7 @@ async def test_federated_snippet_is_capped_and_centered_on_the_match(
                 team_key="FER",
                 team_name="Fergana",
                 project_name=None,
-                updated_at=None,
+                updated_at=datetime(2026, 7, 14, 9, 0, tzinfo=UTC),
                 description=description,
             )
         ]
@@ -3587,6 +3597,8 @@ async def test_federated_snippet_is_capped_and_centered_on_the_match(
     assert "the pelican budget doubles next year." in hit["snippet"]
     assert len(hit["snippet"]) <= source_service.SEARCH_RESULT_SNIPPET_CHARS + 2
     assert hit["snippet"].startswith("…") and hit["snippet"].endswith("…")
+    # Federated providers that report a modification time pass it through.
+    assert hit["date_modified"] == datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

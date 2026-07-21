@@ -91,6 +91,7 @@ async def search_linear(source: dict, query: str, limit: int = SEARCH_LIMIT) -> 
             "ref": _issue_path(issue.identifier),
             "name": f"{issue.identifier} {issue.title}",
             "snippet": _render_issue(issue),
+            "date_modified": issue.updated_at,
         }
         for issue in issues
     ]

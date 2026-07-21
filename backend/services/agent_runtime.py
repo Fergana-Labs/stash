@@ -548,7 +548,8 @@ async def _search(args: dict) -> dict:
     )
     if result is None:
         return _text_result(json.dumps({"error": "source not found"}))
-    return _text_result(json.dumps(result))
+    # Hits carry date_modified as a datetime; default=str renders it ISO.
+    return _text_result(json.dumps(result, default=str))
 
 
 @tool(

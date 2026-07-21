@@ -287,6 +287,7 @@ async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> li
                 "ref": _issue_path(key),
                 "name": f"{key}: {summary}",
                 "snippet": _render_issue(issue),
+                "date_modified": _parse_time((issue.get("fields") or {}).get("updated")),
             }
         )
     return hits

@@ -526,7 +526,7 @@ function unifiedResults(
         href: `/p/${hit.ref}`,
         sourceName: ctx.sourceName,
         detail: contextSnippet(snippet, query) ?? "Page",
-        updatedAt: null,
+        updatedAt: hit.date_modified ?? null,
         relevance,
       });
       continue;
@@ -540,7 +540,7 @@ function unifiedResults(
       external: { source: hit.source, ref: hit.ref, name: hit.name },
       sourceName: hit.source_name ?? "Connected source",
       detail: contextSnippet(snippet, query) ?? hit.ref,
-      updatedAt: null,
+      updatedAt: hit.date_modified ?? null,
       relevance,
     });
   }
