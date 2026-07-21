@@ -45,7 +45,11 @@ MAX_USER_TWEET_PAGES = 5
 # resumes from a cursor stored in source settings and runs until the entire
 # reachable timeline has been ingested once (x_timeline_complete).
 MAX_TIMELINE_BACKFILL_PAGES = 25
-# Pages of bookmarks pulled per sync (100/page via the X API).
+# The X API bills per post returned, and most syncs find no new bookmark —
+# so the steady-state check is one small probe page. Backlog and history
+# pages use the full size, capped per sync.
+BOOKMARK_PROBE_SIZE = 10
+BOOKMARK_PAGE_SIZE = 100
 MAX_BOOKMARK_PAGES = 5
 
 
@@ -83,7 +87,9 @@ async def index_x_saves(source: dict) -> str | None:
         # the user's own posts/replies from twitterapi.io. Both just insert
         # pending skeleton rows — the hydration pass below fills them in.
         if x_user_id:
-            await _backfill_bookmarks(source_id, owner_user_id, str(x_user_id))
+            await _backfill_bookmarks(
+                source_id, owner_user_id, str(x_user_id), source.get("settings") or {}
+            )
             await _backfill_user_tweets(
                 client, source_id, owner_user_id, str(x_user_id), source.get("settings") or {}
             )
@@ -124,65 +130,113 @@ async def index_x_saves(source: dict) -> str | None:
     return None
 
 
-async def _backfill_bookmarks(source_id: UUID, owner_user_id: UUID, x_user_id: str) -> None:
+async def _backfill_bookmarks(
+    source_id: UUID, owner_user_id: UUID, x_user_id: str, source_settings: dict
+) -> None:
     """Insert pending Bookmark rows from the X API (OAuth token). Best-effort:
-    the bookmarks endpoint sits behind a paid X API tier, so a 402/403/429 is
-    expected and logged rather than fatal — it must not stop the user's
-    posts/replies from syncing. Idempotent per tweet."""
+    the bookmarks endpoint sits behind paid X API credits, so a 402/403/429 is
+    expected and surfaced as a warning rather than fatal — it must not stop
+    the user's posts/replies/articles from syncing.
+
+    Same two passes as the timeline, both idempotent per tweet:
+    - a probe pass from the top (small first page — most syncs find nothing
+      new) that stops once a page brings nothing new;
+    - a history walk that resumes from a pagination token stored in source
+      settings until the whole reachable list has been ingested once
+      (x_bookmarks_complete)."""
     token = await integration_storage.get_valid_token(owner_user_id, "x")
-    pool = get_pool()
-    next_token: str | None = None
     async with httpx.AsyncClient(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}
     ) as client:
-        for _ in range(MAX_BOOKMARK_PAGES):
-            params = {"max_results": 100}
-            if next_token:
-                params["pagination_token"] = next_token
-            response = await client.get(X_BOOKMARKS_URL.format(user_id=x_user_id), params=params)
-            if response.status_code in (401, 402, 403, 429):
-                # The body carries X's actual reason (e.g. UsageCapExceeded vs
-                # no enrolled credits) — the status alone can't distinguish.
-                logger.warning(
-                    "x bookmarks unavailable status=%s (X API tier/quota) source=%s body=%s",
-                    response.status_code,
-                    source_id,
-                    response.text[:300],
-                )
-                await source_service.set_sync_warning(
-                    source_id,
-                    f"X bookmarks are unavailable (HTTP {response.status_code}): the X API "
-                    "bookmarks endpoint needs a paid tier with remaining monthly quota. "
-                    "Posts, replies, and articles still sync.",
-                )
+        page_token: str | None = None
+        for page in range(MAX_BOOKMARK_PAGES):
+            size = BOOKMARK_PROBE_SIZE if page == 0 else BOOKMARK_PAGE_SIZE
+            payload = await _fetch_bookmarks_page(client, source_id, x_user_id, size, page_token)
+            if payload is None:
                 return
-            response.raise_for_status()
-            payload = response.json()
-            inserted = 0
-            for tweet in payload.get("data") or []:
-                tweet_id = tweet.get("id")
-                if not tweet_id:
-                    continue
-                status = await pool.execute(
-                    "INSERT INTO x_save_docs "
-                    "(owner_user_id, source_id, path, name, kind, external_ref) "
-                    "VALUES ($1, $2, $3, $4, 'Bookmark', $4) "
-                    "ON CONFLICT (source_id, path) DO NOTHING",
-                    owner_user_id,
-                    source_id,
-                    save_path("Bookmark", tweet_id),
-                    tweet_id,
-                )
-                if status == "INSERT 0 1":
-                    inserted += 1
-            # Bookmarks come newest-first, so a page of already-known ids means
-            # the rest is known too. Every page read counts against the X API's
-            # paid read allowance — stop as early as possible.
-            if payload.get("data") and not inserted:
-                return
-            next_token = (payload.get("meta") or {}).get("next_token")
-            if not next_token:
+            inserted, considered = await _insert_bookmarks_page(payload, source_id, owner_user_id)
+            page_token = (payload.get("meta") or {}).get("next_token")
+            # Bookmarks come newest-first, so a page of already-known ids
+            # means everything below is known too (history is the walk's job).
+            if (considered and not inserted) or not page_token:
                 break
+
+        if source_settings.get("x_bookmarks_complete"):
+            return
+        page_token = source_settings.get("x_bookmarks_cursor")
+        for _ in range(MAX_BOOKMARK_PAGES):
+            payload = await _fetch_bookmarks_page(
+                client, source_id, x_user_id, BOOKMARK_PAGE_SIZE, page_token
+            )
+            if payload is None:
+                return
+            await _insert_bookmarks_page(payload, source_id, owner_user_id)
+            page_token = (payload.get("meta") or {}).get("next_token")
+            if not page_token:
+                await _merge_source_settings(source_id, {"x_bookmarks_complete": True})
+                return
+        await _merge_source_settings(source_id, {"x_bookmarks_cursor": page_token})
+
+
+async def _fetch_bookmarks_page(
+    client: httpx.AsyncClient,
+    source_id: UUID,
+    x_user_id: str,
+    max_results: int,
+    page_token: str | None,
+) -> dict | None:
+    """One page of the user's bookmarks, or None when the paid-credits gate
+    (401/402/403/429) is closed — logged and surfaced on the source."""
+    params: dict = {"max_results": max_results}
+    if page_token:
+        params["pagination_token"] = page_token
+    response = await client.get(X_BOOKMARKS_URL.format(user_id=x_user_id), params=params)
+    if response.status_code in (401, 402, 403, 429):
+        # The body carries X's actual reason (e.g. UsageCapExceeded vs no
+        # enrolled credits) — the status alone can't distinguish.
+        logger.warning(
+            "x bookmarks unavailable status=%s (X API tier/quota) source=%s body=%s",
+            response.status_code,
+            source_id,
+            response.text[:300],
+        )
+        await source_service.set_sync_warning(
+            source_id,
+            f"X bookmarks are unavailable (HTTP {response.status_code}): the X API "
+            "bookmarks endpoint needs a paid tier with remaining monthly quota. "
+            "Posts, replies, and articles still sync.",
+        )
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+async def _insert_bookmarks_page(
+    payload: dict, source_id: UUID, owner_user_id: UUID
+) -> tuple[int, int]:
+    """Insert a skeleton Bookmark row per tweet on the page; returns (newly
+    inserted, total considered)."""
+    pool = get_pool()
+    inserted = 0
+    considered = 0
+    for tweet in payload.get("data") or []:
+        tweet_id = tweet.get("id")
+        if not tweet_id:
+            continue
+        considered += 1
+        status = await pool.execute(
+            "INSERT INTO x_save_docs "
+            "(owner_user_id, source_id, path, name, kind, external_ref) "
+            "VALUES ($1, $2, $3, $4, 'Bookmark', $4) "
+            "ON CONFLICT (source_id, path) DO NOTHING",
+            owner_user_id,
+            source_id,
+            save_path("Bookmark", tweet_id),
+            tweet_id,
+        )
+        if status == "INSERT 0 1":
+            inserted += 1
+    return inserted, considered
 
 
 async def _backfill_user_tweets(
