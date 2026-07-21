@@ -13,6 +13,7 @@ import {
   initClipper,
   uploadPageClip,
 } from './background/clip';
+import { initImportFetch } from './background/import_fetch';
 import {
   initInstagram,
   receiveSavedItems,
@@ -27,6 +28,7 @@ const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 initClipper();
 initChatPoll(syncConversation);
 initInstagram();
+initImportFetch();
 
 // The X bookmark harvest was removed (X syncs server-side over OAuth now); clear
 // any stale harvest error it left behind so the popup doesn't keep showing it.

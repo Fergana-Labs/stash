@@ -8,7 +8,6 @@ else is fetched and routed by content: PDF → file clip, HTML → article
 page, anything else fails loud.
 """
 
-import asyncio
 import re
 from urllib.parse import urlparse
 
@@ -62,7 +61,7 @@ async def process_url_import(row: dict) -> dict:
     url = row["url"]
 
     if is_youtube(url):
-        video = await asyncio.to_thread(youtube_transcript.fetch_transcript, url)
+        video = await youtube_transcript.fetch_transcript(url)
         markdown = f"**{video['channel']}**\n\n{video['transcript']}"
         page = await clip_service.create_clip_page(
             owner_user_id=owner_user_id,

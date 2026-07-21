@@ -160,8 +160,14 @@ function renderAdvanced(status: any): HTMLElement {
       return;
     }
     const p = result.progress;
-    progressRow.textContent = `Import: ${p.done}/${p.total} done, ${p.failed} failed, ${p.pending} pending`;
-    if (p.pending > 0) setTimeout(() => void showProgress(importId), 2000);
+    const parts = [`${p.done} saved`];
+    if (p.link_only > 0) parts.push(`${p.link_only} link-only`);
+    if (p.needs_client > 0) parts.push(`${p.needs_client} fetching via this browser`);
+    if (p.pending > 0) parts.push(`${p.pending} pending`);
+    progressRow.textContent = `Import (${p.total} total): ${parts.join(', ')}`;
+    if (p.pending > 0 || p.needs_client > 0) {
+      setTimeout(() => void showProgress(importId), 2000);
+    }
   }
 
   const fileInput = el('input', { type: 'file', accept: '.html' });
