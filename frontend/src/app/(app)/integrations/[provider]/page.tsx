@@ -16,6 +16,7 @@ import {
   getSourceEntries,
   getSourceStatus,
   listSources,
+  readSourceDoc,
   searchSource,
   syncSource as syncSourceApi,
   type Source,
