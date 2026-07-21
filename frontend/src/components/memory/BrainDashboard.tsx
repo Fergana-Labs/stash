@@ -28,6 +28,7 @@ import {
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
 import type { EmbeddingProjection, Tree } from "@/lib/types";
+import { routes } from "@/lib/workspace-routes";
 
 const PAGE_SIZE = 50;
 
@@ -341,11 +342,11 @@ function verbFor(kind: string): string {
 
 function hrefFor(event: ActivityEvent): string | null {
   if (event.kind === "session.uploaded")
-    return `/sessions/${encodeURIComponent(event.target_id)}`;
+    return routes.session(event.target_id);
   if (event.kind === "page.updated")
-    return `/p/${event.target_id}`;
+    return routes.page(event.target_id);
   if (event.kind === "file.uploaded")
-    return `/f/${event.target_id}`;
+    return routes.file(event.target_id);
   return null;
 }
 

@@ -340,10 +340,10 @@ async def memory_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     return {r["id"] for r in rows}
 
 
-# The curator links wiki pages as `[Title](/p/<page_id>)` (markdown) or
-# `href="/p/<page_id>"` (HTML layout), so any /p/<uuid> reference is a link.
+# The curator links wiki pages as `[Title](/page/<page_id>)` (markdown) or
+# `href="/page/<page_id>"` (HTML layout), so any /page/<uuid> reference is a link.
 _WIKI_PAGE_LINK = re.compile(
-    r"/p/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
+    r"/page/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
 )
 
 

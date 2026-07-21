@@ -94,11 +94,11 @@ async def _can_access_file(
 
 
 def _file_app_url(row: dict) -> str:
-    return f"{settings.PUBLIC_URL.rstrip('/')}/f/{row['id']}"
+    return f"{settings.PUBLIC_URL.rstrip('/')}/file/{row['id']}"
 
 
 def _page_app_url(page_id: UUID) -> str:
-    return f"{settings.PUBLIC_URL.rstrip('/')}/p/{page_id}"
+    return f"{settings.PUBLIC_URL.rstrip('/')}/page/{page_id}"
 
 
 def _strip_ext(filename: str, exts: tuple[str, ...]) -> str:

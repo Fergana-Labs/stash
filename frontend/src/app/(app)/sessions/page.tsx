@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import SessionFolderShareModal from "@/components/share/SessionFolderShareModal";
 import { usePins } from "@/lib/pins";
+import { routes } from "@/lib/workspace-routes";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
@@ -735,7 +736,7 @@ function SessionTableRow({
 
   return (
     <Link
-      href={`/sessions/${encodeURIComponent(session.session_id)}`}
+      href={routes.session(session.session_id)}
       draggable={drag.canDrag && !!session.id}
       onDragStart={(e: DragEvent<HTMLAnchorElement>) => {
         if (!session.id) return;

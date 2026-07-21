@@ -25,6 +25,7 @@ import {
   type SessionEvent,
   type Skill,
 } from "@/lib/api";
+import { routes } from "@/lib/workspace-routes";
 import EditableTitle from "@/components/content/EditableTitle";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
@@ -147,7 +148,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
         objectType="session"
         objectId={sessionDetail.id}
         resourceName={sessionHeading(sessionDetail, sessionId)}
-        resourceUrlPath={`/sessions/${encodeURIComponent(sessionId)}`}
+        resourceUrlPath={routes.session(sessionId)}
         currentUser={user}
       />
     );
@@ -255,7 +256,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
               {sessionDetail && (
                 <SaveToSkillButton
                   sessionId={sessionId}
-                  onSaved={(pageId) => router.push(`/p/${pageId}`)}
+                  onSaved={(pageId) => router.push(routes.page(pageId))}
                 />
               )}
               {sessionId.startsWith("agent-") && (

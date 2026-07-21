@@ -165,7 +165,7 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 ## Links
 Use standard markdown links with real routes — double-bracket wiki syntax
 does not render as a link anywhere in the product:
-- Page: `[<Title>](/p/<page_id>)` — ids come from the `--json` output of
+- Page: `[<Title>](/page/<page_id>)` — ids come from the `--json` output of
   add-page, ls, and read.
 - Category: `[<Category>](/folders/<folder_id>?section=memory)`.
 Every page links up to its category and sideways to related pages, and the

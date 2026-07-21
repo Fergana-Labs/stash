@@ -135,7 +135,7 @@ function OnboardingInner() {
       apiKey,
     });
     await updatePage(page.id, { content });
-    router.push(`/p/${page.id}`);
+    router.push(routes.page(page.id));
   }, [user, router]);
 
   if (loading || !user) {

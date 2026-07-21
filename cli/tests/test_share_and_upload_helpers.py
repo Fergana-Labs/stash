@@ -30,7 +30,7 @@ def test_file_app_url_is_canonical(monkeypatch) -> None:
     file_id = uuid4()
     monkeypatch.setattr(settings, "PUBLIC_URL", "https://app.example/")
 
-    assert _file_app_url({"id": file_id}) == f"https://app.example/f/{file_id}"
+    assert _file_app_url({"id": file_id}) == f"https://app.example/file/{file_id}"
 
 
 def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> None:

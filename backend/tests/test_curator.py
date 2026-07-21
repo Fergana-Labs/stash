@@ -242,7 +242,7 @@ def test_curator_prompt_embeds_folder_and_window():
     assert "never a silent drop" in boot
     # Links must be real markdown routes — double-bracket wiki syntax renders
     # as plain text in the product, so the prompt must never ask for it.
-    assert "](/p/" in boot
+    assert "](/page/" in boot
     assert "[[" not in boot
 
 
@@ -531,9 +531,9 @@ async def test_memory_graph_nodes_edges_and_scope(client: AsyncClient):
         return r.json()["id"]
 
     alpha = await add_page("Alpha", "seed page", mem["id"])
-    beta = await add_page("Beta", f"see [Alpha](/p/{alpha})", mem["id"])
+    beta = await add_page("Beta", f"see [Alpha](/page/{alpha})", mem["id"])
     # A Files page linking into the wiki is not a wiki node and adds no edge.
-    await add_page("Outside", f"see [Alpha](/p/{alpha})", None)
+    await add_page("Outside", f"see [Alpha](/page/{alpha})", None)
 
     r = await client.get("/api/v1/me/memory-graph", headers=_auth(key))
     assert r.status_code == 200

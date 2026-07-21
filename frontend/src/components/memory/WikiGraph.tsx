@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { WikiGraph as WikiGraphData, WikiGraphNode } from "@/lib/api";
+import { routes } from "@/lib/workspace-routes";
 
 const HEIGHT = 560;
 const MIN_SCALE = 0.25;
@@ -373,7 +374,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
           const { wx, wy } = toWorld(e.clientX - rect.left, e.clientY - rect.top);
           const i = findNode(wx, wy);
           const sim = simRef.current;
-          if (i >= 0 && sim) router.push(`/p/${sim.nodes[i].id}?section=memory`);
+          if (i >= 0 && sim) router.push(`${routes.page(sim.nodes[i].id)}?section=memory`);
         }}
         onDoubleClick={() => {
           userAdjustedRef.current = false;

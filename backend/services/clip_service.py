@@ -120,8 +120,8 @@ async def _bookmarks_table(owner_user_id: UUID, user_id: UUID) -> tuple[UUID, di
 def _clip_app_url(*, page_id: UUID | None = None, file_id: UUID | None = None) -> str:
     base = settings.PUBLIC_URL.rstrip("/")
     if page_id is not None:
-        return f"{base}/p/{page_id}"
-    return f"{base}/f/{file_id}"
+        return f"{base}/page/{page_id}"
+    return f"{base}/file/{file_id}"
 
 
 def _site(url: str) -> str:

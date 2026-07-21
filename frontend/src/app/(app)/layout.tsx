@@ -35,8 +35,8 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const isPublicSkillRoute =
     pathname.startsWith("/skills/") ||
     pathname.startsWith("/session-folders/") ||
-    pathname.startsWith("/p/") ||
-    pathname.startsWith("/f/") ||
+    pathname.startsWith("/page/") ||
+    pathname.startsWith("/file/") ||
     isSkillItemRoute;
 
   useEffect(() => {

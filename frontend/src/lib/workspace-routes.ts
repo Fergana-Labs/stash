@@ -1,7 +1,15 @@
 import type { TabKind, WorkbenchTab } from "@/lib/workspace-store";
 
-// Single source of truth for app-internal route paths.
+// Single source of truth for app-internal route paths. Every deep link,
+// share URL, and router.push in the frontend goes through these.
 export const routes = {
+  page: (id: string) => `/page/${id}`,
+  file: (id: string) => `/file/${id}`,
+  table: (id: string) => `/tables/${id}`,
+  session: (id: string) => `/sessions/${encodeURIComponent(id)}`,
+  folder: (id: string) => `/folders/${id}`,
+  skill: (slug: string) => `/skills/${slug}`,
+  skillFolder: (id: string) => `/skills/folder/${id}`,
   extension: "/extension",
 };
 
@@ -9,31 +17,35 @@ export const routes = {
 export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
   switch (tab.kind) {
     case "page":
-      return `/p/${tab.refId}`;
+      return routes.page(tab.refId);
     case "file":
-      return `/f/${tab.refId}`;
+      return routes.file(tab.refId);
     case "table":
-      return `/tables/${tab.refId}`;
+      return routes.table(tab.refId);
     case "session":
-      return `/sessions/${tab.refId}`;
+      return routes.session(tab.refId);
     case "sessions-home":
       return "/sessions?workspace=1";
     case "skill":
-      return `/skills/folder/${tab.refId}`;
+      return routes.skillFolder(tab.refId);
     case "folder":
-      return `/folders/${tab.refId}`;
-    case "agent":
-      return `/agents`;
+      return routes.folder(tab.refId);
+    case "agent": {
+      const m = tab.refId.match(/^(?:agent-|new:)([a-zA-Z0-9_-]+)/);
+      const id = m?.[1];
+      if (id && !/^[0-9a-f]{32}$/i.test(id) && !id.startsWith("curate-") && !id.startsWith("sched-")) {
+        return `/agents?agent=${id}`;
+      }
+      return `/agents?session=${tab.refId}`;
+    }
     case "tool":
       // A provider slug deep-links to its manager; the legacy list stays /tools.
       return tab.refId === "integrations" ? `/tools` : `/integrations/${tab.refId}`;
     case "machine-file":
-      // Machine files have no permanent route — they live on the box.
-      return `/agents`;
     case "terminal":
-      return `/agents`;
+      return `/computer`;
     case "agent-config":
-      return `/agents`;
+      return `/agents?config=${tab.refId}`;
   }
 }
 
@@ -41,9 +53,9 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
  *  deep-link → tab: a shared /p, /f, /sessions/:id, or /skills/:slug opens its
  *  tab in the workbench. */
 export function tabFromPath(pathname: string): { kind: TabKind; refId: string } | null {
-  const page = pathname.match(/^\/p\/([^/?#]+)/);
+  const page = pathname.match(/^\/page\/([^/?#]+)/);
   if (page) return { kind: "page", refId: decodeURIComponent(page[1]) };
-  const file = pathname.match(/^\/f\/([^/?#]+)/);
+  const file = pathname.match(/^\/file\/([^/?#]+)/);
   if (file) return { kind: "file", refId: decodeURIComponent(file[1]) };
   const table = pathname.match(/^\/tables\/([^/?#]+)/);
   if (table) return { kind: "table", refId: decodeURIComponent(table[1]) };

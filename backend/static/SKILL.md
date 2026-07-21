@@ -138,12 +138,12 @@ Use ordinary markdown links for everything:
 
 | Target | Shape |
 |---|---|
-| Another page | `[text](/p/<uuid>)` |
+| Another page | `[text](/page/<uuid>)` |
 | An uploaded file | `[text](/api/v1/me/files/<uuid>/download)` |
 | External URL | `[text](https://…)` |
 
 The viewer renders all three with the same style; an `↗` glyph marks
-off-origin URLs. Internal `/p/<uuid>` and stash absolute URLs are
+off-origin URLs. Internal `/page/<uuid>` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
 There is no `[[...]]` syntax. Use ordinary markdown links with the page's id URL.
@@ -241,4 +241,4 @@ Query/search:
 - Attach files to session events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
 - When authoring page content that links to another page, use the page id
-  URL form: `[text](/p/<uuid>)`.
+  URL form: `[text](/page/<uuid>)`.

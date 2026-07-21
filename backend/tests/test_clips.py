@@ -111,7 +111,7 @@ async def test_clip_page_stores_html_in_raw_and_adds_bookmark(client: AsyncClien
     assert bookmarks[0]["URL"] == "https://www.example.com/post"
     assert bookmarks[0]["Type"] == "Page"
     assert bookmarks[0]["Site"] == "example.com"  # www. stripped
-    assert bookmarks[0]["Clip"].endswith(f"/p/{data['id']}")
+    assert bookmarks[0]["Clip"].endswith(f"/page/{data['id']}")
 
 
 @pytest.mark.asyncio
@@ -179,7 +179,7 @@ async def test_clip_file_lands_in_raw_and_adds_bookmark(
     bookmarks = await _bookmark_rows(pool, owner_id)
     assert len(bookmarks) == 1
     assert bookmarks[0]["Type"] == "PDF"
-    assert bookmarks[0]["Clip"].endswith(f"/f/{data['id']}")
+    assert bookmarks[0]["Clip"].endswith(f"/file/{data['id']}")
 
 
 @pytest.mark.asyncio
