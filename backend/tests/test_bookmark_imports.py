@@ -105,6 +105,35 @@ async def test_bookmark_import_enqueues_all_urls(client: AsyncClient, pool, monk
 
 
 @pytest.mark.asyncio
+async def test_reimporting_skips_already_imported_urls(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Re-importing a bookmarks file (or overlapping tab sets) must not
+    re-clip the owner's library — known URLs are skipped and reported."""
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
+    headers, owner_id = await _register(client)
+
+    first = await client.post("/api/v1/me/imports/bookmarks", headers=headers, **_upload_kwargs())
+    assert first.json() == {**first.json(), "total": 3, "skipped": 0}
+
+    again = await client.post("/api/v1/me/imports/bookmarks", headers=headers, **_upload_kwargs())
+    body = again.json()
+    assert body["total"] == 0
+    assert body["skipped"] == 3
+    rows = await pool.fetchval(
+        "SELECT count(*) FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    )
+    assert rows == 3
+
+    # Another owner importing the same file is unaffected by this owner's history.
+    other_headers, _ = await _register(client)
+    other = await client.post(
+        "/api/v1/me/imports/bookmarks", headers=other_headers, **_upload_kwargs()
+    )
+    assert other.json()["total"] == 3
+
+
+@pytest.mark.asyncio
 async def test_bookmark_import_rejects_empty_and_oversized(
     client: AsyncClient, monkeypatch
 ) -> None:

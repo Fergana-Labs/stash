@@ -121,24 +121,34 @@ async def _create_import(
     filename: str | None,
     items: list[dict],
 ) -> JSONResponse:
-    """Shared tail of both import endpoints: batch row, url_imports rows,
-    then top up the windowed dispatcher — the Beat sweep drains the rest."""
+    """Shared tail of both import endpoints: drop URLs this owner already
+    imported (re-importing a bookmarks file must not re-clip the library),
+    then batch row, url_imports rows, and a top-up of the windowed
+    dispatcher — the Beat sweep drains the rest."""
     from ..tasks.clips import top_up_url_imports
+
+    known = await url_import_service.existing_urls(owner_user_id, [item["url"] for item in items])
+    new_items = [item for item in items if item["url"] not in known]
+    skipped = len(items) - len(new_items)
 
     batch_id = await url_import_service.create_batch(
         owner_user_id=owner_user_id,
         kind=kind,
         filename=filename,
-        total=len(items),
+        total=len(new_items),
     )
-    await url_import_service.create_url_imports(
-        owner_user_id=owner_user_id,
-        created_by=owner_user_id,
-        items=items,
-        batch_id=batch_id,
+    if new_items:
+        await url_import_service.create_url_imports(
+            owner_user_id=owner_user_id,
+            created_by=owner_user_id,
+            items=new_items,
+            batch_id=batch_id,
+        )
+        await top_up_url_imports()
+    return JSONResponse(
+        status_code=201,
+        content={"import_id": str(batch_id), "total": len(new_items), "skipped": skipped},
     )
-    await top_up_url_imports()
-    return JSONResponse(status_code=201, content={"import_id": str(batch_id), "total": len(items)})
 
 
 @imports_router.post("/bookmarks")
