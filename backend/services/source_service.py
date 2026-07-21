@@ -1418,7 +1418,7 @@ async def search_documents(
     with the user that no connected-source listing enumerates."""
     if source is not None and providers is not None:
         raise ValueError("Pass either source or providers, not both")
-    limit = min(limit, 100)
+    limit = min(limit, 500)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
     if source is not None:
@@ -2155,8 +2155,9 @@ async def _gather_search_candidates(
     """Collect unranked hits from every sub-search: native sessions + pages,
     exact provider-id matches, copied-content FTS, and federated provider
     search. Returns (hits, markers, connected), or None when a named source is
-    unknown / not owned. Sub-searches keep their own caps (sessions 200, FTS
-    docs 100, providers SEARCH_LIMIT) — paginating past those is out of scope."""
+    unknown / not owned. Sub-searches keep their own caps (sessions and FTS
+    docs 500, providers SEARCH_LIMIT) — asking for more than those yields
+    has_more = False, not deeper results."""
     hits: list[dict] = []
     markers: list[dict] = []
 
@@ -2270,7 +2271,6 @@ async def search_all(
     include_sources: list[str] | None = None,
     exclude_sources: list[str] | None = None,
     limit: int = 20,
-    offset: int = 0,
 ) -> dict | None:
     """Search across sources. Omit `source` to search everything the user can
     see (native files + sessions + their connected sources), or pass a handle to
@@ -2283,7 +2283,9 @@ async def search_all(
     with `source`, raise ValueError.
 
     Every candidate is re-scored on one uniform ts_rank scale over its display
-    text, then the merged list is sorted and sliced [offset : offset + limit].
+    text, then the merged list is sorted and sliced to the first `limit` hits —
+    there are no pages; callers wanting more results ask again with a larger
+    limit. has_more (hits only) says more matched than were returned.
     Each hit's `snippet` is a SEARCH_RESULT_SNIPPET_CHARS window centered on
     the first query occurrence, its clipped edges marked with "…". Each hit
     carries `date_modified` (the document's provider-side modification time,
@@ -2295,17 +2297,15 @@ async def search_all(
     text-ranked hits regardless of rank — an id match is a lookup, not a
     relevance guess. Other rank-0 hits sink to the bottom but are never
     dropped: provider-relevant name-only hits won't token-match the query.
-    Markers (provider errors, truncation) trail the page unpaginated — they
-    describe the whole search, not one slice, and must never hide behind a
-    page boundary. has_more counts hits only."""
+    Markers (provider errors, truncation) trail every response — they describe
+    the whole search, not the returned slice."""
     if source is not None and (include_sources or exclude_sources):
         raise ValueError("Pass either source or include_sources/exclude_sources, not both")
     allowed = resolve_search_source_filter(include_sources, exclude_sources)
 
-    # +1 sentinel: gathering exactly offset+limit hits could never prove a
-    # further page exists.
+    # +1 sentinel: gathering exactly `limit` hits could never prove more exist.
     gathered = await _gather_search_candidates(
-        owner_user_id, user_id, query, source, allowed, fetch_limit=offset + limit + 1
+        owner_user_id, user_id, query, source, allowed, fetch_limit=limit + 1
     )
     if gathered is None:
         return None
@@ -2327,9 +2327,9 @@ async def search_all(
                 h.get("snippet") or "", query, SEARCH_RESULT_SNIPPET_CHARS, ellipsis=True
             ),
         }
-        for h, r in ranked[offset : offset + limit]
+        for h, r in ranked[:limit]
     ]
-    has_more = len(hits) > offset + limit
+    has_more = len(hits) > limit
 
     await _audit_source_read(
         action="source.searched",

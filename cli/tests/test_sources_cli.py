@@ -18,11 +18,9 @@ class _FakeClient:
         return None
 
     def search_sources(
-        self, query, source=None, include_sources=None, exclude_sources=None, limit=20, offset=0
+        self, query, source=None, include_sources=None, exclude_sources=None, limit=20
     ):
-        self._calls.append(
-            ("search", query, source, include_sources, exclude_sources, limit, offset)
-        )
+        self._calls.append(("search", query, source, include_sources, exclude_sources, limit))
         return {
             "results": [{"source": "files", "ref": "p1", "name": "Runbook", "snippet": "deploy"}],
             "has_more": False,
@@ -60,7 +58,7 @@ def test_search_everything_passes_no_source(monkeypatch) -> None:
     main.search(
         "migration", source="", include_sources="", exclude_sources="", limit=20, as_json=True
     )
-    assert calls == [("search", "migration", None, None, None, 20, 0)]
+    assert calls == [("search", "migration", None, None, None, 20)]
 
 
 def test_search_scoped_passes_the_source(monkeypatch) -> None:
@@ -68,7 +66,7 @@ def test_search_scoped_passes_the_source(monkeypatch) -> None:
     main.search(
         "rotate", source="src-9", include_sources="", exclude_sources="", limit=5, as_json=True
     )
-    assert calls == [("search", "rotate", "src-9", None, None, 5, 0)]
+    assert calls == [("search", "rotate", "src-9", None, None, 5)]
 
 
 def test_search_splits_comma_separated_source_filters(monkeypatch) -> None:
@@ -81,7 +79,7 @@ def test_search_splits_comma_separated_source_filters(monkeypatch) -> None:
         limit=20,
         as_json=True,
     )
-    assert calls == [("search", "migration", None, ["files", "gmail", "jira"], ["slack"], 20, 0)]
+    assert calls == [("search", "migration", None, ["files", "gmail", "jira"], ["slack"], 20)]
 
 
 def test_split_source_tokens() -> None:
@@ -115,7 +113,6 @@ def test_search_sends_source_filters_as_repeated_query_params(monkeypatch) -> No
             {
                 "q": "q",
                 "limit": 20,
-                "offset": 0,
                 "include_sources": ["files", "gmail"],
                 "exclude_sources": ["slack"],
             },
@@ -157,7 +154,7 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
             return None
 
         def search_sources(
-            self, query, source=None, include_sources=None, exclude_sources=None, limit=20, offset=0
+            self, query, source=None, include_sources=None, exclude_sources=None, limit=20
         ):
             return {
                 "results": [
@@ -208,7 +205,7 @@ def test_search_prints_the_server_snippet_whole(monkeypatch, capsys) -> None:
             return None
 
         def search_sources(
-            self, query, source=None, include_sources=None, exclude_sources=None, limit=20, offset=0
+            self, query, source=None, include_sources=None, exclude_sources=None, limit=20
         ):
             return {
                 "results": [{"source": "files", "ref": "p1", "name": "Notes", "snippet": snippet}],

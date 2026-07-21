@@ -29,12 +29,11 @@ def stash_search(
     include_sources: str = "",
     exclude_sources: str = "",
     limit: int = 20,
-    offset: int = 0,
 ) -> str:
     """Search across all your sources — native files + session transcripts +
     connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto
-    one relevance scale. Returns {"results": [...], "has_more": bool}; page
-    with `offset`.
+    one relevance scale. Returns {"results": [...], "has_more": bool};
+    has_more means more matched than `limit` — raise limit to see them.
 
     Pass `source` to scope to one (a handle from stash_list_sources: 'files',
     'sessions', or a connected-source id); omit it to search everything.
@@ -48,7 +47,6 @@ def stash_search(
             include_sources=split_source_tokens(include_sources),
             exclude_sources=split_source_tokens(exclude_sources),
             limit=limit,
-            offset=offset,
         )
     )
 

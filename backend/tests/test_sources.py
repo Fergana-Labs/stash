@@ -2368,7 +2368,10 @@ async def test_search_merges_sources_on_one_uniform_relevance_scale(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_search_paginates_the_merged_list(client: AsyncClient):
+async def test_search_limit_grows_the_list_with_a_stable_prefix(client: AsyncClient):
+    """There are no pages: callers ask for `limit` results and get the top
+    `limit`; asking again with a larger limit returns a longer list whose
+    prefix matches what they already saw (infinite scroll grows-and-replaces)."""
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     await _github_source_with_docs(
@@ -2381,23 +2384,22 @@ async def test_search_paginates_the_merged_list(client: AsyncClient):
         },
     )
 
-    first = await source_service.search_all(ws, owner_id, "kumquat", limit=2, offset=0)
-    second = await source_service.search_all(ws, owner_id, "kumquat", limit=2, offset=2)
-    beyond = await source_service.search_all(ws, owner_id, "kumquat", limit=2, offset=10)
+    small = await source_service.search_all(ws, owner_id, "kumquat", limit=2)
+    grown = await source_service.search_all(ws, owner_id, "kumquat", limit=10)
 
-    assert len(first["results"]) == 2 and first["has_more"] is True
-    assert len(second["results"]) == 1 and second["has_more"] is False
-    assert beyond == {"results": [], "has_more": False}
-    # The pages tile the same merged ordering with no overlap or gap.
-    refs = [r["ref"] for r in first["results"] + second["results"]]
-    assert sorted(refs) == ["a.md", "b.md", "c.md"]
+    assert len(small["results"]) == 2 and small["has_more"] is True
+    assert len(grown["results"]) == 3 and grown["has_more"] is False
+    small_refs = [r["ref"] for r in small["results"]]
+    grown_refs = [r["ref"] for r in grown["results"]]
+    assert grown_refs[: len(small_refs)] == small_refs
+    assert sorted(grown_refs) == ["a.md", "b.md", "c.md"]
 
 
 @pytest.mark.asyncio
-async def test_markers_trail_every_page(client: AsyncClient, monkeypatch):
-    """Error markers describe the whole search, not one slice — a caller on any
-    page must still learn a source is dead, so markers trail every page and are
-    never counted by has_more."""
+async def test_markers_trail_every_response(client: AsyncClient, monkeypatch):
+    """Error markers describe the whole search, not the returned slice — a
+    caller at any limit must still learn a source is dead, so markers trail
+    every response and are never counted by has_more."""
     from fastapi import HTTPException
 
     from backend.integrations.gmail import indexer
@@ -2419,11 +2421,11 @@ async def test_markers_trail_every_page(client: AsyncClient, monkeypatch):
 
     monkeypatch.setattr(indexer, "search_gmail", dead_search)
 
-    for offset, expect_more in ((0, True), (1, False)):
-        page = await source_service.search_all(ws, owner_id, "kumquat", limit=1, offset=offset)
-        assert page["has_more"] is expect_more
-        assert page["results"][0]["ref"].endswith(".md")
-        assert page["results"][-1]["needs_reconnect"] is True
+    for limit, expect_more in ((1, True), (5, False)):
+        response = await source_service.search_all(ws, owner_id, "kumquat", limit=limit)
+        assert response["has_more"] is expect_more
+        assert response["results"][0]["ref"].endswith(".md")
+        assert response["results"][-1]["needs_reconnect"] is True
 
 
 @pytest.mark.asyncio
@@ -2456,7 +2458,7 @@ async def test_rank_zero_hits_are_kept_at_the_bottom(client: AsyncClient, monkey
 
 
 @pytest.mark.asyncio
-async def test_scoped_search_is_ranked_and_paginated(client: AsyncClient):
+async def test_scoped_search_is_ranked_and_limited(client: AsyncClient):
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     src = await _github_source_with_docs(
@@ -2468,28 +2470,26 @@ async def test_scoped_search_is_ranked_and_paginated(client: AsyncClient):
         },
     )
 
-    first = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"], limit=1)
-    second = await source_service.search_all(
-        ws, owner_id, "kumquat", source=src["id"], limit=1, offset=1
-    )
+    small = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"], limit=1)
+    grown = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"], limit=2)
 
-    assert [r["ref"] for r in first["results"]] == ["dense.md"]
-    assert first["has_more"] is True
-    assert [r["ref"] for r in second["results"]] == ["thin.md"]
-    assert second["has_more"] is False
+    assert [r["ref"] for r in small["results"]] == ["dense.md"]
+    assert small["has_more"] is True
+    assert [r["ref"] for r in grown["results"]] == ["dense.md", "thin.md"]
+    assert grown["has_more"] is False
 
 
 @pytest.mark.asyncio
-async def test_search_rejects_negative_offset(client: AsyncClient):
+async def test_search_rejects_out_of_range_limit(client: AsyncClient):
     api_key, _ = await _register(client)
 
-    resp = await client.get(
-        "/api/v1/me/sources/search",
-        params={"q": "anything", "offset": -1},
-        headers=_auth(api_key),
-    )
-
-    assert resp.status_code == 422
+    for limit in (0, 501):
+        resp = await client.get(
+            "/api/v1/me/sources/search",
+            params={"q": "anything", "limit": limit},
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 422
 
 
 async def _page_and_github_docs(client: AsyncClient, api_key, ws, owner_id) -> str:

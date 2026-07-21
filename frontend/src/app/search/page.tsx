@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../components/CustomSelect";
 import SearchSourceFilter from "../../components/SearchSourceFilter";
@@ -31,6 +31,12 @@ import {
 } from "../../lib/api";
 import type { TableWithOwner } from "../../lib/types";
 
+// Infinite scroll grows the requested result count one step at a time and
+// the server returns that many top hits (the list is replaced, not appended).
+// MAX_SEARCH_LIMIT must match the endpoint's `le=500` cap.
+const SEARCH_PAGE_SIZE = 20;
+const MAX_SEARCH_LIMIT = 500;
+
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
 function bucketCount(n: number): string {
@@ -51,7 +57,7 @@ interface SearchResult {
   external?: { source: string; ref: string; name?: string };
   sourceName: string;
   detail: ReactNode;
-  // Unified search hits don't carry timestamps; rows without one hide the time.
+  // Rows without a timestamp hide the time.
   updatedAt: string | null;
   relevance: number;
 }
@@ -92,6 +98,34 @@ function SearchPageInner() {
   const [fetching, setFetching] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  // How many results the searcher has asked for so far; scrolling grows it.
+  const [requestedLimit, setRequestedLimit] = useState(SEARCH_PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Monotonic id of the latest search run — a slow older response must never
+  // clobber the state a newer run has written.
+  const searchSeq = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // The header search input writes the query into the URL; the page re-runs
+  // the search in real time as it (or any filter) changes.
+  const urlQuery = searchParams.get("q") ?? "";
+
+  // A new query or filter invalidates the grown result count. Resetting
+  // during render (not in an effect) guarantees the fetch effect below never
+  // fires with the new query and a stale grown limit.
+  const searchKey = JSON.stringify([
+    urlQuery,
+    [...deselectedSources].sort(),
+    selectedFolderId,
+    selectedPageId,
+    selectedProductSkillId,
+    selectedProductSkillSlug,
+  ]);
+  const [prevSearchKey, setPrevSearchKey] = useState(searchKey);
+  if (prevSearchKey !== searchKey) {
+    setPrevSearchKey(searchKey);
+    setRequestedLimit(SEARCH_PAGE_SIZE);
+  }
 
   const loadData = useCallback(async () => {
     setFetching(true);
@@ -164,7 +198,8 @@ function SearchPageInner() {
     [connectedProviders]
   );
 
-  const handleSearch = useCallback(async (rawQuery: string) => {
+  const handleSearch = useCallback(async (rawQuery: string, limit: number) => {
+    const seq = ++searchSeq.current;
     const q = rawQuery.trim();
     if (!q) {
       setResults([]);
@@ -172,14 +207,23 @@ function SearchPageInner() {
       setHasMore(false);
       setSearchedQuery("");
       setSearching(false);
+      setLoadingMore(false);
       return;
     }
 
-    setSearching(true);
+    // A grown limit means the searcher scrolled for more of the SAME search:
+    // keep the current list on screen and swap it for the longer one when it
+    // lands. A fresh search (limit at its starting size) clears as before.
+    const grow = limit > SEARCH_PAGE_SIZE;
+    if (grow) {
+      setLoadingMore(true);
+    } else {
+      setSearching(true);
+      setSourceNotices([]);
+      setHasMore(false);
+      setOpenExternalId(null);
+    }
     setError("");
-    setSourceNotices([]);
-    setHasMore(false);
-    setOpenExternalId(null);
     setSearchedQuery(q);
     try {
       const nextResults: SearchResult[] = [];
@@ -190,6 +234,7 @@ function SearchPageInner() {
 
       if (selectedSessionId) {
         const events = await getSessionEvents(selectedSessionId);
+        if (searchSeq.current !== seq) return;
         nextResults.push(...searchSingleSession(sourceName, selectedSessionId, events, q));
         setResults(sortResults(nextResults));
         return;
@@ -199,6 +244,7 @@ function SearchPageInner() {
         selectedProductSkill?.published?.slug ?? selectedProductSkillSlug;
       if (selectedSkillSlug) {
         const detail = await getPublicSkill(selectedSkillSlug);
+        if (searchSeq.current !== seq) return;
         if (includeSkills) {
           nextResults.push(...searchPublicSkillRecord(detail, q));
         }
@@ -225,8 +271,9 @@ function SearchPageInner() {
         const allApiTokenCount = allSourceTokens.length - CLIENT_SIDE_TOKENS.length;
         const { results: hits, has_more } = await searchSource(q, {
           includeSources: tokens.length === allApiTokenCount ? undefined : tokens,
-          limit: 50,
+          limit,
         });
+        if (searchSeq.current !== seq) return;
         const folderIds = sidebar
           ? descendantFolderIds(sidebar.files.folders, selectedFolderId)
           : new Set<string>();
@@ -246,6 +293,7 @@ function SearchPageInner() {
 
       if (includeTables && !selectedFolderId && !selectedPageId) {
         const { tables } = await listAllTables();
+        if (searchSeq.current !== seq) return;
         nextResults.push(...searchTables(tables, q));
       }
 
@@ -255,10 +303,14 @@ function SearchPageInner() {
         result_count_bucket: bucketCount(nextResults.length),
       });
     } catch (err) {
+      if (searchSeq.current !== seq) return;
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
     } finally {
-      setSearching(false);
+      if (searchSeq.current === seq) {
+        setSearching(false);
+        setLoadingMore(false);
+      }
     }
   }, [
     allSourceTokens,
@@ -273,14 +325,31 @@ function SearchPageInner() {
     sourceName,
   ]);
 
-  // The header search input writes the query into the URL; re-run the search
-  // in real time as it (or any filter) changes.
-  const urlQuery = searchParams.get("q") ?? "";
-
   useEffect(() => {
     if (fetching) return;
-    handleSearch(urlQuery);
-  }, [fetching, handleSearch, urlQuery]);
+    handleSearch(urlQuery, requestedLimit);
+  }, [fetching, handleSearch, urlQuery, requestedLimit]);
+
+  // Infinite scroll: when the sentinel below the list nears the viewport, ask
+  // the server for a longer list. Growing re-runs the search and REPLACES the
+  // results, so the observer re-arms after every load and cascades until the
+  // viewport is filled or the cap is reached.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || searching || loadingMore || requestedLimit >= MAX_SEARCH_LIMIT) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setRequestedLimit((l) => Math.min(l + SEARCH_PAGE_SIZE, MAX_SEARCH_LIMIT));
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, searching, loadingMore, requestedLimit]);
 
   if (loading) {
     return <BasicPageSkeleton />;
@@ -428,9 +497,23 @@ function SearchPageInner() {
                     );
                   })}
                 </div>
-                {hasMore && (
+                {hasMore && requestedLimit < MAX_SEARCH_LIMIT && (
+                  <div ref={sentinelRef} className="mt-3 flex justify-center py-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRequestedLimit((l) => Math.min(l + SEARCH_PAGE_SIZE, MAX_SEARCH_LIMIT))
+                      }
+                      disabled={loadingMore}
+                      className="cursor-pointer text-[12px] text-muted-foreground transition hover:text-foreground"
+                    >
+                      {loadingMore ? "Loading more…" : "Load more"}
+                    </button>
+                  </div>
+                )}
+                {hasMore && requestedLimit >= MAX_SEARCH_LIMIT && (
                   <p className="mt-3 text-center text-[12px] text-muted-foreground">
-                    Showing the top matches — refine your query to see more.
+                    Showing the top {MAX_SEARCH_LIMIT} matches — refine your query to see more.
                   </p>
                 )}
               </section>

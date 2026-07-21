@@ -531,7 +531,6 @@ async def _read_source(args: dict) -> dict:
             "query": {"type": "string"},
             "source": {"type": "string"},
             "limit": {"type": "integer", "default": 20},
-            "offset": {"type": "integer", "default": 0},
         },
         "required": ["query"],
     },
@@ -544,7 +543,6 @@ async def _search(args: dict) -> dict:
         query,
         source=args.get("source"),
         limit=int(args.get("limit", 20)),
-        offset=int(args.get("offset", 0)),
     )
     if result is None:
         return _text_result(json.dumps({"error": "source not found"}))

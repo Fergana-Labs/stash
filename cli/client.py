@@ -665,12 +665,11 @@ class StashClient:
         include_sources: list[str] | None = None,
         exclude_sources: list[str] | None = None,
         limit: int = 20,
-        offset: int = 0,
     ) -> dict:
         """Returns the search envelope: {"results": [...], "has_more": bool}.
         List params reach the server as repeated query params (httpx does this
         natively), matching the endpoint's list[str] Query params."""
-        params: dict = {"q": query, "limit": limit, "offset": offset}
+        params: dict = {"q": query, "limit": limit}
         if source:
             params["source"] = source
         if include_sources:

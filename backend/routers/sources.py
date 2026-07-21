@@ -145,16 +145,17 @@ async def search_sources(
     source: str | None = None,
     include_sources: list[str] | None = Query(None),
     exclude_sources: list[str] | None = Query(None),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=500),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """Unified search, merged onto one relevance scale and paginated. Omit
-    `source` to search everything in the active scope (files + sessions + its
-    connected sources), or pass a handle to scope. Repeatable include_sources/
-    exclude_sources params (native handles + provider names) filter which
-    sources are searched: (include or everything) - exclude."""
+    """Unified search, merged onto one relevance scale. `limit` controls how
+    many hits return; `has_more` says more matched — ask again with a larger
+    limit to see them. Omit `source` to search everything in the active scope
+    (files + sessions + its connected sources), or pass a handle to scope.
+    Repeatable include_sources/exclude_sources params (native handles +
+    provider names) filter which sources are searched:
+    (include or everything) - exclude."""
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     try:
@@ -166,7 +167,6 @@ async def search_sources(
             include_sources=include_sources,
             exclude_sources=exclude_sources,
             limit=limit,
-            offset=offset,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
