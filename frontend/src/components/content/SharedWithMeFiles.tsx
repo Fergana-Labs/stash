@@ -221,7 +221,7 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
       onDragStart={(e: DragEvent<HTMLAnchorElement>) => startSharedDrag(e, item)}
       {...dropHandlers(item, setOver)}
       className={
-        "grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)]/50" +
+        "grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 transition-colors duration-150 ease-out hover:bg-[var(--color-brand-50)]/50" +
         (over ? " ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
       style={{ gridTemplateColumns: GRID_COLS }}
@@ -229,7 +229,7 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
       <div className="flex min-w-0 items-center gap-2.5">
         <span
           className={
-            "flex h-4 w-4 flex-shrink-0 items-center justify-center " +
+            "flex h-4 w-4 shrink-0 items-center justify-center " +
             tintFor({ kind, id: item.object_id, name: item.name, subtitle: "" })
           }
         >
@@ -237,8 +237,8 @@ function SharedRow({ item, dropHandlers }: { item: SharedWithMeItem; dropHandler
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{item.name}</span>
       </div>
-      <span className="truncate text-[12px] text-muted-foreground">{item.shared_by || "—"}</span>
-      <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <span className="truncate text-xs text-muted-foreground">{item.shared_by || "—"}</span>
+      <span className="flex items-center gap-2 text-xs text-muted-foreground">
         {LABEL[item.object_type]}
         {item.permission === "write" && (
           <span className="rounded bg-raised px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide">
@@ -262,13 +262,13 @@ function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandle
       onDragStart={(e: DragEvent<HTMLAnchorElement>) => startSharedDrag(e, item)}
       {...dropHandlers(item, setOver)}
       className={
-        "flex w-[180px] items-center gap-2.5 rounded-lg border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised " +
+        "flex w-[180px] items-center gap-2.5 rounded-lg border bg-surface px-3 py-2.5 transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)] hover:bg-raised " +
         (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
       }
     >
       <span
         className={
-          "flex h-5 w-5 flex-shrink-0 items-center justify-center " +
+          "flex h-5 w-5 shrink-0 items-center justify-center " +
           tintFor({ kind, id: item.object_id, name: item.name, subtitle: "" })
         }
       >

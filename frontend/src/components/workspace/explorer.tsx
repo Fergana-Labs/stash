@@ -53,7 +53,7 @@ function LeafRow({ icon, label, onClick, onOpen, trailing }: { icon: React.React
 }
 
 function LoadingRow() {
-  return <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>;
+  return <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>;
 }
 
 // Tools = every integration/connector (Slack, Granola, GitHub, …), connected or
@@ -110,7 +110,7 @@ function ComputerSection() {
 
   if (noMachine) {
     return (
-      <div className="px-3 py-2 text-[12px] text-muted-foreground">
+      <div className="px-3 py-2 text-xs text-muted-foreground">
         No cloud computer yet — it&apos;s created the first time a cloud agent runs.
       </div>
     );
@@ -125,7 +125,7 @@ function ComputerSection() {
         onOpen={() => open("terminal", "terminal", "Terminal")}
       />
       <div className="mx-2 my-1 border-t border-sidebar-border" />
-      <div className="flex flex-wrap items-center gap-1 px-2 py-1 text-[12px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1 text-xs text-muted-foreground">
         <button className="hover:text-foreground" onClick={() => setPath("")}>~</button>
         {crumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-1">
@@ -134,7 +134,7 @@ function ComputerSection() {
           </span>
         ))}
       </div>
-      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your VM… {error.includes("502") ? "" : error}</div>}
+      {error && <div className="px-3 py-2 text-xs text-muted-foreground">Waking your VM… {error.includes("502") ? "" : error}</div>}
       {!entries && !error && <LoadingRow />}
       {entries?.map((e) => (
         <LeafRow
@@ -148,7 +148,7 @@ function ComputerSection() {
           }}
         />
       ))}
-      {entries?.length === 0 && <div className="px-3 py-2 text-[12px] text-muted-foreground">Empty</div>}
+      {entries?.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">Empty</div>}
     </div>
   );
 }
@@ -336,7 +336,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   // Files, Memory, Skills & Sessions are all file managers (own breadcrumb/toolbar).
   if ((section === "files" || section === "memory" || section === "skills" || section === "sessions") && !atRoot) {
     if (section === "memory" && !memoryFolderId) {
-      return <div className="flex h-full flex-col bg-sidebar"><div className="flex h-9 items-center border-b border-sidebar-border px-3 text-[12px] text-muted-foreground">Home / Memory</div><LoadingRow /></div>;
+      return <div className="flex h-full flex-col bg-sidebar"><div className="flex h-9 items-center border-b border-sidebar-border px-3 text-xs text-muted-foreground">Home / Memory</div><LoadingRow /></div>;
     }
     const isSessions = section === "sessions";
     return (
@@ -371,7 +371,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   return (
     <div className="flex h-full flex-col bg-sidebar">
       {/* Breadcrumb + actions on one row (matches the Files explorer). */}
-      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--divider-color)] px-3 text-[12px]">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--divider-color)] px-3 text-xs">
         <button onClick={() => setAtRoot(true)} className={cn("truncate hover:text-foreground", atRoot ? "font-medium text-foreground" : "text-muted-foreground")}>
           Home
         </button>

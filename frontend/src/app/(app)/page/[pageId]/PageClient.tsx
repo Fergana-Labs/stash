@@ -761,7 +761,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                           selection: htmlSelection,
                         });
                       }}
-                      className="comment-anchor-pill absolute z-30 inline-flex -translate-x-1/2 -translate-y-full cursor-pointer items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
+                      className="comment-anchor-pill absolute z-30 inline-flex -translate-x-1/2 -translate-y-full cursor-pointer items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
                       style={{
                         top: htmlSelection.rect.top - 8,
                         left: (htmlSelection.rect.left + htmlSelection.rect.right) / 2,
@@ -829,7 +829,7 @@ function PageAccessDeniedScreen({ accountLabel }: { accountLabel: string | null 
           <span className="text-[var(--color-brand-600)]">
             <AccessPageGlyph />
           </span>
-          <span className="font-display text-[18px] font-semibold text-foreground">Stash</span>
+          <span className="font-display text-lg font-semibold text-foreground">Stash</span>
         </div>
       </header>
       <main className="flex flex-1 items-center justify-center px-6 py-16">

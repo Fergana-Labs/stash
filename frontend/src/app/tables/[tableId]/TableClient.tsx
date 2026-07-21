@@ -198,7 +198,7 @@ function CellLinkEditorPopover({
       role="dialog"
       aria-label="Edit link"
       onSubmit={submit}
-      className="fixed z-50 w-[320px] rounded-lg border border-border bg-base p-2 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.35),0_4px_12px_-6px_rgba(0,0,0,0.18)]"
+      className="fixed z-50 w-80 rounded-lg border border-border bg-base p-2 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.35),0_4px_12px_-6px_rgba(0,0,0,0.18)]"
       style={{ top, left }}
     >
       <div className="flex items-center gap-1.5">
@@ -1223,12 +1223,12 @@ function TableEditorPageInner({
             type="button"
             aria-label={`Empty row ${rowNumber} ${col.name}`}
             onClick={(e) => { e.stopPropagation(); startCellEditing(); }}
-            className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} w-full px-2 flex items-center text-left text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text bg-transparent focus:outline-none focus:ring-1 focus:ring-brand`}
+            className={`${wrapCells ? "min-h-8 py-1" : "h-8"} w-full px-2 flex items-center text-left text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text bg-transparent focus:outline-none focus:ring-1 focus:ring-brand`}
           >
             <span className="text-muted-foreground/30">{"\u2014"}</span>
           </button>
         ) : (
-          <div className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
+          <div className={`${wrapCells ? "min-h-8 py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
             {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted-foreground"}>{value ? "\u2713" : "\u2717"}</span>
             : col.type === "url" && value ? <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline truncate" onClick={(e) => e.stopPropagation()}>{String(value)}</a>
             : <span className={value != null && value !== "" ? "" : "text-muted-foreground/30"}>{value != null && value !== "" ? <TableCellText value={String(value)} /> : "\u2014"}</span>}
@@ -1239,7 +1239,7 @@ function TableEditorPageInner({
   };
 
   const renderRow = (row: TableRow, idx: number) => (
-    <tr key={row.id} className={`border-b border-border/50 hover:bg-raised/50 transition-colors group ${selectedRows.has(row.id) ? "bg-brand/5" : ""}`}>
+    <tr key={row.id} className={`border-b border-border/50 hover:bg-raised/50 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group ${selectedRows.has(row.id) ? "bg-brand/5" : ""}`}>
       <td className="px-1 py-0 text-center border-r border-border sticky left-0 z-[5] bg-surface"><input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleSelectRow(row.id)} className="accent-brand" /></td>
       <td className="px-2 py-1.5 text-[10px] text-muted-foreground text-center border-r border-border font-mono cursor-pointer hover:text-brand sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
       {visibleColumns.map((col) => {
@@ -1251,8 +1251,8 @@ function TableEditorPageInner({
       <td className="px-1 py-0 whitespace-nowrap">
         {!readOnly && (
           <>
-            <button onClick={() => handleDuplicateRow(row.id)} className="cursor-pointer text-xs text-muted-foreground/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
-            <button onClick={() => handleDeleteRow(row.id)} className="cursor-pointer text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Delete">&times;</button>
+            <button onClick={() => handleDuplicateRow(row.id)} className="cursor-pointer text-xs text-muted-foreground/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-1" title="Duplicate">\u2398</button>
+            <button onClick={() => handleDeleteRow(row.id)} className="cursor-pointer text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-1" title="Delete">&times;</button>
           </>
         )}
       </td>
@@ -1263,7 +1263,7 @@ function TableEditorPageInner({
     const rowNumber = rows.length + idx + 1;
     const rowId = `${DRAFT_ROW_PREFIX}${idx}`;
     return (
-      <tr key={rowId} className="border-b border-border/50 hover:bg-raised/30 transition-colors">
+      <tr key={rowId} className="border-b border-border/50 hover:bg-raised/30 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
         <td className="px-1 py-0 border-r border-border sticky left-0 z-[5] bg-surface" />
         <td className="px-2 py-1.5 text-[10px] text-muted-foreground/60 text-center border-r border-border font-mono sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">{rowNumber}</td>
         {visibleColumns.map((col) => renderEditableCell(rowId, rowNumber, col, null))}
@@ -1330,7 +1330,7 @@ function TableEditorPageInner({
           }
         />
         {/* Toolbar */}
-        <div className="mt-2 flex items-center gap-2 px-4 py-2.5 border-y border-border bg-surface flex-shrink-0 flex-wrap">
+        <div className="mt-2 flex items-center gap-2 px-4 py-2.5 border-y border-border bg-surface shrink-0 flex-wrap">
           {/* Search */}
           <div className="flex-1 max-w-xs">
             <input value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(true); }} placeholder="Search all columns..." className="w-full px-3 py-1.5 text-xs bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" />
@@ -1365,7 +1365,7 @@ function TableEditorPageInner({
 
         {/* Column visibility popup */}
         {showColVisibility && (
-          <div className="px-4 py-2 border-b border-border bg-raised/50 flex flex-wrap gap-2 flex-shrink-0">
+          <div className="px-4 py-2 border-b border-border bg-raised/50 flex flex-wrap gap-2 shrink-0">
             {sortedColumns.map((c) => (
               <label key={c.id} className="flex items-center gap-1 text-xs text-foreground cursor-pointer">
                 <input type="checkbox" checked={!hiddenCols.has(c.id)} onChange={() => setHiddenCols((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} className="accent-brand" />
@@ -1378,7 +1378,7 @@ function TableEditorPageInner({
 
         {/* Embedding config popup */}
         {showEmbeddings && (
-          <div className="px-4 py-3 border-b border-border bg-raised/50 flex-shrink-0">
+          <div className="px-4 py-3 border-b border-border bg-raised/50 shrink-0">
             <div className="flex items-center gap-3 mb-2">
               <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
                 <input
@@ -1437,7 +1437,7 @@ function TableEditorPageInner({
 
         {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
-          <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto overscroll-x-contain">
+          <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 shrink-0 overflow-x-auto overscroll-x-contain">
             <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`cursor-pointer px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>All rows</button>
             {table.views.map((layout: TableView) => (
               <div key={layout.id} className="flex items-center group">
@@ -1451,7 +1451,7 @@ function TableEditorPageInner({
 
         {/* Filter bar */}
         {showFilterBar && filters.length > 0 && (
-          <div className="px-4 py-2 border-b border-border bg-raised/50 flex flex-wrap items-center gap-2 flex-shrink-0">
+          <div className="px-4 py-2 border-b border-border bg-raised/50 flex flex-wrap items-center gap-2 shrink-0">
             {filters.map((f, idx) => (
               <div key={idx} className="flex items-center gap-1 bg-surface border border-border rounded px-2 py-1 text-xs">
                 <CustomSelect
@@ -1477,7 +1477,7 @@ function TableEditorPageInner({
           </div>
         )}
 
-        {error && <p className="text-red-400 text-sm px-4 py-2 flex-shrink-0">{error}</p>}
+        {error && <p className="text-red-400 text-sm px-4 py-2 shrink-0">{error}</p>}
 
         {/* Grid */}
         {table && (
@@ -1500,7 +1500,7 @@ function TableEditorPageInner({
                     <th
                       key={col.id}
                       style={columnWidthStyle(col)}
-                      className={`relative px-3 py-2 text-left text-xs font-medium text-muted-foreground border-r border-border select-none hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
+                      className={`relative px-3 py-2 text-left text-xs font-medium text-muted-foreground border-r border-border select-none hover:bg-raised transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${dragCol === col.id ? "opacity-50" : ""}`}
                       draggable={!readOnly && !columnResize}
                       onDragStart={() => { if (!readOnly) setDragCol(col.id); }}
                       onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
@@ -1509,9 +1509,9 @@ function TableEditorPageInner({
                       onContextMenu={(e) => { if (readOnly) return; e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}
                     >
                       <span className="flex min-w-0 cursor-pointer items-center gap-1.5 pr-2" onClick={() => handleSort(col.id)}>
-                        <span className="flex-shrink-0 text-[10px] text-muted-foreground/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
                         <span className="min-w-0 truncate">{col.name}</span>
-                        {sortBy === col.id && <span className="flex-shrink-0 text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                        {sortBy === col.id && <span className="shrink-0 text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
                       </span>
                       {!readOnly && (
                         <button
@@ -1520,7 +1520,7 @@ function TableEditorPageInner({
                           title="Resize column"
                           onPointerDown={(event) => startColumnResize(event, col)}
                           onClick={(event) => event.stopPropagation()}
-                          className={`absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 transition-colors ${columnResize?.colId === col.id ? "border-brand bg-brand/10" : "border-transparent hover:border-brand/60 hover:bg-brand/5"}`}
+                          className={`absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${columnResize?.colId === col.id ? "border-brand bg-brand/10" : "border-transparent hover:border-brand/60 hover:bg-brand/5"}`}
                         />
                       )}
                     </th>
@@ -1585,7 +1585,7 @@ function TableEditorPageInner({
             </table>
 
             {/* Add row + infinite scroll sentinel */}
-            {!readOnly && <button onClick={handleAddRow} className="cursor-pointer w-full py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
+            {!readOnly && <button onClick={handleAddRow} className="cursor-pointer w-full py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] text-left px-4">+ New row</button>}
             {hasMore && (
               <div ref={sentinelRef} className="py-4 text-center text-xs text-muted-foreground">
                 {loadingMore ? (

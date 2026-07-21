@@ -81,7 +81,7 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
       <button
         onClick={() => setOpen((o) => !o)}
         title={user.email ?? user.name}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[12px] font-semibold text-white hover:ring-2 hover:ring-brand-200"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white hover:ring-2 hover:ring-brand-200"
       >
         {user.display_name[0].toUpperCase()}
       </button>

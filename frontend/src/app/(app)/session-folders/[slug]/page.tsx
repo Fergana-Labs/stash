@@ -42,7 +42,7 @@ export default function PublicSessionFolderPage({
 
   return (
     <div className="mx-auto max-w-[820px] px-6 py-10">
-      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
         <span>Shared session folder</span>
       </div>

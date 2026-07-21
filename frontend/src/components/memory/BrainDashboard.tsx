@@ -200,7 +200,7 @@ export default function BrainDashboard() {
                 <span className="sys-label">Wiki file system</span>
                 <Link
                   href="/memory/wiki"
-                  className="text-[12px] text-dim hover:text-foreground"
+                  className="text-xs text-dim transition-colors duration-150 ease-out hover:text-foreground active:text-foreground/80"
                 >
                   Open full view →
                 </Link>
@@ -322,7 +322,7 @@ function FeedCard({ event }: { event: ActivityEvent }) {
         <div className="mt-1 flex justify-end">
           <Link
             href={href}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-dim transition-colors duration-150 ease-out hover:bg-raised hover:text-foreground active:bg-raised/80"
           >
             Open →
           </Link>

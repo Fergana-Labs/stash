@@ -284,7 +284,7 @@ function AboutStep({
       <Field label="Which plan fits you?">
         <PillGroup options={PLAN_OPTIONS} value={planIntent} onChange={onPlanIntent} />
         {planIntent === "Production agent — Enterprise" && (
-          <p className="text-[12px] text-dim">
+          <p className="text-xs text-dim">
             Your API key is free and instant. Unlimited sleep-time memory curation is part
             of Enterprise — we&rsquo;ll reach out to get you set up.
           </p>
@@ -343,7 +343,7 @@ function PillGroup({
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(selected ? "" : option)}
-            className={`cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
+            className={`cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] transition-colors duration-150 ease-out ${
               selected
                 ? "border-brand bg-brand text-white"
                 : "border-border bg-surface text-dim hover:border-foreground/40 hover:text-foreground"
@@ -452,13 +452,13 @@ function TryItOutStep({
         <button
           type="button"
           onClick={onCollabDoc}
-          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
+          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors duration-150 ease-out hover:border-brand"
         >
           <div>
             <div className="text-[13.5px] font-medium text-foreground">
               Start a collaborative doc
             </div>
-            <div className="text-[12px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               You and your agent edit the same page — two cursors at once.
             </div>
           </div>
@@ -475,7 +475,7 @@ function TryItOutStep({
             <button
               type="button"
               onClick={onContinue}
-              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
+              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors duration-150 ease-out"
             >
               Continue
             </button>
@@ -542,22 +542,22 @@ function BuildOption() {
           type="button"
           onClick={handleCreate}
           disabled={creating}
-          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60 transition-colors"
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60 transition-colors duration-150 ease-out"
         >
           {creating ? "Creating…" : "Create API key"}
         </button>
-        {error && <p className="text-[12px] text-error">{error}</p>}
+        {error && <p className="text-xs text-error">{error}</p>}
       </div>
     );
   }
   return (
     <div className="space-y-2">
-      <p className="text-[12px] text-dim">
+      <p className="text-xs text-dim">
         Copy it now — this is the only time the full key will be shown. Manage keys in
         Settings.
       </p>
       <CommandBlock command={minted.api_key} />
-      <p className="text-[12px] text-dim">Write your agent&rsquo;s first memory:</p>
+      <p className="text-xs text-dim">Write your agent&rsquo;s first memory:</p>
       <CommandBlock
         command={`curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events \\
   -H "Authorization: Bearer ${minted.api_key}" -H "Content-Type: application/json" \\

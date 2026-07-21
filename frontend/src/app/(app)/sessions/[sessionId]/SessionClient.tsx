@@ -243,7 +243,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 />
               </h1>
               {totalTurns > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
+                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
                   {sessionDate && <span>{sessionDate}</span>}
                   {sessionDate && <span>·</span>}
                   <span>
@@ -252,7 +252,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 </div>
               )}
             </div>
-            <div className="flex flex-shrink-0 items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
               {sessionDetail && (
                 <SaveToSkillButton
                   sessionId={sessionId}
@@ -264,7 +264,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 // continued server-side from where they left off.
                 <Link
                   href={`/agents?resume=${encodeURIComponent(sessionId)}`}
-                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white transition-colors duration-150 ease-out hover:bg-[var(--color-brand-700)]"
                 >
                   Resume in chat →
                 </Link>
@@ -502,7 +502,7 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
             </div>
           )}
           {filesTouched.length === 0 && artifacts.length === 0 && (
-            <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+            <div className="mt-2 text-xs leading-relaxed text-muted-foreground">
               No artifacts recorded.
             </div>
           )}
@@ -577,7 +577,7 @@ function LinearTicketPill({
 
 function FileGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0 text-muted-foreground">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0 text-muted-foreground">
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
       <path d="M14 3v5h5" />
     </svg>
@@ -616,7 +616,7 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
       <div className="flex gap-3">
         <span
           className={
-            "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
             avatar.bg +
             " " +
             avatar.fg
@@ -645,7 +645,7 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
             )}
           </div>
           {turn.toolName ? (
-            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
+            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-xs leading-relaxed text-foreground">
               {turn.content}
             </div>
           ) : (

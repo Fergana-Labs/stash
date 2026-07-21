@@ -71,7 +71,7 @@ export default function ActivityFeed({ events }: { events: ActivityEvent[] }) {
           >
             <span
               className={
-                "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
                 color.bg + " " + color.fg
               }
             >
@@ -85,7 +85,7 @@ export default function ActivityFeed({ events }: { events: ActivityEvent[] }) {
                   {" "}
                   <Link
                     href={href}
-                    className="font-medium text-foreground hover:text-[var(--color-brand-700)]"
+                    className="font-medium text-foreground transition-colors duration-150 ease-out hover:text-[var(--color-brand-700)] active:text-[var(--color-brand-800)]"
                   >
                     <span className="inline-flex items-center gap-1">
                       <span className="inline-flex text-[15px] text-muted-foreground">

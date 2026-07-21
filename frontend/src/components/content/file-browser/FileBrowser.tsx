@@ -610,7 +610,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
               <button
                 type="button"
                 onClick={handleUploadFile}
-                className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+                className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-xs font-medium text-foreground hover:bg-raised active:bg-raised/80"
               >
                 + Upload
               </button>
@@ -700,14 +700,14 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
             <button
               type="button"
               onClick={() => void bulkDelete(selectedItems)}
-              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10 active:bg-background/20"
             >
               Delete
             </button>
             <button
               type="button"
               onClick={clearSelection}
-              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-lg leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
@@ -722,14 +722,14 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
             <button
               type="button"
               onClick={handleUndoDelete}
-              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10 active:bg-background/20"
             >
               Undo
             </button>
             <button
               type="button"
               onClick={() => setUndo(null)}
-              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-lg leading-none text-background/70 hover:text-background"
               aria-label="Dismiss"
             >
               ×
@@ -809,7 +809,7 @@ function NewMenu({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-xs font-medium text-foreground hover:bg-raised"
       >
         + New <span aria-hidden className="text-[10px]">▾</span>
       </button>
@@ -823,7 +823,7 @@ function NewMenu({
                 setOpen(false);
                 o.onSelect();
               }}
-              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised active:bg-raised/80"
             >
               {o.label}
             </button>
@@ -841,7 +841,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => 
     { key: "grid", label: "Grid" },
   ];
   return (
-    <div className="inline-flex gap-0.5 rounded-md border border-border bg-base p-[2px] text-[12px]">
+    <div className="inline-flex gap-0.5 rounded-md border border-border bg-base p-0.5 text-xs">
       {opts.map((opt) => {
         const active = view === opt.key;
         return (

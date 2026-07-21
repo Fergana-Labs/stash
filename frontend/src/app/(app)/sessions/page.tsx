@@ -364,7 +364,7 @@ export default function SkillSessionsPage() {
                 if (v) void moveSelectedToFolder(v === "__none__" ? null : v);
                 e.target.value = "";
               }}
-              className="rounded-md border border-background/40 bg-foreground px-2 py-0.5 text-[12px] font-semibold text-background hover:bg-background/10"
+              className="rounded-md border border-background/40 bg-foreground px-2 py-0.5 text-xs font-semibold text-background hover:bg-background/10"
             >
               <option value="">Move to folder…</option>
               <option value="__new__">+ New folder</option>
@@ -377,14 +377,14 @@ export default function SkillSessionsPage() {
             <button
               type="button"
               onClick={() => void bulkDeleteSessions()}
-              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10"
             >
               Delete
             </button>
             <button
               type="button"
               onClick={clearSelection}
-              className="ml-1 cursor-pointer text-[18px] leading-none text-background/70 hover:text-background"
+              className="ml-1 cursor-pointer text-lg leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
@@ -601,7 +601,7 @@ function SegmentedControl<T extends string>({
   onChange: (next: T) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 text-[12px]">
+    <div className="inline-flex items-center gap-1.5 text-xs">
       <span className="sys-label" style={{ fontSize: 10 }}>
         {label}
       </span>
@@ -614,7 +614,7 @@ function SegmentedControl<T extends string>({
               type="button"
               onClick={() => onChange(opt.key)}
               className={
-                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
+                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors duration-150 ease-out " +
                 (active
                   ? "bg-base font-semibold text-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
@@ -770,15 +770,15 @@ function SessionTableRow({
       <span className="hidden min-w-0 md:block">
         {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
       </span>
-      <span className="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
+      <span className="hidden items-center gap-1 text-xs text-muted-foreground md:flex">
         <MessageIcon />
         {session.event_count}
       </span>
       <span className="hidden truncate text-muted-foreground md:block">{agent}</span>
-      <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
+      <span className="hidden whitespace-nowrap text-xs text-muted-foreground md:block">
         {formatDate(session.last_event_at || session.started_at)}
       </span>
-      <span className="justify-self-end whitespace-nowrap text-[12px] text-muted-foreground">
+      <span className="justify-self-end whitespace-nowrap text-xs text-muted-foreground">
         {formatRelative(session.last_event_at)}
       </span>
       <span
@@ -1019,7 +1019,7 @@ function FolderCard({
         (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
       }
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
+      <span aria-hidden className="mt-0.5 text-lg">
         {folder.is_default ? "🗃️" : "📁"}
       </span>
       <span className="min-w-0 flex-1">
@@ -1074,7 +1074,7 @@ function SharedFolderCard({
       onClick={onClick}
       className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
+      <span aria-hidden className="mt-0.5 text-lg">
         🗂️
       </span>
       <span className="min-w-0">
@@ -1199,7 +1199,7 @@ function FolderDrill({
         ← All folders
       </button>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
+        <h2 className="m-0 flex items-center gap-2 font-display text-lg font-semibold text-foreground">
           <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
           {folder.name}
           {ownFolder && <FolderAccessBadge folder={ownFolder} />}
@@ -1316,7 +1316,7 @@ function FolderDropChip({
         onDrop(rowIds);
       }}
       className={
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] " +
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs " +
         (over
           ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)] font-semibold text-foreground"
           : "border-border bg-base text-dim")

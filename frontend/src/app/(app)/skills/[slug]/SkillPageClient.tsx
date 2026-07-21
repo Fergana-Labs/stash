@@ -255,7 +255,7 @@ function SkillPageBody({
               <h1 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
                 {skill.title}
               </h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>by {author}</span>
                 <span className="text-muted-foreground/60">·</span>
                 <span>
@@ -284,7 +284,7 @@ function SkillPageBody({
               </div>
             </div>
           </div>
-          <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
+          <div className="flex shrink-0 items-center gap-1.5 pt-1">
             {can_write ? (
               <Link
                 href={`/skills/${skill.slug}/settings`}
@@ -357,7 +357,7 @@ function ContentRowLink({ row }: { row: ContentRow }) {
     >
       <span
         className={
-          "flex h-5 w-5 flex-shrink-0 items-center justify-center " +
+          "flex h-5 w-5 shrink-0 items-center justify-center " +
           (row.kind === "table" ? "text-emerald-600" : "text-muted-foreground")
         }
       >
@@ -418,7 +418,7 @@ function BannerImage({
       onClick={() => inputRef.current?.click()}
       title="Change banner"
     >
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-colors duration-200 ease-out group-hover:bg-black/25 group-hover:opacity-100">
         <span className="rounded-md bg-black/60 px-2 py-1 text-[11.5px] font-medium text-white">
           {uploading
             ? "Uploading…"
@@ -468,7 +468,7 @@ function SkillIconUpload({
   }
 
   const base =
-    "-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm";
+    "-mt-9 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm";
 
   const inner = iconUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
@@ -492,7 +492,7 @@ function SkillIconUpload({
       }
     >
       {inner}
-      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 text-[10px] font-medium text-white opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 text-[10px] font-medium text-white opacity-0 transition-colors duration-200 ease-out group-hover:bg-black/40 group-hover:opacity-100">
         {uploading ? "…" : "Change"}
       </span>
       <input

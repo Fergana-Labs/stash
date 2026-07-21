@@ -47,12 +47,12 @@ function FolderNode({ folder, depth }: { folder: FolderTreeNode; depth: number }
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-raised"
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px] duration-150 ease-out hover:bg-raised"
         style={{ paddingLeft: depth * INDENT_PX + 8 }}
         aria-expanded={open}
       >
         <ChevronRight
-          className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform${open ? " rotate-90" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)]${open ? " rotate-90" : ""}`}
         />
         <span className="shrink-0 text-muted-foreground">
           <FolderIcon />
@@ -80,7 +80,7 @@ function PageRow({ page, depth }: { page: PageSummary; depth: number }) {
   return (
     <Link
       href={`${routes.page(page.id)}?section=memory`}
-      className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-foreground hover:bg-raised"
+      className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-foreground transition-colors duration-150 ease-out hover:bg-raised active:bg-raised/80"
       style={{ paddingLeft: depth * INDENT_PX + 8 }}
     >
       {/* Spacer where the folder chevron sits, so page names align with folder names. */}

@@ -216,7 +216,7 @@ export default function CommandPalette({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground duration-150 ease-out hover:bg-surface hover:text-foreground"
             aria-label="Close search"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -234,7 +234,7 @@ export default function CommandPalette({
                 href={r.href}
                 onClick={onClose}
                 className={
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] transition-colors " +
+                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] transition-colors duration-150 ease-out " +
                   (i === selected ? "bg-[var(--color-brand-50)] text-foreground" : "text-dim hover:bg-raised")
                 }
               >

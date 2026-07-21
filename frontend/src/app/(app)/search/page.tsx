@@ -279,7 +279,7 @@ function SearchPageInner() {
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-2">
             {selectedSessionId ? (
-              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-[12px] text-foreground">
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-xs text-foreground">
                 #{selectedSessionId}
               </span>
             ) : null}
@@ -298,7 +298,7 @@ function SearchPageInner() {
               ariaLabel="Folder"
               searchable
               searchPlaceholder="Filter folders…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
 
@@ -316,7 +316,7 @@ function SearchPageInner() {
               ariaLabel="Page"
               searchable
               searchPlaceholder="Filter pages…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
 
@@ -330,7 +330,7 @@ function SearchPageInner() {
               ariaLabel="Content"
               searchable
               searchPlaceholder="Filter types…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
               menuClassName="text-[12.5px]"
             />
           </div>
@@ -353,7 +353,7 @@ function SearchPageInner() {
             {!searching && results.length > 0 && (
               <section className="mt-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="font-display text-[18px] font-semibold text-foreground">
+                  <h2 className="font-display text-lg font-semibold text-foreground">
                     Results
                   </h2>
                   <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -365,7 +365,7 @@ function SearchPageInner() {
                     <Link
                       key={`${result.kind}:${result.id}`}
                       href={result.href}
-                      className="rounded-lg border border-border bg-base px-4 py-3 transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                      className="rounded-lg border border-border bg-base px-4 py-3 transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -381,7 +381,7 @@ function SearchPageInner() {
                             {result.detail}
                           </p>
                         </div>
-                        <div className="flex-shrink-0 text-right text-[11px] text-muted-foreground">
+                        <div className="shrink-0 text-right text-[11px] text-muted-foreground">
                           <div>{result.sourceName}</div>
                           <div>{relativeTime(result.updatedAt)}</div>
                         </div>
