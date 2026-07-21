@@ -13,7 +13,7 @@ row, loudly; rows are never deleted by sync (archive semantics).
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
@@ -45,9 +45,12 @@ MAX_USER_TWEET_PAGES = 5
 # resumes from a cursor stored in source settings and runs until the entire
 # reachable timeline has been ingested once (x_timeline_complete).
 MAX_TIMELINE_BACKFILL_PAGES = 25
-# The X API bills per post returned, and most syncs find no new bookmark —
-# so the steady-state check is one small probe page. Backlog and history
-# pages use the full size, capped per sync.
+# The X API bills per post returned (unlike twitterapi.io, which is cheap),
+# and most checks find no new bookmark — so bookmarks are checked at most
+# once a day, starting with one small probe page. Backlog and history pages
+# use the full size, capped per check. Posts/replies/articles are unaffected:
+# they ride twitterapi.io on the source's normal sync cadence.
+BOOKMARK_CHECK_INTERVAL = timedelta(days=1)
 BOOKMARK_PROBE_SIZE = 10
 BOOKMARK_PAGE_SIZE = 100
 MAX_BOOKMARK_PAGES = 5
@@ -133,10 +136,11 @@ async def index_x_saves(source: dict) -> str | None:
 async def _backfill_bookmarks(
     source_id: UUID, owner_user_id: UUID, x_user_id: str, source_settings: dict
 ) -> None:
-    """Insert pending Bookmark rows from the X API (OAuth token). Best-effort:
-    the bookmarks endpoint sits behind paid X API credits, so a 402/403/429 is
-    expected and surfaced as a warning rather than fatal — it must not stop
-    the user's posts/replies/articles from syncing.
+    """Insert pending Bookmark rows from the X API (OAuth token). Runs at most
+    once a day (x_bookmarks_checked_at) — every returned post costs paid X API
+    credits. Best-effort: the endpoint sits behind those paid credits, so a
+    402/403/429 is expected and surfaced as a warning rather than fatal — it
+    must not stop the user's posts/replies/articles from syncing.
 
     Same two passes as the timeline, both idempotent per tweet:
     - a probe pass from the top (small first page — most syncs find nothing
@@ -144,6 +148,15 @@ async def _backfill_bookmarks(
     - a history walk that resumes from a pagination token stored in source
       settings until the whole reachable list has been ingested once
       (x_bookmarks_complete)."""
+    checked_at = source_settings.get("x_bookmarks_checked_at")
+    if checked_at and datetime.fromisoformat(checked_at) > datetime.now(UTC) - (
+        BOOKMARK_CHECK_INTERVAL
+    ):
+        return
+    await _merge_source_settings(
+        source_id, {"x_bookmarks_checked_at": datetime.now(UTC).isoformat()}
+    )
+
     token = await integration_storage.get_valid_token(owner_user_id, "x")
     async with httpx.AsyncClient(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}

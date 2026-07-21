@@ -8,6 +8,7 @@ Bookmarks sit behind a paid X API tier, so a 402/403 is best-effort (an
 owner-facing warning, never fatal) and must not stop posts/replies/articles.
 """
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -444,12 +445,48 @@ async def test_bookmark_probe_is_small_and_history_walk_runs_once(client, pool, 
     deep_fetches = [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"]
     assert len(deep_fetches) == 1
 
+    # Next-day check (the daily gate would skip a same-day one): one 10-item
+    # probe, no history refetch.
+    await _age_bookmark_check(pool, source["id"])
     source = await source_service.get_source_for_sync(UUID(source["id"]))
     await x_indexer.index_x_saves(source)
 
-    # Steady state: one 10-item probe, no history refetch.
     assert _FakeApi.bookmarks_calls[-1] == (None, 10)
     assert [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"] == deep_fetches
+
+
+async def _age_bookmark_check(pool, source_id: str) -> None:
+    """Backdate x_bookmarks_checked_at so the daily gate lets the next
+    check through."""
+    stale = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    await pool.execute(
+        "UPDATE user_sources SET settings = settings || $2::jsonb WHERE id = $1",
+        UUID(source_id),
+        {"x_bookmarks_checked_at": stale},
+    )
+
+
+@pytest.mark.asyncio
+async def test_bookmarks_checked_at_most_daily(client, pool, fake_sync) -> None:
+    # Bookmark reads cost paid X API credits, so a sync inside the daily
+    # window must not touch the bookmarks endpoint at all — while the
+    # twitterapi.io timeline keeps syncing at the source's normal cadence.
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+    calls_after_first = len(_FakeApi.bookmarks_calls)
+    assert calls_after_first > 0
+
+    source = await source_service.get_source_for_sync(UUID(source["id"]))
+    await x_indexer.index_x_saves(source)
+
+    assert len(_FakeApi.bookmarks_calls) == calls_after_first  # gate held
+    replies = await pool.fetchval(
+        "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND kind = 'Reply'",
+        UUID(source["id"]),
+    )
+    assert replies > 0  # the timeline side still synced
 
 
 @pytest.mark.asyncio
