@@ -2043,8 +2043,10 @@ async def fetch_history(
 
 
 async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
-    """Documents whose provider id (`external_ref`) exactly equals the query,
-    across the given sources' document tables."""
+    """Documents whose provider id (`external_ref`) contains the query as a
+    substring, across the given sources' document tables. These hits carry
+    `exact_ref` so search_all pins them above everything else — an id match is
+    a lookup, not a relevance guess."""
     query = query.strip()
     if not query:
         return []
@@ -2055,7 +2057,8 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
             continue
         rows = await get_pool().fetch(
             f"SELECT path, name FROM {table} "
-            f"WHERE source_id = $1 AND external_ref = $2 AND deleted_at IS NULL LIMIT $3",
+            f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL "
+            f"LIMIT $3",
             UUID(s["id"]),
             query,
             limit,
@@ -2067,6 +2070,7 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
                 "ref": r["path"],
                 "name": r["name"],
                 "snippet": "",
+                "exact_ref": True,
             }
             for r in rows
         ]
@@ -2199,9 +2203,9 @@ async def _gather_search_candidates(
             ]
         )
 
-        # A query that IS a provider id (a Drive file id, a Gmail message id, …)
-        # resolves to the indexed document directly. This is how an agent holding
-        # only a provider URL finds the document's Stash path.
+        # A query that is (part of) a provider id (a Drive file id, a Gmail
+        # message id, …) resolves to the indexed document directly. This is how
+        # an agent holding only a provider URL finds the document's Stash path.
         hits += await _external_ref_matches(searched_sources, query, fetch_limit)
 
         # Copied-content sources go through our FTS (returns [] for index-only /
@@ -2276,8 +2280,10 @@ async def search_all(
     the first query occurrence, its clipped edges marked with "…".
     Each hit carries its `rank` so callers can merge these results with their
     own scored lists (the web search page blends in tables/skills client-side).
-    Rank-0 hits sink to the bottom but are never dropped: exact provider-id
-    matches and provider-relevant name-only hits won't token-match the query.
+    Hits whose provider id contains the query (`exact_ref`) pin above all
+    text-ranked hits regardless of rank — an id match is a lookup, not a
+    relevance guess. Other rank-0 hits sink to the bottom but are never
+    dropped: provider-relevant name-only hits won't token-match the query.
     Markers (provider errors, truncation) trail the page unpaginated — they
     describe the whole search, not one slice, and must never hide behind a
     page boundary. has_more counts hits only."""
@@ -2295,7 +2301,11 @@ async def search_all(
     hits, markers, connected = gathered
 
     ranks = await _uniform_ranks(query, [_rank_text(h) for h in hits])
-    ranked = sorted(zip(hits, ranks), key=lambda pair: pair[1], reverse=True)
+    ranked = sorted(
+        zip(hits, ranks),
+        key=lambda pair: (pair[0].get("exact_ref", False), pair[1]),
+        reverse=True,
+    )
     # Ranking scored the full internal text above; only the returned page gets
     # the small display window.
     page = [

@@ -801,7 +801,9 @@ async def test_list_documents_pages_with_after_cursor(client: AsyncClient):
 async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncClient):
     """An agent holding only a provider URL (a Drive link, a GitHub blob) must
     be able to resolve the id inside it to the document's Stash path — the
-    external_ref is the only join key between the provider's world and ours."""
+    external_ref is the only join key between the provider's world and ours.
+    A substring of the id is enough: pasted ids arrive truncated or embedded
+    in URLs."""
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
@@ -820,11 +822,54 @@ async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncCl
         external_ref="gh-blob-1a2b3c",
     )
 
-    results = await source_service.search_all(ws, owner_id, "gh-blob-1a2b3c", source=src["id"])
+    for query in ("gh-blob-1a2b3c", "blob-1a2b"):
+        results = await source_service.search_all(ws, owner_id, query, source=src["id"])
+        assert [(r["ref"], r["name"]) for r in results["results"]] == [
+            ("docs/status.md", "status.md")
+        ]
+        assert results["results"][0]["exact_ref"] is True
 
-    assert [(r["ref"], r["name"]) for r in results["results"]] == [("docs/status.md", "status.md")]
     empty = await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"])
     assert empty == {"results": [], "has_more": False}
+
+
+@pytest.mark.asyncio
+async def test_provider_id_matches_pin_above_text_ranked_hits(client: AsyncClient):
+    """A hit whose provider id contains the query is a lookup, not a relevance
+    guess — it must land on top even when its body never mentions the query
+    and another document matches the text densely."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="docs/by-id.md",
+        name="by-id.md",
+        content="nothing here mentions the query at all",
+        external_ref="gh-blob-1a2b3c",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="docs/by-text.md",
+        name="by-text.md",
+        content="1a2b3c appears here. " * 20,
+        external_ref="gh-blob-other",
+    )
+
+    results = await source_service.search_all(ws, owner_id, "1a2b3c", source=src["id"])
+
+    refs = [r["ref"] for r in results["results"]]
+    assert refs == ["docs/by-id.md", "docs/by-text.md"]
+    assert results["results"][0]["exact_ref"] is True
 
 
 @pytest.mark.asyncio

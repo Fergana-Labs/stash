@@ -485,12 +485,14 @@ function unifiedResults(
     const snippet = hit.snippet ?? "";
     // Server rank carries the cross-source ordering; the client term score
     // keeps unified hits comparable with client-scored tables and skills.
-    const relevance =
-      (hit.rank ?? 0) * 1000 +
-      scoreValues(query, [
-        { value: hit.name, weight: 8 },
-        { value: snippet, weight: 1 },
-      ]);
+    // Provider-id matches are lookups, not relevance guesses — always on top.
+    const relevance = hit.exact_ref
+      ? Number.POSITIVE_INFINITY
+      : (hit.rank ?? 0) * 1000 +
+        scoreValues(query, [
+          { value: hit.name, weight: 8 },
+          { value: snippet, weight: 1 },
+        ]);
 
     if (hit.source === "sessions") {
       // Several matching events can point at the same session; hits arrive

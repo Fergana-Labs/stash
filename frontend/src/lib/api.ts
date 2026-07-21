@@ -405,6 +405,9 @@ export interface SourceSearchHit {
   snippet?: string;
   // Uniform ts_rank score all hits are merged on — comparable across sources.
   rank?: number;
+  // The query is a substring of the document's provider id — a lookup, not a
+  // relevance guess; such hits rank above everything else.
+  exact_ref?: boolean;
   // Marker: a federated source hit its result cap — `returned` of ~`estimated_total`
   // matches are shown. `truncated` distinguishes it from a real hit.
   truncated?: boolean;
