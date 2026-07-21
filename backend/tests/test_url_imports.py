@@ -288,6 +288,63 @@ async def test_worker_turns_youtube_url_into_transcript_page(
     assert "words words" in page["content_markdown"]
 
 
+SHELL_HTML = "<html><body><div id='root'></div></body></html>"
+
+
+@pytest.mark.asyncio
+async def test_js_shell_pages_are_rescued_by_chromium_render(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """SPAs serve an empty shell over HTTP; the worker must escalate to a
+    Chromium render and extract from the settled DOM instead of giving up."""
+    _, owner_id = await _register(client)
+    import_id = await _make_import(owner_id, "https://spa.example/post")
+    rendered: list[str] = []
+
+    async def fake_fetch(url: str):
+        return SHELL_HTML.encode(), "text/html"
+
+    async def fake_render(url: str) -> str:
+        rendered.append(url)
+        return ARTICLE_HTML
+
+    monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    monkeypatch.setattr(clip_router.page_render_service, "render_page", fake_render)
+    await clips_tasks._process_batch([import_id])
+
+    assert rendered == ["https://spa.example/post"]
+    row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)
+    assert row["status"] == "done"
+    assert row["error"] is None
+    page = await pool.fetchrow("SELECT name FROM pages WHERE id = $1", row["result_page_id"])
+    assert page["name"] == "Why Simplicity Wins"
+
+
+@pytest.mark.asyncio
+async def test_render_that_still_has_no_article_goes_link_only(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    _, owner_id = await _register(client)
+    import_id = await _make_import(owner_id, "https://spa.example/app", title="An App")
+
+    async def fake_fetch(url: str):
+        return SHELL_HTML.encode(), "text/html"
+
+    async def fake_render(url: str) -> str:
+        return SHELL_HTML
+
+    monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    monkeypatch.setattr(clip_router.page_render_service, "render_page", fake_render)
+    await clips_tasks._process_batch([import_id])
+
+    row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)
+    assert row["status"] == "done"
+    assert "ArticleExtractionError" in row["error"]
+    assert row["result_page_id"] is None
+    bookmarks = await _bookmark_rows(pool, owner_id)
+    assert "An App" in bookmarks[0].values()
+
+
 @pytest.mark.asyncio
 async def test_worker_records_fetch_failure_on_row(client: AsyncClient, pool, monkeypatch) -> None:
     _, owner_id = await _register(client)
