@@ -5,6 +5,7 @@ import type {
   PublicSkillSubfolder,
   PublicSkillTable,
 } from "./api";
+import { routes } from "./workspace-routes";
 
 // A skill IS a folder containing a SKILL.md page. Creating that page is what
 // converts a plain folder into a skill.
@@ -23,6 +24,23 @@ export function stripFrontmatter(markdown: string): string {
 }
 
 export type SkillContentsKind = "page" | "file" | "table" | "folder";
+
+// Canonical public URL for one item inside a skill. The ?skill= query makes the
+// /page, /file, /tables, and /folders routes render the item read-only from the
+// published skill instead of looking it up in the viewer's own workspace.
+const SKILL_ITEM_BASE: Record<SkillContentsKind, (id: string) => string> = {
+  page: routes.page,
+  file: routes.file,
+  table: routes.table,
+  folder: routes.folder,
+};
+export function skillItemPath(
+  kind: SkillContentsKind,
+  id: string,
+  slug: string,
+): string {
+  return `${SKILL_ITEM_BASE[kind](id)}?skill=${encodeURIComponent(slug)}`;
+}
 
 export type SkillContentsItem =
   | PublicSkillPage

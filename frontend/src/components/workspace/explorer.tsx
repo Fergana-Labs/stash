@@ -24,7 +24,7 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "memory", label: "Memory", route: "/memory", icon: <Brain className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
-  { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
+  { key: "computer", label: "VM", route: "/computer", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
 const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
 
@@ -159,11 +159,13 @@ function RootSection() {
   const searchParams = useSearchParams();
   const open = useOpenTab();
   const setRailSection = useWorkspace((s) => s.setRailSection);
+  const setExplorerAtRoot = useWorkspace((s) => s.setExplorerAtRoot);
 
   function selectSection(section: ExplorerSection) {
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
     setRailSection(section);
+    setExplorerAtRoot(false);
     router.replace(`${pathname}?${params.toString()}`);
   }
 
@@ -279,10 +281,11 @@ function AgentsExplorer() {
 export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const open = useOpenTab();
-  const [atRoot, setAtRoot] = useState(false);
+  const atRoot = useWorkspace((s) => s.explorerAtRoot);
+  const setAtRoot = useWorkspace((s) => s.setExplorerAtRoot);
   const memoryFolderId = useMemoryFolderId();
   // A rail-section change means we're back to viewing that section, not Home.
-  useEffect(() => { setAtRoot(false); }, [section]);
+  useEffect(() => { setAtRoot(false); }, [section, setAtRoot]);
 
   // Skills are VFS folders too — the Skills explorer roots at the list of skills
   // and drills into each skill folder like any other.
@@ -344,7 +347,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
-          tabSection={section === "memory" ? "memory" : undefined}
+          tabSection={section}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
           newRootItem={

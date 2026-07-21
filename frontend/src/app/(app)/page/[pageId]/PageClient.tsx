@@ -49,6 +49,7 @@ import {
   type PublicSkillPage,
 } from "@/lib/api";
 import { findInSkillContents } from "@/lib/localSkill";
+import { routes } from "@/lib/workspace-routes";
 import type { CommentThread, Page } from "@/lib/types";
 import { subscribePageEvents } from "@/lib/pageEvents";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
@@ -209,7 +210,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
         objectType="page"
         objectId={page.id}
         resourceName={title}
-        resourceUrlPath={`/p/${page.id}`}
+        resourceUrlPath={routes.page(page.id)}
         currentUser={user}
       />
     );

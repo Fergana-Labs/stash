@@ -14,13 +14,25 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
-  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
+  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/file/") || p.startsWith("/page/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "memory", label: "Memory", icon: Brain, match: (p) => p.startsWith("/memory") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
-  { key: "computer", label: "VM", icon: Monitor, match: () => false },
+  { key: "computer", label: "VM", icon: Monitor, match: (p) => p.startsWith("/computer") },
 ];
+
+const TOP_LEVEL_ROUTES = ["/files", "/sessions", "/skills", "/memory", "/tools", "/agents", "/computer"];
+
+const ROUTES: Record<RailSection, string> = {
+  agents: "/agents",
+  files: "/files",
+  sessions: "/sessions",
+  skills: "/skills",
+  memory: "/memory",
+  tools: "/tools",
+  computer: "/computer",
+};
 
 function RailButton({
   item,
@@ -98,19 +110,34 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const setRailSection = useWorkspace((s) => s.setRailSection);
+  const setExplorerAtRoot = useWorkspace((s) => s.setExplorerAtRoot);
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Memory's landing is the brain dashboard, so it navigates; other sections
-    // just swap the explorer beside whatever's open.
-    if (section === "memory") {
-      setRailSection(section);
-      router.replace("/memory");
+    setRailSection(section);
+    setExplorerAtRoot(false);
+    const targetRoute = ROUTES[section];
+    
+    // Check if current path is a top-level route (e.g. /files, /sessions) or outside workspace
+    const isTopLevel =
+      TOP_LEVEL_ROUTES.includes(pathname) ||
+      !PRIMARY.some((item) => item.match(pathname));
+
+    if (isTopLevel) {
+      router.replace(targetRoute);
       return;
     }
+
+    // We are on a deep link like /p/123. If clicked section matches current path, strip query params.
+    const item = PRIMARY.find((s) => s.key === section);
+    if (item?.match(pathname)) {
+      router.replace(pathname);
+      return;
+    }
+
+    // Otherwise, set the explorer section query parameter.
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
-    setRailSection(section);
     router.replace(`${pathname}?${params.toString()}`);
   }
 

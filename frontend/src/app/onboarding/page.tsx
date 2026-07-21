@@ -16,6 +16,7 @@ import {
 } from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
+import { routes } from "../../lib/workspace-routes";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
@@ -133,7 +134,7 @@ function OnboardingInner() {
       apiKey,
     });
     await updatePage(page.id, { content });
-    router.push(`/p/${page.id}`);
+    router.push(routes.page(page.id));
   }, [user, router]);
 
   if (loading || !user) {
