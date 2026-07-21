@@ -2545,12 +2545,9 @@ def _print_search(
             continue
         name = hit.get("name") or hit.get("ref") or ""
         console.print(f"  [bold]{name}[/bold]  [dim]({label}: {hit.get('ref')})[/dim]")
-        # Snippets can carry the whole document (up to ~20K chars) for
-        # programmatic ranking; the human listing shows just the head — use
-        # --json for the full text.
+        # The server sends a ~300-char window centered on the first query
+        # match, edges already marked with "…" — printable as-is.
         snippet = (hit.get("snippet") or "").replace("\n", " ").strip()
-        if len(snippet) > 300:
-            snippet = snippet[:300] + "…"
         if snippet:
             console.print(f"    {snippet}")
     if data["has_more"]:

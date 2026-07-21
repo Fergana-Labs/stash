@@ -191,3 +191,32 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
     assert "213" in out
     assert "reconnect it in Settings" in out
     assert "More matches exist" in out
+
+
+def test_search_prints_the_server_snippet_whole(monkeypatch, capsys) -> None:
+    """The server already windows each snippet around the query match; a
+    client-side cut on top of that would chop off the back half of the window,
+    hiding the match it was centered on."""
+    snippet = "…" + ("context before the match. " * 12) + "the match itself ZFINALZ…"
+    assert len(snippet) > 300  # long enough that a client-side 300-char cut would drop the tail
+
+    class _SnippetClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def search_sources(
+            self, query, source=None, include_sources=None, exclude_sources=None, limit=20, offset=0
+        ):
+            return {
+                "results": [{"source": "files", "ref": "p1", "name": "Notes", "snippet": snippet}],
+                "has_more": False,
+            }
+
+    monkeypatch.setattr(main, "_require_auth", lambda: None)
+    monkeypatch.setattr(main, "_client", lambda: _SnippetClient())
+    main.search("match", source="", include_sources="", exclude_sources="", limit=20, as_json=False)
+
+    assert "ZFINALZ" in capsys.readouterr().out

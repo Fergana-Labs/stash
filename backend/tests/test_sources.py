@@ -585,11 +585,11 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_search_documents_snippet_carries_capped_full_text(client: AsyncClient):
-    """Search hits carry the document's full text, capped at
-    SEARCH_SNIPPET_CHARS — rankers downstream score hits on this blob, so a
-    match deep in a long transcript must arrive in the snippet, not be cut by
-    a head-of-document preview."""
+async def test_search_documents_snippet_centers_on_the_match(client: AsyncClient):
+    """Search hits carry a SEARCH_SNIPPET_CHARS window of document text
+    CENTERED on the first query occurrence — rankers downstream score hits on
+    this blob, so a match deep in a long transcript must arrive in the
+    snippet, not be cut by a head-of-document cap."""
     owner_key, owner_id = await _register(client, "owner")
     ws = await _user_scope(client, owner_key)
 
@@ -599,7 +599,9 @@ async def test_search_documents_snippet_carries_capped_full_text(client: AsyncCl
         external_ref="granola-account",
         display_name="Granola",
     )
-    intro = "meeting small talk. " * 60
+    # The match sits ~24K chars in — past the cap, so a head-of-document
+    # window could never contain it.
+    intro = "meeting small talk. " * 1200
     match = "the quarterly forecast needs revision. "
     tail = "closing remarks. " * 1500
     await source_service.upsert_content_document(
@@ -615,10 +617,60 @@ async def test_search_documents_snippet_carries_capped_full_text(client: AsyncCl
     hits = await source_service.search_documents(user_id=owner_id, query="quarterly forecast")
     assert len(hits) == 1
     snippet = hits[0]["snippet"]
-    # The matched phrase sits ~1,200 chars in — beyond the old 400-char preview.
     assert match in snippet
     # The document is longer than the cap; the snippet is exactly the cap.
     assert len(snippet) == source_service.SEARCH_SNIPPET_CHARS
+
+    # End to end, the API returns a small display window of that blob, still
+    # centered on the match, with the clipped edges marked — so every consumer
+    # (web, CLI, MCP) shows the same text without windowing it themselves.
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "quarterly forecast"},
+        headers={"Authorization": f"Bearer {owner_key}"},
+    )
+    assert resp.status_code == 200
+    hit = next(r for r in resp.json()["results"] if r.get("ref") == "2026/07/planning.md")
+    assert match in hit["snippet"]
+    assert len(hit["snippet"]) <= source_service.SEARCH_RESULT_SNIPPET_CHARS + 2
+    assert hit["snippet"].startswith("…") and hit["snippet"].endswith("…")
+
+
+def test_centered_window_semantics():
+    """The snippet window must contain the first query match wherever it sits:
+    centered when there's room, clamped (never shrunk) at the edges, head of
+    text when the query has no verbatim occurrence."""
+    text = ("a" * 500) + "NEEDLE" + ("b" * 500)
+
+    # Middle match: full-width window containing the match, case-insensitively.
+    window = source_service._centered_window(text, "needle", 100)
+    assert len(window) == 100
+    assert "NEEDLE" in window
+
+    # ellipsis=True marks both clipped edges.
+    window = source_service._centered_window(text, "needle", 100, ellipsis=True)
+    assert window.startswith("…") and window.endswith("…")
+    assert len(window) == 102
+
+    # Match at the head: window starts at the text start, no leading ellipsis.
+    window = source_service._centered_window("NEEDLE" + "b" * 500, "needle", 100, ellipsis=True)
+    assert window.startswith("NEEDLE") and window.endswith("…")
+
+    # Match at the tail: clamped to a full-width window, no trailing ellipsis.
+    window = source_service._centered_window("a" * 500 + "NEEDLE", "needle", 100, ellipsis=True)
+    assert window.startswith("…") and window.endswith("NEEDLE")
+    assert len(window) == 101
+
+    # Text within the width passes through verbatim, no ellipsis.
+    assert source_service._centered_window("short text", "needle", 100, ellipsis=True) == (
+        "short text"
+    )
+
+    # No verbatim match (stemmed/multi-word FTS hit): head of text.
+    assert source_service._centered_window(text, "absent phrase", 100) == text[:100]
+
+    # Empty text (exact provider-id hits) passes through.
+    assert source_service._centered_window("", "needle", 100, ellipsis=True) == ""
 
 
 # --- copied-content idempotent re-sync --------------------------------------
@@ -3436,6 +3488,60 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
     # The snippet is the rendered issue body, not just the title — rankers
     # downstream need the description text without another API call.
     assert "Federate search to Linear's own API." in hit["snippet"]
+
+
+@pytest.mark.asyncio
+async def test_federated_snippet_is_capped_and_centered_on_the_match(
+    client: AsyncClient, monkeypatch
+):
+    """Federated providers return whole rendered bodies (a full email, a full
+    issue). Those get the same treatment as indexed content: capped internally
+    at SEARCH_SNIPPET_CHARS around the match, then returned as a small display
+    window centered on it — a match deep in a huge body must survive both."""
+    from backend.integrations.linear import indexer as linear_indexer
+    from backend.services import linear_api_service
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _create_linear_source(ws, owner_id)
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    # The match sits ~23K chars into the description — past the internal cap,
+    # so a head-of-body window could never contain it.
+    description = (
+        ("planning filler text. " * 1050)
+        + "the pelican budget doubles next year. "
+        + ("more filler. " * 100)
+    )
+
+    async def fake_search_issues(token, term, first=25):
+        return [
+            linear_api_service.LinearIssue(
+                issue_id="issue-2",
+                identifier="FER-200",
+                title="Quarterly planning",
+                url="https://linear.app/fergana/issue/FER-200",
+                status="In Progress",
+                assignee_name=None,
+                team_key="FER",
+                team_name="Fergana",
+                project_name=None,
+                updated_at=None,
+                description=description,
+            )
+        ]
+
+    monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(linear_api_service, "search_issues", fake_search_issues)
+
+    results = await source_service.search_all(ws, owner_id, "pelican budget", source=src["id"])
+
+    hit = next(r for r in results["results"] if r.get("ref") == "FER/FER-00200")
+    assert "the pelican budget doubles next year." in hit["snippet"]
+    assert len(hit["snippet"]) <= source_service.SEARCH_RESULT_SNIPPET_CHARS + 2
+    assert hit["snippet"].startswith("…") and hit["snippet"].endswith("…")
 
 
 @pytest.mark.asyncio

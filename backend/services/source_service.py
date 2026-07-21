@@ -543,11 +543,16 @@ CONTENT_TABLE_PROVIDER = {
     if SOURCE_TABLE[source_type] in CONTENT_TABLES
 }
 
-# Per-hit snippet cap for FTS search over CONTENT_TABLES. High enough that most
-# documents come back whole (callers rank on this text), low enough that
-# pathological docs (multi-MB GitHub files, hour-long call transcripts) can't
-# bloat a response.
+# Internal per-hit text cap, centered on the first query occurrence. High
+# enough that ranking (which scores this text) sees plenty of context, low
+# enough that pathological docs (multi-MB GitHub files, hour-long call
+# transcripts) can't bloat the search pipeline. Never returned to callers —
+# search_all windows each returned snippet to SEARCH_RESULT_SNIPPET_CHARS.
 SEARCH_SNIPPET_CHARS = 20_000
+
+# The snippet size the search API returns: a window centered on the first
+# query occurrence, with clipped edges marked by "…".
+SEARCH_RESULT_SNIPPET_CHARS = 300
 
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
@@ -1375,7 +1380,9 @@ async def _federated_search(
             "source_name": source["display_name"],
             "ref": h["ref"],
             "name": h.get("name", ""),
-            "snippet": h.get("snippet", ""),
+            # Providers return whole rendered bodies (a full email, a full
+            # issue) — cap them like every other candidate.
+            "snippet": _centered_window(h.get("snippet", ""), query, SEARCH_SNIPPET_CHARS),
         }
         for h in hits
     ]
@@ -1443,7 +1450,12 @@ async def search_documents(
     source_readable = permission_service.readable_content_condition("source", "s", 1)
     parts = [
         f"""
-        SELECT d.source_id, d.path, d.name, LEFT(d.content, {SEARCH_SNIPPET_CHARS}) AS snippet,
+        SELECT d.source_id, d.path, d.name,
+               substr(d.content,
+                      GREATEST(1, LEAST(strpos(lower(d.content), lower(btrim($2)))
+                                          - {SEARCH_SNIPPET_CHARS // 2},
+                                        length(d.content) - {SEARCH_SNIPPET_CHARS} + 1)),
+                      {SEARCH_SNIPPET_CHARS}) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
                        websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
@@ -2082,6 +2094,24 @@ def _rank_text(hit: dict) -> str:
     return f"{hit.get('name') or ''}\n{hit.get('snippet') or ''}"
 
 
+def _centered_window(text: str, query: str, width: int, *, ellipsis: bool = False) -> str:
+    """A width-char window of text containing the first case-insensitive
+    occurrence of the query — a match 30 minutes into a transcript must show
+    the match, not the intro. Centered on the match, clamped to the text
+    bounds (a match near either edge still yields a full-width window). When
+    the query has no verbatim match (stemmed/multi-word FTS hits), the window
+    is the head of the text. ellipsis=True marks clipped edges with '…'."""
+    if len(text) <= width:
+        return text
+    q = query.strip().lower()
+    idx = text.lower().find(q) if q else -1
+    start = 0 if idx == -1 else min(max(0, idx - width // 2), len(text) - width)
+    window = text[start : start + width]
+    if ellipsis:
+        window = ("…" if start > 0 else "") + window + ("…" if start + width < len(text) else "")
+    return window
+
+
 def _validated_search_tokens(tokens: list[str] | None, param: str) -> frozenset[str]:
     cleaned = frozenset(t.strip().lower() for t in tokens or [])
     unknown = cleaned - SEARCH_SOURCE_TOKENS
@@ -2129,7 +2159,7 @@ async def _gather_search_candidates(
             {
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
-                "snippet": (e.get("content") or "")[:SEARCH_SNIPPET_CHARS],
+                "snippet": _centered_window(e.get("content") or "", query, SEARCH_SNIPPET_CHARS),
             }
             for e in events
         ]
@@ -2143,9 +2173,11 @@ async def _gather_search_candidates(
                 "source": NATIVE_FILES,
                 "ref": str(p["id"]),
                 "name": p["name"],
-                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[
-                    :SEARCH_SNIPPET_CHARS
-                ],
+                "snippet": _centered_window(
+                    p.get("search_text") or p.get("content_markdown") or "",
+                    query,
+                    SEARCH_SNIPPET_CHARS,
+                ),
             }
             for p in pages
         ]
@@ -2240,6 +2272,8 @@ async def search_all(
 
     Every candidate is re-scored on one uniform ts_rank scale over its display
     text, then the merged list is sorted and sliced [offset : offset + limit].
+    Each hit's `snippet` is a SEARCH_RESULT_SNIPPET_CHARS window centered on
+    the first query occurrence, its clipped edges marked with "…".
     Each hit carries its `rank` so callers can merge these results with their
     own scored lists (the web search page blends in tables/skills client-side).
     Rank-0 hits sink to the bottom but are never dropped: exact provider-id
@@ -2262,7 +2296,18 @@ async def search_all(
 
     ranks = await _uniform_ranks(query, [_rank_text(h) for h in hits])
     ranked = sorted(zip(hits, ranks), key=lambda pair: pair[1], reverse=True)
-    page = [{**h, "rank": r} for h, r in ranked[offset : offset + limit]]
+    # Ranking scored the full internal text above; only the returned page gets
+    # the small display window.
+    page = [
+        {
+            **h,
+            "rank": r,
+            "snippet": _centered_window(
+                h.get("snippet") or "", query, SEARCH_RESULT_SNIPPET_CHARS, ellipsis=True
+            ),
+        }
+        for h, r in ranked[offset : offset + limit]
+    ]
     has_more = len(hits) > offset + limit
 
     await _audit_source_read(

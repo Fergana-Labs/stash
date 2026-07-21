@@ -504,7 +504,7 @@ function unifiedResults(
         title: session?.title || hit.ref,
         href: `/sessions/${encodeURIComponent(hit.ref)}`,
         sourceName: ctx.sourceName,
-        detail: contextSnippet(snippet, query) ?? snippet.slice(0, 220),
+        detail: contextSnippet(snippet, query) ?? "",
         updatedAt: session?.updated_at ?? null,
         relevance,
       });
@@ -523,7 +523,7 @@ function unifiedResults(
         title: hit.name || hit.ref,
         href: `/p/${hit.ref}`,
         sourceName: ctx.sourceName,
-        detail: contextSnippet(snippet, query) ?? (snippet.slice(0, 220) || "Page"),
+        detail: contextSnippet(snippet, query) ?? "Page",
         updatedAt: null,
         relevance,
       });
@@ -537,7 +537,7 @@ function unifiedResults(
       href: null,
       external: { source: hit.source, ref: hit.ref, name: hit.name },
       sourceName: hit.source_name ?? "Connected source",
-      detail: contextSnippet(snippet, query) ?? (snippet.slice(0, 220) || hit.ref),
+      detail: contextSnippet(snippet, query) ?? hit.ref,
       updatedAt: null,
       relevance,
     });
@@ -938,29 +938,19 @@ function highlightAll(text: string, query: string): ReactNode {
   return nodes;
 }
 
-// Context window around the FIRST occurrence of the query, with every match in
-// that window highlighted. Returns null when the query is not present so
-// callers can fall back to their default detail string.
+// The server already windows each snippet around the first query occurrence
+// (with "\u2026" edge markers); this only highlights the matches within it.
+// Returns null when the snippet is empty so callers can fall back to their
+// default detail string.
 function contextSnippet(
   source: string | null | undefined,
   query: string
 ): ReactNode | null {
   const text = (source ?? "").replace(/\s+/g, " ").trim();
   const trimmed = query.trim();
-  if (!text || !trimmed) return null;
-
-  const index = text.toLowerCase().indexOf(trimmed.toLowerCase());
-  if (index === -1) return null;
-
-  const start = Math.max(0, index - 80);
-  const end = Math.min(text.length, index + trimmed.length + 140);
-  return (
-    <>
-      {start > 0 ? "\u2026" : ""}
-      {highlightAll(text.slice(start, end), trimmed)}
-      {end < text.length ? "\u2026" : ""}
-    </>
-  );
+  if (!text) return null;
+  if (!trimmed) return text;
+  return highlightAll(text, trimmed);
 }
 
 function relativeTime(iso: string): string {
