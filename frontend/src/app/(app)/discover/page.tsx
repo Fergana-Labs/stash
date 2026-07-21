@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 
 import WorkspaceShell from "@/components/workspace/workspace-shell";
-import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import { BasicPageSkeleton, CardGridSkeleton } from "@/components/SkeletonStates";
-import { GitHubIcon } from "@/components/integrations/BrandIcons";
-import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
-import SkillCard from "@/components/skill/SkillCard";
-import { useAuth } from "@/hooks/useAuth";
-import { API_BASE, githubOwner, type PublicSkillCard } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
+import { BasicPageSkeleton, CardGridSkeleton } from "../../../components/SkeletonStates";
+import { GitHubIcon } from "../../../components/integrations/BrandIcons";
+import ForkSkillCardButton from "../../../components/skill/ForkSkillCardButton";
+import SkillCard from "../../../components/skill/SkillCard";
+import { useAuth } from "../../../hooks/useAuth";
+import { API_BASE, githubOwner, type PublicSkillCard } from "../../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
@@ -53,29 +55,30 @@ export default function DiscoverPage() {
       <div className="flex items-center gap-3">
         <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
           <SearchGlyph />
-          <input
+          <Input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search public Skills…"
-            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 border-0 text-[13px]"
           />
         </div>
         <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
           {SORTS.map((option) => (
-            <button
+            <Button
               key={option}
-              type="button"
+              variant="ghost"
+              size="xs"
               onClick={() => setSort(option)}
               className={
-                "cursor-pointer rounded-md px-2.5 py-[3px] text-[12px] " +
+                "cursor-pointer px-2.5 py-[3px] " +
                 (sort === option
                   ? "bg-raised font-semibold text-foreground"
                   : "text-muted-foreground hover:text-foreground")
               }
             >
               {sortLabel(option)}
-            </button>
+            </Button>
           ))}
         </div>
         <span className="flex-1" />

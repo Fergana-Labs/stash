@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { FolderIcon, PageIcon } from "@/components/SkillIcons";
+import { Button } from "@/components/ui/button";
 import type { FolderTreeNode, PageSummary, Tree } from "@/lib/types";
 import { routes } from "@/lib/workspace-routes";
 
@@ -44,10 +45,10 @@ function FolderNode({ folder, depth }: { folder: FolderTreeNode; depth: number }
 
   return (
     <div>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px] duration-150 ease-out hover:bg-raised"
+        className="h-auto w-full justify-start gap-1.5 rounded px-2 py-1.5 text-left text-[13px] font-normal duration-150 ease-out hover:bg-raised"
         style={{ paddingLeft: depth * INDENT_PX + 8 }}
         aria-expanded={open}
       >
@@ -61,7 +62,7 @@ function FolderNode({ folder, depth }: { folder: FolderTreeNode; depth: number }
         <span className="shrink-0 text-[11.5px] text-dim">
           {count === 1 ? "1 page" : `${count} pages`}
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="flex flex-col gap-px">
           {folder.folders.map((child) => (

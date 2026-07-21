@@ -103,6 +103,7 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 ### Frontend conventions
 Enforced on every frontend change — new code and any code you touch.
 
+- **shadcn, not native tags.** Import buttons/inputs/dialogs/etc. from `@/components/ui/*`. Exception: hidden `<input type="file">` triggers.
 - **No route magic strings.** Use `routes` from `src/lib/workspace-routes.ts` (`routes.page(id)`, etc.) or `skillItemPath` from `src/lib/localSkill.ts`. Missing a route? Add it to `routes` first.
 - **No magic numbers/strings.** If a literal repeats or encodes a domain concept, name it as a constant.
 - **Don't repeat patterns.** Check `src/lib/` and `src/components/ui/` before writing a new helper/component. Copy-paste across files = extract it.

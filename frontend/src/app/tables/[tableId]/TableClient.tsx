@@ -37,9 +37,12 @@ import {
   setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
 import { findInSkillContents } from "../../../lib/localSkill";
+import { routes } from "../../../lib/workspace-routes";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/content/FileViewerHeader";
-import { routes } from "../../../lib/workspace-routes";
+import { Button } from "../../../components/ui/button";
+import { Checkbox } from "../../../components/ui/checkbox";
+import { Input } from "../../../components/ui/input";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {
@@ -202,28 +205,28 @@ function CellLinkEditorPopover({
       style={{ top, left }}
     >
       <div className="flex items-center gap-1.5">
-        <input
+        <Input
           ref={inputRef}
           aria-label="Link URL"
           value={href}
           onChange={(e) => onHrefChange(e.target.value)}
           placeholder="Paste link or URL"
-          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          className="min-w-0 flex-1 bg-surface px-2 py-1.5 text-[13px]"
         />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={onCancel}
-          className="cursor-pointer rounded-md px-2 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-raised hover:text-foreground"
+          className="h-auto cursor-pointer px-2 py-1.5 text-[12.5px] font-normal text-muted-foreground hover:bg-raised hover:text-foreground"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
           disabled={!href.trim()}
-          className="cursor-pointer rounded-md bg-brand px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+          className="h-auto cursor-pointer bg-brand px-2.5 py-1.5 text-[12.5px] font-normal text-white hover:bg-brand-hover disabled:opacity-50"
         >
           Save
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -1191,7 +1194,7 @@ function TableEditorPageInner({
         {isEditing ? (
           <div data-table-cell-editor onPaste={handleCellEditorPaste}>
             {col.type === "boolean" ? (
-              <label className="flex items-center h-8 px-2 cursor-pointer"><input aria-label={`Edit row ${rowNumber} ${col.name}`} type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
+              <label className="flex items-center h-8 px-2 cursor-pointer"><Checkbox aria-label={`Edit row ${rowNumber} ${col.name}`} checked={cellValue === "true" || cellValue === "1"} onCheckedChange={(checked) => setCellValue(String(checked === true))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} autoFocus /></label>
             ) : col.type === "select" && col.options ? (
               <CustomSelect
                 value={cellValue}
@@ -1206,7 +1209,7 @@ function TableEditorPageInner({
                 autoFocus
               />
             ) : (
-              <input
+              <Input
                 aria-label={`Edit row ${rowNumber} ${col.name}`}
                 ref={cellInputRef}
                 type={cellInputType(col)}
@@ -1214,19 +1217,19 @@ function TableEditorPageInner({
                 onChange={(e) => setCellValue(e.target.value)}
                 onBlur={() => { if (!linkEditor) void commitEdit(); }}
                 onKeyDown={(e) => handleCellInputKeyDown(e, col)}
-                className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground"
+                className="w-full px-2 font-mono ring-1 ring-brand"
               />
             )}
           </div>
         ) : isDraftRowId(rowId) ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             aria-label={`Empty row ${rowNumber} ${col.name}`}
             onClick={(e) => { e.stopPropagation(); startCellEditing(); }}
-            className={`${wrapCells ? "min-h-8 py-1" : "h-8"} w-full px-2 flex items-center text-left text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text bg-transparent focus:outline-none focus:ring-1 focus:ring-brand`}
+            className={`h-auto w-full justify-start px-2 text-left font-mono text-foreground ${wrapCells ? "min-h-8 py-1 whitespace-normal break-words" : "h-8 truncate"} cursor-text bg-transparent`}
           >
             <span className="text-muted-foreground/30">{"\u2014"}</span>
-          </button>
+          </Button>
         ) : (
           <div className={`${wrapCells ? "min-h-8 py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
             {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted-foreground"}>{value ? "\u2713" : "\u2717"}</span>
@@ -1240,7 +1243,7 @@ function TableEditorPageInner({
 
   const renderRow = (row: TableRow, idx: number) => (
     <tr key={row.id} className={`border-b border-border/50 hover:bg-raised/50 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group ${selectedRows.has(row.id) ? "bg-brand/5" : ""}`}>
-      <td className="px-1 py-0 text-center border-r border-border sticky left-0 z-[5] bg-surface"><input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleSelectRow(row.id)} className="accent-brand" /></td>
+      <td className="px-1 py-0 text-center border-r border-border sticky left-0 z-[5] bg-surface"><Checkbox checked={selectedRows.has(row.id)} onCheckedChange={() => toggleSelectRow(row.id)} /></td>
       <td className="px-2 py-1.5 text-[10px] text-muted-foreground text-center border-r border-border font-mono cursor-pointer hover:text-brand sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
       {visibleColumns.map((col) => {
         const value = row.data[col.id];
@@ -1251,8 +1254,8 @@ function TableEditorPageInner({
       <td className="px-1 py-0 whitespace-nowrap">
         {!readOnly && (
           <>
-            <button onClick={() => handleDuplicateRow(row.id)} className="cursor-pointer text-xs text-muted-foreground/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-1" title="Duplicate">\u2398</button>
-            <button onClick={() => handleDeleteRow(row.id)} className="cursor-pointer text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-1" title="Delete">&times;</button>
+            <Button variant="ghost" onClick={() => handleDuplicateRow(row.id)} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-1" title="Duplicate">{"\u2398"}</Button>
+            <Button variant="ghost" onClick={() => handleDeleteRow(row.id)} className="h-auto cursor-pointer text-xs font-normal text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-1" title="Delete">&times;</Button>
           </>
         )}
       </td>
@@ -1333,12 +1336,12 @@ function TableEditorPageInner({
         <div className="mt-2 flex items-center gap-2 px-4 py-2.5 border-y border-border bg-surface shrink-0 flex-wrap">
           {/* Search */}
           <div className="flex-1 max-w-xs">
-            <input value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(true); }} placeholder="Search all columns..." className="w-full px-3 py-1.5 text-xs bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" />
+            <Input value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(true); }} placeholder="Search all columns..." className="text-xs" />
           </div>
           <div className="flex-1" />
           {table && <>
-            {!readOnly && <button onClick={addFilter} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
-            {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
+            {!readOnly && <Button variant="ghost" onClick={addFilter} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-raised">Filter</Button>}
+            {!readOnly && (filters.length > 0 || sortBy) && <Button variant="ghost" onClick={handleSaveLayout} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-raised">Save layout</Button>}
             {/* Group by */}
             <CustomSelect
               value={groupByCol}
@@ -1352,14 +1355,14 @@ function TableEditorPageInner({
               className="min-w-[132px] rounded border border-border bg-raised px-2 py-1 text-xs text-foreground"
               menuClassName="text-xs"
             />
-            {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>Summary</button>}
-            {!readOnly && <button onClick={() => setShowEmbeddings((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
-            <button onClick={() => setShowColVisibility((p) => !p)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
-            <button onClick={() => setWrapCells((p) => !p)} className={`cursor-pointer text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
-            {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
+            {!readOnly && <Button variant="ghost" onClick={() => setShowSummary((p) => !p)} className={`h-auto cursor-pointer text-xs font-normal px-2 py-1 ${showSummary ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>Summary</Button>}
+            {!readOnly && <Button variant="ghost" onClick={() => setShowEmbeddings((p) => !p)} className={`h-auto cursor-pointer text-xs font-normal px-2 py-1 ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>Embeddings</Button>}
+            <Button variant="ghost" onClick={() => setShowColVisibility((p) => !p)} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-raised">Columns</Button>
+            <Button variant="ghost" onClick={() => setWrapCells((p) => !p)} className={`h-auto cursor-pointer text-xs font-normal px-2 py-1 ${wrapCells ? "bg-brand/15 text-brand" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</Button>
+            {!readOnly && <Button variant="ghost" onClick={() => fileInputRef.current?.click()} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-raised">Import</Button>}
             {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
-            {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="cursor-pointer text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
-            {!readOnly && <button onClick={handleDelete} className="cursor-pointer text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
+            {!readOnly && selectedRows.size > 0 && <Button variant="ghost" onClick={handleBulkDelete} className="h-auto cursor-pointer text-xs font-normal text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</Button>}
+            {!readOnly && <Button variant="ghost" onClick={handleDelete} className="h-auto cursor-pointer text-xs font-normal text-red-400 hover:text-red-300 px-2 py-1">Delete table</Button>}
           </>}
         </div>
 
@@ -1368,11 +1371,11 @@ function TableEditorPageInner({
           <div className="px-4 py-2 border-b border-border bg-raised/50 flex flex-wrap gap-2 shrink-0">
             {sortedColumns.map((c) => (
               <label key={c.id} className="flex items-center gap-1 text-xs text-foreground cursor-pointer">
-                <input type="checkbox" checked={!hiddenCols.has(c.id)} onChange={() => setHiddenCols((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} className="accent-brand" />
+                <Checkbox checked={!hiddenCols.has(c.id)} onCheckedChange={() => setHiddenCols((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} />
                 {c.name}
               </label>
             ))}
-            <button onClick={() => setShowColVisibility(false)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground ml-2">Done</button>
+            <Button variant="ghost" onClick={() => setShowColVisibility(false)} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground ml-2">Done</Button>
           </div>
         )}
 
@@ -1381,15 +1384,13 @@ function TableEditorPageInner({
           <div className="px-4 py-3 border-b border-border bg-raised/50 shrink-0">
             <div className="flex items-center gap-3 mb-2">
               <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={embeddingEnabled}
-                  onChange={(e) => setEmbeddingEnabled(e.target.checked)}
-                  className="accent-brand"
+                  onCheckedChange={(checked) => setEmbeddingEnabled(checked === true)}
                 />
                 Enable semantic search
               </label>
-              <button
+              <Button
                 onClick={async () => {
                   try {
                     await setTableEmbeddingConfig(tableId, {
@@ -1400,11 +1401,12 @@ function TableEditorPageInner({
                     setTimeout(() => setBackfillStatus(""), 2000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
                 }}
-                className="cursor-pointer text-xs bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-2 py-1 rounded"
+                className="h-auto cursor-pointer text-xs font-normal bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-2 py-1"
               >
                 Save
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={async () => {
                   try {
                     const res = await backfillTableEmbeddings(tableId);
@@ -1412,21 +1414,19 @@ function TableEditorPageInner({
                     setTimeout(() => setBackfillStatus(""), 5000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
                 }}
-                className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-raised"
+                className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-raised"
               >
                 Backfill all rows
-              </button>
+              </Button>
               {backfillStatus && <span className="text-xs text-brand">{backfillStatus}</span>}
             </div>
             <div className="text-[10px] text-muted-foreground mb-2">Select columns to include in embeddings:</div>
             <div className="flex flex-wrap gap-2">
               {sortedColumns.filter((c) => c.type === "text" || c.type === "url" || c.type === "email" || c.type === "select").map((c) => (
                 <label key={c.id} className="flex items-center gap-1 text-xs text-foreground cursor-pointer">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={embeddingCols.has(c.id)}
-                    onChange={() => setEmbeddingCols((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
-                    className="accent-brand"
+                    onCheckedChange={() => setEmbeddingCols((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
                   />
                   {c.name}
                 </label>
@@ -1438,14 +1438,14 @@ function TableEditorPageInner({
         {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
           <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 shrink-0 overflow-x-auto overscroll-x-contain">
-            <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`cursor-pointer px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>All rows</button>
+            <Button variant="ghost" onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`h-auto cursor-pointer px-3 py-1 text-xs font-normal ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>All rows</Button>
             {table.views.map((layout: TableView) => (
               <div key={layout.id} className="flex items-center group">
-                <button onClick={() => handleLoadLayout(layout)} className={`cursor-pointer px-3 py-1 text-xs rounded ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>{layout.name}</button>
-                <button onClick={() => handleDeleteLayout(layout.id)} className="cursor-pointer text-[10px] text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
+                <Button variant="ghost" onClick={() => handleLoadLayout(layout)} className={`h-auto cursor-pointer px-3 py-1 text-xs font-normal ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted-foreground hover:text-foreground hover:bg-raised"}`}>{layout.name}</Button>
+                <Button variant="ghost" onClick={() => handleDeleteLayout(layout.id)} className="h-auto cursor-pointer text-[10px] font-normal text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</Button>
               </div>
             ))}
-            <button onClick={handleSaveLayout} className="cursor-pointer px-2 py-1 text-xs text-muted-foreground hover:text-brand">+ Save layout</button>
+            <Button variant="ghost" onClick={handleSaveLayout} className="h-auto cursor-pointer px-2 py-1 text-xs font-normal text-muted-foreground hover:text-brand">+ Save layout</Button>
           </div>
         )}
 
@@ -1468,12 +1468,12 @@ function TableEditorPageInner({
                   className="min-w-[96px] bg-transparent px-1 py-0.5 text-muted-foreground"
                   menuClassName="text-xs"
                 />
-                {f.op !== "is_empty" && f.op !== "is_not_empty" && <input value={f.value} onChange={(e) => updateFilter(idx, "value", e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") loadRows(); }} className="w-24 bg-transparent outline-none text-foreground border-b border-border" placeholder="value" />}
-                <button onClick={() => removeFilter(idx)} className="cursor-pointer text-muted-foreground hover:text-red-400 ml-1">&times;</button>
+                {f.op !== "is_empty" && f.op !== "is_not_empty" && <Input value={f.value} onChange={(e) => updateFilter(idx, "value", e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") loadRows(); }} className="w-24 border-b border-border" placeholder="value" />}
+                <Button variant="ghost" onClick={() => removeFilter(idx)} className="h-auto cursor-pointer text-muted-foreground font-normal hover:text-red-400 ml-1">&times;</Button>
               </div>
             ))}
-            <button onClick={addFilter} className="cursor-pointer text-xs text-brand hover:text-brand-hover">+ Add</button>
-            <button onClick={() => { setFilters([]); setShowFilterBar(false); }} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground ml-2">Clear all</button>
+            <Button variant="ghost" onClick={addFilter} className="h-auto cursor-pointer text-xs font-normal text-brand hover:text-brand-hover">+ Add</Button>
+            <Button variant="ghost" onClick={() => { setFilters([]); setShowFilterBar(false); }} className="h-auto cursor-pointer text-xs font-normal text-muted-foreground hover:text-foreground ml-2">Clear all</Button>
           </div>
         )}
 
@@ -1494,7 +1494,7 @@ function TableEditorPageInner({
               </colgroup>
               <thead className="sticky top-0 z-10">
                 <tr className="bg-surface border-b border-border">
-                  <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
+                  <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><Checkbox checked={selectedRows.size === rows.length && rows.length > 0} onCheckedChange={toggleSelectAll} /></th>
                   <th className="w-10 px-2 py-2 text-[10px] font-medium text-muted-foreground text-center border-r border-border sticky left-8 z-20 bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">#</th>
                   {visibleColumns.map((col) => (
                     <th
@@ -1514,19 +1514,19 @@ function TableEditorPageInner({
                         {sortBy === col.id && <span className="shrink-0 text-brand text-[10px]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>}
                       </span>
                       {!readOnly && (
-                        <button
-                          type="button"
+                        <Button
+                          variant="ghost"
                           aria-label={`Resize ${col.name} column`}
                           title="Resize column"
                           onPointerDown={(event) => startColumnResize(event, col)}
                           onClick={(event) => event.stopPropagation()}
-                          className={`absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${columnResize?.colId === col.id ? "border-brand bg-brand/10" : "border-transparent hover:border-brand/60 hover:bg-brand/5"}`}
+                          className={`absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none rounded-none border-r-2 px-0 font-normal duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${columnResize?.colId === col.id ? "border-brand bg-brand/10" : "border-transparent hover:border-brand/60 hover:bg-brand/5"}`}
                         />
                       )}
                     </th>
                   ))}
                   <th className="w-10 px-2 py-2 border-r border-border">
-                    {!readOnly && <button onClick={() => setShowAddCol(true)} className="cursor-pointer w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted-foreground hover:text-brand text-sm font-bold">+</button>}
+                    {!readOnly && <Button variant="ghost" size="icon-xs" onClick={() => setShowAddCol(true)} className="cursor-pointer bg-raised hover:bg-brand/15 text-muted-foreground hover:text-brand font-bold">+</Button>}
                   </th>
                   {/* Auto-width spacer: absorbs leftover width so the fixed
                       columns (select, #, add) keep their real widths instead
@@ -1585,7 +1585,7 @@ function TableEditorPageInner({
             </table>
 
             {/* Add row + infinite scroll sentinel */}
-            {!readOnly && <button onClick={handleAddRow} className="cursor-pointer w-full py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] text-left px-4">+ New row</button>}
+            {!readOnly && <Button variant="ghost" onClick={handleAddRow} className="h-auto w-full cursor-pointer justify-start rounded-none py-2 text-left text-sm font-normal text-muted-foreground hover:text-foreground hover:bg-raised border-b border-border/50 duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] px-4">+ New row</Button>}
             {hasMore && (
               <div ref={sentinelRef} className="py-4 text-center text-xs text-muted-foreground">
                 {loadingMore ? (
@@ -1616,30 +1616,31 @@ function TableEditorPageInner({
           <div data-colmenu className="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[180px]" style={{ left: colMenu.x, top: colMenu.y }} onClick={(e) => e.stopPropagation()}>
             {!colMenuTypeOpen ? (
               <>
-                <button onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</button>
-                <button onClick={() => handleRenameColumn(colMenu.colId)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Rename</button>
-                <button onClick={() => setColMenuTypeOpen(true)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised flex items-center justify-between">
+                <Button variant="ghost" onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="h-auto w-full cursor-pointer justify-start px-3 py-1.5 text-left text-[13px] font-normal text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</Button>
+                <Button variant="ghost" onClick={() => handleRenameColumn(colMenu.colId)} className="h-auto w-full cursor-pointer justify-start px-3 py-1.5 text-left text-[13px] font-normal text-foreground hover:bg-raised">Rename</Button>
+                <Button variant="ghost" onClick={() => setColMenuTypeOpen(true)} className="h-auto w-full cursor-pointer justify-between px-3 py-1.5 text-left text-[13px] font-normal text-foreground hover:bg-raised">
                   <span>Change type</span>
                   <span className="text-[10px] text-muted-foreground font-mono">{sortedColumns.find((c) => c.id === colMenu.colId)?.type ?? ""} ›</span>
-                </button>
-                <button onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Hide column</button>
-                <button onClick={() => handleDeleteColumn(colMenu.colId)} className="cursor-pointer w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised">Delete column</button>
+                </Button>
+                <Button variant="ghost" onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="h-auto w-full cursor-pointer justify-start px-3 py-1.5 text-left text-[13px] font-normal text-foreground hover:bg-raised">Hide column</Button>
+                <Button variant="ghost" onClick={() => handleDeleteColumn(colMenu.colId)} className="h-auto w-full cursor-pointer justify-start px-3 py-1.5 text-left text-[13px] font-normal text-red-400 hover:bg-raised">Delete column</Button>
               </>
             ) : (
               <>
-                <button onClick={() => setColMenuTypeOpen(false)} className="cursor-pointer w-full text-left px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-raised">‹ Back</button>
+                <Button variant="ghost" onClick={() => setColMenuTypeOpen(false)} className="h-auto w-full cursor-pointer justify-start px-3 py-1.5 text-left text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-raised">‹ Back</Button>
                 {COLUMN_TYPES.map((t) => {
                   const current = sortedColumns.find((c) => c.id === colMenu.colId)?.type;
                   return (
-                    <button
+                    <Button
                       key={t}
+                      variant="ghost"
                       onClick={() => { void handleChangeColumnType(colMenu.colId, t); setColMenuTypeOpen(false); }}
-                      className={`cursor-pointer w-full text-left px-3 py-1.5 text-sm hover:bg-raised flex items-center gap-2 ${current === t ? "text-brand" : "text-foreground"}`}
+                      className={`h-auto w-full cursor-pointer justify-start gap-2 px-3 py-1.5 text-left text-[13px] font-normal hover:bg-raised ${current === t ? "text-brand" : "text-foreground"}`}
                     >
                       <span className="text-[10px] text-muted-foreground font-mono w-4 text-center">{TYPE_ICONS[t] ?? "?"}</span>
                       <span>{t}</span>
                       {current === t && <span className="ml-auto text-brand">✓</span>}
-                    </button>
+                    </Button>
                   );
                 })}
               </>
@@ -1653,7 +1654,7 @@ function TableEditorPageInner({
             <div className="bg-surface border border-border rounded-xl p-6 w-[360px] shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-base font-bold font-display text-foreground mb-4">Add Column</h2>
               <div className="space-y-3">
-                <div><label className="text-xs text-muted-foreground mb-1 block">Name</label><input value={newColName} onChange={(e) => setNewColName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddColumn(); }} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" autoFocus placeholder="Column name" /></div>
+                <div><label className="text-xs text-muted-foreground mb-1 block">Name</label><Input value={newColName} onChange={(e) => setNewColName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddColumn(); }} autoFocus placeholder="Column name" /></div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Type</label>
                   <CustomSelect
@@ -1664,11 +1665,11 @@ function TableEditorPageInner({
                     menuClassName="text-sm"
                   />
                 </div>
-                {(newColType === "select" || newColType === "multiselect") && <div><label className="text-xs text-muted-foreground mb-1 block">Options (comma-separated)</label><input value={newColOptions} onChange={(e) => setNewColOptions(e.target.value)} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" placeholder="option1, option2" /></div>}
+                {(newColType === "select" || newColType === "multiselect") && <div><label className="text-xs text-muted-foreground mb-1 block">Options (comma-separated)</label><Input value={newColOptions} onChange={(e) => setNewColOptions(e.target.value)} placeholder="option1, option2" /></div>}
               </div>
               <div className="flex justify-end gap-2 mt-5">
-                <button onClick={() => setShowAddCol(false)} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>
-                <button onClick={handleAddColumn} className="cursor-pointer text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Add</button>
+                <Button variant="ghost" onClick={() => setShowAddCol(false)} className="h-auto cursor-pointer text-muted-foreground font-normal hover:text-foreground px-3 py-1.5">Cancel</Button>
+                <Button onClick={handleAddColumn} className="h-auto cursor-pointer bg-[var(--color-brand-600)] font-normal hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5">Add</Button>
               </div>
             </div>
           </div>
@@ -1689,7 +1690,7 @@ function TableEditorPageInner({
                       <span className="text-[10px] font-mono text-muted-foreground/60">{TYPE_ICONS[col.type]}</span> {col.name}
                     </label>
                     {col.type === "boolean" ? (
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={detailValues[col.id] === "true" || detailValues[col.id] === "1"} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: String(e.target.checked) }))} className="accent-brand" /> {detailValues[col.id] === "true" ? "Yes" : "No"}</label>
+                      <label className="flex items-center gap-2 cursor-pointer"><Checkbox checked={detailValues[col.id] === "true" || detailValues[col.id] === "1"} onCheckedChange={(checked) => setDetailValues((prev) => ({ ...prev, [col.id]: String(checked === true) }))} /> {detailValues[col.id] === "true" ? "Yes" : "No"}</label>
                     ) : col.type === "select" && col.options ? (
                       <CustomSelect
                         value={detailValues[col.id] || ""}
@@ -1704,7 +1705,7 @@ function TableEditorPageInner({
                         menuClassName="text-sm"
                       />
                     ) : (
-                      <input type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={detailValues[col.id] || ""} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: e.target.value }))} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" />
+                      <Input type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={detailValues[col.id] || ""} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: e.target.value }))} />
                     )}
                   </div>
                 ))}
@@ -1716,10 +1717,10 @@ function TableEditorPageInner({
                 </div>
               </div>
               <div className="flex justify-between mt-5">
-                <button onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground px-3 py-1.5">Duplicate</button>
+                <Button variant="ghost" onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="h-auto cursor-pointer text-muted-foreground font-normal hover:text-foreground px-3 py-1.5">Duplicate</Button>
                 <div className="flex gap-2">
-                  <button onClick={() => setDetailRow(null)} className="cursor-pointer text-sm text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>
-                  <button onClick={saveDetail} className="cursor-pointer text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Save</button>
+                  <Button variant="ghost" onClick={() => setDetailRow(null)} className="h-auto cursor-pointer text-muted-foreground font-normal hover:text-foreground px-3 py-1.5">Cancel</Button>
+                  <Button onClick={saveDetail} className="h-auto cursor-pointer bg-[var(--color-brand-600)] font-normal hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5">Save</Button>
                 </div>
               </div>
             </div>

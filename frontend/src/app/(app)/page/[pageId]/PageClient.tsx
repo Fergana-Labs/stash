@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ReactNode } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { Button } from "@/components/ui/button";
 import { recordRecent } from "@/lib/pins";
 import { PageBody } from "../../skills/[slug]/SkillItemBodies";
 import {
@@ -613,13 +614,14 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                 />
               )}
               {isHtml && (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={() => setHtmlEditMode((v) => !v)}
-                  className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+                  className="cursor-pointer border-border-subtle bg-raised px-2.5 py-1 text-foreground hover:bg-raised-2"
                 >
                   {htmlEditMode ? "Done" : "Edit"}
-                </button>
+                </Button>
               )}
             </div>
           ) : undefined
@@ -707,20 +709,22 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                 see the latest.
               </span>
               <span className="flex shrink-0 items-center gap-3">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => window.location.reload()}
                   className="cursor-pointer font-medium text-[var(--color-brand-600)] hover:underline"
                 >
                   Reload
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => setExternalEdit(null)}
                   className="cursor-pointer text-[var(--text-muted)] hover:text-foreground"
                 >
                   Dismiss
-                </button>
+                </Button>
               </span>
             </div>
           )}
@@ -750,8 +754,9 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                     editable={htmlEditMode}
                   />
                   {htmlSelection && !htmlComposer && !htmlEditMode && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="default"
+                      size="xs"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         const r = htmlSelection.rect;
@@ -761,7 +766,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                           selection: htmlSelection,
                         });
                       }}
-                      className="comment-anchor-pill absolute z-30 inline-flex -translate-x-1/2 -translate-y-full cursor-pointer items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
+                      className="comment-anchor-pill absolute z-30 -translate-x-1/2 -translate-y-full cursor-pointer gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
                       style={{
                         top: htmlSelection.rect.top - 8,
                         left: (htmlSelection.rect.left + htmlSelection.rect.right) / 2,
@@ -771,7 +776,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                       </svg>
                       Comment
-                    </button>
+                    </Button>
                   )}
                   {htmlComposer && (
                     <CommentComposerPopover

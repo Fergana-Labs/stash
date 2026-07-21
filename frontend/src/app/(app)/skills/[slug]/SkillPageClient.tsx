@@ -22,6 +22,7 @@ import { GitHubIcon } from "@/components/integrations/BrandIcons";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import SkillShareButton from "@/components/skill/SkillShareButton";
 import { SettingsIcon, SkillIcon } from "@/components/SkillIcons";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
@@ -482,10 +483,11 @@ function SkillIconUpload({
   }
 
   return (
-    <button
+    <Button
       type="button"
-      onClick={() => inputRef.current?.click()}
+      variant="ghost"
       title="Change logo"
+      onClick={() => inputRef.current?.click()}
       className={
         base +
         " group relative cursor-pointer p-0 hover:ring-2 hover:ring-[var(--color-brand-300)]"
@@ -502,7 +504,7 @@ function SkillIconUpload({
         className="hidden"
         onChange={handleChange}
       />
-    </button>
+    </Button>
   );
 }
 

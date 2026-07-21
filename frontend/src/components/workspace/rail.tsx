@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, Monitor, Wrench, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { Button } from "@/components/ui/button";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 
@@ -45,12 +46,12 @@ function RailButton({
 }) {
   const Icon = item.icon;
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       aria-label={item.label}
       className={cn(
-        "flex w-full flex-col items-center gap-1 rounded-lg py-2 transition-colors",
+        "h-auto w-full flex-col gap-1 rounded-lg py-2 font-normal",
         active
           ? "bg-brand-500/12 text-brand-600"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
@@ -58,7 +59,7 @@ function RailButton({
     >
       <Icon className="h-[18px] w-[18px]" />
       <span className="text-[10px] font-medium leading-none">{item.label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -78,13 +79,15 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
   }, [open]);
   return (
     <div ref={ref} className="relative">
-      <button
+      <Button
+        variant="default"
+        size="icon"
         onClick={() => setOpen((o) => !o)}
         title={user.email ?? user.name}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white hover:ring-2 hover:ring-brand-200"
+        className="rounded-full bg-brand-500 text-xs font-semibold text-white hover:ring-2 hover:ring-brand-200"
       >
         {user.display_name[0].toUpperCase()}
-      </button>
+      </Button>
       {open && (
         <div role="menu" className="absolute bottom-0 left-full z-40 ml-2 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg">
           <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
@@ -93,9 +96,9 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
           <Link href="/settings" onClick={() => setOpen(false)} className="block px-3 py-1.5 text-foreground hover:bg-raised">
             Account settings
           </Link>
-          <button onClick={() => { setOpen(false); onLogout(); }} className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised">
+          <Button variant="ghost" onClick={() => { setOpen(false); onLogout(); }} className="h-auto block w-full justify-start px-3 py-1.5 text-left text-[13px] font-normal text-foreground hover:bg-raised">
             Sign out
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -155,19 +158,6 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
         </Fragment>
       ))}
       <div className="mt-auto flex w-full flex-col items-center gap-1">
-        <Link
-          href="/settings"
-          aria-label="Settings"
-          className={cn(
-            "flex w-full flex-col items-center gap-1 rounded-lg py-2 transition-colors",
-            pathname.startsWith("/settings")
-              ? "bg-brand-500/12 text-brand-600"
-              : "text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-          )}
-        >
-          <Settings className="h-[18px] w-[18px]" />
-          <span className="text-[10px] font-medium leading-none">Settings</span>
-        </Link>
         <AccountMenu user={user} onLogout={onLogout} />
       </div>
     </div>

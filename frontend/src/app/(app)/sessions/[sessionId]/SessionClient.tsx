@@ -11,6 +11,7 @@ import { useShareAction } from "@/components/ShellChromeContext";
 import DownloadMenu from "@/components/DownloadMenu";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "@/components/SkeletonStates";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
@@ -341,14 +342,14 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
             })}
             {hasMore && (
               <div ref={sentinelRef} className="flex justify-center py-4">
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  className="cursor-pointer px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
                 >
                   {loadingMore ? "Loading…" : "Load more"}
-                </button>
+                </Button>
               </div>
             )}
             {!error && totalTurns === 0 && (
@@ -413,15 +414,15 @@ function SaveToSkillButton({
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <Button
+        variant="outline"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+        className="cursor-pointer bg-base px-2.5 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
       >
         Save to Skill <span aria-hidden className="text-[10px]">▾</span>
-      </button>
+      </Button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
           {skills === null && (
@@ -431,15 +432,15 @@ function SaveToSkillButton({
             <div className="px-3 py-1.5 text-muted-foreground">No skills yet.</div>
           )}
           {skills?.map((skill) => (
-            <button
+            <Button
               key={skill.folder_id}
-              type="button"
+              variant="ghost"
               disabled={busy}
               onClick={() => void save(skill)}
               className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
             >
               {skill.name}
-            </button>
+            </Button>
           ))}
           {message && <div className="px-3 py-1.5 text-red-500">{message}</div>}
         </div>

@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 import {
   type ChatMessage,
@@ -28,6 +32,7 @@ export default function ChatPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadedSession, setLoadedSession] = useState<string | null>(null);
+  const [loading, setLoading] = useState(() => !!sessionId && loadedSession !== sessionId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -36,11 +41,16 @@ export default function ChatPanel({
   useEffect(() => {
     if (!sessionId || loadedSession === sessionId) return;
     setLoadedSession(sessionId);
+    setLoading(true);
     getAgentChat(sessionId)
       .then((msgs) => {
-        if (msgs.length > 0) setMessages(msgs);
+        setMessages(msgs);
+        setLoading(false);
       })
-      .catch(() => {});
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : String(e));
+        setLoading(false);
+      });
   }, [sessionId, loadedSession]);
 
   useEffect(() => {
@@ -124,19 +134,23 @@ export default function ChatPanel({
   return (
     <div className="flex h-full min-h-[520px] flex-col rounded-xl border border-border bg-base">
       <div ref={scrollRef} className="scroll-thin flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.length === 0 && !streaming ? (
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : messages.length === 0 && !streaming ? (
           <EmptyChatState onPrompt={(prompt) => void send(prompt)} />
         ) : (
           messages.map((m, i) => <MessageBubble key={i} message={m} />)
         )}
         {status && (
-          <div className="flex items-center gap-2 px-1 text-[12px] text-dim">
+          <div className="flex items-center gap-2 px-1 text-xs text-dim">
             <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
             {status}
           </div>
         )}
         {error && (
-          <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
+          <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
             {error}
           </div>
         )}
@@ -173,14 +187,14 @@ function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
 
         <div className="mt-5 grid gap-2 sm:grid-cols-3">
           {suggestedPrompts.map((prompt) => (
-            <button
+            <Button
               key={prompt}
-              type="button"
+              variant="outline"
               onClick={() => onPrompt(prompt)}
-              className="min-h-12 cursor-pointer rounded-md border border-border bg-surface px-3 py-2 text-left text-[12.5px] leading-4 text-foreground hover:border-[var(--color-brand-300)] hover:bg-raised"
+              className="min-h-12 cursor-pointer px-3 py-2 text-left text-[12.5px] leading-4 text-foreground hover:border-[var(--color-brand-300)] hover:bg-raised"
             >
               {prompt}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -302,7 +316,7 @@ function Composer({
   return (
     <div className="border-t border-border p-3">
       <div className="flex items-end gap-2">
-        <textarea
+        <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
@@ -314,16 +328,15 @@ function Composer({
           }}
           rows={2}
           placeholder="Ask your agent anything..."
-          className="flex-1 resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
+          className="flex-1 resize-none text-[13px]"
         />
-        <button
-          type="button"
+        <Button
           onClick={onSend}
           disabled={disabled || !value.trim()}
-          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="cursor-pointer px-4 py-2 text-[13px] text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           Send
-        </button>
+        </Button>
       </div>
     </div>
   );

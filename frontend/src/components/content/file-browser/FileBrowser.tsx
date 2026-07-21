@@ -35,6 +35,7 @@ import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation"
 import { useRecents } from "../../../lib/pins";
 import { routes } from "../../../lib/workspace-routes";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
+import { Button } from "@/components/ui/button";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid from "./FolderItemGrid";
 import ItemsList from "./ItemsList";
@@ -607,13 +608,14 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
             )}
             <div className="flex flex-wrap items-center gap-2">
               <ViewToggle view={view} onChange={setViewPersisted} />
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="xs"
                 onClick={handleUploadFile}
-                className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-xs font-medium text-foreground hover:bg-raised active:bg-raised/80"
+                className="cursor-pointer bg-base px-2.5 py-1 text-xs text-foreground hover:bg-raised active:bg-raised/80"
               >
                 + Upload
-              </button>
+              </Button>
               <NewMenu
                 onNewFolder={handleNewFolder}
                 onNewPage={handleNewPage}
@@ -697,21 +699,21 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
             <span className="hidden text-[11.5px] text-background/60 sm:inline">
               drag onto a folder to move
             </span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => void bulkDelete(selectedItems)}
-              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10 active:bg-background/20"
+              className="cursor-pointer border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10 active:bg-background/20"
             >
               Delete
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
               onClick={clearSelection}
               className="ml-1 cursor-pointer text-lg leading-none text-background/70 hover:text-background"
               aria-label="Clear selection"
             >
               ×
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -719,21 +721,21 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
             <span>Moved &ldquo;{undo.name}&rdquo; to trash.</span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={handleUndoDelete}
-              className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10 active:bg-background/20"
+              className="cursor-pointer border border-background/40 px-2 py-0.5 text-xs font-semibold hover:bg-background/10 active:bg-background/20"
             >
               Undo
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
               onClick={() => setUndo(null)}
               className="ml-1 cursor-pointer text-lg leading-none text-background/70 hover:text-background"
               aria-label="Dismiss"
             >
               ×
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -752,19 +754,19 @@ function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) 
       {tabs.map((t) => {
         const active = scope === t.key;
         return (
-          <button
+          <Button
             key={t.key}
-            type="button"
+            variant="ghost"
             onClick={() => onChange(t.key)}
             className={
-              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] transition-colors " +
+              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] " +
               (active
                 ? "border-[var(--color-brand-600)] font-semibold text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground")
             }
           >
             {t.label}
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -804,21 +806,22 @@ function NewMenu({
 
   return (
     <div ref={ref} className="relative inline-block">
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="xs"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-xs font-medium text-foreground hover:bg-raised"
+        className="cursor-pointer bg-base px-2.5 py-1 text-xs text-foreground hover:bg-raised"
       >
         + New <span aria-hidden className="text-[10px]">▾</span>
-      </button>
+      </Button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
           {options.map((o) => (
-            <button
+            <Button
               key={o.label}
-              type="button"
+              variant="ghost"
               onClick={() => {
                 setOpen(false);
                 o.onSelect();
@@ -826,7 +829,7 @@ function NewMenu({
               className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised active:bg-raised/80"
             >
               {o.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -845,9 +848,9 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => 
       {opts.map((opt) => {
         const active = view === opt.key;
         return (
-          <button
+          <Button
             key={opt.key}
-            type="button"
+            variant="ghost"
             onClick={() => onChange(opt.key)}
             className={
               "cursor-pointer rounded px-2 py-[3px] " +
@@ -855,7 +858,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => 
             }
           >
             {opt.label}
-          </button>
+          </Button>
         );
       })}
     </div>

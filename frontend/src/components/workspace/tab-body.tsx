@@ -15,6 +15,7 @@ import { connectorForProvider } from "@/components/integrations/connectors";
 import MachineFileView from "@/components/workspace/machine-file-view";
 import TerminalPanel from "@/components/agents/TerminalPanel";
 import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
+import { Button } from "@/components/ui/button";
 import { takeAgentConfigView } from "@/lib/agent-tab-view";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
@@ -41,24 +42,25 @@ function AgentViewSelector({
   onChange: (v: "chat" | "config") => void;
 }) {
   return (
-    <div className="flex shrink-0 justify-center border-b border-border px-4 py-2">
+    <div className="flex shrink-0 justify-center px-4 py-2">
       <div className="inline-flex gap-1 rounded-full border border-border bg-surface/60 p-1 shadow-sm">
         {(["chat", "config"] as const).map((key) => {
           const active = view === key;
           return (
-            <button
+            <Button
               key={key}
-              type="button"
+              variant="ghost"
+              size="xs"
               onClick={() => onChange(key)}
               className={
-                "cursor-pointer rounded-full px-3 py-1 text-[12px] leading-none transition-colors " +
+                "cursor-pointer rounded-full px-3 py-1 leading-none " +
                 (active
                   ? "bg-base font-semibold text-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
               }
             >
               {key === "config" ? "Config" : "Chat"}
-            </button>
+            </Button>
           );
         })}
       </div>

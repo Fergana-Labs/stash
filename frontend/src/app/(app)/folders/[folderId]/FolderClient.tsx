@@ -8,6 +8,7 @@ import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
@@ -144,14 +145,15 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     if (!folderName || skillSlug || !user) return null;
     return (
       <div className="flex items-center gap-1.5">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => void convertToSkill()}
           disabled={converting}
-          className="cursor-pointer rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
         >
           {converting ? "Converting…" : "Convert to Skill"}
-        </button>
+        </Button>
         <ResourceShareButton
           objectType="folder"
           objectId={folderId}
