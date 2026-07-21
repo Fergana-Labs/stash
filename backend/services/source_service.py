@@ -483,6 +483,19 @@ async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
     )
 
 
+async def set_sync_warning(source_id: UUID, message: str) -> None:
+    """A non-fatal, owner-facing sync notice (e.g. one feed of a source needs a
+    paid provider tier while the rest keeps syncing). Stored in sync_error but
+    the source stays idle; the next sync start clears it, so a resolved warning
+    disappears on its own. Same safety rule as SourceSyncUserError: the message
+    must never contain tokens or provider payloads."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_error = $2, updated_at = now() WHERE id = $1",
+        source_id,
+        message[:500],
+    )
+
+
 async def mark_sync_failed(source_id: UUID, error: str) -> None:
     await get_pool().execute(
         "UPDATE user_sources SET sync_status = 'failed', sync_error = $2, updated_at = now() "

@@ -584,8 +584,16 @@ function SourceRow({
             )}
           </span>
         </div>
-        {status.sync_status === "failed" && status.sync_error && (
-          <div className="mt-1 truncate font-mono text-[11.5px] text-error">{status.sync_error}</div>
+        {status.sync_error && (
+          <div
+            className={
+              "mt-1 truncate font-mono text-[11.5px] " +
+              (status.sync_status === "failed" ? "text-error" : "text-warning")
+            }
+            title={status.sync_error}
+          >
+            {status.sync_error}
+          </div>
         )}
         {pollStopped && (
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
