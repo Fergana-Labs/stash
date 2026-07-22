@@ -104,8 +104,6 @@ SkillGeneralPermission = str  # 'none' | 'read' | 'write'
 
 class SkillPublishRequest(BaseModel):
     folder_id: UUID
-    title: str | None = Field(None, min_length=1, max_length=160)
-    description: str = Field("", max_length=2000)
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -160,6 +158,7 @@ class ForkSkillRequest(BaseModel):
 class FolderCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     parent_folder_id: UUID | None = None
+    is_skill: bool = False
 
 
 class FolderUpdateRequest(BaseModel):
@@ -173,6 +172,7 @@ class FolderResponse(BaseModel):
     owner_user_id: UUID
     parent_folder_id: UUID | None = None
     name: str
+    is_skill: bool
     created_by: UUID
     created_at: datetime
     updated_at: datetime
@@ -531,11 +531,11 @@ class HistoryQueryResponse(BaseModel):
 
 class PublishRequest(BaseModel):
     """Single-call publish: create a Page from supplied content, wrap it in a
-    Stash, and return the Stash URL. Folder is optional; defaults to the
-    scope's "AI Drafts" folder that's auto-created on first use."""
+    Skill, and return the public URL."""
 
     owner_user_id: UUID | None = None
     title: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(..., min_length=1, max_length=2000)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect|full-width)$")

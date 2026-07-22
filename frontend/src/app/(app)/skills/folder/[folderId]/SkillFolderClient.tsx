@@ -13,11 +13,10 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   getFolderContents,
   listSkills,
-  trashItem,
+  setFolderIsSkill,
   type FolderContents,
   type SkillPublishInfo,
 } from "@/lib/api";
-import { SKILL_MD } from "@/lib/localSkill";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 // Browse a skill folder (or a subfolder inside one). Same file browser as
@@ -107,17 +106,12 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
       : "";
     const yes = await confirm({
       title: `Convert "${contents.folder.name}" back to a plain folder?`,
-      body: `This deletes its SKILL.md.${publishedWarning}`,
+      body: `This moves it from Skills to Files.${publishedWarning}`,
       confirmLabel: "Convert",
     });
     if (!yes) return;
-    const skillMd = contents.pages.find((p) => p.name === SKILL_MD);
-    if (!skillMd) {
-      setError("SKILL.md not found in this folder.");
-      return;
-    }
     try {
-      await trashItem("page", skillMd.id);
+      await setFolderIsSkill(folderId, false);
       await refreshSidebar().catch(() => {});
       router.push(`/folders/${folderId}`);
     } catch (e) {

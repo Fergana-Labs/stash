@@ -121,6 +121,7 @@ async def test_skill_is_public_unlisted_and_includes_kb_pages(client: AsyncClien
             "/api/v1/demo/skills",
             json={
                 "title": "Visibility check",
+                "description": "Check demo visibility.",
                 "items": [{"object_type": "page", "object_id": page["page_id"]}],
             },
         )
@@ -178,6 +179,7 @@ async def test_kb_folder_is_reused_across_demos(client: AsyncClient, pool):
             "/api/v1/demo/skills",
             json={
                 "title": "Reuse check",
+                "description": "Check knowledge-base reuse.",
                 "items": [{"object_type": "page", "object_id": page["page_id"]}],
             },
         )
@@ -218,6 +220,7 @@ async def test_rejects_items_outside_demo_scope(client: AsyncClient, pool):
         "/api/v1/demo/skills",
         json={
             "title": "Cross-scope attempt",
+            "description": "This request must be rejected.",
             "items": [{"object_type": "page", "object_id": str(outside_page_id)}],
         },
     )
@@ -243,6 +246,7 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
         "/api/v1/demo/skills",
         json={
             "title": "Referenced",
+            "description": "Keep this referenced demo.",
             "items": [{"object_type": "page", "object_id": referenced_page["page_id"]}],
         },
     )

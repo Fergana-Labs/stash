@@ -16,6 +16,8 @@ from uuid import UUID
 
 from claude_agent_sdk import tool
 
+from stashai.skill_validation import validate_skill_md
+
 from ..config import settings
 from . import (
     files_tree_service,
@@ -288,8 +290,7 @@ async def _query_table(args: dict) -> dict:
 
 @tool(
     "list_skills",
-    "List skills (folders with SKILL.md) in this Stash account, with their "
-    "publish info when shared.",
+    "List explicit skill folders in this Stash account, with their publish info when shared.",
     {"type": "object", "properties": {}},
 )
 async def _list_skills(args: dict) -> dict:
@@ -329,7 +330,7 @@ async def _read_skill(args: dict) -> dict:
 
 @tool(
     "create_skill",
-    "Create a skill: a folder with a SKILL.md (frontmatter name/description + "
+    "Create an explicit skill folder with a SKILL.md manifest (frontmatter name/description + "
     "markdown body) and optional sibling markdown files.",
     {
         "type": "object",
@@ -356,9 +357,12 @@ async def _read_skill(args: dict) -> dict:
     },
 )
 async def _create_skill(args: dict) -> dict:
+    validate_skill_md(args["skill_md"])
     owner_user_id = _current_scope()
     user_id = _current_user()
-    folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)
+    folder = await files_tree_service.create_folder(
+        owner_user_id, args["name"], user_id, is_skill=True
+    )
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",

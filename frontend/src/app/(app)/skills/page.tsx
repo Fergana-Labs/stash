@@ -117,7 +117,7 @@ export default function SkillsPage() {
     const name = window.prompt("Skill name?");
     if (!name?.trim()) return;
     try {
-      const folder = await createFolder(name.trim());
+      const folder = await createFolder(name.trim(), null, true);
       await createPage(SKILL_MD, folder.id, skillMdTemplate(name.trim()));
       if (user) await refreshSidebar().catch(() => {});
       router.push(`/skills/folder/${folder.id}`);

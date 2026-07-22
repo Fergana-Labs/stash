@@ -17,6 +17,8 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
+from stashai.skill_validation import render_skill_md
+
 from ..config import settings
 from ..middleware import limiter
 from ..services import (
@@ -85,7 +87,7 @@ class DemoSkillItem(BaseModel):
 
 class DemoSkillCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
-    description: str = Field("", max_length=2000)
+    description: str = Field(..., min_length=1, max_length=2000)
     items: list[DemoSkillItem] = Field(..., min_length=1)
 
 
@@ -219,7 +221,7 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
     pool = get_pool()
 
     folder = await files_tree_service.create_folder(
-        owner_user_id, _unique_page_name(req.title), owner_id
+        owner_user_id, _unique_page_name(req.title), owner_id, is_skill=True
     )
 
     for item in req.items:
@@ -263,13 +265,19 @@ async def create_skill(request: Request, req: DemoSkillCreate = Body(...)) -> di
             content_type=kb_page["content_type"] or "markdown",
         )
 
+    await files_tree_service.create_page(
+        owner_user_id,
+        "SKILL.md",
+        owner_id,
+        folder_id=folder["id"],
+        content=render_skill_md(req.title, req.description),
+    )
+
     try:
         skill = await shared_skill_service.publish_folder(
             owner_user_id,
             owner_id,
             folder["id"],
-            title=req.title,
-            description=req.description,
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))

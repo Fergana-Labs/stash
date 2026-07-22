@@ -5,6 +5,13 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Skills are now explicitly typed folders under the `/skills` VFS root.
+  A file named `SKILL.md` is the agent manifest inside a Skill; creating or
+  deleting that filename no longer silently changes an ordinary folder's type.
+- Agent skills now require non-empty `name` and `description` metadata
+  before Stash creates, imports, publishes, installs, or syncs them. Stash
+  no longer syncs every skill into global agent directories at session
+  startup; installation and sync are explicit commands.
 - Frontend server-side backend requests now require `BACKEND_INTERNAL_URL`
   or `NEXT_PUBLIC_API_URL` instead of guessing an environment, so missing
   managed deploy config fails during build rather than crashing public

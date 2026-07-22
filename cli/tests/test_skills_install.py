@@ -20,7 +20,10 @@ def _detail() -> dict:
                 {
                     "name": "SKILL.md",
                     "content_type": "markdown",
-                    "content_markdown": "---\nname: hivemind-memory\n---\nBody.",
+                    "content_markdown": (
+                        "---\nname: hivemind-memory\n"
+                        "description: Recall shared team knowledge.\n---\nBody."
+                    ),
                     "content_html": "",
                     "folder_path": [],
                 },
@@ -56,7 +59,7 @@ def test_install_writes_skill_folder(tmp_path) -> None:
     target, written = main._materialize_skill(_detail(), tmp_path, _fetch)
 
     assert target == tmp_path / "hivemind-memory"
-    # SKILL.md keeps its exact name — that's what makes the folder a skill.
+    # SKILL.md keeps its exact name because agent harnesses require it.
     assert (target / "SKILL.md").read_text().startswith("---\nname: hivemind-memory")
     # Extensionless pages gain .md so they're readable files on disk.
     assert (target / "Notes.md").read_text() == "# notes"
@@ -77,6 +80,19 @@ def test_reinstall_replaces_previous_copy(tmp_path) -> None:
 
     assert not stale.exists()
     assert (tmp_path / "hivemind-memory" / "SKILL.md").exists()
+
+
+def test_invalid_reinstall_preserves_previous_copy(tmp_path) -> None:
+    main._materialize_skill(_detail(), tmp_path, _fetch)
+    existing = tmp_path / "hivemind-memory" / "SKILL.md"
+    original = existing.read_text()
+    detail = _detail()
+    detail["contents"]["pages"][0]["content_markdown"] = "# invalid"
+
+    with pytest.raises(ValueError, match="non-empty `name`"):
+        main._materialize_skill(detail, tmp_path, _fetch)
+
+    assert existing.read_text() == original
 
 
 def test_install_never_clobbers_a_non_skill_dir(tmp_path) -> None:

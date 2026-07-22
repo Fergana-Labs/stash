@@ -194,6 +194,7 @@ describe("SkillsPage", () => {
       owner_user_id: "user-1",
       name: "My Skill",
       parent_folder_id: null,
+      is_skill: true,
       created_by: "user-1",
       created_at: "",
       updated_at: "",
@@ -204,7 +205,7 @@ describe("SkillsPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
 
-    await waitFor(() => expect(createFolder).toHaveBeenCalledWith("My Skill"));
+    await waitFor(() => expect(createFolder).toHaveBeenCalledWith("My Skill", null, true));
     expect(createPage).toHaveBeenCalledWith(
       "SKILL.md",
       "folder-9",

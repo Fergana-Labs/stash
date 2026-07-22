@@ -29,7 +29,7 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
     owner_user_id = me.json()["id"]
     folder = await client.post(
         "/api/v1/me/folders",
-        json={"name": "my-skill"},
+        json={"name": "my-skill", "is_skill": True},
         headers=_auth(api_key),
     )
     folder_id = folder.json()["id"]
@@ -37,7 +37,7 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
         "/api/v1/me/pages/new",
         json={
             "name": "SKILL.md",
-            "content": "---\nname: my-skill\n---\nv1",
+            "content": "---\nname: my-skill\ndescription: Test syncing.\n---\nv1",
             "folder_id": folder_id,
         },
         headers=_auth(api_key),
@@ -74,7 +74,14 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
         files=[
-            ("files", ("SKILL.md", b"---\nname: my-skill\n---\nv2", "text/markdown")),
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: my-skill\ndescription: Test syncing.\n---\nv2",
+                    "text/markdown",
+                ),
+            ),
             ("files", ("references/guide.md", b"# guide", "text/markdown")),
         ],
         headers=_auth(api_key),
@@ -95,7 +102,16 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     # nothing may orphan into the scope root (folder FKs are SET NULL).
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
-        files=[("files", ("SKILL.md", b"v3", "text/markdown"))],
+        files=[
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: my-skill\ndescription: Test syncing.\n---\nv3",
+                    "text/markdown",
+                ),
+            )
+        ],
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -122,6 +138,21 @@ async def test_put_contents_requires_skill_md_and_ownership(client: AsyncClient)
         headers=_auth(api_key),
     )
     assert missing.status_code == 400
+
+    invalid = await client.put(
+        f"/api/v1/me/skills/{folder_id}/contents",
+        files=[("files", ("SKILL.md", b"# invalid", "text/markdown"))],
+        headers=_auth(api_key),
+    )
+    assert invalid.status_code == 400
+    unchanged = await client.get(
+        f"/api/v1/me/skills/{folder_id}/contents",
+        headers=_auth(api_key),
+    )
+    skill_md = next(
+        page for page in unchanged.json()["contents"]["pages"] if page["name"] == "SKILL.md"
+    )
+    assert "description: Test syncing." in skill_md["content_markdown"]
 
     traversal = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",

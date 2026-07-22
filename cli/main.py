@@ -21,6 +21,7 @@ from rich.text import Text
 
 from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
+from stashai.skill_validation import render_skill_md, validate_skill_md
 
 from . import __version__, telemetry
 from .client import StashClient, StashError
@@ -1146,7 +1147,7 @@ def upload(
     console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
 
     with _client() as c:
-        root_folder = c.create_folder(root_name)
+        root_folder = c.create_folder(root_name, is_skill=create_skill)
         folder_cache: dict[tuple[str, str], str] = {}
 
         for file_path in files:
@@ -1180,7 +1181,6 @@ def upload(
         result: dict = {"folder": root_folder, "app_url": folder_url}
 
         if create_skill:
-            # A skill is a folder with a SKILL.md; publishing makes it public.
             try:
                 c.create_page(
                     name="SKILL.md",
@@ -1279,8 +1279,8 @@ def read_skill(
 
 skills_app = typer.Typer(
     help=(
-        "Skills — modules of agent-usable knowledge. Local skills are Files "
-        "folders with a SKILL.md; shared skills are publishable bundles of "
+        "Skills — explicit folders under the Skills root. SKILL.md is the "
+        "agent manifest; shared skills are publishable bundles of "
         "pages, sessions, tables, and files."
     )
 )
@@ -1291,7 +1291,7 @@ app.add_typer(skills_app, name="skills")
 def skills_add(
     folder: str = typer.Argument(..., help="Local folder containing a SKILL.md file."),
 ):
-    """Upload a local skill folder (must contain a SKILL.md) into your Files."""
+    """Upload a local agent package as an explicit Stash skill."""
     src = Path(folder)
     if not src.is_dir():
         console.print(f"[red]Not a folder: {folder}[/red]")
@@ -1300,12 +1300,16 @@ def skills_add(
     if not skill_md_path.exists():
         console.print(f"[red]Missing SKILL.md in {folder}[/red]")
         raise typer.Exit(1)
+    try:
+        validate_skill_md(skill_md_path.read_text())
+    except ValueError as error:
+        console.print(f"[red]Invalid SKILL.md:[/red] {error}")
+        raise typer.Exit(1) from error
 
     folder_name = src.name
     with _client() as c:
         try:
-            # Skills are represented as folders containing markdown pages.
-            new_folder = c.create_folder(folder_name)
+            new_folder = c.create_folder(folder_name, is_skill=True)
             folder_id = new_folder["id"]
             for md_file in sorted(src.glob("*.md")):
                 c.create_page(
@@ -1316,25 +1320,25 @@ def skills_add(
                 )
         except StashError as e:
             _err(e)
-    console.print(f"[green]Added skill '{folder_name}' to your Files.[/green]")
+    console.print(f"[green]Added skill '{folder_name}' to your Skills.[/green]")
 
 
 @skills_app.command("create")
 def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
-    description: str = typer.Option("", "--description"),
+    description: str = typer.Option(..., "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a skill: a folder with a SKILL.md template. Pass --public to publish."""
+    """Create an explicit skill folder with a SKILL.md manifest."""
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
-    skill_md = f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+    skill_md = render_skill_md(name, description)
     with _client() as c:
         try:
-            folder = c.create_folder(name)
+            folder = c.create_folder(name, is_skill=True)
             c.create_page(
                 name="SKILL.md",
                 content=skill_md,
@@ -1444,6 +1448,12 @@ def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Pa
     is allowed only when the target already looks like a skill (has a
     SKILL.md) — never delete an arbitrary directory on a name collision."""
     contents = detail["contents"]
+    skill_pages = [
+        page for page in contents["pages"] if not page["folder_path"] and page["name"] == "SKILL.md"
+    ]
+    if len(skill_pages) != 1:
+        raise ValueError("A skill must contain exactly one root SKILL.md")
+    validate_skill_md(skill_pages[0]["content_markdown"] or "")
     target = skills_root / _safe_skill_dirname(detail["folder_name"])
     if target.exists():
         if not (target / "SKILL.md").exists():
@@ -1625,6 +1635,7 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
         summary["pulled"].append(name)
 
     def push(name: str, folder_id: str) -> None:
+        validate_skill_md((local[name] / "SKILL.md").read_text())
         c.replace_skill_contents(folder_id, _collect_local_files(local[name]))
         record(name, c.get_skill_contents(folder_id))
         summary["pushed"].append(name)
@@ -1641,7 +1652,7 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
                 if rec:
                     summary["ignored"].append(f"{name} (deleted in Stash; kept local copy)")
                 elif push_new:
-                    folder = c.create_folder(name)
+                    folder = c.create_folder(name, is_skill=True)
                     push(name, folder["id"])
                 else:
                     summary["ignored"].append(f"{name} (local-only; `stash skills add` to share)")
@@ -3697,9 +3708,10 @@ search Stash first — it has the full session record and human decisions across
 
 ### What a Skill is
 
-A Skill is a *special folder* — one containing a SKILL.md — holding related artifacts
-(pages, files, tables) that shares like any folder and gains a public URL when
-published. Use one when you're publishing a *collection* of related things together — a
+A Skill is an explicitly created folder under the `/skills` VFS root. Its
+SKILL.md is the agent manifest, not what determines the folder's type. It holds
+related artifacts (pages, files, tables) and gains a public URL when published.
+Use one when you're publishing a *collection* of related things together — a
 project writeup with its supporting files, a research thread with its sources, a session
 transcript frozen as a page plus the files it produced.
 
@@ -4608,9 +4620,10 @@ AGENT_GUIDANCE_PROMPT = """\
 What a Skill is
 ===============
 
-A Skill is a special folder — one containing a SKILL.md — holding related
-artifacts (pages, files, tables) that shares like any folder and gains a
-public URL when published. Use one when you're publishing a collection of
+A Skill is an explicitly created folder under the /skills VFS root. Its
+SKILL.md is the agent manifest, not what determines the folder's type. It
+shares like a folder and gains a public URL when published. Use one when
+you're publishing a collection of
 related things together — a project writeup with its supporting files, a
 research thread with its sources, a session transcript frozen as a page
 with its outputs.
@@ -4652,8 +4665,8 @@ Commands to reach for
   session. `--project` targets ./.claude/skills instead.
 - `stash skills sync` — two-way sync between the local skills directory
   and your skills: your skills materialize locally, local edits to synced
-  skills push back. Runs automatically at session start, targeting each
-  agent's own skills dir (Claude `~/.claude/skills`, Codex/Gemini/OpenCode
+  skills push back. Run it explicitly, targeting each agent's own skills
+  dir (Claude `~/.claude/skills`, Codex/Gemini/OpenCode
   `~/.agents/skills`, OpenClaw `~/.openclaw/skills`).
 
 Browsing Stash

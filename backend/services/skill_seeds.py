@@ -147,7 +147,7 @@ async def seed_slides_skill(owner_user_id: UUID, creator_id: UUID) -> bool:
     existing = await pool.fetchval(
         "SELECT p.id FROM pages p "
         "JOIN folders f ON f.id = p.folder_id "
-        "WHERE f.owner_user_id = $1 AND lower(f.name) = $2 "
+        "WHERE f.owner_user_id = $1 AND f.is_skill AND lower(f.name) = $2 "
         "  AND p.name = $3 AND p.deleted_at IS NULL "
         "LIMIT 1",
         owner_user_id,
@@ -157,21 +157,13 @@ async def seed_slides_skill(owner_user_id: UUID, creator_id: UUID) -> bool:
     if existing:
         return False
 
-    folder_row = await pool.fetchrow(
-        "SELECT id FROM folders WHERE owner_user_id = $1 AND lower(name) = $2 "
-        "  AND parent_folder_id IS NULL LIMIT 1",
-        owner_user_id,
-        SLIDES_SKILL_FOLDER,
+    folder = await files_tree_service.create_folder(
+        owner_user_id=owner_user_id,
+        name=SLIDES_SKILL_FOLDER,
+        created_by=creator_id,
+        is_skill=True,
     )
-    if folder_row:
-        folder_id = folder_row["id"]
-    else:
-        folder = await files_tree_service.create_folder(
-            owner_user_id=owner_user_id,
-            name=SLIDES_SKILL_FOLDER,
-            created_by=creator_id,
-        )
-        folder_id = folder["id"]
+    folder_id = folder["id"]
 
     await files_tree_service.create_page(
         owner_user_id=owner_user_id,

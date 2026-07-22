@@ -31,7 +31,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
+async def test_publish_uses_current_user_scope(client: AsyncClient):
     """A new user can call /publish without supplying owner_user_id."""
     key = await _register(client)
 
@@ -39,6 +39,7 @@ async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
         "/api/v1/publish",
         json={
             "title": "Untitled HTML",
+            "description": "Render a shared HTML page.",
             "content_type": "html",
             "content": "<h1>hi</h1>",
         },
@@ -64,6 +65,7 @@ async def test_publish_with_explicit_scope(client: AsyncClient):
         json={
             "owner_user_id": owner_user_id,
             "title": "Explicit-WS publish",
+            "description": "Publish into an explicit scope.",
             "content_type": "markdown",
             "content": "# hello",
         },
@@ -87,6 +89,7 @@ async def test_publish_rejects_non_owner_scope(client: AsyncClient):
         json={
             "owner_user_id": foreign_owner,
             "title": "Foreign publish",
+            "description": "This request must be rejected.",
             "content_type": "markdown",
             "content": "# nope",
         },
@@ -128,6 +131,7 @@ async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
         json={
             "owner_user_id": owner_user_id,
             "title": "Sharee draft",
+            "description": "This request must be rejected.",
             "content": "# should not persist",
         },
         headers=_auth(sharee_key),
@@ -138,3 +142,47 @@ async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
         "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", owner_user_id
     )
     assert page_count == 0
+
+
+@pytest.mark.asyncio
+async def test_publish_reuses_existing_skill_md(client: AsyncClient):
+    """Publishing into a folder that already carries a SKILL.md must not try to
+    mint a second one (which would collide); the existing manifest is the
+    metadata source of truth."""
+    key = await _register(client)
+
+    folder = await client.post(
+        "/api/v1/me/folders",
+        json={"name": "Prewritten skill", "is_skill": True},
+        headers=_auth(key),
+    )
+    assert folder.status_code == 201
+    folder_id = folder.json()["id"]
+    skill_md = await client.post(
+        "/api/v1/me/pages/new",
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": "---\nname: Hand-written skill\ndescription: Authored by the user.\n---\n",
+        },
+        headers=_auth(key),
+    )
+    assert skill_md.status_code == 201
+
+    resp = await client.post(
+        "/api/v1/publish",
+        json={
+            "title": "Ignored title",
+            "description": "Ignored description.",
+            "content": "# body",
+            "folder_id": folder_id,
+        },
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["folder_id"] == folder_id
+
+    skill = await client.get(f"/api/v1/me/skills/{folder_id}/contents", headers=_auth(key))
+    md_pages = [p for p in skill.json()["contents"]["pages"] if p["name"] == "SKILL.md"]
+    assert len(md_pages) == 1
+    assert "Authored by the user." in md_pages[0]["content_markdown"]

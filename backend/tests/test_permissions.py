@@ -59,14 +59,22 @@ async def _make_scope(pool, creator_id):
     return creator_id
 
 
-async def _make_folder(pool, owner_user_id, created_by, name="folder", parent_folder_id=None):
+async def _make_folder(
+    pool,
+    owner_user_id,
+    created_by,
+    name="folder",
+    parent_folder_id=None,
+    is_skill=False,
+):
     row = await pool.fetchrow(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         owner_user_id,
         parent_folder_id,
         name,
         created_by,
+        is_skill,
     )
     return row["id"]
 
@@ -355,9 +363,17 @@ async def test_published_skill_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     scope = await _make_scope(pool, owner)
-    folder = await _make_folder(pool, scope, owner, name="public-skill")
+    folder = await _make_folder(pool, scope, owner, name="public-skill", is_skill=True)
     page = await _make_page(pool, scope, owner, folder_id=folder)
-    await shared_skill_service.publish_folder(scope, owner, folder, title="Public Skill")
+    await _make_page(
+        pool,
+        scope,
+        owner,
+        folder_id=folder,
+        name="SKILL.md",
+        content="---\nname: Public Skill\ndescription: Test public access.\n---\n",
+    )
+    await shared_skill_service.publish_folder(scope, owner, folder)
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -690,14 +706,24 @@ async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient
     folder_id = (
         await client.post(
             "/api/v1/me/folders",
-            json={"name": "Handbook"},
+            json={"name": "Handbook", "is_skill": True},
             headers=_auth(owner_key),
         )
     ).json()["id"]
+    skill_page = await client.post(
+        "/api/v1/me/pages/new",
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": "---\nname: Handbook\ndescription: Team handbook.\n---\n",
+        },
+        headers=_auth(owner_key),
+    )
+    assert skill_page.status_code == 201
     skill_id = (
         await client.post(
             "/api/v1/me/skills",
-            json={"folder_id": folder_id, "title": "Handbook"},
+            json={"folder_id": folder_id},
             headers=_auth(owner_key),
         )
     ).json()["id"]
@@ -1305,9 +1331,17 @@ async def test_predicate_and_check_access_agree(pool):
     # Published-skill folder: stranger and anonymous get READ (never write), and
     # the predicate must agree. This is the public-read branch the refactor folded
     # into the one predicate, so it gets an explicit equivalence check.
-    pub_folder = await _make_folder(pool, scope, owner, name="pub-skill")
+    pub_folder = await _make_folder(pool, scope, owner, name="pub-skill", is_skill=True)
     pub_page = await _make_page(pool, scope, owner, folder_id=pub_folder)
-    await shared_skill_service.publish_folder(scope, owner, pub_folder, title="Pub")
+    await _make_page(
+        pool,
+        scope,
+        owner,
+        folder_id=pub_folder,
+        name="SKILL.md",
+        content="---\nname: Pub\ndescription: Test public access.\n---\n",
+    )
+    await shared_skill_service.publish_folder(scope, owner, pub_folder)
     for viewer in (stranger, None):
         for require in ("read", "write"):
             boolean = await permission_service.check_access(

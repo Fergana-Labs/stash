@@ -1,6 +1,6 @@
-"""Published skills — public records attached 1:1 to skill folders.
+"""Published skills — public records attached 1:1 to explicit skill folders.
 
-A skill is a folder containing SKILL.md (skill_service). Person-to-person
+Person-to-person
 sharing rides the generic folder shares; this module owns only *publishing*:
 the ``skills`` row (slug, Discover flag, cover art, view count) whose
 existence makes the folder publicly readable at /skills/<slug>. Writes always
@@ -15,6 +15,8 @@ import secrets
 from uuid import UUID
 
 import asyncpg
+
+from stashai.skill_validation import validate_skill_md
 
 from ..database import get_pool
 from . import (
@@ -113,29 +115,6 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
-def skill_md_template(name: str, description: str = "") -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
-
-
-async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
-    pool = get_pool()
-    existing = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
-        "AND deleted_at IS NULL LIMIT 1",
-        folder_id,
-    )
-    if existing:
-        return
-    await files_tree_service.create_page(
-        owner_user_id,
-        "SKILL.md",
-        user_id,
-        folder_id=folder_id,
-        content=skill_md_template(title),
-        content_type="markdown",
-    )
-
-
 # --- Publish lifecycle ---
 
 
@@ -144,22 +123,21 @@ async def publish_folder(
     owner_id: UUID,
     folder_id: UUID,
     *,
-    title: str | None = None,
-    description: str = "",
     discoverable: bool = False,
     cover_image_url: str | None = None,
     icon_url: str | None = None,
     source_github_url: str | None = None,
 ) -> dict:
     """Mint the publish record for a skill folder — the folder becomes
-    publicly readable at /skills/<slug>. Creates the SKILL.md template if the
-    folder doesn't have one yet."""
+    publicly readable at /skills/<slug>."""
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT id, name, owner_user_id FROM folders WHERE id = $1", folder_id
+        "SELECT id, name, owner_user_id, is_skill FROM folders WHERE id = $1", folder_id
     )
     if not folder or folder["owner_user_id"] != owner_user_id:
         raise ValueError("Folder not found in this scope")
+    if not folder["is_skill"]:
+        raise ValueError("Folder is not a Skill")
     if not await user_scope_service.is_owner(owner_user_id, owner_id):
         raise ValueError("Only scope owners can publish Skills")
     if not await permission_service.check_access(
@@ -167,17 +145,16 @@ async def publish_folder(
     ):
         raise PermissionError("Not allowed to publish this folder")
 
-    if not title:
-        skill_md = await pool.fetchval(
-            "SELECT content_markdown FROM pages WHERE folder_id = $1 "
-            "AND name = 'SKILL.md' AND deleted_at IS NULL LIMIT 1",
-            folder_id,
-        )
-        meta, _body = skill_service.parse_frontmatter(skill_md or "")
-        title = meta.get("name") or folder["name"]
-        description = description or meta.get("description", "")
-
-    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title)
+    skill_md = await pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id = $1 "
+        "AND name = 'SKILL.md' AND deleted_at IS NULL LIMIT 1",
+        folder_id,
+    )
+    if skill_md is None:
+        raise ValueError("Skill folder must contain a valid SKILL.md")
+    metadata = validate_skill_md(skill_md)
+    title = metadata["name"]
+    description = metadata["description"]
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "
@@ -365,7 +342,7 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
         JOIN users ow ON ow.id = sh.owner_user_id
         LEFT JOIN users u ON u.id = sh.created_by
         LEFT JOIN skills v ON v.folder_id = f.id
-        WHERE sh.principal_type = 'user' AND sh.principal_id = $1
+        WHERE f.is_skill AND sh.principal_type = 'user' AND sh.principal_id = $1
           AND (sh.expires_at IS NULL OR sh.expires_at > now())
         ORDER BY owner_name, f.name
         """,
@@ -652,18 +629,20 @@ async def _fork_folder(
     parent_folder_id: UUID | None,
     user_id: UUID,
     name_override: str | None = None,
+    is_skill: bool = False,
 ) -> UUID:
     folder = await conn.fetchrow("SELECT name FROM folders WHERE id = $1", source_folder_id)
     if not folder:
         raise ValueError("Skill folder not found")
 
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         owner_user_id,
         parent_folder_id,
         name_override or folder["name"],
         user_id,
+        is_skill,
     )
 
     child_folders = await conn.fetch(
@@ -677,6 +656,7 @@ async def _fork_folder(
             owner_user_id=owner_user_id,
             parent_folder_id=new_folder["id"],
             user_id=user_id,
+            is_skill=False,
         )
 
     pages = await conn.fetch(
@@ -747,6 +727,7 @@ async def fork_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | N
                             parent_folder_id=None,
                             user_id=added_by,
                             name_override=name,
+                            is_skill=True,
                         )
                     break
                 except asyncpg.UniqueViolationError:

@@ -14,6 +14,8 @@ from uuid import UUID
 import asyncpg
 import nh3
 
+from stashai.skill_validation import validate_skill_md
+
 from ..database import get_pool
 from . import page_events, permission_service, security_audit_service, skill_service
 
@@ -253,8 +255,11 @@ async def create_folder(
     name: str,
     created_by: UUID,
     parent_folder_id: UUID | None = None,
+    is_skill: bool = False,
 ) -> dict:
     pool = get_pool()
+    if is_skill and parent_folder_id is not None:
+        raise ValueError("Skills must be created at the Skills root")
     if parent_folder_id is not None:
         parent = await pool.fetchrow(
             "SELECT owner_user_id FROM folders WHERE id = $1", parent_folder_id
@@ -263,13 +268,15 @@ async def create_folder(
             raise ValueError("parent_folder_id does not belong to scope")
     try:
         row = await pool.fetchrow(
-            "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-            "VALUES ($1, $2, $3, $4) "
-            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
+            "VALUES ($1, $2, $3, $4, $5) "
+            "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+            "created_at, updated_at",
             owner_user_id,
             parent_folder_id,
             name,
             created_by,
+            is_skill,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicateFolderName(owner_user_id, parent_folder_id, name) from e
@@ -279,11 +286,44 @@ async def create_folder(
 async def get_folder(folder_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "created_at, updated_at "
         "FROM folders WHERE id = $1",
         folder_id,
     )
     return dict(row) if row else None
+
+
+async def set_folder_is_skill(
+    folder_id: UUID,
+    owner_user_id: UUID,
+    is_skill: bool,
+) -> dict | None:
+    """Explicitly move a root folder into or out of the Skills namespace."""
+    pool = get_pool()
+    folder = await pool.fetchrow(
+        "SELECT parent_folder_id FROM folders WHERE id = $1 AND owner_user_id = $2",
+        folder_id,
+        owner_user_id,
+    )
+    if folder is None:
+        return None
+    if is_skill and folder["parent_folder_id"] is not None:
+        raise ValueError("Skills must be created at the Skills root")
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            if not is_skill:
+                await conn.execute("DELETE FROM skills WHERE folder_id = $1", folder_id)
+            row = await conn.fetchrow(
+                "UPDATE folders SET is_skill = $1, updated_at = now() "
+                "WHERE id = $2 AND owner_user_id = $3 "
+                "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+                "created_at, updated_at",
+                is_skill,
+                folder_id,
+                owner_user_id,
+            )
+    return dict(row)
 
 
 async def list_folders(owner_user_id: UUID, user_id: UUID | None = None) -> list[dict]:
@@ -294,7 +334,8 @@ async def list_folders(owner_user_id: UUID, user_id: UUID | None = None) -> list
         args.append(user_id)
         where += " AND " + permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "created_at, updated_at "
         f"FROM folders f WHERE {where} ORDER BY name",
         *args,
     )
@@ -306,7 +347,8 @@ async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> 
     One per owner (partial unique index); created on first access."""
     pool = get_pool()
     select = (
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "created_at, updated_at "
         "FROM folders WHERE owner_user_id = $1 AND is_memory LIMIT 1"
     )
     row = await pool.fetchrow(select, owner_user_id)
@@ -316,7 +358,8 @@ async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> 
         row = await pool.fetchrow(
             "INSERT INTO folders (owner_user_id, name, created_by, is_memory) "
             "VALUES ($1, 'Memory', $2, true) "
-            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+            "created_at, updated_at",
             owner_user_id,
             created_by,
         )
@@ -390,7 +433,8 @@ async def memory_tree(owner_user_id: UUID, created_by: UUID) -> dict:
         "  SELECT f.* FROM folders f WHERE f.id = $1"
         "  UNION ALL"
         "  SELECT f.* FROM folders f JOIN mtree m ON f.parent_folder_id = m.id"
-        ") SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        ") SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "created_at, updated_at "
         "FROM mtree ORDER BY name",
         memory["id"],
     )
@@ -438,6 +482,13 @@ async def update_folder(
     """Rename and/or reparent a folder. Cycle-checks before moving."""
     pool = get_pool()
     await _assert_not_memory(folder_id, owner_user_id)
+    is_skill = await pool.fetchval(
+        "SELECT is_skill FROM folders WHERE id = $1 AND owner_user_id = $2",
+        folder_id,
+        owner_user_id,
+    )
+    if is_skill and parent_folder_id is not None:
+        raise ValueError("Skills must stay at the Skills root")
     if (parent_folder_id is not None or move_to_root) and not move_to_root:
         await _assert_no_cycle(folder_id, parent_folder_id)
 
@@ -458,7 +509,8 @@ async def update_folder(
         row = await pool.fetchrow(
             f"UPDATE folders SET {', '.join(sets)} "
             f"WHERE id = ${idx} AND owner_user_id = ${idx + 1} "
-            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+            "created_at, updated_at",
             *args,
         )
     except asyncpg.UniqueViolationError as e:
@@ -596,11 +648,19 @@ async def create_page(
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
 ) -> dict:
-    pool = get_pool()
+    folder_is_skill = False
     if folder_id is not None:
-        folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
+        folder = await get_pool().fetchrow(
+            "SELECT owner_user_id, is_skill FROM folders WHERE id = $1", folder_id
+        )
         if not folder or folder["owner_user_id"] != owner_user_id:
             raise ValueError("folder_id does not belong to scope")
+        folder_is_skill = bool(folder["is_skill"])
+    if folder_is_skill and name == skill_service.SKILL_MD_NAME:
+        if content_type != "markdown":
+            raise ValueError("SKILL.md must be Markdown")
+        validate_skill_md(content)
+    pool = get_pool()
     content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
@@ -683,6 +743,17 @@ async def get_page(
     return page
 
 
+async def folder_has_page(folder_id: UUID, name: str) -> bool:
+    """True when the folder holds a live page with this exact name."""
+    pool = get_pool()
+    found = await pool.fetchval(
+        f"SELECT 1 FROM pages WHERE folder_id = $1 AND name = $2 AND {_PAGE_FILTER} LIMIT 1",
+        folder_id,
+        name,
+    )
+    return found is not None
+
+
 async def get_sync_manifest(owner_user_id: UUID) -> list[dict]:
     """Lightweight page info for sync diffing (no content)."""
     pool = get_pool()
@@ -729,6 +800,24 @@ async def update_page(
     event to open viewers and invalidates any persisted collab doc so a reopened
     editor reloads the fresh content instead of stale Yjs state."""
     pool = get_pool()
+    if name == skill_service.SKILL_MD_NAME or content is not None or folder_id is not None:
+        current_skill = await pool.fetchrow(
+            f"SELECT name, content_markdown, folder_id FROM pages WHERE id = $1 "
+            f"AND owner_user_id = $2 AND {_PAGE_FILTER}",
+            page_id,
+            owner_user_id,
+        )
+        if current_skill is not None:
+            final_name = name if name is not None else current_skill["name"]
+            final_folder_id = folder_id if folder_id is not None else current_skill["folder_id"]
+            folder_is_skill = await pool.fetchval(
+                "SELECT is_skill FROM folders WHERE id = $1", final_folder_id
+            )
+            if folder_is_skill and final_name == skill_service.SKILL_MD_NAME:
+                final_content = (
+                    content if content is not None else current_skill["content_markdown"]
+                )
+                validate_skill_md(final_content)
     if content_html is not None:
         content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
@@ -1137,14 +1226,23 @@ async def create_page_unique(
 
 
 async def _create_folder_unique(
-    owner_user_id: UUID, base_name: str, created_by: UUID, parent_folder_id: UUID | None
+    owner_user_id: UUID,
+    base_name: str,
+    created_by: UUID,
+    parent_folder_id: UUID | None,
+    *,
+    is_skill: bool = False,
 ) -> dict:
     name = base_name
     n = 2
     while True:
         try:
             return await create_folder(
-                owner_user_id, name, created_by, parent_folder_id=parent_folder_id
+                owner_user_id,
+                name,
+                created_by,
+                parent_folder_id=parent_folder_id,
+                is_skill=is_skill,
             )
         except DuplicateFolderName:
             name = f"{base_name} ({n})"
@@ -1307,7 +1405,11 @@ async def copy_folder(
     if parent is not None:
         await _assert_no_cycle(folder_id, parent)
     new_root = await _create_folder_unique(
-        owner_user_id, f"Copy of {src['name']}", copied_by, parent
+        owner_user_id,
+        f"Copy of {src['name']}",
+        copied_by,
+        parent,
+        is_skill=src["is_skill"],
     )
     await _copy_folder_contents(folder_id, new_root["id"], owner_user_id, copied_by)
     return new_root
@@ -1529,7 +1631,8 @@ async def find_or_create_root_folder(owner_user_id: UUID, name: str, created_by:
     """
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "created_at, updated_at "
         "FROM folders WHERE owner_user_id = $1 AND parent_folder_id IS NULL AND name = $2",
         owner_user_id,
         name,
@@ -1587,15 +1690,24 @@ async def write_folder_files(
     root_folder_id: UUID,
     files: list[tuple[str, bytes]],
 ) -> int:
-    """Write (relative_path, bytes) pairs into the folder, creating subfolders
-    as needed. Markdown/HTML become pages keeping their full filenames (skill
-    detection requires a page named literally SKILL.md); everything else goes
-    to file storage. Returns the number of items written."""
+    """Replace an explicit skill folder from relative file paths."""
     import mimetypes
 
     from . import storage_service
 
+    skill_files = [blob for path, blob in files if path == skill_service.SKILL_MD_NAME]
+    if len(skill_files) != 1:
+        raise ValueError("A skill must contain exactly one root SKILL.md")
+    validate_skill_md(skill_files[0].decode("utf-8", errors="replace"))
+
     pool = get_pool()
+    is_skill = await pool.fetchval(
+        "SELECT is_skill FROM folders WHERE id = $1 AND owner_user_id = $2",
+        root_folder_id,
+        owner_user_id,
+    )
+    if not is_skill:
+        raise ValueError("Folder is not a Skill")
     folder_ids: dict[str, UUID] = {"": root_folder_id}
 
     async def ensure_dir(path: str) -> UUID:

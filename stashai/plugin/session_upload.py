@@ -10,48 +10,6 @@ from pathlib import Path
 
 from stashai.plugin.upload_status import record_upload_failure
 
-# Global skills directory each agent loads SKILL.md folders from at session
-# start. Codex, Gemini, and OpenCode all read the cross-agent ~/.agents/skills
-# standard, so they converge on one synced copy. Claude Code reads its own
-# ~/.claude/skills (it does not scan .agents); OpenClaw uses ~/.openclaw/skills.
-# Cursor is omitted: it only loads project-level .cursor/skills with no global
-# location, so there's nothing to sync at session start.
-_SKILLS_DIR_BY_CLIENT = {
-    "claude_code": "~/.claude/skills",
-    "codex_cli": "~/.agents/skills",
-    "gemini_cli": "~/.agents/skills",
-    "opencode": "~/.agents/skills",
-    "openclaw": "~/.openclaw/skills",
-}
-
-
-def spawn_skills_sync(cfg: dict) -> None:
-    """Sync the user's skills into the agent's skills directory in the
-    background, so they're loaded next session. Detached and silent — a failed
-    sync must never break a session. No-op for agents without a global skills
-    directory (e.g. Cursor, which is project-only)."""
-    skills_dir = _SKILLS_DIR_BY_CLIENT.get(cfg.get("client", ""))
-    if not skills_dir:
-        return
-    cmd = ["stash", "skills", "sync", "--dir", skills_dir]
-    env = dict(os.environ)
-    if cfg.get("api_endpoint"):
-        env["STASH_URL"] = cfg["api_endpoint"]
-    if cfg.get("api_key"):
-        env["STASH_API_KEY"] = cfg["api_key"]
-    try:
-        subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            close_fds=True,
-            env=env,
-        )
-    except Exception:
-        pass
-
 
 def spawn_session_watcher(
     agent_pid: int,

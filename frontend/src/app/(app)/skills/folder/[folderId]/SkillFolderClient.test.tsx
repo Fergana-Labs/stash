@@ -27,7 +27,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   getFolderContents: vi.fn(),
   listSkills: vi.fn(),
-  trashItem: vi.fn(),
+  setFolderIsSkill: vi.fn(),
 }));
 
 vi.mock("@/lib/skillNavigationCache", () => ({

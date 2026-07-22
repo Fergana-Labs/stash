@@ -45,6 +45,36 @@ async def _user_scope(client: AsyncClient, api_key: str) -> UUID:
     return UUID(resp.json()["id"])
 
 
+async def _publish_skill(
+    client: AsyncClient,
+    api_key: str,
+    folder_id: str,
+    name: str,
+    description: str,
+):
+    typed = await client.patch(
+        f"/api/v1/me/skills/{folder_id}/type",
+        json={"is_skill": True},
+        headers=_auth(api_key),
+    )
+    assert typed.status_code == 200
+    skill_md = await client.post(
+        "/api/v1/me/pages/new",
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": f"---\nname: {name}\ndescription: {description}\n---\n",
+        },
+        headers=_auth(api_key),
+    )
+    assert skill_md.status_code == 201
+    return await client.post(
+        "/api/v1/me/skills",
+        json={"folder_id": folder_id},
+        headers=_auth(api_key),
+    )
+
+
 def _tool_json(result: dict):
     return json.loads(result["content"][0]["text"])
 
@@ -2593,10 +2623,12 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
         headers=_auth(api_key),
     )
     assert folder.status_code == 201
-    skill = await client.post(
-        "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle"},
-        headers=_auth(api_key),
+    skill = await _publish_skill(
+        client,
+        api_key,
+        folder.json()["id"],
+        "Bundle",
+        "Snapshot source content.",
     )
     assert skill.status_code == 201
     skill_id = skill.json()["id"]
@@ -2657,10 +2689,12 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
         headers=_auth(api_key),
     )
     assert folder.status_code == 201
-    skill = await client.post(
-        "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle"},
-        headers=_auth(api_key),
+    skill = await _publish_skill(
+        client,
+        api_key,
+        folder.json()["id"],
+        "Bundle",
+        "Snapshot source content.",
     )
     assert skill.status_code == 201
     skill_id = skill.json()["id"]
@@ -2716,10 +2750,12 @@ async def test_snapshot_source_into_skill_requires_same_owner(client: AsyncClien
     )
     assert folder.status_code == 201
     folder_id = folder.json()["id"]
-    skill = await client.post(
-        "/api/v1/me/skills",
-        json={"folder_id": folder_id, "title": "Bundle"},
-        headers=_auth(other_key),
+    skill = await _publish_skill(
+        client,
+        other_key,
+        folder_id,
+        "Bundle",
+        "Snapshot source content.",
     )
     assert skill.status_code == 201
     skill_id = skill.json()["id"]

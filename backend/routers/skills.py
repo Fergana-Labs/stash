@@ -1,10 +1,12 @@
-"""Skills: special folders (SKILL.md) plus their publish records."""
+"""Explicit skill folders plus their publish records."""
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+
+from stashai.skill_validation import validate_skill_md
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
@@ -50,8 +52,6 @@ async def publish_skill(
             owner_user_id,
             current_user["id"],
             req.folder_id,
-            title=req.title,
-            description=req.description,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,
@@ -67,7 +67,7 @@ async def publish_skill(
 async def list_skills(
     current_user: dict = Depends(get_current_user),
 ):
-    """Every skill folder in the scope, with publish info when shared."""
+    """Every explicit skill folder in the scope, with publish info when shared."""
     owner_user_id = current_user["id"]
     skills = await skill_service.list_skills(owner_user_id, current_user["id"])
     return {"skills": skills}
@@ -77,13 +77,34 @@ class GithubImportRequest(BaseModel):
     repo_url: str
 
 
+class SkillTypeRequest(BaseModel):
+    is_skill: bool
+
+
+@me_router.patch("/skills/{folder_id}/type")
+async def set_skill_type(
+    folder_id: UUID,
+    req: SkillTypeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    owner_user_id = current_user["id"]
+    await _require_folder(owner_user_id, folder_id, current_user["id"])
+    try:
+        folder = await files_tree_service.set_folder_is_skill(
+            folder_id, owner_user_id, req.is_skill
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return folder
+
+
 @me_router.post("/skills/import-github")
 async def import_github_skill(
     req: GithubImportRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Import every SKILL.md folder in a public GitHub repo as private skills in
-    the caller's own scope (folders with SKILL.md)."""
+    """Import every SKILL.md package in a public GitHub repo as an explicit
+    private skill in the caller's scope."""
     try:
         result = await github_skill_import.import_repo_for_user(current_user["id"], req.repo_url)
     except ValueError as exc:
@@ -106,7 +127,7 @@ async def get_local_skill(
     return skill
 
 
-async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: UUID) -> dict:
+async def _require_folder(owner_user_id: UUID, folder_id: UUID, user_id: UUID) -> dict:
     folder = await files_tree_service.get_folder(folder_id)
     if not folder or folder["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -114,6 +135,13 @@ async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: U
         "folder", folder_id, user_id, owner_user_id=owner_user_id
     ):
         raise HTTPException(status_code=403, detail="Not allowed to read this folder")
+    return folder
+
+
+async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: UUID) -> dict:
+    folder = await _require_folder(owner_user_id, folder_id, user_id)
+    if not folder["is_skill"]:
+        raise HTTPException(status_code=404, detail="Skill not found")
     return folder
 
 
@@ -155,6 +183,11 @@ async def replace_skill_contents(
         payload.append((rel_path, await f.read()))
     if not any(path == "SKILL.md" for path, _blob in payload):
         raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
+    skill_md = next(blob for path, blob in payload if path == "SKILL.md")
+    try:
+        validate_skill_md(skill_md.decode("utf-8", errors="replace"))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
     await files_tree_service.clear_folder_contents(folder_id)
     written = await files_tree_service.write_folder_files(
@@ -165,8 +198,7 @@ async def replace_skill_contents(
 
 @me_router.get("/shared-skills")
 async def list_shared_skills_with_me(current_user: dict = Depends(get_current_user)):
-    """Skill folders shared with me person-to-person (folder shares whose
-    folder contains a SKILL.md), with publish info when published."""
+    """Explicit skill folders shared with me person-to-person."""
     skills = await shared_skill_service.list_skills_shared_with_user(current_user["id"])
     return {"skills": skills}
 

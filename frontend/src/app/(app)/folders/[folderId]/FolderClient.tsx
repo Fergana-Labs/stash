@@ -14,6 +14,7 @@ import {
   createPage,
   getFolderContents,
   getPublicSkill,
+  setFolderIsSkill,
   type FolderBreadcrumb,
   type PublicSkillContents,
   type PublicSkillSubfolder,
@@ -130,7 +131,11 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     if (!folderName || !user) return;
     setConverting(true);
     try {
-      await createPage(SKILL_MD, folderId, skillMdTemplate(folderName));
+      const current = await getFolderContents(folderId);
+      await setFolderIsSkill(folderId, true);
+      if (!current.pages.some((p) => p.name === SKILL_MD)) {
+        await createPage(SKILL_MD, folderId, skillMdTemplate(folderName));
+      }
       await refreshSidebar().catch(() => {});
       router.push(`/skills/${folderId}`);
     } catch (e) {

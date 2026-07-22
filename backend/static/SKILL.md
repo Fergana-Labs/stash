@@ -8,11 +8,11 @@ Your Stash has three primary surfaces:
 
 - **Sessions** — agent transcripts uploaded under `/api/v1/me/sessions`.
 - **Files** — folders, markdown pages, HTML pages, uploads, and tables.
-- **Skills** — modules of agent-usable knowledge: local SKILL.md folders and shareable bundles of sessions and Files.
+- **Skills** — explicit folders under `/skills` containing agent-usable knowledge and shareable bundles of sessions and Files.
 
-To give your agents a skill, **create a Files folder** whose immediate children
-include a file named `SKILL.md`. The body of `SKILL.md` starts with YAML
-frontmatter:
+To give your agents a skill, explicitly create it under Skills. `SKILL.md` is
+its required agent manifest; its filename does not classify ordinary folders.
+The manifest starts with YAML frontmatter:
 
 ```yaml
 ---

@@ -254,8 +254,14 @@ class StashClient:
     def list_folders(self) -> list:
         return self._list("/api/v1/me/folders", "folders")
 
-    def create_folder(self, name: str, parent_folder_id: str | None = None) -> dict:
-        body: dict = {"name": name}
+    def create_folder(
+        self,
+        name: str,
+        parent_folder_id: str | None = None,
+        *,
+        is_skill: bool = False,
+    ) -> dict:
+        body: dict = {"name": name, "is_skill": is_skill}
         if parent_folder_id:
             body["parent_folder_id"] = parent_folder_id
         return self._post("/api/v1/me/folders", json=body)

@@ -19,9 +19,11 @@ from uuid import UUID
 
 import httpx
 
+from stashai.skill_validation import validate_skill_md
+
 from ..auth import hash_password
 from ..database import get_pool
-from . import files_tree_service, shared_skill_service, skill_service
+from . import files_tree_service, shared_skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +100,7 @@ async def _fetch_blob(
 
 
 async def fetch_repo_skills(repo_url: str) -> list[dict]:
-    """Fetch every skill in a repo: [{source_url, fallback_title, files}]
+    """Fetch every skill in a repo: [{source_url, files}]
     where files is [(path relative to the skill dir, bytes)]."""
     owner, repo = parse_repo_url(repo_url)
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
@@ -121,7 +123,6 @@ async def fetch_repo_skills(repo_url: str) -> list[dict]:
             skills.append(
                 {
                     "source_url": source_url(owner, repo, branch, skill_dir),
-                    "fallback_title": skill_dir.rsplit("/", 1)[-1] if skill_dir else repo,
                     "files": files,
                 }
             )
@@ -160,16 +161,15 @@ async def import_skill(
     owner_id: UUID,
     *,
     source_url: str,
-    fallback_title: str,
     files: list[tuple[str, bytes]],
 ) -> str:
     """Import one skill's files. Returns 'created' or 'updated'."""
     skill_md = next((blob for path, blob in files if path == "SKILL.md"), None)
     if skill_md is None:
         raise ValueError(f"{source_url}: no SKILL.md")
-    meta, _body = skill_service.parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
-    title = str(meta.get("name") or fallback_title)
-    description = str(meta.get("description") or "")
+    meta = validate_skill_md(skill_md.decode("utf-8", errors="replace"))
+    title = meta["name"]
+    description = meta["description"]
 
     pool = get_pool()
     existing = await pool.fetchrow(
@@ -194,8 +194,6 @@ async def import_skill(
         owner_user_id,
         owner_id,
         folder_id,
-        title=title,
-        description=description,
         discoverable=True,
         source_github_url=source_url,
     )
@@ -209,7 +207,10 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
     for n in range(2, 50):
         try:
             folder = await files_tree_service.create_folder(
-                owner_user_id=owner_user_id, name=name, created_by=owner_id
+                owner_user_id=owner_user_id,
+                name=name,
+                created_by=owner_id,
+                is_skill=True,
             )
             return folder["id"]
         except files_tree_service.DuplicateFolderName:
@@ -222,8 +223,8 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
 
 async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
     """Import every SKILL.md folder in a repo into a user's OWN scope as private
-    skills — a skill is just a folder containing SKILL.md, so we create the
-    folder and write the repo files; no publish/discover record. Returns
+    skills — we create explicit skill folders and write the repo files; no
+    publish/discover record. Returns
     {skills, imported}. A user is their own scope (owner_user_id == created_by)."""
     skills = await fetch_repo_skills(repo_url)
     imported = 0
@@ -232,8 +233,8 @@ async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
         skill_md = next((blob for path, blob in files if path == "SKILL.md"), None)
         if skill_md is None:
             continue
-        meta, _body = skill_service.parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
-        title = str(meta.get("name") or skill["fallback_title"])
+        meta = validate_skill_md(skill_md.decode("utf-8", errors="replace"))
+        title = meta["name"]
         folder_id = await _create_root_folder(owner_user_id, owner_user_id, title)
         await files_tree_service.write_folder_files(owner_user_id, owner_user_id, folder_id, files)
         imported += 1
@@ -253,7 +254,6 @@ async def import_repo(repo_url: str) -> dict:
             owner_user_id,
             owner_id,
             source_url=skill["source_url"],
-            fallback_title=skill["fallback_title"],
             files=skill["files"],
         )
         created += result == "created"

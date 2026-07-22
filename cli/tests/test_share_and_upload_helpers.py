@@ -46,8 +46,9 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
         def __exit__(self, *_args):
             return None
 
-        def create_folder(self, name, parent_folder_id=None):
+        def create_folder(self, name, parent_folder_id=None, *, is_skill=False):
             assert parent_folder_id is None
+            assert is_skill
             return {"id": "folder-1", "name": name}
 
         def upload_file(self, path, folder_id=None):
@@ -86,8 +87,9 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
         def __exit__(self, *_args):
             return None
 
-        def create_folder(self, name, parent_folder_id=None):
+        def create_folder(self, name, parent_folder_id=None, *, is_skill=False):
             assert parent_folder_id is None
+            assert is_skill
             return {"id": "folder-1", "name": name}
 
         def create_page(self, name, content="", folder_id=None, content_type=None):
