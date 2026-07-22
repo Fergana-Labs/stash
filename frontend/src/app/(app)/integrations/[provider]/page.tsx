@@ -67,6 +67,9 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const highlightSourceId = searchParams.get("source");
+  // Deep link from search results: ?doc=<path> opens the browse panel with
+  // that document expanded (and its folder as the listing path).
+  const initialDocRef = searchParams.get("doc");
   // The OAuth callback lands here with an error flag when a reconnect was
   // refused because it used a different provider account than the one whose
   // data is kept.
@@ -525,6 +528,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
             <BrowsePanel
               source={openSource}
               providerLabel={connector.label}
+              initialDocRef={openSource.source === highlightSourceId || connector.singleSource ? initialDocRef : null}
               onRefresh={() => void refresh()}
             />
           </section>
@@ -791,10 +795,12 @@ function rowButton(): string {
 function BrowsePanel({
   source,
   providerLabel,
+  initialDocRef,
   onRefresh,
 }: {
   source: Source;
   providerLabel: string;
+  initialDocRef?: string | null;
   onRefresh: () => void;
 }) {
   if (source.capability === "searchable") {
@@ -802,6 +808,7 @@ function BrowsePanel({
       <SearchablePanel
         source={source}
         providerLabel={providerLabel}
+        initialDocRef={initialDocRef}
         onRefresh={onRefresh}
       />
     );
@@ -810,6 +817,7 @@ function BrowsePanel({
     <NavigablePanel
       source={source}
       providerLabel={providerLabel}
+      initialDocRef={initialDocRef}
       onRefresh={onRefresh}
     />
   );
@@ -959,10 +967,12 @@ function DocViewer({
 function SearchablePanel({
   source,
   providerLabel,
+  initialDocRef,
   onRefresh,
 }: {
   source: Source;
   providerLabel: string;
+  initialDocRef?: string | null;
   onRefresh: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -970,7 +980,9 @@ function SearchablePanel({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [recent, setRecent] = useState<SourceEntry[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(null);
+  const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(
+    initialDocRef ? { ref: initialDocRef } : null
+  );
 
   const showHistory = source.type === "slack" || source.type === "gong_calls";
 
@@ -1028,6 +1040,20 @@ function SearchablePanel({
       {searchError && (
         <div className="mb-2 px-1.5 py-1 text-[12.5px] text-error">{searchError}</div>
       )}
+
+      {/* A deep-linked doc renders here until a search/recent row matches it. */}
+      {openDoc &&
+        !(hits ?? []).some((h) => h.ref === openDoc.ref) &&
+        !(hits === null && (recent ?? []).some((e) => (e.id ?? e.path ?? e.name) === openDoc.ref)) && (
+          <DocViewer
+            source={source.source}
+            sourceType={source.type}
+            providerLabel={providerLabel}
+            refValue={openDoc.ref}
+            name={openDoc.name}
+            onClose={() => setOpenDoc(null)}
+          />
+        )}
 
       {hits !== null && (() => {
         const realHits = hits.filter((hit) => hit.ref);
@@ -1154,18 +1180,36 @@ function HitRow({
 function NavigablePanel({
   source,
   providerLabel,
+  initialDocRef,
   onRefresh,
 }: {
   source: Source;
   providerLabel: string;
+  initialDocRef?: string | null;
   onRefresh: () => void;
 }) {
-  const [path, setPath] = useState("");
+  // A ?doc= deep link (from a search result) starts the panel inside the
+  // document's folder with the document itself expanded.
+  const initialDir = initialDocRef?.includes("/")
+    ? initialDocRef.slice(0, initialDocRef.lastIndexOf("/"))
+    : "";
+  const [path, setPath] = useState(initialDir);
   const [entries, setEntries] = useState<SourceEntry[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [crumbs, setCrumbs] = useState<{ label: string; path: string }[]>([{ label: source.display_name, path: "" }]);
-  const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(null);
+  const [crumbs, setCrumbs] = useState<{ label: string; path: string }[]>(() => {
+    const base = [{ label: source.display_name, path: "" }];
+    if (!initialDir) return base;
+    let acc = "";
+    for (const segment of initialDir.split("/")) {
+      acc = acc ? `${acc}/${segment}` : segment;
+      base.push({ label: segment, path: acc });
+    }
+    return base;
+  });
+  const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(
+    initialDocRef ? { ref: initialDocRef } : null
+  );
   const [error, setError] = useState("");
   // Bumped whenever the listing target changes, so an in-flight Load more for
   // the previous directory can't clobber the new one.
@@ -1292,6 +1336,19 @@ function NavigablePanel({
       </div>
 
       {error && <div className="mb-2 text-[12px] text-error">{error}</div>}
+
+      {/* A deep-linked doc renders here until its row is on a loaded page. */}
+      {openDoc &&
+        !(visibleEntries ?? []).some((e) => (e.id ?? e.path ?? e.name) === openDoc.ref) && (
+          <DocViewer
+            source={source.source}
+            sourceType={source.type}
+            providerLabel={providerLabel}
+            refValue={openDoc.ref}
+            name={openDoc.name}
+            onClose={() => setOpenDoc(null)}
+          />
+        )}
 
       {visibleEntries === null ? (
         <div className="text-[12px] text-muted-foreground">Loading…</div>

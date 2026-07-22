@@ -402,6 +402,9 @@ export async function readSourceDoc(
 export interface SourceSearchHit {
   source: string;
   source_name?: string;
+  // The connected source's type ('x_saves', 'github_repo', …); absent on
+  // native files/sessions hits.
+  source_type?: string;
   // A real hit carries a ref; marker entries (see below) omit it.
   ref?: string;
   name?: string;
@@ -411,6 +414,9 @@ export interface SourceSearchHit {
   truncated?: boolean;
   returned?: number;
   estimated_total?: number | null;
+  // Marker: a federated source's live search failed (dead token, rate limit).
+  error?: string;
+  needs_reconnect?: boolean;
 }
 
 export async function searchSource(

@@ -609,6 +609,11 @@ async def test_bookmarks_list_newest_first_across_id_lengths(client, pool) -> No
     )
     assert [e["path"] for e in rest] == ["Bookmarks/999"]
 
+    # Search results carry the source type so clients can deep-link into the
+    # owning integration page.
+    hits = await source_service.search_documents(user_id=UUID(owner_id), query="newest tweet")
+    assert [(h["path"], h["source_type"]) for h in hits] == [("Bookmarks/1815550002", "x_saves")]
+
 
 @pytest.mark.asyncio
 async def test_unarchived_saves_read_as_human_sentences(client, pool) -> None:

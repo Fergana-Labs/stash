@@ -1458,6 +1458,7 @@ async def _federated_search(
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
+                "source_type": source["source_type"],
                 "error": detail,
                 "needs_reconnect": needs_reconnect,
             }
@@ -1476,6 +1477,7 @@ async def _federated_search(
         {
             "source": source["id"],
             "source_name": source["display_name"],
+            "source_type": source["source_type"],
             "ref": h["ref"],
             "name": h.get("name", ""),
             "snippet": h.get("snippet", ""),
@@ -1487,6 +1489,7 @@ async def _federated_search(
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
+                "source_type": source["source_type"],
                 "truncated": True,
                 "returned": len(hits),
                 "estimated_total": estimated_total,
@@ -1550,7 +1553,8 @@ async def search_documents(
     ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
-        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
+        f"SELECT u.source_id, ws.display_name AS source_name, "
+        f"ws.source_type AS source_type, u.path, u.name, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
         f"ORDER BY u.rank DESC LIMIT $4",
         user_id,
@@ -1562,6 +1566,7 @@ async def search_documents(
         {
             "source_id": str(r["source_id"]),
             "source_name": r["source_name"],
+            "source_type": r["source_type"],
             "path": r["path"],
             "name": r["name"],
             "snippet": r["snippet"] or "",
@@ -2154,6 +2159,7 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
             {
                 "source": s["id"],
                 "source_name": s["display_name"],
+                "source_type": s["source_type"],
                 "ref": r["path"],
                 "name": r["name"],
                 "snippet": "",
@@ -2230,6 +2236,7 @@ async def search_all(
             {
                 "source": d["source_id"],
                 "source_name": d["source_name"],
+                "source_type": d["source_type"],
                 "ref": d["path"],
                 "name": d["name"],
                 "snippet": d["snippet"],

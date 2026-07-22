@@ -2086,6 +2086,7 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
         {
             "source": src["id"],
             "source_name": "PROJ",
+            "source_type": "jira_project",
             "error": "PROJ search failed",
             "needs_reconnect": False,
         }
@@ -2134,6 +2135,7 @@ async def test_unscoped_search_surfaces_dead_federated_source(client: AsyncClien
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
+            "source_type": "gmail",
             "error": "gmail token expired; reconnect required",
             "needs_reconnect": True,
         }
@@ -2171,6 +2173,7 @@ async def test_search_appends_truncation_marker_when_provider_caps(
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
+            "source_type": "gmail",
             "ref": "m0",
             "name": "msg 0",
             "snippet": "",
@@ -2178,6 +2181,7 @@ async def test_search_appends_truncation_marker_when_provider_caps(
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
+            "source_type": "gmail",
             "ref": "m1",
             "name": "msg 1",
             "snippet": "",
@@ -2187,6 +2191,7 @@ async def test_search_appends_truncation_marker_when_provider_caps(
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
+            "source_type": "gmail",
             "truncated": True,
             "returned": 2,
             "estimated_total": 213,

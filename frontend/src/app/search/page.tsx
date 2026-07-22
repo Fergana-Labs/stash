@@ -16,16 +16,19 @@ import {
   listSkills,
   searchEvents,
   searchPages as searchPagesApi,
+  searchSource,
   type HistoryEvent,
   type PublicSkillDetail,
   type SessionEvent,
   type Sidebar,
   type Skill,
+  type SourceSearchHit,
   type TreeFolder,
 } from "../../lib/api";
+import { providerForSourceType } from "@/components/integrations/connectors";
 import type { Page, TableWithOwner } from "../../lib/types";
 
-type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
+type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills" | "integrations";
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -39,13 +42,23 @@ function bucketCount(n: number): string {
 
 interface SearchResult {
   id: string;
-  kind: "Session" | "Page" | "Table" | "Skill";
+  kind: "Session" | "Page" | "Table" | "Skill" | "Source";
   title: string;
   href: string;
   sourceName: string;
   detail: ReactNode;
-  updatedAt: string;
+  // Connected-source hits carry no timestamp; the time column stays empty.
+  updatedAt: string | null;
   relevance: number;
+}
+
+// A federated source that couldn't be searched (dead token, rate limit) or
+// that truncated its results — shown as a notice so "no matches from Gmail"
+// is never silently conflated with "Gmail wasn't searched".
+interface SourceSearchNotice {
+  sourceName: string;
+  message: string;
+  href: string | null;
 }
 
 const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
@@ -54,11 +67,18 @@ const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
   { id: "pages", label: "Pages" },
   { id: "skills", label: "Skills" },
   { id: "tables", label: "Tables" },
+  { id: "integrations", label: "Integrations" },
 ];
 
 function initialContentScope(value: string | null, sessionId: string): ContentScope {
   if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "tables" || value === "skills") {
+  if (
+    value === "sessions" ||
+    value === "pages" ||
+    value === "tables" ||
+    value === "skills" ||
+    value === "integrations"
+  ) {
     return value;
   }
   return "all";
@@ -92,6 +112,7 @@ function SearchPageInner() {
     () => initialContentScope(searchParams.get("content"), initialSessionId)
   );
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [sourceNotices, setSourceNotices] = useState<SourceSearchNotice[]>([]);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [fetching, setFetching] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -162,6 +183,7 @@ function SearchPageInner() {
     const q = rawQuery.trim();
     if (!q) {
       setResults([]);
+      setSourceNotices([]);
       setSearchedQuery("");
       setSearching(false);
       return;
@@ -169,6 +191,7 @@ function SearchPageInner() {
 
     setSearching(true);
     setError("");
+    setSourceNotices([]);
     setSearchedQuery(q);
     try {
       const nextResults: SearchResult[] = [];
@@ -176,6 +199,7 @@ function SearchPageInner() {
       const includePages = contentScope === "all" || contentScope === "pages";
       const includeTables = contentScope === "all" || contentScope === "tables";
       const includeSkills = contentScope === "all" || contentScope === "skills";
+      const includeIntegrations = contentScope === "all" || contentScope === "integrations";
 
       if (selectedSessionId) {
         const events = await getSessionEvents(selectedSessionId);
@@ -224,6 +248,18 @@ function SearchPageInner() {
       if (includeTables && !selectedFolderId && !selectedPageId) {
         const { tables } = await listAllTables();
         nextResults.push(...searchTables(tables, q));
+      }
+
+      if (includeIntegrations && !selectedFolderId && !selectedPageId) {
+        // The unified sources search also covers native files/sessions, which
+        // the sections above already searched with richer metadata — keep only
+        // the connected-source hits here.
+        const hits = await searchSource(q);
+        const connected = hits.filter(
+          (hit) => hit.source !== "files" && hit.source !== "sessions"
+        );
+        nextResults.push(...searchSourceResults(connected, q));
+        setSourceNotices(sourceSearchNotices(connected));
       }
 
       setResults(sortResults(nextResults));
@@ -342,6 +378,28 @@ function SearchPageInner() {
 
             {searching && <SearchResultsSkeleton />}
 
+            {!searching && sourceNotices.length > 0 && (
+              <div className="mt-4 flex flex-col gap-1.5">
+                {sourceNotices.map((notice, i) => (
+                  <div
+                    key={`${notice.sourceName}:${i}`}
+                    className="rounded-md border border-border bg-surface px-3 py-2 text-[12px] text-muted-foreground"
+                  >
+                    <span className="font-semibold text-foreground">{notice.sourceName}</span>:{" "}
+                    {notice.message}
+                    {notice.href && (
+                      <>
+                        {" "}
+                        <Link href={notice.href} className="font-semibold text-brand hover:underline">
+                          Open integration
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {!searching && searchedQuery && results.length === 0 && !error && (
               <p className="py-10 text-center text-[13px] text-muted-foreground">
                 No results found for &ldquo;{searchedQuery}&rdquo;.
@@ -381,7 +439,7 @@ function SearchPageInner() {
                         </div>
                         <div className="shrink-0 text-right text-[11px] text-muted-foreground">
                           <div>{result.sourceName}</div>
-                          <div>{relativeTime(result.updatedAt)}</div>
+                          {result.updatedAt && <div>{relativeTime(result.updatedAt)}</div>}
                         </div>
                       </div>
                     </Link>
@@ -500,7 +558,9 @@ function searchSessionsFromEvents(
       existing &&
       (existing.relevance > relevance ||
         (existing.relevance === relevance &&
-          new Date(existing.updatedAt) >= new Date(event.created_at)))
+          // Session results always carry a timestamp; the null case is
+          // connected-source results, which never reach this map.
+          new Date(existing.updatedAt ?? 0) >= new Date(event.created_at)))
     ) {
       continue;
     }
@@ -583,6 +643,66 @@ function searchPages(
       updatedAt: page.updated_at,
       relevance: scorePage(query, page),
     }));
+}
+
+// Connected-source hits (X saves, GitHub files, Slack messages, Gmail…) from
+// the unified sources search. Each links into its integration page with the
+// document pre-opened.
+function searchSourceResults(hits: SourceSearchHit[], query: string): SearchResult[] {
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+  for (const hit of hits) {
+    if (!hit.ref) continue; // marker rows (errors / truncation) render as notices
+    const key = `${hit.source}:${hit.ref}`;
+    if (seen.has(key)) continue; // an id match can also FTS-match
+    seen.add(key);
+    // A type without an integration page still gets an honest link — the
+    // provider route renders "Unknown integration" rather than hiding the hit.
+    const provider = providerForSourceType[hit.source_type ?? ""] ?? hit.source_type ?? "";
+    results.push({
+      id: key,
+      kind: "Source",
+      title: hit.name || hit.ref,
+      href: `/integrations/${provider}?source=${encodeURIComponent(hit.source)}&doc=${encodeURIComponent(hit.ref)}`,
+      sourceName: hit.source_name ?? provider,
+      detail: contextSnippet(hit.snippet, query) ?? (hit.snippet || "").slice(0, 220),
+      updatedAt: null,
+      relevance: scoreValues(query, [
+        { value: hit.name, weight: 8 },
+        { value: hit.snippet, weight: 2 },
+      ]),
+    });
+  }
+  return results;
+}
+
+function sourceSearchNotices(hits: SourceSearchHit[]): SourceSearchNotice[] {
+  const notices: SourceSearchNotice[] = [];
+  for (const hit of hits) {
+    if (!hit.error && !hit.truncated) continue;
+    const provider = providerForSourceType[hit.source_type ?? ""];
+    const href = provider ? `/integrations/${provider}` : null;
+    const sourceName = hit.source_name ?? provider ?? "source";
+    if (hit.error) {
+      notices.push({
+        sourceName,
+        message: hit.needs_reconnect
+          ? `${hit.error} — reconnect it to include it in search.`
+          : hit.error,
+        href,
+      });
+    } else {
+      notices.push({
+        sourceName,
+        message:
+          hit.estimated_total != null
+            ? `showing the first ${hit.returned} of about ${hit.estimated_total} matches.`
+            : `showing the first ${hit.returned} matches.`,
+        href,
+      });
+    }
+  }
+  return notices;
 }
 
 function searchTables(tables: TableWithOwner[], query: string): SearchResult[] {
@@ -774,9 +894,10 @@ function pageSnippet(markdown?: string | null, html?: string | null): string {
 }
 
 function sortResults(results: SearchResult[]): SearchResult[] {
+  const time = (iso: string | null) => (iso ? new Date(iso).getTime() : 0);
   return [...results].sort((a, b) => {
     if (b.relevance !== a.relevance) return b.relevance - a.relevance;
-    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    return time(b.updatedAt) - time(a.updatedAt);
   });
 }
 
