@@ -819,9 +819,14 @@ function BrowsePanel({
 // bordered header that deep-links back to the provider when a url is available.
 // Hydrated saves lead with the tweet text, then a blank line, then the byline /
 // reply-context / link meta. Show the tweet prominently and mute the rest.
-function TweetBody({ content }: { content: string }) {
+function TweetBody({ content, linkedUrl }: { content: string; linkedUrl?: string | null }) {
   const [body, ...rest] = content.split("\n\n");
-  const meta = rest.join("\n\n").trim();
+  let meta = rest.join("\n\n").trim();
+  // The archived body ends with the post's URL; when the header already links
+  // there ("Open in X ↗"), printing it again is noise.
+  if (linkedUrl && meta.endsWith(linkedUrl)) {
+    meta = meta.slice(0, meta.length - linkedUrl.length).trim();
+  }
   return (
     <div className="scroll-thin max-h-96 space-y-3 overflow-auto bg-base px-4 py-4">
       <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
@@ -836,14 +841,26 @@ function TweetBody({ content }: { content: string }) {
   );
 }
 
+// The provider URL a save points at, derivable from its path alone — so the
+// "open on the platform" link survives a failed archive (which has no stored
+// url to serve).
+function saveExternalUrl(sourceType: string | undefined, ref: string): string | null {
+  const leaf = ref.slice(ref.lastIndexOf("/") + 1);
+  if (sourceType === "x_saves") return `https://x.com/i/status/${leaf}`;
+  if (sourceType === "instagram_saves") return `https://www.instagram.com/p/${leaf}/`;
+  return null;
+}
+
 function DocViewer({
   source,
+  sourceType,
   providerLabel,
   refValue,
   name,
   onClose,
 }: {
   source: string;
+  sourceType?: string;
   providerLabel: string;
   refValue: string;
   name?: string;
@@ -905,7 +922,19 @@ function DocViewer({
         </div>
       </div>
       {error ? (
-        <div className="bg-base px-3 py-3 text-[12px] text-error">{error}</div>
+        <div className="bg-base px-3 py-3 text-[12px] text-error">
+          {error}
+          {saveExternalUrl(sourceType, refValue) && (
+            <a
+              href={saveExternalUrl(sourceType, refValue)!}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-2 font-semibold text-brand hover:underline"
+            >
+              Open in {providerLabel} ↗
+            </a>
+          )}
+        </div>
       ) : content === null ? (
         <div className="bg-base px-3 py-3 text-[12px] text-muted-foreground">Loading…</div>
       ) : (
@@ -920,7 +949,7 @@ function DocViewer({
               <img key={i} src={m.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
             ),
           )}
-          <TweetBody content={content} />
+          <TweetBody content={content} linkedUrl={url} />
         </>
       )}
     </div>
@@ -1022,6 +1051,7 @@ function SearchablePanel({
                     {isOpen && (
                       <DocViewer
                         source={source.source}
+                        sourceType={source.type}
                         providerLabel={providerLabel}
                         refValue={hit.ref!}
                         name={hit.name}
@@ -1060,6 +1090,7 @@ function SearchablePanel({
                 {isOpen && (
                   <DocViewer
                     source={source.source}
+                    sourceType={source.type}
                     providerLabel={providerLabel}
                     refValue={ref}
                     name={entry.name}
@@ -1272,8 +1303,11 @@ function NavigablePanel({
             const folder = isFolder(entry);
             const ref = entry.id ?? entry.path ?? entry.name;
             const isOpen = !folder && openDoc?.ref === ref;
-            // An un-hydrated save still has its raw numeric tweet id as its name.
-            const pending = !folder && /^\d+$/.test(entry.name);
+            // Saves report their archive state; an un-hydrated save also still
+            // has its raw numeric tweet id as its name.
+            const pending =
+              !folder && (entry.status === "pending" || /^\d+$/.test(entry.name));
+            const failed = !folder && entry.status === "failed";
             const key = `${folder ? "dir" : "doc"}:${ref}`;
             return (
               <div key={key}>
@@ -1289,12 +1323,19 @@ function NavigablePanel({
                     {folder ? "📁" : "📄"}
                   </span>
                   <span className="min-w-0 flex-1">
-                    {pending ? (
-                      <span className="truncate text-[12.5px] italic text-muted-foreground">Loading…</span>
+                    {failed ? (
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-[12.5px] text-foreground">{entry.name}</span>
+                        <span className="shrink-0 rounded-full border border-error/40 bg-error/10 px-1.5 text-[10px] font-semibold text-error">
+                          not archived
+                        </span>
+                      </span>
+                    ) : pending ? (
+                      <span className="truncate text-[12.5px] italic text-muted-foreground">Archiving…</span>
                     ) : (
                       <span className="block truncate text-[12.5px] text-foreground">{entry.name}</span>
                     )}
-                    {entry.snippet && !pending && (
+                    {entry.snippet && !pending && !failed && (
                       <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
                         {entry.snippet}
                       </span>
@@ -1304,6 +1345,7 @@ function NavigablePanel({
                 {isOpen && (
                   <DocViewer
                     source={source.source}
+                    sourceType={source.type}
                     providerLabel={providerLabel}
                     refValue={ref}
                     name={entry.name}

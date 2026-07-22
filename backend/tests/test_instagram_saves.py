@@ -262,9 +262,11 @@ async def test_hydration_failure_lands_on_the_row(
     assert "scrapecreators exploded" in row["hydration_error"]
     assert row["hydration_attempts"] == 1
 
-    # Reading an unhydrated doc fails loud, not blank.
+    # Reading an unhydrated doc fails loud, not blank — but with a human
+    # sentence, never the raw exception (that stays on the row, above).
     ok, doc = await source_service.source_document(
         UUID(owner_id), UUID(owner_id), str(source["id"]), "ABC123xyz"
     )
     assert ok and doc["http_status"] == 422
-    assert "scrapecreators exploded" in doc["error"]
+    assert "couldn't be archived" in doc["error"]
+    assert "scrapecreators exploded" not in doc["error"]
