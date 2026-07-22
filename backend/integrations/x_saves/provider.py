@@ -103,7 +103,7 @@ class XIntegration(Integration):
         user = await fetch_me(access_token)
         username = user.get("username")
         display_name = f"@{username}" if username else user.get("name")
-        return AccountInfo(email=None, display_name=display_name)
+        return AccountInfo(email=None, display_name=display_name, account_ref=user["id"])
 
 
 async def fetch_me(access_token: str) -> dict:

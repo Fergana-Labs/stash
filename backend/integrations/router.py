@@ -100,6 +100,8 @@ class IntegrationAccountItem(BaseModel):
     expires_at: str | None = None
     connected_at: str | None = None
     needs_reconnect: bool = False
+    # Disconnected-with-data-kept: no token, but sources/documents remain.
+    disconnected: bool = False
 
 
 class ProviderListItem(BaseModel):
@@ -107,6 +109,9 @@ class ProviderListItem(BaseModel):
     display_name: str
     scopes: list[str]
     connected: bool
+    # Disconnected-with-data-kept: not connected, but the provider still has
+    # sources/documents the user chose to keep.
+    disconnected: bool = False
     enabled: bool
     disabled_reason: str | None = None
     # "oauth" (the default redirect flow), "mcp_oauth" (DCR+PKCE via an MCP
@@ -249,7 +254,8 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 provider=p.name,
                 display_name=p.display_name,
                 scopes=p.scopes,
-                connected=conn is not None,
+                connected=conn is not None and not conn["disconnected"],
+                disconnected=bool(conn and conn["disconnected"]),
                 enabled=disabled_reason is None,
                 disabled_reason=disabled_reason,
                 auth_kind=getattr(p, "auth_kind", "oauth"),
@@ -369,6 +375,20 @@ async def integration_callback(
                     type(e).__name__,
                 )
                 account = AccountInfo(email=None, display_name=None)
+            # Reconnect identity check: refuse to link a DIFFERENT provider
+            # account while the previous account's connection (and possibly
+            # its kept data) exists. The identity comes from the provider's
+            # own answer to the new token — never from the client.
+            mismatched = await storage.account_mismatch(user_id, provider, account)
+            if mismatched:
+                logger.warning(
+                    "OAuth callback account mismatch for %s: stored account differs", provider
+                )
+                base = settings.PUBLIC_URL.rstrip("/")
+                query = {"integration_error": "account_mismatch", "expected": mismatched}
+                return RedirectResponse(
+                    url=f"{base}/integrations/{provider}?{urlencode(query)}", status_code=302
+                )
             await storage.store_token(user_id, provider, token, account)
             await security_audit_service.record_user_event(
                 action="integration.connected",
@@ -440,34 +460,67 @@ async def integration_callback(
     )
 
 
+class DisconnectRequest(BaseModel):
+    delete_data: bool = False
+
+
+async def _purge_provider_data(user_id: UUID, provider: str, reason: str) -> list[dict]:
+    """Delete a provider's data (sources, documents, media blobs, shares) and
+    forget the stored account entirely, so a different account may connect."""
+    purged = await source_service.purge_sources_for_provider(user_id, provider)
+    await storage.revoke_stored(user_id, provider)
+    for source in purged:
+        await security_audit_service.record_event(
+            action="source.purged",
+            actor_user_id=user_id,
+            owner_user_id=UUID(source["owner_user_id"]),
+            target_type="source",
+            target_id=source["id"],
+            provider=provider,
+            source_type=source["source_type"],
+            metadata={"reason": reason},
+        )
+    return purged
+
+
 @router.post("/{provider}/disconnect")
 async def integration_disconnect(
     provider: str,
+    body: DisconnectRequest | None = None,
     current_user: dict = Depends(get_current_user),
 ):
+    """Disconnect stops syncing and revokes credentials; it deletes data ONLY
+    when the user explicitly chose that in the disconnect dialog."""
     get_provider(provider)  # 404 if unknown
-    removed = await source_service.delete_sources_for_provider(current_user["id"], provider)
-    await storage.revoke_stored(current_user["id"], provider)
+    delete_data = bool(body and body.delete_data)
+    if delete_data:
+        removed = await _purge_provider_data(
+            current_user["id"], provider, reason="integration_disconnect"
+        )
+    else:
+        removed = await source_service.disable_sources_for_provider(current_user["id"], provider)
+        await storage.disconnect_stored(current_user["id"], provider)
     await security_audit_service.record_user_event(
         action="integration.disconnected",
         actor_user_id=current_user["id"],
         target_type="integration",
         target_id=provider,
         provider=provider,
-        metadata={"removed_sources": len(removed)},
+        metadata={"sources": len(removed), "data_deleted": delete_data},
     )
-    for source in removed:
-        await security_audit_service.record_event(
-            action="source.deleted",
-            actor_user_id=current_user["id"],
-            owner_user_id=UUID(source["owner_user_id"]),
-            target_type="source",
-            target_id=source["id"],
-            provider=provider,
-            source_type=source["source_type"],
-            metadata={"reason": "integration_disconnect"},
-        )
-    return {"ok": True, "removed_sources": len(removed)}
+    return {"ok": True, "sources": len(removed), "data_deleted": delete_data}
+
+
+@router.post("/{provider}/purge")
+async def integration_purge(
+    provider: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete the kept data of a disconnected (or connected) provider. The
+    explicit, destructive counterpart to disconnect-keeps-data."""
+    get_provider(provider)  # 404 if unknown
+    purged = await _purge_provider_data(current_user["id"], provider, reason="purge")
+    return {"ok": True, "sources": len(purged)}
 
 
 class CredentialConnectResponse(BaseModel):

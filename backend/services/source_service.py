@@ -280,7 +280,11 @@ async def create_source(
         ON CONFLICT (owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
-            settings = EXCLUDED.settings,
+            -- Merge, don't replace: a reconnect must not wipe sync cursors
+            -- and one-time-walk state accumulated under this source.
+            settings = coalesce(user_sources.settings, '{}'::jsonb) || EXCLUDED.settings,
+            -- A disconnected-with-data source resumes syncing on reconnect.
+            sync_enabled = EXCLUDED.sync_enabled,
             updated_at = now()
         RETURNING *
         """,
@@ -400,19 +404,71 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     return result.endswith("1")
 
 
-async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
-    """Remove all connected sources backed by one disconnected provider.
-    Returns the deleted rows so callers audit exactly what was removed."""
+def _provider_source_types(provider: str) -> list[str]:
     source_types = PROVIDER_SOURCE_TYPES.get(provider)
     if source_types is None:
         raise ValueError(f"unknown provider source mapping: {provider}")
+    return list(source_types)
 
+
+async def disable_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """Disconnect-keeps-data: stop syncing every source of the provider but
+    keep the rows and their documents. Reconnecting re-enables them (the
+    connect upsert sets sync_enabled back)."""
     rows = await get_pool().fetch(
-        "DELETE FROM user_sources "
+        "UPDATE user_sources SET sync_enabled = false, updated_at = now() "
         "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
         "RETURNING *",
         user_id,
-        list(source_types),
+        _provider_source_types(provider),
+    )
+    return [_source_row(row) for row in rows]
+
+
+async def purge_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """The explicit delete-my-data path: archived media blobs, share grants,
+    then the source rows (documents cascade). Returns the deleted sources so
+    callers audit exactly what was removed."""
+    from . import storage_service
+
+    pool = get_pool()
+    source_types = _provider_source_types(provider)
+    source_ids = [
+        row["id"]
+        for row in await pool.fetch(
+            "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
+            user_id,
+            source_types,
+        )
+    ]
+    if not source_ids:
+        return []
+
+    # Media archives (X/Instagram saves) live in object storage; the row
+    # cascade below cannot reach them, so they're deleted first.
+    x_rows = await pool.fetch(
+        "SELECT media FROM x_save_docs WHERE source_id = ANY($1::uuid[]) "
+        "AND jsonb_array_length(media) > 0",
+        source_ids,
+    )
+    for row in x_rows:
+        for item in row["media"]:
+            await storage_service.delete_file(item["storage_key"])
+    ig_rows = await pool.fetch(
+        "SELECT media_storage_key FROM instagram_save_docs "
+        "WHERE source_id = ANY($1::uuid[]) AND media_storage_key IS NOT NULL",
+        source_ids,
+    )
+    for row in ig_rows:
+        await storage_service.delete_file(row["media_storage_key"])
+
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
+        source_ids,
+    )
+    rows = await pool.fetch(
+        "DELETE FROM user_sources WHERE id = ANY($1::uuid[]) RETURNING *",
+        source_ids,
     )
     return [_source_row(row) for row in rows]
 
