@@ -562,3 +562,88 @@ async def test_bookmarks_paid_tier_gate_is_best_effort(client, pool, fake_sync) 
     )
     assert status["sync_status"] != "failed"
     assert "paid tier" in status["sync_error"]
+
+
+async def _insert_done(pool, owner_id, source_id, path, content):
+    await _insert_pending(pool, owner_id, source_id, path, "Bookmark")
+    await pool.execute(
+        "UPDATE x_save_docs SET content = $3, hydration_status = 'done' "
+        "WHERE source_id = $1 AND path = $2",
+        UUID(source_id),
+        path,
+        content,
+    )
+
+
+@pytest.mark.asyncio
+async def test_bookmarks_list_newest_first_across_id_lengths(client, pool) -> None:
+    """A bookmark list you can only read oldest-first buries the thing you
+    saved five minutes ago; the listing must order by numeric tweet id (which
+    grows over time), not lexicographic path — a 2010-era short id is old."""
+    _, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    await _insert_done(pool, owner_id, source["id"], "Bookmarks/999", "old tweet")
+    await _insert_done(pool, owner_id, source["id"], "Bookmarks/1815550001", "newer tweet")
+    await _insert_done(pool, owner_id, source["id"], "Bookmarks/1815550002", "newest tweet")
+
+    entries = await source_service.source_entries(
+        UUID(owner_id), UUID(owner_id), str(source["id"]), prefix="Bookmarks"
+    )
+    assert [e["path"] for e in entries] == [
+        "Bookmarks/1815550002",
+        "Bookmarks/1815550001",
+        "Bookmarks/999",
+    ]
+
+    # Keyset continuation: the cursor is the last path served; the next page
+    # continues strictly older, in the same order.
+    first = await source_service.source_entries(
+        UUID(owner_id), UUID(owner_id), str(source["id"]), prefix="Bookmarks", limit=2
+    )
+    rest = await source_service.source_entries(
+        UUID(owner_id),
+        UUID(owner_id),
+        str(source["id"]),
+        prefix="Bookmarks",
+        after=first[-1]["path"],
+    )
+    assert [e["path"] for e in rest] == ["Bookmarks/999"]
+
+
+@pytest.mark.asyncio
+async def test_unarchived_saves_read_as_human_sentences(client, pool) -> None:
+    """A failed archive must never serve the raw exception text to the reader,
+    and a pending one must say it's still archiving — while the listing marks
+    both so they are distinguishable from healthy saves without opening them."""
+    _, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    await _insert_pending(pool, owner_id, source["id"], "Bookmarks/2001", "Bookmark")
+    await pool.execute(
+        "UPDATE x_save_docs SET hydration_status = 'failed', "
+        "hydration_error = 'RuntimeError: tweet 2001 is unavailable' "
+        "WHERE source_id = $1 AND path = 'Bookmarks/2001'",
+        UUID(source["id"]),
+    )
+    await _insert_pending(pool, owner_id, source["id"], "Bookmarks/2002", "Bookmark")
+
+    ok, failed = await source_service.source_document(
+        UUID(owner_id), UUID(owner_id), str(source["id"]), "Bookmarks/2001"
+    )
+    assert ok
+    assert failed["http_status"] == 422
+    assert "couldn't be archived" in failed["error"]
+    assert "RuntimeError" not in failed["error"]
+
+    ok, pending = await source_service.source_document(
+        UUID(owner_id), UUID(owner_id), str(source["id"]), "Bookmarks/2002"
+    )
+    assert ok
+    assert pending["http_status"] == 409
+    assert "Still archiving" in pending["error"]
+
+    entries = await source_service.source_entries(
+        UUID(owner_id), UUID(owner_id), str(source["id"]), prefix="Bookmarks"
+    )
+    statuses = {e["path"]: e["status"] for e in entries}
+    assert statuses["Bookmarks/2001"] == "failed"
+    assert statuses["Bookmarks/2002"] == "pending"

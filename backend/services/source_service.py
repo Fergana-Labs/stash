@@ -606,6 +606,10 @@ CONTENT_TABLES = {
     # stays empty (no indexer); see the note on DEFAULT_SYNC_INTERVAL_S.
 }
 
+# Archive-style save tables: rows exist before their content is hydrated, so
+# they carry a hydration_status that listings and reads must surface.
+SAVE_TABLES = {"x_save_docs", "instagram_save_docs"}
+
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
 # provider search coroutine, resolved lazily to avoid an import cycle.
@@ -853,9 +857,10 @@ async def list_documents(
 ) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
     is the registry row (from get_owned_source / get_source_for_sync). `after`
-    is a keyset cursor: only paths strictly greater (in the ORDER BY path
-    ordering) are returned, so callers page through big sources by passing the
-    last path of the previous page."""
+    is a keyset cursor: only paths strictly beyond it in the listing order are
+    returned, so callers page through big sources by passing the last path of
+    the previous page. Most sources list ascending by path; X saves list
+    newest-first (see the ordering note below)."""
     table = _table_for(source["source_type"])
     if table == "slack_messages":
         allowed_channel_ids = slack_allowed_channel_ids(source)
@@ -933,11 +938,26 @@ async def list_documents(
         if is_content
         else "NULL::text"
     )
+    # Saves carry their archive status so listings can mark a save that failed
+    # to archive (or is still archiving) instead of rendering it like the rest.
+    status_column = "hydration_status" if table in SAVE_TABLES else "NULL::text"
+    # X saves list newest-first — a bookmark list you can only read oldest-first
+    # buries the thing you saved five minutes ago. The path's tweet id grows
+    # over time but varies in digit count, so numeric order is (length, value).
+    # The keyset cursor flips with the ordering: a page continues strictly
+    # below the last path served.
+    if table == "x_save_docs":
+        order_by = "length(path) DESC, path DESC"
+        cursor_predicate = "($4 = '' OR (length(path), path) < (length($4), $4))"
+    else:
+        order_by = "path"
+        cursor_predicate = "path > $4"
     rows = await get_pool().fetch(
         f"SELECT path, name, kind, external_ref, external_updated_at, "
-        f"{size_column} AS size, {snippet_column} AS snippet FROM {table} "
-        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
-        f"ORDER BY path LIMIT $3",
+        f"{size_column} AS size, {snippet_column} AS snippet, {status_column} AS status "
+        f"FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND {cursor_predicate} "
+        f"ORDER BY {order_by} LIMIT $3",
         UUID(source["id"]),
         f"{prefix}%",
         limit,
@@ -956,6 +976,7 @@ def _entry_row(r) -> dict:
         "external_updated_at": (external_updated_at.isoformat() if external_updated_at else None),
         "size": r["size"],
         "snippet": r["snippet"] if "snippet" in r.keys() else None,
+        "status": r["status"] if "status" in r.keys() else None,
     }
 
 
@@ -1215,6 +1236,19 @@ async def _read_drive_document(source_id: UUID, path: str) -> dict | None:
     }
 
 
+def _save_pending_error(status: str, provider_label: str) -> str:
+    """The user-facing body for a save whose content isn't archived yet. The
+    raw hydration_error stays on the row for diagnosis; the API serves a human
+    sentence — nobody should read a Python exception in their bookmark list."""
+    if status == "failed":
+        return (
+            "This post couldn't be archived — it was probably deleted, made private, "
+            f"or its account suspended before we could copy it. It may still be open "
+            f"on {provider_label}."
+        )
+    return "Still archiving this post — check back in a minute."
+
+
 async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     """An Instagram save, or a loud explanation while hydration is pending —
     same contract as drive_documents: never hand back a blank body as if the
@@ -1232,14 +1266,13 @@ async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     if not row:
         return None
     if row["content"] is None:
-        status = row["hydration_status"]
         return {
             "path": row["path"],
             "name": row["name"],
             "kind": row["kind"],
             "content": "",
-            "error": row["hydration_error"] or f"hydration {status}",
-            "http_status": 422 if status == "failed" else 409,
+            "error": _save_pending_error(row["hydration_status"], "Instagram"),
+            "http_status": 422 if row["hydration_status"] == "failed" else 409,
         }
     doc = {
         "path": row["path"],
@@ -1269,14 +1302,13 @@ async def _read_x_save(source_id: UUID, path: str) -> dict | None:
     if not row:
         return None
     if row["content"] is None:
-        status = row["hydration_status"]
         return {
             "path": row["path"],
             "name": row["name"],
             "kind": row["kind"],
             "content": "",
-            "error": row["hydration_error"] or f"hydration {status}",
-            "http_status": 422 if status == "failed" else 409,
+            "error": _save_pending_error(row["hydration_status"], "X"),
+            "http_status": 422 if row["hydration_status"] == "failed" else 409,
         }
     doc = {
         "path": row["path"],
