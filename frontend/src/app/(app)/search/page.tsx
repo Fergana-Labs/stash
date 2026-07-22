@@ -264,121 +264,11 @@ function SearchPageInner() {
   }
 
   return (
-    <WorkspaceShell user={user} onLogout={logout}>
-      <div className="mx-auto w-full max-w-[1180px] px-6 py-8">
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-wrap items-center gap-2">
-            {selectedSessionId ? (
-              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-xs text-foreground">
-                #{selectedSessionId}
-              </span>
-            ) : null}
-
-            <CustomSelect
-              value={selectedFolderId}
-              options={[
-                { value: "", label: "All folders" },
-                ...folderOptions.map((folder) => ({ value: folder.id, label: folder.name })),
-              ]}
-              onChange={(next) => {
-                setSelectedFolderId(next);
-                if (next) setSelectedPageId("");
-              }}
-              disabled={Boolean(selectedPageId)}
-              ariaLabel="Folder"
-              searchable
-              searchPlaceholder="Filter folders…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
-              menuClassName="text-[12.5px]"
-            />
-
-            <CustomSelect
-              value={selectedPageId}
-              options={[
-                { value: "", label: "Any page" },
-                ...pageOptions.map((page) => ({ value: page.id, label: page.name })),
-              ]}
-              onChange={(next) => {
-                setSelectedPageId(next);
-                if (next) setSelectedFolderId("");
-              }}
-              disabled={Boolean(selectedFolderId)}
-              ariaLabel="Page"
-              searchable
-              searchPlaceholder="Filter pages…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
-              menuClassName="text-[12.5px]"
-            />
-
-            <CustomSelect
-              value={contentScope}
-              options={CONTENT_SCOPES.map((scope) => ({
-                value: scope.id,
-                label: scope.id === "all" ? "All types" : scope.label,
-              }))}
-              onChange={(next) => setContentScope(next as ContentScope)}
-              ariaLabel="Content"
-              searchable
-              searchPlaceholder="Filter types…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
-              menuClassName="text-[12.5px]"
-            />
-          </div>
-
-          <main className="min-w-0">
-            {error && (
-              <div className="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] text-red-700">
-                {error}
-              </div>
-            )}
-
-            {searching && <SearchResultsSkeleton />}
-
-            {!searching && searchedQuery && results.length === 0 && !error && (
-              <p className="py-10 text-center text-[13px] text-muted-foreground">
-                No results found for &ldquo;{searchedQuery}&rdquo;.
-              </p>
-            )}
-
-            {!searching && results.length > 0 && (
-              <section className="mt-5">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="font-display text-lg font-semibold text-foreground">
-                    Results
-                  </h2>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                    {results.length} ranked by relevance
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {results.map((result) => (
-                    <Link
-                      key={`${result.kind}:${result.id}`}
-                      href={result.href}
-                      className="rounded-lg border border-border bg-base px-4 py-3 transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {result.kind}
-                            </span>
-                            <h3 className="truncate text-[14px] font-semibold text-foreground">
-                              {result.title}
-                            </h3>
-                          </div>
-                          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
-                            {result.detail}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right text-[11px] text-muted-foreground">
-                          <div>{result.sourceName}</div>
-                          <div>{relativeTime(result.updatedAt)}</div>
     <div className="mx-auto w-full max-w-[1180px] px-6 py-8">
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center gap-2">
           {selectedSessionId ? (
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-[12px] text-foreground">
+            <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-mono text-xs text-foreground">
               #{selectedSessionId}
             </span>
           ) : null}
@@ -397,7 +287,7 @@ function SearchPageInner() {
             ariaLabel="Folder"
             searchable
             searchPlaceholder="Filter folders…"
-            className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+            className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
             menuClassName="text-[12.5px]"
           />
 
@@ -415,7 +305,7 @@ function SearchPageInner() {
             ariaLabel="Page"
             searchable
             searchPlaceholder="Filter pages…"
-            className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+            className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
             menuClassName="text-[12.5px]"
           />
 
@@ -429,7 +319,7 @@ function SearchPageInner() {
             ariaLabel="Content"
             searchable
             searchPlaceholder="Filter types…"
-            className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
+            className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)]"
             menuClassName="text-[12.5px]"
           />
         </div>
@@ -452,7 +342,7 @@ function SearchPageInner() {
           {!searching && results.length > 0 && (
             <section className="mt-5">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="font-display text-[18px] font-semibold text-foreground">
+                <h2 className="font-display text-lg font-semibold text-foreground">
                   Results
                 </h2>
                 <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -464,7 +354,7 @@ function SearchPageInner() {
                   <Link
                     key={`${result.kind}:${result.id}`}
                     href={result.href}
-                    className="rounded-lg border border-border bg-base px-4 py-3 transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                    className="rounded-lg border border-border bg-base px-4 py-3 transition-colors duration-150 ease-out hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -480,7 +370,7 @@ function SearchPageInner() {
                           {result.detail}
                         </p>
                       </div>
-                      <div className="flex-shrink-0 text-right text-[11px] text-muted-foreground">
+                      <div className="shrink-0 text-right text-[11px] text-muted-foreground">
                         <div>{result.sourceName}</div>
                         <div>{relativeTime(result.updatedAt)}</div>
                       </div>
