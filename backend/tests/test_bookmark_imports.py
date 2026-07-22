@@ -105,6 +105,35 @@ async def test_bookmark_import_enqueues_all_urls(client: AsyncClient, pool, monk
 
 
 @pytest.mark.asyncio
+async def test_reimporting_skips_already_imported_urls(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Re-importing a bookmarks file (or overlapping tab sets) must not
+    re-clip the owner's library — known URLs are skipped and reported."""
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
+    headers, owner_id = await _register(client)
+
+    first = await client.post("/api/v1/me/imports/bookmarks", headers=headers, **_upload_kwargs())
+    assert first.json() == {**first.json(), "total": 3, "skipped": 0}
+
+    again = await client.post("/api/v1/me/imports/bookmarks", headers=headers, **_upload_kwargs())
+    body = again.json()
+    assert body["total"] == 0
+    assert body["skipped"] == 3
+    rows = await pool.fetchval(
+        "SELECT count(*) FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    )
+    assert rows == 3
+
+    # Another owner importing the same file is unaffected by this owner's history.
+    other_headers, _ = await _register(client)
+    other = await client.post(
+        "/api/v1/me/imports/bookmarks", headers=other_headers, **_upload_kwargs()
+    )
+    assert other.json()["total"] == 3
+
+
+@pytest.mark.asyncio
 async def test_bookmark_import_rejects_empty_and_oversized(
     client: AsyncClient, monkeypatch
 ) -> None:
@@ -161,6 +190,11 @@ async def test_import_progress_reports_failures_per_url(
         return ARTICLE_HTML.encode(), "text/html"
 
     monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    # Put the dead link on its last attempt so its failure is terminal.
+    await pool.execute(
+        "UPDATE url_imports SET attempts = 2 WHERE owner_user_id = $1 AND url LIKE '%/two'",
+        UUID(owner_id),
+    )
     ids = [
         r["id"]
         for r in await pool.fetch(
@@ -174,8 +208,10 @@ async def test_import_progress_reports_failures_per_url(
     body = progress.json()
     assert body["total"] == 3
     assert body["done"] == 2
-    # attempts < 3, so the failed row still counts as retryable/pending.
-    assert body["pending"] == 1
+    # Terminal failures keep the bookmark as a link-only row and surface in
+    # the failures list — the batch drains to zero pending.
+    assert body["link_only"] == 1
+    assert body["pending"] == 0
     assert body["failures"][0]["url"] == "https://example.com/two"
     assert "dead link" in body["failures"][0]["error"]
 

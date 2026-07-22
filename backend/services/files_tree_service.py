@@ -1536,7 +1536,18 @@ async def find_or_create_root_folder(owner_user_id: UUID, name: str, created_by:
     )
     if row:
         return dict(row)
-    return await create_folder(owner_user_id, name, created_by, parent_folder_id=None)
+    try:
+        return await create_folder(owner_user_id, name, created_by, parent_folder_id=None)
+    except DuplicateFolderName:
+        # Lost a get-or-create race (concurrent clip saves): the folder now
+        # exists, so return it.
+        row = await pool.fetchrow(
+            "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+            "FROM folders WHERE owner_user_id = $1 AND parent_folder_id IS NULL AND name = $2",
+            owner_user_id,
+            name,
+        )
+        return dict(row)
 
 
 # --- Bulk folder-content replacement (skill sync + GitHub import) ---

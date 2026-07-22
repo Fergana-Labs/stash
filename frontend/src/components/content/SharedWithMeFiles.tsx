@@ -268,7 +268,7 @@ function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandle
     >
       <span
         className={
-          "flex h-5 w-5 shrink-0 items-center justify-center " +
+          "flex h-5 w-5 flex-shrink-0 items-center justify-center " +
           tintFor({ kind, id: item.object_id, name: item.name, subtitle: "" })
         }
       >

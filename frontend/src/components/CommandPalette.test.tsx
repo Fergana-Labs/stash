@@ -118,7 +118,7 @@ describe("CommandPalette search", () => {
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(router.push).toHaveBeenCalledWith("/p/page-1");
+    expect(router.push).toHaveBeenCalledWith("/page/page-1");
   });
 
   it("finds matching tables", async () => {

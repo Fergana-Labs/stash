@@ -323,6 +323,9 @@ export interface SourceEntry {
   external_ref?: string | null;
   // One-line preview of the copied content (e.g. the tweet text).
   snippet?: string | null;
+  // Archive state for save-type sources: 'done' | 'pending' | 'failed'.
+  // Null/absent for sources without an archive pipeline.
+  status?: string | null;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);

@@ -22,9 +22,16 @@ def find_stash_installs() -> list[Path]:
         if not entry:
             continue
         candidate = Path(entry) / "stash"
-        if not (candidate.is_file() and os.access(candidate, os.X_OK)):
+        try:
+            if not (candidate.is_file() and os.access(candidate, os.X_OK)):
+                continue
+            real = candidate.resolve()
+        except OSError:
+            # An unreadable PATH entry is not a stash install; skip it rather
+            # than let stat() abort the scan. WSL puts the Windows PATH on
+            # $PATH, and some of those dirs raise PermissionError — that
+            # crashed every SessionStart hook before the context was emitted.
             continue
-        real = candidate.resolve()
         if real in seen:
             continue
         seen.add(real)

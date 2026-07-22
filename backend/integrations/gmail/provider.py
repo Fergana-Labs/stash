@@ -106,7 +106,11 @@ class GmailIntegration(Integration):
             resp = await client.get(USERINFO_URL)
             resp.raise_for_status()
             payload = resp.json()
-        return AccountInfo(email=payload.get("email"), display_name=payload.get("name"))
+        return AccountInfo(
+            email=payload.get("email"),
+            display_name=payload.get("name"),
+            account_ref=payload.get("email"),
+        )
 
 
 def _payload_to_tokenset(payload: dict) -> TokenSet:

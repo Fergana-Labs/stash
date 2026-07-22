@@ -16,7 +16,7 @@ from .files import MAX_FILE_SIZE, _page_app_url
 router = APIRouter(prefix="/api/v1/me/clips", tags=["clips"])
 imports_router = APIRouter(prefix="/api/v1/me/imports", tags=["clips"])
 
-MAX_IMPORT_URLS = 25_000
+MAX_IMPORT_URLS = 100_000
 MAX_TAB_URLS = 200
 
 
@@ -45,7 +45,7 @@ async def clip_page(
             created_by=current_user["id"],
             items=[{"url": url, "title": body.title}],
         )
-        dispatch_url_imports(ids)
+        await dispatch_url_imports(ids)
         return JSONResponse(status_code=202, content={"import_id": str(ids[0])})
     try:
         page = await clip_service.store_html_clip(
@@ -121,24 +121,34 @@ async def _create_import(
     filename: str | None,
     items: list[dict],
 ) -> JSONResponse:
-    """Shared tail of both import endpoints: batch row, url_imports rows,
-    worker dispatch."""
-    from ..tasks.clips import dispatch_url_imports
+    """Shared tail of both import endpoints: drop URLs this owner already
+    imported (re-importing a bookmarks file must not re-clip the library),
+    then batch row, url_imports rows, and a top-up of the windowed
+    dispatcher — the Beat sweep drains the rest."""
+    from ..tasks.clips import top_up_url_imports
+
+    known = await url_import_service.existing_urls(owner_user_id, [item["url"] for item in items])
+    new_items = [item for item in items if item["url"] not in known]
+    skipped = len(items) - len(new_items)
 
     batch_id = await url_import_service.create_batch(
         owner_user_id=owner_user_id,
         kind=kind,
         filename=filename,
-        total=len(items),
+        total=len(new_items),
     )
-    ids = await url_import_service.create_url_imports(
-        owner_user_id=owner_user_id,
-        created_by=owner_user_id,
-        items=items,
-        batch_id=batch_id,
+    if new_items:
+        await url_import_service.create_url_imports(
+            owner_user_id=owner_user_id,
+            created_by=owner_user_id,
+            items=new_items,
+            batch_id=batch_id,
+        )
+        await top_up_url_imports()
+    return JSONResponse(
+        status_code=201,
+        content={"import_id": str(batch_id), "total": len(new_items), "skipped": skipped},
     )
-    dispatch_url_imports(ids)
-    return JSONResponse(status_code=201, content={"import_id": str(batch_id), "total": len(items)})
 
 
 @imports_router.post("/bookmarks")
@@ -204,6 +214,72 @@ async def import_tabs(
         filename=None,
         items=items,
     )
+
+
+# ===== Extension-fed hydration =====
+# URLs the server can't fetch (login walls, IP blocks) are marked
+# needs_client; the extension polls this queue, refetches them with the
+# user's own browser session, and posts the raw HTML back. Registered
+# before /{batch_id} so "client-queue" isn't parsed as a batch id.
+
+
+class ClientResultRequest(BaseModel):
+    # Exactly one of html (the client-fetched page) or error (why the
+    # client couldn't fetch it either) must be set.
+    html: str | None = None
+    title: str | None = None
+    error: str | None = None
+
+
+@imports_router.get("/client-queue")
+async def client_queue(
+    limit: int = 5,
+    current_user: dict = Depends(get_current_user),
+):
+    """Claim up to `limit` needs_client rows for this user's extension."""
+    rows = await url_import_service.claim_client_batch(current_user["id"], limit=min(limit, 20))
+    return {"items": [{"id": str(r["id"]), "url": r["url"]} for r in rows]}
+
+
+@imports_router.post("/{import_id}/client-result")
+async def client_result(
+    import_id: UUID,
+    body: ClientResultRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Resolve a needs_client row with the extension's fetch result. The
+    client is the last resort, so its failure is terminal: the bookmark is
+    saved link-only rather than bounced back to the server."""
+    from ..tasks.clips import _resolve_link_only
+
+    row = await url_import_service.get_url_import(import_id, current_user["id"])
+    if row is None:
+        raise HTTPException(status_code=404, detail="Import not found")
+    if row["status"] != "needs_client":
+        raise HTTPException(status_code=409, detail=f"Import is {row['status']}")
+    if (body.html is None) == (body.error is None):
+        raise HTTPException(status_code=422, detail="Send exactly one of html or error")
+
+    if body.error is not None:
+        await _resolve_link_only(row, f"{row['error']}; client fetch failed: {body.error}")
+        return {"status": "link_only"}
+
+    if len(body.html.encode()) > clip_router.MAX_FETCH_BYTES:
+        raise HTTPException(status_code=413, detail="HTML larger than 20 MB")
+    try:
+        page = await clip_service.save_page_clip(
+            owner_user_id=row["owner_user_id"],
+            user_id=row["created_by"],
+            url=row["url"],
+            html=body.html,
+            title=body.title or row.get("title"),
+            folder_id=row["folder_id"],
+        )
+    except ArticleExtractionError as e:
+        await _resolve_link_only(row, f"{row['error']}; client HTML unusable: {e}")
+        return {"status": "link_only"}
+    await url_import_service.mark_done(import_id, page_id=page["id"])
+    return {"status": "done"}
 
 
 @imports_router.get("/{batch_id}")

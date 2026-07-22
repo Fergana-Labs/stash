@@ -1,74 +1,54 @@
-"""Fetch a YouTube video's transcript without downloading the video.
+"""Fetch a YouTube video's transcript via ScrapeCreators.
 
-yt-dlp resolves metadata and caption tracks; the chosen track's json3
-payload is fetched directly. Track choice is one deterministic rule —
-manual captions beat auto-generated ones, English beats the video's
-original language — with no cascade beyond that: a video with neither is
-a loud TranscriptUnavailable.
-
-Everything here is synchronous (yt-dlp is blocking); callers run it in a
-worker thread.
+Server-side yt-dlp was the old path; YouTube bot-detects datacenter IPs,
+which is fatal at bulk-import scale (a real bookmark export is a quarter
+YouTube). The transcript comes from ScrapeCreators — the same vendor,
+key, and header as Instagram saves — and the title/channel from YouTube's
+official oEmbed endpoint, which is key-free and not bot-gated. oEmbed is
+checked first: it failing means the video is private or deleted, so no
+transcript can exist and no ScrapeCreators credit should be spent.
 """
 
 import httpx
-import yt_dlp
+
+from ..config import settings
+
+SC_TRANSCRIPT_URL = "https://api.scrapecreators.com/v1/youtube/video/transcript"
+OEMBED_URL = "https://www.youtube.com/oembed"
+
+# ScrapeCreators may transcribe on demand; give it room.
+_TIMEOUT = 90
 
 
 class TranscriptUnavailable(Exception):
-    """The video has no usable caption track."""
+    """The video is private/deleted or has no usable caption track."""
 
 
-_FETCH_TIMEOUT = 30
-
-
-def fetch_transcript(url: str) -> dict:
+async def fetch_transcript(url: str) -> dict:
     """Return {"title", "channel", "transcript"} for a YouTube URL."""
-    options = {"skip_download": True, "quiet": True, "no_warnings": True}
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=False)
+    if not settings.SCRAPECREATORS_API_KEY:
+        raise RuntimeError("SCRAPECREATORS_API_KEY is not set")
 
-    track = _pick_track(
-        info.get("subtitles") or {},
-        info.get("automatic_captions") or {},
-        info.get("language"),
-    )
-    if track is None:
-        raise TranscriptUnavailable("No transcript available for this video")
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        oembed = await client.get(OEMBED_URL, params={"url": url, "format": "json"})
+        if oembed.status_code != 200:
+            raise TranscriptUnavailable(
+                f"Video is private or deleted (oEmbed HTTP {oembed.status_code})"
+            )
+        meta = oembed.json()
 
-    json3_url = next((f["url"] for f in track if f.get("ext") == "json3"), None)
-    if json3_url is None:
-        raise TranscriptUnavailable("Caption track has no json3 format")
-    response = httpx.get(json3_url, timeout=_FETCH_TIMEOUT)
-    response.raise_for_status()
+        sc = await client.get(
+            SC_TRANSCRIPT_URL,
+            params={"url": url},
+            headers={"x-api-key": settings.SCRAPECREATORS_API_KEY},
+        )
+        sc.raise_for_status()
+        transcript = sc.json().get("transcript_only_text")
+        if not transcript:
+            raise TranscriptUnavailable("No transcript available for this video")
 
     return {
-        "title": info.get("title") or url,
-        "channel": info.get("channel") or info.get("uploader") or "",
-        "transcript": _parse_json3(response.json()),
+        "title": meta["title"],
+        "channel": meta["author_name"],
+        "transcript": transcript,
     }
-
-
-def _pick_track(subtitles: dict, automatic: dict, original_language: str | None) -> list | None:
-    """Manual captions beat auto-generated; English beats the original language."""
-    for tracks in (subtitles, automatic):
-        for prefix in ("en", original_language):
-            if not prefix:
-                continue
-            for lang, formats in tracks.items():
-                if lang.startswith(prefix):
-                    return formats
-    return None
-
-
-def _parse_json3(payload: dict) -> str:
-    """Flatten YouTube's json3 caption events to plain text."""
-    lines: list[str] = []
-    for event in payload.get("events", []):
-        text = "".join(seg.get("utf8", "") for seg in event.get("segs", []))
-        text = text.strip()
-        if text:
-            lines.append(text)
-    transcript = " ".join(lines)
-    if not transcript:
-        raise TranscriptUnavailable("Caption track is empty")
-    return transcript

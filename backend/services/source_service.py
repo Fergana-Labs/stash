@@ -73,6 +73,9 @@ DEFAULT_SYNC_INTERVAL_S = {
     "linear": 1800,
     "posthog_project": 1800,
     "gong_calls": 21600,
+    # NB: heavi_learnings is intentionally absent — reads are live against the
+    # customer endpoint and there is no local index yet (deferred until the
+    # unified-search work, PR #860, settles what search wants from sources).
     # Freshness comes from extension pushes (which kick a sync); the interval
     # is the retry pass for failed hydrations.
     "instagram_saves": 1800,
@@ -93,6 +96,7 @@ SOURCE_CAPABILITY = {
     "linear": "navigable",
     "posthog_project": "navigable",
     "gong_calls": "searchable",
+    "heavi_learnings": "navigable",
     "instagram_saves": "searchable",
     # Navigable so the browse UI shows the Bookmarks/Posts/Replies/Articles
     # folders; FTS still works (search keys off CONTENT_TABLES, not capability).
@@ -111,6 +115,7 @@ PROVIDER_SOURCE_TYPES = {
     "linear": ("linear",),
     "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
+    "heavi": ("heavi_learnings",),
     # Provider-less groupings: no OAuth integration — the extension pushes the
     # saved-item links and ScrapeCreators hydrates them.
     "instagram": ("instagram_saves",),
@@ -275,7 +280,11 @@ async def create_source(
         ON CONFLICT (owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
-            settings = EXCLUDED.settings,
+            -- Merge, don't replace: a reconnect must not wipe sync cursors
+            -- and one-time-walk state accumulated under this source.
+            settings = coalesce(user_sources.settings, '{}'::jsonb) || EXCLUDED.settings,
+            -- A disconnected-with-data source resumes syncing on reconnect.
+            sync_enabled = EXCLUDED.sync_enabled,
             updated_at = now()
         RETURNING *
         """,
@@ -395,19 +404,71 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     return result.endswith("1")
 
 
-async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
-    """Remove all connected sources backed by one disconnected provider.
-    Returns the deleted rows so callers audit exactly what was removed."""
+def _provider_source_types(provider: str) -> list[str]:
     source_types = PROVIDER_SOURCE_TYPES.get(provider)
     if source_types is None:
         raise ValueError(f"unknown provider source mapping: {provider}")
+    return list(source_types)
 
+
+async def disable_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """Disconnect-keeps-data: stop syncing every source of the provider but
+    keep the rows and their documents. Reconnecting re-enables them (the
+    connect upsert sets sync_enabled back)."""
     rows = await get_pool().fetch(
-        "DELETE FROM user_sources "
+        "UPDATE user_sources SET sync_enabled = false, updated_at = now() "
         "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
         "RETURNING *",
         user_id,
-        list(source_types),
+        _provider_source_types(provider),
+    )
+    return [_source_row(row) for row in rows]
+
+
+async def purge_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """The explicit delete-my-data path: archived media blobs, share grants,
+    then the source rows (documents cascade). Returns the deleted sources so
+    callers audit exactly what was removed."""
+    from . import storage_service
+
+    pool = get_pool()
+    source_types = _provider_source_types(provider)
+    source_ids = [
+        row["id"]
+        for row in await pool.fetch(
+            "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
+            user_id,
+            source_types,
+        )
+    ]
+    if not source_ids:
+        return []
+
+    # Media archives (X/Instagram saves) live in object storage; the row
+    # cascade below cannot reach them, so they're deleted first.
+    x_rows = await pool.fetch(
+        "SELECT media FROM x_save_docs WHERE source_id = ANY($1::uuid[]) "
+        "AND jsonb_array_length(media) > 0",
+        source_ids,
+    )
+    for row in x_rows:
+        for item in row["media"]:
+            await storage_service.delete_file(item["storage_key"])
+    ig_rows = await pool.fetch(
+        "SELECT media_storage_key FROM instagram_save_docs "
+        "WHERE source_id = ANY($1::uuid[]) AND media_storage_key IS NOT NULL",
+        source_ids,
+    )
+    for row in ig_rows:
+        await storage_service.delete_file(row["media_storage_key"])
+
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
+        source_ids,
+    )
+    rows = await pool.fetch(
+        "DELETE FROM user_sources WHERE id = ANY($1::uuid[]) RETURNING *",
+        source_ids,
     )
     return [_source_row(row) for row in rows]
 
@@ -478,6 +539,19 @@ async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
     )
 
 
+async def set_sync_warning(source_id: UUID, message: str) -> None:
+    """A non-fatal, owner-facing sync notice (e.g. one feed of a source needs a
+    paid provider tier while the rest keeps syncing). Stored in sync_error but
+    the source stays idle; the next sync start clears it, so a resolved warning
+    disappears on its own. Same safety rule as SourceSyncUserError: the message
+    must never contain tokens or provider payloads."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_error = $2, updated_at = now() WHERE id = $1",
+        source_id,
+        message[:500],
+    )
+
+
 async def mark_sync_failed(source_id: UUID, error: str) -> None:
     await get_pool().execute(
         "UPDATE user_sources SET sync_status = 'failed', sync_error = $2, updated_at = now() "
@@ -503,6 +577,7 @@ SOURCE_TABLE = {
     "linear": "linear_index",
     "posthog_project": "posthog_index",
     "gong_calls": "gong_documents",
+    "heavi_learnings": "heavi_learning_docs",
     "instagram_saves": "instagram_save_docs",
     "x_saves": "x_save_docs",
 }
@@ -527,7 +602,13 @@ CONTENT_TABLES = {
     # stored, so it survives the post being deleted or the account going private.
     "instagram_save_docs",
     "x_save_docs",
+    # NB: heavi_learning_docs is intentionally absent — the table exists but
+    # stays empty (no indexer); see the note on DEFAULT_SYNC_INTERVAL_S.
 }
+
+# Archive-style save tables: rows exist before their content is hydrated, so
+# they carry a hydration_status that listings and reads must surface.
+SAVE_TABLES = {"x_save_docs", "instagram_save_docs"}
 
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
@@ -776,9 +857,10 @@ async def list_documents(
 ) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
     is the registry row (from get_owned_source / get_source_for_sync). `after`
-    is a keyset cursor: only paths strictly greater (in the ORDER BY path
-    ordering) are returned, so callers page through big sources by passing the
-    last path of the previous page."""
+    is a keyset cursor: only paths strictly beyond it in the listing order are
+    returned, so callers page through big sources by passing the last path of
+    the previous page. Most sources list ascending by path; X saves list
+    newest-first (see the ordering note below)."""
     table = _table_for(source["source_type"])
     if table == "slack_messages":
         allowed_channel_ids = slack_allowed_channel_ids(source)
@@ -856,11 +938,26 @@ async def list_documents(
         if is_content
         else "NULL::text"
     )
+    # Saves carry their archive status so listings can mark a save that failed
+    # to archive (or is still archiving) instead of rendering it like the rest.
+    status_column = "hydration_status" if table in SAVE_TABLES else "NULL::text"
+    # X saves list newest-first — a bookmark list you can only read oldest-first
+    # buries the thing you saved five minutes ago. The path's tweet id grows
+    # over time but varies in digit count, so numeric order is (length, value).
+    # The keyset cursor flips with the ordering: a page continues strictly
+    # below the last path served.
+    if table == "x_save_docs":
+        order_by = "length(path) DESC, path DESC"
+        cursor_predicate = "($4 = '' OR (length(path), path) < (length($4), $4))"
+    else:
+        order_by = "path"
+        cursor_predicate = "path > $4"
     rows = await get_pool().fetch(
         f"SELECT path, name, kind, external_ref, external_updated_at, "
-        f"{size_column} AS size, {snippet_column} AS snippet FROM {table} "
-        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
-        f"ORDER BY path LIMIT $3",
+        f"{size_column} AS size, {snippet_column} AS snippet, {status_column} AS status "
+        f"FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND {cursor_predicate} "
+        f"ORDER BY {order_by} LIMIT $3",
         UUID(source["id"]),
         f"{prefix}%",
         limit,
@@ -879,6 +976,7 @@ def _entry_row(r) -> dict:
         "external_updated_at": (external_updated_at.isoformat() if external_updated_at else None),
         "size": r["size"],
         "snippet": r["snippet"] if "snippet" in r.keys() else None,
+        "status": r["status"] if "status" in r.keys() else None,
     }
 
 
@@ -972,9 +1070,32 @@ async def _read_linear_live_ref(source: dict, identifier: str) -> dict | None:
     return {**doc, "content": content, "external_ref": identifier}
 
 
+async def _read_heavi_live(source: dict, path: str) -> dict | None:
+    """Every heavi read is live: the customer's endpoint is the source of
+    truth, so we refetch the rules and resolve `path` (a rule path or a raw
+    rule id) against them — never the cached copy."""
+    from ..integrations.heavi.client import fetch_learnings
+    from ..integrations.heavi.render import find_rule, rule_content, rule_name, rule_path
+
+    rules = await fetch_learnings(UUID(source["owner_user_id"]))
+    rule = find_rule(rules, path)
+    if rule is None:
+        return None
+    return {
+        "path": rule_path(rule),
+        "name": rule_name(rule),
+        "kind": "rule",
+        "content": rule_content(rule),
+        "external_ref": rule["id"],
+    }
+
+
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
     tables fetch it lazily from the provider with the owner's token."""
+    if source["source_type"] == "heavi_learnings":
+        return await _read_heavi_live(source, path)
+
     # Any Linear identifier is readable live, even one not yet in the index.
     if source["source_type"] == "linear" and LINEAR_IDENTIFIER_RE.match(path):
         return await _read_linear_live_ref(source, path)
@@ -1115,6 +1236,19 @@ async def _read_drive_document(source_id: UUID, path: str) -> dict | None:
     }
 
 
+def _save_pending_error(status: str, provider_label: str) -> str:
+    """The user-facing body for a save whose content isn't archived yet. The
+    raw hydration_error stays on the row for diagnosis; the API serves a human
+    sentence — nobody should read a Python exception in their bookmark list."""
+    if status == "failed":
+        return (
+            "This post couldn't be archived — it was probably deleted, made private, "
+            f"or its account suspended before we could copy it. It may still be open "
+            f"on {provider_label}."
+        )
+    return "Still archiving this post — check back in a minute."
+
+
 async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     """An Instagram save, or a loud explanation while hydration is pending —
     same contract as drive_documents: never hand back a blank body as if the
@@ -1132,14 +1266,13 @@ async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     if not row:
         return None
     if row["content"] is None:
-        status = row["hydration_status"]
         return {
             "path": row["path"],
             "name": row["name"],
             "kind": row["kind"],
             "content": "",
-            "error": row["hydration_error"] or f"hydration {status}",
-            "http_status": 422 if status == "failed" else 409,
+            "error": _save_pending_error(row["hydration_status"], "Instagram"),
+            "http_status": 422 if row["hydration_status"] == "failed" else 409,
         }
     doc = {
         "path": row["path"],
@@ -1169,14 +1302,13 @@ async def _read_x_save(source_id: UUID, path: str) -> dict | None:
     if not row:
         return None
     if row["content"] is None:
-        status = row["hydration_status"]
         return {
             "path": row["path"],
             "name": row["name"],
             "kind": row["kind"],
             "content": "",
-            "error": row["hydration_error"] or f"hydration {status}",
-            "http_status": 422 if status == "failed" else 409,
+            "error": _save_pending_error(row["hydration_status"], "X"),
+            "http_status": 422 if row["hydration_status"] == "failed" else 409,
         }
     doc = {
         "path": row["path"],
@@ -1609,7 +1741,17 @@ async def source_entries(
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
             return None
-        entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
+        if connected["source_type"] == "heavi_learnings":
+            # Fully live: the listing comes from the customer's endpoint, not
+            # the cached table, so a rule added or deleted upstream shows up
+            # on the next ls. Everything fits one page (dozens of rules).
+            from ..integrations.heavi.client import fetch_learnings
+            from ..integrations.heavi.render import rule_entries
+
+            rules = [] if after else await fetch_learnings(UUID(connected["owner_user_id"]))
+            entries = rule_entries(rules, prefix)
+        else:
+            entries = await list_documents(connected, prefix=prefix, limit=limit, after=after)
 
     await _audit_source_read(
         action="source.entries_listed",

@@ -95,9 +95,14 @@ describe("SourceConnectorList disconnect", () => {
   });
 });
 
+// Visibility is server-driven: only providers the backend returns render a
+// card, so customer-specific integrations (Heavi) stay invisible to everyone
+// else without the frontend knowing the rules.
 describe("SourceConnectorList providers", () => {
   it("offers PostHog as a product analytics source", async () => {
-    listIntegrations.mockResolvedValue({ providers: [] });
+    listIntegrations.mockResolvedValue({
+      providers: [{ ...connectedGithub(false), provider: "posthog", display_name: "PostHog" }],
+    });
 
     render(
       <ConfirmDialogProvider>
@@ -109,5 +114,19 @@ describe("SourceConnectorList providers", () => {
     expect(
       screen.getByText("Browse dashboards, insights, feature flags, and experiments.")
     ).toBeInTheDocument();
+  });
+
+  it("hides providers the server does not offer this user", async () => {
+    listIntegrations.mockResolvedValue({ providers: [connectedGithub(false)] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText("GitHub")).toBeInTheDocument();
+    expect(screen.queryByText("Heavi")).not.toBeInTheDocument();
+    expect(screen.queryByText("PostHog")).not.toBeInTheDocument();
   });
 });

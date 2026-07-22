@@ -33,6 +33,11 @@ HEADER_NAMES = ("Subject", "From", "To", "Date")
 DEFAULT_INDEX_QUERY = "newer_than:30d -in:spam -in:trash"
 MAX_INDEX_MESSAGES = 100
 SEARCH_LIMIT = 25
+# Gmail enforces a per-user quota (~250 units/sec; a metadata get costs 5), so
+# an unbounded burst of 100 fetches gets 429s partway through and fails the
+# whole sync. Bound the fan-out and back off on 429 before giving up.
+METADATA_CONCURRENCY = 10
+RETRY_DELAYS = (1.0, 2.0, 4.0)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -117,12 +122,26 @@ async def _list_message_refs(
 
 
 async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> dict:
-    resp = await client.get(
-        MESSAGE_URL.format(message_id=message_id),
-        params=_metadata_params("metadata"),
-    )
+    for delay in (*RETRY_DELAYS, None):
+        resp = await client.get(
+            MESSAGE_URL.format(message_id=message_id),
+            params=_metadata_params("metadata"),
+        )
+        if resp.status_code != 429 or delay is None:
+            break
+        await asyncio.sleep(delay)
     resp.raise_for_status()
     return resp.json()
+
+
+async def _get_messages_metadata(client: httpx.AsyncClient, refs: list[dict]) -> list[dict]:
+    semaphore = asyncio.Semaphore(METADATA_CONCURRENCY)
+
+    async def bounded(message_id: str) -> dict:
+        async with semaphore:
+            return await _get_message_metadata(client, message_id)
+
+    return await asyncio.gather(*(bounded(ref["id"]) for ref in refs if ref.get("id")))
 
 
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
@@ -151,9 +170,7 @@ async def index_gmail(source: dict) -> str | None:
     present: list[str] = []
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         refs, _, _ = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
-        messages = await asyncio.gather(
-            *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
-        )
+        messages = await _get_messages_metadata(client, refs)
         for message in messages:
             path = await _upsert_message_metadata(source, message)
             if path:
@@ -176,9 +193,7 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
         refs, next_page_token, estimated_total = await _list_message_refs(
             client, query, min(limit, SEARCH_LIMIT)
         )
-        messages = await asyncio.gather(
-            *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
-        )
+        messages = await _get_messages_metadata(client, refs)
 
     hits: list[dict] = []
     for message in messages:

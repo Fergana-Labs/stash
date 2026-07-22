@@ -35,6 +35,7 @@ export default function SourceConnectorList({
   onObsidianUploaded,
 }: Props) {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus>>({});
+  const [loaded, setLoaded] = useState(false);
   // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
   // "connected" once the browser extension has pushed a source. Keyed by
   // provider ("x"/"instagram").
@@ -58,6 +59,7 @@ export default function SourceConnectorList({
       if (providerForSourceType[source.type] === "instagram") extension.instagram = source;
     }
     setExtensionSources(extension);
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -137,9 +139,15 @@ export default function SourceConnectorList({
         </div>
       )}
 
-      {CONNECTORS.map((connector) => {
+      {/* Visibility is server-driven: the server omits providers this user may
+          not use (customer-specific integrations like Heavi), so no card
+          renders until the list has loaded — a card must never flash in and
+          then disappear. Extension connectors have no provider entry and are
+          always shown. */}
+      {loaded && CONNECTORS.map((connector) => {
         const isExtension = connector.kind === "extension";
         const status = statuses[connector.provider];
+        if (!isExtension && !status) return null;
         const connected = isExtension
           ? !!extensionSources[connector.provider]
           : !!status?.connected;
