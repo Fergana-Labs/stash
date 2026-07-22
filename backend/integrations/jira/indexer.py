@@ -53,8 +53,10 @@ ISSUE_FIELDS = ",".join(
         "created",
         "updated",
         "duedate",
-        # body + activity
+        # body + activity — with summary, these are the fields JQL `text ~`
+        # searches, so a search hit's snippet must carry all of them
         "description",
+        "environment",
         "comment",
         # taxonomy
         "labels",
@@ -151,6 +153,10 @@ def _render_issue(issue: dict) -> str:
     description = _adf_to_text(fields.get("description"))
     if description:
         parts.append(f"\n{description}")
+
+    environment = _adf_to_text(fields.get("environment"))
+    if environment:
+        parts.append(f"\n## Environment\n{environment}")
 
     # Issue links: "blocks", "is blocked by", "relates to", etc.
     link_lines: list[str] = []

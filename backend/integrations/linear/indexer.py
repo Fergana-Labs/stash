@@ -42,6 +42,9 @@ def _render_issue(issue: linear_api_service.LinearIssue) -> str:
     parts.append(f"URL: {issue.url}")
     if (issue.description or "").strip():
         parts.append(f"\n{issue.description.strip()}")
+    if issue.comments:
+        rendered = "\n\n".join(f"{c.author_name or 'Unknown'}: {c.body}" for c in issue.comments)
+        parts.append(f"\n## Comments\n{rendered}")
     return "\n".join(parts)
 
 

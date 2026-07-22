@@ -258,17 +258,35 @@ def _extract_body(payload: dict) -> str:
     return "\n\n".join(parts).strip()
 
 
+def _attachment_filenames(payload: dict) -> list[str]:
+    return [part["filename"] for part in _walk_parts(payload) if part.get("filename")]
+
+
 def _render_message(message: dict) -> str:
+    """The rendered text must carry every field Gmail's native search matches
+    on (cc:, bcc:, filename:, …) — unified search re-ranks and snippets hits on
+    this text, so a field missing here makes its matches rank as irrelevant."""
     headers = _message_headers(message)
     subject = headers.get("subject") or "(no subject)"
     parts = [f"# {subject}"]
-    for label, key in (("From", "from"), ("To", "to"), ("Date", "date")):
+    for label, key in (
+        ("From", "from"),
+        ("To", "to"),
+        ("Cc", "cc"),
+        ("Bcc", "bcc"),
+        ("Date", "date"),
+    ):
         if headers.get(key):
             parts.append(f"{label}: {headers[key]}")
+
+    payload = message.get("payload") or {}
+    attachments = _attachment_filenames(payload)
+    if attachments:
+        parts.append(f"Attachments: {', '.join(attachments)}")
     if message.get("snippet"):
         parts.append(f"Snippet: {message['snippet']}")
 
-    body = _extract_body(message.get("payload") or {})
+    body = _extract_body(payload)
     if body:
         parts.append(f"\n{body}")
     return "\n".join(parts)
