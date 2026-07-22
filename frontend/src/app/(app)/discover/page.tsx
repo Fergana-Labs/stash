@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import WorkspaceShell from "@/components/workspace/workspace-shell";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import { BasicPageSkeleton, CardGridSkeleton } from "@/components/SkeletonStates";
+import { CardGridSkeleton } from "@/components/SkeletonStates";
 import { GitHubIcon } from "@/components/integrations/BrandIcons";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import SkillCard from "@/components/skill/SkillCard";
-import { useAuth } from "@/hooks/useAuth";
 import { API_BASE, githubOwner, type PublicSkillCard } from "@/lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
@@ -33,7 +31,6 @@ async function fetchPublicSkills(params: {
 }
 
 export default function DiscoverPage() {
-  const { user, loading, logout } = useAuth();
   const [sort, setSort] = useState<Sort>("trending");
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<PublicSkillCard[]>([]);
@@ -48,7 +45,7 @@ export default function DiscoverPage() {
       .finally(() => setFetching(false));
   }, [query, sort]);
 
-  const content = (
+  return (
     <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-9">
       <div className="flex items-center gap-3">
         <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
@@ -93,20 +90,6 @@ export default function DiscoverPage() {
       )}
     </div>
   );
-
-  if (loading) {
-    return <BasicPageSkeleton />;
-  }
-
-  if (user) {
-    return (
-      <WorkspaceShell user={user} onLogout={logout}>
-        {content}
-      </WorkspaceShell>
-    );
-  }
-
-  return <main>{content}</main>;
 }
 
 function CardGridLoading() {
