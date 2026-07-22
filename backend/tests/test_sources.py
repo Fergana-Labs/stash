@@ -170,15 +170,7 @@ async def test_add_list_remove_source(client: AsyncClient):
     assert source_id not in {s["source"] for s in after.json()["sources"]}
 
 
-@pytest.mark.asyncio
-async def test_disconnect_provider_removes_sources_and_copied_documents(
-    client: AsyncClient,
-    monkeypatch,
-    _db_pool,
-):
-    from backend.integrations import router as integrations_router
-
-    api_key, owner_id = await _register(client)
+async def _slack_source_with_document(client: AsyncClient, api_key: str, owner_id) -> UUID:
     ws = await _user_scope(client, api_key)
     slack = await source_service.create_source(
         owner_user_id=owner_id,
@@ -187,14 +179,7 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
         display_name="Acme Slack",
         settings={"allowed_channel_ids": ["C123"]},
     )
-    github = await source_service.create_source(
-        owner_user_id=owner_id,
-        source_type="github_repo",
-        external_ref="acme/widgets",
-        display_name="acme/widgets",
-    )
     slack_id = UUID(slack["id"])
-    github_id = UUID(github["id"])
     await source_service.upsert_content_document(
         table="slack_messages",
         source_id=slack_id,
@@ -203,24 +188,83 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
         name="launch-discussion",
         content="confidential launch plan",
     )
+    return slack_id
+
+
+@pytest.mark.asyncio
+async def test_disconnect_keeps_sources_and_documents(
+    client: AsyncClient,
+    monkeypatch,
+    _db_pool,
+):
+    # Disconnect is a credentials operation, not a data operation: the source
+    # and its archived documents must survive, with syncing stopped. This is
+    # the product promise of a stash — fixing a token problem must never cost
+    # the user their data.
+    from backend.integrations import router as integrations_router
+
+    api_key, owner_id = await _register(client)
+    slack_id = await _slack_source_with_document(client, api_key, owner_id)
+
+    called = {}
+
+    async def fake_disconnect_stored(user_id, provider):
+        called["provider"] = provider
+
+    monkeypatch.setattr(integrations_router.storage, "disconnect_stored", fake_disconnect_stored)
+
+    resp = await client.post("/api/v1/integrations/slack/disconnect", headers=_auth(api_key))
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "sources": 1, "data_deleted": False}
+    assert called["provider"] == "slack"
+
+    kept = await source_service.get_owned_source(slack_id, owner_id)
+    assert kept is not None
+    assert (
+        await _db_pool.fetchval("SELECT sync_enabled FROM user_sources WHERE id = $1", slack_id)
+        is False
+    )
+    assert (
+        await _db_pool.fetchval(
+            "SELECT count(*) FROM slack_messages WHERE source_id = $1", slack_id
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_disconnect_with_delete_data_removes_everything(
+    client: AsyncClient,
+    monkeypatch,
+    _db_pool,
+):
+    # The destructive path exists only behind the explicit choice in the
+    # disconnect dialog.
+    from backend.integrations import router as integrations_router
+
+    api_key, owner_id = await _register(client)
+    slack_id = await _slack_source_with_document(client, api_key, owner_id)
 
     async def fake_revoke_stored(user_id, provider):
-        assert user_id == owner_id
         assert provider == "slack"
 
     monkeypatch.setattr(integrations_router.storage, "revoke_stored", fake_revoke_stored)
 
-    resp = await client.post("/api/v1/integrations/slack/disconnect", headers=_auth(api_key))
+    resp = await client.post(
+        "/api/v1/integrations/slack/disconnect",
+        headers=_auth(api_key),
+        json={"delete_data": True},
+    )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "removed_sources": 1}
+    assert resp.json() == {"ok": True, "sources": 1, "data_deleted": True}
 
     assert await source_service.get_owned_source(slack_id, owner_id) is None
-    assert await source_service.get_owned_source(github_id, owner_id) is not None
-    copied_rows = await _db_pool.fetchval(
-        "SELECT count(*) FROM slack_messages WHERE source_id = $1",
-        slack_id,
+    assert (
+        await _db_pool.fetchval(
+            "SELECT count(*) FROM slack_messages WHERE source_id = $1", slack_id
+        )
+        == 0
     )
-    assert copied_rows == 0
 
 
 @pytest.mark.asyncio
@@ -250,7 +294,7 @@ async def test_provider_cleanup_removes_source_and_retained_rows(
     source_id = UUID(source["id"])
     await _insert_representative_source_document(owner_user_id=ws, source=source)
 
-    removed_sources = await source_service.delete_sources_for_provider(owner_id, provider)
+    removed_sources = await source_service.purge_sources_for_provider(owner_id, provider)
 
     assert [UUID(removed["id"]) for removed in removed_sources] == [source_id]
     assert await source_service.get_owned_source(source_id, owner_id) is None

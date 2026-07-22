@@ -57,6 +57,26 @@ def _account_row(row) -> dict:
     }
 
 
+async def account_mismatch(user_id: UUID, provider: str, account: AccountInfo) -> str | None:
+    """The reconnect identity check. Returns the stored account's label when
+    this connect is under a DIFFERENT provider account than the one already
+    linked (whose data may be kept) — the caller must refuse the connect. The
+    check needs both sides' account_ref; a provider that doesn't supply one
+    cannot be checked."""
+    if not account.account_ref:
+        return None
+    row = await get_pool().fetchrow(
+        "SELECT account_ref, account_display_name, account_email FROM user_integrations "
+        "WHERE user_id = $1 AND provider = $2 AND account_key = $3",
+        user_id,
+        provider,
+        _account_key_for(provider, account),
+    )
+    if row is None or not row["account_ref"] or row["account_ref"] == account.account_ref:
+        return None
+    return row["account_display_name"] or row["account_email"] or row["account_ref"]
+
+
 async def store_token(
     user_id: UUID,
     provider: str,
@@ -71,10 +91,10 @@ async def store_token(
             user_id, provider, account_key,
             access_token_encrypted, refresh_token_encrypted,
             scopes, expires_at,
-            account_email, account_display_name,
+            account_email, account_display_name, account_ref,
             updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
         ON CONFLICT (user_id, provider, account_key) DO UPDATE SET
             access_token_encrypted = EXCLUDED.access_token_encrypted,
             refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, user_integrations.refresh_token_encrypted),
@@ -82,6 +102,7 @@ async def store_token(
             expires_at = EXCLUDED.expires_at,
             account_email = EXCLUDED.account_email,
             account_display_name = EXCLUDED.account_display_name,
+            account_ref = COALESCE(EXCLUDED.account_ref, user_integrations.account_ref),
             updated_at = now()
         """,
         user_id,
@@ -93,6 +114,7 @@ async def store_token(
         token.expires_at,
         account.email,
         account.display_name,
+        account.account_ref,
     )
 
 
@@ -101,6 +123,18 @@ _TOKEN_QUERY = """
     FROM user_integrations
     WHERE user_id = $1 AND provider = $2 AND account_key = $3
 """
+
+
+def _require_token_row(row, provider: str) -> None:
+    """A missing row means never connected; a row with nulled tokens means
+    disconnected-with-data-kept. Both fail loud, with distinct messages."""
+    if row is None:
+        raise HTTPException(status_code=401, detail=f"not connected to {provider}")
+    if row["access_token_encrypted"] is None:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{provider} is disconnected — reconnect to read",
+        )
 
 
 def _needs_refresh(expires_at: datetime | None) -> bool:
@@ -119,11 +153,7 @@ async def get_valid_token(
 
     pool = get_pool()
     row = await pool.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
-    if row is None:
-        raise HTTPException(
-            status_code=401,
-            detail=f"not connected to {provider}",
-        )
+    _require_token_row(row, provider)
     if not _needs_refresh(row["expires_at"]):
         return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]
 
@@ -138,11 +168,7 @@ async def get_valid_token(
             f"user_integrations:{user_id}:{provider}:{account_key}",
         )
         row = await conn.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
-        if row is None:
-            raise HTTPException(
-                status_code=401,
-                detail=f"not connected to {provider}",
-            )
+        _require_token_row(row, provider)
         if not _needs_refresh(row["expires_at"]):
             return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]
 
@@ -173,6 +199,37 @@ async def get_valid_token(
             account_key,
         )
         return new_token.access_token
+
+
+async def disconnect_stored(user_id: UUID, provider: str) -> None:
+    """Disconnect without forgetting who was connected: revoke the tokens at
+    the provider and null them locally, but KEEP the row — account_ref must
+    survive so a later reconnect can be verified against the same account
+    (see account_mismatch). Full row deletion is revoke_stored, reached only
+    from the explicit data-purge path."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT access_token_encrypted FROM user_integrations WHERE user_id = $1 AND provider = $2",
+        user_id,
+        provider,
+    )
+    await pool.execute(
+        "UPDATE user_integrations SET access_token_encrypted = NULL, "
+        "refresh_token_encrypted = NULL, expires_at = NULL, updated_at = now() "
+        "WHERE user_id = $1 AND provider = $2",
+        user_id,
+        provider,
+    )
+    provider_impl = get_provider(provider)
+    for row in rows:
+        try:
+            access_token = _decrypt(row["access_token_encrypted"])
+            if access_token:
+                await provider_impl.revoke(access_token)
+        except Exception:
+            # Provider revocation is best effort — tokens may already be
+            # invalid; the local nulling above is what disconnect guarantees.
+            pass
 
 
 async def revoke_stored(
@@ -220,7 +277,8 @@ async def status(user_id: UUID, provider: str) -> dict:
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT account_key, scopes, expires_at, account_email, account_display_name, created_at
+        SELECT account_key, scopes, expires_at, account_email, account_display_name,
+               created_at, access_token_encrypted IS NULL AS disconnected
         FROM user_integrations WHERE user_id = $1 AND provider = $2
         ORDER BY account_email NULLS LAST, account_display_name NULLS LAST, account_key
         """,
@@ -228,17 +286,20 @@ async def status(user_id: UUID, provider: str) -> dict:
         provider,
     )
     if not rows:
-        return {"connected": False, "accounts": []}
+        return {"connected": False, "disconnected": False, "accounts": []}
     accounts = []
     for row in rows:
         account = _account_row(row)
-        account["needs_reconnect"] = await _account_needs_reconnect(
+        account["disconnected"] = row["disconnected"]
+        # A disconnected account has no token to verify; reconnect is implied.
+        account["needs_reconnect"] = row["disconnected"] or await _account_needs_reconnect(
             user_id, provider, row["account_key"]
         )
         accounts.append(account)
     first = accounts[0]
     return {
-        "connected": True,
+        "connected": any(not a["disconnected"] for a in accounts),
+        "disconnected": all(a["disconnected"] for a in accounts),
         "scopes": first["scopes"],
         "expires_at": first["expires_at"],
         "account_email": first["account_email"],
@@ -283,7 +344,8 @@ async def list_connections(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         """
         SELECT provider, account_key, scopes, expires_at,
-               account_email, account_display_name, created_at
+               account_email, account_display_name, created_at,
+               access_token_encrypted IS NULL AS disconnected
         FROM user_integrations WHERE user_id = $1
         ORDER BY provider, account_email NULLS LAST, account_display_name NULLS LAST, account_key
         """,
@@ -293,7 +355,8 @@ async def list_connections(user_id: UUID) -> list[dict]:
     for row in rows:
         provider = row["provider"]
         account = _account_row(row)
-        account["needs_reconnect"] = await _account_needs_reconnect(
+        account["disconnected"] = row["disconnected"]
+        account["needs_reconnect"] = row["disconnected"] or await _account_needs_reconnect(
             user_id, provider, row["account_key"]
         )
         if provider not in connections:
@@ -304,7 +367,10 @@ async def list_connections(user_id: UUID) -> list[dict]:
                 "account_email": account["account_email"],
                 "account_display_name": account["account_display_name"],
                 "connected_at": account["connected_at"],
+                "disconnected": True,
                 "accounts": [],
             }
         connections[provider]["accounts"].append(account)
+        if not account["disconnected"]:
+            connections[provider]["disconnected"] = False
     return list(connections.values())

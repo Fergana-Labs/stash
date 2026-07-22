@@ -113,4 +113,8 @@ class GitHubIntegration(Integration):
                         if e.get("primary") and e.get("verified"):
                             email = e.get("email")
                             break
-        return AccountInfo(email=email, display_name=user.get("name") or user.get("login"))
+        return AccountInfo(
+            email=email,
+            display_name=user.get("name") or user.get("login"),
+            account_ref=user.get("login"),
+        )

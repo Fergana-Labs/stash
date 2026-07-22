@@ -61,30 +61,41 @@ function LoadingRow() {
 // not. Clicking opens the integrations manager to connect/configure.
 function ToolsSection() {
   const open = useOpenTab();
-  const [connected, setConnected] = useState<Set<string>>(new Set());
+  // Extension connectors have no token — source presence is their "connected".
+  // OAuth/api-key connectors use the integration status, so a provider that
+  // was disconnected with its data kept reads "Connect", not "Connected".
+  const [sourceProviders, setSourceProviders] = useState<Set<string>>(new Set());
+  const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
   // The server omits providers this user may not use (customer-specific
   // integrations like Heavi) — null until loaded, then the allowed set.
   const [allowed, setAllowed] = useState<Set<string> | null>(null);
   useEffect(() => {
-    listSources().then((all) => setConnected(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
-    listIntegrations().then((r) => setAllowed(new Set(r.providers.map((p) => p.provider)))).catch(() => {});
+    listSources().then((all) => setSourceProviders(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
+    listIntegrations().then((r) => {
+      setAllowed(new Set(r.providers.map((p) => p.provider)));
+      setConnectedProviders(new Set(r.providers.filter((p) => p.connected).map((p) => p.provider)));
+    }).catch(() => {});
   }, []);
   if (allowed === null) return <LoadingRow />;
   return (
     <div className="py-1">
-      {CONNECTORS.filter((c) => c.kind === "extension" || allowed.has(c.provider)).map((c) => (
-        <LeafRow
-          key={c.provider}
-          icon={connectorIcon(c.provider) ?? <Plug className="h-3.5 w-3.5" />}
-          label={c.label}
-          trailing={
-            <span className={cn("text-[10px]", connected.has(c.provider) ? "text-[var(--color-success)]" : "text-muted-foreground opacity-0 group-hover:opacity-100")}>
-              {connected.has(c.provider) ? "Connected" : "Connect"}
-            </span>
-          }
-          onOpen={() => open("tool", c.provider, c.label)}
-        />
-      ))}
+      {CONNECTORS.filter((c) => c.kind === "extension" || allowed.has(c.provider)).map((c) => {
+        const isConnected =
+          c.kind === "extension" ? sourceProviders.has(c.provider) : connectedProviders.has(c.provider);
+        return (
+          <LeafRow
+            key={c.provider}
+            icon={connectorIcon(c.provider) ?? <Plug className="h-3.5 w-3.5" />}
+            label={c.label}
+            trailing={
+              <span className={cn("text-[10px]", isConnected ? "text-[var(--color-success)]" : "text-muted-foreground opacity-0 group-hover:opacity-100")}>
+                {isConnected ? "Connected" : "Connect"}
+              </span>
+            }
+            onOpen={() => open("tool", c.provider, c.label)}
+          />
+        );
+      })}
     </div>
   );
 }
