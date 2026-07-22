@@ -564,14 +564,7 @@ FEDERATED_SEARCH_TYPES = {
     "asana_project",
     "linear",
     "posthog_project",
-    "twitter",
 }
-
-# Federated types excluded from UNSCOPED search fan-out: the owner's API quota
-# is metered (X free tier: one recent-search per 15 minutes), too scarce to
-# spend on searches that weren't aimed at the provider. Agents search these
-# only by explicitly scoping to the source handle.
-SCOPED_ONLY_SEARCH_TYPES = {"twitter"}
 
 # Copied-content sources that only cache a bounded recent window. The agent can
 # pull OLDER data on demand from the provider for an explicit time range — what
