@@ -63,7 +63,7 @@ describe("ResourceShareButton", () => {
         objectType="file"
         objectId="file-1"
         resourceName="launch.png"
-        resourceUrlPath="/f/file-1"
+        resourceUrlPath="/file/file-1"
         currentUser={currentUser}
       />,
     );
@@ -80,7 +80,7 @@ describe("ResourceShareButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      `${window.location.origin}/f/file-1`,
+      `${window.location.origin}/file/file-1`,
     );
     expect(await screen.findByText("Link copied.")).toBeInTheDocument();
   });
@@ -138,7 +138,7 @@ describe("ResourceShareButton", () => {
         objectType="page"
         objectId="page-1"
         resourceName="Blog post outline"
-        resourceUrlPath="/p/page-1"
+        resourceUrlPath="/page/page-1"
         currentUser={currentUser}
       />,
     );

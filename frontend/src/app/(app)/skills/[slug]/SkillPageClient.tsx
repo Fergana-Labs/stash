@@ -33,7 +33,7 @@ import {
   type PublicSkillDetail,
   type SkillPublishInfo,
 } from "@/lib/api";
-import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
+import { SKILL_MD, skillItemPath, stripFrontmatter } from "@/lib/localSkill";
 import AddToStashButton from "./AddToStashButton";
 
 export default function SkillPageClient({ slug }: { slug: string }) {
@@ -165,14 +165,13 @@ type ContentRow = {
 };
 
 function contentRows(contents: PublicSkillContents, slug: string): ContentRow[] {
-  const skillParam = encodeURIComponent(slug);
   const intro = skillMdPage(contents);
   const rows: ContentRow[] = [];
   for (const page of contents.pages) {
     if (intro && page.id === intro.id) continue;
     rows.push({
       key: `page-${page.id}`,
-      href: `/p/${page.id}?skill=${skillParam}`,
+      href: skillItemPath("page", page.id, slug),
       name: page.name,
       sub: page.content_type === "html" ? "html page" : "page",
       kind: "page",
@@ -182,7 +181,7 @@ function contentRows(contents: PublicSkillContents, slug: string): ContentRow[] 
   for (const file of contents.files) {
     rows.push({
       key: `file-${file.id}`,
-      href: `/f/${file.id}?skill=${skillParam}`,
+      href: skillItemPath("file", file.id, slug),
       name: file.name,
       sub: file.content_type || "file",
       kind: "file",
@@ -192,7 +191,7 @@ function contentRows(contents: PublicSkillContents, slug: string): ContentRow[] 
   for (const table of contents.tables) {
     rows.push({
       key: `table-${table.id}`,
-      href: `/tables/${table.id}?skill=${skillParam}`,
+      href: skillItemPath("table", table.id, slug),
       name: table.name,
       sub: `table · ${table.rows.length} row${table.rows.length === 1 ? "" : "s"}`,
       kind: "table",

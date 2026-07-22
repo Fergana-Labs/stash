@@ -11,6 +11,7 @@ import {
   type RecentEntry,
   type SharedWithMeItem,
 } from "../../lib/api";
+import { routes } from "../../lib/workspace-routes";
 import { KindIcon, tintFor, type ItemKind } from "./file-browser/kind";
 
 // Shared folders/pages/files/tables surfaced inside the Files source. Session
@@ -51,10 +52,10 @@ function isDraggable(item: SharedWithMeItem): boolean {
 const GRID_COLS = "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)";
 
 function hrefFor(item: SharedWithMeItem): string {
-  if (item.object_type === "page") return `/p/${item.object_id}`;
-  if (item.object_type === "file") return `/f/${item.object_id}`;
-  if (item.object_type === "table") return `/tables/${item.object_id}`;
-  return `/folders/${item.object_id}`;
+  if (item.object_type === "page") return routes.page(item.object_id);
+  if (item.object_type === "file") return routes.file(item.object_id);
+  if (item.object_type === "table") return routes.table(item.object_id);
+  return routes.folder(item.object_id);
 }
 
 function startSharedDrag(e: DragEvent<HTMLElement>, item: SharedWithMeItem) {
@@ -267,7 +268,7 @@ function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandle
     >
       <span
         className={
-          "flex h-5 w-5 shrink-0 items-center justify-center " +
+          "flex h-5 w-5 flex-shrink-0 items-center justify-center " +
           tintFor({ kind, id: item.object_id, name: item.name, subtitle: "" })
         }
       >

@@ -19,7 +19,8 @@ import {
   updateFile,
   type FolderBreadcrumb,
 } from "@/lib/api";
-import { findInSkillContents } from "@/lib/localSkill";
+import { findInSkillContents, skillItemPath } from "@/lib/localSkill";
+import { routes } from "@/lib/workspace-routes";
 import type { FileInfo } from "@/lib/types";
 import FileContentRenderer, {
   isImage,
@@ -109,7 +110,7 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
         content_type: item.content_type ?? "",
         size_bytes: item.size_bytes ?? 0,
         url: item.url ?? "",
-        app_url: `/f/${fileId}?skill=${skillSlug}`,
+        app_url: skillItemPath("file", fileId, skillSlug),
         uploaded_by: "",
         created_at: item.created_at ?? "",
       };
@@ -145,11 +146,11 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
       // Otherwise ingest and then redirect — user never sees this route for CSVs.
       if (isCsv(f.content_type)) {
         if (f.linked_table_id) {
-          router.replace(`/tables/${f.linked_table_id}`);
+          router.replace(routes.table(f.linked_table_id));
         } else {
           try {
             const table = await ingestCsvFile(fileId);
-            router.replace(`/tables/${table.id}`);
+            router.replace(routes.table(table.id));
           } catch (e) {
             setError(e instanceof Error ? e.message : "CSV ingest failed");
           }
@@ -160,14 +161,14 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
       // sheet's table; the others appear in the sidebar.
       if (isXlsx(f.content_type, f.name)) {
         if (f.linked_table_id) {
-          router.replace(`/tables/${f.linked_table_id}`);
+          router.replace(routes.table(f.linked_table_id));
         } else {
           try {
             const { tables } = await ingestXlsxFile(fileId);
             if (tables.length === 0) {
               setError("Workbook had no readable sheets");
             } else {
-              router.replace(`/tables/${tables[0].id}`);
+              router.replace(routes.table(tables[0].id));
             }
           } catch (e) {
             setError(e instanceof Error ? e.message : "XLSX ingest failed");
@@ -203,7 +204,7 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
         objectType="file"
         objectId={file.id}
         resourceName={file.name}
-        resourceUrlPath={`/f/${file.id}`}
+        resourceUrlPath={routes.file(file.id)}
         currentUser={user}
       />
     );
