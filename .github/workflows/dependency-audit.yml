@@ -1,0 +1,61 @@
+name: Dependency audit
+
+# Audits query live advisory databases, so their outcome changes with the
+# outside world, not the diff. Running them on every PR meant a new advisory
+# anywhere in the transitive tree redlined every open PR at once (and
+# un-redlined them when withdrawn). Instead: audit nightly on main, and on
+# PRs only when a dependency manifest actually changed.
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/requirements.txt"
+      - "backend/requirements-dev.txt"
+      - "pyproject.toml"
+      - "sdk/pyproject.toml"
+      - "frontend/package-lock.json"
+      - "www/package-lock.json"
+      - "collab/package-lock.json"
+
+jobs:
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install audit tools
+        run: python -m pip install pip-audit
+
+      # PYSEC-2026-1325: ecdsa (transitive via python-jose) has no fixed
+      # release yet. Suppressed 2026-07-13; drop the flag once a fix ships.
+      - name: Audit backend Python requirements
+        run: python -m pip_audit -r backend/requirements.txt -r backend/requirements-dev.txt --ignore-vuln PYSEC-2026-1325
+
+      - name: Audit CLI Python package
+        run: python -m pip_audit . --ignore-vuln PYSEC-2026-1325
+
+      - name: Audit SDK Python package
+        run: python -m pip_audit sdk --ignore-vuln PYSEC-2026-1325
+
+      - name: Audit frontend npm lock
+        run: npm audit --audit-level=moderate --package-lock-only
+        working-directory: frontend
+
+      - name: Audit www npm lock
+        run: npm audit --audit-level=moderate --package-lock-only
+        working-directory: www
+
+      - name: Audit collab npm lock
+        run: npm audit --audit-level=moderate --package-lock-only
+        working-directory: collab
