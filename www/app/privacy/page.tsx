@@ -18,7 +18,7 @@ function H2({ children }: { children: React.ReactNode }) {
 
 export default function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="April 21, 2026">
+    <LegalShell title="Privacy Policy" updated="July 21, 2026">
       <p>
         This Privacy Policy describes how Fergana Labs, Inc. (&ldquo;Fergana
         Labs,&rdquo; &ldquo;we,&rdquo; or &ldquo;us&rdquo;) collects, uses, and
@@ -105,6 +105,52 @@ export default function PrivacyPage() {
           policy.
         </li>
       </ul>
+
+      <H2>Google user data</H2>
+      <p>
+        If you connect Google Drive or Gmail to Stash, we access your Google
+        data through Google&apos;s APIs using read-only scopes, solely to
+        provide the features you see in the app: browsing, searching, and
+        opening your own files and messages.
+      </p>
+      <ul className="ml-5 list-disc space-y-2">
+        <li>
+          <strong className="text-ink">Google Drive.</strong> We store an index
+          of file names, paths, and IDs so your Drive can be browsed and
+          searched. We do not store file contents, except for folders you
+          explicitly pick for sync, whose extracted text we store so reads are
+          fast. Other file contents are fetched on demand when you or your
+          assistant open a file, and are not retained.
+        </li>
+        <li>
+          <strong className="text-ink">Gmail.</strong> We store message
+          metadata only (subject, sender, date, message ID). Message bodies
+          are fetched on demand when you or your assistant open a message, and
+          are not retained. We never send, modify, or delete mail.
+        </li>
+      </ul>
+      <p>
+        We do not sell Google user data, use it for advertising, use it to
+        train machine-learning models, or transfer it to third parties except
+        as necessary to provide the features above, to comply with applicable
+        law, or as part of a merger or acquisition with prior notice to you.
+        Humans do not read this data except with your explicit permission, for
+        security purposes, or to comply with applicable law. Disconnecting a
+        Google source deletes everything we stored from it and revokes our
+        access token; you can also revoke access at any time from your Google
+        Account&apos;s security settings.
+      </p>
+      <p>
+        Stash&apos;s use and transfer to any other app of information received
+        from Google APIs will adhere to the{" "}
+        <a
+          href="https://developers.google.com/terms/api-services-user-data-policy"
+          className="text-brand hover:underline"
+        >
+          Google API Services User Data Policy
+        </a>
+        , including the Limited Use requirements.
+      </p>
 
       <H2>Retention</H2>
       <p>
