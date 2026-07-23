@@ -5,10 +5,18 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from contextvars import ContextVar
 from uuid import UUID
 
 from ..config import settings
 from ..database import get_pool
+
+# The caller surface of the current request — 'web', 'cli', or 'ask' — set by
+# auth on every authenticated request and stamped onto each audit row. A
+# contextvar (not a parameter) so the many record_event call sites don't all
+# have to thread a Request through. None (e.g. the anonymous paste route)
+# stores NULL, which the per-surface dashboard excludes.
+request_via: ContextVar[str | None] = ContextVar("request_via", default=None)
 
 
 def hash_value(value: str | None) -> str | None:
@@ -29,6 +37,7 @@ def _event_row(row) -> dict:
         "owner_user_id": str(row["owner_user_id"]) if row["owner_user_id"] else None,
         "actor_user_id": str(row["actor_user_id"]) if row["actor_user_id"] else None,
         "action": row["action"],
+        "via": row["via"],
         "target_type": row["target_type"],
         "target_id": row["target_id"],
         "provider": row["provider"],
@@ -53,9 +62,9 @@ async def record_event(
         """
         INSERT INTO security_audit_events (
             owner_user_id, actor_user_id, action, target_type, target_id,
-            provider, source_type, metadata
+            provider, source_type, metadata, via
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         """,
         owner_user_id,
         actor_user_id,
@@ -65,6 +74,7 @@ async def record_event(
         provider,
         source_type,
         json.dumps(metadata or {}),
+        request_via.get(),
     )
 
 

@@ -241,3 +241,101 @@ async def get_summary(*, days: int = 7) -> dict:
         "cli_active_users": int(cli_active or 0),
         "generated_at": datetime.now(UTC).isoformat(),
     }
+
+
+# Read/search/listing actions written to security_audit_events by
+# record_content_read / record_entries_listed and source_service's
+# _audit_source_read. The dashboard's content-activity segment is a straight
+# aggregation of these — extend the lists when a new content action ships.
+CONTENT_READ_ACTIONS = [
+    "content.page_read",
+    "content.file_read",
+    "content.transcript_read",
+    "content.table_read",
+    "content.skill_read",
+    "content.machine_file_read",
+    "content.paste_read",
+    "source.document_read",
+]
+SEARCH_ACTION = "source.searched"
+LISTING_ACTIONS = [
+    "content.entries_listed",
+    "source.entries_listed",
+    "source.tree_listed",
+]
+
+
+# Caller surfaces stamped on audit rows by auth._set_request_via. Web reads
+# and listings are UI noise (sidebar refetches, page opens while editing), so
+# only web *searches* count; cli and ask count for everything. Untagged rows
+# (pre-`via` history, anonymous pastes) are excluded.
+ACTIVITY_SURFACES = {
+    "reads": ["cli", "ask"],
+    "searches": ["web", "cli", "ask"],
+    "listings": ["cli", "ask"],
+}
+
+
+async def get_content_activity(*, days: int = 30) -> dict:
+    """Document reads, searches, and listings split by caller surface (web /
+    cli / ask-the-stash), from the security_audit_events read trail: totals
+    over the window plus a daily series for the dashboard's top segment."""
+    pool = get_pool()
+    since = datetime.now(UTC) - timedelta(days=days)
+    all_actions = CONTENT_READ_ACTIONS + [SEARCH_ACTION] + LISTING_ACTIONS
+
+    kind_case = """
+        CASE
+            WHEN action = $2 THEN 'searches'
+            WHEN action = ANY($3::text[]) THEN 'listings'
+            ELSE 'reads'
+        END
+    """
+    counted = """
+        action = ANY($1::text[])
+        AND created_at >= $4
+        AND (via IN ('cli', 'ask') OR (via = 'web' AND action = $2))
+    """
+
+    total_rows = await pool.fetch(
+        f"""
+        SELECT {kind_case} AS kind, via, COUNT(*) AS n
+        FROM security_audit_events
+        WHERE {counted}
+        GROUP BY 1, 2
+        """,
+        all_actions,
+        SEARCH_ACTION,
+        LISTING_ACTIONS,
+        since,
+    )
+    totals = {
+        kind: {surface: 0 for surface in surfaces} for kind, surfaces in ACTIVITY_SURFACES.items()
+    }
+    for r in total_rows:
+        totals[r["kind"]][r["via"]] = int(r["n"])
+
+    series_rows = await pool.fetch(
+        f"""
+        SELECT date_trunc('day', created_at) AS ts,
+               {kind_case} AS kind,
+               COUNT(*) AS n
+        FROM security_audit_events
+        WHERE {counted}
+        GROUP BY 1, 2
+        ORDER BY ts ASC
+        """,
+        all_actions,
+        SEARCH_ACTION,
+        LISTING_ACTIONS,
+        since,
+    )
+    return {
+        "days": days,
+        "totals": totals,
+        "rows": [
+            {"ts": r["ts"].isoformat(), "kind": r["kind"], "count": int(r["n"])}
+            for r in series_rows
+        ],
+        "generated_at": datetime.now(UTC).isoformat(),
+    }

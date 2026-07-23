@@ -118,6 +118,11 @@ async def analytics_surface_mix(
     return await admin_analytics_service.get_surface_mix(days=days, bucket=bucket)
 
 
+@router.get("/analytics/content-activity", dependencies=[Depends(require_admin_token)])
+async def analytics_content_activity(days: int = Query(30, ge=1, le=180)):
+    return await admin_analytics_service.get_content_activity(days=days)
+
+
 @router.get("/analytics/top-events", dependencies=[Depends(require_admin_token)])
 async def analytics_top_events(
     days: int = Query(30, ge=1, le=180),

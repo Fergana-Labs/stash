@@ -70,6 +70,7 @@ async def test_page_read_is_logged(client: AsyncClient, pool):
     assert rows[0]["owner_user_id"] == user_id
     assert rows[0]["target_type"] == "page"
     assert rows[0]["target_id"] == page_id
+    assert rows[0]["via"] == "cli"
 
 
 async def test_public_page_read_logs_anonymous_actor(client: AsyncClient, pool):
@@ -90,6 +91,7 @@ async def test_public_page_read_logs_anonymous_actor(client: AsyncClient, pool):
     assert rows[0]["actor_user_id"] is None
     assert rows[0]["owner_user_id"] == user_id
     assert rows[0]["target_id"] == page_id
+    assert rows[0]["via"] == "web"
 
 
 async def test_source_front_door_page_read_logs_exactly_once(client: AsyncClient, pool):
@@ -127,6 +129,7 @@ async def test_vfs_cat_logs_page_read(client: AsyncClient, pool):
     rows = await _read_events(pool, "content.page_read")
     assert len(rows) == 1
     assert rows[0]["actor_user_id"] == user_id
+    assert rows[0]["via"] == "ask"
 
 
 async def test_tree_listing_is_logged(client: AsyncClient, pool):
