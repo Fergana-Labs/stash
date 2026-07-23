@@ -138,7 +138,11 @@ class SlackIntegration(Integration):
 
     async def fetch_account(self, access_token: str) -> AccountInfo:
         info = await self.team_info(access_token)
-        return AccountInfo(email=None, display_name=info["team_name"])
+        return AccountInfo(
+            email=None,
+            display_name=info["team_name"],
+            account_ref=info["team_id"],
+        )
 
     async def team_info(self, access_token: str) -> dict:
         """auth.test → {team_id, team_name, user_id}. Used both for the account

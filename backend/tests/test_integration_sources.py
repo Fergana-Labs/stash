@@ -18,16 +18,23 @@ import httpx
 import pytest
 
 from backend.config import settings
+from backend.integrations.asana import provider as asana_provider
 from backend.integrations.asana.indexer import _render_task
+from backend.integrations.asana.provider import AsanaIntegration
 from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gmail.provider import GmailIntegration
 from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
+from backend.integrations.jira import provider as jira_provider
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
+from backend.integrations.jira.provider import JiraIntegration
 from backend.integrations.linear import provider as linear_provider
 from backend.integrations.linear.provider import LinearIntegration
+from backend.integrations.notion import provider as notion_provider
+from backend.integrations.notion.provider import NotionIntegration
 from backend.integrations.registry import list_providers
+from backend.integrations.slack.provider import SlackIntegration
 from backend.services import agent_runtime, prompts, source_service
 from backend.tasks import sources as source_tasks
 
@@ -322,6 +329,79 @@ async def test_gong_exchange_refresh_and_fetch_account(monkeypatch):
     account = await GongIntegration().fetch_account(refreshed.access_token)
     assert account.email is None
     assert account.display_name == "Acme"
+    assert account.account_ref == "https://company-17.api.gong.io"
+
+
+@pytest.mark.asyncio
+async def test_slack_account_uses_team_id_as_stable_identity(monkeypatch):
+    integration = SlackIntegration()
+
+    async def team_info(access_token: str):
+        assert access_token == "slack-token"
+        return {"team_id": "T123", "team_name": "Acme", "user_id": "U123"}
+
+    monkeypatch.setattr(integration, "team_info", team_info)
+
+    account = await integration.fetch_account("slack-token")
+
+    assert account.display_name == "Acme"
+    assert account.account_ref == "T123"
+
+
+@pytest.mark.parametrize(
+    ("provider_module", "integration", "payload", "expected_ref"),
+    [
+        (
+            asana_provider,
+            AsanaIntegration(),
+            {"data": {"gid": "asana-user-1", "email": "a@example.com", "name": "Ada"}},
+            "asana-user-1",
+        ),
+        (
+            jira_provider,
+            JiraIntegration(),
+            {"account_id": "jira-user-1", "email": "j@example.com", "name": "Jules"},
+            "jira-user-1",
+        ),
+        (
+            notion_provider,
+            NotionIntegration(),
+            {
+                "bot": {
+                    "workspace_id": "notion-workspace-1",
+                    "workspace_name": "Acme",
+                }
+            },
+            "notion-workspace-1",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_oauth_provider_account_uses_stable_identity(
+    monkeypatch,
+    provider_module,
+    integration,
+    payload,
+    expected_ref,
+):
+    monkeypatch.setattr(provider_module.httpx, "AsyncClient", _FakeClient(payload))
+
+    account = await integration.fetch_account("token")
+
+    assert account.account_ref == expected_ref
+
+
+@pytest.mark.asyncio
+async def test_linear_account_requests_and_returns_stable_identity(monkeypatch):
+    client = _FakeClient(
+        {"data": {"viewer": {"id": "linear-user-1", "name": "Lin", "email": "l@example.com"}}}
+    )
+    monkeypatch.setattr(linear_provider.httpx, "AsyncClient", client)
+
+    account = await LinearIntegration().fetch_account("token")
+
+    assert account.account_ref == "linear-user-1"
+    assert client.posts[0][1]["query"] == "query { viewer { id name email } }"
 
 
 @pytest.mark.asyncio
@@ -467,8 +547,8 @@ class _FakeClient:
         self.requests.append((url, params or {}))
         return self._response()
 
-    async def post(self, url, data=None, auth=None, headers=None):
-        self.posts.append((url, data or {}))
+    async def post(self, url, data=None, json=None, auth=None, headers=None):
+        self.posts.append((url, data if data is not None else json or {}))
         return self._response()
 
 

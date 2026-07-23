@@ -108,4 +108,8 @@ class JiraIntegration(Integration):
             resp = await client.get(ME_URL)
             resp.raise_for_status()
             me = resp.json()
-        return AccountInfo(email=me.get("email"), display_name=me.get("name"))
+        return AccountInfo(
+            email=me.get("email"),
+            display_name=me.get("name"),
+            account_ref=me.get("account_id"),
+        )
