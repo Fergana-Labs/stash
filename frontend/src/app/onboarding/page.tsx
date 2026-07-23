@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
+import { TEAMS_CONTACT_EMAIL } from "../../lib/contact";
 import {
   createMyKey,
   createPage,
@@ -283,6 +284,15 @@ function AboutStep({
       </Field>
       <Field label="Which plan fits you?">
         <PillGroup options={PLAN_OPTIONS} value={planIntent} onChange={onPlanIntent} />
+        {planIntent === "Team — Pro" && (
+          <p className="text-[12px] text-dim">
+            Team workspaces are set up for you — email{" "}
+            <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
+              {TEAMS_CONTACT_EMAIL}
+            </a>{" "}
+            and we&rsquo;ll get your team going.
+          </p>
+        )}
         {planIntent === "Production agent — Enterprise" && (
           <p className="text-[12px] text-dim">
             Your API key is free and instant. Unlimited sleep-time memory curation is part

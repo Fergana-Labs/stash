@@ -1,4 +1,4 @@
-import { Callout, CodeBlock, H3, P, Title, Subtitle } from "../components";
+import { Callout, Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 const PROMPTS = [
   { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Stash knowledge base"' },
@@ -12,32 +12,22 @@ export default function QuickstartPage() {
       <Title>Quickstart</Title>
       <Subtitle>Install the CLI, connect your coding agent, and start building shared knowledge in 5 minutes.</Subtitle>
 
-      <H3>1. Create an account</H3>
-      <P>
-        Register at{" "}
-        <a href="https://joinstash.ai" className="text-brand underline underline-offset-2">
-          joinstash.ai
-        </a>{" "}
-        and save your API key.
-      </P>
-      <P>
-        <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
-        <code className="text-brand font-mono text-[13px]">stash connect</code> after installing{" "}
-        <code className="text-brand font-mono text-[13px]">uv tool install stashai</code>. The
-        interactive wizard covers account creation
-        in one shot — then come back to step 2.
-      </P>
-
-      <Callout>
-        <strong>Agent names</strong> are just strings on session events that identify which agent produced them.
-        You can use different agent names across your sessions to track which agent produced what.
-      </Callout>
-
-      <H3>2. Install the CLI</H3>
+      <H3>1. Install the CLI and sign in</H3>
       <CodeBlock>{`uv tool install stashai
 stash signin`}</CodeBlock>
+      <P>
+        <Code>stash signin</Code> opens your browser to create an account (or sign in) and
+        hands the CLI a key automatically — nothing to copy. It then detects the coding
+        agents installed on your machine — Claude Code, Cursor, Codex, OpenCode, Gemini
+        CLI, Openclaw — and installs their hooks, so sessions start streaming to your
+        Stash right away.
+      </P>
+      <Callout>
+        On an unattended, browser-less machine (a CI runner, a headless box), use{" "}
+        <Code>stash signin --api-key</Code> with a pre-minted key instead of the browser flow.
+      </Callout>
 
-      <H3>3. Try these commands</H3>
+      <H3>2. Try these commands</H3>
       <P>Use the CLI to interact with your Stash:</P>
       <div className="space-y-3 my-6">
         {PROMPTS.map((p) => (
@@ -48,12 +38,16 @@ stash signin`}</CodeBlock>
         ))}
       </div>
 
-      <H3>4. Build your knowledge base</H3>
+      <H3>3. Build your knowledge base</H3>
       <P>
         Sessions stream into searchable sessions. Promote useful outputs into pages, organize
         them with folders, and bundle related resources into{" "}
-        <code className="text-brand font-mono text-[13px]">Skills</code> to share them.
+        <Code>Skills</Code> to share them.
       </P>
+      <Callout>
+        <strong>Agent names</strong> are just strings on session events that identify which agent produced them.
+        You can use different agent names across your sessions to track which agent produced what.
+      </Callout>
     </>
   );
 }

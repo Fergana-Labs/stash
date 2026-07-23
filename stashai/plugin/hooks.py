@@ -41,6 +41,9 @@ _CLIENT_TO_AGENT = {
     "cursor": "cursor",
     "codex_cli": "codex",
     "opencode": "opencode",
+    "gemini_cli": "gemini",
+    "openclaw": "openclaw",
+    "hermes": "hermes",
 }
 
 _UPLOAD_WARNING_SESSION_KEY = "upload_warning_session_id"
@@ -50,8 +53,7 @@ _UPLOAD_WARNING_MESSAGE = (
 )
 _UPLOADS_DISABLED_WARNING_SESSION_KEY = "uploads_disabled_warning_session_id"
 _UPLOADS_DISABLED_WARNING_MESSAGE = (
-    "Stash isn't set up on this machine yet. "
-    "Run `stash connect` to finish setup."
+    "Stash isn't set up on this machine yet. Run `stash signin` to finish setup."
 )
 _ENDED_SESSION_ID_KEY = "ended_session_id"
 _YELLOW = "\033[33m"
@@ -64,9 +66,32 @@ def _read_user_config() -> dict:
         return {}
     try:
         import json
+
         return json.loads(_CONFIG_FILE.read_text())
     except Exception:
         return {}
+
+
+_SKILLS_UPDATES_FILE = Path.home() / ".stash" / "skills_sync" / "pending_updates.json"
+
+
+def skills_update_notice() -> str | None:
+    """One-shot notice for installs/updates a background `stash skills sync`
+    applied to the local skills directory. The sync writes the file; showing
+    the notice consumes it — skills must never change under the user without
+    them seeing it exactly once."""
+    if not _SKILLS_UPDATES_FILE.exists():
+        return None
+    try:
+        import json
+
+        names = json.loads(_SKILLS_UPDATES_FILE.read_text())
+        _SKILLS_UPDATES_FILE.unlink()
+    except Exception:
+        return None
+    if not names:
+        return None
+    return "Stash updated installed skills since your last session: " + ", ".join(names)
 
 
 def _is_agent_enabled(cfg: dict) -> bool:
@@ -156,7 +181,9 @@ def reset_session_record_state(state: dict) -> None:
 
 
 def remember_transcript_path(
-    state: dict, event: HookEvent, data_dir: Path | None = None,
+    state: dict,
+    event: HookEvent,
+    data_dir: Path | None = None,
 ) -> None:
     """Persist the newest transcript path an agent exposes for this session."""
     if not event.transcript_path:
@@ -267,8 +294,12 @@ def finalize_session_upload(
 
 # --- Prompt streaming ---
 
+
 def stream_user_message(
-    client: StashClient, cfg: dict, state: dict, prompt_text: str,
+    client: StashClient,
+    cfg: dict,
+    state: dict,
+    prompt_text: str,
     event: HookEvent | None = None,
 ) -> None:
     if _short_circuit(cfg):
@@ -294,8 +325,12 @@ def stream_user_message(
 
 # --- Tool use streaming ---
 
+
 def stream_tool_use(
-    client: StashClient, cfg: dict, state: dict, event: HookEvent,
+    client: StashClient,
+    cfg: dict,
+    state: dict,
+    event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
     if _short_circuit(cfg):
@@ -307,7 +342,9 @@ def stream_tool_use(
         return
 
     content, metadata = summarize_tool_use(
-        event.tool_name, event.tool_input, event.tool_response,
+        event.tool_name,
+        event.tool_input,
+        event.tool_response,
     )
     metadata = _event_metadata(event, metadata)
     metadata["cwd"] = event.cwd
@@ -332,8 +369,12 @@ def stream_tool_use(
 
 # --- Turn end (assistant finished responding; session still open) ---
 
+
 def stream_assistant_message(
-    client: StashClient, cfg: dict, state: dict, event: HookEvent,
+    client: StashClient,
+    cfg: dict,
+    state: dict,
+    event: HookEvent,
 ) -> None:
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
@@ -390,8 +431,12 @@ def color_upload_health_warning(message: str) -> str:
 
 # --- Session end (conversation over) ---
 
+
 def stream_session_end(
-    client: StashClient, cfg: dict, state: dict, event: HookEvent,
+    client: StashClient,
+    cfg: dict,
+    state: dict,
+    event: HookEvent,
 ) -> str | None:
     """Push the session_end event and upload transcript.
 

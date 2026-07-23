@@ -1,0 +1,12 @@
+{
+  "hook_event_name": "post_tool_call",
+  "tool_name": "terminal",
+  "tool_input": {"command": "pytest"},
+  "session_id": "herm-1",
+  "cwd": "/Users/alice/repo",
+  "extra": {
+    "result": "3 passed in 0.04s",
+    "duration_ms": 40,
+    "tool_call_id": "call_1"
+  }
+}

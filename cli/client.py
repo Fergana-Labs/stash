@@ -29,9 +29,10 @@ SOURCE_ENTRIES_PAGE = 1000
 
 
 class StashClient:
-    def __init__(self, base_url: str, api_key: str = ""):
+    def __init__(self, base_url: str, api_key: str = "", scope: str = ""):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        self._scope = scope
         self._http = httpx.Client(base_url=self._base_url, timeout=30)
 
     def close(self) -> None:
@@ -46,7 +47,10 @@ class StashClient:
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}
-        return {"Authorization": f"Bearer {self._api_key}"}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        if self._scope:
+            headers["X-Stash-Scope"] = self._scope
+        return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = kwargs.pop("headers", {})
@@ -111,6 +115,9 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
+    def list_workspaces(self) -> list:
+        return self._list("/api/v1/me/workspaces", "workspaces")
+
     def list_api_keys(self) -> list:
         return self._get("/api/v1/users/me/keys")
 
@@ -165,8 +172,17 @@ class StashClient:
     def get_public_skill(self, slug: str) -> dict:
         return self._get(f"/api/v1/skills/{slug}")
 
+    def record_skill_install(self, slug: str) -> None:
+        self._post(f"/api/v1/skills/{slug}/installs")
+
     def get_skill_contents(self, folder_id: str) -> dict:
         return self._get(f"/api/v1/me/skills/{folder_id}/contents")
+
+    def list_shared_skills(self) -> list:
+        return self._list("/api/v1/me/shared-skills", "skills")
+
+    def get_shared_skill_contents(self, folder_id: str) -> dict:
+        return self._get(f"/api/v1/me/shared-skills/{folder_id}/contents")
 
     def replace_skill_contents(self, folder_id: str, files: list[tuple[str, bytes]]) -> dict:
         """files is (path relative to the skill folder, bytes) pairs; the
@@ -292,6 +308,14 @@ class StashClient:
 
     def get_memory_folder(self) -> dict:
         return self._get("/api/v1/me/memory-folder")
+
+    def get_memory_tree(self) -> dict:
+        return self._get("/api/v1/me/memory-tree")
+
+    def run_vfs(self, script: str, cwd: str = "/") -> dict:
+        """Run one read-only VFS script server-side (ls/cat/find/grep, pipes).
+        Returns {stdout, stderr, exit_code} like a shell would."""
+        return self._post("/api/v1/me/vfs", json={"script": script, "cwd": cwd})
 
     def get_changes(self, since: str | None = None) -> dict:
         params = {"since": since} if since else {}
@@ -750,6 +774,34 @@ class StashClient:
 
     def purge_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}/purge")
+
+    # --- MCP servers (`stash tools`) ---
+
+    def list_mcp_servers(self) -> list:
+        return self._get("/api/v1/me/mcp-servers")
+
+    def create_mcp_server(
+        self,
+        name: str,
+        transport: str,
+        command: str | None = None,
+        url: str | None = None,
+        headers: dict | None = None,
+        env: dict | None = None,
+    ) -> dict:
+        body: dict = {"name": name, "transport": transport}
+        if command:
+            body["command"] = command
+        if url:
+            body["url"] = url
+        if headers:
+            body["headers"] = headers
+        if env:
+            body["env"] = env
+        return self._post("/api/v1/me/mcp-servers", json=body)
+
+    def delete_mcp_server(self, server_id: str) -> None:
+        self._delete(f"/api/v1/me/mcp-servers/{server_id}")
 
     # --- Trash ---
 

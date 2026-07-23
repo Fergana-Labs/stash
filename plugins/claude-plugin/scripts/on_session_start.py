@@ -30,6 +30,14 @@ except ImportError:
         return text
 
 
+try:
+    from stashai.plugin.hooks import skills_update_notice
+except ImportError:
+    # Same version-skew window as above.
+    def skills_update_notice() -> None:
+        return None
+
+
 from stashai.plugin.hooks import (
     create_session_record,
     reset_session_record_state,
@@ -148,6 +156,7 @@ def main():
         for m in (
             shadow_install_warning(),
             plugin_cache_drift_warning(),
+            skills_update_notice(),
             color_upload_health_warning(health_warning) if health_warning else None,
         )
         if m

@@ -13,6 +13,8 @@ import VisualizationsShowcase from "./VisualizationsShowcase";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 const CALL_URL = "/contact-sales";
+// Workspaces are admin-created, so teams route to a human instead of a flow.
+const TEAMS_CONTACT_EMAIL = "sam@joinstash.ai";
 
 export default function HomePage() {
   return (
@@ -1011,9 +1013,9 @@ const PRICING_TIERS = [
     name: "Free",
     price: "$0",
     period: "forever",
-    blurb: "Try the whole product with one connected source.",
+    blurb: "Try the whole product with two connected sources.",
     features: [
-      "1 connected integration / external source",
+      "2 connected integrations / external sources",
       "Unlimited pages, sessions, and tables",
       "Full agent access — CLI, MCP, plugins",
       "Self-hostable, MIT licensed",
@@ -1104,6 +1106,13 @@ export function Pricing() {
             </div>
           ))}
         </div>
+        <p className="mt-8 text-center text-[13.5px] text-muted">
+          Want a shared team workspace? Email{" "}
+          <a className="underline hover:text-ink" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
+            {TEAMS_CONTACT_EMAIL}
+          </a>{" "}
+          and we&rsquo;ll set it up for you.
+        </p>
       </div>
     </section>
   );

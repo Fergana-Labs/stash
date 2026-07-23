@@ -1,0 +1,9 @@
+{
+  "id": "stash",
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

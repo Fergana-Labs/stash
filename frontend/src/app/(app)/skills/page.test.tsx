@@ -164,6 +164,18 @@ describe("SkillsPage", () => {
     }
   });
 
+  it("sells the CLI create command and Discover when there are no skills", async () => {
+    vi.mocked(listSkills).mockResolvedValue([]);
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("No skills yet.")).toBeInTheDocument();
+    expect(screen.getByText('stash skills create "<name>"')).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /browse Discover/ }),
+    ).toBeInTheDocument();
+  });
+
   it("lists skill folders shared with you and links by publish state", async () => {
     vi.mocked(listSkillsSharedWithMe).mockResolvedValue([
       sharedSkill(),

@@ -2,43 +2,28 @@
 
 Turn any Claude Code session into a Stash agent. Every prompt, tool use, assistant message, and artifact streams to your Stash history.
 
-## Quick Start (5 minutes)
+## Quick Start (2 minutes)
 
-### Step 1: Create an account
+```bash
+uv tool install stashai
+stash signin
+```
 
-Go to [joinstash.ai/login](https://joinstash.ai/login) and register an account. Save your API key — it's shown only once.
+`stash signin` opens your browser to sign in (or create an account), saves
+your credentials to `~/.stash/config.json`, detects Claude Code, and installs
+this plugin via the marketplace — no API key to copy anywhere.
 
-### Step 2: Install the plugin
+To install the plugin by hand instead:
 
 ```bash
 claude plugin marketplace add Fergana-Labs/stash
 claude plugin install stash@stash-plugins
 ```
 
-Claude Code will prompt you for three config values:
+The manual path still needs `stash signin` once for auth; the plugin reads
+`~/.stash/config.json` when its own config values are unset.
 
-| Config | Value |
-|--------|-------|
-| `api_key` | Your API key (from step 1) |
-| `agent_name` | A name for this agent (any string) |
-| `api_endpoint` | `https://joinstash.ai` (default, usually skip) |
-
-### Step 3: Connect
-
-From any shell, run:
-
-```
-stash connect
-```
-
-This interactive wizard will:
-1. Verify your auth
-2. Set up your history store
-3. Save defaults to `~/.stash/config.json`
-
-After this, every session streams directly to your Stash.
-
-### Step 4: You're done
+### You're done
 
 Every Claude Code session now automatically:
 - Streams the user's prompts to your Stash history
@@ -80,7 +65,7 @@ Everything is a `stash` CLI subcommand — there are no slash commands.
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Onboarding wizard — auth + history store |
+| `stash signin` | Onboarding wizard — auth + hook install |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause activity streaming across every installed plugin |
 
@@ -99,7 +84,5 @@ stash vfs "find /me -name '*.md'"                      # List all pages
 
 ## Prerequisites
 
-- Python 3.10+
-- `httpx` package: `pip install httpx`
-</content>
-</invoke>
+- The `stash` CLI (`uv tool install stashai`) — the plugin's hook scripts run
+  under the same Python environment the CLI installs.

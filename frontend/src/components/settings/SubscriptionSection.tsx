@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TEAMS_CONTACT_EMAIL } from "../../lib/contact";
 import {
   BillingInfo,
   getBilling,
@@ -43,6 +44,13 @@ export default function SubscriptionSection() {
         <p className="text-xs text-muted-foreground mt-0.5">
           The free plan includes {billing.connection_limit} connected accounts. Pro is $20/month
           for unlimited integrations.
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Want a shared team workspace? Email{" "}
+          <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
+            {TEAMS_CONTACT_EMAIL}
+          </a>
+          .
         </p>
       </div>
 

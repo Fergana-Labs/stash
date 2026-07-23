@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "on_session_start",
+  "tool_name": null,
+  "tool_input": null,
+  "session_id": "herm-1",
+  "cwd": "/Users/alice/repo",
+  "extra": {"model": "Hermes-4-405B", "platform": "cli"}
+}
