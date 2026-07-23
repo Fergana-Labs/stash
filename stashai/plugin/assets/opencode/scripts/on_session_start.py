@@ -40,7 +40,7 @@ def main():
     event = adapt_session_start(get_stdin_data())
     cfg = get_config()
     state = load_state(DATA_DIR)
-    if not uploads_enabled(cfg, event):
+    if not uploads_enabled(cfg):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
         if warning:
             print(color_upload_health_warning(warning))

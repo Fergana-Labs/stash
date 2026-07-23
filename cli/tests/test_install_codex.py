@@ -1,11 +1,15 @@
-"""Tests for `_install_codex` — focused on the config.toml append behavior."""
+"""Tests for `_install_codex` — config.toml append behavior and the
+hooks.json stable-command invariant."""
 
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
 from cli.main import _install_codex
+
+_CODEX_EVENTS = ("on_session_start", "on_prompt", "on_tool_use", "on_stop")
 
 
 def _run_install(monkeypatch, tmp_path: Path, allow_network: bool = True) -> Path:
@@ -72,6 +76,80 @@ def test_preexisting_features_section_no_duplicate(monkeypatch, tmp_path: Path) 
         parsed = tomllib.load(f)
     assert parsed["features"]["hooks"] is True
     assert parsed["features"]["suppress_unstable_features_warning"] is True
+
+
+def _hook_commands(hooks_path: Path) -> list[str]:
+    data = json.loads(hooks_path.read_text())
+    commands = []
+    for entries in data["hooks"].values():
+        for entry in entries:
+            for hook in entry["hooks"]:
+                commands.append(hook["command"])
+    return commands
+
+
+def test_fresh_install_writes_stable_hooks_json(monkeypatch, tmp_path: Path) -> None:
+    """Codex trusts hooks by command hash: commands must be machine-independent
+    (no absolute paths) so trust survives stash/python upgrades."""
+    _run_install(monkeypatch, tmp_path)
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    data = json.loads(hooks_path.read_text())
+
+    # Codex rejects the whole file on unknown top-level keys.
+    assert set(data.keys()) == {"hooks"}
+    commands = _hook_commands(hooks_path)
+    assert sorted(commands) == sorted(f"stash hook run codex {e}" for e in _CODEX_EVENTS)
+    assert all("/" not in c for c in commands)
+
+
+def test_hooks_json_migration(monkeypatch, tmp_path: Path) -> None:
+    """Old installs left a `_comment` key (Codex rejects the file for it) and
+    absolute-path entries (trust breaks on upgrade). Reinstall must sweep both
+    while preserving user-added hooks."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    hooks_path = codex_dir / "hooks.json"
+    old_entry = {
+        "hooks": [
+            {
+                "type": "command",
+                "command": (
+                    "bash /old/venv/lib/python3.11/site-packages/stashai/plugin/"
+                    "assets/codex/scripts/_run.sh on_session_start"
+                ),
+                "timeout": 5,
+            }
+        ]
+    }
+    user_entry = {"hooks": [{"type": "command", "command": "echo user-hook", "timeout": 1}]}
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "_comment": "stale comment Codex chokes on",
+                "hooks": {"SessionStart": [old_entry, user_entry]},
+            }
+        )
+    )
+
+    _run_install(monkeypatch, tmp_path)
+    data = json.loads(hooks_path.read_text())
+
+    assert set(data.keys()) == {"hooks"}
+    session_start = data["hooks"]["SessionStart"]
+    assert user_entry in session_start
+    commands = [h["command"] for e in session_start for h in e["hooks"]]
+    assert "stash hook run codex on_session_start" in commands
+    assert not any("_run.sh" in c for c in commands)
+
+
+def test_reinstall_hooks_json_byte_stable(monkeypatch, tmp_path: Path) -> None:
+    """The trust-survival invariant: reinstalling must never rewrite the hook
+    definitions, or Codex silently distrusts them."""
+    _run_install(monkeypatch, tmp_path)
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    before = hooks_path.read_bytes()
+    _install_codex(False)
+    assert hooks_path.read_bytes() == before
 
 
 def test_preexisting_unmarked_skill_sections_do_not_duplicate(monkeypatch, tmp_path: Path) -> None:

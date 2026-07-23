@@ -171,6 +171,11 @@ def save_enabled_agents(agents: list[str]) -> None:
     _write_to(USER_CONFIG_FILE, {"enabled_agents": agents})
 
 
+def set_codex_auto_update(enabled: bool) -> None:
+    """Persist whether Stash may auto-update itself at Codex session start."""
+    _write_to(USER_CONFIG_FILE, {"codex_auto_update": enabled})
+
+
 def clear_config() -> None:
     """Remove stored config."""
     if USER_CONFIG_FILE.exists():
