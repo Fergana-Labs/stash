@@ -326,6 +326,14 @@ const SURFACE_LABELS: Record<string, string> = {
   ask: "Ask the stash",
 };
 
+// Fixed per-kind chart colors: the shared PALETTE is all greens, which made
+// listings indistinguishable from reads/searches. Light orange for listings.
+const ACTIVITY_COLORS: Record<(typeof ACTIVITY_KINDS)[number], string> = {
+  reads: PALETTE[0],
+  searches: PALETTE[1],
+  listings: "#fdba74",
+};
+
 function ContentActivitySection({
   activity,
 }: {
@@ -384,12 +392,14 @@ function ContentActivitySection({
           <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
           <Tooltip />
           <Legend />
-          {ACTIVITY_KINDS.map((kind, i) => (
+          {ACTIVITY_KINDS.map((kind) => (
             <Line
               key={kind}
-              type="monotone"
+              // linear, not monotone: smoothed curves imply activity between
+              // days that never happened
+              type="linear"
               dataKey={kind}
-              stroke={PALETTE[i % PALETTE.length]}
+              stroke={ACTIVITY_COLORS[kind]}
               strokeWidth={2}
               dot={false}
               isAnimationActive={false}
