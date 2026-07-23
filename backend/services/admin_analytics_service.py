@@ -315,14 +315,17 @@ async def get_content_activity(*, days: int = 30) -> dict:
     for r in total_rows:
         totals[r["kind"]][r["via"]] = int(r["n"])
 
+    # via is carried per row so the dashboard's chart can filter by source
+    # client-side; the client sums across surfaces for its combined view.
     series_rows = await pool.fetch(
         f"""
         SELECT date_trunc('day', created_at) AS ts,
                {kind_case} AS kind,
+               via,
                COUNT(*) AS n
         FROM security_audit_events
         WHERE {counted}
-        GROUP BY 1, 2
+        GROUP BY 1, 2, 3
         ORDER BY ts ASC
         """,
         all_actions,
@@ -334,7 +337,7 @@ async def get_content_activity(*, days: int = 30) -> dict:
         "days": days,
         "totals": totals,
         "rows": [
-            {"ts": r["ts"].isoformat(), "kind": r["kind"], "count": int(r["n"])}
+            {"ts": r["ts"].isoformat(), "kind": r["kind"], "via": r["via"], "count": int(r["n"])}
             for r in series_rows
         ],
         "generated_at": datetime.now(UTC).isoformat(),

@@ -49,7 +49,12 @@ export type CohortResponse = {
   generated_at: string;
 };
 
-type ContentActivityRow = { ts: string; kind: string; count: number };
+type ContentActivityRow = {
+  ts: string;
+  kind: string;
+  via: string;
+  count: number;
+};
 type ContentActivityResponse = {
   days: number;
   totals: {
@@ -334,14 +339,28 @@ const ACTIVITY_COLORS: Record<(typeof ACTIVITY_KINDS)[number], string> = {
   listings: "#fdba74",
 };
 
+const CHART_SURFACE_OPTS = [
+  { value: "all", label: "All" },
+  { value: "cli", label: "CLI" },
+  { value: "ask", label: "Ask the stash" },
+  { value: "web", label: "Web" },
+] as const;
+
 function ContentActivitySection({
   activity,
 }: {
   activity: ContentActivityResponse;
 }) {
+  // Chart-only source filter; the stat cards always show every surface.
+  const [chartSurface, setChartSurface] = useState("all");
+
   const chartData = useMemo(() => {
+    const rows =
+      chartSurface === "all"
+        ? activity.rows
+        : activity.rows.filter((r) => r.via === chartSurface);
     const { data } = pivot(
-      activity.rows,
+      rows,
       (r) => r.kind,
       (r) => r.count,
     );
@@ -353,7 +372,7 @@ function ContentActivitySection({
       }
     }
     return data;
-  }, [activity.rows]);
+  }, [activity.rows, chartSurface]);
 
   return (
     <div className="mt-6 space-y-6">
@@ -381,6 +400,14 @@ function ContentActivitySection({
       <ChartCard
         title={`Daily reads, searches & listings — last ${activity.days}d`}
         height={280}
+        controls={
+          <Toggle
+            label=""
+            value={chartSurface}
+            options={CHART_SURFACE_OPTS}
+            onChange={setChartSurface}
+          />
+        }
       >
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />

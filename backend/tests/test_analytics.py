@@ -471,6 +471,14 @@ async def test_content_activity_splits_by_surface_and_drops_web_reads(client: As
     for r in body["rows"]:
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + r["count"]
     assert by_kind == {"reads": 2, "searches": 2, "listings": 1}
+    # Rows carry the surface so the dashboard chart can filter by source.
+    assert {(r["kind"], r["via"]) for r in body["rows"]} == {
+        ("reads", "cli"),
+        ("reads", "ask"),
+        ("searches", "web"),
+        ("searches", "cli"),
+        ("listings", "cli"),
+    }
 
 
 @pytest.mark.asyncio
