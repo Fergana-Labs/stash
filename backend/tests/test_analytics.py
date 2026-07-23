@@ -453,6 +453,10 @@ async def test_content_activity_splits_by_surface_and_drops_web_reads(client: As
         owner_user_id=user_id,
         target_type="source_collection",
     )
+    security_audit_service.request_via.set("auto")
+    await security_audit_service.record_content_read(  # automated read: must NOT count
+        target_type="skill", target_id="s1", actor_user_id=user_id, owner_user_id=user_id
+    )
     security_audit_service.request_via.set(None)
     await security_audit_service.record_content_read(  # untagged legacy row: excluded
         target_type="page", target_id="p3", actor_user_id=user_id, owner_user_id=user_id

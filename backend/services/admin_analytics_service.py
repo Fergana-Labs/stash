@@ -268,7 +268,9 @@ LISTING_ACTIONS = [
 # Caller surfaces stamped on audit rows by auth._set_request_via. Web reads
 # and listings are UI noise (sidebar refetches, page opens while editing), so
 # only web *searches* count; cli and ask count for everything. Untagged rows
-# (pre-`via` history, anonymous pastes) are excluded.
+# (pre-`via` history, anonymous pastes) are excluded, as are 'auto' rows —
+# automated machinery like the session-start skills sync, which reads content
+# nobody asked to see.
 ACTIVITY_SURFACES = {
     "reads": ["cli", "ask"],
     "searches": ["web", "cli", "ask"],

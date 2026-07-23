@@ -173,3 +173,22 @@ async def test_transcript_export_is_logged(client: AsyncClient, pool):
     assert rows[0]["actor_user_id"] == user_id
     assert rows[0]["target_id"] == session_id
     assert _metadata(rows[0]) == {"kind": "export"}
+
+
+async def test_auto_marked_read_is_audited_with_via_auto(client: AsyncClient, pool):
+    """Automated machinery (skills sync, plugin hooks) sends X-Stash-Via: auto.
+    The read is still audited, but tagged so content-activity analytics can
+    exclude it — only reads someone asked for count as document reads."""
+    api_key, user_id = await _register(client)
+    page_id = await _make_page(client, api_key, "Auto.md", "hello")
+
+    resp = await client.get(
+        f"/api/v1/me/pages/{page_id}",
+        headers={**_auth(api_key), "X-Stash-Via": "auto"},
+    )
+    assert resp.status_code == 200
+
+    rows = await _read_events(pool, "content.page_read")
+    assert len(rows) == 1
+    assert rows[0]["actor_user_id"] == user_id
+    assert rows[0]["via"] == "auto"
