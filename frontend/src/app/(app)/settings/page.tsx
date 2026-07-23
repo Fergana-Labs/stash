@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
+import WorkspaceShell from "@/components/workspace/workspace-shell";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
 import SubscriptionSection from "@/components/settings/SubscriptionSection";
 import AgentModelSection from "@/components/settings/AgentModelSection";
@@ -25,37 +26,43 @@ const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, loading, refresh } = useAuth();
+  const { user, loading, logout, refresh } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !user) router.replace("/login");
+  }, [loading, user, router]);
 
   if (loading || !user) {
     return <AccountSettingsSkeleton />;
   }
 
   return (
-    <main className="flex-1 px-4 py-10">
-      <div className="w-full max-w-2xl mx-auto space-y-8">
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-        >
-          <span aria-hidden>←</span> Home
-        </button>
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your profile, connected sources, sessions, and password.
-          </p>
+    <WorkspaceShell user={user} onLogout={logout}>
+      <main className="flex-1 px-4 py-10">
+        <div className="w-full max-w-2xl mx-auto space-y-8">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+          >
+            <span aria-hidden>←</span> Home
+          </button>
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your profile, connected sources, sessions, and password.
+            </p>
+          </div>
+          <Profile user={user} onUpdated={refresh} />
+          <SubscriptionSection />
+          <AgentModelSection />
+          <IntegrationsSettings embedded />
+          <ActiveSessions />
+          <ExportSection />
+          {!AUTH0_ENABLED && <ChangePassword />}
         </div>
-        <Profile user={user} onUpdated={refresh} />
-        <SubscriptionSection />
-        <AgentModelSection />
-        <IntegrationsSettings embedded />
-        <ActiveSessions />
-        <ExportSection />
-        {!AUTH0_ENABLED && <ChangePassword />}
-      </div>
-    </main>
+      </main>
+    </WorkspaceShell>
   );
 }
 
