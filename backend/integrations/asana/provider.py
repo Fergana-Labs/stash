@@ -107,4 +107,8 @@ class AsanaIntegration(Integration):
             resp = await client.get(ME_URL)
             resp.raise_for_status()
             me = resp.json().get("data", {})
-        return AccountInfo(email=me.get("email"), display_name=me.get("name"))
+        return AccountInfo(
+            email=me.get("email"),
+            display_name=me.get("name"),
+            account_ref=me.get("gid"),
+        )
