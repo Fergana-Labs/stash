@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 
 import { loadPublicSkillPreview } from "./skillPreviewFetch";
-import { skillItemPath } from "./localSkill";
 import {
   findSkillItem,
   isSkillItemType,
@@ -19,8 +18,7 @@ type MetadataInput = {
   path: string;
 };
 
-type ItemMetadataInput = {
-  slug: string;
+type ItemMetadataInput = MetadataInput & {
   itemType: SkillItemType;
   itemId: string;
 };
@@ -46,6 +44,7 @@ export async function metadataForPublicSkillItem({
   slug,
   itemType,
   itemId,
+  path,
 }: ItemMetadataInput): Promise<Metadata> {
   const data = await loadPublicSkillPreview(slug);
   if (!data) return { title: "Skill - Skill" };
@@ -58,7 +57,7 @@ export async function metadataForPublicSkillItem({
   return metadataForPreview({
     title,
     description,
-    path: skillItemPath(itemType, itemId, slug),
+    path,
     imagePath: skillOgImagePath(slug, itemType, itemId),
   });
 }

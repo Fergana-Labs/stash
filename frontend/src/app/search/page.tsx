@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
-import CustomSelect from "../../../components/CustomSelect";
-import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../../components/SkeletonStates";
-import { useAuth } from "../../../hooks/useAuth";
-import { track } from "../../../lib/analytics";
+import CustomSelect from "../../components/CustomSelect";
+import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
+import { useAuth } from "../../hooks/useAuth";
+import { track } from "../../lib/analytics";
 import {
   getSidebar,
   getPublicSkill,
@@ -22,10 +22,8 @@ import {
   type Sidebar,
   type Skill,
   type TreeFolder,
-} from "../../../lib/api";
-import type { Page, TableWithOwner } from "../../../lib/types";
-import { skillItemPath } from "../../../lib/localSkill";
-import { routes } from "../../../lib/workspace-routes";
+} from "../../lib/api";
+import type { Page, TableWithOwner } from "../../lib/types";
 
 type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
 
@@ -365,7 +363,7 @@ function SearchPageInner() {
                     <Link
                       key={`${result.kind}:${result.id}`}
                       href={result.href}
-                      className="rounded-lg border border-border bg-base px-4 py-3 transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                      className="rounded-lg border border-border bg-base px-4 py-3 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -381,7 +379,7 @@ function SearchPageInner() {
                             {result.detail}
                           </p>
                         </div>
-                        <div className="flex-shrink-0 text-right text-[11px] text-muted-foreground">
+                        <div className="shrink-0 text-right text-[11px] text-muted-foreground">
                           <div>{result.sourceName}</div>
                           <div>{relativeTime(result.updatedAt)}</div>
                         </div>
@@ -428,7 +426,7 @@ function searchSingleSession(
       id: sessionId,
       kind: "Session",
       title: sessionId,
-      href: routes.session(sessionId),
+      href: `/sessions/${encodeURIComponent(sessionId)}`,
 
       sourceName,
       detail: contextSnippet(bestMatch.content, query) ?? sessionEventSnippet(bestMatch, query),
@@ -510,7 +508,7 @@ function searchSessionsFromEvents(
       id,
       kind: "Session",
       title: event.session_id,
-      href: routes.session(event.session_id),
+      href: `/sessions/${encodeURIComponent(event.session_id)}`,
       sourceName,
       detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
       updatedAt: event.created_at,
@@ -570,7 +568,7 @@ function searchPages(
       id: page.id,
       kind: "Page" as const,
       title: page.name,
-      href: routes.page(page.id),
+      href: `/p/${page.id}`,
       sourceName,
       detail:
           contextSnippet(
@@ -602,7 +600,7 @@ function searchTables(tables: TableWithOwner[], query: string): SearchResult[] {
       id: table.id,
       kind: "Table" as const,
       title: table.name,
-      href: routes.table(table.id),
+      href: `/tables/${table.id}`,
       sourceName: table.owner_display_name ?? "Personal",
       detail:
         contextSnippet(
@@ -657,7 +655,7 @@ function searchPublicSkillItems(
   scope: { includePages: boolean; includeTables: boolean }
 ): SearchResult[] {
   const results: SearchResult[] = [];
-  const slug = detail.skill.slug;
+  const slug = encodeURIComponent(detail.skill.slug);
 
   if (scope.includePages) {
     for (const page of detail.contents.pages) {
@@ -666,7 +664,7 @@ function searchPublicSkillItems(
         id: page.id,
         kind: "Page",
         title: page.name,
-        href: skillItemPath("page", page.id, slug),
+        href: `/p/${page.id}?skill=${slug}`,
         sourceName: detail.skill.title,
         detail:
           contextSnippet(
@@ -695,7 +693,7 @@ function searchPublicSkillItems(
         id: table.id,
         kind: "Table",
         title: table.name,
-        href: skillItemPath("table", table.id, slug),
+        href: `/tables/${table.id}?skill=${slug}`,
         sourceName: detail.skill.title,
         detail:
           contextSnippet(

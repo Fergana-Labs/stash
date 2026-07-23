@@ -25,6 +25,7 @@ export async function generateMetadata({
     slug,
     itemType: "page",
     itemId: pageId,
+    path: `/p/${pageId}?skill=${encodeURIComponent(slug)}`,
   });
 }
 

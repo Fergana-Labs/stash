@@ -38,8 +38,6 @@ export interface WorkspaceState {
   railSection: RailSection;
   /** VFS folder the Files explorer is showing (null = root). */
   explorerFolderId: string | null;
-  /** True when the explorer sidebar is at the root Home menu list. */
-  explorerAtRoot: boolean;
 
   openTab: (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => void;
   closeTab: (id: string) => void;
@@ -50,7 +48,6 @@ export interface WorkspaceState {
   renameTab: (id: string, title: string) => void;
   setRailSection: (s: RailSection) => void;
   setExplorerFolderId: (id: string | null) => void;
-  setExplorerAtRoot: (atRoot: boolean) => void;
   hydrate: (data: Partial<WorkspaceState>) => void;
 }
 
@@ -79,7 +76,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focusedPane: 0,
   railSection: "files",
   explorerFolderId: null,
-  explorerAtRoot: false,
 
   openTab: (kind, refId, title, opts) => {
     const s = get();
@@ -160,8 +156,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setRailSection: (s) => set({ railSection: s }),
 
   setExplorerFolderId: (id) => set({ explorerFolderId: id }),
-
-  setExplorerAtRoot: (atRoot) => set({ explorerAtRoot: atRoot }),
 
   hydrate: (data) => set({ ...data }),
 }));

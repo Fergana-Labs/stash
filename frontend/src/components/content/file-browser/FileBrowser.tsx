@@ -33,7 +33,6 @@ import { refreshSidebar } from "../../../lib/skillNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
 import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { useRecents } from "../../../lib/pins";
-import { routes } from "../../../lib/workspace-routes";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid from "./FolderItemGrid";
@@ -381,15 +380,15 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       return `${folderHrefBase ?? "/folders"}/${item.id}`;
     }
     if (item.kind === "page" || item.kind === "html") {
-      return routes.page(item.id);
+      return `/p/${item.id}`;
     }
     if (item.kind === "datatable") {
-      return routes.table(item.id);
+      return `/tables/${item.id}`;
     }
     if (item.kind === "table" && item.linkedTableId) {
-      return routes.table(item.linkedTableId);
+      return `/tables/${item.linkedTableId}`;
     }
-    return routes.file(item.id);
+    return `/f/${item.id}`;
   }
 
   function navigateTo(item: GridItem, options?: NavigateOptions) {
@@ -410,7 +409,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       try {
         const result = await uploadFileOrPage(file, folderId ?? undefined);
         if (result.kind === "page") {
-          router.push(routes.page(result.page.id));
+          router.push(`/p/${result.page.id}`);
           return;
         }
         await refreshAll();
@@ -425,7 +424,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
     try {
       const p = await createPage("Untitled", folderId ?? undefined);
       refreshSidebar().catch(() => {});
-      router.push(routes.page(p.id));
+      router.push(`/p/${p.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create page");
     }
@@ -440,7 +439,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         await updateTable(table.id, { folder_id: folderId });
       }
       refreshSidebar().catch(() => {});
-      router.push(routes.table(table.id));
+      router.push(`/tables/${table.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create table");
     }

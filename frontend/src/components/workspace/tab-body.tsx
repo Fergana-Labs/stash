@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import PageClient from "@/app/(app)/page/[pageId]/PageClient";
-import FileClient from "@/app/(app)/file/[fileId]/FileClient";
+import PageClient from "@/app/(app)/p/[pageId]/PageClient";
+import FileClient from "@/app/(app)/f/[fileId]/FileClient";
 import TableClient from "@/app/tables/[tableId]/TableClient";
 import SessionsPage from "@/app/(app)/sessions/page";
 import SessionClient from "@/app/(app)/sessions/[sessionId]/SessionClient";
@@ -23,13 +23,7 @@ import type { WorkbenchTab } from "@/lib/workspace-store";
  *  from a recent chat doesn't, so those tabs are chat-only. */
 function agentIdFromRef(refId: string): string | null {
   if (refId.startsWith("new:")) return refId.split(":")[1] || null;
-  if (refId.startsWith("agent-")) {
-    const id = refId.slice("agent-".length);
-    if (/^[0-9a-f]{32}$/i.test(id) || id.startsWith("curate-") || id.startsWith("sched-")) {
-      return null;
-    }
-    return id || null;
-  }
+  if (refId.startsWith("agent-")) return refId.slice("agent-".length) || null;
   return null;
 }
 
@@ -73,30 +67,18 @@ function AgentViewSelector({
 function AgentChatTab({ refId }: { refId: string }) {
   const isNew = refId.startsWith("new");
   const agentId = agentIdFromRef(refId);
-  const [sessionId, setSessionId] = useState<string | null>(
-    isNew ? null : refId,
-  );
+  const [sessionId, setSessionId] = useState<string | null>(isNew ? null : refId);
   const [view, setView] = useState<"chat" | "config">(() =>
     agentId && takeAgentConfigView(agentId) ? "config" : "chat",
   );
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
       {agentId && <AgentViewSelector view={view} onChange={setView} />}
-      <div
-        className={view === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}
-      >
-        <ChatPanel
-          sessionId={sessionId}
-          onSessionId={setSessionId}
-          agentId={agentId}
-        />
+      <div className={view === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
       </div>
       {agentId && (
-        <div
-          className={
-            view === "config" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"
-          }
-        >
+        <div className={view === "config" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
           <AgentConfigPanel agentId={agentId} />
         </div>
       )}
@@ -116,7 +98,7 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "session") return <SessionClient sessionId={tab.refId} />;
   if (tab.kind === "skill") return <SkillFolderClient folderId={tab.refId} />;
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;
-  if (tab.kind === "agent") return <AgentChatTab key={tab.refId} refId={tab.refId} />;
+  if (tab.kind === "agent") return <AgentChatTab refId={tab.refId} />;
   // Tool + agent-config bodies are plain document flows with no height or
   // scroller of their own, so the tab gives them one (same as AgentChatTab
   // does for the config side of a chat tab).
@@ -136,7 +118,7 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
     );
   if (tab.kind === "agent-config")
     return (
-      <div key={tab.refId} className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <AgentConfigPanel agentId={tab.refId} />
       </div>
     );

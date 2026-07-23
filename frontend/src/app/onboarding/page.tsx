@@ -15,8 +15,8 @@ import {
   type ApiKeyCreated,
 } from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
-import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 import { routes } from "../../lib/workspace-routes";
+import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
@@ -134,7 +134,7 @@ function OnboardingInner() {
       apiKey,
     });
     await updatePage(page.id, { content });
-    router.push(routes.page(page.id));
+    router.push(`/p/${page.id}`);
   }, [user, router]);
 
   if (loading || !user) {

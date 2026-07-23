@@ -78,7 +78,7 @@ describe("AppGroupLayout", () => {
   });
 
   it("renders Skill item deep-link routes without app chrome", () => {
-    route.pathname = "/page/page-1";
+    route.pathname = "/p/page-1";
     route.search = "skill=shared-skill";
 
     render(

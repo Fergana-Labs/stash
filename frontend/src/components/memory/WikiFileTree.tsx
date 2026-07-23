@@ -5,7 +5,6 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { FolderIcon, PageIcon } from "@/components/SkillIcons";
 import type { FolderTreeNode, PageSummary, Tree } from "@/lib/types";
-import { routes } from "@/lib/workspace-routes";
 
 /** Total pages in a folder's subtree — the count shown next to each folder. */
 export function wikiPageCount(folder: FolderTreeNode): number {
@@ -79,7 +78,7 @@ function FolderNode({ folder, depth }: { folder: FolderTreeNode; depth: number }
 function PageRow({ page, depth }: { page: PageSummary; depth: number }) {
   return (
     <Link
-      href={`${routes.page(page.id)}?section=memory`}
+      href={`/p/${page.id}?section=memory`}
       className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-foreground hover:bg-raised"
       style={{ paddingLeft: depth * INDENT_PX + 8 }}
     >

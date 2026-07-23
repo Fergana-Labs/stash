@@ -39,7 +39,6 @@ import {
 import { findInSkillContents } from "../../../lib/localSkill";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/content/FileViewerHeader";
-import { routes } from "../../../lib/workspace-routes";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {
@@ -382,7 +381,7 @@ function TableEditorPageInner({
         objectType="table"
         objectId={table.id}
         resourceName={table.name}
-        resourceUrlPath={routes.table(table.id)}
+        resourceUrlPath={`/tables/${table.id}`}
         currentUser={user}
       />
     );

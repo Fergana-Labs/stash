@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 
 import WorkspaceShell from "@/components/workspace/workspace-shell";
-import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import { BasicPageSkeleton, CardGridSkeleton } from "@/components/SkeletonStates";
-import { GitHubIcon } from "@/components/integrations/BrandIcons";
-import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
-import SkillCard from "@/components/skill/SkillCard";
-import { useAuth } from "@/hooks/useAuth";
-import { API_BASE, githubOwner, type PublicSkillCard } from "@/lib/api";
+import { useBreadcrumbs } from "../../components/BreadcrumbContext";
+import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
+import { GitHubIcon } from "../../components/integrations/BrandIcons";
+import ForkSkillCardButton from "../../components/skill/ForkSkillCardButton";
+import SkillCard from "../../components/skill/SkillCard";
+import { useAuth } from "../../hooks/useAuth";
+import { API_BASE, githubOwner, type PublicSkillCard } from "../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
