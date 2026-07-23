@@ -11,7 +11,7 @@ vi.mock("@/lib/api", () => ({
   getAuthToken: () => "k",
 }));
 
-import { getAgentChat } from "./agentChat";
+import { citationFor, getAgentChat } from "./agentChat";
 
 describe("getAgentChat", () => {
   it("folds tool rows into the next assistant message's citations", async () => {
@@ -69,5 +69,39 @@ describe("getAgentChat", () => {
 
     // Grep grounds the answer; an Edit is work, not grounding.
     expect(messages[1].citations?.map((c) => c.label)).toEqual(['search "quokka"']);
+  });
+});
+
+describe("citationFor link targets", () => {
+  it("links a stash search to the app search page", () => {
+    expect(citationFor("Bash", { command: 'stash search "vector recall"' })).toEqual({
+      label: 'stash search "vector recall"',
+      href: "/search?q=vector%20recall",
+    });
+  });
+
+  it("links a stash page read straight to the page", () => {
+    const id = "0b5c2f6e-9d31-4a7e-8f00-1234567890ab";
+    expect(citationFor("Bash", { command: `stash read ${id}` })?.href).toBe(`/p/${id}`);
+  });
+
+  it("carries a VFS cat path for click-time resolution", () => {
+    expect(citationFor("Bash", { command: "stash vfs \"cat '/files/Runbook.md'\"" })).toEqual({
+      label: "stash vfs \"cat '/files/Runbook.md'\"",
+      vfsPath: "/files/Runbook.md",
+    });
+  });
+
+  it("links a web fetch to the fetched URL", () => {
+    expect(citationFor("WebFetch", { url: "https://example.com/post" })).toEqual({
+      label: "example.com",
+      href: "https://example.com/post",
+    });
+  });
+
+  it("leaves sprite-local reads unlinked", () => {
+    expect(citationFor("Read", { file_path: "/home/user/work/notes.md" })).toEqual({
+      label: "notes.md",
+    });
   });
 });
