@@ -18,6 +18,14 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
+# One curator pass consumes at most one event-cap's worth of the change feed
+# (curation_service._MAX_EVENTS, 500). Per-turn transcript streams (e.g. a
+# customer app uploading every chat turn) can exceed that in a single day, so
+# a due curator keeps running until its feed drains, bounded by this many
+# passes per beat — a ~5,000-event daily budget without ever giving one run an
+# unbounded delta.
+CURATOR_DRAIN_PASSES = 10
+
 
 def _is_due(cron: str, last_run: datetime | None, now: datetime) -> bool:
     """True if a cron tick falls in (last_run, now]. Never fires on the very
@@ -102,18 +110,48 @@ async def _run_due() -> int:
         ):
             continue
         try:
-            await sprite_agent_service.run_scheduled(agent, stamp)
             if agent["is_curator"]:
-                # `now` predates the run, so changes made during it stay ahead
-                # of the watermark and are picked up next time. If the delta
-                # overflowed the event cap, the watermark stops at the last
-                # event that fit — the overflow drains on subsequent runs.
-                through = await curation_service.complete_through(
-                    user_id, agent["curated_through"], now
-                )
-                await agent_service.mark_curated(agent["id"], through)
+                await _drain_curator(agent, user_id, stamp, now)
+            else:
+                await sprite_agent_service.run_scheduled(agent, stamp)
             ran += 1
         except Exception as e:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])
             await agent_service.mark_run_failed(agent["id"], str(e))
     return ran
+
+
+async def _drain_curator(agent: dict, user_id: UUID, stamp: str, now: datetime) -> None:
+    """Run the curator, repeating while the delta overflowed the per-run event
+    cap, so a busy day drains within one beat instead of lagging one cap per
+    day. `now` predates the first run, so changes made during a pass stay
+    ahead of the watermark and are picked up next beat. The watermark advances
+    after every successful pass, so a failure mid-drain loses nothing already
+    curated. Extra passes stay metered against the free-tier monthly
+    allowance; enterprise is unlimited."""
+    from ..config import settings
+    from ..database import get_pool
+    from ..services import agent_service, curation_service, sprite_agent_service
+
+    for run_pass in range(CURATOR_DRAIN_PASSES):
+        if run_pass:
+            month_runs = await agent_service.mark_run(agent["id"])
+            if month_runs > settings.FREE_CURATOR_RUNS_PER_MONTH:
+                plan = await get_pool().fetchval("SELECT plan FROM users WHERE id = $1", user_id)
+                if plan != "enterprise":
+                    logger.info(
+                        "agent schedule: curator credits exhausted mid-drain for user %s",
+                        user_id,
+                    )
+                    return
+        await sprite_agent_service.run_scheduled(agent, f"{stamp}-{run_pass}")
+        through = await curation_service.complete_through(user_id, agent["curated_through"], now)
+        await agent_service.mark_curated(agent["id"], through)
+        if through >= now:
+            return
+        agent = {**agent, "curated_through": through}
+    logger.warning(
+        "agent schedule: curator feed still overflowing after %s passes for user %s",
+        CURATOR_DRAIN_PASSES,
+        user_id,
+    )

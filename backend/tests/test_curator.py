@@ -619,3 +619,47 @@ async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClien
     files_tree = (await client.get("/api/v1/me/tree", headers=_auth(key))).json()
     assert [p["name"] for p in files_tree["pages"]] == ["Outside"]
     assert all(f["id"] != mem["id"] for f in files_tree["folders"])
+
+
+@pytest.mark.asyncio
+async def test_busy_day_drains_within_one_beat(
+    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
+):
+    """A day's events can exceed one delta cap (Heavi's per-turn transcript
+    uploads produced ~one cap on day one). The beat must not advance one cap
+    per DAY — it re-runs the curator until the feed drains, so the wiki learns
+    from yesterday's conversations tomorrow, not next week."""
+    from backend.services import curation_service
+    from backend.tasks.agent_schedules import _run_due
+
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 3)
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    base = datetime.now(UTC) - timedelta(hours=2)
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "heavi-chat",
+                "event_type": "user_message",
+                "content": f"turn {i}",
+                "session_id": f"conv-{i}",
+                "created_at": (base + timedelta(minutes=i)).isoformat(),
+            }
+            for i in range(8)
+        ],
+    )
+    await _make_due(_db_pool, curator["id"], base - timedelta(minutes=1))
+
+    ran = await _run_due()
+    assert ran == 1
+
+    after = await _db_pool.fetchval(
+        "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
+    )
+    # The whole backlog was consumed in this single beat...
+    assert await curation_service.has_changes_since(uid, uid, after) is False
+    # ...which took multiple curator passes, each bounded by the event cap.
+    passes = [a for a in sprite_exec.calls if "Memory Wiki Curation" in " ".join(a)]
+    assert len(passes) >= 3
