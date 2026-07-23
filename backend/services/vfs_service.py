@@ -176,7 +176,9 @@ async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://vfs.internal",
-        headers={"Authorization": authorization},
+        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+        # trail (see auth._set_request_via).
+        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(
@@ -200,7 +202,9 @@ async def resolve_vfs_path(app, authorization: str, path: str) -> dict:
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://vfs.internal",
-        headers={"Authorization": authorization},
+        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+        # trail (see auth._set_request_via).
+        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(functools.partial(_resolve_node, http, loop, path))

@@ -49,6 +49,23 @@ export type CohortResponse = {
   generated_at: string;
 };
 
+type ContentActivityRow = {
+  ts: string;
+  kind: string;
+  via: string;
+  count: number;
+};
+type ContentActivityResponse = {
+  days: number;
+  totals: {
+    reads: { cli: number; ask: number };
+    searches: { web: number; cli: number; ask: number };
+    listings: { cli: number; ask: number };
+  };
+  rows: ContentActivityRow[];
+  generated_at: string;
+};
+
 type SummaryResponse = {
   days: number;
   signups: number;
@@ -85,6 +102,7 @@ type TopEventsRow = { event_name: string; total: number; users: number };
 type TopEventsResponse = { days: number; rows: TopEventsRow[] };
 
 export type AnalyticsPayload = {
+  contentActivity: ContentActivityResponse;
   summary: SummaryResponse;
   funnel: FunnelResponse;
   pathMix: PathMixResponse;
@@ -252,6 +270,7 @@ export default function AnalyticsClient({
           />
         </div>
 
+        <ContentActivitySection activity={data.contentActivity} />
         <SummarySection summary={data.summary} />
         <FunnelSection
           funnel={data.funnel}
@@ -288,6 +307,134 @@ function GeneratedAt({ iso }: { iso: string }) {
     <span className="text-[11px] text-gray-400" suppressHydrationWarning>
       generated {pretty ?? iso}
     </span>
+  );
+}
+
+// ---- Section 0: Content activity (docs read / searches / listings) ----
+
+const ACTIVITY_KINDS = ["reads", "searches", "listings"] as const;
+
+const ACTIVITY_LABELS: Record<(typeof ACTIVITY_KINDS)[number], string> = {
+  reads: "Docs read",
+  searches: "Searches",
+  listings: "Listings",
+};
+
+// Web reads/listings are UI noise and aren't counted server-side, so those
+// kinds only ever carry cli + ask surfaces. Fixed render order keeps each
+// grid column a single source (web last, since only searches carry it).
+const SURFACE_ORDER = ["cli", "ask", "web"] as const;
+
+const SURFACE_LABELS: Record<string, string> = {
+  web: "Web",
+  cli: "CLI",
+  ask: "Ask the stash",
+};
+
+// Fixed per-kind chart colors: the shared PALETTE is all greens, which made
+// listings indistinguishable from reads/searches. Light orange for listings.
+const ACTIVITY_COLORS: Record<(typeof ACTIVITY_KINDS)[number], string> = {
+  reads: PALETTE[0],
+  searches: PALETTE[1],
+  listings: "#fdba74",
+};
+
+const CHART_SURFACE_OPTS = [
+  { value: "all", label: "All" },
+  { value: "cli", label: "CLI" },
+  { value: "ask", label: "Ask the stash" },
+  { value: "web", label: "Web" },
+] as const;
+
+function ContentActivitySection({
+  activity,
+}: {
+  activity: ContentActivityResponse;
+}) {
+  // Chart-only source filter; the stat cards always show every surface.
+  const [chartSurface, setChartSurface] = useState("all");
+
+  const chartData = useMemo(() => {
+    const rows =
+      chartSurface === "all"
+        ? activity.rows
+        : activity.rows.filter((r) => r.via === chartSurface);
+    const { data } = pivot(
+      rows,
+      (r) => r.kind,
+      (r) => r.count,
+    );
+    // pivot only zero-fills kinds it has seen; a kind with no rows in the
+    // window would otherwise vanish from the tooltip instead of reading 0.
+    for (const row of data) {
+      for (const kind of ACTIVITY_KINDS) {
+        if (row[kind] == null) row[kind] = 0;
+      }
+    }
+    return data;
+  }, [activity.rows, chartSurface]);
+
+  return (
+    <div className="mt-6 space-y-6">
+      <h2 className="text-base font-semibold text-gray-800">
+        Content activity
+      </h2>
+
+      {ACTIVITY_KINDS.map((kind) => {
+        const totals: Record<string, number> = activity.totals[kind];
+        return (
+          <div key={kind} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {SURFACE_ORDER.filter((surface) => surface in totals).map(
+              (surface) => (
+                <Stat
+                  key={`${kind}-${surface}`}
+                  label={`${ACTIVITY_LABELS[kind]} — ${SURFACE_LABELS[surface]} (${activity.days}d)`}
+                  value={totals[surface]}
+                />
+              ),
+            )}
+          </div>
+        );
+      })}
+
+      <ChartCard
+        title={`Daily reads, searches & listings — last ${activity.days}d`}
+        height={280}
+        controls={
+          <Toggle
+            label=""
+            value={chartSurface}
+            options={CHART_SURFACE_OPTS}
+            onChange={setChartSurface}
+          />
+        }
+      >
+        <LineChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 10 }}
+            interval="preserveStartEnd"
+          />
+          <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+          <Tooltip />
+          <Legend />
+          {ACTIVITY_KINDS.map((kind) => (
+            <Line
+              key={kind}
+              // linear, not monotone: smoothed curves imply activity between
+              // days that never happened
+              type="linear"
+              dataKey={kind}
+              stroke={ACTIVITY_COLORS[kind]}
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+            />
+          ))}
+        </LineChart>
+      </ChartCard>
+    </div>
   );
 }
 

@@ -7,6 +7,7 @@ Covers:
 """
 
 import json
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -171,6 +172,7 @@ async def test_admin_endpoints_require_token(client: AsyncClient):
         "/api/v1/admin/analytics/path-mix",
         "/api/v1/admin/analytics/surface-mix",
         "/api/v1/admin/analytics/top-events",
+        "/api/v1/admin/analytics/content-activity",
     ]:
         resp = await client.get(path)
         assert resp.status_code == 401, f"{path} should require admin token"
@@ -389,6 +391,94 @@ async def test_summary_counts_signups_and_cli_active(client: AsyncClient):
     assert body["signups"] >= 1
     assert body["cli_active_users"] == 1  # one distinct user, regardless of cmd count
     assert body["active_users"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_content_activity_zero_state(client: AsyncClient):
+    resp = await client.get("/api/v1/admin/analytics/content-activity", headers=_admin())
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["totals"] == {
+        "reads": {"cli": 0, "ask": 0},
+        "searches": {"web": 0, "cli": 0, "ask": 0},
+        "listings": {"cli": 0, "ask": 0},
+    }
+    assert body["rows"] == []
+
+
+@pytest.mark.asyncio
+async def test_content_activity_splits_by_surface_and_drops_web_reads(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("activity"), "password": "securepassword1"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    api_key, user_id = body["api_key"], UUID(body["id"])
+
+    # API-key traffic tags as 'cli': one page read + the tree listing.
+    resp = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Activity.md", "content": "x"},
+        headers=_auth(api_key),
+    )
+    page_id = resp.json()["id"]
+    assert (
+        await client.get(f"/api/v1/me/pages/{page_id}", headers=_auth(api_key))
+    ).status_code == 200
+    assert (await client.get("/api/v1/me/tree", headers=_auth(api_key))).status_code == 200
+
+    # Directly seeded rows stand in for the other surfaces.
+    security_audit_service.request_via.set("ask")
+    await security_audit_service.record_content_read(
+        target_type="page", target_id="p1", actor_user_id=user_id, owner_user_id=user_id
+    )
+    security_audit_service.request_via.set("web")
+    await security_audit_service.record_content_read(  # web read: must NOT count
+        target_type="page", target_id="p2", actor_user_id=user_id, owner_user_id=user_id
+    )
+    await security_audit_service.record_entries_listed(  # web listing: must NOT count
+        target_type="tree", actor_user_id=user_id, owner_user_id=user_id
+    )
+    await security_audit_service.record_event(  # web search: counts
+        action="source.searched",
+        actor_user_id=user_id,
+        owner_user_id=user_id,
+        target_type="source_collection",
+    )
+    security_audit_service.request_via.set("cli")
+    await security_audit_service.record_event(
+        action="source.searched",
+        actor_user_id=user_id,
+        owner_user_id=user_id,
+        target_type="source_collection",
+    )
+    security_audit_service.request_via.set(None)
+    await security_audit_service.record_content_read(  # untagged legacy row: excluded
+        target_type="page", target_id="p3", actor_user_id=user_id, owner_user_id=user_id
+    )
+
+    resp = await client.get(
+        "/api/v1/admin/analytics/content-activity?days=30",
+        headers=_admin(),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["totals"]["reads"] == {"cli": 1, "ask": 1}
+    assert body["totals"]["searches"] == {"web": 1, "cli": 1, "ask": 0}
+    assert body["totals"]["listings"] == {"cli": 1, "ask": 0}
+    by_kind: dict[str, int] = {}
+    for r in body["rows"]:
+        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + r["count"]
+    assert by_kind == {"reads": 2, "searches": 2, "listings": 1}
+    # Rows carry the surface so the dashboard chart can filter by source.
+    assert {(r["kind"], r["via"]) for r in body["rows"]} == {
+        ("reads", "cli"),
+        ("reads", "ask"),
+        ("searches", "web"),
+        ("searches", "cli"),
+        ("listings", "cli"),
+    }
 
 
 @pytest.mark.asyncio

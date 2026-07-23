@@ -19,6 +19,7 @@ from ..services import (
     llm,
     memory_service,
     permission_service,
+    security_audit_service,
     session_title_service,
     skill_service,
     sprite_service,
@@ -324,6 +325,12 @@ async def get_scope_overview(
         _files_tree(owner_user_id, current_user["id"]),
         _list_sidebar_skills(owner_user_id, current_user["id"]),
         sprite_service.existing(owner_user_id),
+    )
+    await security_audit_service.record_entries_listed(
+        target_type="overview",
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"result_count": len(sessions) + len(files) + len(skills)},
     )
     # The VFS mounts /computer only when a machine exists — checking must not
     # provision one, so this is a row lookup, never a sprites API call.

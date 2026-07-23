@@ -153,6 +153,12 @@ async def get_scope_tree(
     owner_user_id = scope_user_id
     await _check_scope_access(owner_user_id, current_user["id"])
     tree = await files_tree_service.list_scope_tree(owner_user_id, current_user["id"])
+    await security_audit_service.record_entries_listed(
+        target_type="tree",
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"result_count": len(tree["folders"]) + len(tree["pages"])},
+    )
     return ScopeTreeResponse(**tree)
 
 
@@ -163,6 +169,11 @@ async def get_memory_folder(
 ):
     """The scope's reserved Memory folder (created on first access)."""
     folder = await files_tree_service.get_or_create_memory_folder(scope_user_id, current_user["id"])
+    await security_audit_service.record_entries_listed(
+        target_type="memory_folder",
+        actor_user_id=current_user["id"],
+        owner_user_id=scope_user_id,
+    )
     return FolderResponse(**folder)
 
 
@@ -173,6 +184,12 @@ async def get_memory_tree(
     """The Memory wiki as a nested file-system tree (folders + pages), rooted
     at the caller's Memory folder. Drives the wiki browser page."""
     tree = await files_tree_service.memory_tree(current_user["id"], current_user["id"])
+    await security_audit_service.record_entries_listed(
+        target_type="memory_tree",
+        actor_user_id=current_user["id"],
+        owner_user_id=current_user["id"],
+        metadata={"result_count": len(tree["folders"]) + len(tree["pages"])},
+    )
     return ScopeTreeResponse(**tree)
 
 
@@ -660,6 +677,12 @@ async def get_page_by_id(
     page = await files_tree_service.get_page_by_id(page_id, viewer_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    await security_audit_service.record_content_read(
+        target_type="page",
+        target_id=str(page_id),
+        actor_user_id=viewer_id,
+        owner_user_id=page["owner_user_id"],
+    )
     return PageResponse(**page)
 
 
@@ -677,6 +700,12 @@ async def get_page(
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    await security_audit_service.record_content_read(
+        target_type="page",
+        target_id=str(page_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+    )
     return PageResponse(**page)
 
 
@@ -697,6 +726,12 @@ async def download_page(
     page = await files_tree_service.get_page(page_id, owner_user_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    await security_audit_service.record_content_read(
+        target_type="page",
+        target_id=str(page_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+    )
     is_html = (page.get("content_type") or "").lower() == "html"
     body = (page.get("content_html") if is_html else page.get("content_markdown")) or ""
     suffix = ".html" if is_html else ".md"

@@ -22,6 +22,7 @@ from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..services import (
     memory_service,
+    security_audit_service,
     session_folder_service,
     session_service,
     transcript_import,
@@ -238,6 +239,12 @@ async def get_transcript_events(
             owner_user_id, session_id, limit, offset
         )
         if total:
+            await security_audit_service.record_content_read(
+                target_type="transcript",
+                target_id=session_id,
+                actor_user_id=current_user["id"],
+                owner_user_id=owner_user_id,
+            )
             return {
                 "events": _events_to_viewer_shape(events),
                 "total": total,
@@ -259,7 +266,14 @@ async def export_transcript_jsonl(
     resolved = await _resolve_readable_events(session_id, current_user["id"])
     if not resolved:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    _, events = resolved
+    owner_user_id, events = resolved
+    await security_audit_service.record_content_read(
+        target_type="transcript",
+        target_id=session_id,
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "export"},
+    )
 
     lines: list[str] = []
     for ev in events:
