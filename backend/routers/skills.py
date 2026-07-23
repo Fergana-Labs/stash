@@ -128,6 +128,12 @@ async def get_skill_contents(
     owner_user_id = current_user["id"]
     folder = await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
     contents = await shared_skill_service.folder_contents({"folder_id": folder_id})
+    await security_audit_service.record_content_read(
+        target_type="skill",
+        target_id=str(folder_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+    )
     return {"folder_id": str(folder_id), "folder_name": folder["name"], "contents": contents}
 
 
@@ -322,6 +328,12 @@ async def get_public_skill(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     contents = await shared_skill_service.folder_contents(skill, viewer_id=viewer_id)
+    await security_audit_service.record_content_read(
+        target_type="skill",
+        target_id=slug,
+        actor_user_id=viewer_id,
+        owner_user_id=skill["owner_user_id"],
+    )
 
     owner_name = skill.pop("_owner_name", "")
     folder_name = skill.pop("_folder_name", "")
@@ -368,6 +380,13 @@ async def get_public_skill_item(
     item = shared_skill_service.find_in_contents(contents, object_type, str(object_id))
     if not item:
         raise HTTPException(status_code=404, detail="Skill item not found")
+    await security_audit_service.record_content_read(
+        target_type="skill",
+        target_id=slug,
+        actor_user_id=viewer_id,
+        owner_user_id=skill["owner_user_id"],
+        metadata={"item_type": object_type, "item_id": str(object_id)},
+    )
 
     owner_name = skill.pop("_owner_name", "")
     skill.pop("_folder_name", "")

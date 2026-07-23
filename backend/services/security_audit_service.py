@@ -87,6 +87,47 @@ async def record_content_lifecycle_event(
     )
 
 
+async def record_content_read(
+    *,
+    target_type: str,
+    target_id: str | None,
+    actor_user_id: UUID | None,
+    owner_user_id: UUID | None,
+    metadata: dict | None = None,
+) -> None:
+    """Read trail for native content (pages, files, transcripts, tables, ...).
+
+    Connected-source reads are audited separately in source_service
+    (source.document_read); together the two cover every document read.
+    actor_user_id is None for anonymous public-link reads."""
+    await record_event(
+        action=f"content.{target_type}_read",
+        actor_user_id=actor_user_id,
+        owner_user_id=owner_user_id,
+        target_type=target_type,
+        target_id=target_id,
+        metadata=metadata,
+    )
+
+
+async def record_entries_listed(
+    *,
+    target_type: str,
+    actor_user_id: UUID,
+    owner_user_id: UUID,
+    metadata: dict | None = None,
+) -> None:
+    """Listing trail for native content (tree, overview, tables, ...) —
+    parallel to source.entries_listed for connected sources."""
+    await record_event(
+        action="content.entries_listed",
+        actor_user_id=actor_user_id,
+        owner_user_id=owner_user_id,
+        target_type=target_type,
+        metadata=metadata,
+    )
+
+
 async def record_user_event(
     *,
     action: str,
