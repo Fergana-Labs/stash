@@ -65,10 +65,17 @@ def _is_permanent_rejection(e: Exception) -> bool:
 def _configured_scope() -> str:
     """Workspace scope selected by `stash workspace switch`; empty = personal.
     Read here — the single client shared by hooks and detached upload scripts —
-    so every write lands in the same scope without threading it through argv."""
+    so every write lands in the same scope without threading it through argv.
+    Parse boundary: only a UUID is a scope. Pre-2026-07 CLIs stored a mode
+    string ("repo") under this key, and sending that would 400 every request;
+    the CLI's load_config migrates the file, hooks just never send non-UUIDs."""
+    from uuid import UUID
+
     try:
         config = json.loads((Path.home() / ".stash" / "config.json").read_text())
-        return config.get("scope", "")
+        scope = config.get("scope", "")
+        UUID(str(scope))
+        return scope
     except Exception:
         return ""
 
