@@ -3,6 +3,7 @@ import type { TabKind, WorkbenchTab } from "@/lib/workspace-store";
 // Single source of truth for app-internal route paths. Every deep link,
 // share URL, and router.push in the frontend goes through these.
 export const routes = {
+  extension: "/extension",
   page: (id: string) => `/page/${id}`,
   file: (id: string) => `/file/${id}`,
   table: (id: string) => `/tables/${id}`,

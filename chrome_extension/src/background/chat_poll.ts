@@ -4,6 +4,7 @@
 // — the origins are in host_permissions) and syncs anything updated since the
 // last successful pass. Each platform tracks its own watermark.
 
+import { setSurfaceError } from '../lib/errors';
 import {
   chatgptAccessToken,
   chatgptExtract,
@@ -49,9 +50,10 @@ async function pollAll(): Promise<void> {
   const errors = results.filter((r) => !r.ok);
   if (errors.length > 0) {
     // No notification — a logged-out site would nag daily. Badge + popup error.
-    await chrome.storage.local.set({
-      lastError: `Daily chat sync failed — ${errors.map((e) => e.error).join('; ')}`,
-    });
+    await setSurfaceError(
+      'chat',
+      `Daily chat sync failed — ${errors.map((e) => e.error).join('; ')}`
+    );
     await setBadge('!', 'Stash daily sync failed — click for details');
   }
 }

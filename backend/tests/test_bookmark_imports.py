@@ -217,6 +217,30 @@ async def test_import_progress_reports_failures_per_url(
 
 
 @pytest.mark.asyncio
+async def test_imports_list_reports_progress_per_batch(client: AsyncClient, monkeypatch) -> None:
+    # The app-side progress pill lists all recent batches with aggregate
+    # counts — a days-long import must be visible outside the extension popup.
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
+    headers, owner_id = await _register(client)
+
+    resp = await client.post("/api/v1/me/imports/bookmarks", headers=headers, **_upload_kwargs())
+    batch_id = resp.json()["import_id"]
+
+    listing = await client.get("/api/v1/me/imports", headers=headers)
+    assert listing.status_code == 200
+    batches = listing.json()["batches"]
+    assert [b["id"] for b in batches] == [batch_id]
+    assert batches[0]["total"] == 3
+    assert batches[0]["pending"] == 3
+    assert batches[0]["done"] == 0
+
+    # Owner-scoped: another user sees nothing.
+    other_headers, _ = await _register(client)
+    other = await client.get("/api/v1/me/imports", headers=other_headers)
+    assert other.json()["batches"] == []
+
+
+@pytest.mark.asyncio
 async def test_import_progress_is_owner_scoped(client: AsyncClient, monkeypatch) -> None:
     monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
     headers, _ = await _register(client)

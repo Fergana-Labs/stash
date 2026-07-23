@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -481,6 +481,16 @@ async def push_saved_items(
     source_id = UUID(source["id"])
 
     pool = get_pool()
+    # The push itself is the liveness signal for an extension-fed source —
+    # there is no token to check. The UI warns when this stamp goes stale
+    # (extension uninstalled, Instagram logged out). A push also clears any
+    # standing sync warning: the pipeline is demonstrably alive again.
+    await pool.execute(
+        "UPDATE user_sources SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb, "
+        "sync_error = NULL, updated_at = now() WHERE id = $1",
+        source_id,
+        {"extension_last_push_at": datetime.now(UTC).isoformat()},
+    )
     new = 0
     for shortcode, item in parsed:
         inserted = await pool.fetchval(

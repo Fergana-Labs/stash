@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, useEffect } from "react";
 
 import WorkspaceShell from "@/components/workspace/workspace-shell";
+import ImportProgressPill from "@/components/ImportProgressPill";
 import {
   AppShellSkeleton,
   PublicSkillSkeleton,
@@ -63,6 +64,7 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   return (
     <WorkspaceShell user={user} onLogout={logout}>
       {children}
+      <ImportProgressPill />
     </WorkspaceShell>
   );
 }

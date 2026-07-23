@@ -7,6 +7,7 @@
 // POST /me/saved-items, which auto-creates the source and hydrates
 // server-side.
 
+import { clearSurfaceError, setSurfaceError } from '../lib/errors';
 import { setBadge, stashConfig } from '../lib/stash';
 
 const VISIT_ALARM = 'instagram-saves-visit';
@@ -51,14 +52,15 @@ export async function receiveSavedItems(
   });
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 180);
-    await chrome.storage.local.set({
-      lastError: `Instagram saves push failed (${response.status}): ${detail}`,
-    });
+    await setSurfaceError(
+      'instagram',
+      `Instagram saves push failed (${response.status}): ${detail}`
+    );
     await setBadge('!', 'Instagram saves push failed — click for details');
     return { ok: false, error: `push_failed_${response.status}` };
   }
   const data = await response.json();
-  await chrome.storage.local.set({ lastError: null });
+  await clearSurfaceError('instagram');
   return { ok: true, ...data };
 }
 
@@ -67,7 +69,7 @@ export async function savedItemsFailed(
   sender: chrome.runtime.MessageSender
 ): Promise<any> {
   await closeVisitTab(sender.tab?.id);
-  await chrome.storage.local.set({ lastError: `Instagram saves harvest failed: ${error}` });
+  await setSurfaceError('instagram', `Instagram saves harvest failed: ${error}`);
   await setBadge('!', 'Instagram saves harvest failed — click for details');
   return { ok: false, error };
 }
@@ -103,9 +105,10 @@ async function visitTimedOut(): Promise<void> {
   if (igVisitTabId == null) return;
   await chrome.storage.session.remove(['igVisitTabId']);
   await chrome.tabs.remove(igVisitTabId).catch(() => undefined);
-  await chrome.storage.local.set({
-    lastError: 'Instagram saves harvest timed out — are you signed in to instagram.com?',
-  });
+  await setSurfaceError(
+    'instagram',
+    'Instagram saves harvest timed out — are you signed in to instagram.com?'
+  );
   await setBadge('!', 'Instagram saves harvest timed out — click for details');
 }
 

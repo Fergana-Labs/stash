@@ -2150,3 +2150,31 @@ export type AgentPrompt = { system_prompt: string; run_prompt: string };
 export async function getAgentPrompt(id: string): Promise<AgentPrompt> {
   return apiFetch(`/api/v1/me/agents/${id}/prompt`);
 }
+
+// --- Bulk URL imports (extension bookmark/tab imports) ---
+
+export type ImportBatchProgress = {
+  id: string;
+  kind: string;
+  filename: string | null;
+  total: number;
+  created_at: string;
+  done: number;
+  link_only: number;
+  needs_client: number;
+  pending: number;
+};
+
+export type ImportBatchDetail = ImportBatchProgress & {
+  // URLs whose content could not be fetched — saved as link-only rows, with why.
+  failures: { url: string; error: string }[];
+};
+
+export async function listImportBatches(): Promise<ImportBatchProgress[]> {
+  const res = await apiFetch<{ batches: ImportBatchProgress[] }>("/api/v1/me/imports");
+  return res.batches;
+}
+
+export async function getImportBatch(batchId: string): Promise<ImportBatchDetail> {
+  return apiFetch(`/api/v1/me/imports/${batchId}`);
+}

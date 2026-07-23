@@ -9,6 +9,7 @@ import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import SkillCard from "@/components/skill/SkillCard";
 import { StashIcon } from "@/components/SkillIcons";
 import { API_BASE, githubOwner, listPublicPages, type PublicSkillCard, type PublicPageCard } from "@/lib/api";
+import { routes } from "@/lib/workspace-routes";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
@@ -69,6 +70,23 @@ export default function HomePage() {
 
       {/* Catalog */}
       <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-8">
+        {/* Extension CTA — the product's one distribution surface for the clipper. */}
+        <Link
+          href={routes.extension}
+          className="group mb-8 flex items-center justify-between gap-4 rounded-xl border border-brand-300/60 bg-gradient-to-r from-brand-50 to-base px-5 py-4 transition hover:border-brand-400 hover:shadow-sm"
+        >
+          <div>
+            <div className="text-[14.5px] font-semibold text-foreground group-hover:text-brand-600">
+              Download the extension
+            </div>
+            <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+              Clip pages, import bookmarks, and sync your Instagram saves and AI chats into Stash.
+            </div>
+          </div>
+          <span className="shrink-0 rounded-full bg-brand px-4 py-1.5 text-[12px] font-semibold text-white">
+            Get it →
+          </span>
+        </Link>
         <div className="flex items-center gap-3">
           <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
             {SORTS.map((o) => (

@@ -517,8 +517,11 @@ async def integration_purge(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete the kept data of a disconnected (or connected) provider. The
-    explicit, destructive counterpart to disconnect-keeps-data."""
-    get_provider(provider)  # 404 if unknown
+    explicit, destructive counterpart to disconnect-keeps-data. Gated on the
+    source-type map, not the OAuth registry — extension-fed providers
+    (Instagram) have data to purge but no OAuth provider."""
+    if provider not in source_service.PROVIDER_SOURCE_TYPES:
+        raise HTTPException(status_code=404, detail=f"unknown provider: {provider}")
     purged = await _purge_provider_data(current_user["id"], provider, reason="purge")
     return {"ok": True, "sources": len(purged)}
 
